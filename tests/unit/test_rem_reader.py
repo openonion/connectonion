@@ -1461,7 +1461,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
       const REM = {owner: 'people/owner.md'}, DIRECTION_LABEL = {mine: 'Waiting on you'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const draft = {status: 'no_reply', gist: '需要你到场，已等3天。'}, threadDraft = () => draft;
-      const inline = text => text, threadWords = text => text, capFirst = text => text, privateFallback = node => node;
+      const inline = text => text, threadWords = text => text, withoutDateClutter = text => text, capFirst = text => text, privateFallback = node => node;
       const threadActions = () => null, age = () => '', threadAge = () => '', blockerTag = () => null, daysSince = () => 1;
       const r = {path: 'people/fern.md'}, thread = {text: 'You owe Fern a response.', dir: 'mine'};
     ''' + f'console.log(JSON.stringify({renderer}(r, thread, false)));')
@@ -2568,23 +2568,22 @@ def test_session_previews_hide_paths_including_paths_with_spaces():
     assert all('Mara' in row['text'] for row in result)
 
 
-def test_chinese_missing_page_requests_translation_once_and_hides_english():
-    page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['record', 'translationPending'])
-    result = _run_reader_js(functions + r'''
-      uiLanguage = 'zh'; UI.zh = {'Translating': '翻译中'};
+def test_chinese_missing_page_queues_its_translation_once_only_in_the_live_reader():
+    function = re.search(r'function translationQueued\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      uiLanguage = 'zh';
       const REM = {live: true}, requests = [], fetch = (url, options) => requests.push({url, ...JSON.parse(options.body)});
       const r = {path: 'people/mara.md', category: 'people', title: 'Mara', text: 'English obligation sentence.'};
-      const byPath = () => r, main = {children: [], appendChild(node) {this.children.push(node)}};
-      const document = {getElementById: () => main};
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      record(r.path); record(r.path);
-      console.log(JSON.stringify({nodes: main.children, requests}));
+      const live = [translationQueued(r), translationQueued(r)];
+      const native = ['zh', 'zh-CN', 'zh-TW'].map(written_in => translationQueued({...r, written_in}));
+      const translated = translationQueued({...r, path: 'people/ida.md', translations: {zh: 'x'}});
+      REM.live = false;
+      const offline = translationQueued({...r, path: 'people/noa.md'});
+      console.log(JSON.stringify({live, native, translated, offline, requests}));
     ''')
+    assert result['live'] == [True, True]
+    assert result['native'] == [False] * 3 and result['translated'] is False and result['offline'] is False
     assert result['requests'] == [{'url': '/rem/translation-request', 'page': 'people/mara.md', 'language': 'zh'}]
-    assert 'English obligation' not in json.dumps(result['nodes'])
-    assert '翻译中' in json.dumps(result['nodes'], ensure_ascii=False)
 
 
 def test_session_preview_preserves_web_links_while_hiding_local_paths():
@@ -2621,34 +2620,14 @@ def test_plain_words_removes_date_connectors_and_redundant_contact_clauses(text,
     assert _run_reader_js(function + '\nconsole.log(JSON.stringify(withoutDateClutter(' + json.dumps(text) + ')));') == expected
 
 
-def test_missing_chinese_prose_is_hidden_on_cards_people_and_open_threads():
-    page = TEMPLATE.read_text()
-    names = ['translationPending', 'queueCard', 'nameCell', 'row', 'threadRow']
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
-    result = _run_reader_js(functions + r'''
-      uiLanguage = 'zh'; UI.zh = {'Translating': '翻译中'};
-      const REM = {live: true}, requests = [], fetch = (url, options) => requests.push(JSON.parse(options.body));
-      const r = {path: 'people/mara.md', title: 'Mara', category: 'people'};
-      const thread = {text: 'English obligation sentence.', since: '2026-10-23'};
-      const known = () => ({summary: 'English background prose.'}), href = r => '#r=' + r.path, threadWho = r => r.title;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      const nodes = [queueCard({r, t: thread}, '15 days'), nameCell(r, {}, true), row(r), threadRow(r, thread, true)];
-      const native = ['zh', 'zh-CN', 'zh-TW'].map(written_in => translationPending({...r, written_in}));
-      console.log(JSON.stringify({nodes, requests, native}));
-    ''')
-    assert result['requests'] == [{'page': 'people/mara.md', 'language': 'zh'}]
-    assert result['native'] == [False] * 3
-    assert 'English' not in json.dumps(result['nodes'])
-    assert all('翻译中' in json.dumps(node, ensure_ascii=False) for node in result['nodes'])
-
-
-def test_quiet_threads_on_home_keep_the_translator_when_a_thread_is_pending_translation():
+def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():
     function = re.search(r'function quietThreads\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(function + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const href = r => '#r=' + r.path, threadWho = () => 'Fern', threadPreview = text => text, alsoOn = () => null, age = () => '3 days';
-      const translationPending = () => true, threadRow = () => null;
+      const threadRow = () => null;
       const entries = [{r: {path: 'people/fern.md'}, t: {quiet: true, text: 'Still waiting on the slides.', since: '2026-11-01'}}];
       console.log(JSON.stringify(quietThreads(entries, 1, true)));
     ''')
-    assert 'Translating' in json.dumps(result)
+    assert 'Still waiting on the slides.' in json.dumps(result)
+    assert 'Gone quiet' in json.dumps(result)

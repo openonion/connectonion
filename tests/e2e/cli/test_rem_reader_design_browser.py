@@ -3930,7 +3930,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
     monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en'], 'from': 'detected'})
     snapshot = rem_reader.snapshot
 
-    def frozen_snapshot(root, local=False):
+    def frozen_snapshot(root, local=False, today=False):
         data = snapshot(root, local, today=today)
         data['as_of'] = now.isoformat()
         data['shared'] = True  # Default hidden-labelled mode, without a local storage override.

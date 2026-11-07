@@ -3937,8 +3937,6 @@ function peopleContact(values, kind) {
 }
 function nameCell(r, f, withSummary) {
   const k = known(r);
-  if (translationPending(r)) return el("div", { class: "name-cell" }, [el("a", { href: href(r), text: r.title }),
-    el("span", { class: "quiet-line", role: "status", text: t("Translating") })]);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", role: "img", title: t(k.status), "aria-label": t(k.status) }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
     withSummary && k.summary ? el("span", { class: "sum", text: withoutDateClutter(summaryLine(k.summary)) }) : null,
     r.category === "people" ? peopleCardMeta(r, f) : null]);
@@ -4045,11 +4043,6 @@ function sheet(c, items) {
         lastGroup = group;
       }
       const row = el("tr", { "data-href": href(r) });
-      if (translationPending(r)) {
-        row.appendChild(el("td", { colspan: String(visibleCols.length), class: "c-name name" }, [nameCell(r, facts(r), false)]));
-        tbody.appendChild(row);
-        continue;
-      }
       for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(c2.key) ? " extra-column" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
@@ -4356,8 +4349,6 @@ function renderRail(active) {
 
 // One page as one row: its name, what it is to you, what is open, when.
 function row(r, opts) {
-  if (translationPending(r)) return el("li", {}, [el("a", { href: href(r), text: r.title }),
-    el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const k = known(r);
   const meta = (opts && opts.kind) ? singular(r.category) : r.category === "people" ? company(r) : "";
   const li = el("li", {}, [
@@ -4383,8 +4374,6 @@ function threadWho(r) {
   return r.path === REM.owner ? t("Your page") : r.title;
 }
 function threadRow(r, thread, withPage, also = [], grouped = false) {
-  if (translationPending(r)) return el("li", { class: "thread" }, [el("a", { href: href(r), text: threadWho(r) }),
-    el("span", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
   const text = withoutDateClutter(thread.text) + " " + cites;
   return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
@@ -4453,7 +4442,6 @@ function originalMark(pending = false) {
   return el("span", { class: "lang-status", text: t(pending ? "Translation pending" : "Original"), title: t(pending ? REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off" : "No Chinese translation yet; showing original") });
 }
 function claimValue(claim, r, after, compact = false) {
-  if (translationPending(r)) return el("span", { class: "quiet-line", role: "status", text: t("Translating") });
   let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
   if (after && original && r.translations?.[uiLanguage]
       && plainLine(factText({ ...r, readLanguage: "" }, claim.field)) === plainLine(claim.after)) {
@@ -4588,8 +4576,6 @@ function dueLabel(thread) {
 
 function queueCard(entry, dateText) {
   const { r, t: thread, also } = entry;
-  if (translationPending(r)) return el("li", { class: "qcard" }, [
-    el("a", { href: href(r), text: threadWho(r) }), el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const { words, context } = morningWords(thread.text, r);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
@@ -4624,7 +4610,7 @@ function quietThreads(entries, count, home = false) {
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: translationPending(r) ? t("Translating") : threadPreview(thread.text) }), alsoOn(also)]), el("span", { text: age(thread.since) })])))
+      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: threadPreview(thread.text) }), alsoOn(also)]), el("span", { text: age(thread.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
 }
@@ -4674,8 +4660,6 @@ function recallPrompt() {
   candidates.sort((a, b) => Number(!!section(b, "our relationship")) - Number(!!section(a, "our relationship")) || byActivity(a, b));
   const r = candidates[0];
   if (!r) return null;
-  if (translationPending(r)) return el("section", { class: "recall" }, [el("a", { href: href(r), text: r.title }),
-    el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const relationship = section(r, "our relationship");
   const answerText = summaryLine(relationship?.text || known(r).summary);
   const card = el("section", { class: "recall", "aria-label": t("Recall a memory") });
@@ -4772,9 +4756,11 @@ function notebookLanguages() {
     el("div", { text: t("Notebook languages") + (uiLanguage === "zh" ? "：" : ": ") + (languages.map(nativeName).join(" · ") || t("Unknown")) + " — " + t(REM.languages_from || "detected") }),
     changeLanguages]);
 }
-function translationPending(r) {
-  if (uiLanguage !== "zh" || r.translations?.zh || /^zh(?:-|$)/i.test(r.written_in || "")) return false;
-  if (REM.live && !r.translationRequested) {
+// A page without a Chinese version keeps its original words everywhere; opening
+// it in the live reader queues the translation once and says so under the title.
+function translationQueued(r) {
+  if (!REM.live || uiLanguage !== "zh" || r.translations?.zh || /^zh(?:-|$)/i.test(r.written_in || "")) return false;
+  if (!r.translationRequested) {
     r.translationRequested = true;
     fetch("/rem/translation-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page: r.path, language: "zh" }) });
   }
@@ -4810,7 +4796,7 @@ function overview() {
       el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
         el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
         el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-          known(r).summary ? el("span", { class: "s", text: translationPending(r) ? t("Translating") : summaryLine(known(r).summary) }) : null])])))]));
+          known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
   }
 
   const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
@@ -6052,7 +6038,6 @@ function threadWords(text, r) {
 }
 function ledgerRow(r, thread) {
   const origin = thread.record || r;
-  if (translationPending(origin)) return el("li", { class: "ledger-row" }, [el("p", { class: "quiet-line", role: "status", text: t("Translating") })]);
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
   const text = withoutDateClutter(threadWords(thread.text, r)) + " " + cites;
   const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : threadAge(thread);
@@ -6375,11 +6360,7 @@ function record(path, heading) {
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
-  if (translationPending(r)) {
-    main.appendChild(el("h1", { text: r.title }));
-    main.appendChild(el("p", { class: "quiet-line", role: "status", text: t("Translating") }));
-    return;
-  }
+  if (translationQueued(r)) main.appendChild(el("p", { class: "quiet-line", role: "status", text: t("Translating") }));
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
