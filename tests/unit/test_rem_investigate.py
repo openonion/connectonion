@@ -468,19 +468,23 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
         "recording result"]
 
 
-def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path):
-    project = tmp_path / 'project'
+@pytest.mark.parametrize('parent', ['workspace', 'rem-workspace'])
+@pytest.mark.parametrize('guide', ['docs/rem-guide.md', 'docs/rem/guide.md'])
+def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path, parent, guide):
+    project = tmp_path / parent / 'project'
     (project / 'docs').mkdir(parents=True)
     (project / '.git').mkdir()
     for name in ('README.md', 'password.txt', '.env', 'a.py'):
         (project / name).write_text('fixture')
-    (project / 'docs' / 'rem-guide.md').write_text('fixture')
+    guide_path = project / guide
+    guide_path.parent.mkdir(parents=True, exist_ok=True)
+    guide_path.write_text('fixture')
     (project / '.git' / 'config').write_text('fixture')
     page = f'# Project\n## Paths\n- {project}\n- Sessions: 1\n## Sources\n'
     leads = inv.project_file_inventory(page, max_files=2)
     assert len(leads) == 2
     assert leads[0].endswith('/README.md')
-    assert any(path.endswith('/rem-guide.md') for path in leads)
+    assert any(path.endswith('/' + guide) for path in leads)
     assert not any('password' in path or '/.git/' in path or '/.env' in path for path in leads)
     cited = page.replace(f'- {project}\n', f'- {project} [1][2]\n')
     assert inv.project_paths(cited) == [str(project)]

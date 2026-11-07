@@ -148,25 +148,20 @@ def _claim_text(text: str) -> str:
     return " ".join(CITATION.sub("", text).split()).removeprefix("- ").removeprefix("* ")
 
 
-def _claim_contexts(page: str) -> list[tuple]:
+def _claim_blocks(page: str):
     """Complete prose blocks, their section path and ordered original identities.
 
     An unchanged fragment in a changed paragraph is not an unchanged claim:
     neighbouring conditions, attribution and temporal placement can qualify it.
     """
     body, _, tail = prose(page).partition("\n## Sources\n")
-    sources = {}
-    for number, source in SOURCE.findall(tail):
-        sources[number] = None if number in sources else source
-    contexts, section, lines = [], {}, []
+    section, lines = {}, []
     for line in [*body.splitlines(), ""]:
         heading = re.match(r"^(#{1,6}) (.+)$", line)
         if not line.strip() or heading or re.match(r"^[ \t]*[-*] ", line):
             if lines:
                 block = "\n".join(lines)
-                identities = tuple((len(_claim_text(block[:match.start()])), sources.get(match[1]))
-                                   for match in CITATION.finditer(block))
-                contexts.append((tuple(sorted(section.items())), _claim_text(block), identities))
+                yield tuple(sorted(section.items())), block
                 lines = []
         if heading:
             level = len(heading[1])
@@ -174,7 +169,57 @@ def _claim_contexts(page: str) -> list[tuple]:
             section[level] = heading[2].strip()
         elif line.strip():
             lines.append(line)
-    return contexts
+
+
+def _claim_contexts(page: str) -> list[tuple]:
+    sources = {}
+    for number, source in SOURCE.findall(prose(page).partition("\n## Sources\n")[2]):
+        sources[number] = None if number in sources else source
+    return [(section, _claim_text(block),
+             tuple((len(_claim_text(block[:match.start()])), sources.get(match[1]))
+                   for match in CITATION.finditer(block)))
+            for section, block in _claim_blocks(page)]
+
+
+def _changed_candidate(candidate, carried):
+    """Remove preserved claim spans and their now-unused source definitions."""
+    contexts = _claim_contexts(candidate)
+    preserved = _preserved_contexts(contexts, _claim_contexts(carried))
+    body, _, sources = prose(candidate).partition("\n## Sources\n")
+    blocks, position = [], 0
+    for context, (_, block) in zip(contexts, _claim_blocks(candidate)):
+        offset = body.index(block, position)
+        blocks.append((context, block, offset))
+        position = offset + len(block)
+    for context, block, offset in reversed(blocks):
+        changed = _without_carried(block, _context_spans(context, preserved))
+        body = body[:offset] + changed + body[offset + len(block):]
+    cited = set(CITATION.findall(body))
+    definitions = [line for line in sources.splitlines() if (match := SOURCE.match(line)) and match[1] in cited]
+    return body + "\n## Sources\n" + "\n".join(definitions) + "\n"
+
+
+def _without_carried(block, spans):
+    tokens = list(re.finditer(r"\S+", CITATION.sub(lambda m: " " * len(m[0]), block)))
+    if tokens and tokens[0][0] in ("-", "*"):
+        tokens = tokens[1:]
+    positions = []
+    for token in tokens:
+        if positions:
+            positions.append(token.start() - 1)
+        positions.extend(range(token.start(), token.end()))
+    merged = []
+    for start, end in sorted(set(spans)):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    for start, end in reversed(merged):
+        left, right = positions[start], positions[end - 1] + 1
+        suffix = re.match(r"(?:\s*\[W?\d+\])+", block[right:])
+        right += suffix.end() if suffix else 0
+        block = block[:left] + block[right:]
+    return block
 
 
 def _context_spans(context: tuple, before: list[tuple]):
@@ -242,7 +287,8 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
 
 
 def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False, directory=None):
-    material, missing = packet(notebook, candidate, record, items)
+    audited = _changed_candidate(candidate, carried) if native and carried else candidate
+    material, missing = packet(notebook, audited, record, items)
     unretained = {key: material[key] for key in ("unretained_citations", "unverified_lines")
                   if material["unretained_citations"]}
     # One citation without a readable original (a carried page, a URL) left
@@ -301,45 +347,97 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         views += [{"role": key, "text": material[key]} for key in
                   ("runner_facts", "unretained_citations", "unverified_lines")]
         (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
-        prompt = ("Check the citations printed after Now:, appending each verdict to notes.md as soon as it is checked.\n\n"
-                  + instruction + f"Read {directory / 'notes.md'} first if it exists and continue from the first unchecked citation. "
-                                "A large packet is normal; you must not end the turn because the packet is large. "
-                                "Check citations in Sources order, comparing every claim using that citation with its "
-                                "original and relevant later messages; save each verdict immediately to "
-                                f"{directory / 'notes.md'}, one line per checked citation starting with [N] PASS, [N] FAIL or [N] INSUFFICIENT "
-                                "(including W if present), followed by the checked claims and evidence; "
-                                "for each failure preserve the exact claim, issue, evidence and required_correction. "
-                                "Do not mark a citation checked until all its claims and relevant source sections are checked. "
-                                "After the printed batch, run next again and keep going until the round is done or stopped. "
-                                "When every citation is checked, write audit-output.json from the notes using the decision "
-                                "schema above, keeping every finding, then run the printed submit command. "
-                                f"Read the remaining sections of the audit packet at {directory / 'audit-material.md'} in pieces with sed/rg. "
-                                "Never cat the whole packet: tool output can truncate before later originals. "
-                                "The candidate's Sources list maps [N] to the source id. Each original is headed "
-                                "### <source id> · cited-original (or ### <source id> · later-message). "
-                                "In the packet directory, replace N with the citation number (including W if present): "
-                                "`rg -n '^\\[N\\]|^- \\[N\\] ' audit-material.md`. Then replace <source id> with that id: "
-                                "`rg -n -F '### <source id> · ' audit-material.md`. "
-                                "Read that section with `sed -n 'L,ENDp' audit-material.md`, replacing L and END with "
-                                "line numbers; continue to the next heading in chunks of at most 80 lines, "
-                                "reducing the chunk if tool output truncates. "
-                                "Before declaring an original missing, search for its source id heading. "
-                                "If no original is supplied, leave the claim out, not failed. "
-                                f"Exact strings are retained in {directory / 'audit-material.json'}. ")
+        prompt = (
+            "Check the citations printed after Now: one by one, in Sources order. "
+            "Read each original in audit-material.md and compare every claim using that citation. "
+            f"Read {directory / 'notes.md'} first if it exists and continue from the first unchecked citation. "
+            "Append each verdict immediately to notes.md: [N] PASS|FAIL|INSUFFICIENT — claim and evidence; "
+            'excerpt: "at least 20 verbatim characters from this citation’s original". '
+            "Include W in the id when present. The excerpt must be one exact span from context.excerpt in "
+            "audit-material.json; for an original shorter than 20 characters, quote the entire original. "
+            "Lines without a matching excerpt do not count. For FAIL, keep the exact claim, issue, evidence and required_correction. "
+            "Do not mark a citation checked until all its claims and relevant source sections are checked. "
+            "After the printed batch, run next again. When every citation is checked, write audit-output.json "
+            "from the notes, keeping every finding, and run the printed Submit command. "
+            f"Read the remaining sections of the audit packet at {directory / 'audit-material.md'} in pieces. "
+            "Never cat the whole packet: output can truncate before later originals. "
+            "The candidate's Sources list maps [N] to the source id. "
+            "Each original is headed ### <source id> · cited-original (or ### <source id> · later-message). "
+            "Find N (including W) with `rg -n '^\\[N\\]|^- \\[N\\] ' audit-material.md`, "
+            "then search its heading with `rg -n -F '### <source id> · ' audit-material.md`. "
+            "Read to the next heading with `sed -n 'L,ENDp' audit-material.md` in chunks of at most 80 lines. "
+            "Before declaring an original missing, search for its source id heading. "
+            "If no original is supplied, leave the claim out, not failed. "
+            "Exact strings are retained in audit-material.json. Never invent checkpoints.\n\n" + instruction)
     else:
         prompt = instruction + json.dumps(fit(material, BOUND - len(instruction.encode("utf-8"))), ensure_ascii=False)
     return {"prompt": prompt, "candidate": candidate, "carried": carried,
             "material": material, "missing": missing, "unretained": unretained}
 
 
+CHECKPOINT = re.compile(r'^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b.*$', re.M)
+EXCERPT = re.compile(r'excerpt: "([^"\n]+)"')
+
+
+def verified_checkpoints(material, text):
+    """A verdict counts only with a verbatim span from its cited original."""
+    originals = {str(row['citation']): row['context']['excerpt'] for row in material.get('sources', [])}
+    verified = {}
+    for match in CHECKPOINT.finditer(text):
+        citation, line = match[1], match[0]
+        original = originals.get(citation, '')
+        excerpts = EXCERPT.findall(line)
+        if original and any(len(span) >= min(20, len(original)) and span in original for span in excerpts):
+            verified[citation] = line
+    return verified
+
+
 def audit_progress(candidate, directory):
-    """Count checkpoints and return unchecked ids in Sources order."""
+    """Count verified checkpoints and return unchecked ids in Sources order."""
+    from .files import read_json
     citations = dict.fromkeys(re.findall(r"^\s*[-*]\s+\[(W?\d+)\]\s+", candidate.partition("\n## Sources\n")[2], re.M))
     notes = directory / "notes.md"
     text = notes.read_text(encoding="utf-8") if notes.is_file() else ""
-    checked = set(re.findall(r"^\[(W?\d+)\] (?:PASS|FAIL|INSUFFICIENT)\b", text, re.M))
+    checked = verified_checkpoints(read_json(directory / 'audit-material.json', {}), text)
     unchecked = [citation for citation in citations if citation not in checked]
     return len(citations) - len(unchecked), len(citations), unchecked
+
+
+def rejected_checkpoints(directory):
+    from .files import read_json
+    notes = directory / 'notes.md'
+    text = notes.read_text(encoding='utf-8') if notes.is_file() else ''
+    material = read_json(directory / 'audit-material.json', {})
+    return sum(not verified_checkpoints(material, match[0]) for match in CHECKPOINT.finditer(text))
+
+
+def _citation_claims(candidate, citation):
+    """Keep each cited sentence with its section and neighbouring qualifiers."""
+    claims = []
+    for section, block, identities in _claim_contexts(candidate):
+        # Contexts remove citation markers; use the source identity and full
+        # block so a changed qualifier cannot inherit a prior PASS.
+        if any(source == citation for _, source in identities):
+            claims.append((section, block, identities))
+    return claims
+
+
+def preserve_checkpoints(directory, before, after):
+    """Carry evidence forward only while both the claims and original are exact."""
+    notes = directory / 'notes.md'
+    if not notes.is_file():
+        return
+    old = {str(row['citation']): row for row in before.get('sources', [])}
+    new = {str(row['citation']): row for row in after.get('sources', [])}
+    verified = verified_checkpoints(before, notes.read_text(encoding='utf-8'))
+    kept = [line for citation, line in verified.items()
+            if citation in old and old[citation] == new.get(citation)
+            and _citation_claims(before['candidate'], old[citation]['source_id'])
+                == _citation_claims(after['candidate'], old[citation]['source_id'])]
+    if kept:
+        notes.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+    else:
+        notes.unlink()
 
 
 def check(task, result):

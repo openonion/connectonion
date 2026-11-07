@@ -50,10 +50,10 @@ def _hash(path):
 def _config_hash(config):
     # Scheduling, concurrency and budgets govern future work. Prepared material
     # (including its local dates) is already saved. Keep evidence-sizing limits.
-    run_limits = {"runner_calls_per_day", "translations_per_day", "timeout_seconds", "workers",
+    run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    content = {key: value for key, value in config.items() if key != "schedule"}
+    content = {key: value for key, value in config.items() if key not in ("schedule", "effort")}
     content["limits"] = {key: value for key, value in config["limits"].items() if key not in run_limits}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
@@ -79,22 +79,16 @@ def _input_matches(root, task, path, digest):
 
 
 def _inputs(root, task, directory, *, handler):
-    paths = {root / "config.yaml", state_path(root, "map.json"), state_path(root, "languages.json"),
-             state_path(root, "progress.json"), state_path(root, "routing.json"),
-             state_path(root, "reviews.json"),
-             state_path(root, "sessions.json"), state_path(root, "session-tags.json")}
+    paths = {root / "config.yaml"}
     book = Notebook(root)
-    if handler not in ("extract", "translate", "sessions"):
-        paths.update(book.path(record) for category in ("people", "orgs") for record in book.list(category))
     paths.update(Path(path) for path in task.get("input_paths", []))
-    paths.update(Notebook(root).path(record) for record in task.get("before", {}))
-    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
-    if owner.get("record") in task.get("before", {}):
-        paths.update(book.path(record) for record in book.list("projects"))
-    if handler not in ("extract", "translate", "sessions") and owner.get("record"):
-        paths.add(Notebook(root).path(owner["record"]))
+    paths.update(book.path(record) for record in task.get("before", {}))
     paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md"))
-    for item in task.get("items", []):
+    from .project_claim_review import original_items
+    items = [*task.get("items", []), *task.get("prior_items", [])]
+    for item in [*items, *original_items(items)]:
+        if item.get("record") and book.exists(item["record"]):
+            paths.add(book.path(item["record"]))
         if str(item.get("source", "")).startswith("reflection:"):
             paths.add(state_path(root, "reflections/" + item["source"].split(":", 1)[1] + ".json"))
         if item.get("_mail_id"):
@@ -111,7 +105,7 @@ def _inputs(root, task, directory, *, handler):
 
 
 def _audit_progress(task):
-    from .project_claim_review import audit_progress
+    from .project_claim_review import audit_progress, rejected_checkpoints
     directory = Path(task["material"])
     notes = directory / "notes.md"
     if task["stage"] != "claim-audit":
@@ -123,7 +117,8 @@ def _audit_progress(task):
         batch = " ".join(f"[{citation}]" for citation in unchecked[:AUDIT_BATCH_SIZE])
         now = (f"Now: check {batch} (next {AUDIT_BATCH_SIZE} unchecked, in Sources order) "
                f"and append one line per citation to {notes} before doing anything else.")
-    return f"Audit progress: {checked} of {total} citations checked ({notes})\n{now}"
+    rejected = rejected_checkpoints(directory)
+    return f"Audit progress: {checked} of {total} citations checked ({notes}); {rejected} rejected\n{now}"
 
 
 def _display(root, task):
@@ -332,7 +327,7 @@ def _save(root, cursor, task):
     if "<co_rem_task>" in prompt and "</co_rem_task>" not in prompt:
         prompt += "\n</co_rem_task>"
     if task["handler"] in ("runner", "project"):
-        prompt += f"\nWrite your coverage summary to {directory / 'report.md'}; write NO CHANGE there when appropriate."
+        prompt += f"\nWrite your coverage summary to {directory / 'report.md'}; write NO CHANGE with a reason there when appropriate."
     if task["handler"] not in ("runner", "project"):
         prompt += runner.today_note(root)
     prompt = f"Task workspace: {directory}. Resolve relative filenames against this directory.\n\n" + prompt
@@ -381,7 +376,10 @@ def submit(root, task_id, *, usage=None):
             return _accept(root, cursor, task, committed)
         if _promoted(root, task):
             return _accept(root, cursor, task, _recovered_result(root, task))
-        if (any(not _input_matches(root, task, Path(path), digest) for path, digest in task["inputs"].items())
+        inputs = _inputs(root, task["task"], Path(task["directory"]), handler=task["handler"])
+        # Older tasks also saved unrelated notebook files; apply today's input scope.
+        if (any(not _input_matches(root, task, Path(path), digest)
+                for path, digest in task["inputs"].items() if path in inputs)
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
@@ -498,6 +496,8 @@ def _continue_review(root, task, reason):
 
 def _request_review(root, task, result):
     if result.get("continue_review"):
+        task["instructions"] = result["needs_review"]
+        _write_instructions(task)
         return _continue_review(root, task, result["continue_review"])
     directory = Path(task["directory"])
     task["review_unreserved"] = True
@@ -606,7 +606,7 @@ def _source_view(root, task, *, handler):
     if handler in ("extract", "translate", "sessions"):
         return None
     from .reader_model import _source_ids, cited_context, later_in_threads
-    items = task.get("items", [])
+    items = [*task.get("items", []), *task.get("prior_items", [])]
     sources = {item["source"] for item in items if item.get("source")}
     for item in items:
         sources.update(item.get("sources", []))
@@ -614,8 +614,7 @@ def _source_view(root, task, *, handler):
     records = [{"text": text} for text in task.get("before", {}).values()]
     records.append({"text": "\n## Sources\n" + "\n".join(f"- [{n}] {source}" for n, source in enumerate(sorted(sources), 1))})
     sources.update(_source_ids(records))
-    value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources),
-             "lookups": {kind: Notebook(root).list(kind) for kind in ("people", "orgs")}}
+    value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources)}
     if str(task.get("record", "")).startswith("projects/"):
         from .project_material import stored
         value["project"] = stored(root, task["record"])

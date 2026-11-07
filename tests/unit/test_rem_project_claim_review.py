@@ -98,23 +98,22 @@ def test_native_audit_checkpoints_each_citation_before_continuing(tmp_path):
     assert f'Read {tmp_path / "notes.md"} first if it exists' in prompt
     assert 'continue from the first unchecked citation' in prompt
     assert 'Read the remaining sections of the audit packet' in prompt
-    assert 'A large packet is normal' in prompt
-    assert 'must not end the turn because the packet is large' in prompt
-    assert 'Check citations in Sources order' in prompt
-    assert 'one line per checked citation starting with [N] PASS, [N] FAIL or [N] INSUFFICIENT' in prompt
-    assert 'save each verdict immediately' in prompt
+    assert 'one by one, in Sources order' in prompt
+    assert '[N] PASS|FAIL|INSUFFICIENT' in prompt
+    assert 'at least 20 verbatim characters' in prompt
+    assert 'excerpt:' in prompt
     assert 'every claim using that citation' in prompt
     assert 'evidence and required_correction' in prompt
     assert 'When every citation is checked' in prompt and 'audit-output.json' in prompt
-    assert prompt.startswith('Check the citations printed after Now:, appending each verdict to notes.md as soon as it is checked.')
-    assert 'If you must stop' not in prompt
-    assert 'next turn' not in prompt
 
 
 def test_audit_progress_returns_unchecked_ids_in_sources_order(tmp_path):
     candidate = ('# Atlas\n\n## Sources\n- [W74] web\n- [11] eleven\n- [2] two\n'
                  '- [1] one\n- [W3] web-three\n- [2] two again\n')
-    (tmp_path / 'notes.md').write_text('[2] FAIL — Incorrect.\n[W3] INSUFFICIENT — Missing.\n'
+    from connectonion.rem.files import write_json
+    write_json(tmp_path / 'audit-material.json', {'sources': [
+        {'citation': number, 'context': {'excerpt': 'A fictional original for this citation.'}} for number in ('2', 'W3')]})
+    (tmp_path / 'notes.md').write_text('[2] FAIL — excerpt: \"A fictional original for this citation.\" Incorrect.\n[W3] INSUFFICIENT — excerpt: \"A fictional original for this citation.\" Missing.\n'
                                         '[2] PASS — Duplicate.\n[999] PASS — Unrelated.\n'
                                         'Heading mentions [1] PASS.\n')
     assert project_claim_review.audit_progress(candidate, tmp_path) == (2, 5, ['W74', '11', '1'])
@@ -528,3 +527,36 @@ def test_audit_does_not_resolve_obligations_from_elapsed_dates(tmp_path, kind):
         assert 'An ask the other side never agreed to is not their debt' in prompt
     material = json.loads(prompt[prompt.index('{"candidate"'):])
     assert {row['source_id'] for row in material['sources']} == {'gmail:request', 'gmail:promise'}
+
+
+@pytest.mark.parametrize('line, checked', [
+    ('[{n}] PASS — Previously checked citation', 0),
+    ('[{n}] PASS — excerpt: \"fictional pilot\"', 0),
+    ('[{n}] PASS — excerpt: "The fictional pilot starts on Monday."', 116),
+    ('[{n}] PASS — excerpt: "The fictional pilot starts on Friday."', 0),
+])
+def test_audit_checkpoint_requires_verbatim_original(tmp_path, line, checked):
+    from connectonion.rem.files import write_json
+    candidate = '# Atlas\n\n## Sources\n' + ''.join(f'- [{n}] codex:atlas:{n}\n' for n in range(1, 117))
+    write_json(tmp_path / 'audit-material.json', {'candidate': candidate, 'sources': [
+        {'citation': str(n), 'source_id': f'codex:atlas:{n}',
+         'context': {'excerpt': 'The fictional pilot starts on Monday.'}} for n in range(1, 117)]})
+    (tmp_path / 'notes.md').write_text('\n'.join(line.format(n=n) for n in range(1, 117)))
+    assert project_claim_review.audit_progress(candidate, tmp_path)[0] == checked
+
+
+def test_audit_repair_keeps_only_unchanged_verified_claims(tmp_path):
+    from connectonion.rem.files import write_json
+    before = '# Atlas\n\nPilot starts Monday [1].\n\nBudget approved [2].\n\n## Sources\n- [1] codex:1\n- [2] codex:2\n'
+    sources = [{'citation': str(n), 'source_id': f'codex:{n}', 'context': {'excerpt': text}}
+               for n, text in enumerate(['The fictional pilot starts on Monday.', 'The fictional budget was approved.'], 1)]
+    old = {'candidate': before, 'sources': sources}
+    notes = tmp_path / 'notes.md'
+    notes.write_text('[1] PASS — excerpt: "The fictional pilot starts on Monday."\n'
+                     '[2] PASS — excerpt: "The fictional budget was approved."\n')
+    new = {**old, 'candidate': before.replace('Budget approved', 'Budget rejected')}
+    write_json(tmp_path / 'audit-material.json', new)
+    project_claim_review.preserve_checkpoints(tmp_path, old, new)
+    assert '[1] PASS' in notes.read_text()
+    assert '[2]' not in notes.read_text()
+    assert project_claim_review.audit_progress(new['candidate'], tmp_path) == (1, 2, ['2'])

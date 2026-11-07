@@ -731,7 +731,7 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
                          stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
-                         stage_progress=None, native=False):
+                         stage_progress=None, native=False, draft_only=False):
     """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
@@ -755,7 +755,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
                                        carried=carried, ask_quotes=attempt < repairs and stage == "investigate",
                                        report=str(result.get("result") or ""),
-                                       stage_progress=stage_progress, **({"native": True} if native else {}))
+                                       stage_progress=stage_progress,
+                                       **({"native": True, "draft_only": draft_only} if native else {}))
             if usage and "needs_review" in usage:
                 return usage
             result["usage"] = _add_usage(result.get("usage"), usage)
@@ -888,7 +889,7 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
-                       stage_progress=None, native=False, report=""):
+                       stage_progress=None, native=False, report="", draft_only=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
                               drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain,
@@ -1061,12 +1062,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
-    if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
+    if not errors and not draft_only and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
         if stage_progress:
             stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
-            from .project_claim_review import prepare, check, audit_progress
+            from .project_claim_review import prepare, check, audit_progress, preserve_checkpoints
             audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True, directory=directory)
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
@@ -1076,19 +1077,23 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                 report = audit["report"]
             elif saved.get("sha256") == digest and output.is_file():
                 decision = json.loads(output.read_text(encoding="utf-8"))
-                checked, total, _ = audit_progress(text, directory)
-                # Only the model's own valid INSUFFICIENT decision needs checkpoints.
-                # Code-derived insufficient keeps the child runner's existing policy.
-                if (str(decision.get("verdict", "")).lower() == "insufficient"
-                        and isinstance(decision.get("findings"), list)
-                        and checked < total):
+                if (not isinstance(decision, dict)
+                        or str(decision.get('verdict', '')).lower() not in ('pass', 'fail', 'insufficient')
+                        or not isinstance(decision.get('findings'), list)):
+                    return {"needs_review": audit["prompt"], "candidate": str(output),
+                            "continue_review": "Write a valid audit decision: verdict PASS, FAIL or INSUFFICIENT and a findings list; then submit again."}
+                report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
+                # The packet omits carried claims, so count only its candidate's citations.
+                checked, total, _ = audit_progress(audit["material"]["candidate"], directory)
+                # Normalization can turn an empty/filtered FAIL into PASS or INSUFFICIENT.
+                verdict = str(decision.get("verdict", "")).lower()
+                if (verdict in ('pass', 'insufficient') or report['verdict'] != 'fail') and checked < total:
                     return {"needs_review": audit["prompt"], "candidate": str(output),
                             "continue_review": "Continue checking from the notes and submit when every citation is checked."}
-                report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
             else:
                 output.unlink(missing_ok=True)
                 if saved.get("sha256") != digest:
-                    (directory / "notes.md").unlink(missing_ok=True)
+                    preserve_checkpoints(directory, saved.get("task", {}).get("material", {}), audit.get("material", {}))
                 write_json(directory / "audit-task.json", {"sha256": digest, "task": audit})
                 return {"needs_review": audit["prompt"] + f"\nWrite the JSON decision to {output}.",
                         "candidate": str(output)}
@@ -1133,7 +1138,14 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
+        if draft_only:
+            from .evidence import retain_research
+            from .project_claim_review import retain_cited_originals
+            retain_cited_originals(notebook, text, items)
+            retain_research(notebook.root, text, items)
+            candidate.write_text(text, encoding="utf-8")
+        else:
+            _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
     return audit_usage
 
 
@@ -1146,6 +1158,10 @@ def _write_page(notebook, record, text, items, *, receipt=None):
     from .reader_model import _source_ids
     from .service import notebook_zone
     from .evidence import retain_research
+    if record.startswith("people/"):
+        from . import people_basics, store
+        store.refresh(notebook.root)
+        text = people_basics.fill(notebook, record, text)
     retain_research(notebook.root, text, items)
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
@@ -1157,6 +1173,8 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
+    if record.startswith("people/"):
+        store.refresh(notebook.root)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False):
@@ -1551,6 +1569,8 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
     notebook = Notebook(Path(task["root"]))
     directory, workdir = Path(task["directory"]), Path(task["directory"]).parent
     record, before, items, stage = task["record"], task["before"], task["items"], task["stage"]
+    if native:
+        items = [*items, *task.get("prior_items", [])]
     candidate = Path(task["candidate"]) if task["candidate"] else None
     task_root, summary, selected_config = Path(task["task_root"]), task["summary"], task["config"]
     run_turn = run_turn or run_task
@@ -1582,7 +1602,7 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
                              repairs=0 if not automatic_repairs or summary or not candidate.is_file()
                              or candidate.read_text(encoding="utf-8") == before[record]
                              else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS,
-                             **({"native": True} if native else {}))
+                             **({"native": True, "draft_only": task.get("draft_only", False)} if native else {}))
         if pending:
             return pending
         metrics["render_usage"] = result.get("usage")

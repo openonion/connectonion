@@ -69,8 +69,16 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 401, "Open co rem with `co rem open` on this computer.")
         return
     if scope["method"] == "GET" and scope["path"] == "/rem":
-        from ...rem.reader import render
-        await _reply(send, 200, await asyncio.to_thread(render, root, live=True, local=True), "text/html")
+        from ...rem.reader import reader_version, render
+        # Per Host, after authentication. Concurrent reloads share one build.
+        cache = routes.setdefault("rem_reader_cache", {})
+        async with routes.setdefault("rem_reader_lock", asyncio.Lock()):
+            version = await asyncio.to_thread(reader_version, root)
+            if cache.get("version") != version:
+                page = await asyncio.to_thread(render, root, live=True, local=True)
+                cache.update(version=version, page=page)
+            page = cache["page"]
+        await _reply(send, 200, page, "text/html")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     else:

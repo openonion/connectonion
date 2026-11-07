@@ -107,6 +107,37 @@ def counts(root: Path, found: dict | None = None) -> dict:
     return result
 
 
+def people_coverage(root: Path) -> dict:
+    """Qualifying correspondents across the archive, grouped by existing person page.
+
+    Count From/To/Cc the same way scan_people does, rather than freezing coverage
+    at init. Several addresses on one person page count as one person.
+    """
+    from .mail import _address, _addresses
+    from .mail_archive import mail_metadata
+    from .map import worth_a_page
+    from .store_messages import owner_addresses
+    mine, book, found = owner_addresses(root), Notebook(root), pages(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    paged = {address: person["path"] for person in book.people() if person["path"] != owner
+             and listed(found[person["path"]]) for address in person["emails"]}
+    totals = {}
+    for row in mail_metadata(root):
+        sender = _address(row.get("from", ""))
+        recipients = set(_addresses(row.get("to")) + _addresses(row.get("cc")))
+        outgoing = sender in mine or "@" not in sender
+        contacts = recipients if outgoing else {sender}
+        for address in contacts - mine:
+            if "@" not in address:
+                continue
+            key = paged.get(address, address)
+            sent, received = totals.get(key, (0, 0))
+            totals[key] = sent + outgoing, received + (not outgoing)
+    qualifying = {key for key, (sent, received) in totals.items() if worth_a_page(sent, received)}
+    covered = len(qualifying & set(paged.values()))
+    return {"total": len(qualifying), "covered": covered, "missing": len(qualifying) - covered}
+
+
 # Open threads, read the way the reader reads them (reader.html owing(),
 # isCalm() and threads()), so `co rem status` says the number the reader's
 # home shows as "waiting on you". The earliest phrase that says who must act

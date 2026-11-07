@@ -68,6 +68,8 @@ def first_run(tmp_path, monkeypatch):
         return {"record": record, "changed": [record], "items": 3}
 
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
+    # Flow tests fake investigation, including the separate historical mail fetch.
+    monkeypatch.setattr("connectonion.rem.people_pages.backfill_person", lambda *a, **kw: 0)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
     monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs:
@@ -591,12 +593,12 @@ def test_json_with_investigate_runs_it_and_stays_machine_readable(first_run):
 
 def test_a_rerun_does_not_pay_for_a_page_already_written(first_run):
     root, init, calls = first_run
-    assert init("--no-investigate").exit_code == 0
+    assert init("--no-investigate", "--days", "5").exit_code == 0
     page = root / owner_record(root)
     lines = [("Investigation: investigated 2026-09-30" if line.startswith("Investigation:") else line)
              for line in page.read_text().splitlines()]
     page.write_text("\n".join(lines) + "\n")
-    result = init("--json")
+    result = init("--json", "--days", "5")
     assert result.exit_code == 0, result.output
     assert all(call["record"] != owner_record(root) for call in calls)
     assert "already" in json.loads(result.stdout)["data"]["investigate_me"]["reason"]
@@ -776,13 +778,13 @@ def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_er
 
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
-    assert init("--no-investigate").exit_code == 0
-    data = json.loads(init("--json").stdout)["data"]
+    assert init("--no-investigate", "--days", "5").exit_code == 0
+    data = json.loads(init("--json", "--days", "5").stdout)["data"]
     assert data["project_pages"]["started"]
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: False)
-    assert init().exit_code == 0
+    assert init("--days", "5").exit_code == 0
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
-    missing = init("--investigate")
+    missing = init("--investigate", "--days", "5")
     assert Text.from_ansi(missing.output).plain.count("Codex is not signed in") == 1
     assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
@@ -1398,7 +1400,7 @@ def test_init_reports_why_translation_is_skipped(first_run, monkeypatch, flags, 
     monkeypatch.setattr('connectonion.rem.translate.translate_pages', lambda *args, **kw: pytest.fail('translation started'))
     if reason == 'Runner not ready':
         monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('runner unavailable', 'install runner'))
-    result = init('--json', '--languages', language, '--no-start', *flags)
+    result = init('--json', '--languages', language, '--no-start', '--days', '5', *flags)
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
     assert not data['translation']['started'] and reason in data['translation']['reason']

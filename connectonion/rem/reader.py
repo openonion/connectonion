@@ -217,6 +217,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = contact_candidates(root)
+    current_status = status(root)
     logs = run_logs(root)
     shown_logs = logs[:20]
     translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
@@ -234,9 +235,10 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
+            "people_coverage": current_status["people_coverage"],
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,
-            "status": status(root), "subscriptions": subscriptions(root),
+            "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": listing(root), "counts": counts(root, found),
@@ -261,6 +263,28 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     if PLACEHOLDER not in template:
         raise RuntimeError("reader.html has lost its data placeholder")
     return template.replace(PLACEHOLDER, data, 1)
+
+
+def reader_version(root: Path) -> tuple:
+    """Cheap metadata key for the live reader, including retained source edits.
+
+    Do not follow directory links or inspect bodies. SQLite's shared-memory
+    bookkeeping changes on reads; an empty WAL has no committed frames.
+    Committed data lives in the db and nonempty WAL.
+    """
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            if name == "rem.db-shm":
+                continue
+            path = Path(directory) / name
+            stat = path.lstat()
+            if name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    template = TEMPLATE.stat()
+    return (str(root.resolve()), str(TEMPLATE), template.st_mtime_ns, template.st_size, tuple(files))
 
 
 def reader_path(root: Path) -> Path:

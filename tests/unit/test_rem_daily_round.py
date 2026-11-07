@@ -289,8 +289,8 @@ def test_same_person_judgements_are_a_run_in_the_logs_and_count_against_the_days
     from connectonion.rem.service import run_logs, status
     _investigators(monkeypatch)
     monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
-    monkeypatch.setattr(same_person, "candidates", lambda root: [{"pages": ["people/a.md", "people/b.md"], "why": "x"}])
-    monkeypatch.setattr(same_person, "judge", lambda root, config, limit, say: [
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [] if kw.get("uninvestigated") else [{"pages": ["people/a.md", "people/b.md"], "why": "x"}])
+    monkeypatch.setattr(same_person, "judge", lambda root, config, limit, say, **kw: [
         {"pages": ["people/a.md", "people/b.md"], "same": False, "usage": {"input_tokens": 40}}] * limit)
     before = status(root)["runner_attempts_today"]
     result = daily.run_daily(root, maintain=no_change)
@@ -305,7 +305,7 @@ def test_no_pair_to_judge_writes_no_run(root, monkeypatch):
     from connectonion.rem import same_person
     from connectonion.rem.service import run_logs
     _investigators(monkeypatch)
-    monkeypatch.setattr(same_person, "candidates", lambda root: [])
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [])
     daily.run_daily(root, maintain=no_change)
     assert not [record for record in run_logs(root) if record.get("phase") == "same-person"]
 
@@ -389,7 +389,7 @@ def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
              "window_minutes": 10080, "plan": "fictional"}
     monkeypatch.setattr(daily.quota, "read", lambda config: dict(meter))
     monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "projects/historical-notes.md"}])
-    monkeypatch.setattr(same_person, "candidates", lambda root: [{"pages": ["people/a.md", "people/b.md"]}])
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [] if kw.get("uninvestigated") else [{"pages": ["people/a.md", "people/b.md"]}])
 
     def investigate(*args, **options):
         meter["used_percent"] = 13

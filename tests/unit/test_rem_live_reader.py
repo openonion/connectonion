@@ -206,3 +206,44 @@ def test_a_host_on_an_unknown_port_is_named_not_duplicated(tmp_path, monkeypatch
 def test_the_rem_path_is_reserved_from_publisher_routes():
     from connectonion.network.host.http_routes import _RESERVED_PREFIXES
     assert "/rem" in _RESERVED_PREFIXES
+
+
+def test_live_reader_reuses_render_until_notebook_or_template_changes(host, monkeypatch, tmp_path):
+    calls = []
+    template = tmp_path / 'reader-template.html'
+    template.write_text('Example template')
+    monkeypatch.setattr(reader, 'TEMPLATE', template)
+    monkeypatch.setattr(reader, 'render', lambda root, **kw: calls.append((root, kw)) or f'build {len(calls)}')
+    get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
+    assert get() == get() == 'build 1'
+    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nExample update.')
+    assert get() == 'build 2'
+    from connectonion.rem.files import state_path
+    state_path(host.root, 'map.json').write_text('{"owner": {}}')
+    assert get() == 'build 3'
+    extra = host.root / 'people/nora.md'
+    extra.write_text('# Nora')
+    assert get() == 'build 4'
+    extra.unlink()
+    assert get() == 'build 5'
+    template.write_text('Updated template')
+    assert get() == get() == 'build 6'
+    assert all(options == {'live': True, 'local': True} for _, options in calls)
+    # Authentication still runs for every request, including a cache hit.
+    assert call(host.routes, 'GET', '/rem')[0] == 401
+
+
+def test_live_reader_second_request_reuses_the_actual_snapshot(host, monkeypatch):
+    from connectonion.rem.store import refresh
+    refresh(host.root)
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    builds, original = [], reader.render
+
+    def counted(root, **options):
+        builds.append(root)
+        return original(root, **options)
+
+    monkeypatch.setattr(reader, 'render', counted)
+    get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
+    assert get() == get()
+    assert builds == [host.root]

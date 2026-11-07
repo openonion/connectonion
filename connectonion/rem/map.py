@@ -137,7 +137,8 @@ def _write_only(row: dict) -> bool:
     if row.get('received') or row.get('sent', 0) < WRITE_ONLY_MIN:
         return False
     address = row['address']
-    return not (AUTOMATED_HINT.search(address) or BULK.search(address)
+    return not (AUTOMATED_HINT.search(address) or re.match(r"^(?:hello|info|team|support|updates)@", address, re.I)
+                or BULK.search(address)
                 or RELAY.search(address) or AGENT_ADDRESS.search(address))
 
 
@@ -183,12 +184,12 @@ def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
 
 
 def worth_a_page(sent: int, received: int) -> bool:
-    """Someone the owner corresponds with: mail both ways, or the owner wrote to them twice.
+    """Mail both ways, two sent, or three received; service and notice filters still apply.
 
-    On the owner's 367 correspondents: 41 both ways, 31 written to twice or
-    more; the other 295 were one cold mail, a newsletter, a booking (#2057).
+    One unanswered introduction waits; three inbound mails qualify even before
+    the owner replies. Service and notice senders are filtered separately.
     """
-    return bool((sent and received) or sent >= 2)
+    return bool((sent and received) or sent >= 2 or received >= 3)
 
 
 def _notice(row: dict) -> bool:
@@ -558,12 +559,13 @@ def _held(group: list[dict], page: str) -> bool:
     (ellis.work@example.org, 10 sent, none received). It is still asked about with
     `init --mine`, and held until that is answered or it replies (#1987).
 
-    Since #2057 an address the owner never wrote to gets no page at all, so the
-    write-only case is the one that still arrives here.
+    Three inbound mails qualify even without a display name. The write-only
+    case remains held until its identity is clearer.
     """
     title = page.split('\n', 1)[0]
     return '@' in title and _mapped_only(page) and (
-        not any(row.get('sent') for row in group) or all(_write_only(row) for row in group))
+        (not any(row.get('sent') for row in group) and sum(row.get('received', 0) for row in group) < 3)
+        or all(_write_only(row) for row in group))
 
 
 def needs_review(root: Path) -> set[str]:
@@ -1076,7 +1078,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if report['without_page']:
         report['coverage'].append(f"{len(report['without_page'])} correspondents with mail one way only, and at "
                                   "most one from the owner, listed in .state/map.json without people pages; a page "
-                                  "comes when mail goes both ways or the owner writes twice")
+                                  "comes with mail both ways, two sent mails, or three inbound mails")
     # Why a mailbox is not here is the command layer's knowledge, not the map's:
     # from inside, a mailbox nobody connected, one the user unsubscribed, and one
     # that failed to open are all equally absent. It says what it was told, and

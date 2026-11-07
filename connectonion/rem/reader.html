@@ -820,6 +820,7 @@
   .conversation-open strong { display: block; font: 600 14px var(--ui); }
   .conversation-open span { display: block; margin-top: 5px; font: 11px var(--ui); color: var(--ink-3); }
   .conversation-message { border-top: 1px solid var(--line); padding: 14px 0; }
+  .conversation-message.cited { border-left: 3px solid var(--blue); padding-left: 14px; background: var(--blue-soft); }
   .conversation-message p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.5 var(--text); }
   .activity-view { grid-column: 1 / -1; }
   .activity-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -962,6 +963,8 @@
   .evidence-claim small { display: block; margin-bottom: 6px; color: var(--ink-3); font: 12px var(--ui); }
   mark.span { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
   .evidence-panel .msg { padding: 0; border: 0; border-radius: 0; background: none; }
+  .evidence-panel .msg-envelope { position: sticky; top: calc(var(--evidence-top-height, 44px) + var(--evidence-find-height, 0px)); z-index: 1; padding: 6px 0; background: var(--sheet); }
+  .evidence-panel .evidence-find { top: var(--evidence-top-height, 44px); z-index: 2; }
   .evidence-panel .msg-head { flex-wrap: wrap; gap: 4px; }
   .evidence-panel .msg-from { gap: 4px; }
   .evidence-panel .msg-address { font: 11px var(--ui); }
@@ -1642,6 +1645,8 @@ const UI = {
     "Open threads": "未完成事项",
     "Recorded direction": "已记录的方向",
     "Cited conversations": "引用的对话",
+    "Cited message": "引用的消息",
+    "{n} archived messages around this page’s citations. Up to two before and after each cited message.": "本页引用附近的 {n} 条存档消息。每条引用最多显示前后各两条消息。",
     "Related pages": "相关页面",
     "Full memory and sources": "完整记忆与来源",
     "Only mapped so far": "仅已映射",
@@ -2001,6 +2006,8 @@ const UI = {
     "Outputs that can be reused or shown": "可复用或展示的成果",
     "Promises, waiting on others, dates that matter": "承诺、等待对方的事项与重要日期",
     "People, projects, skills and ideas in one place": "人物、项目、技能与想法，汇于一处",
+    "{n} of {m} qualifying correspondents have a page": "{m} 位符合建页条件的通信对象中，{n} 位已有页面",
+    "{n} people you write to have no page yet": "你写信的对象中，{n} 位尚无页面",
     "The pass may have refreshed pages; that alone is not a new memory.": "本次可能更新了页面措辞，这不代表新增了记忆。",
     "No supported open loop is in this snapshot.": "此快照中没有来源支持的未完成事项。",
     "{n} waiting on you": "{n} 件等你处理",
@@ -2039,7 +2046,6 @@ const UI = {
     "date unknown": "日期未知",
     "Documents": "文档",
     "Archived conversation": "存档对话",
-    "Latest {n} of {m} archived messages in this cited thread. Some messages may not have an archived body.": "此引用对话中最近 {n} / {m} 条存档消息。部分消息可能没有存档正文。",
     "Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them.": "存档消息尚未完成隐私分类，已隐藏。在菜单中选择「显示标记段落」即可阅读。",
     "Copy investigation preview": "复制调查预览命令",
     "Source map": "来源映射",
@@ -2305,7 +2311,7 @@ function singular(c) { return t(({ people: "Person", orgs: "Organisation", skill
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
-function inCategory(category) { return listedRecords().filter(r => r.category === category); }
+function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
   return { held: people.filter(r => r.needs_review).length,
@@ -2331,14 +2337,10 @@ function fmtDate(iso) {
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString(uiLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
+  return isNaN(d) ? iso : fmtDate(iso) + " · " + d.toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
 }
 function shortDate(day) {
-  if (!day) return "";
-  const d = new Date(day + "T00:00:00Z");
-  if (isNaN(d)) return day;
-  const sameYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
-  return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
+  return fmtDate(day);
 }
 function num(n) { return n == null ? t("unknown") : Number(n).toLocaleString(); }
 function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
@@ -2406,27 +2408,20 @@ function sourceSender(context) {
   const name = person?.title || who.name;
   return /\/|\.md/i.test(name) ? "" : name.split(/\s+/)[0];
 }
-function citationDay(date) {
-  if (uiLanguage === "zh") return new Intl.DateTimeFormat("zh-CN", { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return date.getUTCDate() + " " + months[date.getUTCMonth()];
-}
 function chipLabel(r, n) {
   const text = citationSource(r, n), id = citationId(r, n);
   if (!id) return t("source {n}", { n });
   const context = (REM.source_context || {})[id];
   const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
-  const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
-  const date = day && new Date(day + "T00:00:00Z");
-  const when = date && !isNaN(date) ? citationDay(date) : "";
+  const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
+  const when = day ? fmtDate(day) : "";
   const label = [context && sourceSender(context), sourceChannel(kind), when].filter(Boolean);
   return label.join(", ") || t("source {n}", { n });
 }
 function citationDate(r, n) {
   const text = citationSource(r, n), context = (REM.source_context || {})[citationId(r, n)];
-  const day = /\d{4}-\d{2}-\d{2}/.exec(context?.time || text)?.[0];
-  const date = day && new Date(day + "T00:00:00Z");
-  return date && !isNaN(date) ? citationDay(date) : t("source {n}", { n });
+  const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
+  return day ? fmtDate(day) : t("source {n}", { n });
 }
 function citeRun(ns, from) {
   return citeChip(ns[0], from, true, false, ns);
@@ -2773,7 +2768,7 @@ function sourceLabel(id) {
   if (/\.[^/\\]+$/.test(parts.at(-1)) || !parts.some(part => opaque.test(part))) return id;
   const context = REM.source_context?.[id];
   const session = /^(codex|claude-code):/.exec(id);
-  if (session && context?.time) return t(session[1] === "codex" ? "Codex session" : "Claude Code session") + " · " + threadDate(context.time.slice(0, 10));
+  if (session && context?.time) return t(session[1] === "codex" ? "Codex session" : "Claude Code session") + " · " + threadDate(calendarDay(context.time));
   return parts.map(part => opaque.test(part) ? part.slice(0, 8) + "…" : part).join(":");
 }
 function sourceChips(text) {
@@ -2850,7 +2845,7 @@ function known(r) {
   KNOWN.set(r.path, k);
   return k;
 }
-function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
+function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !parseFacts(r).get("Last contact")?.length && !!(r.last_activity || r.mail?.last); }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text, keepPrivate = false) {
   const line = String(keepPrivate ? text : unlabelled(text)).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -2876,6 +2871,7 @@ function byActivity(a, b) {
 function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
+  if (st === "Investigated" && r.category !== "skills") return null;
   const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
   return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? t("Some sections are filled from sources; the rest are not investigated yet.") : known(r).stamp || label }, [moon(st), t(label)]);
 }
@@ -3349,7 +3345,7 @@ function peopleContact(values, kind) {
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", role: "img", title: t(k.status), "aria-label": t(k.status) }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
-    r.category === "projects" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
+    r.category === "projects" && k.status !== "Investigated" ? el("span", { class: "mobile-status-label", text: t(k.status) }) : null,
     withSummary && k.summary ? el("span", { class: "sum", text: summaryLine(k.summary) }) : null,
     r.category === "people" ? peopleCardMeta(r, f) : null]);
 }
@@ -3389,7 +3385,7 @@ const FILTERS = [
 const SHEET = {};
 const EXTRA_PEOPLE_COLUMNS = new Set(["role", "email", "phone", "mails"]);
 function sheet(c, items) {
-  const cols = COLUMNS[c];
+  const cols = COLUMNS[c].filter(col => col.key !== "status" || items.some(r => known(r).status !== "Investigated"));
   const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
   const wrap = el("div", { class: "sheet-box" + (c === "people" ? " people-sheet" : "") });
   const bar = el("div", { class: "sheet-bar" });
@@ -3451,7 +3447,7 @@ function sheet(c, items) {
     if (!rows.length) wrap.appendChild(emptyState("No matching pages", "Clear filters →", categoryHref(c), () => {
       state.text = ""; state.filter = "all"; find.value = ""; draw(); find.focus();
     }));
-    count.textContent = t("{n} of {m}", { n: rows.length, m: items.length });
+    count.textContent = rows.length === items.length ? t("{n} pages", { n: items.length }) : t("{n} of {m}", { n: rows.length, m: items.length });
   };
   more.onclick = () => {
     morePeopleColumns = !morePeopleColumns;
@@ -3953,7 +3949,7 @@ function morningEntries(entries) {
   return chosen;
 }
 function threadDate(day) {
-  return new Date(day + "T00:00:00Z").toLocaleDateString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).replace("Sept", "Sep");
+  return fmtDate(day);
 }
 function dueLabel(thread) {
   return t(thread.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(thread.due);
@@ -4350,6 +4346,11 @@ function ledeSeparator(text) {
   return /[？。！?.!]$/.test(text.trim()) ? " " : uiLanguage === "zh" ? " · " : ". ";
 }
 function categoryCount(c, counts, total) {
+  if (c === "people" && REM.people_coverage) {
+    const { covered, total } = REM.people_coverage;
+    return t("{n} of {m} qualifying correspondents have a page", { n: covered, m: total })
+      + (total ? " · " + Math.round(100 * covered / total) + "%" : "");
+  }
   const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
 }
@@ -4363,9 +4364,12 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
-  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other ? ledeSeparator(t(lede)) : ""),
-    items.length || other ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
+  const hasCoverage = c === "people" && REM.people_coverage?.total;
+  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other || hasCoverage ? ledeSeparator(t(lede)) : ""),
+    items.length || other || hasCoverage ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
       + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
+  if (c === "people" && REM.people_coverage?.missing) main.appendChild(el("p", { class: "directory-note",
+    text: t("{n} people you write to have no page yet", { n: REM.people_coverage.missing }) }));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
     const note = el("p", { class: "held-note" }, [el("span", { text:
@@ -5130,7 +5134,8 @@ function sidePanels(r, k) {
   const panels = [];
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: t(dt) }), el("dd", {}, [dd]));
-  add("Status", statusPill(r));
+  const status = statusPill(r);
+  if (status) add("Status", status);
   if (k.last && r.category !== "skills") add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count[:：]\s*(\d+);\s*first[:：]\s*(\d{4}-\d{2}-\d{2});\s*last[:：]\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
@@ -5483,14 +5488,14 @@ function recordContext(r) {
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text, source.plain);
     return id && (REM.source_context || {})[id]?.thread;
-  }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
+  }).filter(Boolean))].map(id => [id, conversationFor(r, id)]).filter(([, value]) => value);
   if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
     el("h2", { text: t("Cited conversations") }),
     el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
       const button = el("button", { type: "button", class: "conversation-open" }, [
         el("strong", { text: byPath(value.subject)?.title || value.subject }),
         el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
-      button.onclick = () => openConversation(id, button);
+      button.onclick = () => openConversation(r, id, button);
       return button;
     })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
       el("summary", { text: t("Show {n} more cited conversations", { n: conversations.length - 3 }) }),
@@ -5498,7 +5503,7 @@ function recordContext(r) {
         const button = el("button", { type: "button", class: "conversation-open" }, [
           el("strong", { text: byPath(value.subject)?.title || value.subject }),
           el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
-        button.onclick = () => openConversation(id, button);
+        button.onclick = () => openConversation(r, id, button);
         return button;
       }))]) : null]));
   const related = connectedContext(r);
@@ -5513,8 +5518,17 @@ function inputScopeText(scope) {
   if (/^Skill instructions;/.test(scope)) return t("Instructions describe intended behavior, not a verified result.") + (/Recovered from/.test(scope) ? t(" This excerpt was recovered from matching file content.") : "");
   return scope;
 }
-function openConversation(id, trigger) {
-  const conversation = (REM.conversations || {})[id];
+function conversationFor(r, id) {
+  const conversation = REM.conversations?.[id];
+  if (!conversation) return null;
+  const sources = sourceList(r).map(source => sourceId(source.text, source.plain))
+    .filter(source => REM.source_context?.[source]?.thread === id);
+  const ids = new Set(sources.flatMap(source => conversation.windows?.[source] || []));
+  const messages = conversation.messages.filter(message => ids.has(message.id));
+  return messages.length ? { ...conversation, messages, cited_ids: [...new Set(sources.map(source => conversation.anchors[source]).filter(id => ids.has(id)))] } : null;
+}
+function openConversation(r, id, trigger) {
+  const conversation = conversationFor(r, id);
   if (!conversation) return;
   let dialog = document.getElementById("conversation-dialog");
   if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": t("Conversation") }); document.body.appendChild(dialog); }
@@ -5523,17 +5537,19 @@ function openConversation(id, trigger) {
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: t("Archived conversation") }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
-    el("p", { class: "evidence-summary", text: t("Latest {n} of {m} archived messages in this cited thread. Some messages may not have an archived body.", { n: conversation.messages.length, m: conversation.total }) }));
+    el("p", { class: "evidence-summary", text: t("{n} archived messages around this page’s citations. Up to two before and after each cited message.", { n: conversation.messages.length }) }));
   const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
   if (commonScope) dialog.appendChild(el("p", { class: "evidence-input-scope private", text: inputScopeText(commonScope) }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: t("Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them.") }));
-  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
-    el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
+  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" + (conversation.cited_ids.includes(message.id) ? " cited" : "") }, [
+    el("span", { class: "evidence-meta", text: [message.sender === "You" ? t("You") : message.sender === "Agent" ? t("Agent") : sourceSender(message), message.time ? fmtTime(message.time) : "", conversation.cited_ids.includes(message.id) ? t("Cited message") : ""].filter(Boolean).join(" · ") }),
     ...(message.input_scope && message.input_scope !== commonScope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
     el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
-  close.focus();
+  dialog.scrollTop = 0;
+  dialog.querySelector(".conversation-message.cited")?.scrollIntoView({ block: "center" });
+  close.focus({ preventScroll: true });
 }
 // Dates and citation labels alone are not history. Keep private rows reversible.
 function historyRowContent(text, from) {
@@ -5614,7 +5630,8 @@ function activityPanel(r, recent = false) {
 function recordEyebrow(r, person) {
   const k = known(r), children = [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
     updatedMarker(r, true), uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark() : null];
-  if (!person) children.push(el("span", { class: "sep", text: "/" }), statusPill(r));
+  const status = !person && statusPill(r);
+  if (status) children.push(el("span", { class: "sep", text: "/" }), status);
   if (!person && !["projects", "orgs"].includes(r.category)) children.push(el("span", { class: "when", text:
     (k.last && !mappedContact(r) && r.category !== "skills" ? t("last activity") + " " + fmtDate(k.last) + " · " : "") + t("file updated") + " " + fmtDate(r.updated) }));
   return el("div", { class: "eyebrow" }, children);
@@ -6016,7 +6033,7 @@ function sourceFind(excerpt, quote) {
     quote.replaceChildren(document.createTextNode(excerpt.slice(0, at)), mark,
       document.createTextNode(excerpt.slice(at + term.length)));
     status.textContent = t("Match {n} of {m} in the archived excerpt", { n: current + 1, m: matches.length });
-    mark.scrollIntoView({ block: "center" });
+    scrollEvidenceSpan(quote.closest(".evidence-panel"), mark);
   }
   input.oninput = () => {
     term = input.value.trim();
@@ -6072,8 +6089,7 @@ function personChip(text) {
 function messageMeta(context) {
   const to = context.participants?.to || [];
   const people = (Array.isArray(to) ? to : [to]).filter(Boolean).map(text => sourceSender({ sender: text }));
-  const date = context.time && new Date(context.time);
-  const sent = date && !isNaN(date) ? date.toLocaleString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: REM.status?.timezone || undefined }) : t("Sent date unknown");
+  const sent = context.time ? fmtTime(context.time) : t("Sent date unknown");
   return [people.length ? t("to") + " " + people.join(", ") : "", sent, sourceChannel(context.source)].filter(Boolean).join(", ");
 }
 function mailMessage(context, quote) {
@@ -6083,10 +6099,10 @@ function mailMessage(context, quote) {
   const from = list(headers.from)[0] || context.sender || "";
   const rows = [["To", list(headers.to)], ["Cc", list(headers.cc)]].filter(([, people]) => people.length);
   return el("article", { class: "msg" }, [
-    el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
+    el("div", { class: "msg-envelope" }, [el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
         el("span", { class: "msg-address", text: mailbox(from).address })]),
       el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent") + " " + fmtTime(context.time) : t("Sent date unknown") })]),
-    ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : []),
+    ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : [])]),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),
     context.body_empty ? el("p", { class: "evidence-empty-body", text: t("The retained message has no body text. Its headers are available.") })
@@ -6171,13 +6187,15 @@ function evidenceLine(trigger) {
   const sentence = evidenceSentence(trigger, line);
   return { text: sentence || copy.textContent.replace(/\u2060/g, "").trim(), numbers: [...new Set(numbers.filter(Boolean))] };
 }
-function scrollEvidenceSpan(panel) {
-  const mark = panel.querySelector(".evidence-original mark.span");
+function scrollEvidenceSpan(panel, mark = panel.querySelector(".evidence-original mark.span")) {
+  evidenceLayout();
   if (!mark || !mark.getClientRects().length) return;
   const bounds = mark.getBoundingClientRect(), claim = panel.querySelector(".evidence-claim");
   const origin = panel.getBoundingClientRect().top + panel.clientTop - panel.scrollTop;
   const markTop = bounds.top - origin, claimTop = claim.getBoundingClientRect().top - origin;
-  const headerHeight = panel.querySelector(".evidence-top").offsetHeight;
+  const headerHeight = panel.querySelector(".evidence-top").offsetHeight
+    + (panel.querySelector(".evidence-find")?.offsetHeight || 0)
+    + (panel.querySelector(".msg-envelope")?.offsetHeight || 0);
   // Keep the claim below the header unless the source would stay off-screen.
   const preferred = Math.min(markTop - claimTop - claim.offsetHeight - 16, claimTop - headerHeight - 16);
   const reveal = Math.min(markTop - headerHeight - 16, bounds.bottom - origin - panel.clientHeight + 16);
@@ -6189,6 +6207,8 @@ function evidenceLayout() {
   const panel = document.getElementById("evidence-panel"), narrow = innerWidth < 1100;
   document.querySelector(".app").inert = !!panel && !panel.parentElement.hidden && narrow;
   panel?.setAttribute("aria-modal", String(narrow));
+  panel?.style.setProperty("--evidence-top-height", panel.querySelector(".evidence-top").offsetHeight + "px");
+  panel?.style.setProperty("--evidence-find-height", (panel.querySelector(".evidence-find")?.offsetHeight || 0) + "px");
 }
 function closeEvidence() {
   const layer = document.getElementById("evidence-layer");
@@ -6212,7 +6232,7 @@ function evidenceOriginal(context, quote) {
   const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8) : context.origin?.split("/").at(-1) || "";
   return el("div", { class: "evidence-original private" }, [
-    ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? t("Instruction excerpt") : [sourceChannel(context.source), context.sender, context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
+    ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? t("Instruction excerpt") : [sourceChannel(context.source), sourceSender(context), context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
     ...(context.excerpt?.length > 2000 ? [sourceFind(quote.textContent, quote)] : []),
     ...(mail ? [mailMessage(context, quote)] : [quote]),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
@@ -6227,7 +6247,7 @@ function evidenceOriginal(context, quote) {
 function sourceIdentity(context) {
   const from = context.participants?.from;
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
-  return byPath(sender)?.title || sender;
+  return byPath(sender)?.title || sourceSender(context);
 }
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
@@ -6286,6 +6306,9 @@ document.addEventListener("keydown", event => {
   if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 });
 window.addEventListener("hashchange", closeEvidence);
+window.addEventListener("hashchange", () => {
+  document.getElementById("conversation-dialog")?.close();
+});
 window.addEventListener("resize", evidenceLayout);
 // Fixed positioning and measured bounds keep even an unbroken source id on a phone.
 function hideCitationTip() { document.getElementById("citation-tip")?.remove(); }

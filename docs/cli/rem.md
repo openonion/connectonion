@@ -58,25 +58,33 @@ instead of summarising is
 ## Start here
 
 ```bash
-co init                     # Approve sources and upkeep, then build the first notebook
+co init                     # Grant sources, install upkeep and build without questions
 co rem status               # Check notebook coverage and upkeep
 co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
 co rem start                # Approve sources if needed and install or resume upkeep
 ```
 
-Global `co init` offers mailbox login and asks for source/model/schedule consent.
-With a supported scheduler, it installs upkeep before building the first notebook
-in the foreground. Without one, it prints `co rem init` to build manually. Both init commands pause after the total estimate,
-before model spending: `Build the first map now? [Y/n]`. Enter builds; `n` keeps
-installed upkeep and prints `co rem init` to continue. The final summary reports
-mapped and written pages and names the scheduler; read with `co rem open`.
-`co rem init` skips this pause without a terminal or with its `--yes` flag.
-Global `co init --yes` or non-tty setup creates storage only, with no source
-reads, consent or scheduler; connect later with `co auth google` or
-`co auth microsoft`, then `co rem init`. `co init --no-rem` skips REM, rerunning
-init leaves existing REM unchanged, `--background` uses this same REM step,
-and project setup (`co init ./`) does not initialize REM.
+Global `co init` never prompts. It records an init consent grant, reads all
+already authenticated Google/Microsoft mailboxes and local Codex / Claude Code
+sessions, installs upkeep and builds in the foreground. The estimate is
+informational. `--yes` and non-TTY runs behave identically. With no mailbox,
+it continues on sessions and prints `co auth google` / `co auth microsoft`.
+Mail connected later joins the next scheduled round without further approval;
+explicitly removed sources stay removed. Without a supported scheduler it
+still builds and prints guidance for manual scheduling.
+
+The final summary reports mapped and written pages and names the scheduler.
+Its undo block lists `co rem stop` to disable upkeep, `co rem sources` to see
+sources and `co rem sources remove SOURCE` to remove one, and `co auth logout`
+to remove OpenOnion credentials. Mailbox access can be revoked in your Google
+or Microsoft account (there is no CLI disconnect command). Stop upkeep before
+deleting the notebook folder, `~/.co/rem`.
+
+`co init --no-rem` skips REM. Repeating global init leaves existing REM
+unchanged; `co rem init` reruns the build. `--background` uses the same REM step,
+and project setup (`co init ./`) does not initialize REM. Standalone
+`co rem init` retains its estimate confirmation in a terminal; `--yes` skips it.
 
 The full first run is one command (#1943). Before mapping, `co rem init`
 checks runner availability and asks for source/model/schedule consent if it has
@@ -503,6 +511,23 @@ the same review gate as investigate (citations trace to a source, every quote is
 word for word in the source it cites, contacts are the subject's own, the cited
 claims pass the audit; review names problems back to the writer once at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
+
+Native scheduled rounds investigate pages before summarising sessions, with at
+most five summaries per round. Set `limits.jobs_per_round` (default 8 pages) and
+`limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
+`co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
+The weekly quota safety floor remains 90% by default.
+
+Intermediate native investigation rounds keep private candidates. One final
+claim audit gates page promotion; its packet omits sentences whose wording and
+citations were carried unchanged from the page before the task. Editing an
+unrelated notebook page does not invalidate a prepared task.
+
+A native project candidate left unchanged while its material contains inputs
+newer than the page's `written_through` is refused: the new inputs must be read.
+To record an intentional no-change assessment, write `NO CHANGE: <reason>` in
+the task's `report.md`. An unchanged assessment does not advance input coverage;
+an accepted changed page advances only through the inputs supplied to it.
 A model turn that times out is retried once in the same thread when available, and usage from the failed attempt is counted.
 
 ```bash
@@ -611,6 +636,10 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 
+The local live reader reuses its rendered snapshot until notebook files change,
+including pages, retained sources, translations and state. Reload after an edit
+shows the updated notebook; repeated requests do not rebuild unchanged content.
+
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
@@ -718,8 +747,12 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   even when they were absent from the older map. Cited mail bodies show up to
   4,096 characters, retained coding inputs up to 4,096, and repository
   snapshots up to 65,536, with truncation
-  marked. Cited conversations show up to twelve recent archived
-  messages with the total count. Excerpts labelled `[personal]` or
+  marked. Cited conversations show the cited message, highlighted, with up to
+  two archived messages before and after it. Each page shows only windows around
+  its own citations, even when other pages cite the same conversation. Navigation
+  closes an open source dialog. Mail headers stay visible while the body scrolls
+  to a highlighted passage. Dates use one format in the notebook’s time zone.
+  The owner remains accessible through **You**, outside the People list. Excerpts labelled `[personal]` or
   `[sensitive]` appear only in the reader on this computer (the snapshot and
   the local live reader), behind **Hide labelled passages**; the O Chat view
   never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
@@ -937,15 +970,49 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Scheduled** when the app
-is installed and the notebook timezone matches this computer. The desktop
-adopts a private local automation definition; there is no public App Server
-schedule RPC in the tested version. Keep the app open and computer awake.
-A background wake job opens a closed Codex 15 minutes before each slot, because
-Codex fires a slot a few minutes either side of it (a 19:00 slot ran at 18:55).
-Run `co rem start` again after upgrading to move an existing wake job.
-Completed native wrapper conversations and REM's internal Codex calls are
-archived, retaining their trace IDs without filling active project history.
+Codex notebooks on macOS use `schedule.runner: codex-exec` by default when the
+Codex CLI is installed and signed in. launchd runs `codex exec` directly through
+REM's turn worker, using the same work-loop prompt as the desktop automation.
+Exec sessions can continue across tasks; desktop automation sessions can end early.
+The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
+
+```bash
+co rem config set schedule.runner codex-exec effort high
+co rem start
+# To use Codex desktop Scheduled instead:
+co rem config set schedule.runner codex-app
+co rem start
+```
+
+Both modes fire at the saved starts plus the same 15-minute follow-ups.
+The saved timezone must match this computer for these Codex modes. Exec runs
+with the PATH captured at installation, including user command directories.
+The resolved Codex executable is pinned in the job's `CODEX_CMD`; set this to
+the CLI executable itself, then run `co rem start` to apply a change. Python,
+shell and REM launcher commands are rejected to prevent recursive launches.
+Each turn has a process lock: a fire during a running turn is skipped. A turn
+ends after at most 50 minutes, terminating its child tools too. Keep the computer
+awake. No desktop app is needed for exec.
+
+`co rem start` switches clocks: exec pauses and removes the desktop definition
+and wake plist; app removes the exec plist and installs its automation and wake
+job. Account-managed desktop tasks still require a confirmed pause before switching.
+`co rem status` shows the installed runner and last exec turn result. Exec logs,
+last messages and receipts are under `.state/turns/`; `.state/last-turn.json`
+points to the latest turn. `co rem stop` removes the clock; a running turn can finish.
+Environment loading, configuration and command resolution have a five-minute
+deadline to bound hangs while allowing slow machines to start. Receipts record
+this preparation time as `started_codex_after_s` before dispatching Codex;
+`co rem status` displays it as `Codex startup`. This is a fixed upper bound;
+a start still taking longer than five minutes fails even if it is progressing.
+Configuration, command resolution and spawn errors leave a failed receipt with
+the reason, which `co rem status` displays alongside the turn log and the command
+to restart after fixing the cause.
+
+For `codex-app`, the desktop adopts a private local automation definition.
+Its wake job opens Codex 15 minutes before each fire. Keep the app open and the
+computer awake. Completed native wrapper conversations and REM's internal Codex
+calls are archived, retaining trace IDs without filling active project history.
 
 `co rem start` stages a paused task and verifies native index adoption before
 removing an old launchd clock. A running old batch or failed registration leaves
@@ -979,8 +1046,8 @@ by its legacy association and requires management in Codex Scheduled until an
 authoritative account registration API has been verified. REM does not recreate
 its old file or treat a cached account status as confirmation of a pause.
 
-Other runners, headless Macs and saved timezones different from the desktop retain
-launchd. Its five-minute tick keeps the saved timezone and coalesces missed slots.
+Other model runners and desktop-mode notebooks with a different saved timezone retain
+the legacy launchd sync job. Its five-minute tick keeps the saved timezone and coalesces missed slots.
 The native desktop uses its own local wall clock and startup/missed-run behavior;
 REM coalesces overdue saved slots when the next native trigger reaches the CLI.
 Exact time pairs use one rule with position selection, avoiding extra combinations.
@@ -1074,7 +1141,7 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before, at most 5 pages. Both stop at the weekly budget or the floor and
+the run before, up to `limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
@@ -1293,10 +1360,10 @@ the block as a card.
   A value may be a Markdown link.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
-- `First contact` needs evidence of the relationship's beginning. The earliest
-  retained message is an observed mail date, not automatically first contact;
-  the Person writer and People index leave this fact Unknown when it cannot be
-  established.
+- On people pages, `First contact` and `Last contact` are the earliest and newest
+  messages to or from the person's own addresses in the retained archive,
+  in the notebook's time zone. They are recomputed after promotion and on sync;
+  they describe the archive's bounds, which may not span the whole relationship.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
@@ -1342,9 +1409,22 @@ stays only if the person sends from it or is written to at it under their
 name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
 person (or relayed under their name) with the number in it and nobody else
 named to call beside it. What goes is listed under `contacts_unverified`. An
-unknown `Company` is filled from the domain of the address they write from now,
-never a mailbox provider, a relay, an agent address or a student address
-(`company_from_domain` in `review.json`).
+unknown `Company` can be filled from their own organisation email domain when
+it maps unambiguously to an existing organisation page. Student subdomains
+can name a university affiliation; `(from email domain)` does not establish
+employment. Free-mail, relay, agent, and addresses marked shared or role never supply it.
+An unknown `Time zone` takes a cited, unambiguous `Location`, or, when Location
+is Unknown, a single-zone country email suffix (such as `.sg` or `.uk`).
+These deterministic basics run in both native and in-process promotion and on
+every sync, with numbered Sources citations. Populated Company and Time zone
+values are preserved; contact dates always follow the archive.
+
+People coverage in `co rem status` and the reader uses correspondents
+across the retained archive who meet the page rule: mail both ways, or at least
+two messages from you (To and Cc count, as in the map). Addresses on one existing person page count
+once. Coverage counts qualifying correspondents with a listed page, whether
+written or mapped, and reports `N people you write to have no page yet`.
+Other category meters continue to show written pages out of mapped pages.
 
 ### Insight
 
@@ -1864,7 +1944,7 @@ available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
 History archiving also applies when launchd owns the timer. In rc21, eligible
-Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
+Codex notebooks use the configured exec or desktop runner; see [Scheduling](#scheduling-and-accounting)
 for eligibility and fallback. Registration uses the desktop's task file format;
 Scheduled is not a public App Server scheduling API.
 
@@ -1891,7 +1971,7 @@ Existing notebook pages are not automatically corrected.
 
 ## Native round: next and submit
 
-A native Codex Scheduled session can do the model work itself. The `rem` skill
+A Codex exec or desktop Scheduled session can do the model work itself. The `rem` skill
 runs this loop; launchd retains `co rem sync --scheduled` as its child-runner fallback.
 
 ```bash
@@ -1921,10 +2001,20 @@ supplied as exact JSON rather than an unreadable initial Markdown copy.
 Session summaries use one file per session, such as `sessions/s1.json`.
 The single-call child runner keeps its existing inline packets and JSON replies.
 
-Codex Scheduled fires at each saved time, then every 15 minutes until the next
+Audit checkpoint lines must contain `excerpt: "verbatim original span"`, at least
+20 characters copied exactly from that citation's `context.excerpt` in
+`audit-material.json`. If the whole original is shorter, quote it in full.
+Bare verdicts and forged excerpts do not count; progress reports rejected lines.
+Malformed audit decisions are refused for correction, never promoted.
+PASS is refused until every citation has a verified checkpoint, with the next
+unchecked batch shown after `Now:`. A missing original cannot be marked checked; retrieve it or repair the candidate
+before submitting PASS. Repair preserves verified checkpoints only
+when the cited claims and original are unchanged.
+
+Both Codex scheduler modes fire at each saved time, then every 15 minutes until the next
 saved time or three hours after that start, whichever comes first. A fire at
 exactly three hours is included unless another saved time has arrived. The
-macOS wake job opens Codex 15 minutes before every fire. Saved times and the
+macOS wake job in codex-app mode opens Codex 15 minutes before every fire. Saved times and the
 saved timezone remain what `co rem status` and the consent summary show;
 follow-ups do not change the consent fingerprint. Run `co rem start` to apply
 the updated automation and wake job to an existing installation.

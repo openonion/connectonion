@@ -176,7 +176,9 @@ def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_pa
     items = [{'source': 'codex:synthetic', 'text': 'The turn has only partial material.'}]
     runner._promote_candidate(notebook, record, path, notebook.read(record), items, tmp_path, None)
     original = notebook.read(record)
-    path.write_text(original)
+    path.write_text(original.replace('## What it is\n', '## What it is\nA changed claim. [2]\n')
+                    .replace('## Sources\n', '## Sources\n- [2] codex:changed — 2026-10-01\n'))
+    items.append({'source': 'codex:changed', 'text': 'The turn has only partial material.'})
     finding = {'claim': 'An existing description.', 'issue': 'Not established in this packet',
                'evidence': '', 'required_correction': 'Remove'}
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
@@ -185,6 +187,10 @@ def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_pa
         pending = runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
                                             claim_config={}, carried=original, native=True)
         assert pending['needs_review']
+        material = json.loads((tmp_path / 'audit-material.json').read_text())
+        assert [row['citation'] for row in material['sources']] == ['2']
+        assert 'An existing description.' not in material['candidate']
+        (tmp_path / 'notes.md').write_text('[2] PASS — excerpt: "The turn has only partial material."\n')
         (tmp_path / 'audit-output.json').write_text(json.dumps({'verdict': verdict, 'findings': [finding]}))
     runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
                               claim_config={}, carried=original, native=native)
@@ -193,4 +199,35 @@ def test_deferred_old_findings_are_saved_as_unverified_not_a_factual_pass(tmp_pa
     saved = json.loads((tmp_path / 'review.json').read_text())
     assert saved['accepted'] is True
     assert saved['factual_quality'] == 'bounded citation audit insufficient; 1 unchanged findings deferred'
+    assert 'An existing description.' in notebook.read(record)
+    assert 'A changed claim.' in notebook.read(record)
+
+
+def test_native_unchanged_claims_need_no_model_call(tmp_path, monkeypatch):
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    path = tmp_path / 'candidate.md'
+    path.write_text(notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                    .replace('## What it is\n- Unknown', '## What it is\nAn existing description. [1]')
+                    .replace('- (none yet)', '- [1] codex:synthetic — 2026-10-01'))
+    items = [{'source': 'codex:synthetic', 'text': 'The turn has only partial material.'}]
+    runner._promote_candidate(notebook, record, path, notebook.read(record), items, tmp_path, None)
+    original = notebook.read(record)
+    path.write_text(original)
+
+    def unexpected_audit(*_args):
+        pytest.fail('Unchanged claims must not call the audit model')
+
+    monkeypatch.setattr(runner, 'run_claim_task', unexpected_audit)
+    result = runner._promote_candidate(notebook, record, path, original, items, tmp_path, None,
+                                       claim_config={}, carried=original, native=True)
+    assert not result
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['verdict'] == 'insufficient' and report['missing_citations'] == []
+    assert not (tmp_path / 'audit-output.json').exists()
+    assert not (tmp_path / 'audit-task.json').exists()
     assert notebook.read(record) == original

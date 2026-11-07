@@ -146,7 +146,8 @@ def approve_sources(root: Path, *, mail=()) -> None:
             if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat(),
+        write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
+                                                      "authorized_at": now().isoformat(),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
 
@@ -651,6 +652,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
     """`live_quota` reads the Codex meter now (#1843). Only `co rem status` asks:
     the round and sync call this inside the lock, where a Codex process per
     call would only slow them."""
+    from .census import people_coverage
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -678,6 +680,10 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
+            "schedule_runner": worker_state(root).get("runner") or (
+                "codex-app" if worker_state(root).get("scheduler") == "codex-native"
+                else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
+            "last_turn": read_json(state_path(root, "last-turn.json"), None),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
@@ -685,6 +691,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
+            "people_coverage": people_coverage(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if live_quota else {})}
@@ -860,8 +867,40 @@ def background_summary(config: dict) -> str:
     return "manual sync or cron; no supported background scheduler. Stop: co rem stop"
 
 
+def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
+    """Init grants local sessions and current/future authenticated mail; removal wins."""
+    from contextlib import nullcontext
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        sources = subscriptions(root)
+        for kind in offered_mailboxes(root):
+            sources[kind]["enabled"] = True
+        for source in sources.values():
+            if source.get("kind") in (*KINDS, *MAIL_KINDS) and source.get("enabled"):
+                source["consented"] = True
+                if source.get("kind") in MAIL_KINDS and mail_available(source["kind"]):
+                    source["adapter"] = "available"
+        write_json(state_path(root, "subscriptions.json"), sources)
+        previous = read_json(state_path(root, "consent.json"), {})
+        write_json(state_path(root, "consent.json"), {
+            **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
+            "granted_by": "init", "summary": summary_fingerprint(root)})
+
+
+def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
+    """Admit newly connected mail before a scheduled read, without asking again."""
+    agreed = read_json(state_path(root, "consent.json"), {})
+    if agreed.get("granted_by") != "init":
+        return
+    sources = subscriptions(root)
+    if any(mail_available(kind) and not sources[kind].get("unsubscribed")
+           and (not sources[kind].get("enabled") or not sources[kind].get("consented")
+                or sources[kind].get("adapter") != "available") for kind in MAIL_KINDS):
+        grant_init_sources(root, lock_held=lock_held)
+
+
 def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
+    refresh_init_mailboxes(root)
     first = not state_path(root, "consent.json").is_file()
     # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
     # has not been agreed to. Asking only the first time meant it could never be
@@ -1117,6 +1156,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     with maintenance_lock(root), _terminate_as_interrupt():
         from .native import refuse_pending
         refuse_pending(root)
+        refresh_init_mailboxes(root, lock_held=True)
         sessions = import_sessions(root, consented_only=True, lock_held=True)
         config = validate(read_config(root))
         abandon_stale_runs(root)
@@ -1138,6 +1178,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             # sync wrote, still under the lock, and reported rather than fatal.
             from .store import refresh_safely
             record = {**record, "store": refresh_safely(root)}
+            from .people_basics import refresh as refresh_basics
+            record["basics_changed"] = refresh_basics(root)
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 

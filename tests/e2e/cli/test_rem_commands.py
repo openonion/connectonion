@@ -782,7 +782,7 @@ def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
     root = tmp_path / 'rem'
-    result = invoke(root, 'init', '--skills-dir', str(empty))
+    result = invoke(root, 'init', '--skills-dir', str(empty), '--no-investigate')
     assert result.exit_code == 0, result.output
     assert "Held for review, not investigated or listed (no name, never replied): 1." in result.output
     assert f"--root {root} list people --review" in result.output
@@ -871,7 +871,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     today = lines.index('Today            1 page changed · 3 items read · 1 run')
     assert lines[today + 1] == '                 91k tokens in · 812 out'
     assert today < lines.index(next(line for line in lines if line.startswith('Notebook')))
-    assert '  People         ●●●●●○○○○○  1 of 2   50%' in lines
+    # Page stubs alone do not establish qualifying correspondents in the archive.
+    assert '  People         ○○○○○○○○○○  0 of 0     —' in lines
+    assert '  People coverage pages for correspondents meeting the page rule in the archive' in lines
     assert '  Skills         ○○○○○○○○○○  0 of 3    0%' in lines
     write = lines.index('  To write next  1 people page not written')
     assert lines[write + 1].startswith('                 → co rem --root ')
@@ -886,8 +888,11 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
         assert internal not in '\n'.join(lines), internal
 
 
-def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch):
+@pytest.mark.parametrize('schedule_runner', ['codex-exec', 'codex-app'])
+def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch, schedule_runner):
     _notebook_with_a_run(tmp_path, monkeypatch)
+    configured = invoke(tmp_path, 'config', 'set', 'schedule.runner', schedule_runner)
+    assert configured.exit_code == 0, configured.output
     verbose = invoke(tmp_path, 'status', '--verbose').output
     assert 'Details' in verbose and 'Known runs: 1' in verbose and 'Schedule times:' in verbose
     assert 'Record: people/alice.md' in verbose
@@ -896,7 +901,11 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
                                  'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
-                                 'investigation_this_week', 'quota', 'investigation_quota'}
+                                 'investigation_this_week', 'quota', 'investigation_quota',
+                                 'schedule_runner', 'people_coverage', 'last_turn'}
+    assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
+    assert data['data']['last_turn'] is None
 
 
 @pytest.mark.parametrize('ordinary_pending', [False, True])
@@ -1499,7 +1508,11 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     result = invoke(tmp_path / 'notebook', *args)
     assert result.exit_code == 0, result.output
     text = ' '.join(result.output.split())
-    assert 'asks once before reading your sources' in text
+    assert 'co init asks no questions' in text
+    assert 'grants local Codex / Claude Code sessions and all connected Google/Microsoft mailboxes' in text
+    assert 'installs upkeep and builds in the foreground' in text
+    assert 'Undo: co rem stop; co rem sources remove SOURCE; co auth logout' in text
+    assert 'Use co rem init to rebuild; it retains its terminal estimate pause unless --yes' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text

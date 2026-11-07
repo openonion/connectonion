@@ -242,50 +242,73 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     return output
 
 
+def _conversation_message(root: Path, row, budget: int, private: bool) -> dict | None:
+    if budget <= 0:
+        return None
+    message = dict(row)
+    saved = archived_message(root, message) or {}
+    raw = saved.get("text" if message.get("body_line") else "body")
+    if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
+        return None
+    excerpt = raw.strip()[:min(900, budget)]
+    if not excerpt:
+        return None
+    sender = message.get("sender") or ""
+    if message.get("body_line"):
+        sender = "Agent" if saved.get("role") == "assistant" else "You"
+    return {"id": message["id"], "sender": sender, "time": message.get("time") or "",
+            "excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
+            "input_scope": input_scope(saved, message)}
+
+
 def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: int = 40,
                         budget: int = 300_000, private: bool = False) -> dict[str, dict]:
-    """A bounded local conversation view around cited archived messages.
+    """Two archived neighbours on each side of each verified citation.
 
-    Each thread is selected by a cited message. Its latest twelve archived
-    messages are shown, with a total count so the reader never implies that a
-    clipped view is complete. Bodies never leave the owner-only HTML snapshot.
+    Windows stay keyed by citation: pages citing different parts of the same
+    session must not see each other's excerpts. Labelled text follows the same
+    owner-only boundary as cited_context.
     """
-    threads = {row.get("thread") for row in contexts.values() if row.get("thread")}
     file = state_path(root, "rem.db")
-    if not threads or not file.is_file() or file.is_symlink():
+    if not contexts or not file.is_file() or file.is_symlink():
         return {}
     db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     output: dict[str, dict] = {}
     try:
-        ranked = []
-        for thread in threads:
-            last = db.execute("select max(time) from messages where thread = ?", (thread,)).fetchone()[0]
-            ranked.append((last or "", thread))
-        for _, thread in sorted(ranked, reverse=True)[:max_threads]:
+        threads = {}
+        for source, context in contexts.items():
+            row = _cited_row(db, source)
+            if row is not None and row["thread"] and row["thread"] == context.get("thread"):
+                threads.setdefault(row["thread"], []).append((source, row))
+        ranked = sorted(threads, key=lambda thread: max(row["time"] or "" for _, row in threads[thread]), reverse=True)
+        for thread in ranked[:max_threads]:
             if budget <= 0:
                 break
-            total = db.execute("select count(*) from messages where thread = ?", (thread,)).fetchone()[0]
-            rows = db.execute("select * from messages where thread = ? order by time desc, id desc limit 12",
-                              (thread,)).fetchall()
-            messages = []
-            for row in reversed(rows):
-                message = dict(row)
-                saved = archived_message(root, message) or {}
-                raw = saved.get("text" if message.get("body_line") else "body")
-                if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
+            rows = db.execute("select * from messages where thread = ? order by time, id", (thread,)).fetchall()
+            positions = {row["id"]: i for i, row in enumerate(rows)}
+            messages, windows, anchors = {}, {}, {}
+            for source, anchor in threads[thread]:
+                message = messages.get(anchor["id"]) or _conversation_message(root, anchor, budget, private)
+                if message is None:
                     continue
-                excerpt = raw.strip()[:min(900, budget)]
-                if not excerpt:
-                    continue
-                messages.append({"id": message["id"], "sender": message.get("sender") or "",
-                                 "time": message.get("time") or "", "excerpt": excerpt,
-                                 "truncated": len(raw.strip()) > len(excerpt),
-                                 "input_scope": input_scope(saved, message)})
-                budget -= len(excerpt)
+                if anchor["id"] not in messages:
+                    messages[anchor["id"]] = message
+                    budget -= len(message["excerpt"])
+                at = positions[anchor["id"]]
+                window = rows[max(0, at - 2):at + 3]
+                for row in window:
+                    if row["id"] not in messages:
+                        neighbor = _conversation_message(root, row, budget, private)
+                        if neighbor:
+                            messages[row["id"]] = neighbor
+                            budget -= len(neighbor["excerpt"])
+                windows[source] = [row["id"] for row in window if row["id"] in messages]
+                anchors[source] = anchor["id"]
             if messages:
-                output[thread] = {"subject": rows[0]["subject"] or "Conversation",
-                                  "total": total, "messages": messages}
+                output[thread] = {"subject": rows[0]["subject"] or "Conversation", "total": len(rows),
+                                  "messages": sorted(messages.values(), key=lambda row: positions[row["id"]]),
+                                  "windows": windows, "anchors": anchors, "cited_ids": list(dict.fromkeys(anchors.values()))}
     finally:
         db.close()
     return output
