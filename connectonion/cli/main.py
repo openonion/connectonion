@@ -1460,9 +1460,9 @@ def skills_index(
 # could be one. `co trust list` prints the full address to paste.
 EXAMPLE_ADDRESS = "0x3f5a...c9e1"
 trust_app = _typer_app(
-    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. "
+    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. Use --co-dir DIR or --global/-g on any command to select another identity. "
          "trust='careful' admits contacts and the whitelist; trust='strict' admits only the whitelist.",
-    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS}",
+    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --global  |  co trust list --co-dir /srv/agent/.co",
 )
 app.add_typer(trust_app, name="trust")
 
@@ -1476,74 +1476,99 @@ def trust_callback(ctx: typer.Context):
         handle_trust_list()
 
 
-@trust_app.command("list", epilog="Example:  co trust list --global")
-def trust_list(global_: bool = typer.Option(False, "--global", "-g",
-                                            help="The global identity in ~/.co, which co ai and co handoff use")):
+@trust_app.command("list", epilog="Example:  co trust list  |  co trust list --co-dir /srv/agent/.co  |  co trust list --global")
+def trust_list(
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
     """List every address on each trust list. Read-only."""
-    from .commands.trust_commands import handle_trust_list
-    from ..environment import global_config_dir
-    handle_trust_list(global_config_dir() if global_ else None)
+    from .commands.trust_commands import handle_trust_list, trust_target
+    handle_trust_list(co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}")
-def trust_level(address: str = typer.Argument(..., help="Address to check")):
+@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust level {EXAMPLE_ADDRESS} --global")
+def trust_level(
+    address: str = typer.Argument(..., help="Address to check"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host (for example ~/.co for co ai)"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
     """Show whether an address is a stranger, contact, whitelisted or blocked. Read-only."""
-    from .commands.trust_commands import handle_trust_level
-    handle_trust_level(address)
+    from .commands.trust_commands import handle_trust_level, trust_target
+    handle_trust_level(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist")
+@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
 def trust_add(
     address: str = typer.Argument(..., help="Full 0x address of the agent to allow"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
 ):
     """Let an address call your agent: adds it to your contacts, or with --whitelist to the whitelist (needed when trust is 'strict'). Writes the trust list."""
-    from .commands.trust_commands import handle_trust_add
-    handle_trust_add(address, whitelist)
+    from .commands.trust_commands import handle_trust_add, trust_target
+    handle_trust_add(address, whitelist, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}")
-def trust_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}  |  co trust remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust remove {EXAMPLE_ADDRESS} --global")
+def trust_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host (for example ~/.co for co ai)"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
     """Stop trusting an address, so it is a stranger again. Removes it from contacts and the whitelist; blocks and admins are unchanged."""
-    from .commands.trust_commands import handle_trust_remove
-    handle_trust_remove(address)
+    from .commands.trust_commands import handle_trust_remove, trust_target
+    handle_trust_remove(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"')
+@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"  |  co trust block {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust block {EXAMPLE_ADDRESS} --global')
 def trust_block(
     address: str = typer.Argument(..., help="Address to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host (for example ~/.co for co ai)"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
 ):
     """Refuse every call from an address. Writes the blocklist."""
-    from .commands.trust_commands import handle_trust_block
-    handle_trust_block(address, reason)
+    from .commands.trust_commands import handle_trust_block, trust_target
+    handle_trust_block(address, reason, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}")
-def trust_unblock(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
-    """Accept calls from a blocked address again. Removes it from the blocklist."""
-    from .commands.trust_commands import handle_trust_unblock
-    handle_trust_unblock(address)
+@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}  |  co trust unblock {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust unblock {EXAMPLE_ADDRESS} --global")
+def trust_unblock(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
+    """Remove an address from the blocklist; other memberships and Host policy decide access."""
+    from .commands.trust_commands import handle_trust_unblock, trust_target
+    handle_trust_unblock(address, co_dir=trust_target(co_dir, global_))
 
 
 # Admin subcommand group
 admin_app = _typer_app(help="Addresses that may command your agent (super admin only).",
-                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
+                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS} --global  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co")
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
-def admin_add(address: str = typer.Argument(..., help="Full 0x address of the new admin")):
+@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
+def admin_add(
+    address: str = typer.Argument(..., help="Full 0x address of the new admin"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
     """Let an address command your agent. Writes .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_add
-    handle_admin_add(address)
+    from .commands.trust_commands import handle_admin_add, trust_target
+    handle_admin_add(address, co_dir=trust_target(co_dir, global_))
 
 
-@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}")
-def admin_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin remove {EXAMPLE_ADDRESS} --global")
+def admin_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
+    global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
+):
     """Stop an address from commanding your agent. Removes it from .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_remove
-    handle_admin_remove(address)
+    from .commands.trust_commands import handle_admin_remove, trust_target
+    handle_admin_remove(address, co_dir=trust_target(co_dir, global_))
 
 
 # SMS command group. `co sms` (no args) shows the inbox without changing state.

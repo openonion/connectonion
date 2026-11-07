@@ -382,6 +382,13 @@ def _create_route_handlers(
             project_dir or project_root(), agent_metadata['address'], base_factory)
         create_agent = lambda: controller.attach(base_factory())
 
+    agent_factory = create_agent
+
+    def create_agent():
+        agent = agent_factory()
+        agent._host_trust_dir = trust_agent._co_dir
+        return agent
+
     def notify_result(result, prompt):
         if controller is not None:
             try:

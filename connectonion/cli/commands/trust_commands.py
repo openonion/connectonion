@@ -2,8 +2,8 @@
 Purpose: Manage trust lists (contacts, whitelist, blocklist, admins) with full address display for easy copying
 LLM-Note:
   Dependencies: imports from [pathlib, rich.console, rich.table, network.trust.tools] | imported by [cli/main.py via trust subcommands] | tested by [tests/e2e/cli/test_cli_trust.py]
-  Data flow: receives address and optional flags → calls trust.tools functions (get_level, promote_to_contact, promote_to_whitelist, demote_to_stranger, block, unblock, add_admin, remove_admin, load_admins, get_self_address) → reads/writes ~/.co/{contacts,whitelist,blocklist,admins}.txt → displays results with Rich console color coding (stranger=dim, contact=cyan, whitelist=green, blocked=red) → outputs full addresses (not truncated) for easy copy-paste to other commands
-  State/Effects: modifies trust list files in ~/.co/ directory (contacts.txt, whitelist.txt, blocklist.txt, admins.txt) | reads from these files to display current state | writes to stdout via rich.Console | no network calls
+  Data flow: receives address and optional flags → calls trust.tools functions (get_level, promote_to_contact, promote_to_whitelist, demote_to_stranger, block, unblock, add_admin, remove_admin, load_admins, get_self_address) → reads/writes the selected agent directory/{contacts,whitelist,blocklist,admins}.txt → displays results with Rich console color coding (stranger=dim, contact=cyan, whitelist=green, blocked=red) → outputs full addresses (not truncated) for easy copy-paste to other commands
+  State/Effects: modifies trust list files in the selected agent directory (contacts.txt, whitelist.txt, blocklist.txt, admins.txt) | reads from these files to display current state | writes to stdout via rich.Console | no network calls
   Integration: exposes handle_trust_* functions for CLI subcommands | relies on network.trust.tools for verification logic and file operations | uses Rich for formatted terminal output | integrates with trust verification system used by network.host() | admins can manage trust lists via CLI commands | self address shown with "(self)" label in admin list
   Performance: file I/O for reading/writing trust lists (<50ms) | Rich table rendering is fast | no network calls | linear scan of trust list files (typically small <100 entries)
   Errors: trust.tools functions return descriptive error messages on failure (e.g., "Address not found", "Already in list") | gracefully handles missing trust list files (treats as empty) | invalid addresses rejected by trust.tools validation | admin operations require super admin privileges (enforced by trust.tools)
@@ -26,11 +26,14 @@ Usage:
     co trust admin remove <address>  # Remove admin (super admin only)
 """
 
+from pathlib import Path
 import re
+import shlex
 
 import typer
 from rich.console import Console
 
+from ...project import project_co_dir
 from ...network.trust.tools import (
     add_admin,
     block,
@@ -50,6 +53,16 @@ console = Console()
 
 # An agent address is an Ed25519 public key: 0x and 64 hex digits.
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{64}$")
+
+
+def trust_target(co_dir=None, global_: bool = False):
+    """Select one trust directory for all CLI reads and mutations."""
+    if global_ and co_dir is not None:
+        raise typer.BadParameter("Use either --co-dir or --global, not both.")
+    if global_:
+        from ...environment import global_config_dir
+        return global_config_dir()
+    return Path(co_dir).expanduser().resolve() if co_dir is not None else None
 
 
 def _require_address(address: str) -> None:
@@ -78,6 +91,16 @@ def _read_list(list_name: str, co_dir=None) -> list[str]:
             if line.strip() and not line.startswith('#')]
 
 
+def _print_targeted_tip(tip: str, co_dir=None):
+    from .command_tips import print_tip, tips_enabled
+
+    if not tips_enabled():
+        return
+
+    target = f" --co-dir {shlex.quote(str(Path(co_dir).expanduser().resolve()))}" if co_dir is not None else ""
+    print_tip(f"Next: {tip}{target}")
+
+
 def handle_trust_list(co_dir=None):
     """List all trust lists: this directory's agent, or `co_dir` (the global identity for --global)."""
     # These lists belong to one agent, so being in the wrong directory shows
@@ -92,6 +115,7 @@ def handle_trust_list(co_dir=None):
         console.print("[dim]Contacts made by co ai and co handoff belong to your global identity:[/dim]")
         console.print("  co trust list --global")
         console.print()
+        _print_targeted_tip("Check one address: co trust level <address>", co_dir)
         return
 
     contacts = _read_list("contacts", co_dir)
@@ -149,20 +173,31 @@ def handle_trust_list(co_dir=None):
     console.print()
 
     console.print(f"[dim]Lists stored in: {agent_dir}[/dim]")
+    _print_targeted_tip("Check one address: co trust level <address>", co_dir)
 
 
-def handle_trust_level(address: str):
+def _print_trust_files(co_dir):
+    console.print("Trust files:", markup=False)
+    for name in ("blocklist", "whitelist", "contacts", "handoffs", "admins"):
+        console.print(str(list_file(name, co_dir)), markup=False, soft_wrap=True)
+
+
+def handle_trust_level(address: str, co_dir=None):
     """Check trust level of an address."""
     _require_address(address)
-    level = get_level(address)
-    if level != "blocked" and is_admin(address):
+    explicit_directory = co_dir is not None
+    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
+    target = f" --co-dir {shlex.quote(str(co_dir))}" if explicit_directory else ""
+    level = get_level(address, co_dir)
+    if level != "blocked" and is_admin(address, co_dir):
         # This reported the agent's own address as a stranger and suggested
         # making it a contact. Admins -- this agent's own key always among
         # them -- pass every trust check; none of the lists apply to them.
-        own = " (this agent's own address)" if address == get_self_address() else ""
+        own = " (this agent's own address)" if address == get_self_address(co_dir) else ""
         console.print(f"\n{address}: [bold magenta]admin[/bold magenta]{own}\n")
+        _print_trust_files(co_dir)
         from .command_tips import print_tip
-        print_tip("Admins pass every trust check. Next: co trust list")
+        print_tip(f"Admins pass every trust check. Next: co trust list{target}")
         return
 
     level_colors = {
@@ -174,55 +209,73 @@ def handle_trust_level(address: str):
     color = level_colors.get(level, "white")
 
     console.print(f"\n{address}: [{color}]{level}[/{color}]\n")
+    _print_trust_files(co_dir)
     # One static tip said "Make it a contact" to every address, including the
     # contact that had just been made one. What comes next depends on where it is.
     from .command_tips import print_tip
-    print_tip({
-        "stranger": f"Next: co trust add {address}   (make it a contact)",
-        "contact": f"Next: co trust add -w {address}   (whitelist it), or co trust remove {address}",
-        "whitelist": f"Next: co trust remove {address}   (back to stranger)",
-        "blocked": f"Next: co trust unblock {address}",
-    }.get(level, "Next: co trust list"))
+    tip = {
+        "stranger": f"Next: co trust add {address}{target}   (make it a contact)",
+        "contact": f"Next: co trust add -w {address}{target}   (whitelist it), or co trust remove {address}{target}",
+        "whitelist": f"Next: co trust remove {address}{target}   (back to stranger)",
+        "blocked": f"Next: co trust unblock {address}{target}",
+    }.get(level, f"Next: co trust list{target}")
+    print_tip(tip)
 
 
-def handle_trust_add(address: str, whitelist: bool = False):
+def handle_trust_add(address: str, whitelist: bool = False, co_dir=None):
     """Add address to contacts or whitelist."""
     _require_address(address)
     if whitelist:
-        result = promote_to_whitelist(address)
+        result = promote_to_whitelist(address, co_dir)
         console.print(f"\n[green]✓[/green] {result}\n")
     else:
-        result = promote_to_contact(address)
+        result = promote_to_contact(address, co_dir)
         console.print(f"\n[green]✓[/green] {result}\n")
 
+    _print_targeted_tip("See every list: co trust list", co_dir)
 
-def handle_trust_remove(address: str):
+
+def handle_trust_remove(address: str, co_dir=None):
     """Remove address from all lists (demote to stranger)."""
-    result = demote_to_stranger(address)
+    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
+    result = demote_to_stranger(address, co_dir)
     console.print(f"\n[yellow]✓[/yellow] {result}\n")
+    for name in ("contacts", "whitelist"):
+        console.print(f"Updated: {list_file(name, co_dir)}", markup=False, soft_wrap=True)
+
+    _print_targeted_tip("See every list: co trust list", co_dir)
 
 
-def handle_trust_block(address: str, reason: str = ""):
+def handle_trust_block(address: str, reason: str = "", co_dir=None):
     """Block an address."""
     _require_address(address)
-    result = block(address, reason)
+    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
+    result = block(address, reason, co_dir)
     console.print(f"\n[red]✓[/red] {result}\n")
+    console.print(f"Updated: {list_file('blocklist', co_dir)}", markup=False, soft_wrap=True)
+
+    _print_targeted_tip("See every list: co trust list", co_dir)
 
 
-def handle_trust_unblock(address: str):
+def handle_trust_unblock(address: str, co_dir=None):
     """Unblock an address."""
-    result = unblock(address)
+    result = unblock(address, co_dir)
     console.print(f"\n[green]✓[/green] {result}\n")
 
+    _print_targeted_tip("See every list: co trust list", co_dir)
 
-def handle_admin_add(address: str):
+
+def handle_admin_add(address: str, co_dir=None):
     """Add an admin."""
     _require_address(address)
-    result = add_admin(address)
+    result = add_admin(address, co_dir)
     console.print(f"\n[green]✓[/green] {result}\n")
 
+    _print_targeted_tip("See every list: co trust list", co_dir)
 
-def handle_admin_remove(address: str):
+
+def handle_admin_remove(address: str, co_dir=None):
     """Remove an admin."""
-    result = remove_admin(address)
+    result = remove_admin(address, co_dir)
     console.print(f"\n[yellow]✓[/yellow] {result}\n")
+    _print_targeted_tip("See every list: co trust list", co_dir)

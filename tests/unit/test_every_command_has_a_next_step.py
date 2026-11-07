@@ -71,7 +71,7 @@ class TestItIsPrinted:
         # real handler run against whatever .co/ the test happens to be in.
         monkeypatch.setattr(
             "connectonion.cli.commands.trust_commands.handle_admin_remove",
-            lambda address: None)
+            lambda address, co_dir=None: None)
         monkeypatch.setitem(command_tips.NEXT, "co trust admin remove",
                             "See every list:  co trust list")
 
@@ -110,7 +110,7 @@ class TestItCanBeTurnedOff:
     def hermetic_handler(self, monkeypatch):
         monkeypatch.setattr(
             "connectonion.cli.commands.trust_commands.handle_admin_remove",
-            lambda address: None)
+            lambda address, co_dir=None: None)
         monkeypatch.setitem(command_tips.NEXT, "co trust admin remove",
                             "See every list:  co trust list")
         monkeypatch.setattr(command_tips, "_SUPPRESSED", False)

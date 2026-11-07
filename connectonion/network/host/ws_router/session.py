@@ -16,7 +16,7 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
-from .connect import establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
+from .connect import current_trust_level, establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
@@ -24,6 +24,30 @@ from .proxy import attach_proxy, detach_proxy
 from .remote_browser import run_remote_browser
 
 console = Console()
+# Handoffs only permits handoff messages; it grants no tool access to revoke.
+TRUST_GRANTS = {"admin": 3, "whitelist": 2, "contact": 1}
+
+
+def _access_revoked(conn, trust_agent, blacklist):
+    """Check local trust files on each frame without repeating onboarding/LLM."""
+    address = conn["agent_address"]
+    if blacklist and address in blacklist:
+        return True, "blocked"
+    if "trust_level" not in conn:
+        return False, None
+    level = current_trust_level(trust_agent, address)
+    # Reconnect after any downgrade to establish the reduced authorization
+    # context; cached admin flags must never outlive an admin grant.
+    revoked = level == "blocked" or TRUST_GRANTS.get(level, 0) < TRUST_GRANTS.get(conn["trust_level"], 0)
+    return revoked, level
+
+
+def _stop_requester_turns(registry, address):
+    """Stop this requester's work across sessions, including other sockets."""
+    for sid in registry.list_active():
+        active = registry.get(sid)
+        if active and active.owner == address:
+            active.io.request_interrupt()
 
 
 async def _watch_provider_station(station, send_msg):
@@ -202,6 +226,20 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     active_io = adopted_io
 
             msg_type = data.get("type")
+            revoked = False
+            if conn.get("authenticated"):
+                revoked, level = _access_revoked(conn, route_handlers.get("trust_agent"), blacklist)
+                if level is not None:
+                    conn["trust_level"] = level
+            if revoked:
+                _stop_requester_turns(registry, conn["agent_address"])
+                conn["authenticated"] = False
+                await send_msg({
+                    "type": "ERROR",
+                    "code": "ACCESS_REVOKED",
+                    "message": "Your access to this agent was revoked by its admin.",
+                })
+                return "ACCESS_REVOKED"
 
             # CONNECT establishes the identity and protocol capabilities for
             # this socket. Letting a second CONNECT overwrite that state makes
