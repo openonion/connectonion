@@ -207,3 +207,27 @@ def test_exec_turn_is_ephemeral_and_falls_back_to_the_app_bundled_cli(tmp_path, 
     argv = codex_exec.exec_command(tmp_path, {'effort': 'medium', 'model': 'default'}, last_message=tmp_path / 'last.md')
     assert argv[0] == str(bundled)
     assert '--ephemeral' in argv
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_scheduled_child_rereads_managed_provider_record(tmp_path, monkeypatch, explicit):
+    from connectonion import environment
+    monkeypatch.setattr(environment, "_loaded", {})
+    monkeypatch.setattr(environment, "_selected", None)
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "account"))
+    path = environment.selected_env_file()
+    path.parent.mkdir()
+    path.write_text("MICROSOFT_REFRESH_TOKEN=file-refresh\nMICROSOFT_ACCESS_TOKEN=file-access\n")
+    for key in environment.provider_keys("microsoft"):
+        monkeypatch.delenv(key, raising=False)
+    environment.load_environment()
+    if explicit:
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "explicit-refresh")
+    monkeypatch.setattr(codex_exec, "_start_command", lambda *a: ["codex", "exec"])
+    monkeypatch.setattr(codex_schedule.CodexNative, "recent_desktop_fire", lambda *a: False)
+    def run(command, **kwargs):
+        child = kwargs["env"]
+        assert child.get("MICROSOFT_REFRESH_TOKEN") == ("explicit-refresh" if explicit else None)
+        assert "MICROSOFT_ACCESS_TOKEN" not in child
+        return subprocess.CompletedProcess(command, 0)
+    assert codex_exec.run_turn(tmp_path / "notebook", run=run) == "completed"

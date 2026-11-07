@@ -698,6 +698,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                                       for record in model_runs)
     return {"state": state,
             "root": str(root), "configured": (root / "config.yaml").exists(),
+            "models": f"Work: {config['model']} · standalone summaries: {config['models']['summary']}",
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "schedule_runner": worker_state(root).get("runner") or (
@@ -1289,8 +1290,12 @@ def _http_reason(status: int, text: str = "") -> str:
 
 
 def _safe_read_error(name: str, error: str) -> str:
-    """Reduce pre-upgrade records to a class and optional HTTP diagnosis too."""
+    """Keep sanitized credential recovery; redact arbitrary pre-upgrade text."""
     prefix = f"{name.title()} read failed"
+    codes = ("reauth_required", "broker_auth_failed", "record_changed", "invalid_response",
+             "provider_unavailable", "network_error", "not_configured", "incomplete_record", "permission_denied")
+    if any(error.startswith(f"{prefix}: [{code}] ") for code in codes):
+        return error
     match = re.match(re.escape(prefix) + r": ([A-Za-z_][A-Za-z0-9_]{0,79})(?: (\d{3})\b)?(?= |$)", error)
     if not match:
         return prefix
@@ -1301,7 +1306,10 @@ def _safe_read_error(name: str, error: str) -> str:
 
 
 def _collection_failure(name: str, error: Exception) -> dict:
-    """Never persist free-form exception text, even from credential errors."""
+    """Credential errors carry sanitized recovery; other exceptions may hold secrets."""
+    if isinstance(error, ProviderCredentialError):
+        return {"source": name, "error": f"{name.title()} read failed: [{error.code}] "
+                + " ".join(str(error).splitlines())}
     status = error_status(error)
     detail = type(error).__name__
     if status is not None:

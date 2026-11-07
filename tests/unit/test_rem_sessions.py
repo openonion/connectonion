@@ -972,3 +972,17 @@ def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(noteboo
     page = book.read(book.list('sessions')[0])
     assert '## Final reply' not in page
     assert '- Ended: 2026-10-16 09:24' in page
+
+
+def test_session_summary_uses_summary_model_only(notebook, summary_ready):
+    from connectonion.rem.config import read_config
+    root, _, _ = notebook
+    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol"])
+    transcript(notebook)
+    import_sessions(root, now=NOW)
+    def run(directory, prompt, settings, stage):
+        assert settings["model"] == "gpt-6-luna"
+        assert read_config(root)["model"] == "gpt-6.1-sol"
+        return summary_answer("s1")
+    assert summarise_sessions(root, run=run)["summarised"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6-luna"

@@ -1874,3 +1874,21 @@ def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform
     monkeypatch.setattr(service.Path, "is_file", lambda path: True)
     monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
     assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("code,message,fix", [
+    ("reauth_required", "Microsoft authorization expired or was revoked.", "co auth microsoft"),
+    ("broker_auth_failed", "OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    ("record_changed", "The selected credential record changed during this operation.", "co status"),
+    ("permission_denied", "Microsoft permission denied for this operation.", "co auth microsoft"),
+    ("invalid_response", "Authorization service returned invalid credentials; saved record kept.", "co status"),
+])
+def test_source_read_preserves_credential_code_and_recovery(rem, monkeypatch, code, message, fix):
+    from connectonion.rem import service
+    from connectonion.provider_credentials import ProviderCredentialError
+    root, _ = rem
+    failure = service._collection_failure("outlook", ProviderCredentialError(code, message, fix))
+    assert code in failure["error"] and message in failure["error"] and fix in failure["error"]
+    service._record_source_read(root, "outlook", failure["error"])
+    reason, _ = service._mailbox_read_failure(root, "outlook")
+    assert code in reason and message in reason and fix in reason

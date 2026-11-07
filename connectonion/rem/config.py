@@ -38,23 +38,14 @@ def schedule_runner() -> str:
 
 
 def default_config() -> dict:
-    # Spark was the default until Codex 0.155 refused it for ChatGPT logins
-    # ("not supported when using Codex with a ChatGPT account"), which made every
-    # new user's first investigation fail in eleven seconds. gpt-6-luna runs on
-    # a ChatGPT subscription (checked with Codex 0.155.1 on 2026-09-23). It is a
-    # starting name, not a rule: what a model can do -- drive tools, or only
-    # reply with a page -- is measured when the model changes and recorded in
-    # .state/tier.json (tier.py, #1847), never read off its name or generation.
-    # Codex with gpt-6-luna, the owner's choice on 2026-10-11: with both agents
-    # signed in, a fresh install picked Claude Code and announced ~460M input
-    # tokens on the user's Claude plan. Codex wrote 312 of 312 pages on the same
-    # mailbox. A machine without a working Codex gets Claude Code (first_runner).
-    # Saved configs keep their runner.
+    # Owner decision 2026-11-08: REM judgement uses the top model. Only
+    # standalone summary calls use models.summary; a native work session keeps
+    # the work model throughout, including any inline summaries.
     # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone(), "runner": "codex-exec"},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -116,6 +107,10 @@ def validate(config: dict) -> dict:
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    models = config["models"]
+    if (not isinstance(models, dict) or set(models) != {"summary"}
+            or not isinstance(models["summary"], str) or not models["summary"].strip()):
+        raise RemError("models.summary must be a model name or default")
     if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
         raise RemError("effort must be minimal, low, medium, high or xhigh")
     if config["speed"] not in ("fast", "standard"):
@@ -154,7 +149,7 @@ def validate(config: dict) -> dict:
 # the defaults of the day it was made: one from 2026-09-20 ran the refused
 # gpt-5.3-codex-spark for four nights (#1714). A saved value equal to one of
 # these is read as unset, unless the owner chose it with `config set`.
-SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
+SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.timeout_seconds": {600},
               "limits.translations_per_day": {10},
               "limits.extract_chars_per_batch": {300000},
@@ -196,10 +191,10 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
         config['schedule']['runner'] = default_config()['schedule']['runner']
     _drop_superseded(root, config)
-    # Older coai notebooks retained the Codex default even though it was never
-    # forwarded. Preserve their effective behavior when all stages start using COAI.
-    if config.get("runner") == "coai" and config.get("model") == "gpt-6-luna":
-        config["model"] = "default"
+    # Existing non-Codex notebooks must not receive a model their harness cannot
+    # run. A summary choice saved by the owner always wins.
+    config.setdefault("models", {"summary": default_config()["models"]["summary"]
+                                 if config.get("runner") == "codex" else config.get("model", "default")})
     return validate(config) if validated else config
 
 
@@ -238,7 +233,8 @@ def first_runner(config: dict) -> dict:
     config['schedule']['runner'] = schedule_runner()
     if not ready(config)[0]:
         return config
-    fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5"}
+    fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5",
+                "models": {"summary": "claude-sonnet-5-5"}}
     return fallback if not ready(fallback)[0] else config
 
 
@@ -266,14 +262,14 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits"):
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "schedule.times":
             value = sorted(raw.split(","))
         elif key == "languages":
@@ -288,8 +284,11 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
         target[parts[-1]] = value
     if config["runner"] != previous_runner and "model" not in pairs[::2]:
         config["model"] = "default"
+    explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
+    if config["runner"] != previous_runner and "models.summary" not in explicit:
+        config["models"]["summary"] = (default_config()["models"]["summary"]
+                                       if config["runner"] == "codex" else config["model"])
     validate(config)
     atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
-    explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
     write_json(state_path(root, EXPLICIT), sorted(explicit))
     return config
