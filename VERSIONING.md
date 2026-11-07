@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc58
+## Current Version: 1.9.3rc59
+
+Hotfix on 1.9.3rc58: the claim audit demanded a checkpoint for a citation whose original is not in
+the archive, so one page task retried every 15 minutes without end; such citations are now named as
+unavailable and do not block completion (#2879). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc59.md).
+
+- 1.9.3rc59 (hotfix: audit completes with unavailable originals named).
+
+### Previous candidate: 1.9.3rc58
 
 Hotfix on 1.9.3rc57: the promotion validator compared source ids as raw strings, so a mail id
 `resolve_sources` had rewritten to its digest form counted as dropped and one page task was refused
