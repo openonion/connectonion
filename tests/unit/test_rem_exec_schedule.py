@@ -12,6 +12,15 @@ from connectonion.rem.files import read_json, state_path
 pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
+@pytest.fixture(autouse=True)
+def codex_cli(tmp_path, monkeypatch):
+    binary = tmp_path / "fictional-codex"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o700)
+    monkeypatch.setenv("CODEX_CMD", str(binary))
+    return binary
+
+
 def test_exec_plist_shares_prompt_fire_times_and_user_path(tmp_path, monkeypatch):
     monkeypatch.setenv('PATH', '/fictional/local/bin:/usr/bin:/bin')
     config = default_config()

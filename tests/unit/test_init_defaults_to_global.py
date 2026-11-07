@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from unittest.mock import Mock
+from types import SimpleNamespace
 from hashlib import sha256
 import os
 
@@ -15,7 +16,14 @@ from connectonion.cli.main import app
 
 
 @pytest.fixture
-def setup_init(tmp_path, monkeypatch):
+def setup_init(tmp_path, monkeypatch, rem_clock):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import config, schedule
+
+    monkeypatch.setattr(config, "first_runner", lambda config: config)
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(
+        install=Mock(return_value={"scheduler": "fictional"})))
+    monkeypatch.setattr(rem_commands, "init_rem_flow", Mock(return_value={}))
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -103,6 +111,67 @@ def test_global_init_keeps_identity_when_offline(setup_init):
     assert "co auth" in result.output
     assert "authenticated" not in result.output.lower()
     assert list(work.iterdir()) == []
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+@pytest.mark.parametrize("failure", ["scheduler", "missing", "permission", "timeout"])
+def test_scheduler_failure_does_not_fail_global_setup(setup_init, monkeypatch, platform, failure):
+    import subprocess
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import schedule, service
+    from connectonion.rem.files import RemError
+
+    runner, work, global_dir, _ = setup_init
+    errors = {"scheduler": RemError("fictional user session unavailable"),
+              "missing": FileNotFoundError("fictional scheduler missing"),
+              "permission": PermissionError("fictional scheduler denied"),
+              "timeout": subprocess.TimeoutExpired("fictional scheduler", 30)}
+    error = errors[failure]
+    install = Mock(side_effect=error)
+    monkeypatch.setattr("sys.platform", platform)
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(install=install))
+
+    result = runner.invoke(app, ["init", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert (global_dir / "keys.env").is_file()
+    assert (global_dir / "agent.json").is_file()
+    root = global_dir / "rem"
+    assert (root / ".state/consent.json").is_file()
+    assert not service.worker_state(root).get("enabled")
+    assert list(work.iterdir()) == []
+    install.assert_called_once()
+    rem_commands.init_rem_flow.assert_called_once()
+    lines = [line for line in result.output.splitlines() if "REM upkeep is not installed yet" in line]
+    assert len(lines) == 1
+    assert str(error) in lines[0] and "co rem start" in lines[0]
+    assert "Scheduler installed: none" in result.output
+
+
+def test_windows_global_init_skips_rem_scheduler_even_without_timezone(setup_init, monkeypatch):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import config, schedule
+
+    runner, work, global_dir, auth = setup_init
+    auth.side_effect, auth.return_value = None, False
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr(config, "local_timezone", lambda: "")
+    scheduler = Mock(side_effect=AssertionError("unsupported scheduler must not be attempted"))
+    monkeypatch.setattr(schedule, "default_scheduler", scheduler)
+
+    result = runner.invoke(app, ["init", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert (global_dir / "keys.env").is_file()
+    assert (global_dir / "keys/agent.key").is_file()
+    assert (global_dir / "agent.json").is_file()
+    scheduler.assert_not_called()
+    rem_commands.init_rem_flow.assert_not_called()
+    assert list(work.iterdir()) == []
+    lines = [line for line in result.output.splitlines() if "REM upkeep is not installed yet" in line]
+    assert len(lines) == 1
+    assert "win32" in lines[0] and "co rem start" in lines[0]
+    assert "Traceback" not in result.output
 
 
 def test_global_init_restores_missing_keys_env_without_rotating_identity(setup_init):

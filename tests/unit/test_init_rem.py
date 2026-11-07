@@ -25,7 +25,7 @@ class Terminal(io.StringIO):
 
 
 @pytest.fixture
-def rem_setup(tmp_path, monkeypatch):
+def rem_setup(tmp_path, monkeypatch, rem_clock):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.delenv("CODEX_HOME", raising=False)
@@ -117,7 +117,10 @@ def test_unsupported_platform_preserves_consent_without_scheduling(rem_setup, mo
     rem_commands.init_global_rem()
     assert (root / ".state/consent.json").exists()
     installed.assert_not_called()
-    assert "No scheduler available" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "REM upkeep is not installed yet" in output
+    assert "No supported background scheduler" in output
+    assert "co rem start" in output
     rem_commands.init_rem_flow.assert_called_once()
 
 
@@ -126,10 +129,10 @@ def test_scheduler_failure_leaves_an_actionable_recovery(rem_setup, monkeypatch,
     from connectonion.rem.files import RemError
     installed.side_effect = RemError("synthetic scheduler failure")
     monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\n"))
-    with pytest.raises(RemError, match="synthetic scheduler failure"):
-        rem_commands.init_global_rem()
+    rem_commands.init_global_rem()
     assert (root / ".state/consent.json").exists()
-    assert "Resume setup with co rem start" in capsys.readouterr().out
+    assert "REM upkeep is not installed yet: synthetic scheduler failure. Next: co rem start" in capsys.readouterr().out
+    rem_commands.init_rem_flow.assert_called_once()
 
 
 @pytest.fixture
@@ -294,10 +297,8 @@ def test_co_init_says_a_scheduler_error_in_one_line(rem_setup, monkeypatch, caps
     root, installed = rem_setup
     installed.side_effect = RemError("synthetic scheduler failure")
     monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\n"))
-    with pytest.raises(typer.Exit) as stop:
-        main.init(path=None, template=None, yes=False, key=None, description=None,
-                  force=False, background=False, no_rem=False)
-    assert stop.value.exit_code == 1
+    main.init(path=None, template=None, yes=False, key=None, description=None,
+              force=False, background=False, no_rem=False)
     out = capsys.readouterr().out
     assert "synthetic scheduler failure" in out
     assert "Next: co rem start" in out

@@ -902,9 +902,13 @@ def _scheduler_name(result: dict) -> str:
 
 def init_global_rem(*, yes: bool = False) -> None:
     """Grant source access, install upkeep and build without questions."""
+    if sys.platform not in ("darwin", "linux"):
+        typer.echo(f"REM upkeep is not installed yet: No supported background scheduler on {sys.platform}. "
+                   "Next: co rem start")
+        return
     from ...rem.config import prepare
     from ...rem.files import maintenance_lock
-    from ...rem.schedule import Unsupported, default_root, default_scheduler
+    from ...rem.schedule import default_root
     from ...rem.service import grant_init_sources, MAIL_KINDS, mail_available
     root = default_root()
     if (root / "config.yaml").is_file():
@@ -916,13 +920,7 @@ def init_global_rem(*, yes: bool = False) -> None:
     grant_init_sources(root)
     if not any(mail_available(kind) for kind in MAIL_KINDS):
         typer.echo("No mailbox connected; using local sessions. Connect: co auth google or co auth microsoft; mail joins the next scheduled round.")
-    scheduler = default_scheduler(root, for_start=True)
-    result = {"scheduler": "none"}
-    if isinstance(scheduler, Unsupported):
-        typer.echo("No scheduler available; schedule co rem sync with cron. Building now.")
-    else:
-        typer.echo("Installing REM upkeep. Resume setup with co rem start.")
-        result = _install_upkeep(root, lambda summary: True, scheduler)
+    result = _init_upkeep(root)
     from click import Command
     ctx = typer.Context(Command("init"), info_name="init",
                         obj={"root": root, "default_root": True, "json": False})
@@ -931,6 +929,24 @@ def init_global_rem(*, yes: bool = False) -> None:
     installed = _scheduler_name(result) + (f" ({result['fallback']})" if result.get("fallback") else "")
     typer.echo(f"REM ready; {summary} Scheduler installed: {installed}. Next: co rem open. Watch: co rem status")
     _init_undo(root)
+
+
+def _init_upkeep(root) -> dict:
+    """An unavailable scheduler must not prevent global setup or the first build."""
+    from subprocess import SubprocessError
+    from ...rem.files import RemError
+    from ...rem.schedule import Unsupported, default_scheduler
+
+    try:
+        scheduler = default_scheduler(root, for_start=True)
+        if not isinstance(scheduler, Unsupported):
+            typer.echo("Installing REM upkeep. Resume setup with co rem start.")
+            return _install_upkeep(root, lambda summary: True, scheduler)
+        reason = f"No supported background scheduler on {sys.platform}"
+    except (RemError, OSError, SubprocessError) as error:
+        reason = " ".join(str(error).split())
+    typer.echo(f"REM upkeep is not installed yet: {reason}. Next: co rem start")
+    return {"scheduler": "none"}
 
 
 def _init_undo(root) -> None:
