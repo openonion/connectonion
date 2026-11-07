@@ -82,8 +82,19 @@ def test_standalone_installer_downloads_official_script_once(tmp_path, monkeypat
     assert len([cmd for cmd in commands if cmd[0] == "sh"]) == 1
 
 
+def test_offline_installer_reports_no_network_without_trying_package_managers(monkeypatch):
+    """#2874 follow-up: through a dead proxy npm retried for 80 s and `co init --yes` blew its 60 s budget."""
+    monkeypatch.setattr(codex_setup.httpx, "get", Mock(side_effect=codex_setup.httpx.ConnectError("connection refused")))
+    monkeypatch.setattr("shutil.which", lambda name: {"npm": "/bin/npm", "brew": "/bin/brew"}.get(name))
+    run = Mock()
+    monkeypatch.setattr(codex_setup.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="no network for the installer"):
+        codex_setup.install_codex()
+    run.assert_not_called()
+
+
 def test_installer_failure_falls_back_only_to_available_npm(tmp_path, monkeypatch):
-    monkeypatch.setattr(codex_setup, "_install_standalone", Mock(side_effect=OSError("offline")))
+    monkeypatch.setattr(codex_setup, "_install_standalone", Mock(side_effect=RuntimeError("installer did not create an executable")))
     monkeypatch.setattr("shutil.which", lambda name: {"npm": "/bin/npm", "codex": "/npm/bin/codex"}.get(name))
     run = Mock(return_value=subprocess.CompletedProcess([], 0, "codex-cli 1.2.3", ""))
     monkeypatch.setattr(codex_setup.subprocess, "run", run)
