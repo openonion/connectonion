@@ -182,3 +182,126 @@ def test_batch_skip_undo_restores_every_obligation_and_preserved_body(notebook):
     assert threads.listing(notebook) == {}
     assert drafts.listing(notebook, include_pending=True)[0]['body'] == 'Review and budget.'
     assert drafts.listing(notebook)[0]['status'] == 'prepared'
+
+
+@pytest.mark.parametrize('state', ['done', 'skipped'])
+def test_no_reply_restored_after_thread_undo(notebook, state):
+    from connectonion.rem import threads
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': '', 'verdict': 'no_reply', 'sources': ['gmail:one']})
+    threads.set_state(notebook, thread_key(notebook), state)
+    assert threads.listing(notebook)[thread_key(notebook)]['draft_statuses'][row['id']] == {'status': 'no_reply', 'version': row['version']}
+    threads.set_state(notebook, thread_key(notebook), 'open')
+    assert drafts.listing(notebook)[0]['status'] == 'no_reply'
+
+
+@pytest.mark.parametrize('state', ['done', 'skipped'])
+def test_reader_no_reply_undo_survives_offline_reload(state):
+    page = reader.TEMPLATE.read_text()
+    names = ['doneKey', 'threadStorageKey', 'saveThreadState', 'setDone']
+    functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    result = _run_reader_js(functions + 'const decision = ' + json.dumps(state) + ';' + r'''
+      const REM = {root: '/test', live: false, drafts: [{id: 'draft', provider: 'gmail', thread: 'mail:gmail:pilot', version: 'gmail:one', status: 'no_reply', body: ''}]};
+      let threadStates = {}, pendingThreads = {}, threadWrite = Promise.resolve(), stored;
+      const shortHash = x => x, readerStorage = (k, v) => {stored = v;};
+      const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, document = {getElementById: () => null};
+      const render = () => {}, doneNotice = () => {};
+      const obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
+      (async () => {
+        const entry = {r: {path: 'people/fern.md'}, t: {text: 'Review [1]'}};
+        await setDone(entry, true, decision);
+        threadStates = JSON.parse(stored).states; pendingThreads = JSON.parse(stored).pending;
+        await setDone(entry, false);
+        console.log(JSON.stringify({status: REM.drafts[0].status}));
+      })();
+    ''')
+    assert result['status'] == 'no_reply'
+
+
+def test_skip_versions_include_owner_last_citation_and_ignore_unobserved(notebook):
+    from connectonion.rem import threads
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+    mail_thread(notebook)
+    retain_message(notebook, 'gmail', {'id': 'owner-old', 'from': 'owner@example.test', 'to': ['fern@example.test'],
+        'subject': 'Earlier context', 'date': '2026-11-01T01:00:00+00:00', 'thread': 'context'}, 'Earlier context.', fetched_at='2026-11-01T01:00:00+00:00')
+    refresh(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('review. [1]', 'review. [1] [2]').replace(
+        '- [1] gmail:one', '- [1] gmail:one\n- [2] gmail:owner-old'))
+    key = threads.done_key('people/fern.md', 'You owe Fern a pilot review. [1] [2]')
+    snapshot = reader.snapshot(notebook, local=True)
+    assert snapshot['mail_versions'] == {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:owner-old'}
+    assert reader.snapshot(notebook)['mail_versions'] == {}
+    for versions in ({}, {'mail:gmail:pilot': 'gmail:one'}, snapshot['mail_versions']):
+        threads.set_state(notebook, key, 'open')
+        threads.set_state(notebook, key, 'skipped', versions=versions)
+        assert threads.blocked(notebook, key)
+        assert read_json(drafts.path(notebook, drafts.candidates(notebook)[0]['id']), {}) == {}
+    threads.set_state(notebook, key, 'open')
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Review.', 'sources': ['gmail:one']})
+    threads.set_state(notebook, key, 'skipped', versions={})
+    assert drafts._current(notebook, row['id'])['status'] == 'skipped'
+    threads.set_state(notebook, key, 'open')
+    threads.set_state(notebook, key, 'skipped', versions=snapshot['mail_versions'])
+    retain_message(notebook, 'gmail', {'id': 'context-new', 'from': 'fern@example.test', 'to': ['owner@example.test'],
+        'subject': 'Earlier context', 'date': '2026-11-07T03:00:00+00:00', 'thread': 'context'}, 'New context.', fetched_at='2026-11-07T03:00:00+00:00')
+    refresh(notebook)
+    assert not threads.blocked(notebook, key)
+    assert threads.listing(notebook)[key]['returned_at'] == '2026-11-07T03:00:00+00:00'
+
+
+@pytest.mark.parametrize('versions', [{}, {'mail:gmail:other': 'gmail:old'}])
+def test_skip_unobserved_thread_stays_blocked_and_skips_saved_draft(notebook, versions):
+    from connectonion.rem import threads
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Review.', 'sources': ['gmail:one']})
+    threads.set_state(notebook, thread_key(notebook), 'skipped', versions=versions)
+    assert threads.blocked(notebook, thread_key(notebook))
+    assert drafts._current(notebook, row['id'])['status'] == 'skipped'
+
+
+@pytest.mark.parametrize('new_mail', [False, True])
+def test_reader_skip_reconcile_and_fresh_snapshot_undo_uses_saved_status(new_mail):
+    page = reader.TEMPLATE.read_text()
+    names = ['doneKey', 'threadStorageKey', 'saveThreadState', 'setDone', 'reconcileThreads', 'threadActions', 'draftNote']
+    functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    result = _run_reader_js(functions + 'const newMail = ' + json.dumps(new_mail) + ';' + r'''
+      const REM = {root: '/test', live: true, mail_versions: {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:old'},
+        drafts: [{id: 'draft', provider: 'gmail', thread: 'mail:gmail:pilot', version: 'gmail:one', status: 'no_reply', body: '', gist: 'Already acknowledged'}]};
+      let threadStates = {}, pendingThreads = {}, threadWrite = Promise.resolve(), stored, server = {}, requests = [];
+      const shortHash = x => x, readerStorage = (k, v) => {stored = v;};
+      const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, document = {getElementById: () => null};
+      const render = () => {}, doneNotice = () => {}, isDone = () => false;
+      const obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const primaryAction = () => ({text: 'Draft the reply'});
+      const fetch = async (url, options) => {
+        if (!options) return {ok: true, json: async () => server};
+        const request = JSON.parse(options.body); requests.push(request);
+        const decision = {...request, draft_statuses: {draft: {status: 'no_reply', version: 'gmail:one'}}};
+        server = request.state === 'open' ? {} : {[request.key]: decision};
+        return {ok: true, json: async () => decision};
+      };
+      (async () => {
+        const entry = {r: {path: 'people/fern.md'}, t: {text: 'Review [1] [2]'}};
+        await setDone(entry, true, 'skipped');
+        // A fresh live snapshot supplies server decisions and the persisted skipped draft.
+        REM.drafts[0] = {...REM.drafts[0], status: 'skipped', status_before_skip: 'no_reply'};
+        threadStates = {};
+        await reconcileThreads();
+        if (newMail) REM.drafts[0] = {...REM.drafts[0], status: 'prepared', version: 'gmail:two', body: 'Fresh reply'};
+        await setDone(entry, false);
+        console.log(JSON.stringify({status: REM.drafts[0].status, versions: requests[0].versions,
+          actions: newMail ? null : threadActions(entry), note: newMail ? null : draftNote(REM.drafts[0])}));
+      })();
+    ''')
+    assert result['status'] == ('prepared' if new_mail else 'no_reply')
+    assert result['versions'] == {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:old'}
+    if not new_mail:
+        assert [node['text'] for node in result['actions']['children'] if node] == ['Mark done']
+        assert result['note']['text'] == 'No reply needed: Already acknowledged'

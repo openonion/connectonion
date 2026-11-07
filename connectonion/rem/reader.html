@@ -3414,7 +3414,7 @@ async function saveThreadState(key, value) {
     for (const item of keys) {
       if (pendingThreads[item]) continue;
       if (value.state === "open") delete threadStates[item];
-      else threadStates[item] = { ...decision, keys };
+      else threadStates[item] = { ...decision, keys, draft_statuses: decision.draft_statuses || value.draft_statuses };
     }
     await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
     return true;
@@ -3426,14 +3426,19 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   const members = entries.flatMap(item => item.members || [item]);
   value.keys = [...new Set([...members.map(doneKey), ...(threadStates[key]?.keys || [])])];
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
-  value.versions = Object.fromEntries(related.filter(d => d.version).map(d => [d.thread, d.version]));
+  value.versions = REM.mail_versions || {};
+  value.draft_statuses = Object.assign({}, ...value.keys.map(item => threadStates[item]?.draft_statuses || {}));
+  for (const draft of related) {
+    if (draft.status === "sent") continue;
+    if (done) {
+      value.draft_statuses[draft.id] ??= { status: draft.status, version: draft.version };
+      if (state === "skipped") draft.status = "skipped";
+    } else if (value.draft_statuses[draft.id]?.version === draft.version) draft.status = value.draft_statuses[draft.id].status;
+  }
   const saved = saveThreadState(key, value);
   for (const memberKey of value.keys) {
     if (done) threadStates[memberKey] = value;
     else delete threadStates[memberKey];
-  }
-  for (const draft of related) {
-    if (draft.status !== "sent") draft.status = done && state === "skipped" ? "skipped" : draft.body ? "prepared" : "pending";
   }
   const scroll = window.scrollY;
   render();

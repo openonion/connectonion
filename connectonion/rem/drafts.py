@@ -249,9 +249,12 @@ def check(task, output):
         'body': body, 'sources': value['sources'], 'verdict': verdict, 'send': send, 'needs_owner': needs_owner} | notes
 
 
+def prepared_status(draft):
+    return 'no_reply' if draft.get('verdict') == 'no_reply' else 'prepared'
+
+
 def promote(root, draft):
-    status = 'no_reply' if draft.get('verdict') == 'no_reply' else 'prepared'
-    write_json(path(root, draft['id']), {**draft, 'status': status, 'prepared_at': now().isoformat()})
+    write_json(path(root, draft['id']), {**draft, 'status': prepared_status(draft), 'prepared_at': now().isoformat()})
 
 
 def _current(root, draft_id):
@@ -267,8 +270,10 @@ def open_provider(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
-        if saved.get('status') == 'no_reply':
+        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
             raise RemError('This thread needs no reply')
+        if not saved['body'].strip():
+            raise RemError('The reply body is empty')
         if saved.get('provider_draft'):
             return saved['provider_draft']
         client = mail_client(saved['provider'])
@@ -362,11 +367,13 @@ def send(root, draft_id, body=None):
         saved = _current(root, draft_id)
         if saved.get('status') in ('skipped', 'discarded'):
             raise RemError('Restore this skipped reply before sending')
-        if saved.get('status') == 'no_reply':
+        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
             raise RemError('This thread needs no reply')
         if saved.get('status') == 'sent':
             raise RemError('This reply was already sent; nothing was sent again')
         text = body if body is not None else saved['body']
+        if not text.strip():
+            raise RemError('The reply body is empty')
         if saved.get('channel', 'mail') != 'mail':
             receipt = _send_chat(saved, text)
         else:

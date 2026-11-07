@@ -34,13 +34,19 @@ def _mail_versions(root, key):
     return found
 
 
+def observed_versions(root, records):
+    """Latest versions of all cited mail, including threads ineligible for drafting."""
+    return {thread: row['id'] for record in records
+            for thread, row in _mail_versions(root, record['path'] + '\n' + record['text']).items()}
+
+
 def listing(root):
     found = read_json(state_path(root, 'threads.json'), {})
     for key, value in found.items():
         if value['state'] == 'skipped':
             latest = _mail_versions(root, key)
             changed = [row['time'] for thread, row in latest.items()
-                       if row['id'] != value.get('versions', {}).get(thread)]
+                       if thread in value.get('versions', {}) and row['id'] != value['versions'][thread]]
             if changed:
                 value['returned_at'] = max(changed)
     return found
@@ -97,11 +103,19 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
             continue
         saved = read_json(drafts.path(root, row['id']), {})
         if (saved.get('version') != row['version'] or saved.get('status') == 'sent'
-                or state == 'skipped' and versions is not None and versions.get(row['thread']) != row['version']):
+                or state == 'skipped' and versions is not None and row['thread'] in versions and versions[row['thread']] != row['version']):
             continue
         if state != 'open':
             value['draft_id'] = row['id']
-        status = 'skipped' if state == 'skipped' else 'prepared' if saved.get('status') in ('skipped', 'discarded') else saved['status']
+            value.setdefault('draft_statuses', {})[row['id']] = {
+                'status': saved.get('status_before_skip', saved['status']), 'version': saved['version']}
+        if state == 'skipped' and saved['status'] != 'skipped':
+            saved['status_before_skip'] = saved['status']
+        status = saved['status']
+        if state == 'skipped':
+            status = 'skipped'
+        elif state == 'open' and status in ('skipped', 'discarded'):
+            status = saved.pop('status_before_skip', drafts.prepared_status(saved))
         write_json(drafts.path(root, row['id']), {**saved, 'status': status})
     write_json(state_path(root, 'threads.json'), found)
     return value

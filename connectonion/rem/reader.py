@@ -244,6 +244,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "people_coverage": current_status.get("people_coverage"),
             "drafts": reply_drafts(root, local=local, records=records),
             "threads": threads.listing(root) if local else {},
+            "mail_versions": threads.observed_versions(root, records) if local else {},
             "source_context": contexts, "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),

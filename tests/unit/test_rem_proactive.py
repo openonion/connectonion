@@ -728,3 +728,49 @@ def test_rem_owner_samples_are_verbatim_to_this_address_recent_and_thread_langua
     samples = read_json(Path(task['input_paths'][0]), {})['owner_samples']
     assert [sample['source'] for sample in samples] == ['outlook:sample-3', 'outlook:sample-2', 'outlook:sample-1']
     assert samples[0]['message']['body'] == 'Fern, the review is attached.\nOwner'
+
+
+def test_native_no_reply_commit_and_recovery_preserve_verdict(notebook, monkeypatch):
+    from connectonion.rem import drafts, quota
+    mail_thread(notebook)
+    write_json(state_path(notebook, 'consent.json'), {'authorized_at': service.now().isoformat()})
+    write_json(state_path(notebook, 'subscriptions.json'), {})
+    monkeypatch.setattr(quota, 'read', lambda config: {'unknown': 'fixture'})
+    monkeypatch.setattr('connectonion.rem.project_material.extract', lambda *a, **kw: {})
+    task = native.next_task(notebook)
+    Path(task['candidate']).write_text(json.dumps({'verdict': 'no_reply', 'sources': ['gmail:one']}))
+    assert native.submit(notebook, task['id'])['outcome'] == 'accepted'
+    saved = drafts.listing(notebook)[0]
+    assert saved['status'] == 'no_reply'
+    receipt_task = {'directory': str(Path(task['candidate']).parent)}
+    drafts.path(notebook, saved['id']).unlink()
+    native_round.recover_commit(notebook, receipt_task)
+    assert read_json(drafts.path(notebook, saved['id']), {})['status'] == 'no_reply'
+
+
+@pytest.mark.parametrize('action, body', [('send', None), ('send', ''), ('send', 'Edited reply'), ('open_provider', None)])
+@pytest.mark.parametrize('status, verdict, saved_body', [
+    ('no_reply', 'no_reply', 'Unexpected body'),
+    ('prepared', 'no_reply', 'Unexpected body'),
+    ('prepared', 'reply', '   '),
+])
+def test_reply_boundaries_refuse_no_reply_and_empty_final_body(notebook, monkeypatch, action, body, status, verdict, saved_body):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    write_json(drafts.path(notebook, row['id']), {**row, 'status': status, 'verdict': verdict, 'body': saved_body,
+                                               'provider_draft': {'url': 'https://example.test/draft'}})
+    client = Mock()
+    client.reply.return_value = {'id': 'sent'}
+    monkeypatch.setattr(drafts, 'mail_client', lambda provider: client)
+    if verdict == 'reply' and body and body.strip():
+        assert drafts.send(notebook, row['id'], body) == {'status': 'sent'}
+        client.reply.assert_called_once_with(row['in_reply_to'], body)
+    else:
+        with pytest.raises(RemError):
+            if action == 'send':
+                drafts.send(notebook, row['id'], body)
+            else:
+                drafts.open_provider(notebook, row['id'])
+        assert not client.mock_calls

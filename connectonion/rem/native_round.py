@@ -478,7 +478,7 @@ def _commit(root, task, plan, result):
     from .native import _hash
     if task["handler"] == "draft":
         from . import drafts
-        plan = {**plan, "status": "prepared", "prepared_at": service.now().isoformat()}
+        plan = {**plan, "status": drafts.prepared_status(plan), "prepared_at": service.now().isoformat()}
         outputs = {drafts.path(root, plan["id"]): [_json_text(plan)]}
     else:
         outputs = _summary_outputs(root, plan) if task["handler"] == "sessions" else _merge_outputs(root, plan)
