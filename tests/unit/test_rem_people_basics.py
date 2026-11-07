@@ -73,15 +73,31 @@ def test_sync_fills_basics_even_without_new_model_work(tmp_path, monkeypatch):
     assert result["basics_changed"] == [RECORD]
 
 
-@pytest.mark.parametrize("address", ["lena@gmail.com", "lena@example.com.au", "support@lantern.edu.sg"])
-def test_uncertain_or_role_domains_do_not_fill_basics(tmp_path, address):
+@pytest.mark.parametrize("address", ["lena@gmail.com", "lena@example.com.au", "no-reply@lantern.edu.sg"])
+def test_uncertain_or_automated_domains_do_not_fill_basics(tmp_path, address):
     book = archive(tmp_path, address)
     book.stub_org("orgs/mail-provider.md", "Mail Provider", ["gmail.com"])
     runner._write_page(book, RECORD, book.read(RECORD), [])
     parsed = facts.parse(book.read(RECORD), RECORD)
     assert not parsed["Company"] and not parsed["Time zone"]
-    if address.startswith("support@"):
+    if address.startswith("no-reply@"):
         assert not parsed["First contact"] and not parsed["Last contact"]
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_role_address_fills_basics_only_when_not_marked_shared(tmp_path, shared):
+    address = "support@lantern.edu.sg"
+    book = archive(tmp_path, address)
+    page = book.read(RECORD)
+    if shared:
+        page = page.replace(f"- Email: {address}", f"- Email: {address} (shared)")
+    runner._write_page(book, RECORD, page, [])
+    parsed = facts.parse(book.read(RECORD), RECORD)
+    for label in ("Company", "Time zone", "First contact", "Last contact"):
+        assert bool(parsed[label]) is not shared
+    if not shared:
+        assert "Lantern University" in parsed["Company"][0]["value"]
+        assert parsed["Time zone"][0]["value"] == "Asia/Singapore"
 
 
 def test_populated_company_and_timezone_are_preserved(tmp_path):

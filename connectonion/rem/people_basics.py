@@ -15,7 +15,7 @@ SHARED = re.compile(r"\b(?:shared|role|team|family|assistant|delegate)\b", re.I)
 
 
 def own_addresses(book: Notebook, record="", text="", *, excluding=()) -> dict:
-    """Only a page's Email values, excluding role mail and addresses shared by pages."""
+    """A page's Email values, excluding marked shared/role mail and addresses shared by pages."""
     from .map import AGENT_ADDRESS, MACHINE, RELAY
     from .scan import AUTOMATED_HINT
     found, counts = {}, Counter()

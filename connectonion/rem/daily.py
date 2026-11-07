@@ -31,7 +31,6 @@ from .service import mail_client, notebook_today, now, run_logs, run_sync, statu
 # let one large page spend a night's calls. A person is one call: up to 8 people.
 INVESTIGATION_CALLS = 8
 # Pages a later run updates from new material, one call each.
-UPDATE_PAGES = 5
 # Activity this recent comes first in the unfinished portion.
 RECENT_DAYS = 14
 PHASES = ("daily-investigation", "daily-update")
@@ -567,7 +566,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if stop:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': stop, 'quota': meter, 'left': len(rows)}
-    chosen = rows[:max(0, min(UPDATE_PAGES, remaining))]
+    chosen = rows[:max(0, min(config['limits']['jobs_per_round'], remaining))]
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}

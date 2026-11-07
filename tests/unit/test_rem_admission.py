@@ -142,7 +142,8 @@ def _pairs(root, count):
 
 def test_native_judges_uninvestigated_pairs_before_jobs_with_cap_ten(notebook, monkeypatch):
     _pairs(notebook, 11)
-    cursor = {"batch": {"done": True}, "summaries": [], "phase": "daily-investigation",
+    cursor = {"batch": {"done": True}, "summaries": [{"record": "projects/session.md", "key": "session"}],
+              "phase": "daily-investigation",
               "jobs": [{"record": "people/nora0-full.md", "kind": "person"}], "job_index": 0,
               "current": None, "same_left": 3, "same_new_left": 10, "changed": []}
     monkeypatch.setattr(same_person, "prepare", lambda root, pair, directory: {"root": str(root), "pair": pair})

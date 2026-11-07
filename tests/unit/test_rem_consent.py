@@ -45,7 +45,7 @@ def test_consent_with_four_sources_fits_one_screen(tmp_path, monkeypatch):
     assert 'Permissions: ' in text and 'danger-full-access' in text
     assert 'Schedule: ' + ', '.join(summary['schedule']['times']) in text
     assert summary['schedule']['timezone'] in text
-    assert 'Daily cap: 50 runner calls/day; stop at 90% weekly quota used' in text
+    assert 'Daily cap: 200 runner calls/day; stop at 90% weekly quota used' in text
     assert 'Background: ' in text and 'co rem stop' in text
     assert text.endswith('Details: co rem config')
     assert summary == original

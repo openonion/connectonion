@@ -50,7 +50,7 @@ def _hash(path):
 def _config_hash(config):
     # Scheduling, concurrency and budgets govern future work. Prepared material
     # (including its local dates) is already saved. Keep evidence-sizing limits.
-    run_limits = {"runner_calls_per_day", "translations_per_day", "timeout_seconds", "workers",
+    run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     content = {key: value for key, value in config.items() if key != "schedule"}
@@ -79,22 +79,16 @@ def _input_matches(root, task, path, digest):
 
 
 def _inputs(root, task, directory, *, handler):
-    paths = {root / "config.yaml", state_path(root, "map.json"), state_path(root, "languages.json"),
-             state_path(root, "progress.json"), state_path(root, "routing.json"),
-             state_path(root, "reviews.json"),
-             state_path(root, "sessions.json"), state_path(root, "session-tags.json")}
+    paths = {root / "config.yaml"}
     book = Notebook(root)
-    if handler not in ("extract", "translate", "sessions"):
-        paths.update(book.path(record) for category in ("people", "orgs") for record in book.list(category))
     paths.update(Path(path) for path in task.get("input_paths", []))
-    paths.update(Notebook(root).path(record) for record in task.get("before", {}))
-    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
-    if owner.get("record") in task.get("before", {}):
-        paths.update(book.path(record) for record in book.list("projects"))
-    if handler not in ("extract", "translate", "sessions") and owner.get("record"):
-        paths.add(Notebook(root).path(owner["record"]))
+    paths.update(book.path(record) for record in task.get("before", {}))
     paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md"))
-    for item in task.get("items", []):
+    from .project_claim_review import original_items
+    items = [*task.get("items", []), *task.get("prior_items", [])]
+    for item in [*items, *original_items(items)]:
+        if item.get("record") and book.exists(item["record"]):
+            paths.add(book.path(item["record"]))
         if str(item.get("source", "")).startswith("reflection:"):
             paths.add(state_path(root, "reflections/" + item["source"].split(":", 1)[1] + ".json"))
         if item.get("_mail_id"):
@@ -332,7 +326,7 @@ def _save(root, cursor, task):
     if "<co_rem_task>" in prompt and "</co_rem_task>" not in prompt:
         prompt += "\n</co_rem_task>"
     if task["handler"] in ("runner", "project"):
-        prompt += f"\nWrite your coverage summary to {directory / 'report.md'}; write NO CHANGE there when appropriate."
+        prompt += f"\nWrite your coverage summary to {directory / 'report.md'}; write NO CHANGE with a reason there when appropriate."
     if task["handler"] not in ("runner", "project"):
         prompt += runner.today_note(root)
     prompt = f"Task workspace: {directory}. Resolve relative filenames against this directory.\n\n" + prompt
@@ -606,7 +600,7 @@ def _source_view(root, task, *, handler):
     if handler in ("extract", "translate", "sessions"):
         return None
     from .reader_model import _source_ids, cited_context, later_in_threads
-    items = task.get("items", [])
+    items = [*task.get("items", []), *task.get("prior_items", [])]
     sources = {item["source"] for item in items if item.get("source")}
     for item in items:
         sources.update(item.get("sources", []))
@@ -614,8 +608,7 @@ def _source_view(root, task, *, handler):
     records = [{"text": text} for text in task.get("before", {}).values()]
     records.append({"text": "\n## Sources\n" + "\n".join(f"- [{n}] {source}" for n, source in enumerate(sorted(sources), 1))})
     sources.update(_source_ids(records))
-    value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources),
-             "lookups": {kind: Notebook(root).list(kind) for kind in ("people", "orgs")}}
+    value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources)}
     if str(task.get("record", "")).startswith("projects/"):
         from .project_material import stored
         value["project"] = stored(root, task["record"])
