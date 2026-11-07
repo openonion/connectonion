@@ -105,6 +105,7 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
       }
       const main = el('main');
       const document = {getElementById(id) {
+        if (id === 'approval-undo') return null;
         if (id !== 'main') throw Error('Today tried to load ' + id);
         return main;
       }};

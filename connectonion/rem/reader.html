@@ -1639,6 +1639,24 @@
   :is(.qcard, .thread, .person-head, .person-focus) .cite :is(.cite-full, .cite-short) { display: none; }
   :is(.qcard, .thread, .person-head, .person-focus) .cite-number { display: inline; }
   :is(.qcard, .thread, .person-head, .person-focus) .cite { border: 0; background: none; padding: 0; }
+
+  .approval-header { margin-top: 20px; }
+  #approval-sheet { box-sizing: border-box; width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--ink); overflow: auto; }
+  #approval-sheet::backdrop { background: #0008; }
+  #approval-sheet header, #approval-sheet footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  #approval-sheet h2 { margin: 0; font: 500 25px/1.3 var(--display); }
+  #approval-sheet footer { position: sticky; bottom: -24px; background: var(--paper); padding: 16px 0; border-top: 1px solid var(--line); }
+  .approval-row { padding: 16px 0; border-top: 1px solid var(--line); }
+  .approval-row label { display: flex; align-items: start; gap: 12px; cursor: pointer; }
+  .approval-row input { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--ink); }
+  .approval-content { min-width: 0; overflow-wrap: anywhere; }
+  .approval-content .kind-badge { margin-left: 8px; }
+  .approval-content p { margin: 6px 0; }
+  .approval-row details { margin: 10px 0 0 34px; }
+  .approval-row summary { cursor: pointer; min-height: 32px; }
+  .approval-row textarea { box-sizing: border-box; width: 100%; min-height: 140px; padding: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; }
+  .approval-undo { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); display: flex; align-items: center; gap: 16px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 20px #0002; z-index: 30; }
+  @media (max-width: 600px) { #approval-sheet { padding: 16px; } #approval-sheet footer { bottom: -16px; } .approval-content .kind-badge { display: block; margin: 6px 0; } }
 </style>
 </head>
 <body>
@@ -1678,6 +1696,29 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
+    "Approval status": "批准状态",
+    "Task dispatch is in progress.": "正在派发任务。",
+    "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
+
+    "Approve all {n}": "批准全部 {n} 项",
+    "Open the live reader to approve: ": "在实时阅读器中批准：",
+    "Reply": "回信",
+    "Already handled": "已处理",
+    "Confirm": "确认",
+    "Save reply": "保存回信",
+    "Review reply": "查看回信",
+    "Reply saved for approval": "回信已保存，待批准",
+    "Could not approve. Try again.": "未能批准，请重试。",
+    "Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.": "回信将在 10 分钟后发送，可撤销。已处理项标为完成；任务立即排队。",
+    "Held for 10 minutes": "等待 10 分钟后发送",
+    "Task queued": "任务已排队",
+    "Task dispatched": "任务已派发",
+    "Cancelled": "已撤销",
+    "Review the result beside each item.": "请查看每项旁的结果。",
+    "{n} replies held · {time} to undo": "{n} 封回信待发送 · {time} 内可撤销",
+    "Hold ended. Delivery continues from the Host.": "撤销时间已过，由 Host 继续发送。",
+
     "Task: {promise} · since {since}": "任务：{promise} · 自 {since} 起",
     "Task": "任务",
     "Open the recorded source": "打开已记录的来源",
@@ -3586,7 +3627,7 @@ function primaryAction(entry, completion = true) {
     const source = reply?.source?.replace(/^(gmail|outlook):/, "") || "";
     const url = provider === "gmail" ? "https://mail.google.com/mail/u/0/#all/" + encodeURIComponent(thread || source)
       : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(source);
-    return el("a", {class: completion ? "btn-act" : "btn-quiet", href: url, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel})});
+    return el("a", {class: "btn-quiet", href: url, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel})});
   }
   return el("a", { class: "btn-act", href: href(r) + "&h=open-threads", text: t("Open the page") });
 }
@@ -4831,6 +4872,156 @@ function todayBrief(entries, counts, waiting) {
   section.appendChild(waitingMore(counts));
   return section;
 }
+async function approvalRequest(payload) {
+  const response = await fetch("/rem/approve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || t("Could not approve. Try again."));
+  return result;
+}
+function approvalProblems() {
+  const issues = (REM.approval_pending || []).filter(item => ["error", "sending", "scheduling", "dispatching"].includes(item.status));
+  if (!issues.length) return null;
+  return el("section", {class: "approval-problems", "aria-label": t("Approval status")}, issues.map(item => {
+    const row = el("p", {role: "status"}, [el("strong", {text: item.to || item.title || t("Task")}), " · ",
+      t(item.status === "dispatching" ? "Task dispatch is in progress." : "Delivery not confirmed. Check the provider before sending again."),
+      item.error ? " · " + item.error : ""]);
+    return item.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [row])])) : row;
+  }));
+}
+function approvalHeader() {
+  const items = REM.approval_outcomes || [];
+  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t("Approve all {n}", {n: items.length})});
+  button.disabled = !REM.live || !items.length;
+  button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
+  return el("div", {class: "approval-header"}, [button, approvalProblems(), !REM.live ? el("p", {class: "quiet-line"}, [t("Open the live reader to approve: "), el("code", {text: remCommand("open")})]) : null]);
+}
+function approvalStatus(value) {
+  return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
+}
+function openApprovalSheet(items) {
+  const bodies = {}, rows = [];
+  let busy = false;
+  const confirm = el("button", {id: "approval-confirm", type: "button", class: "btn-act", text: t("Confirm")});
+  const close = el("button", {type: "button", class: "btn-quiet", text: t("Close")});
+  const notice = el("p", {class: "quiet-line", role: "status"});
+  const list = el("div", {class: "approval-list"});
+  const dialog = el("dialog", {id: "approval-sheet", "aria-labelledby": "approval-title"}, [
+    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: items.length})}), close]),
+    el("p", {class: "quiet-line", text: t("Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.")}),
+    list, el("footer", {}, [confirm, notice])]);
+  const sync = () => {confirm.disabled = busy || !rows.some(row => row.check.checked && !row.check.disabled);};
+  for (const item of items) {
+    const check = el("input", {type: "checkbox", "aria-label": item.to || item.title || item.kind});
+    check.checked = !item.blocked;
+    check.disabled = !!item.blocked;
+    check.onchange = sync;
+    const result = el("p", {class: "approval-result quiet-line", role: "status"});
+    const content = el("div", {class: "approval-content"}, [
+      el("strong", {text: item.to || item.title}),
+      el("span", {class: "kind-badge", text: t({reply: "Reply", handled: "Already handled", task: "Task"}[item.kind] || item.kind)}),
+      item.subject ? el("p", {class: "approval-subject", text: item.subject}) : null,
+      el("p", {class: "approval-preview", text: (item.body || item.text || "").split("\n").find(line => line.trim()) || ""})]);
+    const row = el("section", {class: "approval-row"}, [el("label", {}, [check, content]), result]);
+    if (item.kind === "reply") {
+      const text = el("textarea", {"aria-label": t("Reply body")});
+      text.value = item.body || "";
+      const save = el("button", {type: "button", class: "btn-quiet", text: t("Save reply")});
+      const warning = el("p", {class: "quiet-line", role: "status", text: item.blocked ? t("Fill the marked part first") : ""});
+      const details = el("details", {open: !!item.blocked}, [el("summary", {text: t("Review reply")}), text, save, warning]);
+      // Boolean HTML attributes must be absent when false.
+      if (!item.blocked) details.removeAttribute("open");
+      save.onclick = () => {
+        const blocked = !text.value.trim() || /[\[\]［］【】]/.test(text.value);
+        warning.textContent = blocked ? t("Fill the marked part first") : t("Reply saved for approval");
+        check.disabled = blocked; check.checked = !blocked;
+        if (!blocked) {
+          bodies[item.id] = text.value;
+          content.querySelector(".approval-preview").textContent = text.value.split("\n").find(line => line.trim()) || "";
+        }
+        sync();
+      };
+      text.oninput = () => {check.checked = false; check.disabled = true; sync();};
+      row.appendChild(details);
+    }
+    rows.push({item, check, result, node: row});
+    list.appendChild(item.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [row])])) : row);
+  }
+  confirm.onclick = async () => {
+    const selected = rows.filter(row => row.check.checked && !row.check.disabled);
+    busy = true;
+    const controls = rows.flatMap(row => [row.check, ...row.node.querySelectorAll("textarea, button")]).map(node => [node, node.disabled]);
+    controls.forEach(([node]) => {node.disabled = true;});
+    confirm.disabled = true; close.disabled = true;
+    notice.textContent = t("Working…");
+    const reply = await approvalRequest({ids: selected.map(row => row.item.id), bodies}).catch(error => ({error: error.message}));
+    busy = false; close.disabled = false;
+    controls.forEach(([node, disabled]) => {node.disabled = disabled;});
+    if (reply.error) {notice.textContent = reply.error; sync(); return;}
+    const successful = new Set();
+    for (const value of reply.results) {
+      const row = rows.find(row => row.item.id === value.id);
+      if (!row) continue;
+      row.result.textContent = approvalStatus(value);
+      if (value.status === "error") continue;
+      successful.add(value.id); row.check.disabled = true;
+      row.node.querySelectorAll("textarea, button").forEach(control => {control.disabled = true;});
+      if (value.status === "done") for (const key of value.keys || []) threadStates[key] = {state: "done", at: new Date().toISOString()};
+      if (value.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === value.draft_id ? {...d, status: value.status} : d);
+      REM.approval_pending = [...(REM.approval_pending || []).filter(item => item.id !== value.id), {...row.item, ...value}];
+    }
+    REM.approval_outcomes = (REM.approval_outcomes || []).filter(item => !successful.has(item.id));
+    notice.textContent = t("Review the result beside each item.");
+    sync(); approvalUndoBar();
+  };
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => {dialog.remove(); render();});
+  if (items.some(item => item.private)) {
+    const reveal = el("button", {type: "button", class: "btn-quiet", text: t("Show labelled passages")});
+    reveal.onclick = () => {togglePrivate(); reveal.textContent = t(document.documentElement.classList.contains("hide-private") ? "Show labelled passages" : "Hide labelled passages");};
+    dialog.querySelector("header").appendChild(reveal);
+  }
+  document.body.appendChild(dialog); sync(); dialog.showModal();
+}
+let approvalTimer;
+function approvalUndoBar() {
+  clearInterval(approvalTimer);
+  document.getElementById("approval-undo")?.remove();
+  if (!REM.live) return;
+  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now());
+  if (!held.length) return;
+  const status = el("span", {role: "status"});
+  let undoFailure = "";
+  const undo = el("button", {type: "button", class: "btn-quiet", text: t("Undo")});
+  const bar = el("div", {id: "approval-undo", class: "approval-undo"}, [status, undo]);
+  document.body.appendChild(bar);
+  const tick = () => {
+    const seconds = Math.max(0, Math.ceil((Math.max(...held.map(item => Date.parse(item.release_at))) - Date.now()) / 1000));
+    status.textContent = (undoFailure ? undoFailure + " · " : "") + (seconds ? t("{n} replies held · {time} to undo", {n: held.length, time: Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")}) : t("Hold ended. Delivery continues from the Host."));
+    if (!seconds) {undo.disabled = true; clearInterval(approvalTimer);}
+  };
+  undo.onclick = async () => {
+    undo.disabled = true;
+    const reply = await approvalRequest({action: "undo", ids: held.filter(item => Date.parse(item.release_at) > Date.now()).map(item => item.id)}).catch(error => ({error: error.message}));
+    if (reply.error) {status.textContent = reply.error; undo.disabled = false; return;}
+    status.textContent = reply.results.map(approvalStatus).join(" · ");
+    for (const value of reply.results) {
+      const item = held.find(item => item.id === value.id);
+      if (value.status !== "cancelled") continue;
+      REM.approval_pending = (REM.approval_pending || []).filter(item => item.id !== value.id);
+      REM.approval_outcomes = [...(REM.approval_outcomes || []), item];
+      if (item.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === item.draft_id ? {...d, status: "prepared"} : d);
+    }
+    undoFailure = reply.results.filter(value => value.status === "error").map(approvalStatus).join(" · ");
+    const cta = document.getElementById("approve-all");
+    if (cta) {cta.textContent = t("Approve all {n}", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length;}
+    held = held.filter(item => !reply.results.some(value => value.id === item.id && value.status === "cancelled"));
+    undo.disabled = !held.length;
+    if (!held.length) clearInterval(approvalTimer);
+    else status.textContent += " · " + t("Undo failed. Try again before the hold ends.");
+  };
+  tick(); approvalTimer = setInterval(tick, 1000);
+}
+
 function briefHeader(counts, today) {
   const pass = lastPass(), day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
   const overdue = today.filter(entry => entry.t.due && entry.t.due < day).length;
@@ -4896,7 +5087,10 @@ function overview() {
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), today = todayEntries(entries);
   const shownToday = new Set(today.slice(0, 5).map(doneKey));
   const waiting = morningEntries(entries.filter(entry => !shownToday.has(doneKey(entry))));
-  main.append(briefHeader(counts, today));
+  const header = briefHeader(counts, today);
+  header.appendChild(approvalHeader());
+  main.append(header);
+  approvalUndoBar();
   // One column, one order: what needs you, then what changed, then what is worth remembering.
   const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayBrief(today, counts, waiting), morningBrief()]);
   const recall = recallPrompt(), quiet = quietThreads(entries, counts.quiet, true), review = connectionReview();

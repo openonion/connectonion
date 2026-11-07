@@ -4843,3 +4843,56 @@ def test_reader_copy_uses_one_local_date_format_and_omits_owner_and_redundant_ba
     lede = page.locator('.lede').inner_text()
     assert 'qualifying correspondents have a page' in lede
     assert 'written of' not in lede
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_approve_all_sheet_slots_results_and_undo(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(uri)
+    page.evaluate("""theme => {
+      setTheme(theme); REM.live = true;
+      REM.approval_outcomes = [
+        {id:'reply:fern', kind:'reply', to:'fern@example.test', subject:'Pilot review', body:'Friday works.', blocked:false},
+        {id:'reply:slot', kind:'reply', to:'elara@example.test', subject:'Review date', body:'【需要你：日期 — 未约定】', blocked:true},
+        {id:'handled:fern', kind:'handled', title:'Fern Vale', text:'The invite is already sent.'},
+        {id:'task:fern', kind:'task', title:'Fern Vale', text:'Review the pilot.'}];
+      render();
+    }""", theme, isolated_context=False)
+    # File snapshots use mocked requests without a live mailbox.
+    page.evaluate("""() => { window.approvalCalls = []; approvalRequest = async payload => {
+      window.approvalCalls.push(payload);
+      const release_at = new Date(Date.now() + 600000).toISOString();
+      return {release_at, results: payload.ids.map(id => ({id, status: payload.action === 'undo' ? 'cancelled' : 'held', release_at}))};
+    }; }""", isolated_context=False)
+    page.locator('#approve-all').click()
+    sheet = page.locator('#approval-sheet')
+    assert sheet.is_visible()
+    assert sheet.locator('input[type=checkbox]').count() == 4
+    assert sheet.locator('input[type=checkbox]:checked').count() == 3
+    assert sheet.locator('input[type=checkbox]:disabled').count() == 1
+    assert 'fern@example.test' in sheet.inner_text() and 'Friday works.' in sheet.inner_text()
+    slot = sheet.locator('textarea').nth(1)
+    slot.fill('Tuesday works.')
+    sheet.get_by_role('button', name='Save reply', exact=True).click()
+    assert sheet.locator('input[type=checkbox]:checked').count() == 4
+    sheet.locator('#approval-confirm').click()
+    assert sheet.locator('.approval-result').all_inner_texts() == ['Held for 10 minutes'] * 4
+    assert page.evaluate('window.approvalCalls[0].bodies["reply:slot"]', isolated_context=False) == 'Tuesday works.'
+    assert sheet.evaluate('n => n.scrollWidth <= n.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    sheet.get_by_role('button', name='Close', exact=True).click()
+    page.locator('#approval-undo button').click()
+    assert page.evaluate('window.approvalCalls[1].action', isolated_context=False) == 'undo'
+    assert 'Cancelled' in page.locator('#approval-undo').inner_text()
+
+
+def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
+    page, uri = reader
+    page.goto(uri)
+    assert page.locator('#approve-all').is_disabled()
+    assert page.locator('.approval-header code').count() == 1
+    assert 'co rem' in page.locator('.approval-header code').inner_text()
+    assert 'open' in page.locator('.approval-header code').inner_text()
+    assert page.locator('.today-thread a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0

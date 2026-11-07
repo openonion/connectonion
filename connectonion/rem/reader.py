@@ -254,6 +254,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "owner": owner}
     from .today import queue as today_queue
     data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    from . import approvals
+    data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
+    data['approval_pending'] = approvals.pending(root) if local else []
     if not local:
         for row in data['today_queue']:
             row.pop('reply', None)

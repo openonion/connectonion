@@ -153,3 +153,48 @@ def test_interface_language_waits_for_an_in_progress_notebook_write(host):
                 pending.result(timeout=0.2)
         assert pending.result(timeout=5)[0] == 200
     assert read_config(host.root)['languages'] == ['zh']
+
+
+def test_approve_endpoint_auth_validation_and_per_item_results(host, monkeypatch):
+    from connectonion.rem import approvals
+    calls = []
+    monkeypatch.setattr(approvals, 'approve', lambda root, ids, bodies=None: calls.append(ids) or {'results': [{'id': ids[0], 'status': 'held'}]})
+    monkeypatch.setattr(approvals, 'undo', lambda root, ids: {'results': [{'id': ids[0], 'status': 'cancelled'}]})
+    cookie = f'co_rem={host.token}'
+    payload = b'{"ids":["reply:fern"]}'
+    assert call(host.routes, 'POST', '/rem/approve', body=payload)[0] == 401
+    assert calls == []
+    for payload_bad in (b'{', b'[]', b'{"ids":"fern"}', b'{"ids":[1]}', b'{"ids":["fern"],"bodies":{"fern":1}}'):
+        assert call(host.routes, 'POST', '/rem/approve', cookie=cookie, body=payload_bad)[0] == 400
+    assert call(host.routes, 'POST', '/rem/approve', cookie=cookie, body=payload, content_type='text/plain')[0] == 415
+    status, _, body = call(host.routes, 'POST', '/rem/approve', cookie=cookie, body=payload)
+    assert status == 200 and json.loads(body)['results'][0]['status'] == 'held'
+    status, _, body = call(host.routes, 'POST', '/rem/approve', cookie=cookie, body=b'{"action":"undo","ids":["reply:fern"]}')
+    assert status == 200 and json.loads(body)['results'][0]['status'] == 'cancelled'
+
+
+def test_host_approval_clock_releases_outbox_and_dispatches_through_session_path(host, monkeypatch):
+    import asyncio
+    import threading
+    from connectonion.network.host.rem_http import approval_tick
+    from connectonion.rem import approvals, service
+    called, completed = [], threading.Event()
+    def input_handler(factory, storage, prompt, ttl, session):
+        called.append((prompt, session))
+        completed.set()
+        return {'status': 'done'}
+    def release(root, *, at, dispatch):
+        assert root == host.root
+        receipt = dispatch({'id': 'task:fern', 'text': 'Review the pilot.'})
+        assert receipt == {'session_id': 'rem-approval-fern'}
+        return []
+    monkeypatch.setattr(approvals, 'release', release)
+    from importlib import import_module
+    monkeypatch.setattr(import_module('connectonion.network.host.http_router'), 'input_handler', input_handler)
+    async def run():
+        tick = approval_tick(host.root, None, None, 60)
+        await tick(service.now())
+        assert await asyncio.to_thread(completed.wait, 2)
+    asyncio.run(run())
+    assert 'Review the pilot.' in called[0][0]
+    assert called[0][1] == {'session_id': 'rem-approval-fern'}

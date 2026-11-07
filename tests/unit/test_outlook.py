@@ -1223,8 +1223,8 @@ class TestOutlookReplyPositionalCompatibility:
         from connectonion.useful_tools.outlook import Outlook
 
         params = inspect.signature(Outlook.reply).parameters
-        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc", "reply_all", "draft"]
-        for name in ("attachments", "cc", "bcc", "reply_all"):
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc", "reply_all", "draft", "return_receipt"]
+        for name in ("attachments", "cc", "bcc", "reply_all", "return_receipt"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
