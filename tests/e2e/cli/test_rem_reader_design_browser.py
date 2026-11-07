@@ -1714,6 +1714,7 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     assert page.locator('.missing .lead').inner_text() == 'Page pending — background updates off'
     assert page.locator('.missing').get_attribute('class') == 'missing'
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
+    page.locator('details.deep-note > summary').click()  # render() closes the disclosure again
     assert page.locator('.missing .lead').inner_text() == 'Unresolved sections queued for a future pass'
     page.goto(uri + '#r=people%2Fquinn-alder.md')
     assert page.locator('.missing .names').inner_text().endswith('sections will be written when it is investigated.')
