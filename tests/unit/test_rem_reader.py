@@ -2840,7 +2840,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
       const mailtoLink = () => ({text: 'compose is not a thread'}), fmtDate = day => day;
       const states = ['queued', 'unarchived', 'task'].map(state => {
         REM.today_queue = [{key: 'fern', keys: ['fern'], reply: {state, provider: 'outlook', thread: 'mail:outlook:demo',
-          source: 'outlook:demo', promise: 'watch the demo and send feedback', since: '2026-11-01'}}];
+          source: 'outlook:demo', last_word_yours: state === 'task', promise: 'watch the demo and send feedback', since: '2026-11-01'}}];
         return {state, note: draftNote(null, entry), action: primaryAction(entry)};
       });
       console.log(JSON.stringify(states));
@@ -2851,7 +2851,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
     assert 'Outlook' in missing['note']['text']
     assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing['note']['text']
     assert ('尚未归档' if language == 'zh' else 'not archived') in missing['note']['text']
-    assert ('任务' if language == 'zh' else 'task') in task['note']['text']
+    assert ('这是一件事，不是回信' if language == 'zh' else 'this is a task, not a reply') in task['note']['text']
     assert 'watch the demo and send feedback' in task['note']['text'] and '2026-11-01' in task['note']['text']
     for row in (missing, task):
         assert row['action']['text'] == ('打开 Outlook 原会话' if language == 'zh' else 'Open the Outlook thread')

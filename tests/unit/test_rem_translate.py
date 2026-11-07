@@ -595,13 +595,17 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
     assert len(calls) == attempts
 
 
-def test_daily_rechecks_runner_budget_after_a_translation_repair(notebook, monkeypatch):
+def test_daily_rechecks_translation_budget_after_a_repair(notebook, monkeypatch):
+    import os
     from connectonion.rem.config import read_config, set_config
     from connectonion.rem.daily import _translate_changed
-    records = ['people/avery-lin.md', 'people/mara-ostrowski.md']
-    for record in records:
+    records = ['people/avery-lin.md', 'people/mara-ostrowski.md', 'people/fern.md']
+    for index, record in enumerate(records):
         (notebook / record).write_text('# Avery Lin\n\nA draft [12].\n')
-    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '2', 'limits.runner_calls_per_day', '2'])
+        os.utime(notebook / record, (100 - index, 100 - index))
+    # Translations now have their own cap. Repairs spend that cap immediately,
+    # regardless of the smaller investigation allowance; newest pages go first.
+    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '3', 'limits.runner_calls_per_day', '1'])
     calls = []
 
     def run(workspace, *args):
@@ -613,9 +617,9 @@ def test_daily_rechecks_runner_budget_after_a_translation_repair(notebook, monke
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     maintenance = {}
     _translate_changed(notebook, read_config(notebook), maintenance, records, None, lambda text: None)
-    assert maintenance['translations']['pages'] == [{'page': records[0], 'outcome': 'translated'}]
-    assert len(calls) == 2
-    assert tr.cached(notebook, records[1], 'zh') is None
+    assert maintenance['translations']['pages'] == [{'page': record, 'outcome': 'translated'} for record in records[:2]]
+    assert len(calls) == tr.attempts_today(notebook) == 3
+    assert tr.cached(notebook, records[2], 'zh') is None
 
 
 def test_issue_numbers_at_line_start_are_prose_not_headings():

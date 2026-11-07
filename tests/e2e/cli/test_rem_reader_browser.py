@@ -473,8 +473,8 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
     monkeypatch.setattr(service, 'mail_available', lambda kind: False)
     write_json(state_path(root, 'map.json'), {'owner': {'record': 'people/owner.md', 'addresses': ['owner@example.test']}})
     book = Notebook(root)
-    book.write('people/owner.md', '# Avery\n')
-    for index, (name, provider) in enumerate([('Fern', 'gmail'), ('Mara', 'gmail'), ('Hazel', 'outlook'), ('Nova', 'gmail')]):
+    book.write('people/owner.md', '# Ellis\n')
+    for index, (name, provider) in enumerate([('Fern', 'gmail'), ('Mara', 'gmail'), ('Hazel', 'outlook'), ('Nova', 'gmail'), ('Avery', 'outlook')]):
         book.write(f'people/{index}-{name.lower()}.md', f'# {name}\n\n## Facts\n- Email: {name.lower()}@example.test\n\n'
                    f'## Open threads\n- You owe {name} a demo review; due 2026-11-08. [1]\n\n'
                    f'## Sources\n- [1] {provider}:{name.lower()}\n')
@@ -485,6 +485,10 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
     retain_message(root, 'gmail', {'id': 'promise', 'from': 'owner@example.test', 'to': ['mara@example.test'],
                    'subject': 'Demo review', 'thread': 'mara', 'date': '2026-11-07T02:00:00+00:00'},
                    "I'll watch the demo and send feedback.", fetched_at=moment.isoformat())
+    retain_message(root, 'outlook', {'id': 'answered', 'from': 'owner@example.test', 'to': ['avery@example.test'],
+                   'subject': 'Demo review', 'thread': 'avery', 'date': '2026-11-07T02:00:00+00:00'},
+                   '--- Email Body ---\nHi Avery,\nFriday works. I have sent a calendar invite.\n'
+                   'https://example.test/invite\nThanks,\nEllis\n> Please choose a time.', fetched_at=moment.isoformat())
     refresh(root)
     row = next(row for row in drafts.queue(root) if row['to'] == 'fern@example.test')
     drafts.promote(root, {**row, 'body': 'Hello Fern,\n\nThe demo is clear. 【需要你：演示反馈 — date not agreed】',
@@ -525,11 +529,21 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         task = cards.filter(has=page.locator('.today-who', has_text='Mara'))
         missing = cards.filter(has=page.locator('.today-who', has_text='Hazel'))
         queued = cards.filter(has=page.locator('.today-who', has_text='Nova'))
+        answered = cards.filter(has=page.locator('.today-who', has_text='Avery'))
         assert letter.locator('.owner-slot').count() == 1
         assert ('需要你填' if language == 'zh' else 'Fill in') in letter.locator('.owner-slot').inner_text()
         assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
-        assert '2026-11-07' in task.locator('.draft-reason').inner_text()
-        assert task.locator('.kind-badge').inner_text() == ('任务' if language == 'zh' else 'Task')
+        display_date = page.evaluate("fmtDate('2026-11-07')", isolated_context=False)
+        assert display_date in task.locator('.draft-reason').inner_text()
+        assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert answered.locator('.kind-badge').inner_text() == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
+        assert answered.locator('.btn-act').inner_text() == ('标为完成' if language == 'zh' else 'Mark done')
+        assert answered.locator('a.btn-quiet').get_attribute('href').endswith('/answered')
+        answer_note = answered.locator('.draft-reason').inner_text()
+        assert 'Friday works. I have sent a calendar invite.' in answer_note
+        assert ('已回复' if language == 'zh' else 'replied') in answer_note
+        assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
         assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
         assert missing.locator('.btn-act').inner_text() == ('打开已记录的来源' if language == 'zh' else 'Open the recorded source')
         assert ('今晚' if language == 'zh' else 'tonight') in queued.locator('.draft-reason').inner_text()

@@ -34,7 +34,10 @@ def test_both_themes_define_every_colour_token():
 
 def test_the_template_names_no_remote_host_and_loads_no_font():
     page = TEMPLATE.read_text(encoding="utf-8")
-    assert not re.search(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)
+    # Explicit navigation to the original mail is allowed; remote assets are not.
+    assert set(re.findall(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)) == {
+        'https://mail.google.com', 'https://outlook.live.com'}
+    assert not re.search(r'(?:src\s*=\s*["\']|fetch\(["\'])https?://', page)
     assert "@font-face" not in page and "@import" not in page and "<link" not in page
 
 

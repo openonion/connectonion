@@ -43,8 +43,46 @@ def _dates(text, today):
     return (moved[1] if moved else requested[1] if requested else max(days, default='')), due
 
 
+def _owner_words(body):
+    from .languages import own_words
+    # Mail adapters may wrap the body in headers; cut these before quoted history.
+    body = re.split(r'^\s*(?:-{2,}\s*(?:Email|Message) Body\s*-{2,}|邮件正文[:：])\s*$', body,
+                    maxsplit=1, flags=re.I | re.M)[-1]
+    body = own_words(body)
+    body = re.split(r'^\s*(?:>|On\b[^\n]*\bwrote:|发件人[:：]|Sent from my\b|Get Outlook for\b)',
+                    body, maxsplit=1, flags=re.I | re.M)[0]
+    body = re.split(r'^\s*(?:--\s*|(?:thanks|thank you|best(?: regards)?|kind regards|regards|cheers|谢谢|此致)[,，!！]?\s*)$',
+                    body, maxsplit=1, flags=re.I | re.M)[0]
+    body = re.sub(r'\[([^\]]+)\]\(https?://[^)]+\)', r'\1', body)
+    body = re.sub(r'<?(?:https?://|www\.)[^\s<>]+>?', '', body)
+    body = re.sub(r'^\s*(?:hi|hello|dear)\s+[^\n,，]{1,60}[,，]\s*', '', body, count=1, flags=re.I)
+    return ' '.join(body.split()).strip()
+
+
+def _owner_quote(body):
+    words = _owner_words(body)
+    sentences = re.split(r'(?<=[.!?。！？])(?:\s+|(?=[\u4e00-\u9fff]))', words)
+    quote = ' '.join(sentences[:2])
+    if len(quote) <= 90:
+        return quote
+    cut = quote[:90]
+    # Latin words stay whole; unspaced Chinese still gets a bounded excerpt.
+    if quote[89:91].isascii() and not quote[90].isspace() and ' ' in cut:
+        cut = cut.rsplit(' ', 1)[0]
+    return cut.rstrip(' ,;:') + '…'
+
+
+def _future_commitment(words):
+    # Only a first-person future commitment (or sentence-initial "Will send")
+    # makes work pending. Ignore third-person "will", negatives and reporting cues;
+    # mailbox history/signatures are removed before this rule reads the owner's words.
+    return bool(re.search(r"(?<!said )(?<!says )(?<!wrote )\bI(?:['’]ll| will)\s+(?!(?:not|never)\b)\w+|"
+                          r'(?:^|[.!?。！？,，]\s*)will\s+(?:send|review|watch|check|share|prepare|write|finish|follow up)\b|'
+                          r'我(?:会(?!不)|(?:下周|下星期|明天|后天|稍后|之后|周[一二三四五六日天]))', words, re.I))
+
+
 def _reply(root, sources, text, owner, db, direction):
-    from .reader_model import _cited_row, _clip
+    from .reader_model import _cited_row
     from .store_messages import archived_message
     for number in census.CITATION.findall(text):
         source = sources.get(number, '')
@@ -61,9 +99,9 @@ def _reply(root, sources, text, owner, db, direction):
         saved = archived_message(root, dict(latest)) or {}
         result.update(thread=latest['thread'], source=latest['id'], since=(latest['time'] or '')[:10])
         if latest['sender'].casefold() in owner:
-            from .languages import own_words
-            return {**result, 'state': 'task', 'last_word_yours': True,
-                    'promise': _clip(' '.join(own_words(saved.get('body') or '').split()) or text)}
+            body = saved.get('body') or ''
+            return {**result, 'state': 'task' if _future_commitment(_owner_words(body)) else 'replied',
+                    'last_word_yours': True, 'promise': _owner_quote(body)}
         if isinstance(saved.get('body'), str):
             from .mail import _address, _addresses
             if _address(saved.get('reply_to') or saved.get('from', '')) and owner.intersection(
@@ -129,6 +167,15 @@ def _grouped(rows):
     return result
 
 
+def _recorded_names(record):
+    title = record.get('title') or record['text'].splitlines()[0].lstrip('# ')
+    aliases = re.findall(r'^\s*-?\s*(?:also known as|aka|别名)[:：]\s*(.*)$',
+                         '\n'.join(record['text'].splitlines()[:40]), re.I | re.M)
+    names = [title, *re.findall(r'\(([^()]*)\)', title),
+             *(part for line in aliases for part in re.split(r'[,;、]', census.CITATION.sub('', line)))]
+    return [census._obligation_words(re.sub(r'\s*\([^()]*\)$', '', name.strip().strip('`'))) for name in names]
+
+
 def _named_elsewhere(row, records):
     if not row['record'].startswith('people/') or len(row['keys']) > 1:
         return False
@@ -136,14 +183,16 @@ def _named_elsewhere(row, records):
     if not named:
         return False
     words = census._obligation_words(named[1])
-    names = [(record['path'], census._obligation_words(record.get('title') or record['text'].splitlines()[0].lstrip('# ')))
+    names = [(record['path'], _recorded_names(record))
              for record in records if record['path'].startswith('people/')]
-    full = [(path, name) for path, name in names if words.startswith(name + ' ')]
-    if full:
-        longest = max(len(name) for _, name in full)
-        matches = [path for path, name in full if len(name) == longest]
-    else:
-        matches = [path for path, name in names if name and words.startswith(name.split()[0] + ' ')]
+    # Titles nominate a counterpart; aliases can make that identity ambiguous,
+    # but an alias alone must never move an obligation onto another page.
+    full = [variants[0] for _, variants in names if ' ' in variants[0] and words.startswith(variants[0] + ' ')]
+    longest = max(map(len, full), default=0)
+    nominated = {name for name in full if len(name) == longest} if full else {
+        variants[0].split()[0] for _, variants in names if variants[0] and words.startswith(variants[0].split()[0] + ' ')}
+    matches = [path for path, variants in names if any(
+        (name if full else name.split()[0]) in nominated for name in variants if name)]
     return len(matches) == 1 and matches[0] != row['record']
 
 

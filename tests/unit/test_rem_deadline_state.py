@@ -22,13 +22,27 @@ def test_deadline_survives_age_only_quiet_grouping(since, due, quiet):
     assert _quiet(text, date(2026, 10, 20)) is quiet
 
 
-def test_reader_keeps_old_deadlines_in_active_counts_and_today():
+def test_reader_keeps_old_deadlines_in_active_counts_and_today(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.today import queue
+    prepare(tmp_path)
+    original = ('## Open threads\n'
+                '- You owe a draft since 2026-07-01; due 2026-10-15.\n'
+                '- You owe a review since 2026-07-01; due 2026-10-20.\n'
+                '- You owe a letter since 2026-07-01; due 2026-10-23.\n'
+                '- You owe a plan since 2026-07-01; due 2026-10-24.\n'
+                '- You owe an undated reply since 2026-07-01.\n')
+    # Python now chooses Today; the reader must retain its dates and done filter.
+    rows = queue(tmp_path, records=[{'path': 'people/avery.md', 'text': '# Avery\n\n' + original, 'title': 'Avery'}], as_of=date(2026, 10, 20))
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'rawSection', 'todayEntries', 'threadCounts']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
-    result = _run_reader_js(functions + r'''
+    import json
+    result = _run_reader_js(functions + 'const queue = ' + json.dumps(rows) + ';\n' + r'''
       const REM = {as_of:'2026-10-20'}, DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
+      REM.today_queue = queue;
+      const doneKey = entry => entry.r.path + '\n' + entry.t.originalText;
       const calendarDay = day => day, direction = () => 'mine';
       const daysSince = day => (Date.parse(REM.as_of) - Date.parse(day)) / DAY_MS;
       const original = '## Open threads\n' +
