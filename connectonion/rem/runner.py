@@ -440,6 +440,10 @@ def page_kind_of(record: str) -> str:
 
 def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", *, native=False) -> str:
     """Let co ai load the stage Skill once; supply only its composed additions."""
+    source_kinds = {item.get("source_kind", "") for item in items if item.get("role") == "original"}
+    if not kind:
+        kind = next((item["source_kind"] for item in items if item.get("role") == "original"
+                     and item.get("source_kind") in source_kinds), "")
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = page_kind_of(record)
     if stage == "maintain" and any(item.get("role") == "extract" for item in items):
@@ -447,6 +451,7 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", 
         # or WhatsApp store the user's words was the extract turn's concern.
         # Appended anyway, it took a one-page turn to 17.5k characters (#2000).
         kind = ""
+        source_kinds.clear()
     one_page = stage in ONE_PAGE_STAGES or (stage == "maintain" and any(item.get("one_page") for item in items))
     owner = any(i.get("role") == "page" and i.get("owner") for i in items)
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
@@ -1225,6 +1230,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text = resolve_sources(notebook.root, record, after[record])
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
             restore_missing_facts(record, restore_runner_fields(record, text, original), original))))
+        if any(item.get("source_kind") == "granola" for item in items):
+            from .granola_imports import canonical_sources
+            text = canonical_sources(text)
         text, dropped = drop_unresolved(record, text, original, items, pages=set(before),
                                         root=notebook.root)
         unverified = []

@@ -2119,9 +2119,14 @@ def make_rem_app(factory):
         from ...rem.service import set_window, toggle_source
 
         def operation(root):
+            if name == "granola" and (since or only or force):
+                from ...rem.files import RemError
+                raise RemError("Granola consumes an approved bounded folder scope; --since/--only/--force do not apply")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
+            if name == "granola":
+                return result, ["init", "--no-investigate", "--no-start"]
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             if chat:
@@ -2140,6 +2145,19 @@ def make_rem_app(factory):
             return {"subscription": name, "enabled": bool(source.get("enabled")),
                     **({"chats": source.get("chats") or []} if chat else {})}, ["sources"]
         _handle(ctx, operation, ["sources"])
+
+    @sources_app.command("connect", cls=V("co rem sources connect"))
+    def connect_source(ctx: typer.Context, name: str = typer.Argument(""),
+                       config: Optional[Path] = typer.Option(None, "--config")):
+        """Choose and save a source scope; no body reads or model calls before REM approval."""
+        from ...rem.remote_sources import connect, KINDS
+        from ...rem.remote_wizard import interactive
+        if not name:
+            if config is not None or not interactive():
+                raise typer.BadParameter("Choose NAME; scripts also require --config FILE")
+            from click import Choice
+            name = typer.prompt("Connect source", type=Choice(KINDS))
+        _handle(ctx, lambda root: (connect(root, name, config), ["init", "--no-start"]), ["sources"])
 
     @sources_app.command("add", cls=V("co rem sources add"))
     def add_source(ctx: typer.Context, name: str = typer.Argument(...),
