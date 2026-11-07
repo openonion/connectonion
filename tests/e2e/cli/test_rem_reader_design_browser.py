@@ -58,7 +58,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
                 page.locator(".nav-toggle").click()
             page.locator(".reader-settings > summary").click()
             assert "investigate 'projects/journal.md'" in page.locator(".reader-settings .cmd").inner_text()
-            assert page.get_by_role("button", name="Copy the command").is_visible()
+            assert page.get_by_role("button", name="Copy the command", exact=True).is_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
         browser.close()
