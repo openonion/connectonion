@@ -37,7 +37,7 @@ def rem_setup(tmp_path, monkeypatch, rem_clock):
     monkeypatch.setattr(service, "mail_client", lambda *a, **kw: pytest.fail("mail body read"))
     monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
     installed = Mock(return_value={"scheduler": "launchd"})
-    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(install=installed))
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(install=installed, installed=lambda root: False))
     monkeypatch.setattr(init_commands, "handle_global_init", lambda **kw: None)
     return tmp_path / ".co/rem", installed
 
