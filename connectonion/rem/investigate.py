@@ -698,48 +698,6 @@ def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None
         return _patient(client.get_email_body, message_id)
 
 
-def _download(client, email_id: str, folder: str):
-    """The two mailboxes save attachments through different doors.
-
-    Outlook: `download_attachments(email_id, out_dir)` -> list of paths.
-    Gmail (its mailbox mixin): `download_attachments(email_id, directory, *,
-    all_attachments=...)` -> a result dict, because it also reports partial
-    saves and budget stops. Both are asked the way they expect.
-    """
-    import inspect
-    parameters = inspect.signature(client.download_attachments).parameters
-    if "all_attachments" in parameters:
-        return client.download_attachments(email_id, folder, all_attachments=True)
-    return client.download_attachments(email_id, folder)
-
-
-def _attachment_files(client, kind: str, message_id: str, attachments_dir: Path) -> tuple[str, list[str], str]:
-    """A message's saved attachments, asking the provider only the first time."""
-    short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
-    folder = attachments_dir / kind / short
-    done = folder / ".fetched"
-    if done.is_file():
-        return short, sorted(str(p) for p in folder.iterdir() if p.is_file() and p.name != ".fetched"), ""
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-        with _fetch_slot(kind):
-            paths = _saved_paths(_patient(_download, client, message_id, str(folder))) or []
-    except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-        return short, [], type(error).__name__
-    done.touch()
-    return short, paths, ""
-
-
-def _saved_paths(result) -> list[str]:
-    """Whatever a download returned, the files that are now on disk."""
-    if isinstance(result, dict):
-        # Gmail's mixin: {'items': [{'status': 'saved', 'path': ...} | {'status': 'failed', ...}],
-        # 'complete': bool}. A row without a path was not saved; it is not a file.
-        return [str(row["path"]) for row in result.get("items") or []
-                if isinstance(row, dict) and row.get("path") and row.get("status", "saved") == "saved"]
-    return [str(f) for f in (result or [])]
-
-
 def _matches(row: dict, handles: list[str], mine: set) -> bool:
     haystack = " ".join([correspondent(row, mine), str(row.get("from", "")), str(row.get("to", "")),
                          str(row.get("subject", ""))]).lower()
@@ -851,22 +809,28 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached = 0
 
+        def attachment_metadata(message_id: str) -> list[dict]:
+            with _fetch_slot(kind):
+                return _patient(client.list_attachments, message_id)
+
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
-                            fetched=None) -> None:
+                            metadata=None) -> None:
             nonlocal attached
-            if attachments_dir is None or not hasattr(client, "download_attachments"):
+            if attachments_dir is None or not hasattr(client, "list_attachments"):
                 return
-            from .attachments import extract_text
-            short, paths, error = fetched or _attachment_files(client, kind, message_id, attachments_dir)
-            if error:
-                coverage.append(f"{kind}:{short}: attachments could not be saved ({error})")
-            for saved in paths:
-                attached += 1
-                items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
-                              "subject": f"{subject} — {Path(saved).name}",
-                              "text": extract_text(Path(saved), limit=None), "file": saved,
-                              "source": f"{kind}:{short}:{Path(saved).name}",
-                              **({"relationship_scope": scope} if scope else {})})
+            if metadata is None:
+                metadata = attachment_metadata(message_id)
+            if not metadata:
+                return
+            attached += len(metadata)
+            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+            items.append({"role": "attachments-index", "speaker": sender, "timestamp": stamp,
+                          "subject": subject, "attachments": metadata,
+                          "reference": f"{kind}:{message_id}",
+                          "source": f"investigation:attachments-index:{kind}:{short}",
+                          "text": json.dumps({"mail_id": message_id, "provider": kind,
+                                              "attachments": metadata}, ensure_ascii=False),
+                          **({"relationship_scope": scope} if scope else {})})
 
         intervals = [(start, end)]
         if archived and kind in cached_by_provider and kind in complete_kinds:
@@ -882,16 +846,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
             else:
                 coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
-                                "attachments unavailable without provider")
+                                "attachment metadata unavailable without provider")
             continue
-        # One server call per archived mail, in sequence, was most of a heavy
-        # page's 15-minute gather (2026-10-08); fetched once, then read from disk.
-        if attachments_dir is not None and hasattr(client, "download_attachments") and local:
+        if attachments_dir is not None and hasattr(client, "list_attachments") and local:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                found = pool.map(lambda item: _attachment_files(client, kind, item["_mail_id"], attachments_dir), local)
-                for item, fetched in zip(local, found):
+                metadata = pool.map(attachment_metadata, (item["_mail_id"] for item in local))
+                for item, listed in zip(local, metadata):
                     add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
-                                    item.get("relationship_scope", ""), fetched)
+                                    item.get("relationship_scope", ""), listed)
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
@@ -972,7 +934,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     continue
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
+                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses) else ""
                 thread = r.get("thread_id") or r.get("thread") or ""
                 items.append({"role": "user" if own else "other", "speaker": r["from"],
                               "text": body, "timestamp": str(r["date"]),
@@ -988,7 +950,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
-                        + f", {attached} attachments read")
+                        + f", {attached} attachments indexed")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:
             # Say it. A mailbox left out used to vanish from coverage, so the model

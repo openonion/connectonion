@@ -891,7 +891,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None, native=False, report="", draft_only=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
-                              drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              drop_owner_addresses, drop_foreign_identifiers, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
@@ -1028,6 +1028,13 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = drop_empty_owner_section(text, owner=record == owner.get("record"))
     text = merge_insight_shapes(text)
     text = timezone_from_location(record, text)
+    text, foreign_ids = drop_foreign_identifiers(notebook, record, text)
+    if foreign_ids:
+        cleared_facts.add('Legal entity')
+    if carried:
+        carried, stripped_ids = drop_foreign_identifiers(notebook, record, carried)
+        if stripped_ids:
+            carried = drop_uncited_sources(carried)
     text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
@@ -1125,6 +1132,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
+                   "foreign_identifiers_removed": foreign_ids,
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "restored_lines": restored_lines,
                    "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,

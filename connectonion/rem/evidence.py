@@ -166,7 +166,8 @@ def _research_source(source: str) -> None:
     if url.hostname and (url.hostname == "linkedin.com" or url.hostname.endswith(".linkedin.com")):
         raise RemError("LinkedIn pages must not be opened; cite a saved search result instead")
     native = re.fullmatch(r"(?:gmail|outlook|lark|github|codex|claude-code):\S+", source)
-    if not native and (url.scheme not in ("http", "https") or not url.hostname):
+    attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:[^/\\\r\n]+", source)
+    if not native and not attachment and (url.scheme not in ("http", "https") or not url.hostname):
         raise RemError("Research captures need an HTTP(S) URL or a native read-only source ID")
 
 
@@ -206,6 +207,9 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
         if captures:
             contexts[source] = {"excerpt": "\n\n".join(dict.fromkeys(item["text"] for item in captures)),
                                 "truncated": False}
+            attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:([^/\\\r\n]+)", source)
+            if attachment:
+                contexts[source].update(source="attachment", filename=attachment[1], subject=attachment[1])
     return contexts
 
 

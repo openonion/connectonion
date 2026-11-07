@@ -718,6 +718,49 @@ def number_inline_sources(text: str) -> str:
     return head + marker + sources + ('\n' + rest if rest else '')
 
 
+ENTITY_IDENTIFIER = re.compile(
+    r'\b(?:ABN|ACN|company (?:number|no\.?)|registration number)[:# \t]*'
+    r'([A-Z]?\d(?:[ \t-]?\d){5,13})(?!\d)', re.I)
+
+
+def drop_foreign_identifiers(notebook, record: str, text: str) -> tuple[str, list[str]]:
+    """An organisation's registered identifiers belong only on its own page."""
+    from .investigate import company_owner, org_domains
+
+    foreign = set()
+    for other in notebook.list('orgs'):
+        if other == record:
+            continue
+        legal = re.search(r'^- Legal entity: (.*)$', notebook.read(other), re.M)
+        if legal:
+            foreign.update(re.sub(r'\W', '', m[1]).casefold() for m in ENTITY_IDENTIFIER.finditer(legal[1]))
+    if record.startswith('orgs/') and notebook.path(record).is_file():
+        current = notebook.read(record)
+        legal = re.search(r'^- Legal entity: (.*)$', current, re.M)
+        if legal and company_owner(notebook, org_domains(current)):
+            # A pre-existing wrong copy must not strip the rightful owner's page.
+            foreign.difference_update(re.sub(r'\W', '', m[1]).casefold()
+                                      for m in ENTITY_IDENTIFIER.finditer(legal[1]))
+    head, marker, sources = text.partition('\n## Sources\n')
+    kept, removed = [], []
+    for line in head.splitlines(keepends=True):
+        matches = [m[0] for m in ENTITY_IDENTIFIER.finditer(line)
+                   if re.sub(r'\W', '', m[1]).casefold() in foreign]
+        if not matches:
+            kept.append(line)
+            continue
+        removed.extend(matches)
+        for value in matches:
+            line = line.replace(value, '')
+        line = re.sub(r'[ \t]*;[ \t]*(?=\[W?\d+\]|$)', ' ', line)
+        content = CITATION.sub('', line).strip(' -*;\r\n')
+        if content == 'Legal entity:':
+            line = '- Legal entity: Unknown\n'
+        if content:
+            kept.append(line)
+    return ''.join(kept) + marker + sources, sorted(set(removed))
+
+
 IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
 
 
@@ -901,14 +944,15 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
-CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
+CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:attachments-index", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
                    "investigation:original-evidence", "investigation:timeline", "investigation:earlier-insights",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
 def _known_sources(items: list[dict]) -> set:
-    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
+    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'
+             and i.get('role') != 'attachments-index'}
     # Fact extraction reads all gathered mail before a quick turn samples it.
     # A restored field may cite mail outside that sample; its provenance is in
     # the facts item even though the raw mail is absent from this turn.
@@ -1021,7 +1065,7 @@ def resolve_sources(root: Path, record: str, text: str) -> str:
 
 
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
-    if PRIVATE_STORE.search(value):
+    if PRIVATE_STORE.search(value) or value.strip().startswith('investigation:attachments-index:'):
         return False
     if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
         from .project_pages import live_source_snapshot

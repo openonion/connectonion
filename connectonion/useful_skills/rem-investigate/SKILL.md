@@ -52,6 +52,17 @@ its question and next search. Coverage belongs in the reply.
   a mail search when the mailbox may hold more. Pivot until the picture is whole.
 - **Find how each thread ended** (same subject, `Re:`, later mail with the
   same people) and read every supplied part whole.
+- **Choose attachments from `attachments-index` before downloading.** Read those
+  bearing on terms, money or identity with `co gmail download` / `co outlook download`
+  (read `--help` first). Gmail can select `--attachment <id>`; Outlook downloads
+  the chosen message's files. Use the full mail ID in the index, save inside the
+  task directory, and read the relevant document whole. Cite it as
+  `gmail:<short mail id>:<filename>` or `outlook:<short mail id>:<filename>`;
+  the short ID is the final component of the index's source ID. Save extracted
+  text under `web/` and register that exact citation ID in `web/sources.json`,
+  as for other CLI captures. The index alone is not evidence. In the final
+  lead ledger, record each PDF and DOCX as cited or skipped with a reason,
+  including files a tool could not download or read.
 - **Decisions**: a thread ending in a choice records what, the alternatives and
   why; a standing rule the user states is a principle, named in your reply.
 - Unknown stays Unknown without evidence: search local mail archives and

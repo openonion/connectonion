@@ -429,13 +429,13 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            own_domain = org_member(snapshot, domains, own | notices)
+            own_domain = org_member(snapshot, domains, own)
             if keep(snapshot):
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     if include_observed:
-        snapshots = _domain_observations(root, domains, snapshots, keep, own | notices)
+        snapshots = _domain_observations(root, domains, snapshots, keep, own)
     return _material(manifest, snapshots)
 
 

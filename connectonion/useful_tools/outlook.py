@@ -521,6 +521,20 @@ class Outlook:
 
         return "\n".join(output)
 
+    def list_attachments(self, email_id: str) -> list[dict]:
+        """List attachment names, MIME types and byte sizes without fetching file content."""
+        endpoint = f"/me/messages/{email_id}/attachments"
+        params = {"$select": "id,name,contentType,size"}
+        rows = []
+        while endpoint:
+            result = self._request("GET", endpoint, params=params)
+            rows.extend({"id": row["id"], "filename": row.get("name", ""),
+                         "mime_type": row.get("contentType", "application/octet-stream"),
+                         "size": row.get("size")} for row in result.get("value", []))
+            endpoint = result.get("@odata.nextLink", "").replace(self.GRAPH_API_URL, "")
+            params = None
+        return rows
+
     def download_attachments(self, email_id: str, out_dir: str = ".",
                              include_inline: bool = False) -> list[str]:
         """Save an email's file attachments to disk.

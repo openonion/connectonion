@@ -417,3 +417,20 @@ def test_a_mailbox_error_other_than_a_deleted_message_still_fails_the_read():
 
     with pytest.raises(HttpError):
         collect_mail(subscription(), {}, 10, 100000, Down([mail(1, "2026-09-02T09:00:00+00:00")]), now=NOW)
+
+
+@pytest.mark.parametrize('subject', ['Invoice 42', 'Receipt for pilot', 'Tax invoice', 'ABN details',
+                                    'Billing update', 'Payment received'])
+def test_org_mail_admits_domain_billing_notices(subject):
+    from connectonion.rem.mail import org_mail
+    row = {'from': 'billing@lantern.example', 'to': ['me@example.org'], 'subject': subject}
+    assert org_mail(row, ['lantern.example'], {'me@example.org'}, {'billing@lantern.example'}, set(), set())
+
+
+@pytest.mark.parametrize('sender,subject', [('billing@other.example', 'Invoice for lantern.example'),
+    ('billing@lantern.example', 'News from our team'), ('billing@notlantern.example', 'Payment received'),
+    ('billing@lantern.example', 'Cabinet updates')])
+def test_org_mail_does_not_admit_unrelated_notices(sender, subject):
+    from connectonion.rem.mail import org_mail
+    row = {'from': sender, 'to': ['me@lantern.example'], 'subject': subject}
+    assert not org_mail(row, ['lantern.example'], {'me@lantern.example'}, {sender}, set(), set())
