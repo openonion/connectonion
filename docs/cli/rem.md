@@ -636,6 +636,10 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 
+The local live reader reuses its rendered snapshot until notebook files change,
+including pages, retained sources, translations and state. Reload after an edit
+shows the updated notebook; repeated requests do not rebuild unchanged content.
+
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
@@ -743,8 +747,12 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   even when they were absent from the older map. Cited mail bodies show up to
   4,096 characters, retained coding inputs up to 4,096, and repository
   snapshots up to 65,536, with truncation
-  marked. Cited conversations show up to twelve recent archived
-  messages with the total count. Excerpts labelled `[personal]` or
+  marked. Cited conversations show the cited message, highlighted, with up to
+  two archived messages before and after it. Each page shows only windows around
+  its own citations, even when other pages cite the same conversation. Navigation
+  closes an open source dialog. Mail headers stay visible while the body scrolls
+  to a highlighted passage. Dates use one format in the notebook’s time zone.
+  The owner remains accessible through **You**, outside the People list. Excerpts labelled `[personal]` or
   `[sensitive]` appear only in the reader on this computer (the snapshot and
   the local live reader), behind **Hide labelled passages**; the O Chat view
   never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never

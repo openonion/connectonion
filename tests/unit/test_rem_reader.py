@@ -551,7 +551,7 @@ def test_unquoted_inline_html_never_parses_a_dom():
 def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["blockerTag", "threadAge", "dueLabel", "threadDate", "age", "daysSince"])
+                          for name in ["blockerTag", "threadAge", "dueLabel", "threadDate", "fmtDate", "age", "daysSince"])
     cases = [
         {"text": "Please review the draft.", "since": "2026-10-17"},
         {"text": "This blocks the launch.", "since": "2026-10-17"},
@@ -568,7 +568,7 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
         'console.log(JSON.stringify(' + json.dumps(cases)
         + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
     ]))
-    assert [row["age"] for row in result] == ["3 days"] * 5 + ["due 23 Oct", "overdue · 10 Sep"]
+    assert [row["age"] for row in result] == ["3 days"] * 5 + ["due Oct 23, 2026", "overdue · Sep 10, 2026"]
     assert [bool(row["tag"]) for row in result] == [False, True, True, True, True, False, False]
 
 
@@ -641,7 +641,7 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['age', 'dueLabel', 'threadDate', 'citationDate', 'chipLabel'])
+                          for name in ['age', 'dueLabel', 'threadDate', 'fmtDate', 'citationDate', 'chipLabel'])
     result = _run_reader_js('\n'.join([
         '(() => { let uiLanguage = "en";', interface, functions,
         'const REM = {as_of: "2026-10-20"}, calendarDay = day => day;',
@@ -654,9 +654,9 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
         'const en = labels(); uiLanguage = "zh"; const zh = labels();',
         'console.log(JSON.stringify({en, zh})); })();',
     ]))
-    assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · 19 Oct', 'due 21 Oct',
+    assert result['en'] == ['10 days', '1 day', 'today', 'source 99', 'overdue · Oct 19, 2026', 'due Oct 21, 2026',
                             'Read 240 items', 'Rewrote 7 pages', '10 runs', '3 written of 6']
-    assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 10月19日', '到期 10月21日',
+    assert result['zh'] == ['10 天', '1 天', '今天', '来源 99', '已逾期 · 2026年10月19日', '到期 2026年10月21日',
                             '阅读了 240 项', '改写了 7 页', '10 次运行', '已撰写 3 / 6 人']
 
 
@@ -665,7 +665,7 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
 def test_undated_quiet_citation_uses_number_instead_of_source_label(source):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['citationDay', 'citationDate'])
+                          for name in ['citationDate', 'calendarDay', 'fmtDate'])
     result = _run_reader_js('\n'.join([
         functions, 'const REM = {source_context: {}};',
         'const citationSource = () => ' + json.dumps(source) + ', citationId = citationSource;',
@@ -674,7 +674,7 @@ def test_undated_quiet_citation_uses_number_instead_of_source_label(source):
         'REM.source_context[' + json.dumps(source) + '] = {time: "2026-10-20"};',
         'labels.push(citationDate({}, "99")); console.log(JSON.stringify(labels));',
     ]))
-    assert result == ['source 99', '20 Oct']
+    assert result == ['source 99', 'Oct 20, 2026']
 
 
 def test_reader_browser_evaluate_strings_compile():
@@ -792,11 +792,10 @@ def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['categoryCount', 'usageCaption', 'refusalReason', 'sourceLabel', 'threadDate'])
+                          for name in ['categoryCount', 'usageCaption', 'refusalReason', 'sourceLabel', 'threadDate', 'fmtDate', 'calendarDay'])
     result = _run_reader_js('\n'.join([
         '(() => { let uiLanguage = "zh";', interface, functions,
         'const REM = {source_context: {"claude-code:12345678-1234-1234-1234-123456789abc:1": {time: "2026-09-03T12:00:00Z"}}};',
-        'const fmtDate = () => "10月10日";',
         'const categories = ["people", "orgs", "projects", "skills", "decisions", "principles"];',
         'const zh = categories.map(c => categoryCount(c, {written: 3, mapped: 6}, 6));',
         'const emptyCounts = categories.map(c => categoryCount(c, null, 3));',
@@ -813,8 +812,8 @@ def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
     assert result['zh'] == [f'已撰写 3 / 6 {unit}' for unit in units]
     assert result['emptyCounts'] == [f'3 {unit}' for unit in units]
     assert result['en'] == ['3 written of 6'] * 6
-    assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 10月10日 · 版本未验证',
-                                '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 9月3日', 'claude-code:aaaaaaaa…']
+    assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 2026年10月10日 · 版本未验证',
+                                '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 2026年9月3日', 'claude-code:aaaaaaaa…']
     assert result['englishReason'] == 'Missing or duplicate citation: 22'
 
 
@@ -845,8 +844,8 @@ def test_activity_translates_known_refusals_before_joining_separate_errors():
      'outlook:' + 'a' * 40 + ':Returned client agreement.pdf'),
     ('gmail:123456789abc', True, 'gmail:123456789abc'),
     ('claude-code:human-readable-session-name:1', True, 'claude-code:human-readable-session-name:1'),
-    ('codex:12345678-1234-1234-1234-123456789abc:2', True, 'Codex session · 3 Sep'),
-    ('claude-code:12345678-1234-1234-1234-123456789abc:2', True, 'Claude Code session · 3 Sep'),
+    ('codex:12345678-1234-1234-1234-123456789abc:2', True, 'Codex session · Sep 3, 2026'),
+    ('claude-code:12345678-1234-1234-1234-123456789abc:2', True, 'Claude Code session · Sep 3, 2026'),
     ('codex:12345678-1234-1234-1234-123456789abc:2', False, 'codex:12345678…:2'),
     ('file:' + 'b' * 32, True, 'file:bbbbbbbb…'),
     ('gmail:' + 'c' * 31, False, 'gmail:' + 'c' * 31),
@@ -854,7 +853,7 @@ def test_activity_translates_known_refusals_before_joining_separate_errors():
 def test_source_labels_only_shorten_opaque_segments(source, dated, expected):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['sourceLabel', 'threadDate'])
+                          for name in ['sourceLabel', 'threadDate', 'fmtDate', 'calendarDay'])
     context = {source: {'time': '2026-09-03T12:00:00Z'}} if dated else {}
     result = _run_reader_js('\n'.join([
         functions, 'const REM = {source_context: ' + json.dumps(context) + '};',
@@ -1651,7 +1650,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'contactLine',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'threadWho', 'morningThread', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'morningThread', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
@@ -2116,3 +2115,156 @@ def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
     assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+
+
+def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
+    names = ['calendarDay', 'fmtDate', 'fmtTime', 'shortDate', 'citationDate', 'chipLabel', 'messageMeta']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const REM = {status: {timezone: 'Australia/Sydney'}, as_of: '2026-10-28', source_context: {
+        'outlook:example': {time: '2026-10-26T13:17:00Z', source: 'outlook', sender: 'Nora'}}};
+      const citationSource = () => 'outlook:example — 2026-10-26', citationId = () => 'outlook:example';
+      const sourceChannel = text => text, sourceSender = context => context.sender;
+      console.log(JSON.stringify([fmtDate('2026-10-27'), shortDate('2026-10-27'), citationDate({}, '1'),
+        chipLabel({}, '1'), fmtTime('2026-10-26T13:17:00Z'), messageMeta(REM.source_context['outlook:example'])]));
+    ''')
+    assert result[:3] == ['Oct 27, 2026'] * 3
+    assert all('Oct 27, 2026' in text for text in result[3:])
+
+
+def test_conversation_windows_are_scoped_to_sources_on_the_current_page():
+    function = re.search(r'function conversationFor\(.*?\n\}', TEMPLATE.read_text(), re.S)
+    # This projection is needed even when two pages cite the same session.
+    assert function, 'The reader has no page-scoped conversation projection'
+    result = _run_reader_js(function.group(0) + r'''
+      const REM = {source_context: {'codex:example:3': {thread: 'session:example'}}, conversations: {
+        'session:uncited': {anchors: {}, windows: {'other:100': ['100']}, messages: [{id: '100'}]},
+        'session:example': {subject: 'Example', total: 1358, cited_ids: ['3', '100'], anchors: {'codex:example:3': '3'},
+          windows: {'codex:example:3': ['1', '2', '3', '4', '5'], 'codex:example:100': ['99', '100']},
+          messages: [1, 2, 3, 4, 5, 99, 100].map(i => ({id: String(i)}))}}};
+      const sourceList = r => r.sources.map(text => ({text})), sourceId = text => text;
+      const r = {sources: ['codex:example:3']};
+      console.log(JSON.stringify([conversationFor(r, 'session:example'), conversationFor(r, 'session:uncited')]));
+    ''')
+    assert [m['id'] for m in result[0]['messages']] == ['1', '2', '3', '4', '5']
+    assert result[0]['cited_ids'] == ['3']
+    assert result[1] is None
+
+
+def test_page_navigation_closes_the_conversation_dialog():
+    page = TEMPLATE.read_text()
+    listener = re.search(r'window.addEventListener\("hashchange", \(\) => \{\s*document.getElementById\("conversation-dialog"\)\?\.close\(\);\s*\}\);', page)
+    assert listener, 'Conversation dialog has no navigation cleanup'
+    result = _run_reader_js(r'''
+      const callbacks = [], dialog = {open: true, close() {this.open = false;}};
+      const document = {getElementById: () => dialog}, window = {addEventListener: (event, callback) => callbacks.push(callback)};
+    ''' + listener.group(0) + r'''
+      callbacks[0](); console.log(JSON.stringify(dialog.open));
+    ''')
+    assert result is False
+
+
+def test_redundant_investigation_badge_is_omitted_and_owner_stays_out_of_people():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['listedRecords', 'inCategory'])
+    pill = re.search(r'function statusPill\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(functions + '\n' + pill + r'''
+      const REM = {owner: 'people/owner.md', records: [
+        {path: 'people/owner.md', category: 'people'}, {path: 'people/nora.md', category: 'people'}]};
+      const ACTIVITY = new Set(), known = () => ({status: 'Investigated'}), moon = () => null;
+      const el = (tag, attrs, children) => ({tag, ...attrs, children});
+      console.log(JSON.stringify([inCategory("people").map(r => r.path), statusPill(REM.records[1])]));
+    ''')
+    assert result == [['people/nora.md'], None]
+
+
+def test_neighbor_cited_on_another_page_is_not_highlighted_as_this_pages_citation():
+    function = re.search(r'function conversationFor\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {source_context: {'outlook:hash': {thread: 'mail:example'}}, conversations: {
+        'mail:example': {cited_ids: ['native:3', 'native:4'], anchors: {'outlook:hash': 'native:3'},
+          windows: {'outlook:hash': ['native:2', 'native:3', 'native:4']},
+          messages: [2, 3, 4].map(i => ({id: 'native:' + i}))}}};
+      const sourceList = () => [{text: 'outlook:hash'}], sourceId = text => text;
+      console.log(JSON.stringify(conversationFor({}, 'mail:example').cited_ids));
+    ''')
+    assert result == ['native:3']
+
+
+def test_unfiltered_sheet_count_is_a_total_instead_of_a_perfect_ratio():
+    count = next(line.strip() for line in TEMPLATE.read_text().splitlines() if 'count.textContent = ' in line and 'rows.length' in line)
+    result = _run_reader_js(r'''
+      const count = {}, rows = [1, 2, 3], items = [1, 2, 3];
+    ''' + count + r'''
+      console.log(JSON.stringify(count.textContent));
+    ''')
+    assert result == '3 pages'
+
+
+def test_source_find_uses_the_panel_scroll_that_reserves_mail_header_space():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['sourceFind'])
+    result = _run_reader_js(functions + r'''
+      const panel = {}, nodes = [], scrolls = [];
+      const el = (tag, attrs, children) => {const node = {tag, ...attrs, children, scrollIntoView() {}}; nodes.push(node); return node;};
+      const quote = {innerHTML: 'Original', replaceChildren() {}, closest: () => panel};
+      const document = {createTextNode: text => ({text})};
+      const scrollEvidenceSpan = (target, mark) => scrolls.push({correctPanel: target === panel, text: mark.text});
+      sourceFind('Earlier text. The cited example. Later text.', quote);
+      const input = nodes.find(n => n.tag === 'input'); input.value = 'cited example'; input.oninput();
+      console.log(JSON.stringify(scrolls));
+    ''')
+    assert result == [{'correctPanel': True, 'text': 'cited example'}]
+
+
+def test_owner_stays_in_obligation_inputs_when_removed_from_people_rows():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['listedRecords', 'inCategory'])
+    result = _run_reader_js(functions + r'''
+      const REM = {owner: 'people/owner.md', records: [
+        {path: 'people/owner.md', category: 'people'}, {path: 'people/nora.md', category: 'people'}]};
+      const ACTIVITY = new Set();
+      console.log(JSON.stringify({taskInputs: listedRecords().map(r => r.path), people: inCategory('people').map(r => r.path)}));
+    ''')
+    assert result == {'taskInputs': ['people/owner.md', 'people/nora.md'], 'people': ['people/nora.md']}
+
+
+def test_project_mobile_row_omits_the_redundant_investigated_label():
+    function = re.search(r'function nameCell\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const known = r => ({status: r.status}), moon = () => null, href = () => '#', updatedMarker = () => null;
+      const labels = ['Investigated', 'Mapped'].map(status => nameCell({category: 'projects', title: 'Example', status}, {}, false)
+        .children.filter(n => n?.class === 'mobile-status-label').map(n => n.text));
+      console.log(JSON.stringify(labels));
+    ''')
+    assert result == [[], ['Mapped']]
+
+
+def test_conversation_reopens_at_the_cited_message_instead_of_old_scroll_position():
+    function = re.search(r'function openConversation\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const scrolls = [], cited = {scrollIntoView: options => scrolls.push(options)};
+      const dialog = {scrollTop: 999, append() {}, appendChild() {}, addEventListener() {}, showModal() {}, querySelector: () => cited};
+      const document = {getElementById: () => dialog};
+      const el = (tag, attrs, children) => ({tag, ...attrs, children, focus() {}});
+      const byPath = () => null, sourceSender = () => 'You';
+      const conversationFor = () => ({subject: 'Example', cited_ids: ['example:3'], messages: [{id: 'example:3', sender: 'You', excerpt: 'Cited example.'}]});
+      openConversation({}, 'example', {focus() {}});
+      console.log(JSON.stringify({scrollTop: dialog.scrollTop, scrolls}));
+    ''')
+    assert result == {'scrollTop': 0, 'scrolls': [{'block': 'center'}]}
+
+
+def test_omitted_status_leaves_no_empty_field_or_header_separator():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['recordEyebrow', 'sidePanels'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, append(...nodes) {this.children.push(...nodes);}});
+      const known = () => ({}), categoryHref = () => '#', categoryName = () => 'Projects', updatedMarker = () => null;
+      const statusPill = () => null, factList = () => null, panel = (text, children) => el('section', {text}, children);
+      const r = {category: 'projects', text: '# Example'};
+      console.log(JSON.stringify({separators: recordEyebrow(r, false).children.filter(n => n?.class === 'sep').map(n => n.text),
+        fields: sidePanels(r, {}).flatMap(p => p.children[0].children.filter(n => n?.tag === 'dt').map(n => n.text))}));
+    ''')
+    assert result == {'separators': [], 'fields': []}

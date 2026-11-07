@@ -265,6 +265,28 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     return template.replace(PLACEHOLDER, data, 1)
 
 
+def reader_version(root: Path) -> tuple:
+    """Cheap metadata key for the live reader, including retained source edits.
+
+    Do not follow directory links or inspect bodies. SQLite's shared-memory
+    bookkeeping changes on reads; an empty WAL has no committed frames.
+    Committed data lives in the db and nonempty WAL.
+    """
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            if name == "rem.db-shm":
+                continue
+            path = Path(directory) / name
+            stat = path.lstat()
+            if name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    template = TEMPLATE.stat()
+    return (str(root.resolve()), str(TEMPLATE), template.st_mtime_ns, template.st_size, tuple(files))
+
+
 def reader_path(root: Path) -> Path:
     """Outside the notebook, so nothing under root changes and no collector meets it."""
     digest = hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
