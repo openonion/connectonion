@@ -36,9 +36,32 @@ def test_rem_status_reports_queued_work_and_the_next_command(notebook, scheduled
     value = {'root': str(notebook), 'configured': True, 'next_run': 'tonight' if scheduled else None,
              'worker': {'enabled': enabled}}
     text = '\n'.join(_notebook(notebook, value, counts(notebook), lambda args: 'co rem ' + ' '.join(args)))
-    assert '1 people page not written' in text
-    assert 'co rem investigate people' in text
+    assert ('1 people page queued for tonight' if scheduled and enabled else '1 people page not written') in text
+    assert ('co rem investigate people' in text) == (not (scheduled and enabled))
     assert ('Work queued for the next scheduled run.' in text) == (scheduled and enabled)
+
+
+@pytest.mark.parametrize('scheduled, enabled', [(False, False), (False, True), (True, False), (True, True)])
+@pytest.mark.parametrize('arguments', [[], ['investigate'], ['show', 'people/fern.md'],
+                                        ['show', 'projects/private.md'], ['show', 'people/held.md']])
+def test_rem_next_leaves_scheduled_writing_to_rem(notebook, monkeypatch, scheduled, enabled, arguments):
+    import shlex
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    book = Notebook(notebook)
+    book.stub_person('people/fern.md', 'Fern Vale', ['fern@example.test'], email='fern@example.test')
+    book.stub_person('people/held.md', 'Held contact', ['held@example.test'], email='held@example.test')
+    book.stub_project('projects/private.md', 'Private', ['/repo/private'])
+    write_json(state_path(notebook, 'map.json'), {'people': [{'record': 'people/held.md', 'needs_review': True}]})
+    write_json(state_path(notebook, 'worker.json'), {'enabled': enabled})
+    monkeypatch.setattr('connectonion.rem.schedule.default_scheduler', lambda *a, **kw: Mock(installed=lambda root: scheduled))
+    result = CliRunner().invoke(app, ['rem', '--root', str(notebook), '--json', *arguments])
+    assert result.exit_code == 0, result.output
+    next_step = shlex.split(json.loads(result.stdout)['next'])[4:]
+    if scheduled and enabled and arguments not in (['show', 'projects/private.md'], ['show', 'people/held.md']):
+        assert next_step == ['status']
+    else:
+        assert next_step[:1] == ['investigate']
 
 
 def test_rem_translation_backlog_orders_changed_owner_people_and_sessions(notebook):

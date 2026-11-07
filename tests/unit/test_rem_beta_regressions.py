@@ -1,4 +1,5 @@
 import json
+import shlex
 from pathlib import Path
 from unittest.mock import patch
 from typer.testing import CliRunner
@@ -50,8 +51,9 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 0
-    # Empty first-run work is automatic; only human approval retains a command.
-    assert payload['next'] == ''
+    # No schedule was approved in this noninteractive fixture; retain the window on the retry.
+    assert payload['data']['background']['started'] is False
+    assert shlex.split(payload['next']) == ['co', 'rem', '--root', str(root), 'investigate', 'me', '--days', '5']
     assert 'background updates' in payload['data']['investigate_me']['reason']
     assert payload['data']['first_run']['pages'] == 0
     assert all('then run ' not in tip for tip in payload['data']['tips'])
@@ -65,7 +67,8 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5', '--mail', 'gmail', '--mail', 'outlook'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 1
-    assert payload['next'] == ''
+    assert shlex.split(payload['next']) == ['co', 'rem', '--root', str(root), 'init', '--days', '5',
+                                           '--mail', 'gmail', '--mail', 'outlook']
     assert payload['data']['errors']
 
 

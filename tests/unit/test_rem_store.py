@@ -449,7 +449,9 @@ def test_the_table_before_any_build_says_how_to_make_one(tmp_path):
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "list", "people", "--table"])
     assert result.exit_code == 0 and "No people table yet" in result.output
     assert "the next scheduled run builds it" in result.output
-    assert "co rem" not in result.output
+    body, next_line = result.output.rsplit("Next:", 1)
+    assert "co rem" not in body
+    assert "co rem" in next_line
 
 
 def test_people_recent_filter_uses_the_notebook_day(tmp_path, monkeypatch):

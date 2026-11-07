@@ -130,6 +130,8 @@ def status_next(value: dict) -> list:
         if "Codex missed the " in value["state"]:
             return ["start"]
         return ["logs"] if value.get("next_run") else ["start"]
+    if str(value.get("state", "")).startswith(("Running", "Scheduled")):
+        return ["logs"]
     if value.get("root"):
         _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
         if arguments:
@@ -159,19 +161,23 @@ def _private_unwritten(root) -> int:
                for record in book.list("projects"))
 
 
-def next_to_write(root, counts: dict) -> tuple:
+def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
     """(what to write next, the arguments of the command that writes it), or ('', [])."""
     from ...rem.files import Notebook, read_json, state_path
     from ...rem.merge import mapped_only
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
     book = Notebook(root)
     if owner and book.path(owner).is_file() and mapped_only(book.read(owner)):
+        if scheduled:
+            return "your own page queued for tonight", []
         return "your own page", ["investigate", "me"]
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
+            if scheduled:
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
 
@@ -244,12 +250,13 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
             f"{coverage['missing']} people you write to have no page yet"), glyph=""))
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
-    what, arguments = next_to_write(root, counts)
+    scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))
+    what, arguments = next_to_write(root, counts, scheduled=scheduled)
     if what:
         lines.append(rem_look.row("To write next", what))
         if arguments:
             lines.append(rem_look.follow(style.command(spell(arguments))))
-        if value.get("next_run") and value.get("worker", {}).get("enabled") and arguments[:1] == ["investigate"]:
+        if scheduled and not arguments:
             lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
     for language, coverage in value.get("translation_coverage", {}).items():
         done, total = coverage["translated"], coverage["total"]

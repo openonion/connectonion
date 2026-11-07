@@ -79,6 +79,23 @@ def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
     return reasons
 
 
+def _owner_next(root, arguments):
+    """Scheduled writing belongs to REM; private projects and held contacts need an owner request."""
+    from ...rem.files import Notebook
+    from ...rem.map import needs_review
+    from ...rem.project_pages import private
+    from ...rem.schedule import default_scheduler
+    from ...rem.service import worker_state
+    if arguments[:1] != ["investigate"] or not worker_state(root).get("enabled"):
+        return arguments
+    target = arguments[1] if len(arguments) > 1 else ""
+    if target.startswith("people/") and target in needs_review(root):
+        return arguments
+    if target.startswith("projects/") and private(target, Notebook(root).read(target)):
+        return arguments
+    return ["status"] if default_scheduler(root).installed(root) else arguments
+
+
 def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
@@ -86,7 +103,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
-    command = _next(ctx, arguments or ["status"])
+    command = _next(ctx, _owner_next(ctx.obj["root"], arguments or ["status"]))
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
@@ -99,7 +116,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         rem_look.say(printable(drawn), hanging=True)
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
         if isinstance(value, dict) and value.get("continuation"):
-            rem_look.say(value["continuation"])
+            tip += ". " + value["continuation"]
         rem_look.say(next_line(tip))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
@@ -1259,7 +1276,7 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                                           "or work in a project with Codex. Background updates pick up new material.")
             if estimate_only:
                 result["estimate_only"] = True
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), [], bool(result.get("errors"))
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, bool(result.get("errors"))
         if skipped and not estimate_only:
             result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
             result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}

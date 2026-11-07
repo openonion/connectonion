@@ -22,8 +22,8 @@ from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, mainten
 
 
 SCHEDULED_CONTINUATION = (
-    "Do the printed task (its Now step when shown), submit it, then run next again.\n"
-    "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again.\n"
+    "Do the printed task (its Now step when shown), submit it, then run next again. "
+    "Read material in pieces with rg/sed, write the candidate, run the submit command, then run next again. "
     "Keep going until next says the round is done or stopped."
 )
 AUDIT_BATCH_SIZE = 8
