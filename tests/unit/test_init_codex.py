@@ -155,7 +155,8 @@ def test_global_init_finishes_with_login_pending(tmp_path, monkeypatch):
     run.assert_not_called()
     spawn.assert_not_called()
     browser.assert_not_called()
-    assert result.output.splitlines().count("Codex login pending. Run: codex login; REM starts after that") == 1
+    assert result.output.splitlines().count(f"Codex login pending. Run: '{path}' login; then co rem start") == 1
+    assert "REM starts after that" not in result.output
     assert "Opening Codex login" not in result.output
     assert f"Codex CLI: found at {path}" in result.output
     assert f"'{path}' login" in result.output
