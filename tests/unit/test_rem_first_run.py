@@ -627,7 +627,7 @@ def test_a_failed_first_page_keeps_the_map_and_names_the_retry(first_run, monkey
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"] == ""
+    assert payload["next"] == f"co rem --root {root} investigate me --days 5"
     assert (root / "logs/people-map.md").is_file()
 
 
@@ -758,7 +758,7 @@ def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects,
     assert result.exit_code == 1, result.output
     data = json.loads(result.stdout)
     assert data["data"]["background"]["started"] is False
-    assert data["next"] == ""
+    assert data["next"] == f"co rem --root {root} investigate projects/alpha.md --retry-refused"
 
 
 def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_error(projects, monkeypatch):
@@ -913,8 +913,8 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     assert result.exit_code == 130
     assert "people/p2.md" not in people_written
     text = Text.from_ansi(result.output).plain
-    assert "Work queued for the next scheduled run." in text
-    assert "Next: co rem" not in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 
@@ -1044,8 +1044,8 @@ def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
     assert result.exit_code == 130
     text = Text.from_ansi(result.output).plain
     assert "pages written before the stop" in text and "and kept." in text
-    assert "Work queued for the next scheduled run." in text
-    assert "Next: co rem" not in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 # ------------------------------------------- several pages at once (owner, 2026-10-01)
@@ -1180,7 +1180,7 @@ def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, mo
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"] == ""
+    assert payload["next"] == f"co rem --root {root} investigate me"
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
     assert "projects/alpha.md" in projects_written
 

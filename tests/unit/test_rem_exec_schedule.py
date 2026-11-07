@@ -163,18 +163,17 @@ def test_child_retains_lock_when_launch_wrapper_exits(tmp_path):
         child.communicate(b'finish', timeout=5)
 
 
-def test_legacy_runner_defaults_to_app_without_ready_cli(tmp_path, monkeypatch):
+def test_legacy_runner_uses_default_without_ready_cli(tmp_path, monkeypatch):
     import yaml
-    from connectonion.rem.config import read_config
+    from connectonion.rem.config import read_config, set_config
     monkeypatch.setattr(codex_schedule, 'app_installed', lambda: True)
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Codex is not signed in', 'codex login'))
     config = default_config()
     config['schedule'].pop('runner')
     (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
+    assert read_config(tmp_path)['schedule']['runner'] == default_config()['schedule']['runner'] == 'codex-exec'
+    set_config(tmp_path, ['schedule.runner', 'codex-app'])
     assert read_config(tmp_path)['schedule']['runner'] == 'codex-app'
-    config['schedule']['runner'] = 'codex-exec'
-    (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
-    assert read_config(tmp_path)['schedule']['runner'] == 'codex-exec'
 
 
 @pytest.mark.parametrize('code, outcome, reason', [
