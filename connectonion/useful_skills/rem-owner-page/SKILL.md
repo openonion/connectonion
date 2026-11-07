@@ -5,64 +5,46 @@ description: The owner's work, commitments and next decisions.
 
 # Your own page
 
-Write the user's page from their messages. Keep person headings and `Facts`
-labels except `How the user writes to them`.
+Write from the user's messages. Keep person headings/Facts except
+`How the user writes to them`. These owner rules override correspondent guidance.
 
-## The lead
+## Lead
 
-Before `Facts`, write 2–4 cited sentences:
-
-- **Start with what they are working on now and why the next step matters.**
-  If `owner-work-evidence` shows an explicit reversal, lead with it and cite
-  both messages. Newer questions are not a change. Otherwise name a blocker
-  or unresolved choice. `recent-projects` ranks, not proves shipping.
-  List projects in `Who they are`.
-- Add a firm, due-soon commitment or blocker. Put distant invitations and
-  unrelated mail in `Open threads`.
-- Put contact dates in `Facts` and `Cadence`, not the lead.
+Write 2–4 cited sentences about what they are working on now and why the next
+step matters. Explicit reversal in owner-work-evidence leads, citing both
+messages; newer questions alone are no change. Otherwise name a blocker/choice.
+`recent-projects` ranks activity, not shipping; list those projects in Who they
+are. Add a firm due-soon commitment/blocker; distant invites/unrelated mail belong
+in Open threads. Contact dates stay in Facts/Cadence.
 
 ## Coding agents are the user's tools, not people
 
-Claude Code and Codex are tools. A session prompt records the user's work and
-may inform the lead, `Who they are` or `History`; it does not prove a result.
-A task the user typed to an agent is work for `Who they are`, never an `Open
+Codex/Claude Code prompts record work/intent, not results. They can inform the
+lead, Who they are or History only with the relevant evidence. A task typed to
+an agent is work, never an `Open
 threads` line, `Last contact` or `Cadence`.
 
-## Roles are stated, not collected
+## Roles
 
-- `Role` and `Company` are the user's only when **the user states them about
-  themselves** (a signature, "I run …", "as the founder of …"), or **someone
-  else states them about the user** ("Ellis, our CTO").
-- **A role in a list the user writes about someone else is that person's, not
-  the user's.** "Corin: partner at OpenOnion, runs marketing, Airbnb co-host" in
-  the user's mail describes Corin. Leave it off this page.
-- List stated roles with citations and dates; otherwise `Unknown`.
+Role/Company belong here only when **the user states them about
+themselves** (signature, I run/as founder), or someone states them about the user.
+A role in a list the user writes about someone else is that person's, not
+the user's. Cite/date stated roles; otherwise Unknown.
 
-## The sections
+## Sections
 
-- `Who they are`: the user's work in their own words, and the projects of the
-  last weeks, each with what they did and when, from the sessions.
-- `Insight`: 3–4 cited bullets connecting projects and commitments to the next
-  decision: what must happen first, who waits, or a recurring tradeoff.
-  Lead with `Changed:` when a dated reversal is
-  evidenced; otherwise `Now:` joins repeated work to a decision or exact
-  verification gap. `Changed:` needs an observed choice or result, not a newer
-  question; `At stake:` names a firm due-soon commitment or blocker. Compare
-  sources when possible and cite the dependency. Summarized requests alone are
-  not insight. A coding request proves no shipment or passing test; only
-  artifact evidence proves shipping. Work only: never a `[personal]` or
-  `[sensitive]` item (a purchase, health).
-- `Why they are here`: this is the owner's page; one line, cited to the map.
-- `Our relationship`: `Account owner`.
-- `History`: completed, dated milestones, newest first (launch, hire, move,
-  release, project start/stop). Requests, questions and plans are not history;
-  map mail counts go to `Cadence`.
-- `Open threads`: mandatory. What the user owes (a reply, a document, a
-  payment) and what is owed to them, to whom, since when, from the mail and the
-  sessions ("promised the invoice to Mia Chen on 2026-09-24; not sent"). The user
-  owes only what the user agreed to, quoted; someone's unanswered request to
-  the user is `<Name> asked the user`, and the user's unanswered request is
-  `The user asked <Name>`.
-- `How they communicate`: how the user writes (language, length, channel), from
-  their own messages.
-- `Cadence`, `Uncertainties`: as on a person's page.
+- Who they are: work in the user's words, recent projects and dated actions.
+- Insight: 3–4 cited bullets connecting projects/commitments to next decisions,
+  dependencies or repeated tradeoffs. Lead Changed: only for a supported reversal
+  or result; otherwise Now: connects repeated work to a decision/verification gap.
+  At stake: is a firm due-soon commitment/blocker. Compare/cite sources; summarized
+  requests are not insight. A coding request proves no shipment or passing test;
+  shipping requires artifacts. Work only: never a `[personal]` or `[sensitive]` item.
+- Why they are here: owner, cited to map. Our relationship: Account owner.
+- History: completed dated milestones, newest first; requests/questions/plans are
+  not history. Mail counts go to Cadence.
+- Open threads: mandatory; debtor, recipient, since when, from mail/sessions.
+  The user owes only what the user agreed to, quoted. Unanswered incoming request:
+  Name asked the user; unanswered outgoing: The user asked Name.
+- How they communicate: user's own language, length and channel.
+- Cadence/Uncertainties follow the person shape.

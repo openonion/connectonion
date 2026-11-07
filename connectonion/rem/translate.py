@@ -369,6 +369,6 @@ def request(root, record, language):
     if record not in Notebook(root).list():
         raise RemError('No such page')
     with maintenance_lock(root):
-        requests = read_json(state_path(root, 'translation-requests.json'), {})
-        requests[language] = list(dict.fromkeys([record, *requests.get(language, [])]))
-        write_json(state_path(root, 'translation-requests.json'), requests)
+        pending = read_json(state_path(root, 'translation-requests.json'), {})
+        pending[language] = list(dict.fromkeys([record, *pending.get(language, [])]))
+        write_json(state_path(root, 'translation-requests.json'), pending)

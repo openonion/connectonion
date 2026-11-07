@@ -19,7 +19,7 @@ EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
 def history_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="co browser history",
-        description="Read Google Chrome visits on macOS. Reads a temporary copy of History; "
+        description="Read-only. Read Google Chrome visits on macOS from a temporary copy of History; "
                     "never opens pages, starts a browser or makes network requests.",
         epilog='Example: co browser history --days 1 --json\n'
                'Example: co browser history --profile "Profile 1" --domain example.org --query team\n'

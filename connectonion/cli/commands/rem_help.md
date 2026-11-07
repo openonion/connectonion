@@ -26,6 +26,7 @@ Keep it current
   stop          Turn the schedule off. Pages and approvals stay.
   status        Is the schedule on, when it runs next, what ran today.
   sync          Run one update now.
+  exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
 Settings
@@ -56,6 +57,22 @@ Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, t
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
+```
+
+## co rem exec
+
+```
+Run the configured background upkeep round. Runs the selected coding agent and
+writes notebook pages, reports and run state; never sends mail.
+
+Usage:    co rem exec [--scheduled]
+Example:  co rem exec --scheduled
+
+Options:
+  --scheduled   Run only when the notebook's schedule is due and enabled.
+  --help        Show this message and exit.
+
+Back: co rem --help
 ```
 
 ## co rem init

@@ -196,3 +196,12 @@ owner's one sentence that carries the choice. An update keeps `What it is`,
 `Why it exists`, `Key decisions`, `Insight` and every quote unless new messages
 change them: fifteen updates from three days of launch messages had turned the
 page into a page about one direct message.
+
+## rc55 instruction budget repair
+
+The composed one-page prompt must fit 15,000 characters, including owner rules.
+The runtime Skill now condenses repeated guidance and illustrative prose while
+keeping attribution, exact quotes, unresolved obligations, privacy, source capture
+and subject-specific page structure. The budget test was restored from 22,500
+to 15,000; larger limits hid accumulated instruction cost. Runtime Skills do
+not point to these rationale documents.

@@ -2041,7 +2041,7 @@ def make_rem_app(factory):
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
                            *(value.get("changed") or [])])
 
-    @rem.command("exec", hidden=True)
+    @rem.command("exec", cls=V("co rem exec"))
     def native_exec(ctx: typer.Context, scheduled: bool = typer.Option(False, "--scheduled")):
         from ...rem.schedule import exec_round
         _handle(ctx, lambda root: (exec_round(root, scheduled=scheduled), []), [],

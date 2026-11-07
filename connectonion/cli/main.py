@@ -639,11 +639,13 @@ class _BrowserCommand(typer.core.TyperCommand):
     def parse_args(self, ctx, args):
         if _browser_verb(args) == "history" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_history import history_parser
-            print(history_parser().format_help())
+            from .style import console, markup
+            console().print(markup(history_parser().format_help()))
             ctx.exit(0)
         if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_import import IMPORT_HELP
-            print(IMPORT_HELP)
+            from .style import console, markup
+            console().print(markup(IMPORT_HELP))
             ctx.exit(0)
         return super().parse_args(ctx, args)
 

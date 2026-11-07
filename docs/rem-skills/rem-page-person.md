@@ -332,3 +332,12 @@ put one line out of order.
 | First contact filled | 1/5 | 1/5, 4/5, 5/5, 5/5 (code-computed from the second rerun) |
 | Uncertainties all questions | 2/5 | 4/5, 5/5, 5/5, 5/5 |
 | History newest first | 4/5 | 2/5, 5/5, 5/5, 5/5 (sorted in code from the third) |
+
+## rc55 instruction budget repair
+
+The composed one-page prompt must fit 15,000 characters, including owner rules.
+The runtime Skill now condenses repeated guidance and illustrative prose while
+keeping attribution, exact quotes, unresolved obligations, privacy, source capture
+and subject-specific page structure. The budget test was restored from 22,500
+to 15,000; larger limits hid accumulated instruction cost. Runtime Skills do
+not point to these rationale documents.

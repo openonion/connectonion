@@ -5,20 +5,12 @@ description: 'A project page a new teammate understands in one screen: what it i
 
 # A project's page
 
-Write for a teammate who has one minute. Say what is, dated; never what the
-evidence lacks ("no test result is reported", "it is unclear whether",
-"目前无法确认是否完成"): write the dated fact that is known and put the open
-part in `Open threads`. The first screen answers, dated and
-cited: what the project is, why it exists in the owner's words, where it
-stands now, and what is still open. Reference detail follows. A page that
-tours files and hedges every line fails even when every line is true.
-Read the page and material. Write once, check once, fix once, stop.
-Search the repo for evidence, not for a format: this Skill is the format.
-
-Keep the core headings `Facts`, `Insight`, `What it is`, `Where it stands`,
-`Open threads`, `Paths`, `Uncertainties` and `Sources`. Show any other heading
-only when evidence fills it; omit one whose whole body would be `Unknown`.
-Keep this order for those shown:
+Write for a teammate with one minute: purpose in the user's words, dated current
+state, next action, then reference. State known facts; open parts go in Open
+threads, not hedges about missing evidence. Read/write/check/fix once, stop.
+Search the repo for evidence, not a format. Keep core headings Facts, Insight,
+What it is, Where it stands, Open threads, Paths, Uncertainties, Sources; other
+headings appear only with evidence (omit all-Unknown optional sections). Order:
 
 ```markdown
 # <Name>
@@ -58,119 +50,72 @@ Keep this order for those shown:
 ## Sources
 ```
 
-**Facts**: one line a field, labels exact, all present, missing exactly
-`Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
-`Started`, `Last activity`, and no other label. Several values `; ` between, each
-`value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
-- `Repository`: the checkout's `Remote origin`, cited to the checkout state.
-- `Status`: a phrase the evidence earns: `active — commits weekly on
-  origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`;
-  never a licence, language or README topic, and never `Unknown` while
-  commits or messages are dated.
-- `Last activity`: the newer of the latest commit on the current line and
-  the latest message that names this project, with what it was:
-  `2026-10-15 — Gemini 4 Argon made selectable (commit e25df6e) [n]`.
-- `Started`: the history packet's `First commit` line (`2026-10-14 — first
-  commit ee2ca3d [n]`) or the owner's words that began it; the first observed
-  session is not a start.
-- `People`: `the user (sessions in these folders)`, cited to one of the
-  user's messages (never `investigation:page`), and anyone the messages or
-  commits name working on it; `Unknown` only with neither.
+**Facts:** exact labels, all present, no others: Repository, Stack, Status, People,
+Organisation, Started, Last activity. Missing = Unknown. Multiple values use
+`; `, each `value (qualifier) [n]`; dates YYYY-MM-DD, every value cited.
+- Repository = Remote origin from cited checkout state.
+- Status = earned dated state (active/commits weekly, quiet since date, exploring),
+  never licence/language/README topic; not Unknown with dated commits/messages.
+- Last activity = latest current-line commit or project-specific message, date
+  and what changed with short sha when applicable.
+- Started = history packet First commit/date or user's stated beginning, never
+  merely earliest observed session.
+- People = the user with cited session, plus named contributors. One message or
+  commit does not make someone an owner; Unknown only with no supported person.
 
-**Insight**: 2–4 cited bullets of at most 30 words, starting `Now:`,
-`Changed:`, `At stake:`, `Pattern:` or `Inference:`: what changes a teammate's next
-decision. Compare the owner's words with the repository first: a requirement
-the code contradicts or has not caught up with (the owner says 8% of net, the
-PDF says gross), a reversed choice, a requirement that moved, what keeps
-being reworked (README rewritten six times in two days), where the effort
-went (80 of 111 messages on the launch video). What the code
-does belongs in `What it is`; a branch, commit date, README topic or a quote
-alone is not an insight. Each is about the project, not one message's
-wording; a finding, never advice (`should`, `verify`) and never a hedge about
-what the evidence lacks (`unverified`, `not established`). None: `- Unknown`.
+**Insight:** 2–4 cited bullets, at most 30 words each, prefixes Now:, Changed:,
+At stake:, Pattern:, Inference:. Compare user intent to repo evidence: conflicting
+requirements, reversals, repeated rework or effort distribution. A finding that
+changes the next decision, not advice, hedges or missing evidence. A quote/branch/date/README topic
+alone is not an insight. Each is about the project. Implementation belongs in
+What it is. None: `- Unknown`. Label
+inference with evidence/reason; it need not occur verbatim in a source. Put
+answered outside-research questions here/lead, remove them from Uncertainties.
 
-**Quote first, paraphrase last.** `Why it exists`, each `Key decisions` line
-and each `Open threads` ask quote the owner's words: the one sentence that
-carries the choice, not the whole message. With more than ten owner
-messages, fewer than five quotes means you retold. The owner is `the user`,
-never their name, `he` or `his`.
+**Quote first, paraphrase last.** Why it exists, Key decisions and Open threads
+quote the user's exact decisive sentence, dated/cited. More than ten owner
+messages with fewer than five quotes means retelling. Owner = the user, never
+their name/he/his. Keep quotes exact.
 
-**What it is**: one or two sentences: the product, who it serves, what it
-does, from the README or the owner's description of the whole project, never
-the loudest recent thread.
-
-**Why it exists**: the problem and intended outcome, opened with the owner's
-words that started it or best state its purpose:
-`YYYY-MM-DD — “<exact words>” [n]`. The newest request is not why a project
-exists; without such words, quote the README's purpose, dated by its revision.
-
-**Where it stands**: development first: what was built, fixed, tested or
-released, from commits and the owner's build and release messages; launch,
-marketing and outreach work is one bullet after it. 3–5 bullets, newest first
-within each, each dated: the
-latest finished work and milestones (releases, features shipped: commit
-subjects on the current line with short sha, the owner's
-latest messages; quiet for weeks — say so); work in flight (recent unmerged
-branches, by name and date); the phase and goal; the latest run, test or
-deploy result someone reported. History goes in `Key decisions`.
-
-**Open threads**: only what is pending now, newest first:
+**What it is:** 1–2 sentences on product, audience and function from the whole
+project README or user description, never just the loudest recent thread.
+**Why it exists:** problem/outcome, opened with dated exact words that began or
+best explain it; newest request is not purpose. Otherwise quote README purpose
+at its revision.
+**Where it stands:** development first; marketing/outreach one bullet after it.
+3–5 dated bullets newest first within each: finished work/milestones from current
+line commits (short sha) and build/release messages; recent unmerged branches
+with names/dates; phase/goal; latest reported run/test/deploy. Say when quiet.
+Past decisions belong in Key decisions.
+**Open threads:** only current pending asks, newest first:
 `- YYYY-MM-DD — <who> asked: “<exact words>” [n] — open|blocked on <what>`.
-Before listing an ask, look for its outcome in later messages, commit
-subjects and branch names. One closed by a commit or a later message moves to
-`Where it stands` or `Key decisions` with that evidence. An ask more than 30
-days old with no outcome found is history, not an open thread: leave it out.
-Nothing open: bare `Unknown`, never a line about what the material does not show.
+Check later messages, commits and branches for outcomes; closed items move to
+Where it stands/Key decisions with closing evidence. Over 30 days with no
+outcome is history, omit here. Nothing open = bare Unknown.
+**Latest issues:** dated symptom/status/evidence newest first; check for fixes.
+A report is no diagnosis and a proposed fix is no resolution.
+**Key decisions:** actual choices (price/scope/audience/architecture/drop), newest
+first, at most sixteen; each reversal its own quoted line:
+`- YYYY-MM-DD — <choice, under 12 words>: “<user's words>” [n]`.
+Requests/current behavior alone are not choices; label proposals.
+**Overview/Try it:** only from current-line docs/code. Overview = 3–7 narrow ASCII
+steps in a text fence, from user start to outcome; every arrow needs a cited
+source. Try it = entry point, tiny example and visible result, at most three
+steps in source order. Never reuse architecture as overview.
+**People and ownership:** contacts by area, named partners/clients/collaborators,
+linked person pages; avoid inferring ownership from one contribution.
+**Getting started:** role-specific commands/outputs only when verified.
+**How it is built/Architecture map:** short components/data flow at cited revision;
+label proposed versus built, no file tour.
+**Paths:** mapped project folders and their purposes, including external data/design
+locations; modules belong in How it is built. Never guess. Preserve mapped Paths,
+Sessions, First seen, Last seen exactly; new paths need retained evidence.
+**Uncertainties:** at most five questions that change the next step, ending ?
+before citations. **Sources:** only `- [n] <source id> — <date>`. Each inspected
+file has its own supplied ID; origins/bare paths are not IDs. Check inherited
+claims/quantities/dates against originals; cite each joined clause's own source.
 
-**Latest issues**: bugs, regressions, blockers, newest first: date, symptom,
-status with its evidence. Check the history for a fix before calling one
-open. A report is not a diagnosis; a proposed fix is not a resolution.
-
-**Key decisions**: the choices the owner made, newest first by date (check
-the order before you finish), at most sixteen:
-price, scope, audience, positioning, architecture, what to drop.
-`- YYYY-MM-DD — <choice, under 12 words>: “<the owner's exact words>” [n]`.
-A reversal is its own line quoting the reversal. A request alone or current
-behaviour alone is not a decision; label proposals.
-
-**Overview** and **Try it**, when the README, docs or code at the current line
-show them: `Overview` is 3–7 narrow ASCII steps in a `text` fence (user start,
-actions, outcome); `Try it` is an entry point, a tiny example and the visible
-result, at most three steps, in the source's order. Every arrow is a step a
-cited source states; a plausible diagram is not evidence.
-
-**People and ownership**: who to ask, by area, and the partners, clients or
-collaborators the messages name on this project, linking person pages. One
-commit or message never makes someone an owner.
-
-**Getting started**: per role, commands and outputs only when verified.
-
-**How it is built** and **Architecture map**: main components and data flow
-from files at the current line, citing the revision; label proposed apart
-from built. Short: a page is not a code tour.
-
-**Paths**: the project's own folders (repository, data or design locations
-outside it) with their purpose; modules belong in `How it is built`. Never guess.
-
-**Uncertainties**: at most five questions, each ending `?` before its
-citations, each one that would change the next step.
-
-**Sources**: numbered, `- [n] <source id> — <date>`, nothing more; each
-inspected file its own entry. Use supplied `source` IDs; `git:` origins and
-paths are not IDs. Check inherited clauses, quantities and dates against
-exact originals; cite each joined clause's own message.
-
-**Two stages, one page**
-
-Mapping writes observed metadata only; other sections stay
-`Unknown — not investigated yet` until investigation fills them from evidence.
-User-only coding transcripts show intent, not implementation or passing tests:
-verify those from the repository or a reported run. On an older page, reorder
-to this shape, keeping supported content. Never reuse the architecture
-diagram as the overview. Leave the `Investigation:` line unchanged. Keep the
-mapped `Sessions`, `First seen` and `Last seen` fields in `Paths` exactly.
-
-Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
-evidence supports the reasoning; it need not be a literal statement in a source.
-Outside research may answer identity or state in the lead/Insight. Keep exact
-quotes exact; never leave an answered research question in `Uncertainties`.
+Mapping writes observed metadata only; other sections stay Unknown — not
+investigated yet. Coding prompts prove intent, not implementation/passing tests:
+verify repo or reported runs. Reorder older pages without dropping supported
+content. Keep Investigation unchanged.
