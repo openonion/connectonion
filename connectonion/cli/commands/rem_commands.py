@@ -2062,9 +2062,14 @@ def make_rem_app(factory):
         from ...rem.service import set_window, toggle_source
 
         def operation(root):
+            if name == "jira" and (since or only or force):
+                from ...rem.files import RemError
+                raise RemError("Jira consumes selected local imports; --since/--only/--force do not apply")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
+            if name == "jira":
+                return result, ["init", "--no-investigate", "--no-start"]
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             if chat:
@@ -2083,6 +2088,22 @@ def make_rem_app(factory):
             return {"subscription": name, "enabled": bool(source.get("enabled")),
                     **({"chats": source.get("chats") or []} if chat else {})}, ["sources"]
         _handle(ctx, operation, ["sources"])
+
+    @sources_app.command("connect", cls=V("co rem sources connect"))
+    def connect_source(ctx: typer.Context, name: str = typer.Argument(""),
+                       config: Optional[Path] = typer.Option(None, "--config")):
+        from ...rem.remote_sources import connect, KINDS
+        from ...rem.remote_wizard import interactive
+        if not name:
+            if config is not None or not interactive():
+                raise typer.BadParameter("Choose NAME; scripts also require --config FILE")
+            from importlib.util import find_spec
+            from click import Choice
+            choices = [kind for kind in KINDS if find_spec(f"connectonion.rem.{kind}_remote")]
+            if not choices:
+                raise typer.BadParameter("No remote source feature is installed")
+            name = typer.prompt("Connect source", type=Choice(choices))
+        _handle(ctx, lambda root: (connect(root, name, config), ["init", "--no-start"]), ["sources"])
 
     @sources_app.command("add", cls=V("co rem sources add"))
     def add_source(ctx: typer.Context, name: str = typer.Argument(...),

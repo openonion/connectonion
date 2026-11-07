@@ -437,6 +437,10 @@ def page_kind_of(record: str) -> str:
 
 def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", *, native=False) -> str:
     """Let co ai load the stage Skill once; supply only its composed additions."""
+    source_kinds = {i.get("source_kind", "") for i in items if i.get("role") == "original"} & {"jira"}
+    if not kind:
+        kind = next((i["source_kind"] for i in items if i.get("role") == "original"
+                     and i.get("source_kind") in source_kinds), "")
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = page_kind_of(record)
     if stage == "maintain" and any(item.get("role") == "extract" for item in items):
@@ -444,9 +448,15 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", 
         # or WhatsApp store the user's words was the extract turn's concern.
         # Appended anyway, it took a one-page turn to 17.5k characters (#2000).
         kind = ""
+        source_kinds.clear()
     one_page = stage in ONE_PAGE_STAGES or (stage == "maintain" and any(item.get("one_page") for item in items))
     owner = any(i.get("role") == "page" and i.get("owner") for i in items)
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
+    if stage != "abstract":
+        for source_kind in sorted(source_kinds - {kind}):
+            source_skill = useful_skills_dir() / f"rem-source-{source_kind}/SKILL.md"
+            if source_skill.is_file():
+                text += "\n\n---\n\n" + source_skill.read_text(encoding="utf-8")
     # co ai expands /rem-{stage} before delegating. Repeating that core in the
     # arguments sent every rule twice on every model turn (#1972).
     core = (useful_skills_dir() / f"rem-{stage}/SKILL.md").read_text(encoding="utf-8")
