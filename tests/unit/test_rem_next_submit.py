@@ -498,6 +498,30 @@ def test_changed_input_refuses_without_any_writes(trial):
     assert {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()} == before
 
 
+@pytest.mark.parametrize("own_page_changed", [False, True])
+def test_legacy_inputs_only_check_the_tasks_current_files(trial, own_page_changed):
+    record, source = _feedback(trial)
+    book = Notebook(trial)
+    unrelated = "people/morgan.md"
+    book.stub_person(unrelated, "Morgan Vale", [], email="morgan@example.test")
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    # rc52 included unrelated notebook pages in the saved input map.
+    saved["inputs"][str(book.path(unrelated))] = native._hash(book.path(unrelated))
+    write_json(Path(task["material"]) / "task.json", saved)
+    book.write(unrelated, book.read(unrelated) + "\nMorgan reviewed another project.\n")
+    if own_page_changed:
+        book.write(record, book.read(record) + "\nNewer user edit.\n")
+        before = {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()}
+        with pytest.raises(RemError, match="input changed"):
+            native.submit(trial, task["id"])
+        assert {path: path.read_bytes() for path in trial.rglob("*") if path.is_file()} == before
+    else:
+        assert _submit(trial, task)["outcome"] == "accepted"
+        assert "Avery Lin requested a pilot review." in book.read(record)
+
+
 def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
     monkeypatch.chdir(trial.parent)
     root = Path(trial.name)
