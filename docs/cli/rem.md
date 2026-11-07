@@ -730,6 +730,14 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
   the snapshot; before it does, from each page's Facts and the map's mail
   counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
+  People excludes your own page, which remains under **You** in the navigation.
+- **Agent sessions** keeps topic tags and the outcome separate on each list
+  card. A session page shows its summary, then the visible transcript, followed
+  by decisions, follow-ups and artifacts. The transcript retains your turns
+  and the complete final reply; missing intermediate activity is disclosed.
+  Find searches the retained text, and source links land on the corresponding
+  turn when it is archived. Other source rows open under **Details**. The
+  continuation box provides a resume command to use in the project folder.
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.
@@ -750,6 +758,8 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   when they exist, and otherwise show the original with a 原文 mark.
   Investigated records omit the redundant status pill; mapped and partly
   investigated records keep it, and reviewed skills say **Source reviewed**.
+  A missing page translation shows **Translation pending** with its queue or
+  background-off state; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never

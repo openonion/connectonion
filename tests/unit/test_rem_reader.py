@@ -29,6 +29,79 @@ def _run_reader_js(script):
     return json.loads(result.stdout)
 
 
+def test_source_sender_preserves_archived_display_names_and_normalizes_addresses():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['mailbox', 'sourceSender', 'sourceIdentity'])
+    result = _run_reader_js(functions + r'''
+      const REM = {}, byPath = () => null, personByAddress = () => null;
+      console.log(JSON.stringify({
+        identity: sourceIdentity({sender: 'Mara'}),
+        quoted: mailbox('"Mara Ostrowski" <MARA@EXAMPLE.TEST>'),
+        bare: mailbox('MARA@EXAMPLE.TEST'),
+        path: sourceIdentity({sender: '/private/people/mara.md'})
+      }));
+    ''')
+    assert result == {'identity': 'Mara',
+                      'quoted': {'name': 'Mara Ostrowski', 'address': 'mara@example.test'},
+                      'bare': {'name': 'mara', 'address': 'mara@example.test'}, 'path': ''}
+
+
+@pytest.mark.parametrize('record', ['projects/harbour.md', 'orgs/fernhill-labs.md', 'people/mara-ostrowski.md'])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_round_nine_browser_fixture_retains_all_four_context_disclosures(tmp_path, monkeypatch, record, language):
+    """Run the browser's exact fixture edit against the real citation projection."""
+    import ast
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from connectonion.rem.reader import snapshot
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
+    from rem_reader_notebook import build
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    data = snapshot(build(tmp_path / 'rem', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True))
+    browser = TEMPLATE.parents[2] / 'tests/e2e/cli/test_rem_reader_design_browser.py'
+    test = next(node for node in ast.parse(browser.read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == 'test_round_nine_full_purpose_and_quiet_record_disclosures')
+    injection = next(node.value for node in ast.walk(test) if isinstance(node, ast.Constant)
+                     and isinstance(node.value, str) and 'const r = byPath(path), links = []' in node.value)
+    names = ['recordContext', 'connectedContext', 'relationDisclosure', 'dedupeRelationSnippets',
+             'conversationFor', 'sourceList', 'sourceId', 'rawSection', 'listItems']
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nconst REM = ' + json.dumps(data) + ';\n' + r'''
+      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
+      const byPath = path => REM.records.find(r => r.path === path);
+      const KNOWN = new Map(), FACTS = new Map(), render = () => {};
+      const projectSessions = () => null, fmtDate = value => value;
+      const localizedRelation = link => link, relationCard = () => ({tag: 'card'});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        appendChild(node) {this.children.push(node)}});
+    ''' + 'uiLanguage = ' + json.dumps(language) + ';\n'
+        + 'const record = ' + json.dumps(record) + ';\n' + r'''
+      for (const r of REM.records) {
+        r.original = r.text;
+        if (r.translations?.[uiLanguage]) { r.shown = uiLanguage; r.text = r.translations[uiLanguage]; }
+      }
+    ''' + '(' + injection + ')(record);\n' + r'''
+      const context = recordContext(byPath(record)), classes = [];
+      function visit(node) {
+        if (!node || typeof node !== 'object') return;
+        if (node.tag === 'details') classes.push(node.class);
+        (node.children || []).forEach(visit);
+      }
+      visit(context);
+      console.log(JSON.stringify({classes, conversations: Array.from({length: 6}, (_, i) =>
+        conversationFor(byPath(record), 'pilot-conversation-' + i)?.messages.length)}));
+    ''')
+    assert result['conversations'] == [1] * 6
+    assert len(result['classes']) == 4
+    assert all('more-relations' in value for value in result['classes'])
+    assert any('notebook-links' in value for value in result['classes'])
+    assert any('mention-hints' in value for value in result['classes'])
+
+
 @pytest.mark.parametrize('card', [
     'Business card handed over at the Lantern meetup — photo on 2026-11-01 <card> https://example.com/card',
     'Photo: Business `card*copy` handed over at Lantern',

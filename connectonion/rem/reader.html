@@ -1450,6 +1450,11 @@
   .people-sheet .sheet :is(.c-contact, .c-trend) { width: 16%; white-space: nowrap; }
   .people-sheet.more-columns-shown .sheet { min-width: 1600px; table-layout: auto; }
   @media (min-width: 601px) {
+    /* A percentage name can grow wider than the scroller in the expanded table,
+       forcing its sticky edge left at the end of the row. Keep it readable. */
+    .people-sheet.more-columns-shown .sheet .name { width: 240px; min-width: 240px; max-width: 240px; }
+  }
+  @media (min-width: 601px) {
     .people-sheet:not(.more-columns-shown) .sheet { min-width: 960px; }
     .people-sheet:not(.more-columns-shown) .sheet .name { width: 24%; }
     .people-sheet:not(.more-columns-shown) .sheet .c-open { width: 24%; }
@@ -6563,7 +6568,7 @@ function sourceFind(excerpt, quote) {
 function mailbox(text) {
   const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(text || "");
   const address = (m ? m[2] : text || "").trim().toLowerCase();
-  return { name: (m && m[1].trim()) || address.split("@")[0], address };
+  return { name: (m && m[1].trim()) || (!address.includes("@") ? (text || "").trim() : address.split("@")[0]), address };
 }
 let PEOPLE_BY_ADDRESS = null;
 function personByAddress(address) {

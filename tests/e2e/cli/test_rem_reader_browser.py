@@ -31,6 +31,8 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 1280, 'height': 900})
         page.goto(path.as_uri() + '#r=people%2Felara-finch.md')
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        page.locator('details.deep-note > summary').click()
         cite = page.locator('a.cite[href$="h=src-1"]').first
         assert cite.count() > 0
         assert source in cite.get_attribute('title')
