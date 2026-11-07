@@ -2647,6 +2647,71 @@ def test_plain_words_only_removes_since_when_the_card_shows_its_age():
                       'Waiting since 2026-10-08; meet on 2026-11-09.', '她在等收据；尚未交齐，将在 2026-11-09 前报税。']
 
 
+@pytest.mark.parametrize('text, expected', [
+    ('Since 2026-10-02, fern owes the discovery findings.', 'Fern owes the discovery findings.'),
+    ('Since 2026-10-02; mara owes the plan.', 'Mara owes the plan.'),
+    ('Since 2026-10-02: avery owes the plan.', 'Avery owes the plan.'),
+    ('Since 2026-10-02 — mara owes the plan.', 'Mara owes the plan.'),
+    ('Mara owes the plan, since 2026-10-02, and the findings.', 'Mara owes the plan, and the findings.'),
+    ('Mara owes the plan ; since 2026-10-02 ; send it tomorrow.', 'Mara owes the plan; send it tomorrow.'),
+    ('Mara owes the plan, since 2026-10-02.', 'Mara owes the plan.'),
+    ('Mara owes the plan — since 2026-10-02', 'Mara owes the plan'),
+    ('从 2026-10-02 起，等待确认计划。', '等待确认计划。'),
+    ('从 2026-10-02 起；等待确认计划。', '等待确认计划。'),
+    ('从 2026-10-02 起：等待确认计划。', '等待确认计划。'),
+    ('等待计划，从 2026-10-02 起，尚未交齐。', '等待计划，尚未交齐。'),
+    ('等待计划 ；从 2026-10-02 起 ；尚未交齐。', '等待计划；尚未交齐。'),
+    ('等待计划；从 2026-10-02 起。', '等待计划。'),
+    ('等待计划：从 2026-10-02 起', '等待计划'),
+    ('(2026-10-02), mara owes the plan [1].', 'Mara owes the plan.'),
+    ('Since 2026-10-02 [1], fern owes the plan.', 'Fern owes the plan.'),
+    ('Since 2026-10-02, [1] fern owes the plan.', 'Fern owes the plan.'),
+    ('Mara owes the plan, since 2026-10-02 [1], and the findings.', 'Mara owes the plan, and the findings.'),
+    ('从 2026-10-02 起 [1]，等待计划。', '等待计划。'),
+    ('[1], fern owes the plan.', 'Fern owes the plan.'),
+    ('Mara owes the plan, [1], and the findings.', 'Mara owes the plan, and the findings.'),
+    ('Last contact: 2026-10-02. mara owes the plan.', 'Mara owes the plan.'),
+    ('Since 2026-10-02, “leave , , and ; untouched”; mara owes the plan.',
+     '“leave , , and ; untouched”; mara owes the plan.'),
+])
+def test_plain_words_repairs_orphan_punctuation_after_metadata_removal(text, expected):
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    script = function + '\nconsole.log(JSON.stringify(withoutDateClutter(' + json.dumps(text) + ', {since: "2026-10-02"})));'
+    assert _run_reader_js(script) == expected
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('history', ['active', 'old', 'none'])
+def test_person_contact_metric_is_a_true_readable_sentence(language, history):
+    page = TEMPLATE.read_text()
+    ui = page[page.index('const UI = {'):page.index('function t(')].strip()
+    ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['relationshipHeader', 'relationshipCell', 'fmtDate', 'calendarDay'])
+    result = _run_reader_js(ui + functions + r'''
+      uiLanguage = ''' + json.dumps(language) + r''';
+      const REM = {as_of: '2026-11-08T12:00:00Z', status: {timezone: 'Australia/Sydney'}};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const textCell = text => el('span', {text}), esc = text => text;
+      const history = ''' + json.dumps(history) + r''';
+      const weekly_messages = history === 'active' ? [...Array(48).fill(1), 0, 1, 2, 3] : Array(52).fill(0);
+      const last_mail = history === 'none' ? '' : history === 'old' ? '2025-01-02T12:00:00Z' : '2026-11-07T12:00:00Z';
+      const header = relationshipHeader({index: {relationship: {weekly_messages, last_mail}}});
+      console.log(JSON.stringify(header.children[0]));
+    ''')
+    summary = result['children'][1]
+    expected = {
+        'en': {'active': 'Past 52 weeks: 54 messages · last 4 weeks: 6 · last: Yesterday',
+               'old': 'Past 52 weeks: 0 messages · last 4 weeks: 0 · last: Jan 2, 2025',
+               'none': 'No indexed mail'},
+        'zh': {'active': '过去52周 54封 · 最近4周 6封 · 上次 昨天',
+               'old': '过去52周 0封 · 最近4周 0封 · 上次 2025年1月2日',
+               'none': '没有收录的邮件'},
+    }
+    assert summary.get('text') == expected[language][history]
+    assert 'html' not in summary
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 @pytest.mark.parametrize('code', ['blocked', 'repeated_failure'])
 def test_schedule_failure_header_uses_interface_language(language, code):

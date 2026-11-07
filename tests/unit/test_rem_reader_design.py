@@ -192,3 +192,12 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
         for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
+
+    assert colors['--act'] == ('#22d27a' if theme == 'light' else '#3be38f')
+    for surface, foreground in [('--act', '--act-ink'), ('--act-hover', '--act-ink'),
+                                ('--sheet', '--act-text'), ('--act-tint', '--ink')]:
+        a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
+        assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
+    button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
+    assert 'background: var(--act)' in button and 'color: var(--act-ink)' in button
+    assert '.btn-act:hover { background: var(--act-hover); }' in css
