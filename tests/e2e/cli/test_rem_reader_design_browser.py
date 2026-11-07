@@ -518,7 +518,7 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     data["records"].extend({**example, "path": f"people/example-{i}.md",
                             "title": f"Alexandria Margaret Historical Correspondent {i:03d}"}
                            for i in range(570))
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "large-roster.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -559,7 +559,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     visible_people = sum(r["category"] == "people" and r["path"] != data["owner"]
                          and not r.get("needs_review") and not r.get("service")
                          for r in data["records"])
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "first-map.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -1906,7 +1906,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
         {'started_at': '2026-10-07T11:01:00+00:00', 'outcome': 'failed',
          'error': 'TimeoutError: private payload must not appear here', 'changed': []},
     ]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'blocked.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -1944,7 +1944,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     ]
     # fbdd25e3: replacing the run window does not replace the notebook's age.
     data['first_run_at'] = data['as_of']
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'partial.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.goto(path.as_uri())
@@ -2053,7 +2053,7 @@ def test_activity_lists_each_run_with_pages_changed_and_refused(reader, tmp_path
                      'usage': {'input_tokens': 1200, 'output_tokens': 300}, 'changed': ['people/mara-ostrowski.md'],
                      'refusals': [{'record': 'projects/harbour.md',
                                    'errors': ['Candidate rejected, kept at /private/c.md: Changed page has no numbered evidence references']}]}]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'runs.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -3333,7 +3333,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     data = rem_reader.snapshot(tmp_path / 'rem', local=True)
     data['your_languages'] = notebook_languages
     page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False, today=False: data)
     path = tmp_path / 'chinese-reader.html'
     path.write_text(rem_reader.render(tmp_path / 'rem', local=True), encoding='utf-8')
     page.evaluate(r'''() => localStorage.removeItem('co-rem-ui-language')''')
