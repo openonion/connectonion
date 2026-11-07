@@ -266,6 +266,7 @@ NEXT = {
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
     "co onenote create": HANDLER,
+    "co jira *": HANDLER,
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,

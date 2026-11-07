@@ -2761,6 +2761,51 @@ from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
 
 
+# Jira: selected-scope, read-only project and issue collection.
+jira_app = _typer_app(
+    help="Read-only Jira projects and selected issues. Bare help writes nothing.",
+    epilog="Example:  co jira verify  |  co jira projects  |  co jira issues ALPHA ALPHA-1",
+)
+app.add_typer(jira_app, name="jira")
+
+
+@jira_app.command("verify", epilog="Example:  co jira verify --json")
+def _jira_verify(as_json: bool = typer.Option(False, "--json", help="Output safe connection details as JSON")):
+    """Read-only check of Jira access; writes no local source records."""
+    from .commands.jira_commands import handle_jira_verify
+    handle_jira_verify(as_json=as_json)
+
+
+@jira_app.command("projects", epilog="Example:  co jira projects --json")
+def _jira_projects(as_json: bool = typer.Option(False, "--json", help="Output accessible projects as JSON")):
+    """Read-only list of accessible Jira project keys and names."""
+    from .commands.jira_commands import handle_jira_projects
+    handle_jira_projects(as_json=as_json)
+
+
+@jira_app.command("issues", epilog="Example:  co jira issues ALPHA ALPHA-1 ALPHA-2 --json")
+def _jira_issues(
+    project_key: str = typer.Argument(..., help="Jira project key, for example ALPHA"),
+    issue_keys: List[str] = typer.Argument(..., help="One or more keys in that project, for example ALPHA-1"),
+    as_json: bool = typer.Option(False, "--json", help="Output issues as JSON"),
+):
+    """Read selected Jira issues only; writes no local source records."""
+    from .commands.jira_commands import handle_jira_issues
+    handle_jira_issues(project_key, issue_keys, as_json=as_json)
+
+
+@jira_app.command("sync", epilog="Example:  co jira sync ALPHA ALPHA-1 --json")
+def _jira_sync(
+    project_key: str = typer.Argument(..., help="Jira project key, for example ALPHA"),
+    issue_keys: List[str] = typer.Argument(..., help="One or more selected keys in that project"),
+    output: Optional[Path] = typer.Option(None, "--output", help="Local source directory; defaults to ~/.co/rem/docs/jira"),
+    as_json: bool = typer.Option(False, "--json", help="Output the import receipt as JSON"),
+):
+    """Write selected Jira records locally; Jira itself remains Read-only."""
+    from .commands.jira_commands import handle_jira_sync
+    handle_jira_sync(project_key, issue_keys, output_dir=output, as_json=as_json)
+
+
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
     help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",
