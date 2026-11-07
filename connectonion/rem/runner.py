@@ -1450,6 +1450,8 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     one_page = stage == "maintain" and any(item.get("one_page") for item in items)
     candidate = directory / "candidate.md" if record and (stage in ONE_PAGE_STAGES or one_page) else None
     if candidate is not None:
+        from .browser_history import recently_read
+        prompt += recently_read(notebook.read(record))
         # The review refuses a page that ends over the limit; a person page
         # learnt that only after a 643k-token turn (#2041).
         from .page_review import history_note, size_note

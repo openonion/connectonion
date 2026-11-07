@@ -23,6 +23,23 @@ the evidence. You and your agents can read and reuse them in the next task.
 Memory keeps context available over time; carrying context through your
 work is the purpose.
 
+On macOS, one-page agent tasks also receive a **Recently read** index from the default
+Chrome profile: visits in the last 30 days matching the subject's name, domain
+or GitHub repository. Titles and URLs are leads. A relevant page must be fetched
+with `co fetch <url> > web/<slug>.md` and registered in `web/sources.json` before
+its content can be cited. The index itself opens no pages and makes no network
+requests; the existing LinkedIn restriction still applies. It shows up to 50
+distinct URLs, newest first, with repeated visits collapsed. Profile/resource
+links match that specific page; an explicit website or organisation domain
+matches the domain and its subdomains.
+
+Inspect history directly with `co browser history --days 1 --json`. The default
+window is 7 days; `--domain SITE`, `--query TEXT` and `--profile NAME` narrow the
+results. Each row is a visit, including repeat visits, with a UTC time, title and
+URL. `--domain` includes subdomains; `--query` matches literal text in the title
+or URL, ignoring case. Both filters together must match. REM currently uses
+Chrome's `Default` profile. Configurable domain exclusions depend on #2830.
+
 The notebook is a folder on your machine, `~/.co/rem`. Saved mail bodies stay
 in its owner-only `.state/` and never go into a page; a model reads them only
 through the login you choose. By default it runs on your own Codex plan
