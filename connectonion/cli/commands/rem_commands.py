@@ -894,27 +894,6 @@ def _start_consent(ctx, summary, *, yes: bool) -> bool:
     return typer.confirm("Read these sources with this model and schedule?", default=False)
 
 
-def _mailbox_commands() -> None:
-    typer.echo("co auth google     Connect Gmail")
-    typer.echo("co auth microsoft  Connect Outlook")
-
-
-def _offer_mailbox() -> None:
-    """Connect a mailbox on request before showing which sources consent covers."""
-    from click import Choice
-    from ...rem.service import MAIL_KINDS, mail_available
-    from .auth_commands import handle_google_auth, handle_microsoft_auth
-    if any(mail_available(kind) for kind in MAIL_KINDS):
-        return
-    _mailbox_commands()
-    provider = typer.prompt("Connect a mailbox now", default="skip",
-                            type=Choice(["google", "microsoft", "skip"]))
-    if provider == "google":
-        handle_google_auth()
-    if provider == "microsoft":
-        handle_microsoft_auth()
-
-
 def _scheduler_name(result: dict) -> str:
     scheduler = result.get("scheduler", "none")
     return {"codex-native": "Codex Scheduled task", "launchd": "launchd",
@@ -922,40 +901,44 @@ def _scheduler_name(result: dict) -> str:
 
 
 def init_global_rem(*, yes: bool = False) -> None:
-    """Approve upkeep and build the first notebook in the foreground."""
+    """Grant source access, install upkeep and build without questions."""
     from ...rem.config import prepare
     from ...rem.files import maintenance_lock
     from ...rem.schedule import Unsupported, default_root, default_scheduler
-    from ...rem.service import ensure_consent, start
+    from ...rem.service import grant_init_sources, MAIL_KINDS, mail_available
     root = default_root()
     if (root / "config.yaml").is_file():
         typer.echo("REM is already initialized. Watch: co rem status")
+        _init_undo(root)
         return
     with maintenance_lock(root):
         prepare(root)
-    if yes or not sys.stdin.isatty():
-        _mailbox_commands()
-        typer.echo("REM storage created; sources unread and scheduling off. Next: co rem init to review consent and build. Upkeep: co rem start. Watch: co rem status")
-        return
-    _offer_mailbox()
-    confirm = lambda summary: _start_consent(None, summary, yes=False)
-    if not ensure_consent(root, confirm=confirm):
-        typer.echo("REM storage created; consent declined and scheduling off. Next: co rem init when ready to build. Upkeep: co rem start. Watch: co rem status")
-        return
+    grant_init_sources(root)
+    if not any(mail_available(kind) for kind in MAIL_KINDS):
+        typer.echo("No mailbox connected; using local sessions. Connect: co auth google or co auth microsoft; mail joins the next scheduled round.")
     scheduler = default_scheduler(root, for_start=True)
+    result = {"scheduler": "none"}
     if isinstance(scheduler, Unsupported):
-        typer.echo("REM prepared; no scheduler available on this platform. Next: co rem init to build manually. Upkeep: schedule co rem sync with cron. Watch: co rem status")
-        return
-    typer.echo("Installing REM upkeep. Resume setup with co rem start.")
-    result = _install_upkeep(root, confirm, scheduler)
+        typer.echo("No scheduler available; schedule co rem sync with cron. Building now.")
+    else:
+        typer.echo("Installing REM upkeep. Resume setup with co rem start.")
+        result = _install_upkeep(root, lambda summary: True, scheduler)
     from click import Command
     ctx = typer.Context(Command("init"), info_name="init",
                         obj={"root": root, "default_root": True, "json": False})
-    built = init_rem_flow(ctx)
+    built = init_rem_flow(ctx, yes=True, start_background=False)
     summary = _init_done(ctx, built).strip().replace("\n", " ")
-    next_step = "co rem init" if built.get("build_deferred") else "co rem open"
     installed = _scheduler_name(result) + (f" ({result['fallback']})" if result.get("fallback") else "")
-    typer.echo(f"REM ready; {summary} Scheduler installed: {installed}. Next: {next_step}. Watch: co rem status")
+    typer.echo(f"REM ready; {summary} Scheduler installed: {installed}. Next: co rem open. Watch: co rem status")
+    _init_undo(root)
+
+
+def _init_undo(root) -> None:
+    typer.echo(f"Undo REM setup:\n"
+               "  co rem stop — turn scheduling off\n"
+               "  co rem sources — see sources; co rem sources remove SOURCE — remove one\n"
+               "  co auth logout — remove OpenOnion credentials; revoke mailbox access in your Google/Microsoft account\n"
+               f"  Delete the notebook folder: {root}")
 
 
 def _install_upkeep(root, confirm, scheduler) -> dict:
@@ -1450,7 +1433,7 @@ def make_rem_app(factory):
                   investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project"),
                   estimate_only: bool = typer.Option(False, "--estimate-only", help="Map and estimate the selected work without model turns or body archive"),
                   start_background: bool = typer.Option(True, "--start/--no-start", help="Install nightly upkeep after the first run"),
-                  yes: bool = typer.Option(False, "--yes", help="Approve the shown source access and background schedule"),
+                  yes: bool = typer.Option(False, "--yes", help="Approve source access and skip the estimate confirmation"),
                   first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),

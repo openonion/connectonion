@@ -146,7 +146,8 @@ def approve_sources(root: Path, *, mail=()) -> None:
             if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat(),
+        write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
+                                                      "authorized_at": now().isoformat(),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
 
@@ -860,8 +861,40 @@ def background_summary(config: dict) -> str:
     return "manual sync or cron; no supported background scheduler. Stop: co rem stop"
 
 
+def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
+    """Init grants local sessions and current/future authenticated mail; removal wins."""
+    from contextlib import nullcontext
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        sources = subscriptions(root)
+        for kind in offered_mailboxes(root):
+            sources[kind]["enabled"] = True
+        for source in sources.values():
+            if source.get("kind") in (*KINDS, *MAIL_KINDS) and source.get("enabled"):
+                source["consented"] = True
+                if source.get("kind") in MAIL_KINDS and mail_available(source["kind"]):
+                    source["adapter"] = "available"
+        write_json(state_path(root, "subscriptions.json"), sources)
+        previous = read_json(state_path(root, "consent.json"), {})
+        write_json(state_path(root, "consent.json"), {
+            **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
+            "granted_by": "init", "summary": summary_fingerprint(root)})
+
+
+def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
+    """Admit newly connected mail before a scheduled read, without asking again."""
+    agreed = read_json(state_path(root, "consent.json"), {})
+    if agreed.get("granted_by") != "init":
+        return
+    sources = subscriptions(root)
+    if any(mail_available(kind) and not sources[kind].get("unsubscribed")
+           and (not sources[kind].get("enabled") or not sources[kind].get("consented")
+                or sources[kind].get("adapter") != "available") for kind in MAIL_KINDS):
+        grant_init_sources(root, lock_held=lock_held)
+
+
 def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
+    refresh_init_mailboxes(root)
     first = not state_path(root, "consent.json").is_file()
     # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
     # has not been agreed to. Asking only the first time meant it could never be
@@ -1117,6 +1150,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     with maintenance_lock(root), _terminate_as_interrupt():
         from .native import refuse_pending
         refuse_pending(root)
+        refresh_init_mailboxes(root, lock_held=True)
         sessions = import_sessions(root, consented_only=True, lock_held=True)
         config = validate(read_config(root))
         abandon_stale_runs(root)
