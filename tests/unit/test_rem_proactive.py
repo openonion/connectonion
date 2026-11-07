@@ -1397,6 +1397,26 @@ def test_held_local_reply_never_sends_old_words_against_a_new_version(notebook, 
     assert read_json(drafts.path(notebook, row['id']), {})['body'] == 'Tuesday works.'
 
 
+def test_approval_hold_uses_the_current_service_clock(notebook, monkeypatch):
+    from connectonion.rem import approvals, drafts
+    # The shared clock can be replaced after this module has already loaded.
+    moment = service.now() + timedelta(days=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Friday works.', 'sources': ['gmail:one']})
+    item = approvals.outcomes(notebook)[0]
+    client = Mock()
+    client.reply.return_value = 'sent'
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    approved = approvals.approve(notebook, [item['id'], item['id']])
+    assert approved['release_at'] == (moment + timedelta(minutes=10)).isoformat()
+    assert approvals.release(notebook, at=moment + timedelta(minutes=9)) == []
+    assert approvals.release(notebook, at=moment + timedelta(minutes=10))[0]['status'] == 'sent'
+    assert approvals.release(notebook, at=moment + timedelta(minutes=11)) == []
+    client.reply.assert_called_once_with('one', 'Friday works.')
+
+
 def test_outlook_scheduled_reply_receipt_keeps_normal_return_compatible():
     from connectonion.useful_tools.outlook import Outlook
     client = object.__new__(Outlook)

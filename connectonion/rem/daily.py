@@ -138,7 +138,9 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
             reason = maintenance.get('error') or 'the last scheduled maintenance failed'
         outcome = 'failed' if result['outcome'] == 'partial' else result['outcome']
         write_json(worker_path, {**worker, 'last_scheduled_outcome': outcome,
-                                 'last_scheduled_reason': reason})
+                                 'last_scheduled_reason': reason,
+                                 'last_scheduled_failure': next((row for row in maintenance.get('source_failures', [])
+                                                               if row.get('error') == reason), {})})
     return result
 
 

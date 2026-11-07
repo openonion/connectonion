@@ -7,9 +7,8 @@ from requests import RequestException
 from httpx import HTTPError
 from googleapiclient.errors import HttpError
 
-from . import drafts, threads, today
+from . import drafts, threads, today, service
 from .files import RemError, maintenance_lock, read_json, state_path, write_json
-from .service import now
 
 
 def _id(kind, key):
@@ -94,7 +93,7 @@ ACTIONS = {'reply': _reply, 'handled': _handled, 'task': _task}
 
 
 def approve(root, ids, *, bodies=None):
-    release_at = (now() + timedelta(minutes=10)).isoformat()
+    release_at = (service.now() + timedelta(minutes=10)).isoformat()
     with maintenance_lock(root):
         available = {item['id']: item for item in outcomes(root)}
         queue = read_json(state_path(root, 'approvals.json'), {})
@@ -125,7 +124,7 @@ def undo(root, ids):
         for key in dict.fromkeys(ids):
             item = queue.get(key)
             try:
-                if not item or item['status'] != 'held' or now() >= datetime.fromisoformat(item['release_at']):
+                if not item or item['status'] != 'held' or service.now() >= datetime.fromisoformat(item['release_at']):
                     raise RemError('This send is no longer held')
                 if item.get('receipt'):
                     drafts.mail_client('outlook').cancel_scheduled(item['receipt']['id'])
@@ -140,7 +139,7 @@ def undo(root, ids):
 
 def release(root, *, at=None, dispatch=None):
     """Host tick; claim before external IO. Ambiguous failures never auto-resend."""
-    at = at or now()
+    at = at or service.now()
     with maintenance_lock(root):
         queue = read_json(state_path(root, 'approvals.json'), {})
         ready = [item for item in queue.values() if

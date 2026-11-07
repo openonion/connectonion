@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -25,7 +26,7 @@ from ..provider_credentials import ProviderCredentialError
 
 from .config import prepare, read_config, validate
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
-from .mail import collect_mail, error_status
+from .mail import collect_mail
 from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
@@ -277,7 +278,8 @@ def run_logs(root: Path, run_id: str = "") -> list[dict]:
     records = [read_json(path, {}) for path in paths]
     if any(not isinstance(record, dict) or "started_at" not in record for record in records):
         raise RemError("Invalid run log; preserve it for diagnosis")
-    return sorted(records, key=lambda record: record["started_at"], reverse=True)
+    return [_safe_failure_record(record) for record in
+            sorted(records, key=lambda record: record["started_at"], reverse=True)]
 
 
 def running_marker() -> dict:
@@ -445,7 +447,9 @@ def _finish_scheduled(root, slot, result):
     write_json(state_path(root, "worker.json"), {
         **worker, "last_scheduled_slot": slot.isoformat(),
         "last_scheduled_outcome": "failed" if partial else result["outcome"],
-        "last_scheduled_reason": reason, "last_scheduled_warning": maintenance.get("warning") or ""})
+        "last_scheduled_reason": reason, "last_scheduled_warning": maintenance.get("warning") or "",
+        "last_scheduled_failure": next((row for row in maintenance.get("source_failures", [])
+                                         if row.get("error") == reason), {})})
 
 
 def _wall_slot(day: datetime, value: str) -> datetime:
@@ -628,14 +632,17 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
             failures = run.get("source_failures") or []
             failure = next((row for row in failures if row["source"] == kind), None)
             if failure or run.get("failed_source") == kind:
-                last = {"at": run["started_at"], "error": (failure or run).get("error", "source could not be read")}
+                details = failure or run
+                last = {"at": run["started_at"], "error": details.get("error", "source could not be read"),
+                        **{key: details[key] for key in ("code", "next_command") if key in details}}
                 break
             if kind in run.get("items_by_source", {}):
                 break
     zone = notebook_zone(read_config(root))
     if last and last.get("error"):
         day = timestamp(last["at"]).astimezone(zone).date()
-        reason = _safe_read_error(kind, last["error"]).removeprefix(f"{kind.title()} read failed")
+        reason = _safe_read_error(kind, last["error"], code=last.get("code", ""),
+                                  next_command=last.get("next_command", "")).removeprefix(f"{kind.title()} read failed")
         return f"last read failed {day}{reason}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
@@ -724,21 +731,40 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
 def _status_worker(worker: dict) -> dict:
     """Older scheduled failures copied the collection error into worker state."""
     reason = worker.get("last_scheduled_reason", "")
+    failure = worker.get("last_scheduled_failure") or {}
+    if failure:
+        failure = _safe_source_failure(failure)
+        worker = {**worker, "last_scheduled_failure": failure}
     for name in READABLE:
         if reason.startswith(f"{name.title()} read failed"):
-            return {**worker, "last_scheduled_reason": _safe_read_error(name, reason)}
+            return {**worker, "last_scheduled_reason": _safe_read_error(name, reason,
+                    code=failure.get("code", ""), next_command=failure.get("next_command", ""))}
     return worker
 
 
 def _status_run(run: dict) -> dict:
     """Old collection errors may contain secrets; status never echoes them."""
-    record = {**run, "outcome": seen_outcome(run)}
+    return {**_safe_failure_record(run), "outcome": seen_outcome(run)}
+
+
+def _safe_failure_record(run: dict) -> dict:
+    """Log readers share status's boundary, including offline reader snapshots."""
+    record = dict(run)
     if run.get("failed_source"):
-        record["error"] = _safe_read_error(run["failed_source"], run.get("error", ""))
+        failure = next((row for row in run.get("source_failures", []) if row["source"] == run["failed_source"]), run)
+        record["error"] = _safe_read_error(run["failed_source"], run.get("error", ""),
+                                           code=failure.get("code", ""), next_command=failure.get("next_command", ""))
     if run.get("source_failures"):
-        record["source_failures"] = [{**row, "error": _safe_read_error(row["source"], row.get("error", ""))}
-                                     for row in run["source_failures"]]
+        record["source_failures"] = [_safe_source_failure(row) for row in run["source_failures"]]
     return record
+
+
+def _safe_source_failure(failure: dict) -> dict:
+    """Rebuild the whole saved diagnostic, including its structured fields."""
+    name, code = failure["source"], failure.get("code", "")
+    if code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, code, next_command=failure.get("next_command", ""))
+    return {"source": name, "error": _safe_read_error(name, failure.get("error", ""))}
 
 
 def notebook_zone(config: dict):
@@ -1290,13 +1316,59 @@ def _http_reason(status: int, text: str = "") -> str:
                 responses.get(status, "HTTP request failed"))
 
 
-def _safe_read_error(name: str, error: str) -> str:
-    """Keep sanitized credential recovery; redact arbitrary pre-upgrade text."""
+# Provider messages are never diagnostic data: even a typed credential error
+# can contain response bodies or tokens. Only these codes and fixed commands
+# cross the collection boundary. Unknown codes fall back to the class name.
+CREDENTIAL_FAILURES = {
+    "reauth_required": ("{provider} authorization expired or was revoked.", "auth"),
+    "broker_auth_failed": ("OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    "record_changed": ("The selected credential record changed during this operation.", "co status"),
+    "invalid_response": ("Authorization service returned invalid credentials; saved record kept.", "co status"),
+    "permission_denied": ("{provider} permission denied for this operation.", "auth"),
+    "provider_unavailable": ("Authorization service could not refresh credentials.", "co status"),
+    "network_error": ("Cannot reach the authorization service; saved credentials kept.", "co status"),
+    "not_configured": ("{provider} account not connected.", "auth"),
+    "incomplete_record": ("Local {provider} credential record is incomplete.", "auth"),
+}
+
+
+def _saved_recovery(command: str, fallback: str) -> str:
+    """A saved structured command may select a file; it cannot add operations."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return fallback
+    if (len(parts) >= 4 and parts[:2] == ["co", "--env-file"] and Path(parts[2]).is_absolute()
+            and not any(char in parts[2] for char in "\r\n\0") and ["co", *parts[3:]] == shlex.split(fallback)):
+        return shlex.join(parts)
+    return fallback
+
+
+def _credential_failure(name: str, code: str, *, scoped: bool = False, next_command: str = "") -> dict:
+    """Build recovery from an allowlisted code, never from exception text."""
+    message, command = CREDENTIAL_FAILURES[code]
+    provider = "Google" if name == "gmail" else "Microsoft"
+    if command == "auth":
+        command = f"co auth {provider.lower()}"
+    if scoped:
+        from ..environment import selected_command
+        command = selected_command(command)
+    elif next_command:
+        command = _saved_recovery(next_command, command)
+    return {"source": name, "code": code, "next_command": command,
+            "error": f"{name.title()} read failed: [{code}] {message.format(provider=provider)} Next: {command}"}
+
+
+def _safe_read_error(name: str, error: str, *, code: str = "", next_command: str = "") -> str:
+    """Rebuild credential sentences; redact arbitrary pre-upgrade text."""
     prefix = f"{name.title()} read failed"
-    codes = ("reauth_required", "broker_auth_failed", "record_changed", "invalid_response",
-             "provider_unavailable", "network_error", "not_configured", "incomplete_record", "permission_denied")
-    if any(error.startswith(f"{prefix}: [{code}] ") for code in codes):
-        return error
+    if code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, code, next_command=next_command)["error"]
+    credential = re.match(re.escape(prefix) + r": \[([a-z_]+)\]", error)
+    if credential:
+        code = credential[1]
+        return (_credential_failure(name, code)["error"] if code in CREDENTIAL_FAILURES
+                else f"{prefix}: ProviderCredentialError")
     match = re.match(re.escape(prefix) + r": ([A-Za-z_][A-Za-z0-9_]{0,79})(?: (\d{3})\b)?(?= |$)", error)
     if not match:
         return prefix
@@ -1307,21 +1379,20 @@ def _safe_read_error(name: str, error: str) -> str:
 
 
 def _collection_failure(name: str, error: Exception) -> dict:
-    """Credential errors carry sanitized recovery; other exceptions may hold secrets."""
-    if isinstance(error, ProviderCredentialError):
-        return {"source": name, "error": f"{name.title()} read failed: [{error.code}] "
-                + " ".join(str(error).splitlines())}
-    status = error_status(error)
-    detail = type(error).__name__
-    if status is not None:
-        reason = str(error.reason) if isinstance(error, HttpError) else ""
-        detail += f" {status} {_http_reason(status, reason)}"
-    return {"source": name, "error": f"{name.title()} read failed: {detail}"}
+    """Only structured recovery or the exception class may reach the notebook."""
+    if isinstance(error, ProviderCredentialError) and error.code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, error.code, scoped=True)
+    return {"source": name, "error": f"{name.title()} read failed: {type(error).__name__}"}
 
 
-def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missing: int = 0) -> None:
+def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missing: int = 0, failure: dict | None = None) -> None:
     reads = read_json(state_path(root, "source_reads.json"), {})
-    reads[name] = {"at": now().isoformat(), "error": error, "dropped_missing": dropped_missing}
+    failure = failure or {}
+    safe = _safe_read_error(name, error, code=failure.get("code", ""), next_command=failure.get("next_command", "")) if error else ""
+    credential = re.match(re.escape(f"{name.title()} read failed: ") + r"\[([a-z_]+)\]", safe)
+    fields = _credential_failure(name, credential[1], next_command=failure.get("next_command", "")) if credential else {}
+    reads[name] = {"at": now().isoformat(), "error": safe, "dropped_missing": dropped_missing,
+                   **{key: fields[key] for key in ("code", "next_command") if key in fields}}
     write_json(state_path(root, "source_reads.json"), reads)
 
 
@@ -1404,7 +1475,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                 try:
                     client = mail_client(subscription["kind"])
                 except ProviderCredentialError:
-                    raise  # Already sanitized, with the provider's recovery command.
+                    raise  # Preserve structured recovery for the collection boundary.
                 except ValueError as error:
                     provider = "google" if subscription["kind"] == "gmail" else "microsoft"
                     raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
@@ -1420,7 +1491,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                 HttpError, GoogleAuthError, HttpLib2Error) as error:
             failure = _collection_failure(name, error)
             source_failures.append(failure)
-            _record_source_read(root, name, failure["error"])
+            _record_source_read(root, name, failure["error"], failure=failure)
             updated["rem_last_source"] = name
             # Rotation survives even if a later model turn fails; source cursors stay put.
             write_json(state_path(root, "progress.json"), {**progress, "rem_last_source": name})
