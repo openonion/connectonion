@@ -389,9 +389,9 @@ for `co handoff send`: a contact you already had keeps its name and its mail
 address and gains the agent's `0x` address, and anyone new is saved under
 their mailbox name.
 
-The handoffs level can be raised: `co trust add <0x…>` makes them a contact. A
+The handoffs level can be raised: `co trust add <0x…> --global` makes them a contact. A
 policy per contact, set and raised by the Trust Agent from what co rem knows
-about the two of you, is #2401 / #2407. `co trust remove <0x…>`
+about the two of you, is #2401 / #2407. `co trust remove <0x…> --global`
 takes someone off the list.
 
 ## Transport

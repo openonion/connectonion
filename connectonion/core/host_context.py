@@ -1,5 +1,6 @@
 """Requester notices and operator context for hosted work without prompts."""
 from pathlib import Path
+import shlex
 
 from .. import approvals
 from .interrupt import InterruptibleIO
@@ -66,10 +67,13 @@ def finish_auto_run(agent, context: dict | None, outcome: str) -> None:
         approvals.append(directory, {key: value for key, value in context.items() if key != "notice"} |
                {"decision": "done", "outcome": outcome})
     address = (agent.current_session.get("requester") or {}).get("address")
+    trust_dir = getattr(agent, "_host_trust_dir", None)
+    target = f" --co-dir {shlex.quote(str(Path(trust_dir).resolve()))}" if trust_dir is not None else ""
     Console().print(
         f"Host Auto: {context['who']} ran {context['tool']} — {context['task_summary']} "
         f"(mode={context['mode']}, {outcome}). Review: co approvals --who {address}. "
-        f"Block future connections on this Host: co trust block {address}. "
-        "Existing connected sessions may still submit work.", markup=False, soft_wrap=True,
+        f"Revoke access on this Host: co trust block {address}{target}. "
+        "Revocation takes effect on the requester's next message (frame); "
+        "a running turn is stopped then.", markup=False, soft_wrap=True,
     )
 

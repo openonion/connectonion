@@ -28,6 +28,14 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+def current_trust_level(trust_agent, address):
+    """Read live list membership, with an explicit block taking precedence."""
+    level = trust_agent.get_level(address)
+    if level == "blocked":
+        return level
+    return "admin" if trust_agent.is_admin(address) else level
+
+
 def _record_oip_compatibility(data, conn):
     record = oip_compatibility_record(
         data.get("protocol"), conn.get("transport", "unknown")
@@ -365,6 +373,11 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     session_sync = requests_session_sync(data)
     session_sync_only = requests_session_sync_only(data)
     recipient_address = data.get("payload", {}).get("to")
+    trust_agent = route_handlers.get("trust_agent") if route_handlers is not None else None
+    if trust_agent is not None:
+        # Remember a grant so removing it revokes this live connection, while
+        # a stranger admitted by a default-allow policy remains welcome.
+        conn["trust_level"] = current_trust_level(trust_agent, agent_address)
 
     # A Recent Chat index must not create a blank conversation merely by
     # looking for existing ones. This authenticated capability socket skips
