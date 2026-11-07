@@ -40,6 +40,8 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
         lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        if turn.get('started_codex_after_s') is not None:
+            lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
             lines += [rem_look.follow(highlight(turn['reason']), glyph=''),
                       rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]

@@ -13,6 +13,35 @@ from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, read_json, state_path
 
 
+def test_exec_slow_start_still_runs_and_records_startup_time(tmp_path, monkeypatch):
+    import signal
+    import time
+    setitimer = signal.setitimer
+
+    def scaled_timer(which, seconds, interval=0):
+        # Scale the startup bound only; preserve any caller's restored alarm.
+        monkeypatch.setattr(signal, 'setitimer', setitimer)
+        return setitimer(which, seconds / 100, interval)
+
+    def slow_config(root):
+        time.sleep(0.4)  # Longer than the old scaled 0.3s bound.
+        return default_config()
+
+    def run(command, **kwargs):
+        receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+        assert receipt['result'] == 'running'
+        assert receipt['started_codex_after_s'] >= 0.4
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(signal, 'setitimer', scaled_timer)
+    monkeypatch.setattr(codex_exec, 'read_config', slow_config)
+    monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['codex', 'exec'])
+    assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['started_codex_after_s'] >= 0.4
+    assert read_json(next(state_path(tmp_path, 'turns').glob('*.json')), {}) == receipt
+
+
 def test_exec_command_under_plist_environment_does_not_import_tools(tmp_path, monkeypatch):
     binary = tmp_path / 'bin with spaces' / 'codex'
     binary.parent.mkdir()
@@ -89,6 +118,26 @@ def test_exec_failed_spawn_preserves_reason(tmp_path, monkeypatch):
     assert read_json(state_path(tmp_path, 'last-turn.json'), {})['reason'] == 'Codex executable disappeared before spawn'
 
 
+@pytest.mark.parametrize('result, seconds', [
+    ('running', 65.4), ('completed', 65.4), ('failed', 65.4), ('completed', 0), ('completed', None),
+])
+def test_exec_status_shows_startup_time(tmp_path, monkeypatch, result, seconds):
+    from connectonion.cli.commands import rem_status
+    from rich.text import Text
+    receipt = {'result': result, 'started_at': '2026-11-07T00:00:00+00:00'}
+    if seconds is not None:
+        receipt['started_codex_after_s'] = seconds
+    monkeypatch.setattr('connectonion.rem.census.pages', lambda root: {})
+    monkeypatch.setattr(rem_status, 'notebook', lambda *args: {})
+    for name in ('_header', '_waiting', '_today', '_notebook', '_mailboxes', '_archive', '_budget', '_last_runs'):
+        monkeypatch.setattr(rem_status, name, lambda *args: [])
+    rendered = Text.from_markup(rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')).plain
+    if seconds is None:
+        assert 'Codex startup' not in rendered
+    else:
+        assert f'Codex startup: {seconds:g}s' in rendered
+
+
 def test_exec_module_records_environment_errors_before_config_import(tmp_path):
     home = tmp_path / 'home'
     (home / '.co').mkdir(parents=True)
@@ -107,13 +156,15 @@ def test_exec_stalled_startup_has_a_failed_receipt_and_restores_alarm(tmp_path, 
     import signal
     previous = signal.getsignal(signal.SIGALRM)
     def stalled(root):
-        signal.raise_signal(signal.SIGALRM)
+        signal.pause()
+    monkeypatch.setattr(codex_exec, 'STARTUP_TIMEOUT_S', 0.05)
     monkeypatch.setattr(codex_exec, 'read_config', stalled)
-    with pytest.raises(TimeoutError, match='could not start within 30 seconds'):
+    with pytest.raises(TimeoutError, match='could not start within 0.05 seconds'):
         codex_exec.run_turn(tmp_path)
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert receipt['result'] == 'failed'
-    assert 'could not start within 30 seconds' in receipt['reason']
+    assert 'could not start within 0.05 seconds' in receipt['reason']
+    assert 'started_codex_after_s' not in receipt
     assert signal.getsignal(signal.SIGALRM) is previous
 
 

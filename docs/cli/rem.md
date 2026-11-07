@@ -1000,9 +1000,14 @@ job. Account-managed desktop tasks still require a confirmed pause before switch
 `co rem status` shows the installed runner and last exec turn result. Exec logs,
 last messages and receipts are under `.state/turns/`; `.state/last-turn.json`
 points to the latest turn. `co rem stop` removes the clock; a running turn can finish.
-Startup has a 30-second deadline. Configuration, command resolution and spawn
-errors leave a failed receipt with the reason, which `co rem status` displays
-alongside the turn log and the command to restart after fixing the cause.
+Environment loading, configuration and command resolution have a five-minute
+deadline to bound hangs while allowing slow machines to start. Receipts record
+this preparation time as `started_codex_after_s` before dispatching Codex;
+`co rem status` displays it as `Codex startup`. This is a fixed upper bound;
+a start still taking longer than five minutes fails even if it is progressing.
+Configuration, command resolution and spawn errors leave a failed receipt with
+the reason, which `co rem status` displays alongside the turn log and the command
+to restart after fixing the cause.
 
 For `codex-app`, the desktop adopts a private local automation definition.
 Its wake job opens Codex 15 minutes before each fire. Keep the app open and the

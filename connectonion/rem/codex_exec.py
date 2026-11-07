@@ -12,6 +12,9 @@ from pathlib import Path
 
 from .files import RemError, state_path, write_json
 
+# Leave room for overloaded machines; this bounds hangs, not normal startup.
+STARTUP_TIMEOUT_S = 300
+
 
 def read_config(root):
     # Import configuration only after the turn has a receipt and a deadline.
@@ -57,14 +60,15 @@ def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
 
 
 def _startup_timeout(signum, frame):
-    raise TimeoutError('Codex turn could not start within 30 seconds; check configuration and run co rem start')
+    raise TimeoutError(f'Codex turn could not start within {STARTUP_TIMEOUT_S:g} seconds; '
+                       'check configuration and run co rem start')
 
 
 def _start_command(root, last):
     from ..environment import load_environment
     previous = signal.signal(signal.SIGALRM, _startup_timeout)
     started = time.monotonic()
-    delay, interval = signal.setitimer(signal.ITIMER_REAL, 30)
+    delay, interval = signal.setitimer(signal.ITIMER_REAL, STARTUP_TIMEOUT_S)
     try:
         load_environment()
         return exec_command(root, read_config(root), last_message=last)
@@ -110,7 +114,10 @@ def _run_locked(root, run, lock_fd):
     result = None
     try:
         with log.open('w') as output:
+            startup = time.monotonic()
             command = _start_command(root, last)
+            receipt['started_codex_after_s'] = round(time.monotonic() - startup, 3)
+            write_json(state_path(root, 'last-turn.json'), receipt)
             # Inherit the lock so killing the launcher cannot overlap a still
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
