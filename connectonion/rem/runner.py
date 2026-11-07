@@ -1272,13 +1272,21 @@ def scrub_task(directory: Path) -> None:
     evidence directory was deleted "so copies of private mail do not
     accumulate" (#1958). What is kept is the owner's alone: a candidate page
     quotes their mail, and 1.9.0a2 left it 0644 (#1974).
+    Native completion is in the run log; its workspace goes once the round
+    no longer needs the earlier task outputs.
     """
+    if not directory.is_dir() or directory.is_symlink():
+        return
     native_task = read_json(directory / "task.json", {})
     active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
-    if native_task.get("status") == "pending" or (native_task and not active_round.get("done")
+    if native_task.get("status") == "pending" or (native_task and active_round.get("started_at")
+            and not active_round.get("done")
             and native_task.get("round_started_at") == active_round.get("started_at")):
         return
     import shutil
+    if native_task.get("status") in ("accepted", "discarded"):
+        shutil.rmtree(directory)
+        return
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
             # refused/ holds the pages a maintenance pass wrote and review
@@ -1291,6 +1299,8 @@ def scrub_task(directory: Path) -> None:
             shutil.rmtree(path, ignore_errors=True)
         else:
             path.unlink(missing_ok=True)
+    if not any(directory.iterdir()):
+        directory.rmdir()
 
 
 # A folder with no result.json this old was left by a run that was killed: the
@@ -1311,9 +1321,12 @@ def scrub_finished_tasks(workdir: Path) -> None:
         if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
-        if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
+        native_task = read_json(folder / "task.json", {})
+        if (native_task.get("status") in ("accepted", "discarded")
+                or (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale):
             scrub_task(folder)
-            _SCRUBBED_TASKS.add(folder)
+            if not (folder / "task.json").is_file():
+                _SCRUBBED_TASKS.add(folder)
 
 
 _TASK_MASK_LOCK = threading.Lock()

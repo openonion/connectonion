@@ -955,7 +955,7 @@ def test_stale_task_is_explicitly_discarded_and_logged(trial, monkeypatch):
     monkeypatch.setattr(service, "now", lambda: prepared + timedelta(days=2))
     result = native.next_task(trial)
     assert "stale" in " ".join(result["notices"])
-    assert read_json(Path(task["material"]) / "task.json", {})["status"] == "discarded"
+    assert task['id'] != read_json(state_path(trial, 'round.json'), {}).get('pending')
     assert any(row.get("outcome") == "discarded" for row in service.run_logs(trial))
 
 
@@ -1113,7 +1113,8 @@ def test_promotion_recovers_after_process_dies_before_task_acceptance(trial, mon
     monkeypatch.setattr(native, "_accept", accept)
     native.next_task(trial)
     assert Notebook(trial).read(record) == saved
-    assert read_json(Path(task["material"]) / "task.json", {})["status"] == "accepted"
+    assert any(row.get('task_id') == task['id'] and row['outcome'] == 'completed'
+               for row in service.run_logs(trial))
     assert read_json(state_path(trial, "round.json"), {}).get("pending") != task["id"]
 
 
@@ -1275,7 +1276,8 @@ def test_discard_precedes_accepted_task_recovery(trial, monkeypatch):
     write_json(state_path(trial, 'progress.json'), progress)
     native.next_task(trial, discard=True)
     assert read_json(state_path(trial, 'progress.json'), {}).get('newer-source') == {'cursor': 'newer'}
-    assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'discarded'
+    assert any(row.get('task_id') == task['id'] and row['outcome'] == 'discarded'
+               for row in service.run_logs(trial))
 
 
 def test_unrouted_empty_output_requires_no_change_receipt(trial):
@@ -1512,7 +1514,8 @@ def test_summary_promotion_recovers_every_write_boundary(trial, monkeypatch, bou
     monkeypatch.setattr(Notebook, 'write', page_write)
     monkeypatch.setattr(native, '_accept', accept)
     native.next_task(trial)
-    assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'accepted'
+    assert any(row.get('task_id') == task['id'] and row['outcome'] == 'completed'
+               for row in service.run_logs(trial))
     assert '# Pilot reader' in Notebook(trial).read(task['record'])
     assert read_json(state_path(trial, 'session-tags.json'), {}) == {'pilot': 1}
 
@@ -1575,7 +1578,8 @@ def test_same_person_promotion_recovers_every_write_boundary(trial, monkeypatch,
     monkeypatch.setattr(same_person, 'write_json', verdict_write)
     monkeypatch.setattr(native, '_accept', accept)
     native.next_task(trial)
-    assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'accepted'
+    assert any(row.get('task_id') == task['id'] and row['outcome'] == 'completed'
+               for row in service.run_logs(trial))
     assert len(Notebook(trial).list('people')) == 1
     aliases = merge.aliases(trial)
     old, = aliases
@@ -1688,8 +1692,6 @@ def test_later_scheduled_slot_defers_old_translations_and_reads_new_material(
         assert worker['last_scheduled_slot'] == cursor['slot']
         assert worker['last_scheduled_outcome'] == 'completed'
     if pending:
-        discarded = read_json(Path(task['material']) / 'task.json', {})
-        assert discarded['status'] == 'discarded'
         assert any(row.get('task_id') == task['id'] and row['outcome'] == 'discarded'
                    for row in service.run_logs(trial))
     logs = CliRunner().invoke(app, ['rem', '--root', str(trial), 'logs', cursor['run']['id']])
@@ -1891,7 +1893,8 @@ def test_stale_committed_task_recovers_before_automatic_discard(trial, monkeypat
     moment = service.now()
     monkeypatch.setattr(service, 'now', lambda: moment + timedelta(days=2))
     native.next_task(trial)
-    assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'accepted'
+    assert any(row.get('task_id') == task['id'] and row['outcome'] == 'completed'
+               for row in service.run_logs(trial))
 
 
 
@@ -2279,3 +2282,49 @@ def test_legacy_audit_refusal_refreshes_excerpt_instructions(trial, checkpoint_a
     assert 'at least 20 verbatim characters' in native.pending(trial)[0]['instructions']
     _audit_notes(audit)
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+@pytest.mark.parametrize('outcome', ['accepted', 'discarded'])
+def test_terminal_native_task_scrubs_after_cursor_is_saved(trial, monkeypatch, outcome):
+    from connectonion.rem import native_round
+
+    record, source = _feedback(trial)
+    shown = native.next_task(trial)
+    directory = Path(shown['material'])
+    task = read_json(directory / 'task.json', {})
+    cursor = read_json(state_path(trial, 'round.json'), {})
+
+    def finish(root, cursor, task, result):
+        cursor.update(done=True, pending=None)
+        write_json(state_path(root, 'round.json'), cursor)
+
+    monkeypatch.setattr(native_round, 'advance', finish)
+    if outcome == 'accepted':
+        native._accept(trial, cursor, task, {'changed': []})
+    else:
+        native._discard(trial, cursor, task, 'fictional discard')
+
+    assert not directory.exists()
+    assert any(row.get('task_id') == task['id'] for row in service.run_logs(trial))
+
+
+def test_finishing_native_round_removes_accepted_workspaces(trial, monkeypatch):
+    from connectonion.rem import native_round
+
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    assert _submit(trial, task)['outcome'] == 'accepted'
+    directory = Path(task['material'])
+    assert directory.is_dir()  # Earlier outputs remain available to this round.
+    cursor = read_json(state_path(trial, 'round.json'), {})
+
+    def finish(root, cursor, config, directory):
+        native_round.finish(root, cursor)
+        return None
+
+    monkeypatch.setattr(native_round, 'prepare_task', finish)
+    result = native._new_task(trial, cursor, read_config(trial), {}, [])
+
+    assert result['outcome'] == 'done'
+    assert list(directory.parent.iterdir()) == []
+    assert any(row.get('task_id') == task['id'] for row in service.run_logs(trial))
