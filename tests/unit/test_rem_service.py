@@ -13,17 +13,17 @@ from tests.unit.test_rem_source import rollout
 pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
-@pytest.mark.parametrize('results,last_message,visible', [
-    (['failed', 'timed-out'], '', True),
-    (['completed', 'completed'], 'I could not start because authorization is blocked.', True),
-    (['completed', 'completed'], '无法启动：授权阻塞。', True),
-    (['completed', 'completed'], 'I could not start because the maintenance lock is held by pid 49443.', True),
-    (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True),
-    (['failed', 'completed'], 'Finished the work.', False),
-    (['completed', 'failed'], '', False),
-    (['failed', 'running'], '', False),
+@pytest.mark.parametrize('results,last_message,blocked,visible', [
+    (['failed', 'timed-out'], '', False, True),
+    (['completed', 'completed'], 'The first attempt could not start; I retried and completed the round.', False, False),
+    (['completed', 'completed'], 'Earlier MAINTENANCE_BUSY; retried and completed the round.', False, False),
+    (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
+    (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
+    (['failed', 'completed'], 'Finished the work.', False, False),
+    (['completed', 'failed'], '', False, False),
+    (['failed', 'running'], '', False, False),
 ])
-def test_status_today_surfaces_receipt_failures(rem, results, last_message, visible):
+def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
     from connectonion.cli.commands.rem_status import _today
     from connectonion.rem.reader import snapshot
     root, _ = rem
@@ -32,7 +32,8 @@ def test_status_today_surfaces_receipt_failures(rem, results, last_message, visi
         last.parent.mkdir(exist_ok=True)
         last.write_text(last_message if index == 1 else '')
         turn = {'started_at': f'2026-11-0{index + 1}T03:00:00Z', 'result': result,
-                'last_message': str(last), 'reason': 'fictional timeout',
+                'last_message': str(last), 'blocked': blocked if index == 1 else False,
+                'reason': last_message if blocked else 'fictional timeout',
                 **({'finished_at': f'2026-11-0{index + 1}T04:00:00Z'} if result != 'running' else {})}
         write_json(state_path(root, f'turns/turn-{index}.json'), turn)
     write_json(state_path(root, 'last-turn.json'), turn)
@@ -41,13 +42,38 @@ def test_status_today_surfaces_receipt_failures(rem, results, last_message, visi
     assert bool(line) == visible
     if visible:
         from rich.text import Text
-        assert line.startswith('上次定时任务没干成：')
-        assert ('需要你' if last_message else '已自动重试') in line
-        assert (last_message if last_message else 'fictional timeout') in line
-        if 'maintenance lock' in last_message:
-            assert '检查授权' not in line
-        assert line in Text.from_markup(_today(root, value)[0]).plain
+        assert line == {'code': 'blocked' if blocked else 'repeated_failure',
+                        'evidence': last_message if blocked else 'fictional timeout'}
+        output = Text.from_markup(_today(root, value)[0]).plain
+        assert output.startswith('Last scheduled turn did not finish:')
+        assert ('run co rem start' if blocked else 'Retried automatically') in output
+        assert line['evidence'] in output
         assert snapshot(root)['status']['schedule_failure'] == line
+
+
+@pytest.mark.parametrize('message,blocked', [
+    ('The first attempt could not start; I retried and completed the round.', False),
+    ('Earlier MAINTENANCE_BUSY; the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; the earlier attempt failed, but the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled. '
+     'Report this message and end the turn without retrying.', True),
+])
+def test_turn_receipt_records_terminal_busy_outcome(rem, monkeypatch, message, blocked):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec
+    root, _ = rem
+    monkeypatch.setattr(codex_exec, '_start_command', lambda root, last: ['fictional-codex', str(last)])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda self, root: False)
+
+    def run(command, **kwargs):
+        from pathlib import Path
+        Path(command[1]).write_text(message)
+        return CompletedProcess(command, 0)
+
+    codex_exec.run_turn(root, run=run)
+    receipt = read_json(state_path(root, 'last-turn.json'), {})
+    assert receipt['blocked'] is blocked
+    assert bool(status(root).get('schedule_failure')) is blocked
 
 
 @pytest.fixture

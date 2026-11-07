@@ -7,6 +7,16 @@ from connectonion.rem.runner import instructions, maintenance_instructions
 from connectonion.rem.extract import extraction_instructions
 
 
+def test_reply_draft_allows_undated_requests_within_its_instruction_budget():
+    from connectonion.skills_catalog import useful_skills_dir
+
+    text = (useful_skills_dir() / 'rem-reply-draft/SKILL.md').read_text()
+    assert len(text) < 6_000
+    assert 'date not agreed' in text and 'no earlier agreement' in text
+    assert 'days from Today if dated, else unknown' in text
+    assert 'Dates must be in `material`' in text
+
+
 def test_shared_writing_note_limits_hedges_to_consequential_uncertainty(tmp_path):
     from connectonion.rem.runner import today_note
 

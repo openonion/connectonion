@@ -28,9 +28,9 @@ If `verdict.json` says `no_reply`, write no body: `verdict` is `no_reply`, `gist
 
 You write as the owner of `from`; `to` is the person you address. If `person` does not match `to`, trust `to` and the From lines, and say so in `why`.
 
-List every ask in the latest message. For each one, decide: answer it, decline it, or hand it to the owner. Never write "I will review / 我会先看 / I'll gather and follow up / will get back to you": that sentence is the failure this skill exists to prevent. If the ask is a decision or an opinion, the body is the part you can decide from `material` (the two or three specific points, with what they refer to) plus one slot `【需要你：<exactly what> — <by when>】` for the part only the owner knows. The slot is in the owner's language, has a date, and is the only bracketed text in the body. If the thing to review is not in `material`, that is a `deliverable`, not a reply; say so in `why` in one clause.
+List every ask in the latest message. For each one, decide: answer it, decline it, or hand it to the owner. Never write "I will review / 我会先看 / I'll gather and follow up / will get back to you": that sentence is the failure this skill exists to prevent. If the ask is a decision or an opinion, the body is the part you can decide from `material` (the two or three specific points, with what they refer to) plus one slot `【需要你：<exactly what> — <by when>】` for the part only the owner knows. The only bracketed text is this owner-language slot: a `material` date or “date not agreed”. If the thing to review is not in `material`, that is a `deliverable`, not a reply; say so in `why` in one clause.
 
-Compute the age of the latest message from Today and state it in `why` in days. Do not answer an old ask as if it arrived today; answer what is still true now. How the owner reopens an old thread is theirs to add.
+State the latest message's age in `why`: days from Today if dated, else unknown. Do not answer an old ask as if it arrived today; answer what is still true now. How the owner reopens an old thread is theirs to add.
 
 A deliverable arrived (`material` has a `task:` source): the first line says it is done and where it is; the rest is only what the recipient must know to use it. No account of how it was made.
 
@@ -55,7 +55,7 @@ Write `candidate.json`:
 
 - `body`: the reply, plain text.
 - `gist`: one or two sentences in the owner's language saying what the body does (not a translation).
-- `why`: three clauses in this order, separated by `；`, in the owner's language: who this is (team, project or organisation · role · relationship to the owner); what was last agreed, with its date; what the owner owes and since how many days. Every date must appear in `material`.
+- `why`: three ordered clauses separated by `；`, in the owner's language: who this is (team, project or organisation · role · relationship to the owner); last agreement (date if supplied) or “no earlier agreement”; what the owner owes and its age if known. Dates must be in `material`.
 - `verdict`: `reply` or `no_reply` (copied from `verdict.json`).
 - `send`: `now` or `owner`, copied from `verdict.json`. You never raise it; you may lower it to `owner` and say why in one clause of `why`.
 - `needs_owner`: each slot in the body, verbatim (empty when none).

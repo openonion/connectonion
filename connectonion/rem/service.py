@@ -651,7 +651,7 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     return "", ""
 
 
-def schedule_failure(root: Path) -> str:
+def schedule_failure(root: Path) -> dict | None:
     """Surface failed turns from their receipts, without inventing scheduler state."""
     receipts = [read_json(path, {}) for path in sorted(state_path(root, 'turns').glob('*.json'))[-2:]]
     last = read_json(state_path(root, 'last-turn.json'), {})
@@ -659,18 +659,14 @@ def schedule_failure(root: Path) -> str:
         receipts.append(last)
     receipts.sort(key=lambda turn: turn.get('started_at', ''))
     if not receipts or receipts[-1].get('result') in ('running', 'skipped'):
-        return ''
+        return None
     last = receipts[-1]
-    message_path = Path(last['last_message']) if last.get('last_message') else None
-    message = message_path.read_text() if message_path and message_path.is_file() else ''
-    cannot_start = re.search(r"MAINTENANCE_BUSY|could not start|couldn't start|cannot start|unable to start|无法启动|未能启动|无法开始", message, re.I)
+    blocked = last.get('blocked') is True
     failed_twice = len(receipts) >= 2 and all(turn.get('result') in ('failed', 'timed-out') for turn in receipts[-2:])
-    if not cannot_start and not failed_twice:
-        return ''
-    reason = ' '.join((message if cannot_start else last.get('reason') or
-                       f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
-    action = '需要你处理上述阻塞后运行 co rem start' if cannot_start else '已自动重试'
-    return f'上次定时任务没干成：{reason} · {action}'
+    if not blocked and not failed_twice:
+        return None
+    evidence = ' '.join((last.get('reason') or f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
+    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence}
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
