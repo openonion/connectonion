@@ -5,8 +5,12 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 # A person's page
 
-Read material; write/check/fix once, stop. Lead/Open threads guide action.
-Exact order:
+Read supplied page/material. Write, check, fix once, stop; use this format.
+
+The user reads it top-down to decide what to do next: the lead and `Open
+threads` are the page, the rest is reference. Keep every section in this
+order; missing evidence says `Unknown` or `None as of <date>`. Every factual
+sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 
 ```markdown
 # <observed name>
@@ -42,65 +46,104 @@ Exact order:
 ## Sources
 ```
 
-Exact headings/labels once. Missing: Unknown or None as of date. Cite factual
-sentences with [n] into Sources.
+Rules:
 
-- **Quote first, paraphrase last.** Quote the live ask, Open threads, relationship
-  terms, History turning points (asks/offers/refusals/decisions), and communication
-  styles: `“<exact words>” (YYYY-MM-DD) [n]`. Retell only routine sequence/Facts.
-  Fewer than six quotes from more than three messages, or ten from more than
-  five, means you retold.
-- **Lead: three cited sentences.** (1) Role/organisation, relationship and stakes
-  (amount/term). (2) Most consequential live ask quoted/dated, matching Open
-  threads (never "owes" without agreement), else the last thread's outcome.
-  (3) User's next action (reply/send/decide/chase/wait), or Nothing open as of
-  date. Contact dates belong only in Facts; never open on a doubt.
-- **Voice:** owner = `the user`, never their name, you/we/he/his. Subject = name
-  or they; he/she only supported by their own words.
-- **Facts:** one line per exact label, every label present. Missing = `Unknown`.
-  Multiple values separated by `; `, each `value (qualifier) [n]`. Dates
-  `YYYY-MM-DD` in notebook timezone, separate from stated event dates. Cite
-  every value except Email, Handles, Also known as. Contact details belong
-  in their fields. Links = LinkedIn/site; How we know them = introduction/first
-  thread; Language = what they write to the user in.
-- **Own contact details only:** Phone/Email from their own signature/From line,
-  labelled kind and source/date. A company's main or reception line, footer
-  number, meeting dial-in/passcode or someone else's number is not theirs.
-  Keep mapped Email/Handles/Also known as except relay addresses.
-- **First contact:** earliest dated exchange found, `YYYY-MM-DD (earliest mail found) [n]`, or earlier explicitly stated start with qualifier. Unknown only
-  with no dated evidence. Last contact records an exchange, not a session.
-- **Insight:** 2–4 cited bullets, each at most 30 words, starting Now:, Changed:,
-  At stake:, Pattern: or Inference:. At most one `Now:`. Connect two or more
-  messages/dates/outside sources to a finding about change, stakes or patterns;
-  Single-message retelling belongs in lead/Open threads. Label inference with its
-  evidence/reason; it need not be stated verbatim. No advice, generic status or
-  hedges about missing evidence. Single thread/no finding: `- Unknown`.
-- **Company:** stated employment only; domain/student affiliation proves none.
-  **Who they are:** work first, shared private life in one labelled sentence.
-  **Why they are here:** introduction, approach and each side's wants.
-  **Our relationship:** current kind/state, terms, debts; quote dated terms.
-  Preserve local links/citations/privacy markers; separate events on separate lines.
-- **History:** one line per thread, at most sixteen, newest first by date:
-  `- YYYY-MM-DD: <topic> — <ending> [n]`. Only threads over a year old fold
-  to annual lines. Stopped thread: no reply after date. Sends/newsletters are
-  not threads.
-- **Open threads:** only current mutual obligations/asks; user's debts first,
-  sorted by due date. Distinguish four shapes:
-  `The user owes <Name>: <what> — “<user's yes>” (YYYY-MM-DD) [n] — due <date>`;
-  `<Name> owes the user` (agreed); `<Name> asked the user` (no yes);
-  `The user asked <Name>` (no answer). Without due date: open as of date.
-  Relevant reply/delivery or passed meeting closes it into History. Overdue
-  promises stay open with original due date. Other-topic replies close nothing.
-  Ask quiet for 60 days moves to History as went quiet only after searching
-  people/object for later movement. Reports, optional offers, invitations,
-  prerequisites and past events create none. Keep explicit deadlines and
-  permission to proceed without reply. User's undelivered "I'll" is a debt.
-  Every unresolved ask/promise under 60 days gets a line before Nothing open.
-- **Communication:** quote how they ask to be reached; list only offered/used
-  channels. User's writing style comes from their own messages; Cadence from dates.
-- Say each thing once; Lead/Insight point to facts. Dated status replaces
-  hedges; open parts go in Open threads.
-- **Uncertainties:** at most five useful questions, each ending `?` before
-  citations; none = Unknown. Same-name ambiguity stays out of facts and is named here.
-- **Sources:** `- [n] <source id> — <date>`, cited originals only, never assistant
-  memory. Keep quotes exact and `Investigation:` unchanged.
+- **Quote first, paraphrase last.** Compress the originals by quoting them:
+  the lead's live ask, each `Open threads` line, each term in `Our
+  relationship`, each `History` line whose thread turned on an ask, offer,
+  refusal or decision, and `How they communicate` / `How the user writes to
+  them` carry the speaker's exact words, `“<words>” (YYYY-MM-DD) [n]`.
+  Retell only routine sequence and Facts. Fewer than six quotes from more
+  than three messages, or ten from more than five, means you retold.
+- **Lead: three cited sentences**; the last contact date lives in `Facts` only.
+  (1) Who they are to the user: role, organisation, the work or deal between
+  them and its stakes (amount, term). (2) What is live: the most consequential
+  open item in the `Open threads` wording (never "owes" unagreed),
+  the ask quoted with its date; else how the last thread ended. (3) The user's
+  next action on that item (reply, send, decide, chase, wait until a date), not
+  how to reach them, or `Nothing open as of <date>`. Never open on a doubt.
+- **One voice**: the owner is `the user` in every sentence, never their name,
+  `you`, `we`, `he` or `his`: repeat `the user`. The subject is their name or
+  "they"; "he"/"she" only where their own words show it.
+- **`Facts` is data, written first.** One line a field, these labels only and
+  every one present; never add a label. A missing value is exactly `Unknown`.
+  Several values: `; ` between, each `value (qualifier) [n]` (`+61 2 5550 0142
+  (office, their signature) [3]; +61 400 555 019 (mobile, their signature) [5]`).
+  Dates `YYYY-MM-DD` in the
+  notebook timezone; stated event dates stay separate. Every value is cited
+  except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
+  sentence instead of its field. `Links`: LinkedIn or a site.
+  `How we know them`: who introduced whom, or the first thread.
+- **Contact details are theirs, labelled.** `Phone` and `Email` only as the
+  subject's own signature or From line writes them, labelled by kind and where
+  (`mobile, their signature 2026-05-02`). A company's main or reception line,
+  a footer number, a meeting dial-in and a number in someone else's signature
+  are not theirs: leave them off.
+- **`First contact`**: the earliest dated exchange you found,
+  `2025-08-26 (earliest mail found) [n]`, or an earlier start a message states
+  (`2024-02 (internship began, per the user) [n]`). `Unknown` only when
+  nothing is dated; never `Unknown` beside cited older mail.
+- **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`,
+  `Changed:`, `At stake:`, `Pattern:` or `Inference:`**: a finding no single message shows:
+  what moved, what is at risk, a pattern over time (reply speed, topics, who
+  chases whom). Each rests on two or more messages, dates or outside sources; one message
+  retold is the lead's or `Open threads`' job. At most one `Now:`. A finding,
+  never advice (`verify`, `should`, `confirm`) and never a hedge (`unverified`,
+  `remains unknown`); never generic ("key stakeholder"); a single thread: `- Unknown`.
+- **`Language`**: the language they write to the user in.
+- **`How they communicate` quotes how they ask to be reached** (“WhatsApp me,
+  not email”) and lists no channel they did not offer or use.
+- **`Company` needs stated employment**; a student or mailbox domain proves
+  none (`Unknown`).
+- **`Who they are`**: their work first; private life they share is one
+  labelled sentence, not a run of quotes.
+- **`Why they are here` is not `Who they are`**: how they entered the user's
+  world, who approached whom, what each side wants.
+- **`Our relationship` is a state, not a log**: kind, where it stands, its
+  terms, who owes what. A term (amount, ratio, date, condition) is quoted with
+  its date. Keep each local link with its
+  citations and privacy markers. Separate events, separate lines.
+- **`History` is the short true story**:
+  one line per thread, at most sixteen, newest first by date,
+  `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`, dated
+  by that thread; only threads over a year old fold into one line a year; a thread that
+  stopped says `no reply after <date>`. Not a send or a newsletter.
+- **`Open threads` lists only what the user and this person still owe each
+  other**, the user's debts
+  first, by due date. Four shapes:
+  `- The user owes <Name>: <what> — “<the user's yes>” (YYYY-MM-DD) [n] — due <date>`,
+  `- <Name> owes the user: …` (they agreed), `- <Name> asked the user: …` (no
+  yes from the user) and `- The user asked <Name>: …` (no answer), ending
+  `— open as of <date>` when no due date was set. A reply about that ask or a
+  delivered item closes a thread (it moves to `History`); a meeting's date
+  passing closes it too, but a promise's due date passing does not: it is
+  `— due <date>, overdue`. A later message on another topic closes nothing. An ask with no movement
+  for 60 days goes to `History` as `went quiet`, but only after `rg` for its
+  people and object finds nothing later. Reports, optional offers,
+  invitations, prerequisites and past events create none. Keep an explicit
+  due date and any permission to proceed without a reply. The user's own
+  "I'll …" with no delivery after it is `The user owes`. Every ask or
+  promise under 60 days old with no reply about it and no delivery is a line
+  here, its due date passed or not; only then `Nothing open as of <date>`.
+- **Say each thing once, plainly.** A fact lives in one section; the lead and
+  `Insight` point to it. Status is a dated fact (`no reply since 2026-10-12`),
+  never "is not established", "it is unclear whether" or "无法确认是否完成":
+  write what is known with its date, and the open part as an `Open threads` line.
+- **`Uncertainties`: at most five questions, each ending `?`** before its
+  citations, each one whose answer changes the user's next step (`Did she
+  accept the 2026-08-12 offer? [3]`), never where you searched; none: `Unknown`.
+- **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
+  arrive filled; keep them, except relay addresses. Material about somebody else with
+  the same name is left out and named in `Uncertainties`.
+- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences. Never an
+  assistant's memory file. List only cited sources.
+
+## Exact headings
+
+Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
+`Investigation:` line unchanged.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

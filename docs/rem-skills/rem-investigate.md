@@ -637,12 +637,3 @@ the duplicated Open-threads and attribution rules it replaces were folded in.
 - **Search before `Unknown`.** Greta's page called co-working access "not
   established" while the mail granting it was in the page's own material. The
   audit now fails an "unknown" claim a supplied original settles.
-
-## rc55 instruction budget repair
-
-The composed one-page prompt must fit 15,000 characters, including owner rules.
-The runtime Skill now condenses repeated guidance and illustrative prose while
-keeping attribution, exact quotes, unresolved obligations, privacy, source capture
-and subject-specific page structure. The budget test was restored from 22,500
-to 15,000; larger limits hid accumulated instruction cost. Runtime Skills do
-not point to these rationale documents.

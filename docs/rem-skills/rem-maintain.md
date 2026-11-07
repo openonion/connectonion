@@ -182,12 +182,3 @@ A one-page upkeep turn puts each `Quote:` the notes hold for its subject on the
 line that uses it and keeps every quote already on the page. Before this, the
 quote-first rule reached upkeep only through the page skills, and the notes
 rarely had words to quote.
-
-## rc55 instruction budget repair
-
-The composed one-page prompt must fit 15,000 characters, including owner rules.
-The runtime Skill now condenses repeated guidance and illustrative prose while
-keeping attribution, exact quotes, unresolved obligations, privacy, source capture
-and subject-specific page structure. The budget test was restored from 22,500
-to 15,000; larger limits hid accumulated instruction cost. Runtime Skills do
-not point to these rationale documents.
