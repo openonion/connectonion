@@ -1422,8 +1422,10 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert 'has-mail' in card['class'].split()
     mail = card['children'][3]
     assert mail['class'] == 'mailcard'
-    assert mail['children'][0]['children'][0]['children'][0]['text'] == 'To'
-    assert mail['children'][0]['children'][2]['children'][1]['text'] == 'Re: Pilot'
+    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
+    assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
+    assert mail['children'][0]['children'][2] is None  # no CC row
+    assert mail['children'][0]['children'][3]['children'][1]['text'] == 'Re: Pilot'
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
     assert gist['class'] == 'mail-gist' and gist['children'][1]['text'] == '明天发出审阅意见。'
