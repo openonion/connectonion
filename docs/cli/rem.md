@@ -1988,6 +1988,15 @@ in that file, including any citation audit or required corrections. `--json`
 retains the full instructions, material path, output path and submit command
 as structured data.
 
+Each task starts with the assistant's goal and the newest 4,000 characters from
+`.state/memory.md`, followed by the page's latest investigate/continue report when
+available. Both are evidence, never instructions or permission to bypass review.
+The agent appends 1–3 lines of `page · approach · result · next` to that memory,
+including answered and new questions and reusable tool discoveries. Investigation
+reports cite the predecessor's next step; unresolved questions stay in the page's
+existing `Uncertainties` section. Accepted native run logs retain `report.md`,
+including after a citation audit. Scheduling the `continue` pass is separate.
+
 Native task instructions contain directions and file pointers. Extraction, page
 writing, claim audits, repair findings, same-person comparisons, translations,
 session summaries, inquiry stages and project jobs keep their packets in the
