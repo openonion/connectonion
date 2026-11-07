@@ -650,7 +650,7 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     return "", ""
 
 
-def status(root: Path, *, include_quota: bool = False) -> dict:
+def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage
@@ -692,8 +692,8 @@ def status(root: Path, *, include_quota: bool = False) -> dict:
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
-            "people_coverage": people_coverage(root),
-            "translation_coverage": translation_coverage(root),
+            **({"people_coverage": people_coverage(root),
+                "translation_coverage": translation_coverage(root)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if include_quota else {})}

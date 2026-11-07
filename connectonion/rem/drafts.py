@@ -25,14 +25,22 @@ def path(root, draft_id):
     return state_path(root, f'drafts/{draft_id}.json')
 
 
-def _waiting_sources(root):
+def _waiting_sources(root, records=None):
     from .census import CITATION, _thread_items, direction, pages
     owner = (read_json(state_path(root, 'map.json'), {}).get('owner') or {}).get('record')
     book = Notebook(root)
     title = book.read(owner).splitlines()[0].lstrip('# ') if owner and book.exists(owner) else ''
     first = (title.split() or [''])[0]
     found = {}
-    for record, text, sources in _thread_items(book, pages(root), first):
+    if records is None:
+        items = _thread_items(book, pages(root), first)
+    else:
+        from .census import _thread_sources, threads
+        items = [(record, text, _thread_sources(record['text'])) for record in records
+                 if record['category'] in ('people', 'orgs', 'projects')
+                 and not (record.get('needs_review') or record.get('service'))
+                 for text in threads(record['text'])]
+    for record, text, sources in items:
         if direction(text, first) != 'mine':
             continue
         for number in CITATION.findall(text):
@@ -42,7 +50,7 @@ def _waiting_sources(root):
     return found
 
 
-def candidates(root, *, refresh_index=True):
+def candidates(root, *, refresh_index=True, records=None):
     """Resolve cited mail to its latest archived thread; a newer owner reply closes it."""
     from .store import refresh
     from .reader_model import _cited_row
@@ -55,7 +63,7 @@ def candidates(root, *, refresh_index=True):
     found = {}
     with closing(sqlite3.connect(state_path(root, 'rem.db'))) as db:
         db.row_factory = sqlite3.Row
-        for source, obligations in _waiting_sources(root).items():
+        for source, obligations in _waiting_sources(root, records).items():
             cited = _cited_row(db, source)
             if cited is None:
                 continue
@@ -90,9 +98,9 @@ def queue(root):
     return [row for row in candidates(root) if read_json(path(root, row['id']), {}).get('version') != row['version']]
 
 
-def listing(root, *, include_pending=False):
+def listing(root, *, include_pending=False, records=None):
     found = []
-    for row in candidates(root, refresh_index=False):
+    for row in candidates(root, refresh_index=False, **({'records': records} if records is not None else {})):
         saved = read_json(path(root, row['id']), {})
         if saved.get('version') == row['version'] and saved.get('status') != 'discarded':
             found.append({**saved, "private": saved.get("private", False) or row["private"]})

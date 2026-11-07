@@ -247,3 +247,22 @@ def test_live_reader_second_request_reuses_the_actual_snapshot(host, monkeypatch
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     assert get() == get()
     assert builds == [host.root]
+
+
+def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, monkeypatch):
+    calls = []
+    def detail(root, **options):
+        calls.append((root, options))
+        return {'records': [{'text': 'Full fictional page'}], 'conversations': {'example': {}}}
+    monkeypatch.setattr(reader, 'snapshot', detail)
+    assert call(host.routes, 'GET', '/rem/data.json')[0] == 401
+    assert call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}',
+                client='192.168.1.20')[0] == 404
+    get = lambda: call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}')
+    status, headers, body = get()
+    assert status == 200 and headers['content-type'].startswith('application/json')
+    assert json.loads(body)['records'][0]['text'] == 'Full fictional page'
+    assert get()[2] == body and len(calls) == 1
+    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')
+    assert get()[0] == 200 and len(calls) == 2
+    assert all(options == {'local': True} for _, options in calls)
