@@ -1498,6 +1498,7 @@
   :lang(zh) .rail .label { letter-spacing: 0; }
 
   .brief-header { margin-bottom: 26px; }
+  .schedule-failure { padding-left: 12px; border-left: 2px solid var(--lamp); color: var(--lamp); font: 14px/1.6 var(--ui); overflow-wrap: anywhere; }
   .brief-header h1 { font: 500 34px/1.2 var(--display); margin: 10px 0; text-wrap: balance; }
   .pass-summary { color: var(--ink-3); font: 13px/1.5 var(--ui); }
   .pass-summary a { color: var(--ink-2); }
@@ -4701,6 +4702,7 @@ function briefHeader(counts, today) {
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
     el("h1", { text: parts.join(" · ") || t("A quiet morning") })]);
+  if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: REM.status.schedule_failure }));
   if (pass) {
     const details = el("a", { href: "#processing", text: t("details") });
     details.onclick = event => {

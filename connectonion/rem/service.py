@@ -148,6 +148,7 @@ def approve_sources(root: Path, *, mail=()) -> None:
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
                                                       "authorized_at": now().isoformat(),
+                                                      "summary_value": consent_summary(root, mail=mail),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
 
@@ -650,6 +651,28 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     return "", ""
 
 
+def schedule_failure(root: Path) -> str:
+    """Surface failed turns from their receipts, without inventing scheduler state."""
+    receipts = [read_json(path, {}) for path in sorted(state_path(root, 'turns').glob('*.json'))[-2:]]
+    last = read_json(state_path(root, 'last-turn.json'), {})
+    if last and last not in receipts:
+        receipts.append(last)
+    receipts.sort(key=lambda turn: turn.get('started_at', ''))
+    if not receipts or receipts[-1].get('result') in ('running', 'skipped'):
+        return ''
+    last = receipts[-1]
+    message_path = Path(last['last_message']) if last.get('last_message') else None
+    message = message_path.read_text() if message_path and message_path.is_file() else ''
+    cannot_start = re.search(r"MAINTENANCE_BUSY|could not start|couldn't start|cannot start|unable to start|无法启动|未能启动|无法开始", message, re.I)
+    failed_twice = len(receipts) >= 2 and all(turn.get('result') in ('failed', 'timed-out') for turn in receipts[-2:])
+    if not cannot_start and not failed_twice:
+        return ''
+    reason = ' '.join((message if cannot_start else last.get('reason') or
+                       f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
+    action = '需要你处理上述阻塞后运行 co rem start' if cannot_start else '已自动重试'
+    return f'上次定时任务没干成：{reason} · {action}'
+
+
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
@@ -685,6 +708,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                 "codex-app" if worker_state(root).get("scheduler") == "codex-native"
                 else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
             "last_turn": read_json(state_path(root, "last-turn.json"), None),
+            **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
@@ -892,7 +916,7 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
         previous = read_json(state_path(root, "consent.json"), {})
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
-            "granted_by": "init", "summary": summary_fingerprint(root)})
+            "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
 
 
 def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
@@ -907,7 +931,19 @@ def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
         grant_init_sources(root, lock_held=lock_held)
 
 
-def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
+def _consent_changes(previous: dict, current: dict, prefix='') -> list[str]:
+    changes = []
+    for key in sorted(previous.keys() | current.keys()):
+        before, after = previous.get(key), current.get(key)
+        field = prefix + key
+        if isinstance(before, dict) and isinstance(after, dict):
+            changes.extend(_consent_changes(before, after, field + '.'))
+        elif before != after:
+            changes.append(f'{field}: {json.dumps(before, ensure_ascii=False)} → {json.dumps(after, ensure_ascii=False)}')
+    return changes
+
+
+def ensure_consent(root: Path, *, confirm, mail=(), report_unchanged=False) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
     refresh_init_mailboxes(root)
     first = not state_path(root, "consent.json").is_file()
@@ -927,15 +963,20 @@ def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
     changed = not first and (not isinstance(agreed, dict)
                              or agreed.get("summary") != summary_fingerprint(root, mail=mail))
     if first or waiting or changed:
-        if not confirm(consent_summary(root, mail=mail)):
+        summary = consent_summary(root, mail=mail)
+        if agreed.get('summary_value'):
+            summary = {**summary, 'changes': _consent_changes(agreed['summary_value'], summary)}
+        if not confirm(summary):
             return False
         subscribe_read_mail(root, offered)
         approve_sources(root, mail=mail)
+    elif report_unchanged:
+        return confirm(consent_summary(root, mail=mail))
     return True
 
 
 def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True,
-          history_progress=None, mail=()) -> dict:
+          history_progress=None, mail=(), report_unchanged=False) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -947,7 +988,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
         prepare(root)
         validate(read_config(root))
     first = not state_path(root, "consent.json").is_file()
-    if not ensure_consent(root, confirm=confirm, mail=mail):
+    if not ensure_consent(root, confirm=confirm, mail=mail, report_unchanged=report_unchanged):
         return {"started": False, "consented": False, "first_batch": None}
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the

@@ -325,6 +325,42 @@ def test_next_fails_fast_for_other_maintenance(trial):
             native.next_task(trial)
 
 
+def test_scheduled_next_busy_ceiling_includes_thread_and_file_wait(trial, monkeypatch):
+    from connectonion.rem import files
+    elapsed = [0.0]
+
+    def thread_wait(**kwargs):
+        assert kwargs['timeout'] == 600
+        elapsed[0] += 400
+        return True
+
+    def busy(fd):
+        raise BlockingIOError()
+
+    monkeypatch.setattr(files._THREADS, 'acquire', thread_wait)
+    monkeypatch.setattr(files._THREADS, 'release', lambda: None)
+    monkeypatch.setattr(files, '_try_lock', busy)
+    monkeypatch.setattr(files.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(files.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    write_json(state_path(trial, 'maintenance-owner.json'), {'pid': 49443, 'operation': 'sync'})
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
+                        subprocess.CompletedProcess(a, 0, 'co rem sync --scheduled\n', ''))
+    with pytest.raises(RemError, match='MAINTENANCE_BUSY.*49443.*co rem sync --scheduled'):
+        native.next_task(trial, scheduled=True)
+    assert elapsed[0] == 600
+
+
+def test_scheduled_busy_prompt_ends_the_turn(trial):
+    from connectonion.rem.codex_schedule import automation_prompt
+    from connectonion.skills_catalog import useful_skills_dir
+    sentences = ('For scheduled runs, keep waiting on the same command while it waits up to 10 minutes total '
+                 'for the maintenance lock. If it exits with MAINTENANCE_BUSY after that limit, '
+                 'report its busy message verbatim and end the turn without retrying.')
+    for text in (automation_prompt(trial), (useful_skills_dir() / 'rem/SKILL.md').read_text()):
+        assert sentences in ' '.join(text.split())
+        assert 'busy is not a reason to end the turn' not in text
+
+
 def test_next_waits_for_submit_and_offers_its_audit_task(trial, capsys):
     record, source = _feedback(trial)
     task = native.next_task(trial)

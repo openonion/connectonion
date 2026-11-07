@@ -191,7 +191,7 @@ def test_global_init_builds_first_notebook_without_questions(first_notebook, mon
 
 @pytest.mark.parametrize("tty,yes,answer", [(True, False, "n"), (True, False, "Y"),
                                             (True, True, ""), (False, False, "")])
-def test_rem_init_uses_the_same_estimate_gate(first_notebook, monkeypatch, capsys, tty, yes, answer):
+def test_rem_init_prints_estimate_and_proceeds_with_existing_consent(first_notebook, monkeypatch, capsys, tty, yes, answer):
     root, installed, model = first_notebook
     # Real recorded consent, reused by the standalone command through its fingerprint.
     config.prepare(root)
@@ -202,12 +202,13 @@ def test_rem_init_uses_the_same_estimate_gate(first_notebook, monkeypatch, capsy
     ctx = typer.Context(Command("init"), info_name="init",
                                     obj={"root": root, "json": False})
     init_rem_flow(ctx, yes=yes)
-    output = capsys.readouterr().out
-    assert ("Build the first map now?" in output) == (tty and not yes)
-    assert model.called == (answer != "n")
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "Build the first map now?" not in output
+    assert model.called
     assert "Read these sources with this model and schedule?" not in output
-    if answer == "n":
-        assert "co rem init" in output
+    if tty:
+        assert 'Sources:' in output and 'Undo REM setup:' in output
 
 
 @pytest.mark.parametrize("mode", ["no-investigate", "no-pages"])
@@ -256,7 +257,7 @@ def test_global_summary_reports_each_written_page_kind(rem_setup, monkeypatch, c
 
 
 
-def test_tty_json_estimate_pause_uses_stderr_and_can_decline(first_notebook, monkeypatch, capsys):
+def test_tty_json_estimate_uses_stderr_and_proceeds(first_notebook, monkeypatch, capsys):
     root, _, model = first_notebook
     config.prepare(root)
     assert service.ensure_consent(root, confirm=lambda summary: True)
@@ -266,10 +267,10 @@ def test_tty_json_estimate_pause_uses_stderr_and_can_decline(first_notebook, mon
     init_rem_flow(ctx)
     output = capsys.readouterr()
     payload = json.loads(output.out)
-    assert payload["data"]["build_deferred"]
-    assert "co rem init" in payload["next"]
-    assert "Build the first map now? [Y/n]" in output.err
-    model.assert_not_called()
+    assert not payload['data'].get('build_deferred')
+    assert 'Estimate:' in output.err
+    assert "Build the first map now?" not in output.err
+    assert model.called
 
 
 def test_native_registration_failure_falls_back_to_launchd(rem_setup, monkeypatch, capsys):

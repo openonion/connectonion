@@ -295,3 +295,75 @@ def test_exec_turn_skips_recent_desktop_fire_with_durable_receipt(tmp_path, monk
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert receipt['result'] == 'skipped'
     assert 'desktop automation' in receipt['reason']
+
+
+def test_exec_passes_own_turn_id_to_maintenance_children(tmp_path, monkeypatch):
+    from connectonion.rem import codex_exec
+    from connectonion.rem.files import maintenance_lock
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+
+    def run(command, **kwargs):
+        turn_id = kwargs['env']['CO_REM_TURN_ID']
+        assert turn_id == read_json(state_path(tmp_path, 'last-turn.json'), {})['turn_id']
+        monkeypatch.setenv('CO_REM_TURN_ID', turn_id)
+        for operation in ('next', 'submit'):
+            with maintenance_lock(tmp_path, operation=operation):
+                owner = read_json(state_path(tmp_path, 'maintenance-owner.json'), {})
+                assert owner['turn_id'] == turn_id
+                assert owner['pid'] == os.getpid()
+        return CompletedProcess(command, 0)
+
+    assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
+
+
+@pytest.mark.parametrize('parent,result,command,terminated', [
+    (1, 'timed-out', 'co rem next --scheduled', True),
+    (1, 'completed', 'co rem submit task-1', True),
+    (123, 'timed-out', 'co rem next --scheduled', False),
+    (1, 'running', 'co rem next --scheduled', False),
+    (1, 'completed', 'unrelated-command', False),
+])
+def test_exec_reaps_only_orphan_maintenance_from_a_finished_turn(tmp_path, monkeypatch,
+                                                               parent, result, command, terminated):
+    import signal
+    from unittest.mock import Mock
+    from connectonion.rem import codex_exec
+    from connectonion.rem.files import write_json
+    write_json(state_path(tmp_path, 'maintenance-owner.json'),
+               {'pid': 49443, 'operation': 'next', 'turn_id': 'old-turn'})
+    write_json(state_path(tmp_path, 'turns/old-turn.json'),
+               {'result': result, **({'finished_at': '2026-11-06T03:00:00Z'} if result != 'running' else {})})
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_exec.subprocess, 'run', lambda *a, **kw:
+                        CompletedProcess(a, 0, f'{parent} {command}\n', ''))
+    kill = Mock()
+    monkeypatch.setattr(codex_exec.os, 'kill', kill)
+    import fcntl
+    with state_path(tmp_path, 'maintenance.lock').open('a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, 0)) == 'completed'
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    if terminated:
+        kill.assert_called_once_with(49443, signal.SIGKILL)
+        assert '49443' in receipt['terminated_orphans'][0]
+        assert command in receipt['terminated_orphans'][0]
+    else:
+        kill.assert_not_called()
+        assert not receipt.get('terminated_orphans')
+
+
+def test_exec_does_not_reap_stale_owner_when_maintenance_lock_is_free(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    from connectonion.rem import codex_exec
+    from connectonion.rem.files import write_json
+    write_json(state_path(tmp_path, 'maintenance-owner.json'),
+               {'pid': 49443, 'operation': 'next', 'turn_id': 'old-turn'})
+    write_json(state_path(tmp_path, 'turns/old-turn.json'),
+               {'result': 'completed', 'finished_at': '2026-11-06T03:00:00Z'})
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_exec.subprocess, 'run', lambda *a, **kw:
+                        CompletedProcess(a, 0, '1 co rem next --scheduled\n', ''))
+    kill = Mock()
+    monkeypatch.setattr(codex_exec.os, 'kill', kill)
+    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, 0)) == 'completed'
+    kill.assert_not_called()

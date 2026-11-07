@@ -112,7 +112,8 @@ def test_native_waiting_rules(native, tmp_path, source):
     text = " ".join(texts[source].split())
     if source != "continuation":
         for rule in ("several minutes", "same command until it exits", "poll its output",
-                     "do not start a second", "about a minute", "not a reason to end the turn",
+                     "do not start a second", "10 minutes total", "MAINTENANCE_BUSY",
+                     "report its busy message verbatim and end the turn without retrying",
                      "daily cap", "weekly floor", "nothing to do"):
             assert rule in text
     for rule in ("Do the printed task (its Now step when shown)", "next again", "round is done or stopped", "rg/sed"):
