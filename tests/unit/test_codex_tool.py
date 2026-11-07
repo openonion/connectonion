@@ -31,6 +31,7 @@ def _reap_open_only_clients():
 class FakeServer:
     """Stand-in CodexAppServer that simulates one turn via callbacks."""
     last = None
+    requests_approval = False
 
     def __init__(
         self, command, cwd=None, on_event=None, on_approval=None, cancelled=None
@@ -91,10 +92,13 @@ class FakeServer:
         self.calls.append(("run_turn", thread_id, prompt))
         self.on_event({"kind": "agent_message", "text": "Hello "})
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
-        self.approval_decision = self.on_approval(
-            "item/commandExecution/requestApproval",
-            {"command": "pytest -q", "cwd": self.cwd},
-        )
+        if self.requests_approval:
+            self.approval_decision = self.on_approval(
+                "item/commandExecution/requestApproval",
+                {"command": "pytest -q", "cwd": self.cwd},
+            )
+            if not self.approval_decision:
+                self.on_event({"kind": "approval_denied", "reason": "operator_declined"})
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
         self.on_event({"kind": "agent_message", "text": "world"})
         return {"status": "completed", "usage": {"input_tokens": 5}}
@@ -648,6 +652,10 @@ class TestFrontendEventVocabulary:
 
 
 class TestApproval:
+    @pytest.fixture(autouse=True)
+    def request_native_approval(self, monkeypatch):
+        monkeypatch.setattr(FakeServer, "requests_approval", True)
+
     def test_native_approval_has_a_safe_verified_workroom_presentation(self):
         agent = _Agent(
             _IO(approve=True),

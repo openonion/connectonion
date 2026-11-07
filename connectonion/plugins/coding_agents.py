@@ -15,8 +15,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ..core.host_context import begin_auto_run, finish_auto_run
 from ..core.events import on_agent_ready
 from ..core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_of
+from ..core.tool_result import ToolFailure
 from ..core.provider_events import (
     clear_provider_activity_history,
     clear_provider_artifact,
@@ -109,12 +111,15 @@ class _CodingAgentPlugin(list):
         prompt: str,
         run,
         permission_mode: PermissionMode | None = None,
+        automatic: bool = False,
     ) -> str:
         started = time.monotonic()
         effective_mode = permission_mode or self.permission_mode
         parent_id = _parent_tool_call_id(agent)
         invocation_id = f"{self.provider}:{parent_id}" if parent_id else f"{self.provider}:untracked"
         task_title = provider_task_title(prompt)
+        context = begin_auto_run(agent, self.provider, prompt) if automatic and prompt.strip() else None
+        notice = context.get("notice", "") if context else ""
         clear_provider_activity_history(agent, invocation_id)
         clear_provider_artifact(agent, invocation_id)
         _emit(
@@ -152,13 +157,16 @@ class _CodingAgentPlugin(list):
                     "cancelled" if exc.__class__.__name__ == "UserInterrupt" else "failed"
                 ),
             )
+            finish_auto_run(agent, context, "cancelled" if exc.__class__.__name__ == "UserInterrupt" else "failed")
             raise
         envelope = _envelope(result)
         error = envelope.get("error")
         status = envelope.get("status")
-        if status == "cancelled" or (isinstance(error, str) and "interrupt" in error.lower()):
+        io = getattr(agent, "io", None)
+        cancelled = getattr(type(io), "is_cancelled", None)
+        if (callable(cancelled) and cancelled(io)) or status == "cancelled" or (isinstance(error, str) and "interrupt" in error.lower()):
             terminal = "cancelled"
-        elif error or envelope.get("exit_code") not in (None, 0):
+        elif status in {"blocked", "declined", "failed", "error"} or error or envelope.get("exit_code") not in (None, 0):
             terminal = "failed"
         else:
             terminal = "completed"
@@ -166,6 +174,10 @@ class _CodingAgentPlugin(list):
             terminal,
             take_provider_activity_history(agent, invocation_id),
         )
+        if status in {"blocked", "declined"}:
+            terminal_summary = provider_terminal_summary(
+                status, refusal_reason=envelope.get("blocked_reason")
+            )
         _emit(
             agent,
             "provider_invocation",
@@ -184,7 +196,10 @@ class _CodingAgentPlugin(list):
                 else {}
             ),
         )
-        return result
+        finish_auto_run(agent, context, terminal)
+        if notice:
+            result = json.dumps({**envelope, "notice": notice})
+        return ToolFailure(result) if terminal == "failed" or error else result
 
 
 class CodexPlugin(_CodingAgentPlugin):
@@ -231,6 +246,7 @@ class CodexPlugin(_CodingAgentPlugin):
                 agent=agent,
             ),
             permission_mode=effective_mode,
+            automatic=approval != "manual" and sandbox != "read-only",
         )
 
     def _policy(self, agent) -> tuple[str, str, PermissionMode]:
@@ -262,7 +278,7 @@ class CodexPlugin(_CodingAgentPlugin):
                 "read-only", "manual", PermissionMode.READ_ONLY
             ),
             AUTO: (
-                "workspace-write", "manual", PermissionMode.AUTO
+                "workspace-write", "auto", PermissionMode.AUTO
             ),
             FULL_ACCESS: (
                 "danger-full-access", "deny", PermissionMode.FULL_ACCESS
@@ -320,6 +336,7 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
                 workspace=self.workspace,
             ),
             permission_mode=effective_mode,
+            automatic=provider_mode in {"auto", "acceptEdits", "bypassPermissions"},
         )
 
     def _policy(self, agent) -> tuple[str, PermissionMode]:

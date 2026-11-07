@@ -44,7 +44,10 @@ def handle_approvals(who: str = None, klass: str = None, last: int = 50, json_ou
 
 def _line(entry: dict) -> str:
     mark = "[green]✓[/green]" if entry.get("decision") == "done" else "[red]✗[/red]"
-    what = escape(f"{entry.get('tool') or ''} {entry.get('args') or ''}".strip())
+    details = entry.get('task_summary') or entry.get('args') or ''
+    what = escape(f"{entry.get('tool') or ''} {details}".strip())
+    if entry.get('mode'):
+        what += f" [dim]mode={escape(entry['mode'])}[/dim]"
     klass = f" [yellow]{entry['class']}[/yellow]" if entry.get("class") else ""
     reason = f"  [dim]{escape(str(entry['reason']))}[/dim]" if entry.get("reason") else ""
     return f"{mark} [dim]{entry.get('ts', '')}[/dim] {entry.get('path', '')} {escape(entry.get('who') or entry.get('subject') or '')}{klass}  {what}{reason}"

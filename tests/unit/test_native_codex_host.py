@@ -18,7 +18,7 @@ def test_first_turn_and_resume_never_call_outer_model(tmp_path, monkeypatch):
     assert calls[0]['session_id'] == '' and calls[0]['cwd'] == str(tmp_path)
     assert agent.input('Follow up') == 'A short answer'
     assert calls[1]['session_id'] == 'native-thread-1'
-    assert calls[1]['sandbox'] == 'workspace-write' and calls[1]['approval'] == 'manual'
+    assert calls[1]['sandbox'] == 'workspace-write' and calls[1]['approval'] == 'auto'
     assert not any(item.get('type') == 'llm_call' for item in agent.current_session['trace'])
 
 

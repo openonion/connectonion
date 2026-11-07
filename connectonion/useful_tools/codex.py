@@ -45,6 +45,7 @@ import threading
 import time
 from pathlib import Path
 
+from ..core.tool_result import ToolFailure
 from ..core.provider_events import (
     command_phase,
     next_provider_state_revision,
@@ -53,6 +54,7 @@ from ..core.provider_events import (
     provider_artifact_for_state,
     provider_message_event,
     provider_status_summary,
+    provider_terminal_summary,
     remember_provider_activity,
     remember_provider_artifact,
 )
@@ -126,23 +128,40 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
 
     command = _base_command()
     if command is None:
-        return _envelope(session_id, error="codex CLI not found. Install it (npm install -g @openai/codex) or set $CODEX_CMD.")
+        return _envelope(session_id, error=(
+            f"codex CLI not found. Looked on PATH and at {Path.home() / '.local/bin/codex'}. "
+            "Install Codex or set $CODEX_CMD to its executable."
+        ))
 
     chunks = []
+    refusals = []
+    approval_refusal_reason = ""
 
     def on_event(event):
         if event.get("kind") == "agent_message":
             chunks.append(event.get("text", ""))
+        if event.get("declined"):
+            refusals.append("native_declined")
+        if event.get("kind") == "approval_denied":
+            reason = event.get("reason", "operator_declined")
+            refusals.append(approval_refusal_reason if reason == "operator_declined" else reason)
         _forward_ui(agent, event, workspace=working_directory)
 
     def on_approval(method, params):
-        return _approval_allowed(
+        nonlocal approval_refusal_reason
+        approval_refusal_reason = _approval_unavailable_reason(approval, agent)
+        allowed = _approval_allowed(
             method,
             params,
             approval,
             agent,
             fallback_cwd=working_directory,
+            unavailable_reason=approval_refusal_reason,
         )
+        if not allowed and not approval_refusal_reason:
+            presentation = _provider_approval_presentation(method, params, fallback_cwd=working_directory)
+            approval_refusal_reason = "operator_declined" if presentation["allowOnce"] else "outside_boundary"
+        return allowed
 
     cancelled = _provider_cancellation_check(agent)
     working_directory = cwd or "."
@@ -270,6 +289,14 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
 
     turn = turn or {}
     status = turn.get("status", "")
+    if refusals or status in ("declined", "blocked"):
+        reason = refusals[0] if refusals else "native_declined"
+        return _envelope(
+            sid, resumed=resumed, last_message="".join(chunks),
+            usage=turn.get("usage", {}), exit_code=1, status="blocked",
+            blocked_reason=reason,
+            error=provider_terminal_summary("blocked", refusal_reason=reason),
+        )
     if status in ("", "completed", "success", "ok"):
         return _envelope(sid, resumed=resumed, last_message="".join(chunks),
                          usage=turn.get("usage", {}), exit_code=0)
@@ -383,7 +410,7 @@ def _remaining(deadline):
 
 
 def _base_command():
-    """codex launch argv: $CODEX_CMD (space-split) else PATH lookup, + app-server."""
+    """Resolve $CODEX_CMD, PATH, then the official installer's location."""
     env = os.environ.get("CODEX_CMD")
     if env:
         # A resolved executable path may contain spaces. Preserve that one
@@ -393,6 +420,10 @@ def _base_command():
             return [os.path.abspath(expanded), "app-server"]
         return env.split() + ["app-server"]
     found = shutil.which("codex")
+    if not found:
+        installed = Path.home() / ".local/bin/codex"
+        if installed.is_file() and os.access(installed, os.X_OK):
+            found = str(installed)
     return [found, "app-server"] if found else None
 
 
@@ -785,16 +816,16 @@ def _without_event_type(event):
     return {key: value for key, value in event.items() if key != "type"}
 
 
-def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
-    """Whether one server approval request may proceed."""
+def _approval_unavailable_reason(approval, agent):
+    """Explain why a native callback cannot reach an operator."""
     if approval == "auto":
         # ``approvalPolicy=never`` already permits work inside the selected
         # sandbox without callbacks. Any callback here is therefore an
         # unexpected request to expand that boundary (including legacy command
         # or file requests), so fail closed.
-        return False
+        return "unexpected_approval"
     if approval == "deny":
-        return False
+        return "approvals_disabled"
     requester = (
         getattr(agent, "current_session", {}).get("requester")
         if agent is not None
@@ -803,10 +834,20 @@ def _approval_allowed(method, params, approval, agent, *, fallback_cwd=""):
     # Hosted approval dialogs belong to the operator. A local run has no
     # requester record and keeps the existing interactive behaviour.
     if requester and requester.get("level") != "admin":
-        return False
+        return "admin_required"
     io = getattr(agent, "io", None) if agent is not None else None
-    if io is None:
+    if not callable(getattr(io, "request_approval", None)):
+        return "approval_ui_unavailable"
+    return ""
+
+
+def _approval_allowed(method, params, approval, agent, *, fallback_cwd="", unavailable_reason=None):
+    """Whether one server approval request may proceed."""
+    if unavailable_reason is None:
+        unavailable_reason = _approval_unavailable_reason(approval, agent)
+    if unavailable_reason:
         return False
+    io = agent.io
     context = _approval_context(agent, params)
     presentation = _provider_approval_presentation(method, params, fallback_cwd=fallback_cwd)
     if context:
@@ -1068,7 +1109,7 @@ def _display_cwd(value):
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
               usage: dict = None, exit_code: int = -1, error: str = "",
-              opened: bool = False, status: str = "") -> str:
+              opened: bool = False, status: str = "", blocked_reason: str = "") -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -1084,7 +1125,10 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
         result["status"] = status
     if error:
         result["error"] = error
-    return json.dumps(result)
+    if blocked_reason:
+        result["blocked_reason"] = blocked_reason
+    payload = json.dumps(result)
+    return ToolFailure(payload) if error else payload
 
 
 def _terminate_process_tree(process):
@@ -1527,6 +1571,7 @@ class CodexAppServer:
 
     def _handle_server_request(self, req_id, method, params):
         if method in _APPROVAL_METHODS:
+            reason = "operator_declined"
             started_at = time.monotonic()
             with self._approval_lock:
                 self._approval_started_at = started_at
@@ -1534,6 +1579,7 @@ class CodexAppServer:
                 allowed = bool(self.on_approval(method, params))
             except Exception:
                 allowed = False
+                reason = "approval_handler_failed"
             finally:
                 finished_at = time.monotonic()
                 with self._approval_lock:
@@ -1545,6 +1591,10 @@ class CodexAppServer:
                     "result": _approval_response(method, params, allowed),
                 }
             )
+            if not allowed:
+                # The response is the authoritative refusal, including when
+                # the callback raised or Codex omits a declined item frame.
+                self.on_event({"kind": "approval_denied", "reason": reason})
         else:
             self._send({"id": req_id,
                         "error": {"code": -32601, "message": f"method not supported: {method}"}})
@@ -1600,7 +1650,8 @@ class CodexAppServer:
             name = item.get("command") or item.get("title") or item.get("path") or itype
             if isinstance(name, list):
                 name = " ".join(name)
-            failed = item.get("status") in ("failed", "error") or item.get("exitCode") not in (None, 0)
+            declined = item.get("status") == "declined"
+            failed = declined or item.get("status") in ("failed", "error") or item.get("exitCode") not in (None, 0)
             args = {}
             if itype == "commandExecution" and item.get("command"):
                 command = item["command"]
@@ -1617,7 +1668,8 @@ class CodexAppServer:
                 "name": name,
                 "native_kind": itype,
                 "args": args,
-                "result": "Failed" if failed else "Completed",
+                "result": "Declined" if declined else "Failed" if failed else "Completed",
                 "failed": failed,
+                **({"declined": True} if declined else {}),
             }
         return {"kind": itype, "id": item.get("id", "")}
