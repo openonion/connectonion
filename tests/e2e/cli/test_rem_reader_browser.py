@@ -420,7 +420,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         # Setup-copy actions were removed from empty reading surfaces. The
         # People review command in settings must still target this notebook.
         page.locator('.reader-settings > summary').click()
-        page.get_by_role('button', name='Copy the command').click()
+        page.get_by_role('button', name='Copy the command', exact=True).click()
         command = page.evaluate('window.copiedCommand', isolated_context=False)
         assert shlex.split(command)==['co','rem','--root',str(root),'list','people','--review']
         browser.close()
