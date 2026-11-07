@@ -141,3 +141,37 @@ The map computes the list after it builds the index, and the daily round refresh
 kept on `map.json`'s owner and fills the owner page's `Language:` fact when that is empty or
 `Unknown`. `co rem config` shows it under "your languages", saying whether it was set or
 detected (with shares).
+
+
+## Interface choice and nightly translations
+
+Choosing 中文 in the live reader also requests Chinese translations for nightly
+upkeep. The reader sends one `POST /rem/language {language: "zh"}`; the Host
+appends the tag to `config.yaml`'s `languages` through validated config handling.
+Existing language choices and limits stay in place. File snapshots send nothing.
+The endpoint uses the same owner cookie, loopback and JSON gates as other reader
+actions, and waits for an in-progress notebook write before saving the choice.
+
+You can also request a language with `co rem config set languages zh` (use a
+comma-separated list to keep several, such as `zh,ja`). Detected languages are
+menu suggestions; background translation requires a saved choice or an explicit
+page translation request. Changing `language` or `languages` preserves prepared
+page tasks, including tasks saved by rc59; their supplied material stays fixed.
+
+Both scheduled translation paths use the same order: pages with active threads
+waiting on you first, then the most recently modified pages. Done, skipped and
+quiet threads receive no priority. Current translations are skipped, and all
+languages share `limits.translations_per_day` (default 100). Requests and changes
+from the current round break ties between pages with identical modification times.
+
+`co rem status` shows, for example:
+
+```text
+zh  32 of 1034 pages translated · 100 queued for tonight
+```
+
+The queue forecast uses the budget available on the next scheduled run's local
+date. With no requested language it says `not requested` and shows the config
+command. With upkeep disabled it says `schedule off` and shows `co rem start`.
+Actual completion still depends on the runner succeeding within its allowance;
+repair attempts also consume that allowance.

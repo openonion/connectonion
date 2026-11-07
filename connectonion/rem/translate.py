@@ -323,21 +323,36 @@ def written_pages(root: Path) -> list[str]:
             or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
 
 
-def backlog(root, language, *, changed=()):
-    """Missing and stale pages, changed/requested first, then useful notebook pages."""
+def _waiting_pages(root):
+    """Pages behind the reader's active owner obligations, including their copies."""
+    from . import census, threads
     from .files import read_json
-    from .people_pages import last_activity
+    from .service import notebook_today
     book = Notebook(root)
-    owner = (read_json(state_path(root, 'map.json'), {}).get('owner') or {}).get('record')
-    requested = read_json(state_path(root, 'translation-requests.json'), {}).get(language, [])
-    categories = {'people': 1, 'orgs': 2, 'projects': 2, 'decisions': 3, 'agenda': 3, 'sessions': 5}
-    records = book.list()
-    people = {record: last_activity(root, record) for record in records if record.startswith('people/')}
-    recent = {record: position for position, record in enumerate(sorted(people, key=lambda r: people[r], reverse=True))}
-    records.sort(key=lambda record: (0 if record == owner else categories.get(record.split('/')[0], 4),
-                                      recent.get(record, 0), record))
-    return [record for record in dict.fromkeys([*requested, *changed, *records])
-            if record in records and cached(root, record, language) is None]
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    title = book.read(owner).splitlines()[0].lstrip("# ") if owner and book.exists(owner) else ""
+    first = (title.split() or [""])[0]
+    states, today = threads.listing(root), notebook_today(root)
+    return {row["path"] for row, text, _ in census._thread_items(book, census.pages(root), first)
+            if census.direction(text, first) == "mine" and not census._quiet(text, today)
+            and not threads.blocked(root, threads.done_key(row["path"], text), states=states)}
+
+
+def backlog(root, language, *, changed=()):
+    """Waiting-on-you pages first, then newest page edits; omit current translations.
+
+    Both scheduled paths use this order before applying the shared daily cap.
+    Explicit requests and this round's changes break equal modification times.
+    """
+    from .files import read_json
+    book = Notebook(root)
+    requested = read_json(state_path(root, "translation-requests.json"), {}).get(language, [])
+    requested = {record: position for position, record in enumerate(requested)}
+    waiting, changed = _waiting_pages(root), set(changed)
+    records = sorted(book.list(), key=lambda record: (
+        record not in waiting, -book.path(record).stat().st_mtime_ns,
+        record not in changed, requested.get(record, len(requested)), record))
+    return [record for record in records if cached(root, record, language) is None]
 
 
 def attempts_today(root):
@@ -351,16 +366,32 @@ def attempts_today(root):
 
 def languages(root):
     from .files import read_json
-    from .languages import owner_languages
+    from .config import read_config
     requested = read_json(state_path(root, 'translation-requests.json'), {})
-    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
+    return list(dict.fromkeys([*requested, *read_config(root)['languages']]))
 
 
-def coverage(root):
-    from .languages import owner_languages
-    records = Notebook(root).list()
-    return {language: {'total': len(records), 'translated': sum(cached(root, record, language) is not None for record in records)}
-            for language in languages(root) if language.split('-')[0].lower() != 'en'}
+def coverage(root, *, next_run=None):
+    """Current coverage and the next queue, sharing one remaining daily budget."""
+    from .config import read_config
+    records, targets = Notebook(root).list(), languages(root)
+    directory = state_path(root, "translations")
+    saved = sorted(path.name for path in directory.iterdir()
+                   if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
+    from .service import notebook_today, notebook_zone
+    config = read_config(root)
+    resets = next_run and datetime.fromisoformat(next_run).astimezone(notebook_zone(config)).date() > notebook_today(root)
+    remaining = max(0, config["limits"]["translations_per_day"] - (0 if resets else attempts_today(root)))
+    report = {}
+    for language in dict.fromkeys([*targets, *saved, "zh"]):
+        if language.split("-")[0].lower() == "en":
+            continue
+        done = sum(cached(root, record, language) is not None for record in records)
+        queued = min(len(records) - done, remaining) if language in targets else 0
+        report[language] = {"total": len(records), "translated": done,
+                            "requested": language in targets, "queued": queued}
+        remaining -= queued
+    return report
 
 
 def request(root, record, language):

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .files import CATEGORIES, RemError, atomic_write, maintenance_lock, read_json, safe_path, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, CATEGORIES, RemError, atomic_write, maintenance_lock, read_json, safe_path, state_path, write_json
 
 
 def local_timezone() -> str:
@@ -53,7 +53,7 @@ def default_config() -> dict:
     # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
-    # menu; empty means the ones detected from the owner's own words (languages.py).
+    # menu; empty offers detected suggestions but requests no background work.
     return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone(), "runner": "codex-exec"},
@@ -246,35 +246,50 @@ def set_config(root: Path, pairs: list[str]) -> dict:
     if not pairs or len(pairs) % 2:
         raise RemError("config set needs KEY VALUE pairs")
     with maintenance_lock(root):
-        config = copy.deepcopy(read_config(root, validated=False))
-        previous_runner = config["runner"]
-        for key, raw in zip(pairs[::2], pairs[1::2]):
-            parts = key.split(".")
-            target = config
-            if len(parts) == 2 and parts[0] in ("schedule", "limits"):
-                target = config.get(parts[0])
-                if not isinstance(target, dict):
-                    raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
-            elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
-            if parts[-1] not in target:
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
-            if key == "schedule.times":
-                value = sorted(raw.split(","))
-            elif key == "languages":
-                value = [tag.strip() for tag in raw.split(",") if tag.strip()]
-            elif parts[0] == "limits":
-                try:
-                    value = int(raw)
-                except ValueError as error:
-                    raise RemError("Limits must be positive integers") from error
-            else:
-                value = raw
-            target[parts[-1]] = value
-        if config["runner"] != previous_runner and "model" not in pairs[::2]:
-            config["model"] = "default"
-        validate(config)
-        atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
-        explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
-        write_json(state_path(root, EXPLICIT), sorted(explicit))
-        return config
+        return _set_config(root, pairs)
+
+
+def request_language(root: Path, language: str) -> dict:
+    """Persist the owner's reader choice without replacing other languages."""
+    if not isinstance(language, str) or not LANGUAGE.fullmatch(language):
+        raise RemError("language must be a language tag such as en, zh, zh-TW or ja")
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        config = read_config(root)
+        if language in config["languages"]:
+            return config
+        return _set_config(root, ["languages", ",".join([*config["languages"], language])])
+
+
+def _set_config(root: Path, pairs: list[str]) -> dict:
+    config = copy.deepcopy(read_config(root, validated=False))
+    previous_runner = config["runner"]
+    for key, raw in zip(pairs[::2], pairs[1::2]):
+        parts = key.split(".")
+        target = config
+        if len(parts) == 2 and parts[0] in ("schedule", "limits"):
+            target = config.get(parts[0])
+            if not isinstance(target, dict):
+                raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
+        elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+        if parts[-1] not in target:
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+        if key == "schedule.times":
+            value = sorted(raw.split(","))
+        elif key == "languages":
+            value = [tag.strip() for tag in raw.split(",") if tag.strip()]
+        elif parts[0] == "limits":
+            try:
+                value = int(raw)
+            except ValueError as error:
+                raise RemError("Limits must be positive integers") from error
+        else:
+            value = raw
+        target[parts[-1]] = value
+    if config["runner"] != previous_runner and "model" not in pairs[::2]:
+        config["model"] = "default"
+    validate(config)
+    atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
+    explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
+    write_json(state_path(root, EXPLICIT), sorted(explicit))
+    return config

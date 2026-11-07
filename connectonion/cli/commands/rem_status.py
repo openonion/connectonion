@@ -260,8 +260,18 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
             lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
     for language, coverage in value.get("translation_coverage", {}).items():
         done, total = coverage["translated"], coverage["total"]
-        share = round(100 * done / total) if total else 0
-        lines.append(rem_look.row(language, f"{done} of {total} pages translated ({share}%)"))
+        if not coverage.get("requested"):
+            outcome = "not requested"
+            from ...rem.config import read_config
+            requested = list(dict.fromkeys([*read_config(root)["languages"], language]))
+            command = ["config", "set", "languages", ",".join(requested)]
+        elif scheduled:
+            outcome, command = f"{coverage['queued']} queued for tonight", []
+        else:
+            outcome, command = "schedule off", ["start"]
+        lines.append(rem_look.row(language, f"{done} of {total} pages translated · {outcome}"))
+        if command:
+            lines.append(rem_look.follow(style.command(spell(command))))
     return lines
 
 

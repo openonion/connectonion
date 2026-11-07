@@ -47,13 +47,15 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def _config_hash(config):
+def _config_hash(config, *, include_languages=False):
     # Scheduling, concurrency and budgets govern future work. Prepared material
-    # (including its local dates) is already saved. Keep evidence-sizing limits.
+    # (including its language and local dates) is already saved. Reader translation
+    # targets do not change page-task material. Keep evidence-sizing limits.
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    content = {key: value for key, value in config.items() if key not in ("schedule", "effort")}
+    ignored = ("schedule", "effort") if include_languages else ("schedule", "effort", "language", "languages")
+    content = {key: value for key, value in config.items() if key not in ignored}
     content["limits"] = {key: value for key, value in config["limits"].items() if key not in run_limits}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
@@ -68,13 +70,14 @@ def _input_matches(root, task, path, digest):
         return True
     if path != root / "config.yaml":
         return False
-    if _hash(path) == digest:  # Legacy task whose raw config is unchanged.
-        return True
-    # Old tasks saved only a raw digest. Recover the original config only when
-    # its saved stage config reproduces that digest; never guess missing inputs.
+    if _hash(path) == digest or _config_hash(read_config(root), include_languages=True) == digest:
+        return True  # Unchanged raw-file or rc59 semantic config, even without a snapshot.
+    # Recover raw-file and rc59 semantic digests only when the saved stage
+    # config reproduces them; never guess missing inputs.
     previous = task["task"].get("config")
     return (previous is not None
-            and hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest() == digest
+            and digest in (hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest(),
+                           _config_hash(previous, include_languages=True))
             and _config_hash(previous) == _input_hash(root, path))
 
 

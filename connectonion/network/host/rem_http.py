@@ -94,7 +94,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -125,6 +125,9 @@ async def _action(scope, receive, send, root, headers):
             await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
             return
         operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+    elif scope["path"] == "/rem/language":
+        from ...rem.config import request_language
+        operation = lambda: request_language(root, body.get("language"))
     elif scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
     elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
