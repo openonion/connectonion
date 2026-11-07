@@ -28,6 +28,7 @@ def prepare(root, config, *, scheduled):
     from .languages import refresh
     from .project_material import extract as collect_projects
     service.refresh_init_mailboxes(root, lock_held=True)
+    service._resume_archive(root)
     imported = sessions.import_sessions(root, consented_only=True, lock_held=True)
     tidy(root, lock_held=True)
     sources = service.subscriptions(root)
@@ -56,35 +57,60 @@ def prepare(root, config, *, scheduled):
     return cursor
 
 
+def prepare_translation_round(root, config, *, scheduled):
+    slot = scheduled_slot(root, config) if scheduled else None
+    if scheduled and slot is None:
+        return {"reason": "not due"}
+    record, path = daily._reserve(root, "daily-translation", 0, {})
+    record.update(outcome="pending", native_round=True)
+    write_json(path, record)
+    return {"phase": "daily-translation", "started_at": service.now().isoformat(),
+            "slot": slot.isoformat() if slot else None, "batch": {"done": True}, "summaries": [],
+            "jobs": [], "job_index": 0, "current": None, "changed": [], "same_left": 0,
+            "same_new_left": 0, "translations": [], "translated": 0, "run": record}
+
+
 def _jobs(root, first, logs, sources):
     limit = read_config(root)["limits"]["jobs_per_round"]
     from datetime import datetime, timedelta
     from .people_pages import correspondents_since, queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
-    found = correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous), lock_held=True)
+    correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous), lock_held=True)
     if first:
         resting = daily._found_nothing_lately(root)
-        return [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting][:limit]
-    rows = [{**row, "kind": "person"} for row in people_queue(root, since=previous)
-            if row["mode"] == "update" or row["record"] in found["records"]]
-    rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous)]
-    from .refusals import due_for_retry
+        return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])[:limit]
+    rows = [{**row, "kind": "person"} for row in people_queue(root)
+            if row["mode"] == "full" or row["last_activity"] > previous]
+    rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
     queued = {row["record"] for row in rows}
+    resting = daily._found_nothing_lately(root)
+    rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+             for row in daily.unfinished_by_recency(root)
+             if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
+    from .refusals import due_for_retry
+    retries = due_for_retry(root)
+    rows = [row for row in rows if row["record"] not in retries]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
-             for record, entry in due_for_retry(root).items() if record not in queued and Notebook(root).exists(record)]
+             for record, entry in retries.items() if Notebook(root).exists(record)]
     return (daily._owner_due(root) + rows)[:limit]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
-    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation"}
+    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation", "draft": "reply-draft"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
             "operation": operation or handler,
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
 
 
 def prepare_task(root, cursor, config, directory):
+    _reset_attempts(root, cursor)
+    if cursor["phase"] == "daily-translation":
+        task = prepare_translation(root, cursor, config, directory)
+        if not task:
+            finish(root, cursor)
+        return task
     batch = cursor["batch"]
     if not batch["done"]:
         if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
@@ -117,6 +143,15 @@ def prepare_task(root, cursor, config, directory):
         task = _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
         task["early_pair"] = True
         return task
+    from . import drafts
+    _, today_runs = service.runs_today(service.run_logs(root), service.notebook_zone(config))
+    drafted = sum(row.get("runner_attempts", 0) for row in today_runs if row.get("phase") == "reply-draft")
+    if drafted < config["limits"]["drafts_per_night"]:
+        attempted = cursor.get("draft_attempts", [])
+        row = next((row for row in drafts.queue(root) if [row["id"], row["version"]] not in attempted), None)
+        if row:
+            task = drafts.prepare(root, row, config, directory=directory)
+            return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             remaining = service.daily_cap(root)["remaining"]
@@ -142,35 +177,33 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    from .languages import owner_languages
-    zone = service.notebook_zone(config)
-    _, today_runs = service.runs_today(service.run_logs(root), zone)
-    translations_today = sum(row.get("runner_attempts", 0) for row in today_runs if row.get("phase") in ("daily-translation", "translate"))
-    language = next((tag for tag in owner_languages(root)["languages"] if tag.split("-")[0] != "en"), None)
-    for record in cursor["changed"] if language and translations_today < config["limits"]["translations_per_day"] else []:
-        if record not in cursor["translations"] and translate.cached(root, record, language) is None:
-            task = translate.prepare(root, record, language, directory=directory, native=True)
-            return _task("translate", task, cursor, stage="translate", record=record)
+    task = prepare_translation(root, cursor, config, directory)
+    if task:
+        return task
     finish(root, cursor)
     return None
 
 
-def translations_only(root, cursor):
-    from . import same_person
-    if (not cursor["batch"]["done"] or cursor["summaries"] or cursor["current"]
-            or cursor["job_index"] < len(cursor["jobs"])):
-        return False
-    return not ((cursor.get("same_new_left", 10) and same_person.candidates(root, uninvestigated=True))
-                or (cursor["same_left"] and same_person.candidates(root, uninvestigated=False)))
+def _reset_attempts(root, cursor):
+    day = service.notebook_today(root).isoformat()
+    if cursor.get("task_day") != day:
+        cursor.update(task_day=day, draft_attempts=[], translation_attempts=[])
 
 
-def defer_translations(root, cursor, reason):
-    from .languages import owner_languages
-    language = next((tag for tag in owner_languages(root)["languages"] if tag.split("-")[0] != "en"), None)
-    pages = [{"page": record, "outcome": "skipped", "reason": reason}
-             for record in cursor["changed"] if language and translate.cached(root, record, language) is None]
-    cursor["run"]["translations"] = {"language": language, "pages": pages}
-    finish(root, cursor)
+def prepare_translation(root, cursor, config, directory):
+    _reset_attempts(root, cursor)
+    for language in translate.languages(root):
+        if language.split("-")[0].lower() == "en":
+            continue
+        if translate.attempts_today(root) >= config["limits"]["translations_per_day"]:
+            return None
+        attempted = cursor.get("translation_attempts", [])
+        for record in translate.backlog(root, language, changed=cursor["changed"]):
+            if [language, record] in attempted:
+                continue
+            task = translate.prepare(root, record, language, directory=directory, native=True)
+            return _task("translate", task, cursor, stage="translate", record=record)
+    return None
 
 
 def finish(root, cursor):
@@ -356,6 +389,13 @@ def _finish_project(root, cursor, record, through):
 
 def check_task(root, task, output):
     handler, prepared = task["handler"], task["task"]
+    if handler == "draft":
+        from . import drafts
+        plan = drafts.check(prepared, output)
+        current = next((row for row in drafts.candidates(root) if row["id"] == plan["id"]), None)
+        if not current or current["version"] != plan["version"]:
+            return {"discarded": "Reply thread changed; a fresh draft is queued", "changed": []}
+        return _commit(root, task, plan, {"draft": plan["id"]})
     if handler == "extract":
         return extract.check(prepared, output)
     if handler == "sessions":
@@ -436,7 +476,12 @@ def _merge_outputs(root, plan):
 
 def _commit(root, task, plan, result):
     from .native import _hash
-    outputs = _summary_outputs(root, plan) if task["handler"] == "sessions" else _merge_outputs(root, plan)
+    if task["handler"] == "draft":
+        from . import drafts
+        plan = {**plan, "status": "prepared", "prepared_at": service.now().isoformat()}
+        outputs = {drafts.path(root, plan["id"]): [_json_text(plan)]}
+    else:
+        outputs = _summary_outputs(root, plan) if task["handler"] == "sessions" else _merge_outputs(root, plan)
     files = {str(path): {"before": _hash(path),
              "after": [hashlib.sha256(text.encode()).hexdigest() if text is not None else None for text in texts]}
              for path, texts in outputs.items()}
@@ -455,7 +500,10 @@ def recover_commit(root, task):
         raise RemError("Committed task output changed; preserve the current notebook. Run co rem next --discard")
     if all(current[path] == state["after"][-1] for path, state in receipt["files"].items()):
         return receipt["result"]
-    if receipt["handler"] == "sessions":
+    if receipt["handler"] == "draft":
+        from . import drafts
+        write_json(drafts.path(root, receipt["plan"]["id"]), receipt["plan"])
+    elif receipt["handler"] == "sessions":
         sessions.promote_summaries(root, receipt["plan"])
     elif receipt["handler"] == "same-person":
         from . import same_person
@@ -609,8 +657,12 @@ def advance(root, cursor, task, result):
                     job = {**job, "record": result["kept"], "days": FIRST_WINDOW_DAYS}
                 jobs.setdefault(job["record"], job)
             cursor.update(jobs=list(jobs.values()), job_index=0)
+    elif operation == "draft":
+        row = task["task"]["row"]
+        cursor.setdefault("draft_attempts", []).append([row["id"], row["version"]])
     elif operation == "translate":
         cursor["translations"].append(task["record"])
+        cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])
         if not result.get("discarded"):
             cursor["translated"] += 1
     cursor["pending"] = None

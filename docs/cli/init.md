@@ -27,12 +27,62 @@ It also creates a missing `~/.co/agent.json` local profile. Your existing profil
 is kept; use `co setup --name my-agent --bio "My work" --no-skills` to customize
 only those fields.
 
+### Codex CLI and browser sign-in
+
+Global `co init` (including `--no-rem`) finds Codex in this order:
+
+1. `codex` on PATH;
+2. `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`;
+3. `/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
+
+An explicit `CODEX_CMD` override is kept. A previous standalone install in
+`~/.local/bin/codex` is also reused when that directory is absent from PATH.
+The same lookup is used by REM's `codex exec` turns and `co rem doctor`.
+
+If none is available, init uses the [official OpenAI standalone installer](https://github.com/openai/codex#installing-and-running-codex-cli)
+for macOS and Linux. It downloads the script over HTTPS from
+`https://chatgpt.com/codex/install.sh`, saves it temporarily, and runs `sh` with
+`CODEX_NON_INTERACTIVE=true` and `CODEX_INSTALL_DIR="$HOME/.local/bin"`.
+The [installer](https://github.com/openai/codex/blob/main/scripts/install/install.sh)
+checks release SHA-256 digests before installing. No npm, Homebrew, sudo or
+installation prompts are required. The equivalent manual command is:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=true sh
+```
+
+Only if the standalone attempt fails, init tries `npm install -g @openai/codex`
+when npm is available, then `brew install --cask codex` on macOS when Homebrew
+is available. The summary reports the reused path, installed version and path,
+or failure reason with the exact retry command. It also prints an undo line.
+The standalone installer may add a `Codex installer` PATH block to your shell
+profile; open a new terminal to use bare `codex`. ConnectOnion can use the full
+installed path immediately, including in scheduled turns.
+
+Init checks `<resolved CLI> login status`. If needed, it runs `<resolved CLI>
+login`, which opens the browser for your ChatGPT sign-in. It waits at most 45
+seconds for that attempt, then checks status again. Cancellation, failure or an
+unfinished browser login leaves the rest of init running. REM uses its ready
+Claude Code fallback after checking `claude auth status --json`; otherwise it records that scheduling is
+waiting for Codex login, completes the local notebook setup, and prints the
+exact login command followed by `co rem start`. An existing notebook and its
+schedule are preserved on repeated init.
+
+To undo a standalone install, remove `~/.local/bin/codex`,
+`~/.local/bin/codex-code-mode-host`, and `~/.codex/packages/standalone/`
+(or the printed package path if `CODEX_HOME` is set), then remove the block
+between `# >>> Codex installer >>>` and `# <<< Codex installer <<<` in your
+shell profile. Keep `auth.json`, sessions and your other Codex settings.
+Scheduled jobs preserve `CODEX_HOME` and `CODEX_CMD` when set.
+Package-manager installations use `npm uninstall -g @openai/codex` or
+`brew uninstall --cask codex`.
+
 ### REM setup
 
-Global `co init` asks no questions. It prepares `~/.co/rem`, records an init
+Global `co init` asks no setup questions; a missing Codex login opens the browser. It prepares `~/.co/rem`, records an init
 consent grant for local Codex / Claude Code sessions and every authenticated
 Google and Microsoft mailbox, installs upkeep using the usual scheduler
-(Codex Scheduled or launchd on macOS, systemd user timer on Linux), and builds
+(Codex exec via launchd on macOS, systemd user timer on Linux), and builds
 the first notebook in the foreground. The cost estimate is information, with
 no confirmation pause. `--yes` and runs without a terminal do the same work.
 Without a mailbox it continues on sessions and prints `co auth google` /

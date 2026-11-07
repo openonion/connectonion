@@ -43,8 +43,9 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
-            lines += [rem_look.follow(highlight(turn['reason']), glyph=''),
-                      rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
+            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
+            if turn['result'] == 'failed':
+                lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
     lines += [*_budget(root, value, verbose), *_last_runs(root)]
@@ -129,8 +130,8 @@ def status_next(value: dict) -> list:
         if "Codex missed the " in value["state"]:
             return ["start"]
         return ["logs"] if value.get("next_run") else ["start"]
-    # The first thing under "To write next", when there is one (#2008): the
-    # dashboard said `investigate me` there and then "Next: co rem logs".
+    if str(value.get("state", "")).startswith(("Running", "Scheduled")):
+        return ["logs"]
     if value.get("root"):
         _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
         if arguments:
@@ -160,19 +161,23 @@ def _private_unwritten(root) -> int:
                for record in book.list("projects"))
 
 
-def next_to_write(root, counts: dict) -> tuple:
+def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
     """(what to write next, the arguments of the command that writes it), or ('', [])."""
     from ...rem.files import Notebook, read_json, state_path
     from ...rem.merge import mapped_only
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
     book = Notebook(root)
     if owner and book.path(owner).is_file() and mapped_only(book.read(owner)):
+        if scheduled:
+            return "your own page queued for tonight", []
         return "your own page", ["investigate", "me"]
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
+            if scheduled:
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
 
@@ -245,10 +250,18 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
             f"{coverage['missing']} people you write to have no page yet"), glyph=""))
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
-    what, arguments = next_to_write(root, counts)
+    scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))
+    what, arguments = next_to_write(root, counts, scheduled=scheduled)
     if what:
         lines.append(rem_look.row("To write next", what))
-        lines.append(rem_look.follow(style.command(spell(arguments))))
+        if arguments:
+            lines.append(rem_look.follow(style.command(spell(arguments))))
+        if scheduled and not arguments:
+            lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
+    for language, coverage in value.get("translation_coverage", {}).items():
+        done, total = coverage["translated"], coverage["total"]
+        share = round(100 * done / total) if total else 0
+        lines.append(rem_look.row(language, f"{done} of {total} pages translated ({share}%)"))
     return lines
 
 
@@ -299,9 +312,12 @@ def _archive(value: dict, spell=lambda arguments: "co rem " + " ".join(arguments
     if not archive.get("stalled"):
         return [rem_look.row("Archive", saved + style.muted(" · saving"), style.muted(rem_look.RESUMES))]
     since = str(archive.get("updated", ""))[:16].replace("T", " ")
+    resume = ("queued to resume from saved bodies on the next scheduled run"
+              if value.get("next_run") and value.get("worker", {}).get("enabled")
+              else "background updates resume it from saved bodies when enabled")
     return [rem_look.row("Archive", saved + " · " + style.warn(f"stalled since {since}"), style.warn(rem_look.RESUMES)),
             rem_look.follow(style.muted("investigations ask the mail servers until it is done"), glyph=""),
-            rem_look.follow(style.command(spell(["sync"])) + style.muted(" resumes it from the saved bodies"))]
+            rem_look.follow(style.muted(resume), glyph="")]
 
 
 def _last_run(run, zone) -> str:

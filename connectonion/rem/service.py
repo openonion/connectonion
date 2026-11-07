@@ -502,8 +502,10 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = _status_worker(worker_state(root))
+    if worker.get("waiting_for") and not worker.get("enabled"):
+        return worker["waiting_for"], None
     native = {}
-    if worker.get("scheduler") == "codex-native" or sys.platform == "darwin":
+    if worker.get("scheduler") == "codex-native" or (sys.platform == "darwin" and worker.get("scheduler") != "codex-exec"):
         from .codex_schedule import CodexNative
         scheduler = CodexNative()
         if worker.get("scheduler") == "codex-native" or scheduler.installed(root):
@@ -648,11 +650,10 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     return "", ""
 
 
-def status(root: Path, *, live_quota: bool = False) -> dict:
-    """`live_quota` reads the Codex meter now (#1843). Only `co rem status` asks:
-    the round and sync call this inside the lock, where a Codex process per
-    call would only slow them."""
+def status(root: Path, *, include_quota: bool = False) -> dict:
+    """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
+    from .translate import coverage as translation_coverage
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -692,9 +693,10 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
             "people_coverage": people_coverage(root),
+            "translation_coverage": translation_coverage(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
-            **(_quota_status(config, logs) if live_quota else {})}
+            **(_quota_status(config, logs) if include_quota else {})}
 
 
 def _status_worker(worker: dict) -> dict:
@@ -756,7 +758,9 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"]
+    _, runs = runs_today(run_logs(root), zone)
+    translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
+    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"] - translation_attempts
     resets = midnight.isoformat(timespec="minutes")
     return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
             "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
@@ -765,7 +769,12 @@ def daily_cap(root: Path) -> dict:
 
 def _quota_status(config: dict, logs: list[dict]) -> dict:
     from . import quota
-    meter = quota.read(config)
+    meter = next((reading for run in logs for key in ("after", "before")
+                  if "used_percent" in (reading := (run.get("quota") or {}).get(key, {}))
+                  and reading.get("resets_at", 0) > now().timestamp()),
+                 {"unknown": "No saved quota reading for the current window"})
+    if config.get("runner") != "codex":
+        meter = {"unknown": f"the {config.get('runner')} runner has no quota meter"}
     spent = quota.points_spent(logs, meter)
     limits = config["limits"]
     if "unknown" in meter:
@@ -774,7 +783,7 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
-        week = f"{meter['used_percent']}% used on {meter['plan']}; resets {resets}"
+        week = f"{meter['used_percent']}% used on {meter['plan']} (last recorded); resets {resets}"
     # Sentences first for people; the same numbers stay structured for --json.
     return {"codex_week": week,
             "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "
@@ -952,6 +961,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
     # to before the clock existed. The next saved time is the first one served.
     previous = worker_state(root)
     served = latest_slot(read_config(root), now())
+    previous.pop("waiting_for", None)
     write_json(state_path(root, "worker.json"), {**previous, "enabled": True, **installed,
                                                  "installed_at": now().isoformat(), "stopped_at": None,
                                                  "last_scheduled_slot": previous.get("last_scheduled_slot")
@@ -1466,7 +1476,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         forget_digest(root)
         write_json(path, record)
         return {"done": True, "record": record}
-    room = limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
+    room = daily_cap(root)["remaining"] - extract_calls
     if room < 1:
         cap = daily_cap(root)
         reason = (f"{CAP_LIMIT} ({cap['used']} of {cap['limit']} used today; this batch needs "

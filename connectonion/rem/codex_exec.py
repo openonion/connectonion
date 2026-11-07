@@ -7,13 +7,16 @@ import shutil
 import signal
 import subprocess
 import time
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..codex_cli import resolve_codex
 from .files import RemError, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
 STARTUP_TIMEOUT_S = 300
+TURN_SECONDS = 3 * 3600
 
 
 def read_config(root):
@@ -31,22 +34,12 @@ def _codex_command() -> list[str]:
     if (not command or any('connectonion.rem.codex_exec' in arg or 'codex_exec.py' in arg for arg in command)
             or Path(command[0]).name in launchers or Path(command[0]).name.startswith('python')):
         raise RemError('CODEX_CMD must name the Codex CLI, never the REM launcher or an interpreter')
-    binary = shutil.which(os.path.expanduser(command[0])) or (None if override else _bundled_codex())
+    binary = shutil.which(os.path.expanduser(command[0])) if override else resolve_codex()
     if not binary:
         raise RemError('Codex CLI not found; install Codex, fix CODEX_CMD and run co rem start')
     if Path(binary).resolve().name.startswith('python') or Path(binary).resolve().name in launchers:
         raise RemError('CODEX_CMD must name the Codex CLI, never the REM launcher or an interpreter')
     return [os.path.abspath(binary), *command[1:]]
-
-
-# The ChatGPT and Codex desktop apps ship the CLI and share their login. These
-# paths are not a documented interface, so they are looked up on every turn.
-BUNDLED_CODEX = ('/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
-                 '/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex')
-
-
-def _bundled_codex() -> str | None:
-    return next((path for path in BUNDLED_CODEX if os.access(path, os.X_OK)), None)
 
 
 def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
@@ -82,15 +75,45 @@ def _start_command(root, last):
             signal.setitimer(signal.ITIMER_REAL, max(0.001, delay - (time.monotonic() - started)), interval)
 
 
-def _execute(command, **kwargs):
-    """A deadline kills the process group too, including tools still running."""
+def _terminate_descendants(pid):
+    """Kill deepest children first, including tools that created new sessions."""
+    table = subprocess.run(['ps', '-Ao', 'pid=,ppid='], check=True, capture_output=True, text=True)
+    children = {}
+    for row in table.stdout.splitlines():
+        child, parent = map(int, row.split())
+        children.setdefault(parent, []).append(child)
+    descendants, parents = [], [pid]
+    while parents:
+        parents = [child for parent in parents for child in children.get(parent, [])]
+        descendants.extend(parents)
+    descendants.reverse()
+    terminated = set()
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for child in descendants:
+            # Exiting between enumeration and signalling is normal; other errors propagate.
+            with suppress(ProcessLookupError):
+                os.kill(child, sig)
+                terminated.add(child)
+        if sig == signal.SIGTERM and descendants:
+            time.sleep(0.2)
+    return len(terminated)
+
+
+def _execute(command, *, timeout=TURN_SECONDS, **kwargs):
+    """A deadline kills detached descendants before the launcher's process group."""
     with subprocess.Popen(command, start_new_session=True, **kwargs) as process:
         try:
-            return subprocess.CompletedProcess(command, process.wait(timeout=3000))
+            return subprocess.CompletedProcess(command, process.wait(timeout=timeout))
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            return subprocess.CompletedProcess(command, 124)
+            try:
+                killed = _terminate_descendants(process.pid)
+            finally:
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            result = subprocess.CompletedProcess(command, 124)
+            result.killed_descendants = killed
+            return result
 
 
 def run_turn(root: Path, *, run=_execute) -> str:
@@ -114,8 +137,13 @@ def _run_locked(root, run, lock_fd):
     receipt = {'started_at': started.isoformat(), 'result': 'running',
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
-    result = None
+    result, skipped = None, False
     try:
+        from .codex_schedule import CodexNative
+        if CodexNative().recent_desktop_fire(root):
+            skipped = True
+            receipt['reason'] = 'desktop automation fired in the last 10 minutes'
+            return 'skipped'
         with log.open('w') as output:
             startup = time.monotonic()
             command = _start_command(root, last)
@@ -131,8 +159,11 @@ def _run_locked(root, run, lock_fd):
         raise
     finally:
         code = result.returncode if result is not None else None
-        outcome = 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
-        receipt.update(result=outcome, exit_code=code, finished_at=datetime.now(timezone.utc).isoformat())
+        outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
+        if code == 124:
+            receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
+        receipt.update(result=outcome, exit_code=code, killed_descendants=getattr(result, 'killed_descendants', 0),
+                       finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)
         write_json(state_path(root, 'last-turn.json'), receipt)
 

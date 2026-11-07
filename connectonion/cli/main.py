@@ -245,7 +245,13 @@ def init(
         if background and sys.platform != 'darwin':
             console.print('Background Mac setup requires macOS. Next: co init', markup=False)
             raise typer.Exit(2)
+        from .codex_setup import setup_codex
+        codex = setup_codex()
         handle_global_init(key=key)
+        console.print(codex["summary"], markup=False, soft_wrap=True)
+        console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
+        if not codex["ready"]:
+            console.print(f"Codex login pending. Run: {codex['login_command']}", markup=False, soft_wrap=True)
         if background:
             from .mac_bootstrap import prepare_mac_host
             from .host_service import HostServiceError
@@ -260,7 +266,7 @@ def init(
             from .commands.rem_commands import init_global_rem
             from ..rem.files import RemError
             try:
-                init_global_rem(yes=yes)
+                init_global_rem(yes=yes, codex=codex)
             except RemError as error:
                 # The one place co init calls REM outside _handle: say it in one line,
                 # not a traceback (#2758). Consent is recorded, so the retry is cheap.
@@ -268,7 +274,8 @@ def init(
                 raise typer.Exit(1) from None
         if background and not result['codex_ready']:
             console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
-            raise typer.Exit(1)
+            if codex['ready']:
+                raise typer.Exit(1)
         return
     if background:
         console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)
@@ -630,9 +637,15 @@ class _BrowserCommand(typer.core.TyperCommand):
     """
 
     def parse_args(self, ctx, args):
+        if _browser_verb(args) == "history" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_history import history_parser
+            from .style import console, markup
+            console().print(markup(history_parser().format_help()))
+            ctx.exit(0)
         if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_import import IMPORT_HELP
-            print(IMPORT_HELP)
+            from .style import console, markup
+            console().print(markup(IMPORT_HELP))
             ctx.exit(0)
         return super().parse_args(ctx, args)
 
@@ -660,7 +673,13 @@ def browser(
     give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
+    cookies · close. Local Chrome data: {history,import} — history lists visits;
+    import carries Chrome logins into this browser.
+    `co browser help` shows how to use each one."""
+    if args and args[0] == "history":
+        from .commands.browser_history import handle_browser_history
+        raise typer.Exit(handle_browser_history(args[1:]))
+
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":

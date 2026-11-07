@@ -117,7 +117,7 @@ def company_mail(tmp_path, request):
         def list_between(self, start, end, limit):
             return [row for row in rows if start <= row['date'] < end]
         def get_email_body(self, key): return bodies[key]
-        def download_attachments(self, key, directory):
+        def list_attachments(self, key):
             attachments.append(key)
             return []
 
@@ -2670,26 +2670,6 @@ def test_a_page_with_no_hedged_lines_gets_no_editing_turn(tmp_path, monkeypatch)
     assert not any(n.startswith("Final round") for n in notes) and out["hedged_lines"] == [0, 0]
 
 
-def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
-    """One provider call per archived mail, in sequence, was most of a heavy
-    page's 15-minute gather on a real 1.9.0 init (2026-10-08)."""
-    calls = []
-
-    class Mail:
-        def download_attachments(self, email_id, out_dir):
-            calls.append(email_id)
-            if email_id == "with":
-                (Path(out_dir) / "offer.pdf").write_bytes(b"%PDF")
-                return [str(Path(out_dir) / "offer.pdf")]
-            return []
-
-    first = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
-    again = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
-    assert calls == ["with", "without"]
-    assert [paths for _, paths, _ in again] == [paths for _, paths, _ in first]
-    assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
-
-
 def test_a_search_the_provider_refuses_is_reported_not_fatal(tmp_path):
     """An Corin pass in rounds asked Outlook for a lead; Graph answered HTTP 400
     and the whole investigation failed (2026-10-08)."""
@@ -3533,3 +3513,120 @@ def test_investigation_window_uses_the_notebook_day(tmp_path, monkeypatch):
     set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
     monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
     assert inv.window_since("Investigation: investigated 2026-11-04", root=tmp_path) == 2
+
+
+@pytest.mark.parametrize('kind', ['gmail', 'outlook'])
+@pytest.mark.parametrize('archived', [False, True])
+def test_gather_indexes_attachment_metadata_without_downloading(tmp_path, kind, archived):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+
+    now = datetime.now(timezone.utc)
+    row = {'id': 'message-with-documents', 'from': 'ivy@lantern.example', 'to': ['me@example.org'],
+           'subject': 'Pilot terms', 'date': (now - timedelta(days=1)).isoformat()}
+    documents = [{'id': 'part-1', 'filename': 'terms.pdf', 'mime_type': 'application/pdf', 'size': 2048},
+                 {'id': 'part-2', 'filename': 'identity.docx', 'mime_type':
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'size': 4096}]
+    listed = []
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return [row] if start <= row['date'] < end else []
+        def get_email_body(self, key): return 'Please read the attached terms.'
+        def list_attachments(self, key):
+            listed.append(key)
+            return documents
+        def download_attachments(self, *args, **kwargs):
+            pytest.fail('Gather must list metadata before selecting downloads')
+
+    if archived:
+        retain_message(tmp_path, kind, row, 'Please read the attached terms.', fetched_at=now.isoformat())
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': [kind], 'owner_addresses': ['me@example.org'],
+            'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    store = tmp_path / '.state/attachments'
+    items, coverage = inv.gather('Ivy', ['ivy@lantern.example'], days=5, clients={kind: Mail()},
+                                subscriptions={}, archive_root=tmp_path if archived else None,
+                                record='people/ivy.md', attachments_dir=store)
+    indexes = [item for item in items if item['role'] == 'attachments-index']
+    assert len(indexes) == 1
+    index = indexes[0]
+    assert index['attachments'] == documents
+    assert index['reference'] == f'{kind}:{row["id"]}'
+    for value in ('terms.pdf', 'identity.docx', 'application/pdf', '2048', '4096', row['id']):
+        assert value in index['text']
+    assert listed == [row['id']]
+    assert not store.exists()
+    assert any('2 attachments indexed' in line for line in coverage)
+
+
+def test_archived_attachment_indexes_are_listed_concurrently_in_mail_order(tmp_path):
+    import threading
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+
+    now = datetime.now(timezone.utc)
+    rows = [{'id': f'mail-{n}', 'from': 'ivy@lantern.example', 'to': ['me@example.org'],
+             'subject': 'Pilot terms', 'date': (now - timedelta(days=1, minutes=3-n)).isoformat()}
+            for n in range(3)]
+    for row in rows:
+        retain_message(tmp_path, 'gmail', row, 'See attached terms.', fetched_at=now.isoformat())
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
+        'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    barrier = threading.Barrier(3)
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit): return []
+        def list_attachments(self, key):
+            barrier.wait(timeout=2)
+            return [{'id': key, 'filename': f'{key}.pdf', 'mime_type': 'application/pdf', 'size': 200}]
+
+    items, _ = inv.gather('Ivy', ['ivy@lantern.example'], days=5, clients={'gmail': Mail()},
+                         subscriptions={}, archive_root=tmp_path, record='people/ivy.md',
+                         attachments_dir=tmp_path / '.state/attachments')
+    assert [item['reference'] for item in items if item['role'] == 'attachments-index'] == [
+        f'gmail:{row["id"]}' for row in rows]
+
+
+def test_backfill_counts_indexed_attachments_for_the_second_pass(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import people_pages
+    monkeypatch.setattr(people_pages, 'handles', lambda *args: ('Ivy', ['ivy@lantern.example']))
+    monkeypatch.setattr(inv, 'gather', lambda *args, **kwargs: ([{
+        'role': 'attachments-index', 'timestamp': datetime.now(timezone.utc).isoformat(),
+        'attachments': [{'filename': 'terms.pdf'}, {'filename': 'identity.docx'}]}], []))
+    assert people_pages.backfill_person(tmp_path, {'record': 'people/ivy.md'}, clients={}, subscriptions={}) == 2
+
+
+@pytest.mark.parametrize('archived', [False, True])
+def test_domain_billing_notice_is_not_marked_as_outside_the_org(tmp_path, archived):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    now = datetime.now(timezone.utc)
+    row = {'id': 'billing-notice', 'from': 'billing@lantern.example', 'to': ['me@example.org'],
+           'subject': 'Tax invoice', 'date': (now - timedelta(days=1)).isoformat()}
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'addresses': ['me@example.org']},
+        'automated_correspondents': [{'address': row['from']}]})
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return [row] if start <= row['date'] < end else []
+        def get_email_body(self, key): return 'Supplier Lantern Labs, ABN 98 765 432 109.'
+
+    if archived:
+        retain_message(tmp_path, 'gmail', row, Mail().get_email_body(row['id']), fetched_at=now.isoformat())
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
+            'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    items, _ = inv.gather('Lantern', ['lantern.example'], days=5, clients={'gmail': Mail()},
+                         subscriptions={}, archive_root=tmp_path, record='orgs/lantern.md')
+    assert len(items) == 1
+    assert not items[0].get('relationship_scope')

@@ -383,7 +383,7 @@ def _remaining(deadline):
 
 
 def _base_command():
-    """codex launch argv: $CODEX_CMD (space-split) else PATH lookup, + app-server."""
+    """Codex launch argv: CODEX_CMD override, else the shared CLI resolution."""
     env = os.environ.get("CODEX_CMD")
     if env:
         # A resolved executable path may contain spaces. Preserve that one
@@ -392,7 +392,8 @@ def _base_command():
         if os.path.isfile(expanded):
             return [os.path.abspath(expanded), "app-server"]
         return env.split() + ["app-server"]
-    found = shutil.which("codex")
+    from ..codex_cli import resolve_codex
+    found = resolve_codex()
     return [found, "app-server"] if found else None
 
 

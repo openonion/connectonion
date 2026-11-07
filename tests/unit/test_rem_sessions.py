@@ -961,3 +961,14 @@ def test_session_summary_appends_skip_reasons(skipped, suffix):
 
     text = summary({"imported": 3, "updated": 0, "unchanged": 0, "skipped": skipped, "seconds": 0.012})
     assert suffix in text
+
+
+def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(notebook):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(), codex('An earlier result', role='assistant'),
+                              codex('One more change', stamp='2026-10-15T22:24:00Z')])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    page = book.read(book.list('sessions')[0])
+    assert '## Final reply' not in page
+    assert '- Ended: 2026-10-16 09:24' in page

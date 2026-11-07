@@ -154,7 +154,7 @@ def test_partial_maintenance_still_saves_the_owners_detected_languages(root):
         db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
         db.execute("insert into messages values (?, 'gmail', 't', ?, '[]', '', '', ?, null)",
                    ("gmail:avery", "avery@example.test", "mail/messages/gmail/avery.json"))
-    result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"})
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"}, translate_one=lambda *a: None)
     assert result["outcome"] == "partial" and result["investigation"] is None
     assert read_json(root / ".state" / "map.json", {})["owner"]["languages"]["languages"] == ["zh"]
 
@@ -175,6 +175,7 @@ def translation_root(tmp_path, monkeypatch):
     monkeypatch.setattr('connectonion.rem.sessions.summarise_sessions', lambda *a, **kw: {})
     monkeypatch.setattr('connectonion.rem.sessions.summarise_line', lambda result: '')
     monkeypatch.setattr(daily, 'unfinished_by_recency', lambda root: [])
+    monkeypatch.setattr('connectonion.rem.people_pages.queue', lambda *a, **kw: [])
     return root
 
 
@@ -195,9 +196,9 @@ def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failu
     result = daily.run_daily(root, maintain=maintain, translate_one=translator, say=messages.append)
     report = result['maintenance']['translations']
     assert calls == [(pages[1], 'zh'), (pages[2], 'zh')]
-    assert [row['outcome'] for row in report['pages']] == ['cached', 'failed', 'translated']
+    assert [row['outcome'] for row in report['pages']] == ['failed', 'translated']
     assert report['attempted'] == 2
-    assert report['pages'][1]['error'] == 'A quoted passage changed'
+    assert report['pages'][0]['error'] == 'A quoted passage changed'
     assert any('Translation failed' in message for message in messages)
     log = next(log for log in daily.run_logs(root) if log['phase'] == 'daily-translation')
     assert log['outcome'] == 'partial' and log['pages'] == report['pages']
@@ -213,7 +214,7 @@ def test_daily_translates_investigation_changes_after_refresh(translation_root, 
     result = daily.run_daily(root, maintain=no_change,
                              investigate_one=lambda *a, **kw: {'changed': ['projects/harbour.md']},
                              translate_one=lambda root, page, language: calls.append((page, language)))
-    assert calls == ['refresh', ('projects/harbour.md', 'zh')]
+    assert calls == ['refresh', ('projects/harbour.md', 'zh'), ('people/avery-lin.md', 'zh')]
     assert result['maintenance']['translations']['pages'][0]['outcome'] == 'translated'
 
 
@@ -228,7 +229,7 @@ def test_daily_translation_skips_english_or_unready_runner(translation_root, mon
     assert 'translations' not in result['maintenance']
 
 
-def test_daily_translation_respects_total_runner_cap(translation_root, monkeypatch):
+def test_daily_translation_has_its_own_budget_after_runner_cap(translation_root, monkeypatch):
     from connectonion.rem.config import set_config
     from connectonion.rem.files import write_json, state_path
     set_config(translation_root, ['limits.runner_calls_per_day', '1'])
@@ -236,8 +237,8 @@ def test_daily_translation_respects_total_runner_cap(translation_root, monkeypat
         'started_at': daily.now().isoformat(), 'runner_attempts': 1, 'outcome': 'completed'})
     result = daily.run_daily(translation_root,
                              maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
-                             translate_one=lambda *a: pytest.fail('daily cap exceeded'))
-    assert result['maintenance']['translations']['attempted'] == 0
+                             translate_one=lambda *a: 'translated')
+    assert result['maintenance']['translations']['attempted'] == 2
 
 
 def _owner_page(root, investigated: str) -> str:
@@ -422,7 +423,7 @@ def test_translation_usage_is_returned_once_and_excludes_older_runs(translation_
     monkeypatch.setattr("connectonion.rem.runner.run_task", run)
     result = daily.run_daily(root, maintain=lambda root: {
         "outcome": "completed", "changed": ["projects/harbour.md"]})
-    assert result["maintenance"]["translations"]["usage"] == {"input_tokens": 400, "output_tokens": 10}
+    assert result["maintenance"]["translations"]["usage"] == {"input_tokens": 800, "output_tokens": 20}
     summary = next(log for log in daily.run_logs(root) if log["phase"] == "daily-translation")
     assert summary["usage"] is None  # The underlying translate run already owns this usage.
 

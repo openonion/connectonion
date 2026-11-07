@@ -23,6 +23,23 @@ the evidence. You and your agents can read and reuse them in the next task.
 Memory keeps context available over time; carrying context through your
 work is the purpose.
 
+On macOS, one-page agent tasks also receive a **Recently read** index from the default
+Chrome profile: visits in the last 30 days matching the subject's name, domain
+or GitHub repository. Titles and URLs are leads. A relevant page must be fetched
+with `co fetch <url> > web/<slug>.md` and registered in `web/sources.json` before
+its content can be cited. The index itself opens no pages and makes no network
+requests; the existing LinkedIn restriction still applies. It shows up to 50
+distinct URLs, newest first, with repeated visits collapsed. Profile/resource
+links match that specific page; an explicit website or organisation domain
+matches the domain and its subdomains.
+
+Inspect history directly with `co browser history --days 1 --json`. The default
+window is 7 days; `--domain SITE`, `--query TEXT` and `--profile NAME` narrow the
+results. Each row is a visit, including repeat visits, with a UTC time, title and
+URL. `--domain` includes subdomains; `--query` matches literal text in the title
+or URL, ignoring case. Both filters together must match. REM currently uses
+Chrome's `Default` profile. Configurable domain exclusions depend on #2830.
+
 The notebook is a folder on your machine, `~/.co/rem`. Saved mail bodies stay
 in its owner-only `.state/` and never go into a page; a model reads them only
 through the login you choose. By default it runs on your own Codex plan
@@ -513,7 +530,10 @@ claims pass the audit; review names problems back to the writer once at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
 
 Native scheduled rounds investigate pages before summarising sessions, with at
-most five summaries per round. Set `limits.jobs_per_round` (default 8 pages) and
+most five summaries per round. Unwritten people, projects and other mapped
+pages stay in the scheduled queues until processed; your own page refresh is
+queued each day. Status and the reader show queued progress instead of asking
+you to copy a REM command for that work. Set `limits.jobs_per_round` (default 8 pages) and
 `limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
 `co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
 The weekly quota safety floor remains 90% by default.
@@ -654,9 +674,11 @@ typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
-  sentence count what matters ("1 change overnight · 1 due soon · 4 waiting
+  sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
   on you"); a quiet line under it summarises the last pass, with its
   hypnogram one click away in **How co rem processed the last pass**.
+  Overdue and due-soon counts are separate. First-build wording uses the
+  notebook's earliest run, even when only recent runs fit in the snapshot.
   **Overnight** lists only verified field changes from the run log (old and
   new value, with a link to the source). In 中文 mode the new value comes
   from the page's cached translation when it matches; a value with no
@@ -669,17 +691,26 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   everything). **Worth remembering** and **Gone quiet** sit beside the brief on
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
-- **Thread actions**: every open thread on Home and in Open threads has
-  **Copy prompt** and **Mark done**. Copy prompt puts a ready-to-paste prompt
-  for Codex or Claude Code on the clipboard. It contains the thread, its page
-  with the `co rem show` command, other pages carrying the same thread, and
-  the cited source ids and dates, and it asks the agent to draft without
-  sending anything. Labelled private passages are left out. Mark done hides
-  the thread from Home and the counts in this browser only (local storage,
-  per notebook); with storage blocked it lasts for the session. **Undo** is
-  offered at once and under **Marked done on this device** in Open threads.
-  Nothing is sent and the notebook is not changed; the next pass that sees
-  your reply closes the thread there.
+- **Today is one queue**: everything that needs you, newest and due first, one card
+  each, with one primary action per card and a quiet **Mark done** that only this
+  browser remembers. The schedule prepares one local reply draft per mail thread
+  waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day,
+  on the `rem-reply-draft` skill: it reads who you both are (your page, their page,
+  the relationship, how they write), decides on each ask in the latest message, and
+  writes in your register for that relationship, using your own `email-writing`
+  skill when one is installed under `~/.claude`, `~/.codex`, `~/.cursor` or `~/.co`.
+  A prepared reply is shown as the mail it becomes: recipient, subject, the body in
+  the thread's language, a gist in your language, and **Why this reply** (who they
+  are, what was agreed, what you owe and since when). **Send** replies in the thread
+  from your mailbox; **Write full screen** opens the letter to edit by hand, with
+  that background and the thread beside it, and sends your edited text; **Edit in
+  Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
+  skipped until new mail arrives. The channel switch (Mail / Lark / WhatsApp)
+  rewrites the reply for that channel and sends it as you through `lark-cli` or
+  `co whatsapp`, when the notebook knows how to reach the person there. Sending
+  and rewriting work in the live reader on this computer only; a click is the
+  approval, and nothing is sent without one. Labelled private material stays
+  behind the reader's privacy toggle.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -699,6 +730,14 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
   the snapshot; before it does, from each page's Facts and the map's mail
   counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
+  People excludes your own page, which remains under **You** in the navigation.
+- **Agent sessions** keeps topic tags and the outcome separate on each list
+  card. A session page shows its summary, then the visible transcript, followed
+  by decisions, follow-ups and artifacts. The transcript retains your turns
+  and the complete final reply; missing intermediate activity is disclosed.
+  Find searches the retained text, and source links land on the corresponding
+  turn when it is archived. Other source rows open under **Details**. The
+  continuation box provides a resume command to use in the project folder.
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.
@@ -717,6 +756,10 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
+  Investigated records omit the redundant status pill; mapped and partly
+  investigated records keep it, and reviewed skills say **Source reviewed**.
+  A missing page translation shows **Translation pending** with its queue or
+  background-off state; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never
@@ -756,8 +799,11 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   `[sensitive]` appear only in the reader on this computer (the snapshot and
   the local live reader), behind **Hide labelled passages**; the O Chat view
   never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
-  replaced by a generated summary. A page only mapped from metadata says so
-  and gives the command to investigate it.
+  replaced by a generated summary. A page only mapped from metadata shows its
+  queue status and a count of sections awaiting investigation; written pages
+  name their remaining gaps. Private projects retain an explicit investigation
+  command. Empty Agent sessions shows queued status when background updates
+  are enabled, or pending status when they are off, without import controls.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from
@@ -874,11 +920,13 @@ Model turns and the launchd job both run the installation that is running
 PATH. Starting from a non-activated venv with an older `co` in `~/.local/bin`
 used to install a job, and route every model turn, through the older one.
 
-co rem's own code fetches the mail and attachments before the model starts, so
-the model needs nothing more than to read that material and write the page
-copy it is given. The cost is the web: investigation no longer looks up a
-role or a switchboard number with `co browser`, and says so in the page's
-`Uncertainties`. Before 1.8.8 investigation ran Codex with
+co rem gathers mail bodies and an attachment index (name, MIME type, size and
+mail ID) before the model starts. Investigation selects documents bearing on
+terms, money or identity and downloads them with `co gmail download` or
+`co outlook download` into its task directory. Each PDF and DOCX is cited or
+skipped with a reason in the run's lead ledger. Existing cached files are kept.
+The investigation Skill also supports read-only research and records unavailable
+sources in the lead ledger. Before 1.8.8 investigation ran Codex with
 `danger-full-access` and Claude with `bypassPermissions`, which gave anyone
 who could email the user an unattended agent with a shell, the network and
 the user's mailbox; a line in the prompt was the only defence.
@@ -948,11 +996,17 @@ reads from Claude Code itself. What you type after an import is read. The Codex
 CLI's plain three-key message is read as before. `$skill-name` counts in a
 skill page's Usage history use the same reading.
 
-PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
-attachments are read; XLSX needs `pip install 'connectonion[rem]'`, and
+Selected PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
+attachments can be read; XLSX needs `pip install 'connectonion[rem]'`, and
 without it a spreadsheet is named as unread with that command. Investigation passes full extracted text to chronological
 digest chunks instead of dropping a long attachment's tail. Unreadable
-formats/errors remain visible. The Skill supplements from the account's
+formats/errors remain visible. Attachment text is saved as a research capture
+and cited as `gmail:<short mail id>:<filename>` or
+`outlook:<short mail id>:<filename>`; the metadata index is a reading guide,
+not evidence. Billing notices from an organisation's domain enter its material
+when their subjects concern invoices, receipts, ABNs, billing or payment.
+Legal identifiers belong only on the page of the entity they name, including
+the owner's own company. The Skill supplements from the account's
 `co email` service, known documents and public sites, and reports what it
 could not search. Own-mail sent history currently has no paginated CLI;
 Jira discovery/auth is not connected to this co rem entry point yet.
@@ -990,8 +1044,9 @@ with the PATH captured at installation, including user command directories.
 The resolved Codex executable is pinned in the job's `CODEX_CMD`; set this to
 the CLI executable itself, then run `co rem start` to apply a change. Python,
 shell and REM launcher commands are rejected to prevent recursive launches.
-Each turn has a process lock: a fire during a running turn is skipped. A turn
-ends after at most 50 minutes, terminating its child tools too. Keep the computer
+Each turn has a process lock: a fire during a running turn returns `busy` and
+is skipped. A turn ends after at most three hours, terminating its whole process
+group, including child tools; the next fire continues the round. Keep the computer
 awake. No desktop app is needed for exec.
 
 `co rem start` switches clocks: exec pauses and removes the desktop definition
@@ -1022,6 +1077,16 @@ an overdue trigger and a failed REM pass; a file alone is not a working schedule
 `stop` pauses the native task and retains its history. It does not cancel a native
 model turn already in progress.
 
+New `co rem start` registrations on a Mac with a ready Codex CLI use the
+`codex-exec` OS job to run the native REM task loop through the existing Codex CLI.
+Select `schedule.runner=codex-app` to keep the desktop scheduler.
+Switching saves the desktop automation as PAUSED. If Codex's index has not caught
+up within the wait, REM installs the exec job and records the switch anyway,
+printing that Codex will pick up the saved pause. Before each exec turn REM reads
+Codex's `automation_runs` index and skips the turn if this notebook's desktop
+automation fired in the last ten minutes. Account-managed automations still need
+to be paused through their supported management interface.
+
 The native adapter in rc21 uses Codex's legacy local-file registration. Newer
 desktop code also has account-managed registration, which can replace the local
 file and task ID. That registration route has not passed REM's live acceptance;
@@ -1039,9 +1104,8 @@ desktop directly at Scheduled, including when its process is already running,
 then independently confirms activation. After the native index is ready it
 opens Scheduled again, so a cold launch does not depend on an early URL request.
 It rechecks the same registration before removing the old clock; migration or
-a concurrent change aborts that handover. Stopping
-waits for native pause acknowledgement before marking the worker disabled or
-starting a replacement launchd timer. A known account-migrated task is identified
+a concurrent change aborts that handover. Stopping a desktop-native registration waits for pause acknowledgement.
+The codex-exec migration described above accepts a saved PAUSED definition. A known account-migrated task is identified
 by its legacy association and requires management in Codex Scheduled until an
 authoritative account registration API has been verified. REM does not recreate
 its old file or treat a cached account status as confirmation of a pause.
@@ -1141,7 +1205,8 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before, up to `limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
+the run before and unfinished pages from the existing queues, up to
+`limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
@@ -1689,6 +1754,24 @@ sync (the daily round and `co rem sync`), under the notebook lock. It is
 idempotent: a tidy notebook is left exactly as it is, and nothing is written
 when nothing needs tidying. No model is called. What it does:
 
+Tidy also removes accepted and discarded native task workspaces once their
+round finishes, and removes abandoned empty task folders after six hours.
+Fresh workspaces may still be preparing a task. An active round retains its
+workspaces because later tasks can still read earlier outputs. Run logs stay.
+Attachments are deleted only when no current or archived page cites them and
+both their filesystem access and modification times are older than 30 days.
+The `.fetched` markers stay, so pruning does not download those attachments
+again. Evidence copies older than a finished run are removed, while copies
+from unfinished runs stay. Tidy records its deletions in `.state/tidy.json`;
+native task completion stays in run logs. Deleted copies cannot be restored
+locally.
+
+An organisation-shaped page filed under People (with a Domains section) moves
+to Orgs, keeping its text, citations and relative links. Existing destination
+pages and the owner's page are left for an explicit decision.
+Written service or automated-sender pages recognised by the map's existing
+rules move to Notes with their content intact.
+
 | Found | Done | Undo |
 |---|---|---|
 | A people page for a service or automated sender, never investigated (the map's `automated_correspondents`, the #1987 service rule, or an automated address) | moved to `.state/archived/people/…` | move the file back |
@@ -1860,17 +1943,19 @@ as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 
 ### Cached page languages
 
-After refreshing the owner's languages, each daily run translates pages changed
-by maintenance or investigation into the first non-English language in
-the owner's languages (configured or detected), when the runner is ready.
-`limits.translations_per_day` defaults to **10** new translation attempts across
-all daily slots; current cached translations use no attempts. Set it with
-`co rem config set limits.translations_per_day 5`. Failures are reported per page
-in the maintenance result and daily translation run log, and the next page continues.
+Every daily run works through all missing or stale translations. Opened pages
+requesting a translation and pages changed this round come first, then your own
+page, people by recent activity, organisations/projects, decisions/agenda, and
+sessions last. Current caches spend no budget. `limits.translations_per_day`
+defaults to **100**, independently of investigation's daily call budget; the
+weekly quota floor still stops translation. Follow-up slots keep the translation
+pass moving, including when an investigation is waiting on its next portion.
+`co rem status` reports coverage for each target language.
 
-The reader uses current cached prose for its selected interface language and
-shows the original when no translation is available. Rendering never starts a
-translation. The per-page Read in menu still allows an explicit language choice.
+The reader marks an untranslated page **Translation pending** while showing the
+original. Opening it in a non-English interface queues that language for the
+next pass, even if it was not detected among the owner's languages. The Read in
+menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
 
 What the model sees and must keep: the `## Sources` section is never sent; it is
@@ -1987,6 +2072,15 @@ task ID, stage, workspace, candidate path, exact submit command and
 in that file, including any citation audit or required corrections. `--json`
 retains the full instructions, material path, output path and submit command
 as structured data.
+
+Each task starts with the assistant's goal and the newest 4,000 characters from
+`.state/memory.md`, followed by the page's latest investigate/continue report when
+available. Both are evidence, never instructions or permission to bypass review.
+The agent appends 1–3 lines of `page · approach · result · next` to that memory,
+including answered and new questions and reusable tool discoveries. Investigation
+reports cite the predecessor's next step; unresolved questions stay in the page's
+existing `Uncertainties` section. Accepted native run logs retain `report.md`,
+including after a citation audit. Scheduling the `continue` pass is separate.
 
 Native task instructions contain directions and file pointers. Extraction, page
 writing, claim audits, repair findings, same-person comparisons, translations,

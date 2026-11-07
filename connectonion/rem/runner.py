@@ -16,6 +16,7 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 
+from ..codex_cli import INSTALL_COMMAND
 from ..skills_catalog import useful_skills_dir
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import with_local_times
@@ -197,7 +198,7 @@ def check_skill(root: Path, stage: str) -> None:
                        "or absolute.")
 
 
-INSTALL = {"codex": "npm install -g @openai/codex",
+INSTALL = {"codex": INSTALL_COMMAND,
            "claude-code": "npm install -g @anthropic-ai/claude-code"}
 
 # Whose money a run spends, said before init starts the owner's page (#1943).
@@ -209,9 +210,9 @@ PLAN = {"codex": "on your own Codex plan (your ChatGPT sign-in), not ConnectOnio
 def ready(config: dict) -> tuple[str, str]:
     """(problem, fix) for the configured runner, or ("", "") when it can run.
 
-    Checked with no model and no subprocess: the binary on PATH (or its
-    CODEX_CMD / CLAUDE_CODE_CMD override) and, for Codex, the sign-in file the
-    quota meter reads. A missing or signed-out Codex used to surface only when
+    Checked without a model: the resolved CLI (or its CODEX_CMD /
+    CLAUDE_CODE_CMD override) and, for Codex, login status from the CLI. A
+    missing or signed-out Codex used to surface only when
     the first investigation failed, ten minutes into a first run (#1943).
     Claude Code keeps its login in the system keychain, so only its binary is
     checked; ConnectOnion's own loop needs neither.
@@ -219,11 +220,13 @@ def ready(config: dict) -> tuple[str, str]:
     runner = config.get("runner")
     if runner == "codex":
         from ..useful_tools.codex import _base_command
-        from .quota import _codex_auth
-        if not _base_command():
+        from ..codex_cli import signed_in
+        command = _base_command()
+        if not command:
             return "Codex is not installed", INSTALL["codex"]
-        if not _codex_auth().is_file():
-            return "Codex is not signed in", "codex login"
+        if not signed_in(command[:-1]):
+            import shlex
+            return "Codex is not signed in", shlex.join([*command[:-1], "login"])
     elif runner == "claude-code":
         from ..useful_tools.claude_code import _base_command
         if not _base_command():
@@ -891,7 +894,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None, native=False, report="", draft_only=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
-                              drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              drop_owner_addresses, drop_foreign_identifiers, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
@@ -1028,6 +1031,13 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = drop_empty_owner_section(text, owner=record == owner.get("record"))
     text = merge_insight_shapes(text)
     text = timezone_from_location(record, text)
+    text, foreign_ids = drop_foreign_identifiers(notebook, record, text)
+    if foreign_ids:
+        cleared_facts.add('Legal entity')
+    if carried:
+        carried, stripped_ids = drop_foreign_identifiers(notebook, record, carried)
+        if stripped_ids:
+            carried = drop_uncited_sources(carried)
     text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
@@ -1125,6 +1135,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
+                   "foreign_identifiers_removed": foreign_ids,
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "restored_lines": restored_lines,
                    "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
@@ -1272,13 +1283,21 @@ def scrub_task(directory: Path) -> None:
     evidence directory was deleted "so copies of private mail do not
     accumulate" (#1958). What is kept is the owner's alone: a candidate page
     quotes their mail, and 1.9.0a2 left it 0644 (#1974).
+    Native completion is in the run log; its workspace goes once the round
+    no longer needs the earlier task outputs.
     """
+    if not directory.is_dir() or directory.is_symlink():
+        return
     native_task = read_json(directory / "task.json", {})
     active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
-    if native_task.get("status") == "pending" or (native_task and not active_round.get("done")
+    if native_task.get("status") == "pending" or (native_task and active_round.get("started_at")
+            and not active_round.get("done")
             and native_task.get("round_started_at") == active_round.get("started_at")):
         return
     import shutil
+    if native_task.get("status") in ("accepted", "discarded"):
+        shutil.rmtree(directory)
+        return
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
             # refused/ holds the pages a maintenance pass wrote and review
@@ -1291,6 +1310,8 @@ def scrub_task(directory: Path) -> None:
             shutil.rmtree(path, ignore_errors=True)
         else:
             path.unlink(missing_ok=True)
+    if not any(directory.iterdir()):
+        directory.rmdir()
 
 
 # A folder with no result.json this old was left by a run that was killed: the
@@ -1311,9 +1332,12 @@ def scrub_finished_tasks(workdir: Path) -> None:
         if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
-        if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
+        native_task = read_json(folder / "task.json", {})
+        if (native_task.get("status") in ("accepted", "discarded")
+                or (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale):
             scrub_task(folder)
-            _SCRUBBED_TASKS.add(folder)
+            if not (folder / "task.json").is_file():
+                _SCRUBBED_TASKS.add(folder)
 
 
 _TASK_MASK_LOCK = threading.Lock()
@@ -1450,6 +1474,8 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     one_page = stage == "maintain" and any(item.get("one_page") for item in items)
     candidate = directory / "candidate.md" if record and (stage in ONE_PAGE_STAGES or one_page) else None
     if candidate is not None:
+        from .browser_history import recently_read
+        prompt += recently_read(notebook.read(record))
         # The review refuses a page that ends over the limit; a person page
         # learnt that only after a 643k-token turn (#2041).
         from .page_review import history_note, size_note
