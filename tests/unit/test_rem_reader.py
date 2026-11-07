@@ -1665,7 +1665,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     assert 'Letter of Support draft' in quoted[0]['text']
     assert '“Please include the contribution details.”' in quoted[0]['text']
     assert quoted[0]['children'][0]['html'] == '[4]'
-    assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot'
+    assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot (2026-10-30) — due 2026-11-02, overdue'
     assert result['dated']['children'][1]['children'][1]['text'] == 'due 2026-11-02'
 
 
@@ -2515,9 +2515,9 @@ def test_plain_words_date_grammar_uses_notebook_year_and_week_boundary():
 
 @pytest.mark.parametrize('text, expected', [
     ('2026-10-23: You owe Mara the signed plan — (2026-10-23) — due 2026-10-25, overdue; open as of 2026-11-03 [2].',
-     'You owe Mara the signed plan.'),
+     '2026-10-23: You owe Mara the signed plan — (2026-10-23) — due 2026-10-25, overdue.'),
     ('Acceptance is not recorded — open as of 2026-10-27 [3].', 'Acceptance is not recorded.'),
-    ('请确认计划 (2026-10-23) [W4]。', '请确认计划。'),
+    ('请确认计划 (2026-10-23) [W4]。', '请确认计划 (2026-10-23)。'),
 ])
 def test_plain_words_headlines_remove_dates_status_and_inline_citation_numbers(text, expected):
     function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
@@ -2610,14 +2610,52 @@ def test_person_and_today_use_the_same_merged_obligation_and_source_record():
 
 
 @pytest.mark.parametrize('text, expected', [
-    ('她在等你提供收据；从 2026-10-08 起尚未交齐，她将在 2026-11-09 前报税。', '她在等你提供收据；尚未交齐，她将报税。'),
-    ('等 Fernhill 提供测试收件箱；承诺于 2026-10-23。', '等 Fernhill 提供测试收件箱。'),
+    ('她在等你提供收据；从 2026-10-08 起尚未交齐，她将在 2026-11-09 前报税。', '她在等你提供收据；从 2026-10-08 起尚未交齐，她将在 2026-11-09 前报税。'),
+    ('等 Fernhill 提供测试收件箱；承诺于 2026-10-23。', '等 Fernhill 提供测试收件箱；承诺于 2026-10-23。'),
     ('她负责合作事务 [1]。最近联系：2026-11-06，邮件 [2]。', '她负责合作事务。'),
-    ('You owe Mara the signed plan — 9 days [4]. Last contact: 2026-11-06 [6].', 'You owe Mara the signed plan.'),
+    ('You owe Mara the signed plan [4]. Last contact: 2026-11-06 [6].', 'You owe Mara the signed plan.'),
+    ('She said "open as of 2026-11-09 [2]"; meet on 2026-11-10.', 'She said "open as of 2026-11-09 [2]"; meet on 2026-11-10.'),
+    ("She said 'It's open as of 2026-11-09'.", "She said 'It's open as of 2026-11-09'."),
+    ('She said ‘It’s open as of 2026-11-09’.', 'She said ‘It’s open as of 2026-11-09’.'),
+    ('她说：“自 2026-11-09 起等你，最近联系：2026-11-10 [2]。”', '她说：“自 2026-11-09 起等你，最近联系：2026-11-10 [2]。”'),
+    ('Review from 2026-11-09 until 2026-11-12; deliver by 2026-11-13.', 'Review from 2026-11-09 until 2026-11-12; deliver by 2026-11-13.'),
 ])
 def test_plain_words_removes_date_connectors_and_redundant_contact_clauses(text, expected):
     function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     assert _run_reader_js(function + '\nconsole.log(JSON.stringify(withoutDateClutter(' + json.dumps(text) + ')));') == expected
+
+
+def test_plain_words_only_removes_since_when_the_card_shows_its_age():
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const text = 'Waiting since 2026-10-08; meet on 2026-11-09.';
+      console.log(JSON.stringify([withoutDateClutter(text), withoutDateClutter(text, {since: '2026-10-08'}),
+        withoutDateClutter(text, {since: '2026-10-10'}),
+        withoutDateClutter('她在等收据；从 2026-10-08 起尚未交齐，将在 2026-11-09 前报税。', {since: '2026-10-08'})]));
+    ''')
+    assert result == ['Waiting since 2026-10-08; meet on 2026-11-09.', 'Waiting; meet on 2026-11-09.',
+                      'Waiting since 2026-10-08; meet on 2026-11-09.', '她在等收据；尚未交齐，将在 2026-11-09 前报税。']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('code', ['blocked', 'repeated_failure'])
+def test_schedule_failure_header_uses_interface_language(language, code):
+    page = TEMPLATE.read_text()
+    ui = page[page.index('const UI = {'):page.index('function t(')].strip()
+    ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
+    function = re.search(r'function briefHeader\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(ui + function + r'''
+      uiLanguage = ''' + json.dumps(language) + r''';
+      const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
+      const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
+      console.log(JSON.stringify(briefHeader({}, []).children[0].text));
+    ''')
+    assert 'exit 124' in result
+    assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
+    action = ('处理阻塞后运行 co rem start' if language == 'zh' else 'Resolve the blocker, then run co rem start') if code == 'blocked' else (
+        '已自动重试' if language == 'zh' else 'Retried automatically')
+    assert action in result
 
 
 def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():

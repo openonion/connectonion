@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -194,6 +195,14 @@ def _run_locked(root, run, lock_fd):
         outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
         if code == 124:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
+        # Only the protocol's terminal busy line is a blocker, never a recovered narrative.
+        message = last.read_text().strip() if last.is_file() else ''
+        busy = bool(re.fullmatch(
+            r'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid (?:\d+|unknown): '
+            r'[^\n]+\. Report this message and end the turn without retrying\.', message))
+        receipt['blocked'] = busy or (result is None and not skipped)
+        if busy:
+            receipt['reason'] = message
         receipt.update(result=outcome, exit_code=code, killed_descendants=getattr(result, 'killed_descendants', 0),
                        finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)

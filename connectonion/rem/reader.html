@@ -1671,6 +1671,8 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start.": "上次定时任务未完成：{evidence} · 处理阻塞后运行 co rem start。",
+    "Last scheduled turn did not finish: {evidence} · Retried automatically.": "上次定时任务未完成：{evidence} · 已自动重试。",
     "Translating": "翻译中",
     "Pages are translated when you open them.": "打开页面时会翻译成中文。",
     "Getting to know them": "待了解",
@@ -4375,7 +4377,7 @@ function threadWho(r) {
 }
 function threadRow(r, thread, withPage, also = [], grouped = false) {
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const text = withoutDateClutter(thread.text) + " " + cites;
+  const text = withoutDateClutter(thread.text, thread) + " " + cites;
   return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
@@ -4520,28 +4522,28 @@ function failureSummary(pass) {
   if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
   return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
 }
-// Clean display text only; the notebook and original evidence keep their dates.
-function withoutDateClutter(text) {
-  return text.replace(/(?:最近联系|Last contact)[:：]\s*\d{4}-\d{2}-\d{2}[^.!?。！？\n]*(?:[.!?。！？]|$)/gi, "")
-    .replace(/\s*[—–-]\s*\d+\s+days\b/gi, "")
+// Remove presentation metadata only; commitments and quoted evidence keep their dates.
+function withoutDateClutter(text, { since = "" } = {}) {
+  const quotes = [];
+  text = text.replace(/"(?:[^"\\]|\\.)*"|“[^”]*”|‘.*?’(?!\p{L})|「[^」]*」|『[^』]*』|(?<!\p{L})'.*?'(?!\p{L})/gu,
+    quote => { quotes.push(quote); return "\u0005" + (quotes.length - 1) + "\u0005"; });
+  return text.replace(/(?:最近联系|Last contact)[:：]\s*\d{4}-\d{2}-\d{2}(?:[,，]\s*(?:邮件|mail|email))?\s*(?:[\[［]W?\d{1,3}[\]］]\s*)*(?:[.!?。！？]|$)/gi, "")
+    .replace(/[;；]?\s*open as of\s*[:：]?\s*\d{4}-\d{2}-\d{2}/gi, "")
+    .replace(/\s*(?:since\s*[:：]?\s*|(?:从|自)\s*)(\d{4}-\d{2}-\d{2})(?:\s*(?:起|开始))?/gi,
+      (clause, day) => since && day === since ? "" : clause)
+    .replace(/\s*[—–-]\s*\d+\s+days\b/gi, clause => since ? "" : clause)
+    .replace(/[,，]?\s*已过\s*\d+\s*天/g, clause => since ? "" : clause)
     .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "")
-    .replace(/\s*[—–-]?\s*[（(]\d{4}-\d{2}-\d{2}[)）]/g, "")
-    .replace(/\s*[—–-]\s*due\s+\d{4}-\d{2}-\d{2}(?:,\s*overdue)?/gi, "")
-    .replace(/[;；]?\s*(?:open as of|last moved(?: on)?|since|requested(?: on)?|asked(?: on)?)\s*[:：]?\s*\d{4}-\d{2}-\d{2}/gi, "")
-    .replace(/(?:从|自)\s*\d{4}-\d{2}-\d{2}\s*(?:起|开始)?/g, "")
-    .replace(/(?:承诺于|将于|于|在)\s*\d{4}-\d{2}-\d{2}\s*(?:前|后)?/g, "")
-    .replace(/[,，]?\s*已过\s*\d+\s*天/g, "")
-    .replace(/\b(?:by|on|from|since|before|after|until)\s+\d{4}-\d{2}-\d{2}\b/gi, "")
-    .replace(/\d{4}-\d{2}-\d{2}[:：]?\s*/g, "")
     .replace(/\s*[—–:：;,，；-]+\s*(?=[.!?。！？]|$)/g, "")
     .replace(/[;；]\s*with you(?=[.!?。！？]?$)/gi, "")
     .replace(/[;；]\s*(?=[.!?。！？]?$)/g, "")
-    .replace(/\s+([.!?。！？])/g, "$1").trim();
+    .replace(/\s+([.!?。！？])/g, "$1").trim()
+    .replace(/\u0005(\d+)\u0005/g, (_, i) => quotes[i]);
 }
-function morningWords(text, r) {
+function morningWords(text, r, thread = {}) {
   text = unlabelled(text);
   const cites = [...new Set(text.match(/\[W?\d{1,3}\]/g) || [])].join(" ");
-  const words = withoutDateClutter(plainLine(capFirst(threadWords(text, r))));
+  const words = withoutDateClutter(plainLine(capFirst(threadWords(text, r))), thread);
   return { words, context: cites };
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
@@ -4560,7 +4562,7 @@ function morningEntries(entries) {
     const candidates = people.filter(person => recordedNames(person).some(name => names.has(full.length ? name : name.split(/\s+/)[0])));
     const counterpart = candidates.length === 1 ? candidates[0] : null;
     if (r.category === "people" && counterpart && r.path !== counterpart.path && !entry.also?.length) continue;
-    const obligation = (counterpart?.path || r.path) + ":" + morningWords(t.text, r).words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const obligation = (counterpart?.path || r.path) + ":" + morningWords(t.text, r, t).words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (obligations.has(obligation)) continue;
     chosen.push(entry); pages.add(r.path); obligations.add(obligation);
     if (chosen.length === 3) break;
@@ -4576,7 +4578,7 @@ function dueLabel(thread) {
 
 function queueCard(entry, dateText) {
   const { r, t: thread, also } = entry;
-  const { words, context } = morningWords(thread.text, r);
+  const { words, context } = morningWords(thread.text, r, thread);
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
   const overdue = thread.due && thread.due < calendarDay(REM.as_of);
@@ -4732,7 +4734,9 @@ function briefHeader(counts, today) {
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
     el("h1", { text: parts.join(" · ") || t("A quiet morning") })]);
-  if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: REM.status.schedule_failure }));
+  if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: t(REM.status.schedule_failure.code === "blocked"
+    ? "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start."
+    : "Last scheduled turn did not finish: {evidence} · Retried automatically.", REM.status.schedule_failure) }));
   if (pass) {
     const details = el("a", { href: "#processing", text: t("details") });
     details.onclick = event => {
@@ -6039,7 +6043,7 @@ function threadWords(text, r) {
 function ledgerRow(r, thread) {
   const origin = thread.record || r;
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const text = withoutDateClutter(threadWords(thread.text, r)) + " " + cites;
+  const text = withoutDateClutter(threadWords(thread.text, r), thread) + " " + cites;
   const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : threadAge(thread);
   return el("li", { class: "ledger-row" + (thread.quiet ? " quiet" : "") }, [
     privateFallback(el("p", { html: inline(capFirst(text), origin.path) })),

@@ -273,7 +273,10 @@ def _today(root, value: dict) -> list[str]:
     changed = len({page for record in recent for page in record.get("changed") or []})
     items = sum(record.get("items") or 0 for record in recent if isinstance(record.get("items"), int))
     runs = value.get("batches_today", 0)
-    failure = [highlight(value['schedule_failure'])] if value.get('schedule_failure') else []
+    warning = value.get('schedule_failure')
+    action = ('Resolve the blocker, then run co rem start.' if warning and warning['code'] == 'blocked'
+              else 'Retried automatically.')
+    failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
     if not runs:
         return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
