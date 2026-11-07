@@ -34,3 +34,7 @@ Use People and Projects and the other existing semantic categories; do not
 create a Jira category or one profile per issue. Keep existing content and
 project Paths, incorporating only supported changes through the normal page
 review. Unknowns stay Unknown when the source cannot support them.
+
+When answering where Jira material belongs, state both the existing page type
+and the preservation rule: copy the exact local citation into Sources, and
+leave unsupported or unresolved facts explicitly Unknown or in Open threads.

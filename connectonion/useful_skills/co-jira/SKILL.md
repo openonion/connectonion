@@ -8,6 +8,24 @@ description: Read Jira projects and selected issues, verify access, or import re
 Use `co jira --help` as the workflow source of truth. Read the selected command's
 help before executing it; do not guess flags, IDs or the meaning of a result.
 
+## Answer-only requests and refusals
+
+Classify the request before researching it. When the user asks which command to
+run, asks for an explanation, or says not to execute anything, answer directly
+from this Skill's workflow table and boundaries. Do not call help, search the
+workspace, inspect implementation files, or claim a command was run. Name the
+safe next command only when its project and issue scope are already known.
+
+Immediately refuse requests to create, edit, comment on, delete, transition, or
+otherwise write Jira resources. Do not first explore alternative tools or write
+routes. State that this integration is read-only and, where useful, offer the
+corresponding read-only inspection or import workflow instead.
+
+If the user has not supplied an accessible project key, do not guess one or
+start an import. Direct them to list accessible projects first. If a project is
+known but issue keys are not, keep the request bounded and ask for selected keys
+or direct them to the supported project-scoped workflow.
+
 ## Choose the task
 
 | Goal | Help to read |
