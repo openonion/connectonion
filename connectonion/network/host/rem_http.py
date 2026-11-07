@@ -79,6 +79,16 @@ async def handle_rem_http(scope, receive, send, routes):
                 cache.update(version=version, page=page)
             page = cache["page"]
         await _reply(send, 200, page, "text/html")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/data.json":
+        from ...rem.reader import reader_version, snapshot
+        cache = routes.setdefault("rem_detail_cache", {})
+        async with routes.setdefault("rem_detail_lock", asyncio.Lock()):
+            version = await asyncio.to_thread(reader_version, root)
+            if cache.get("version") != version:
+                data = await asyncio.to_thread(snapshot, root, local=True)
+                cache.update(version=version, data=json.dumps(data, ensure_ascii=False, default=str))
+            data = cache["data"]
+        await _reply(send, 200, data, "application/json")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":

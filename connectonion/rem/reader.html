@@ -3276,17 +3276,20 @@ function threads(r) {
 }
 // One merged row set for home, Open threads and the rail.
 function threadEntries() {
+  if (threadEntries.cached) return threadEntries.cached;
   const order = (a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
     || (b.t.since || "").localeCompare(a.t.since || "");
   const entries = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
     .flatMap(r => threads(r).items.filter(t => t.dir !== "third" && /[\p{L}\p{N}]/u.test(plainLine(threadWords(t.text, r)))).map(t => ({ r, t })))
     .sort(order);
-  return threadGroups(entries).map(group => {
+  const rows = threadGroups(entries).map(group => {
     const chosen = [...group].sort((a, b) => Number(a.t.dir === "plain") - Number(b.t.dir === "plain") || (b.t.since || b.t.due || "").localeCompare(a.t.since || a.t.due || "")
       || (b.t.originalText || b.t.text).length - (a.t.originalText || a.t.text).length)[0];
     const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path && obligationWords(entry.r.title) !== obligationWords(chosen.r.title)).map(entry => [entry.r.path, entry.r])).values()];
     return { ...chosen, also, members: group };
   }).sort(order);
+  if (threadEntries.cacheEnabled) threadEntries.cached = rows;
+  return rows;
 }
 // Source numbers belong to their page; copied promises share the resolved id.
 function obligationWords(text) {
@@ -4075,7 +4078,7 @@ function sameClaim(before, after) {
   return at === old.length;
 }
 function lastPass() {
-  const logs = (REM.logs || []).filter(run => !isNaN(runTime(run)));
+  const logs = (REM.logs || REM.brief_logs || []).filter(run => !isNaN(runTime(run)));
   if (!logs.length) return null;
   const latest = Math.max(...logs.map(runTime));
   // One pass is every run in the evening-to-morning stretch before the latest one.
@@ -4100,7 +4103,7 @@ function firstBuild(pass = lastPass()) {
   if (!pass) return false;
   const started = Math.min(...pass.runs.map(runTime));
   // The page carries only the latest runs; the notebook's first run says whether it is new.
-  const earlier = [...(REM.logs || []), ...(REM.first_run_at ? [{ started_at: REM.first_run_at }] : [])];
+  const earlier = [...(REM.logs || REM.brief_logs || []), ...(REM.first_run_at ? [{ started_at: REM.first_run_at }] : [])];
   return !earlier.some(run => runTime(run) < started);
 }
 let memoryPass = null;
@@ -4128,7 +4131,7 @@ function changedValue(node, r, label) {
 }
 function weekChanges() {
   const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
-  for (const run of REM.logs || []) {
+  for (const run of REM.logs || REM.brief_logs || []) {
     if (!(runTime(run) >= since)) continue;
     const day = new Date(runTime(run)).toISOString().slice(0, 10);
     for (const path of run.changed || []) { const r = byPath(path); if (r && (!seen.has(path) || seen.get(path).day < day)) seen.set(path, { r, day }); }
@@ -4265,12 +4268,12 @@ function renderRail(active) {
     ["changes", "Memory changes", "#view=changes"]])
     nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
   nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: String(listedRecords().length) })]));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   for (const c of memoryCategories()) {
-    const n = inCategory(c).length;
-    if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
+    const n = !detailReady && c === "sessions" ? null : inCategory(c).length;
+    if (n === 0 && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
-      [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
+      [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
   }
   nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
   nav.appendChild(el("div", { class: "gap" }));
@@ -6663,8 +6666,51 @@ function cacheChineseInterface() {
   }
 }
 let entranceView = "";
+let detailLoad = null, detailReady = false;
+function needsDetails(state) {
+  return state.record || state.category || state.query || state.reviews || ["activity", "changes"].includes(state.view);
+}
+function loadDetails() {
+  if (detailLoad) return detailLoad;
+  detailLoad = (REM.detail_url ? fetch(REM.detail_url).then(response => {
+    if (!response.ok) throw Error("Could not load notebook (" + response.status + ")");
+    return response.json();
+  }) : new Promise(resolve => {
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", resolve, { once: true });
+    else resolve();
+  }).then(() => JSON.parse(document.getElementById("rem-detail").textContent))).then(data => {
+    const records = new Map(REM.records.map(r => [r.path, r]));
+    const drafts = REM.drafts;
+    for (const r of data.records) {
+      const current = records.get(r.path);
+      if (current) Object.assign(current, r, { original: r.text, shown: "" });
+      else records.set(r.path, r);
+    }
+    const source_context = { ...data.source_context, ...REM.source_context };
+    Object.assign(REM, data, { records: [...records.values()], drafts, source_context });
+    KNOWN.clear(); FACTS.clear(); PARSED_FACTS.clear(); SESSION_TEXT.clear();
+    PEOPLE_BY_ADDRESS = null;
+    detailReady = true;
+  });
+  return detailLoad;
+}
 function render() {
   if (!REM) return;
+  threadEntries.cached = null;
+  threadEntries.cacheEnabled = true;
+  const state = route();
+  if (!detailReady && needsDetails(state)) {
+    renderRail(railActive());
+    document.getElementById("main").replaceChildren(el("p", { role: "status", text: t("Loading…") }));
+    loadDetails().then(render, error => {
+      detailLoad = null;
+      if (!needsDetails(route())) return;
+      const retry = el("button", { type: "button", text: t("Try again") });
+      retry.onclick = render;
+      document.getElementById("main").replaceChildren(el("p", { role: "alert", text: error.message }), retry);
+    });
+    return;
+  }
   cacheChineseInterface();
   for (const r of REM.records) swapLanguage(r, r.readLanguage ?? (uiLanguage === "en" ? "" : uiLanguage));
   memoryPass = lastPass();
@@ -7137,5 +7183,6 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   reconcileThreads().then(() => render());
 });
 </script>
+<script id="rem-detail" type="application/json">/*__REM_DETAIL__*/</script>
 </body>
 </html>

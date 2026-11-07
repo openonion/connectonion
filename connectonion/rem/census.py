@@ -60,7 +60,7 @@ def _counted(record: str) -> bool:
     return category in CATEGORIES
 
 
-def pages(root: Path) -> dict:
+def pages(root: Path, *, records: list[dict] | None = None) -> dict:
     """{record: {category, written, last, held, service, duplicate}} for every counted page."""
     from .map import needs_review, service_page
     notebook = Notebook(root)
@@ -70,15 +70,19 @@ def pages(root: Path) -> dict:
     automated = {row["address"].casefold() for row in state.get("automated_correspondents", [])
                  if row.get("address")}
     owner = (state.get("owner") or {}).get("record")
-    people = {person["path"]: person for person in notebook.people()}
+    from .files import EMAIL, EMAIL_LABELS
+    if records is None:
+        records = [{"path": path, "text": notebook.read(path)} for path in notebook.list()]
     held, titles, found = needs_review(root), set(), {}
-    for record in notebook.list():
+    for page in records:
+        record, text = page['path'], page['text']
         if not _counted(record):
             continue
-        text = notebook.read(record)
         title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
         category = record.split("/")[0]
-        person = people.get(record)
+        emails = [address.casefold() for line in text.splitlines()[:40]
+                  if line.strip().lstrip('-').strip().casefold().startswith(EMAIL_LABELS)
+                  for address in EMAIL.findall(line)] if category == 'people' else []
         duplicate = category == "skills" and title.casefold() in titles
         if category == "skills":
             titles.add(title.casefold())
@@ -87,8 +91,8 @@ def pages(root: Path) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": bool(person) and record != owner and not written(text)
-            and service_page(title, person["emails"], rows.get(record), automated)}
+            "service": category == 'people' and record != owner and not written(text)
+            and service_page(title, emails, rows.get(record), automated)}
     return found
 
 
