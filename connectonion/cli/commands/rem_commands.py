@@ -992,7 +992,7 @@ def _people_table(ctx, root, category, *, company, open_only, sort):
         return ("No people table yet: it is built at the end of a map or a sync. Run "
                 + _next(ctx, ["sync"]) + " to build it."), ["sync"]
     rows = people_table(root, company=company, open_only=open_only, sort=sort,
-                        descending=sort in ("last_contact", "first_contact", "mails", "open_threads"))
+                        descending=sort in ("activity", "last_contact", "first_contact", "mails", "open_threads"))
     return rows, (["show", rows[0]["record"]] if rows else ["list", "people"])
 
 
@@ -1751,7 +1751,7 @@ def make_rem_app(factory):
                      company: str = typer.Option("", "--company", help="With --table: only this company"),
                      open_only: bool = typer.Option(False, "--open", help="With --table: only people with "
                                                     "something open"),
-                     sort: str = typer.Option("last_contact", "--sort", help="With --table: name, company, role, "
+                     sort: str = typer.Option("activity", "--sort", help="With --table: activity (default), name, company, role, "
                                               "last_contact, mails or open_threads")):
         from ...rem.files import CATEGORIES, Notebook, RemError
         from ...rem.map import needs_review
@@ -1787,7 +1787,7 @@ def make_rem_app(factory):
                             + _next(ctx, ["init"]) + "."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
         from .rem_table import draw, names
-        order = "most recent contact first" if sort == "last_contact" else "by " + sort.replace("_", " ")
+        order = "most recent contact first" if sort in ("activity", "last_contact") else "by " + sort.replace("_", " ")
 
         def drawn(rows):
             if table:

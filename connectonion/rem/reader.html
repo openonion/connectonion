@@ -1379,6 +1379,28 @@
     .people-sheet .sheet td[data-empty="true"], .people-sheet .sheet td:is(.c-company, .c-role, .c-last, .c-mails) { display: none; }
     .people-sheet .sheet .name-cell .sum { max-width: 100%; }
   }
+  .contact-spark { display: inline-block; width: 104px; vertical-align: middle; }
+  .contact-spark svg { display: block; width: 104px; height: 24px; fill: var(--ink-2); }
+  .relationship-stats { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 20px; font: 12px/1.6 var(--ui); }
+  .relationship-stats > div { display: flex; flex-direction: column; gap: 4px; }
+  .relationship-label { color: var(--ink-3); }
+  .people-sheet .sheet .people-group th { padding-top: 20px; color: var(--ink-3); font: 12px var(--ui); text-align: left; }
+  .people-sheet .sheet :is(.c-contact, .c-trend) { width: 16%; white-space: nowrap; }
+  .people-sheet.more-columns-shown .sheet { min-width: 1600px; table-layout: auto; }
+  @media (min-width: 601px) {
+    .people-sheet:not(.more-columns-shown) .sheet { min-width: 960px; }
+    .people-sheet:not(.more-columns-shown) .sheet .name { width: 24%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-open { width: 24%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-company { width: 12%; }
+    .people-sheet:not(.more-columns-shown) .sheet .c-last { width: 10%; }
+    .people-sheet:not(.more-columns-shown) .sheet :is(.c-contact, .c-trend) { width: 15%; }
+  }
+  @media (max-width: 600px) {
+    .people-sheet.more-columns-shown .sheet { min-width: 0; }
+    .people-sheet .sheet td:is(.c-contact, .c-trend, .c-starts, .c-replies) { width: auto; white-space: normal; }
+    .people-sheet .sheet td:is(.c-contact, .c-trend, .c-starts, .c-replies)::before { content: attr(data-label) " "; color: var(--ink-3); font: 11px var(--ui); }
+    .people-sheet .sheet tr.people-group { padding-bottom: 0; }
+  }
   .reader-switches { display: flex; flex-wrap: wrap; gap: 6px; }
   .reader-switches .theme-btn { padding-inline: 6px; }
   :lang(zh) .rail .label { letter-spacing: 0; }
@@ -1468,6 +1490,21 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Contact · 52 weeks": "联系频率 · 52周",
+    "Who writes first": "谁先联系",
+    "Reply times": "回复用时",
+    "Warming / cooling": "联系趋势",
+    "Mail relationship": "邮件往来",
+    "Quiet · over 90 days": "超过90天无邮件往来",
+    "No indexed mail": "没有收录的邮件",
+    "No recent mail": "近期没有邮件",
+    "↑ New contact": "↑ 新近联系",
+    "{n} messages · 52 weeks, oldest first": "52周共{n}封邮件，从旧到新",
+    "{n}% them · {m}% you": "对方{n}% · 你{m}%",
+    "{n} them · {m} you": "对方{n} · 你{m}",
+    "Threads started in the last 90 days; first indexed message": "最近90天开始的话题，按最早收录的邮件统计",
+    "Median reply time · all indexed history; consecutive turns in the same thread": "全部收录邮件的回复时间中位数；按同一话题中双方相邻的回复统计",
+    "Daily message rate: last 30 days vs prior 90 days": "每日邮件频率：最近30天与此前90天相比",
     "Open page →": "打开页面 →",
     "Choose a page": "选择一个页面",
     "Several pages match this name. Choose one to keep their facts and connections separate.": "多个页面匹配这个名字。请选择一个，分别查看各自的信息与关联。",
@@ -3287,12 +3324,50 @@ function facts(r) {
     take("first", x.first_contact);
     // The page census owns activity dates; an older index must not contradict it.
     take("last", r.last_activity === undefined ? x.last_contact : k.last);
+    if (x.relationship?.last_mail) f.last = x.relationship.last_mail.slice(0, 10);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
   FACTS.set(r.path, { parsed, text: r.text, value: f });
   return f;
 }
 function plainValue(v) { return plainLine(v || ""); }
+
+// Relationship counts use synced mail metadata, never prose or a model (#2843).
+function relationshipCell(r, key) {
+  const stats = r.index?.relationship;
+  if (!stats) return textCell("");
+  if (!stats.last_mail) return key === "trend" ? textCell(t("No indexed mail")) : textCell("");
+  if (key === "contact") {
+    const counts = stats.weekly_messages, peak = Math.max(1, ...counts);
+    const bars = counts.map((n, i) => `<rect x="${i * 2}" y="${24 - n / peak * 23}" width="1.5" height="${Math.max(0.5, n / peak * 23)}"/>`).join("");
+    const title = t("{n} messages · 52 weeks, oldest first", { n: counts.reduce((a, b) => a + b, 0) });
+    return el("span", { class: "contact-spark", title, html: `<svg viewBox="0 0 104 24" role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>${bars}</svg>` });
+  }
+  if (key === "starts") {
+    const them = Math.round(stats.started_by_them_percent);
+    return el("span", { class: "mono", title: t("Threads started in the last 90 days; first indexed message") + ` · ${stats.started_by_them}/${stats.threads_90d}`,
+    text: stats.started_by_them_percent == null ? "—" : t("{n}% them · {m}% you", { n: them, m: 100 - them }) });
+  }
+  if (key === "replies") {
+    const duration = seconds => seconds == null ? "—" : seconds < 3600 ? Math.round(seconds / 60) + "m" : seconds < 86400 ? (seconds / 3600).toFixed(1) + "h" : (seconds / 86400).toFixed(1) + "d";
+    return el("span", { class: "mono", title: t("Median reply time · all indexed history; consecutive turns in the same thread"),
+      text: t("{n} them · {m} you", { n: duration(stats.reply_seconds_them), m: duration(stats.reply_seconds_owner) }) });
+  }
+  const change = stats.change_percent;
+  return el("span", { class: "mono", title: t("Daily message rate: last 30 days vs prior 90 days") + ` · ${stats.messages_30d} / ${stats.messages_prior_90d}`,
+    text: change == null ? t(stats.trend === "new" ? "↑ New contact" : "No recent mail") : (change > 0 ? "↑ " : change < 0 ? "↓ " : "→ ") + Math.abs(change) + "%" });
+}
+function relationshipHeader(r) {
+  if (!r.index?.relationship) return null;
+  return el("div", { class: "relationship-stats", "aria-label": t("Mail relationship") },
+    [["contact", "Contact · 52 weeks"], ["starts", "Who writes first"], ["replies", "Reply times"], ["trend", "Warming / cooling"]].map(([key, label]) =>
+      el("div", {}, [el("span", { class: "relationship-label", text: t(label) }), relationshipCell(r, key)])));
+}
+function byPeopleActivity(a, b) {
+  const x = a.index?.relationship, y = b.index?.relationship;
+  if (x || y) return (y?.last_mail || "").localeCompare(x?.last_mail || "") || a.title.localeCompare(b.title);
+  return byActivity(a, b);
+}
 
 // ---------- the sheet: People, Organisations, Projects as a table (#2064) ----------
 const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
@@ -3364,6 +3439,11 @@ const COLUMNS = {
     { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? peopleEmails(f.email) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? peoplePhones(f.phone) : textCell("") },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
+    ...[["contact", "Contact · 52 weeks"], ["trend", "Warming / cooling"], ["starts", "Who writes first"], ["replies", "Reply times"]].map(([key, label]) => ({
+      key, label, cell: r => relationshipCell(r, key), sort: r => {
+        const x = r.index?.relationship;
+        return key === "contact" ? x?.weekly_messages.reduce((a, b) => a + b, 0) ?? -1 : key === "trend" ? x?.change_percent ?? -Infinity : key === "starts" ? x?.started_by_them_percent ?? -1 : x?.reply_seconds_them ?? Infinity;
+      }, desc: key !== "replies" })),
     { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? t("{n} from them, {m} from you", { n: f.received, m: f.sent }) : "", text: String(f.mails) }), desc: true },
   ],
   orgs: [
@@ -3387,7 +3467,7 @@ const FILTERS = [
   ["mine", "Yours to answer", (r, f) => f.open.some(t => t.dir === "mine")],
   ["written", "Written", r => known(r).status !== "Mapped"], ["mapped", "Mapped only", r => known(r).status === "Mapped"]];
 const SHEET = {};
-const EXTRA_PEOPLE_COLUMNS = new Set(["role", "email", "phone", "mails"]);
+const EXTRA_PEOPLE_COLUMNS = new Set(["role", "email", "phone", "mails", "starts", "replies"]);
 function sheet(c, items) {
   const cols = COLUMNS[c];
   const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
@@ -3424,7 +3504,7 @@ function sheet(c, items) {
     const needle = state.text.trim().toLowerCase();
     let rows = items.filter(r => test(r, facts(r)) && (!needle || (r.title + " " + Object.values(facts(r)).filter(v => typeof v === "string").join(" ")).toLowerCase().includes(needle)));
     const col = cols.find(x => x.key === state.sort);
-    rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(byActivity);
+    rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(c === "people" ? byPeopleActivity : byActivity);
     const visibleCols = c === "people" && rows.length ? cols.filter(col => col.key === "name" || rows.some(r => {
       const text = col.cell(r, facts(r))?.textContent?.trim();
       return text && text !== "—";
@@ -3441,7 +3521,14 @@ function sheet(c, items) {
     }
     thead.appendChild(tr);
     tbody.textContent = "";
+    let lastGroup = null;
     for (const r of rows) {
+      if (c === "people" && !col && items.some(item => item.index?.relationship)) {
+        const stats = r.index?.relationship;
+        const group = !stats?.last_mail ? "No indexed mail" : stats.quiet ? "Quiet · over 90 days" : "Recently active";
+        if (group !== lastGroup) tbody.appendChild(el("tr", { class: "people-group" }, [el("th", { colspan: String(visibleCols.length), scope: "colgroup", text: t(group) })]));
+        lastGroup = group;
+      }
       const row = el("tr", { "data-href": href(r) });
       for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(c2.key) ? " extra-column" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
@@ -5642,6 +5729,7 @@ function record(path, heading) {
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
   if (person) head.append(personLead(r), contactLine(r)); else head.appendChild(leadRow(r));
+  if (person) head.appendChild(relationshipHeader(r) || document.createTextNode(""));
   main.appendChild(head);
   main.appendChild(recordFocus(r));
   if (r.category === "projects") {
