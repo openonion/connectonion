@@ -43,8 +43,9 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
-            lines += [rem_look.follow(highlight(turn['reason']), glyph=''),
-                      rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
+            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
+            if turn['result'] == 'failed':
+                lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
     lines += [*_budget(root, value, verbose), *_last_runs(root)]

@@ -1044,8 +1044,9 @@ with the PATH captured at installation, including user command directories.
 The resolved Codex executable is pinned in the job's `CODEX_CMD`; set this to
 the CLI executable itself, then run `co rem start` to apply a change. Python,
 shell and REM launcher commands are rejected to prevent recursive launches.
-Each turn has a process lock: a fire during a running turn is skipped. A turn
-ends after at most 50 minutes, terminating its child tools too. Keep the computer
+Each turn has a process lock: a fire during a running turn returns `busy` and
+is skipped. A turn ends after at most three hours, terminating its whole process
+group, including child tools; the next fire continues the round. Keep the computer
 awake. No desktop app is needed for exec.
 
 `co rem start` switches clocks: exec pauses and removes the desktop definition

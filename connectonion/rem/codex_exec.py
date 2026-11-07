@@ -15,6 +15,7 @@ from .files import RemError, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
 STARTUP_TIMEOUT_S = 300
+TURN_SECONDS = 3 * 3600
 
 
 def read_config(root):
@@ -77,7 +78,7 @@ def _execute(command, **kwargs):
     """A deadline kills the process group too, including tools still running."""
     with subprocess.Popen(command, start_new_session=True, **kwargs) as process:
         try:
-            return subprocess.CompletedProcess(command, process.wait(timeout=3000))
+            return subprocess.CompletedProcess(command, process.wait(timeout=TURN_SECONDS))
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
@@ -128,6 +129,8 @@ def _run_locked(root, run, lock_fd):
     finally:
         code = result.returncode if result is not None else None
         outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
+        if code == 124:
+            receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
         receipt.update(result=outcome, exit_code=code, finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)
         write_json(state_path(root, 'last-turn.json'), receipt)

@@ -98,15 +98,20 @@ def test_exec_rejects_launcher_recursion(tmp_path, monkeypatch, command):
         codex_exec.exec_command(tmp_path, default_config(), last_message=tmp_path / 'last.md')
 
 
-def test_exec_cannot_start_records_the_reason_and_status_shows_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize('code', [None, 124])
+def test_exec_failure_records_the_reason_and_status_shows_it(tmp_path, monkeypatch, code):
     from connectonion.cli.commands import rem_status
     monkeypatch.setattr(codex_exec, 'read_config', lambda root: default_config())
     monkeypatch.setenv('CODEX_CMD', '/missing/codex')
-    with pytest.raises(RemError, match='Codex CLI'):
-        codex_exec.run_turn(tmp_path)
+    if code is None:
+        with pytest.raises(RemError, match='Codex CLI'):
+            codex_exec.run_turn(tmp_path)
+    else:
+        monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['codex', 'exec'])
+        assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: subprocess.CompletedProcess(a, code)) == 'timed-out'
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
-    assert receipt['result'] == 'failed'
-    assert 'Codex CLI' in receipt['reason']
+    assert receipt['result'] == ('failed' if code is None else 'timed-out')
+    assert ('Codex CLI' if code is None else 'the next fire continues the round') in receipt['reason']
     assert receipt['finished_at']
     worker = schedule.CodexExec(run=lambda *a, **kw: subprocess.CompletedProcess(a, 1, '', ''))
     assert worker.describe(tmp_path)['last_turn'] == receipt
@@ -117,7 +122,9 @@ def test_exec_cannot_start_records_the_reason_and_status_shows_it(tmp_path, monk
         monkeypatch.setattr(rem_status, name, lambda *args: [])
     rendered = rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
     from rich.text import Text
-    assert receipt['reason'] in Text.from_markup(rendered).plain
+    plain = Text.from_markup(rendered).plain
+    assert receipt['reason'] in plain
+    assert ('after fixing the cause' in plain) == (code is None)
 
 
 def test_exec_failed_spawn_preserves_reason(tmp_path, monkeypatch):

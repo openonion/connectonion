@@ -177,15 +177,41 @@ def test_legacy_runner_defaults_to_app_without_ready_cli(tmp_path, monkeypatch):
     assert read_config(tmp_path)['schedule']['runner'] == 'codex-exec'
 
 
-@pytest.mark.parametrize('code, outcome', [(7, 'failed'), (124, 'timed-out')])
-def test_exec_nonzero_turn_result_is_durable(tmp_path, monkeypatch, code, outcome):
+@pytest.mark.parametrize('code, outcome, reason', [
+    (7, 'failed', None),
+    (124, 'timed-out', 'Turn exceeded 3 hours; the next fire continues the round'),
+])
+def test_exec_nonzero_turn_result_is_durable(tmp_path, monkeypatch, code, outcome, reason):
     from connectonion.rem import codex_exec
     monkeypatch.setattr(codex_exec, 'read_config', lambda root: default_config())
     monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['fictional-codex', 'exec'])
     assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, code)) == outcome
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert receipt['result'] == outcome and receipt['exit_code'] == code
-    assert len(list(state_path(tmp_path, 'turns').glob('*.json'))) == 1
+    assert receipt.get('reason') == reason
+    receipts = list(state_path(tmp_path, 'turns').glob('*.json'))
+    assert len(receipts) == 1
+    assert read_json(receipts[0], {}) == receipt
+
+
+def test_exec_deadline_is_three_hours_and_kills_the_process_group(monkeypatch):
+    import signal
+    import subprocess
+    from unittest.mock import MagicMock, call
+    from connectonion.rem import codex_exec
+    command = ['fictional-codex', 'exec']
+    process = MagicMock(pid=123)
+    process.wait.side_effect = [subprocess.TimeoutExpired(command, 3 * 3600), -signal.SIGKILL]
+    popen = MagicMock()
+    popen.return_value.__enter__.return_value = process
+    killpg = MagicMock()
+    monkeypatch.setattr(codex_exec.subprocess, 'Popen', popen)
+    monkeypatch.setattr(codex_exec.os, 'killpg', killpg)
+
+    assert codex_exec._execute(command).returncode == 124
+    popen.assert_called_once_with(command, start_new_session=True)
+    assert process.wait.call_args_list == [call(timeout=3 * 3600), call()]
+    killpg.assert_called_once_with(process.pid, signal.SIGKILL)
 
 
 def test_saved_scheduler_choice_does_not_probe_cli_on_read(tmp_path, monkeypatch):
