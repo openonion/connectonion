@@ -713,7 +713,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
             **({"people_coverage": people_coverage(root),
-                "translation_coverage": translation_coverage(root)} if include_coverage else {}),
+                "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if include_quota else {})}

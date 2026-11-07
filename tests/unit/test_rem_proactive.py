@@ -64,13 +64,15 @@ def test_rem_next_leaves_scheduled_writing_to_rem(notebook, monkeypatch, schedul
         assert next_step[:1] == ['investigate']
 
 
-def test_rem_translation_backlog_orders_changed_owner_people_and_sessions(notebook):
+def test_rem_translation_backlog_orders_recent_edits_across_categories(notebook):
     book = Notebook(notebook)
-    for record in ['sessions/old.md', 'projects/pilot.md', 'people/fern.md', 'people/me.md']:
+    import os
+    for index, record in enumerate(['sessions/old.md', 'projects/pilot.md', 'people/fern.md', 'people/me.md']):
         book.write(record, '# Fictional page\n\n## Sources\n')
+        os.utime(notebook / record, (100 + index, 100 + index))
     write_json(state_path(notebook, 'map.json'), {'owner': {'record': 'people/me.md'}})
     rows = translate.backlog(notebook, 'zh', changed=['projects/pilot.md'])
-    assert rows == ['projects/pilot.md', 'people/me.md', 'people/fern.md', 'sessions/old.md']
+    assert rows == ['people/me.md', 'people/fern.md', 'projects/pilot.md', 'sessions/old.md']
     assert read_config(notebook)['limits']['translations_per_day'] == 100
 
 
@@ -223,10 +225,13 @@ def test_rem_translation_runs_after_general_budget_is_spent(notebook, monkeypatc
         assert worker['last_scheduled_outcome'] == 'completed'
 
 
-def test_rem_requested_translation_leads_next_backlog(notebook):
+def test_rem_requested_translation_breaks_equal_page_times(notebook):
     book = Notebook(notebook)
     book.write('sessions/old.md', '# Old\n')
     book.write('people/fern.md', '# Fern\n')
+    import os
+    for record in book.list():
+        os.utime(notebook / record, (100, 100))
     translate.request(notebook, 'sessions/old.md', 'zh')
     assert translate.backlog(notebook, 'zh')[0] == 'sessions/old.md'
 

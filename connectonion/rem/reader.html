@@ -2551,6 +2551,7 @@ function t(key, values = {}) {
 }
 function uiLocale() { return uiLanguage === "zh" ? "zh-CN" : undefined; }
 function setInterfaceLanguage(language) {
+  if (REM.live && location.protocol !== "file:") fetch("/rem/language", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ language }) });
   uiLanguage = language;
   for (const r of REM.records) delete r.readLanguage;
   readerStorage("co-rem-ui-language", language);
