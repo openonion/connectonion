@@ -1264,58 +1264,9 @@
     .focus-head.purpose-lead .focus-more:not([hidden]) { margin-top: 0; }
     .focus-facts { gap: 8px; }
   }
-  /* Sessions keep structure above the attached conversation. */
-  .sessions-view { max-width: 1200px; min-width: 0; }
-  .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary { font-family: var(--ui); font-size: 13px; }
-  .sessions-view button, .sessions-view select, .sessions-view input { color: var(--ink-2); border: 1px solid var(--line); background: var(--sheet); border-radius: 5px; }
-  .sessions-view button { cursor: pointer; padding: 6px 12px; min-height: 36px; }
-  .sessions-view [aria-pressed="true"] { color: var(--dawn); background: var(--dawn-soft); border-color: var(--dawn-line); }
-  .session-topics { margin: 24px 0 18px; padding: 14px 0; border-block: 1px solid var(--line); color: var(--ink-2); font: 13px var(--ui); }
-  .session-topic-buttons, .session-outcomes { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-  .session-topics button { border-radius: 999px; height: 32px; min-height: 32px; padding: 4px 11px; }
-  .session-topics summary { cursor: pointer; padding: 8px 0; min-height: 32px; width: fit-content; }
-  .session-unsummarised { display: block; color: var(--ink-3); margin-top: 10px; }
-  #session-search { display: block; width: 100%; height: 44px; padding: 10px 12px; margin: 18px 0 14px; font: 15px var(--ui); }
-  .session-filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
-  .session-filter { flex: 0 1 auto; display: flex; flex-direction: column; gap: 6px; max-width: 100%; color: var(--ink-3); font: 12px var(--ui); }
-  .session-filter select { width: 170px; height: 38px; padding: 6px 28px 6px 10px; max-width: 100%; }
-  .session-segments { display: flex; flex-wrap: wrap; gap: 3px; }
-  .session-dates { color: var(--ink-2); font: 13px var(--ui); }
-  .session-dates summary { cursor: pointer; min-height: 36px; padding: 8px 0; }
-  .session-dates label { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; }
-  .session-dates input { min-height: 38px; padding: 5px; min-width: 0; max-width: 100%; }
-  .session-filter-toggle { display: none; }
-  .session-result-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 14px 0 8px; color: var(--ink-3); font: 13px var(--ui); }
-  .session-person { margin-top: 8px; }
-  .session-day, .session-group > summary { display: flex; align-items: baseline; gap: 12px; font: 500 23px/1.4 var(--display); color: var(--ink); margin: 26px 0 8px; }
-  .session-count { font: 13px var(--ui); color: var(--ink-3); }
-  .session-group > summary { cursor: pointer; min-height: 40px; }
-  .session-group > summary::before { content: "›"; color: var(--ink-3); }
-  .session-group[open] > summary::before { content: "⌄"; }
-  .session-rows { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
-  .session-row { padding: 16px 0; border-bottom: 1px solid var(--line); min-width: 0; }
-  .session-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font: 18px/1.5 var(--text); }
-  .session-excerpt { margin: 4px 0; color: var(--ink-2); font: 15px/1.5 var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-  .session-speaker { font: 12px var(--ui); }
   .session-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--ink-3); font: 12px var(--ui); }
   .session-tags:empty { display: none; }
   .session-tags a { display: inline-flex; align-items: center; min-height: 32px; }
-  .session-meta { margin-top: 5px; color: var(--ink-3); font: 12px/1.6 var(--ui); }
-  .session-meta a { color: inherit; }
-  @media (max-width: 719px) {
-    .sessions-view button, .sessions-view select, .sessions-view input, .sessions-view summary, .session-tags a { min-height: 40px; }
-    .sessions-view [hidden] { display: none; }
-    .session-topics button { height: 40px; }
-    .session-filter-toggle { display: block; }
-    .session-filter-panel { display: none; }
-    .session-filter-panel.is-open { display: flex; }
-    .session-filter { width: 100%; }
-    .session-segments button { padding-inline: 10px; }
-    .session-dates label { display: flex; margin: 6px 0; }
-    #session-search { font-size: 16px; }
-    .session-title { min-height: 40px; display: block; line-height: 40px; }
-    .session-meta a { display: inline-flex; align-items: center; min-height: 40px; }
-  }
   .session-page { min-width: 0; }
   .session-page h2 { font: 500 23px/1.4 var(--display); margin: 24px 0 8px; }
   .session-page h3 { font: 14px/1.5 var(--ui); color: var(--ink-2); margin: 18px 0 8px; }
@@ -1542,17 +1493,6 @@
     .done-notice button { min-height: 44px; }
   }
   /* An archived app inside the notebook: familiar conversation, quiet hardware. */
-  .session-rows { border: 0; display: grid; gap: 12px; position: relative; }
-  .session-row { display: flex; gap: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); box-shadow: var(--shadow); }
-  .session-row:hover { border-color: var(--dawn-line); }
-  .session-card-content { min-width: 0; flex: 1; }
-  .session-title { white-space: normal; font: 500 21px/1.4 var(--display); }
-  .session-excerpt { margin: 8px 0 10px; max-width: 78ch; }
-  .session-card-foot { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); font: 12px/1.5 var(--ui); color: var(--ink-3); }
-  .session-outcome { margin-left: auto; }
-  .session-outcome.running { color: var(--dawn); }
-  .session-outcome.running::before { content: '●'; margin-right: 6px; }
-  .session-day { font-size: 20px; margin-top: 30px; }
   .session-tool-mark { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; color: var(--dawn); background: var(--dawn-soft); }
   .session-tool-mark.claude-code { color: var(--said); background: var(--said-soft); }
   .session-tool-mark svg { width: 21px; height: 21px; }
@@ -1606,11 +1546,6 @@
   .session-composer-note { color: var(--ink-3); font: 11px/1.6 var(--ui); margin: 10px 0 0; }
   .session-home-indicator { display: none; }
   @media (max-width: 719px) {
-    .session-row { padding: 16px; gap: 12px; }
-    .session-row > .session-tool-mark { width: 28px; height: 28px; border-radius: 7px; }
-    .session-title { font-size: 19px; }
-    .session-card-foot { gap: 6px 12px; }
-    .session-outcome { margin-left: 0; }
     .session-device { border: 3px solid var(--line); border-radius: 30px; margin: 24px 0 30px; box-shadow: 0 12px 32px -24px var(--night-dim); }
     .session-window-bar { flex-wrap: wrap; gap: 4px 8px; padding: 31px 17px 14px; position: relative; }
     .session-window-bar::before { content: ''; position: absolute; top: 9px; left: calc(50% - 30px); width: 60px; height: 5px; background: var(--ink-3); border-radius: 8px; opacity: .45; }
@@ -1657,6 +1592,133 @@
   .approval-row textarea { box-sizing: border-box; width: 100%; min-height: 140px; padding: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; }
   .approval-undo { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); display: flex; align-items: center; gap: 16px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 20px #0002; z-index: 30; }
   @media (max-width: 600px) { #approval-sheet { padding: 16px; } #approval-sheet footer { bottom: -16px; } .approval-content .kind-badge { display: block; margin: 6px 0; } }
+  /* ---- Projects board and Sessions list (art direction r4): tokens scoped to these two views ---- */
+  .projects-view, .sessions-view.r4 {
+    --ink: #121a15; --ink-2: #4b554f; --ink-3: #868f89; --ink-4: #b4bab6; --line: rgba(18, 26, 21, .08);
+    --sheet: #fff; --sunk: #efefeb; --lamp: #c98a06; --lamp-tint: rgba(201, 138, 6, .12); --done: #0b7a42;
+    --ring: 0 0 0 1px rgba(18, 26, 21, .08), 0 1px 2px rgba(18, 26, 21, .04);
+    --lift: 0 0 0 1px rgba(18, 26, 21, .07), 0 12px 32px -8px rgba(16, 24, 20, .12);
+    --act: #22d27a; --act-hover: #1bbf6c; --act-ink: #05301b;
+    --r4font: -apple-system, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif; font-family: var(--r4font);
+    font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  :root[data-theme="dark"] :is(.projects-view, .sessions-view.r4) {
+    --ink: #ecefec; --ink-2: #a9b1ac; --ink-3: #727b75; --ink-4: #4d5550; --line: rgba(255, 255, 255, .07);
+    --sheet: #161a17; --sunk: #1c211d; --lamp: #e6a92a; --lamp-tint: rgba(230, 169, 42, .14); --done: #3ccf7f;
+    --ring: 0 0 0 1px rgba(255, 255, 255, .07); --lift: 0 0 0 1px rgba(255, 255, 255, .1), 0 16px 40px -10px rgba(0, 0, 0, .6);
+    --act: #3be38f; --act-hover: #2fd681;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) :is(.projects-view, .sessions-view.r4) {
+      --ink: #ecefec; --ink-2: #a9b1ac; --ink-3: #727b75; --ink-4: #4d5550; --line: rgba(255, 255, 255, .07);
+      --sheet: #161a17; --sunk: #1c211d; --lamp: #e6a92a; --lamp-tint: rgba(230, 169, 42, .14); --done: #3ccf7f;
+      --ring: 0 0 0 1px rgba(255, 255, 255, .07); --lift: 0 0 0 1px rgba(255, 255, 255, .1), 0 16px 40px -10px rgba(0, 0, 0, .6);
+      --act: #3be38f; --act-hover: #2fd681;
+    }
+  }
+  .projects-view { max-width: 1040px; margin: 0 auto; }
+  .projects-view .page-kicker, .sessions-view.r4 .page-kicker { margin: 8px 0 6px; font: 13px/18px var(--r4font); color: var(--ink-3); }
+  .projects-view h1.page-state, .sessions-view.r4 h1.page-state { margin: 0 0 28px; font: 650 28px/36px var(--r4font); letter-spacing: -.022em; color: var(--ink); }
+  .page-state-sub { color: var(--ink-3); font-weight: 500; }
+  .projects-view .chip.lamp, .sessions-view.r4 .chip.lamp { border: 0; border-radius: 6px; padding: 2px 8px; background: var(--lamp-tint); color: var(--lamp); font: 600 12px/16px var(--r4font); }
+  .projects-view .btn-act, .sessions-view.r4 .btn-act { gap: 8px; min-height: 40px; padding: 0 20px; border-radius: 10px; background: var(--act); color: var(--act-ink) !important; font-family: var(--r4font); box-shadow: 0 6px 16px -6px rgba(34, 210, 122, .55); transition: background .12s ease-out; }
+  .projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover { background: var(--act-hover); }
+  .btn-act.play::before { content: ""; width: 0; height: 0; border-left: 9px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+  .project-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 24px; margin: 0 0 40px; padding: 24px 22px 24px 24px; border-radius: 18px; background: var(--sheet); box-shadow: var(--lift); }
+  .project-hero-kicker { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; color: var(--ink-3); font-size: 13px; }
+  .project-hero h2 { margin: 0 0 4px; font: 650 20px/28px var(--r4font); letter-spacing: -.015em; }
+  .project-hero h2 a { color: var(--ink); text-decoration: none; }
+  .project-hero-line { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .project-weeks { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
+  .project-weeks span { width: 6px; border-radius: 1.5px; background: var(--ink-4); }
+  .project-weeks span.none { background: var(--line); }
+  .project-lane-tabs { display: none; }
+  .project-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+  .project-lane-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 12px 4px; font: 600 13px/18px var(--r4font); color: var(--ink); border: 0; padding: 0; }
+  .project-lane-head .n { color: var(--ink-3); font-weight: 400; }
+  .project-lane-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .project-card { border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); transition: box-shadow .2s ease-out; }
+  .project-card:hover { box-shadow: var(--lift); }
+  .project-card-link { display: grid; gap: 4px; padding: 14px 16px; color: inherit; text-decoration: none !important; }
+  .project-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .project-card-name { min-width: 0; font-weight: 600; font-size: 14.5px; line-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-card-when { flex: none; color: var(--ink-3); font-size: 12px; }
+  .project-card-what { color: var(--ink-2); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .project-card-what.unknown { color: var(--ink-3); }
+  .project-card-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; color: var(--ink-3); font-size: 12px; line-height: 16px; }
+  .project-open { color: var(--lamp); }
+  .project-open::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+  .project-twin { display: block; margin: -4px 12px 12px; padding: 8px 12px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); font-size: 12.5px; line-height: 18px; text-decoration: none; }
+  .project-lane-more { display: block; margin: 12px auto 0; border: 0; background: none; color: var(--ink-3); font: 13px var(--r4font); cursor: pointer; }
+  .project-lane-more::after { content: " →"; }
+  .sessions-view.r4 { max-width: 720px; margin: 0 auto; min-width: 0; }
+  .session-stopped { margin: 0 0 36px; padding: 24px; border-radius: 18px; background: var(--sheet); box-shadow: var(--lift); }
+  .session-stopped-kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 6px; color: var(--ink-3); font-size: 13px; line-height: 18px; }
+  .session-stopped h2 { margin: 0 0 6px; font: 650 20px/28px var(--r4font); letter-spacing: -.015em; }
+  .session-stopped h2 a { color: var(--ink); text-decoration: none; }
+  .session-stopped-summary { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 22px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .session-stopped-todos { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; color: var(--ink); font-size: 14px; line-height: 20px; }
+  .session-stopped-todos li { display: flex; gap: 10px; align-items: baseline; }
+  .session-stopped-todos li::before { content: ""; flex: none; width: 12px; height: 12px; border: 1.5px solid var(--ink-4); border-radius: 3px; transform: translateY(1px); }
+  .session-stopped-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 20px; }
+  .session-stopped-full { color: var(--ink); font-weight: 600; font-size: 14px; text-decoration: none; }
+  .session-controls { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; }
+  #session-search { flex: 1; min-width: 0; height: 38px; padding: 0 14px 0 36px; border: 0; border-radius: 10px; background: var(--sheet) no-repeat 13px 50% / 15px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23868f89' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); box-shadow: var(--ring); color: var(--ink); font: 14px var(--r4font); }
+  #session-search:focus { outline: none; box-shadow: 0 0 0 1px var(--ink-3); }
+  .session-tabs { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: 10px; background: var(--sunk); }
+  .session-tabs button { min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--ink-3); font: 500 13px var(--r4font); cursor: pointer; white-space: nowrap; }
+  .session-tabs button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--ring); }
+  .sessions-view.r4 .session-result-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 4px 0; color: var(--ink-3); font-size: 13px; }
+  .sessions-view.r4 .session-result-line button, .session-person, .session-curtain-show, .session-more { min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--sunk); color: var(--ink-2); font: 500 13px var(--r4font); cursor: pointer; }
+  .session-person { margin-top: 12px; }
+  .session-day { display: flex; gap: 8px; margin: 28px 0 10px 4px; font: 600 13px/18px var(--r4font); color: var(--ink-2); }
+  .session-weekday { color: var(--ink-3); font-weight: 400; }
+  .session-rows { list-style: none; margin: 0; padding: 0; border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); overflow: hidden; }
+  .session-row { display: flex; align-items: center; gap: 14px; min-height: 62px; padding: 10px 16px 10px 18px; border-top: 1px solid var(--line); }
+  .session-row:first-child { border-top: 0; }
+  .session-card-content { flex: 1; min-width: 0; }
+  .session-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 500; font-size: 14px; line-height: 20px; text-decoration: none; }
+  .session-row.pending .session-title, .session-curtain .session-title { color: var(--ink-3); font-weight: 400; }
+  .session-excerpt { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; line-height: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .session-speaker { color: var(--ink-3); }
+  .session-meta { margin-top: 2px; color: var(--ink-3); font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-agent { flex: none; padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink-3); font-size: 11.5px; line-height: 18px; box-shadow: 0 0 0 .5px var(--line); }
+  .session-state { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; font-size: 13px; line-height: 1; }
+  .session-state.done { color: var(--done); }
+  .session-state.partial { border-radius: 50%; border: 1.5px solid var(--lamp); background: linear-gradient(90deg, var(--lamp) 50%, transparent 50%); font-size: 0; width: 13px; height: 13px; }
+  .session-state.abandoned { color: var(--ink-3); }
+  .session-state.pending { border-radius: 50%; border: 1.5px solid var(--ink-4); width: 12px; height: 12px; }
+  .session-state.lock { width: 12px; height: 10px; margin-top: 4px; border-radius: 2px; background: var(--ink-4); position: relative; }
+  .session-state.lock::before { content: ""; position: absolute; left: 2px; top: -6px; width: 6px; height: 6px; border: 1.5px solid var(--ink-4); border-bottom: 0; border-radius: 4px 4px 0 0; }
+  .session-more { display: block; margin: 20px auto 0; background: none; color: var(--ink-3); }
+  .session-more::after { content: " →"; }
+  @media (max-width: 719px) {
+    .session-stopped { padding: 20px 18px; margin-bottom: 28px; }
+    .session-stopped-actions .btn-act { flex: 1; min-height: 46px; }
+    .session-controls { display: grid; }
+    .session-tabs { overflow-x: auto; }
+    .session-tabs button { flex: 1; min-height: 40px; }
+    #session-search { height: 44px; font-size: 16px; }
+    .session-row { align-items: flex-start; min-height: 64px; }
+    .session-row > .session-state { margin-top: 4px; }
+    .session-meta { white-space: normal; }
+    .session-agent { display: none; }
+    .session-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  }
+  @media (max-width: 719px) {
+    .projects-view h1.page-state, .sessions-view.r4 h1.page-state { font-size: 24px; line-height: 31px; margin-bottom: 20px; }
+    .page-state-sub { display: block; font-size: 16px; line-height: 24px; letter-spacing: 0; }
+    .page-state-sub .sep { display: none; }
+    .project-hero { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 18px; margin-bottom: 24px; }
+    .project-hero .project-weeks { display: none; }
+    .project-hero-go { width: 100%; min-height: 46px !important; }
+    .project-lane-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; margin: 0 0 16px; border-radius: 10px; background: var(--sunk); }
+    .project-lane-tabs button { min-height: 36px; border: 0; border-radius: 8px; background: none; color: var(--ink-3); font: 500 14px var(--r4font); }
+    .project-lane-tabs button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--ring); }
+    .project-board { grid-template-columns: minmax(0, 1fr); }
+    .project-lane[data-hidden] { display: none; }
+    .project-lane-head { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -2081,7 +2143,7 @@ const UI = {
     "No agent sessions yet.": "还没有智能体会话。",
     "See what you worked on with your coding agents, including decisions and follow-ups.": "在这里回顾你与编程智能体的工作、决定和后续事项。",
     "Search sessions": "搜索会话",
-    "Search what you typed and what the agent replied": "搜索你的输入和智能体的回复",
+    "Search what you typed and what the agent replied": "搜你说过的话和 agent 的回复",
     "Agent": "智能体",
     "Time": "时间",
     "View": "视图",
@@ -2236,7 +2298,7 @@ const UI = {
     "Next pass": "下次更新",
     "Rebuild snapshot": "重新生成快照",
     "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
-    "What you worked on with your coding agents": "你与编程智能体一起完成的工作",
+    "What you worked on with your coding agents": "和编程 agent 一起做的事",
     "Not summarised": "尚未总结",
     "All {n} sessions": "全部 {n} 个会话",
     "{n} of {m} sessions": "{n} / {m} 个会话",
@@ -2574,6 +2636,36 @@ const UI = {
     "Last run ended {time}": "最近一次运行结束于 {time}",
     "{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending": "上次更新共 {n} 次运行，分为 {m} 段；白点表示页面改动，灰点表示提前停止，琥珀色表示最近运行结束",
     "Not written yet": "尚未撰写",
+    "Home folder": "主目录",
+    "Still being summarised": "还在整理",
+    "{n} to-do": "{n} 件待办",
+    "{n} to-dos": "{n} 件待办",
+    "{n} personal session": "{n} 个个人会话",
+    "{n} personal sessions": "{n} 个个人会话",
+    "Shown only on this Mac": "只在这台 Mac 上显示",
+    "Earlier sessions": "更早的会话",
+    "You stopped here": "你上次停在这里",
+    "Unfinished": "没做完",
+    "Continue in {tool}": "在 {tool} 里接着做",
+    "Full record": "看完整记录",
+    "Undated": "无日期",
+    "Yesterday": "昨天",
+    "Earlier": "更早",
+    "When": "时间",
+    "{n} projects": "{n} 个项目",
+    "{n} active this week": "{n} 个本周有动静",
+    "{n} open item": "{n} 件未结",
+    "{n} open items": "{n} 件未结",
+    "{n} session · 30 days": "{n} 个会话 · 30 天",
+    "{n} sessions · 30 days": "{n} 个会话 · 30 天",
+    "{n} sessions in 30 days": "30 天里 {n} 个会话",
+    "{n} more projects": "还有 {n} 个",
+    "Newest: {what}": "最新一件：{what}",
+    "Busiest this week": "本周最忙",
+    "Go through them one by one": "逐件过一遍",
+    "Sessions per week · 12 weeks": "每周会话数 · 12 周",
+    "Not investigated yet. REM only knows its folder and sessions.": "还没调查，REM 只知道它的文件夹和会话。",
+    "Another page, {name}, may be the same project": "另有一页 {name}，可能是同一个项目",
     ": {n} session": "：{n} 个会话",
     ": {n} sessions": "：{n} 个会话",
     ", last on {day}": "，最近 {day}",
@@ -4124,13 +4216,6 @@ const COLUMNS = {
     { key: "people", label: "People", num: true, sort: (r, f) => f.people, cell: (r, f) => el("span", { class: "mono", text: f.people ? String(f.people) : "—" }), desc: true },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
-    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
-  projects: [
-    { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
-    { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
-    { key: "last", label: "Last mapped session", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
-    { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: t("Sessions in the mapping window; archived input coverage can differ."), text: f.sessions ? String(f.sessions) : "—" }), desc: true },
-    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Partly investigated": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
 };
 const FILTERS = [
@@ -4421,7 +4506,7 @@ function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
-    ...Object.fromEntries(["find", "agent", "when", "from", "to", "by", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
+    ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -5284,6 +5369,7 @@ function categoryCount(c, counts, total) {
 }
 function category(c) {
   if (c === "sessions") { sessionsView(); return; }
+  if (c === "projects" && inCategory("projects").length) { projectsBoard(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
@@ -5316,6 +5402,104 @@ function category(c) {
   if (c === "skills" && items.length) main.appendChild(skillGroups(items));
   else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- projects: a board by recency, the busiest one lifted (art direction r4) ----------
+const PROJECT_LANES = [["week", "This week", 7], ["month", "This month", 30], ["older", "Earlier", Infinity]];
+function projectLast(r) { return facts(r).last || r.last_activity || ""; }
+function projectLane(r) {
+  const days = projectLast(r) ? daysSince(projectLast(r)) : null;
+  return PROJECT_LANES.find(([, , limit]) => days != null && days <= limit)?.[0] || "older";
+}
+function projectSessionDays() {
+  const days = new Map();
+  for (const s of REM.records) if (s.category === "sessions" && s.session_project && s.session_date)
+    days.set(s.session_project, [...(days.get(s.session_project) || []), s.session_date]);
+  return days;
+}
+function projectRecent(days, limit = 30) { return days.filter(day => daysSince(day) < limit).length; }
+// One sentence of "What it is": the card is a glance, the page is the read.
+function projectBlurb(r) {
+  const what = section(r, "what it is");
+  const line = what ? plainLine(listItems(what.text)[0] || what.text) : "";
+  return line && !/^Unknown\b/i.test(line) ? (line.match(/^.+?(?:[。！？]|[.!?](?=\s|$))/) || [line])[0] : "";
+}
+function projectOpenLine(n) { return el("span", { class: "project-open", text: t(n === 1 ? "{n} open item" : "{n} open items", { n }) }); }
+// Two pages whose names differ only by case are probably one project; say so, never merge silently.
+function projectTwin(r) {
+  const twin = inCategory("projects").find(other => other !== r && other.title.trim().toLowerCase() === r.title.trim().toLowerCase());
+  return twin ? el("a", { class: "project-twin", href: href(twin), text: t("Another page, {name}, may be the same project", { name: twin.title }) }) : null;
+}
+function projectCard(r, days) {
+  const open = facts(r).open.length, recent = projectRecent(days), studied = known(r).status !== "Mapped", blurb = studied ? projectBlurb(r) : "";
+  return el("li", { class: "project-card" }, [
+    el("a", { class: "project-card-link", href: href(r) }, [
+      el("span", { class: "project-card-head" }, [el("span", { class: "project-card-name", text: r.title }), el("span", { class: "project-card-when", text: fmtDate(projectLast(r)) })]),
+      blurb ? el("span", { class: "project-card-what", text: blurb })
+        : el("span", { class: "project-card-what unknown", text: t("Not investigated yet. REM only knows its folder and sessions.") }),
+      open || recent ? el("span", { class: "project-card-foot" }, [open ? projectOpenLine(open) : el("span"),
+        recent ? el("span", { text: t(recent === 1 ? "{n} session · 30 days" : "{n} sessions · 30 days", { n: recent }) }) : null]) : null]),
+    projectTwin(r)]);
+}
+// Twelve weeks of sessions, oldest first, in neutral ink: shape only, no axis.
+function projectWeeks(days) {
+  const weeks = Array(12).fill(0);
+  for (const day of days) { const week = Math.floor(daysSince(day) / 7); if (week < 12) weeks[11 - week]++; }
+  const peak = Math.max(1, ...weeks), title = t("Sessions per week · 12 weeks");
+  return el("span", { class: "project-weeks", title, role: "img", "aria-label": title },
+    weeks.map(n => el("span", { style: "height:" + (n ? Math.max(18, Math.round(100 * n / peak)) : 7) + "%", class: n ? "" : "none" })));
+}
+// The hero line is a glance: each part is cut at its first clause.
+function firstClause(text) { return plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim(); }
+function projectHero(r, days) {
+  const f = facts(r), open = f.open.length;
+  const standing = [...(section(r, "where it stands")?.text || "").matchAll(/^\s*-\s+(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]).sort().at(-1);
+  const shipped = newestStanding(r) ? [standing ? fmtDate(standing) : "", firstClause(newestStanding(r))].filter(Boolean).join(" ") : "";
+  const latest = [...f.open].sort((a, b) => (b.since || "").localeCompare(a.since || ""))[0];
+  const newest = [latest.since ? fmtDate(latest.since) : "", firstClause(latest.text)].filter(Boolean).join(" ");
+  const line = [shipped, t("{n} sessions in 30 days", { n: projectRecent(days) }), t("Newest: {what}", { what: newest })].filter(Boolean).join(" · ");
+  return el("section", { class: "project-hero", "aria-label": t("Busiest this week") }, [
+    el("div", { class: "project-hero-text" }, [
+      el("p", { class: "project-hero-kicker" }, [el("span", { class: "chip lamp", text: t(open === 1 ? "{n} open item" : "{n} open items", { n: open }) }), t("Busiest this week")]),
+      el("h2", {}, [el("a", { href: href(r), text: r.title })]),
+      el("p", { class: "project-hero-line", text: line })]),
+    projectWeeks(days),
+    el("a", { class: "btn-act project-hero-go", href: href(r) + "&h=open-threads", text: t("Go through them one by one") })]);
+}
+function projectBusiest(items, days) {
+  const score = r => [projectRecent(days.get(r.path) || [], 7), facts(r).open.length];
+  return items.filter(r => facts(r).open.length && !r.private_project)
+    .sort((a, b) => { const [x, y] = [score(a), score(b)]; return y[0] - x[0] || y[1] - x[1]; })[0];
+}
+function projectLaneNode(lane, label, rows, days, shown) {
+  const list = el("ul", { class: "project-lane-cards" }, rows.slice(0, 7).map(r => projectCard(r, days.get(r.path) || [])));
+  const more = rows.length > 7 ? sessionButton(t("{n} more projects", { n: rows.length - 7 }), () => {
+    list.append(...rows.slice(7).map(r => projectCard(r, days.get(r.path) || []))); more.remove(); }, { class: "project-lane-more" }) : null;
+  return el("section", { class: "project-lane", "data-lane": lane, "aria-label": t(label), ...(shown ? {} : { "data-hidden": "" }) }, [
+    el("h2", { class: "project-lane-head" }, [el("span", { text: t(label) }), el("span", { class: "n", text: String(rows.length) })]), list, more]);
+}
+// The second half of a page title: same line on desktop, its own line on phone.
+function pageStateSub(text) { return el("span", { class: "page-state-sub" }, [el("span", { class: "sep", text: " · " }), text]); }
+function projectsBoard() {
+  const main = document.getElementById("main"), items = inCategory("projects").sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
+  const days = projectSessionDays(), lanes = PROJECT_LANES.map(([key, label]) => [key, label, items.filter(r => projectLane(r) === key)]);
+  const week = lanes[0][2].length, busiest = projectBusiest(items, days);
+  main.replaceChildren(el("div", { class: "projects-view" }, [
+    el("p", { class: "page-kicker", text: label("projects") }),
+    el("h1", { class: "page-state" }, [t("{n} projects", { n: items.length }), week ? pageStateSub(t("{n} active this week", { n: week })) : null]),
+    busiest ? projectHero(busiest, days.get(busiest.path) || []) : null,
+    projectBoardLanes(lanes, days)]));
+}
+// Phone shows one lane at a time; the segmented control picks it.
+function projectBoardLanes(lanes, days) {
+  const first = lanes.find(([, , rows]) => rows.length)?.[0] || "week";
+  const board = el("div", { class: "project-board" }, lanes.map(([key, label, rows]) => projectLaneNode(key, label, rows, days, key === first)));
+  const tabs = el("div", { class: "project-lane-tabs", role: "group", "aria-label": t("When") }, lanes.map(([key, label]) =>
+    sessionButton(label, () => {
+      for (const lane of board.children) lane.toggleAttribute("data-hidden", lane.dataset.lane !== key);
+      for (const tab of tabs.children) tab.setAttribute("aria-pressed", String(tab.dataset.lane === key));
+    }, { "data-lane": key, "aria-pressed": String(key === first) })));
+  return el("div", {}, [tabs, board]);
 }
 
 // Recent use comes first; old and unobserved skills stay one disclosure away.
@@ -5365,7 +5549,7 @@ function skillGroups(items) {
 // ---------- sessions: structure first, conversations searchable ----------
 let lastSessionListHash = "#c=sessions";
 const SESSION_TEXT = new Map();
-const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "by", "person", "tag", "outcome"];
+const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "person", "tag", "outcome"];
 const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
 function sessionText(r) {
   if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
@@ -5383,7 +5567,7 @@ function sessionHash(state) {
   for (const key of SESSION_KEYS) if (state[key]) params.set(key, state[key]);
   return "#" + params.toString();
 }
-function sessionActive(state) { return SESSION_KEYS.filter(key => key !== "by" && state[key]); }
+function sessionActive(state) { return SESSION_KEYS.filter(key => state[key]); }
 function sessionAgent(r) { return (r.session_agent || "").toLowerCase().replaceAll(" ", "-"); }
 function sessionStart(when) {
   const today = calendarDay(REM.as_of);
@@ -5479,7 +5663,7 @@ function sessionComposer(r) {
   const copy = sessionButton("Copy resume command", () => copyToClipboard(command, copy));
   copy.disabled = !command;
   copy.setAttribute("aria-live", "polite");
-  const form = el("form", { class: "session-composer", "data-session-id": r.session_id || "" }, [input,
+  const form = el("form", { class: "session-composer", id: "session-continue", "data-session-id": r.session_id || "" }, [input,
     el("div", { class: "session-resume" }, [el("code", { text: command || t("Session id not archived") }), copy]),
     el("p", { class: "session-composer-note", text: t("Resume in your project folder, then paste your message.") })]);
   // Future run adapters can consume this event. No dispatch is enabled in this snapshot.
@@ -5528,40 +5712,70 @@ function sessionFrame(r) {
   return { node, find };
 }
 
-function sessionRow(r, terms) {
-  const state = route(), text = sessionText(r), excerpt = sessionExcerpt(r, terms);
-  const project = byPath(r.session_project), folder = r.session_folder || "";
-  const meta = el("div", { class: "session-meta" }, [project ? el("a", { href: href(project), text: project.title })
-    : el("span", { text: folder.split(/[\\/]/).filter(Boolean).pop() || t("No project"), title: folder })]);
-  const clock = (state.by === "project" ? shortDate(r.session_date) + " " : "") + (r.session_time || "");
-  meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 })].filter(Boolean).join(" · ")));
-  const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
-    href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
-  return el("li", { class: "session-row" }, [sessionToolMark(r), el("div", { class: "session-card-content" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(sessionPreview(text.title), terms) }),
-    el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
-      el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta, el("div", { class: "session-card-foot" }, [
-      el("span", { text: sessionDuration(r) }),
-      el("span", { class: "session-outcome " + (r.session_status === "running" ? "running" : ""), text: r.session_status === "running" ? t("Running") : t(SESSION_OUTCOMES[r.session_outcome] || "Outcome not recorded") })])])]);
+// A session row names its project, never its path: the home folder is "Home folder", others keep two segments at most.
+function sessionPlace(r) {
+  const project = byPath(r.session_project);
+  if (project) return project.title;
+  const parts = (r.session_folder || "").split(/[\\/]/).filter(Boolean);
+  if (!parts.length) return t("No project");
+  return /^(?:Users|home)$/.test(parts[0]) && parts.length <= 2 ? t("Home folder") : parts.slice(-2).join("/");
 }
-function sessionGroups(records, state, terms) {
-  const groups = new Map(), content = document.createDocumentFragment();
+function sessionFollowUps(r) { return listItems(sessionSection(r, "Follow-ups")).map(item => plainLine(item)).filter(Boolean); }
+const SESSION_STATE_MARK = { done: "✓", partial: "◐", abandoned: "–" };
+function sessionStateMark(r) {
+  const outcome = r.session_summary ? r.session_outcome : "";
+  return el("span", { class: "session-state " + (SESSION_STATE_MARK[outcome] ? outcome : "pending"), "aria-hidden": "true", text: SESSION_STATE_MARK[outcome] || "" });
+}
+function sessionRow(group, terms) {
+  const r = group[0], state = route(), text = sessionText(r), todo = sessionFollowUps(r).length;
+  const pending = !r.session_summary;
+  const title = pending ? t("Still being summarised") + " · " + sessionPreview(r.session_started_with || text.you || text.title) : sessionPreview(text.title);
+  const meta = [sessionPlace(r), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 }),
+    group.length > 1 ? t("{n} sessions", { n: group.length }) : "", todo ? t(todo === 1 ? "{n} to-do" : "{n} to-dos", { n: todo }) : ""].filter(Boolean).join(" · ");
+  const excerpt = terms.length ? sessionExcerpt(r, terms) : null;
+  return el("li", { class: "session-row" + (pending ? " pending" : "") }, [sessionStateMark(r), el("div", { class: "session-card-content" }, [
+    el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(title, terms) }),
+    excerpt ? el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
+      el("span", { html: sessionHighlight(excerpt.text, terms) })]) : null,
+    el("div", { class: "session-meta", text: meta })]), el("span", { class: "session-agent", text: sessionTool(r).name })]);
+}
+// A day's private-project sessions sit behind one curtain; nothing of them is in the DOM until shown.
+function sessionCurtain(groups, terms) {
+  const count = groups.reduce((n, group) => n + group.length, 0);
+  const row = el("li", { class: "session-row session-curtain" });
+  const show = sessionButton("Show", () => row.replaceWith(...groups.map(group => sessionRow(group, terms))), { class: "session-curtain-show" });
+  row.append(el("span", { class: "session-state lock", "aria-hidden": "true" }), el("div", { class: "session-card-content" }, [
+    el("span", { class: "session-title", text: t(count === 1 ? "{n} personal session" : "{n} personal sessions", { n: count }) }),
+    el("div", { class: "session-meta", text: sessionPlace(groups[0][0]) + " · " + t("Shown only on this Mac") })]), show);
+  return row;
+}
+function sessionPrivate(r) { return !!byPath(r.session_project)?.private_project; }
+// Same-titled sessions in a row are one piece of work: one row that says how many.
+function sessionDayRows(records, terms) {
+  const groups = [];
   for (const r of records) {
-    const key = r.session_status === "running" ? "Running" : state.by === "project" ? r.session_project || "none" : r.session_date || "Undated";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
+    const last = groups.at(-1);
+    if (last && sessionText(last[0]).title === sessionText(r).title) last.push(r); else groups.push([r]);
   }
-  if (state.by === "project" && groups.has("none")) { const none = groups.get("none"); groups.delete("none"); groups.set("none", none); }
-  let index = 0;
-  for (const [key, rows] of groups) {
-    const title = key === "Running" ? t("Running") : state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
-    const heading = [el("span", { text: state.by === "project" && key === "none" ? t("No project") : title }), el("span", { class: "session-count", text: String(rows.length) })];
-    const list = el("ul", { class: "session-rows" }, rows.map(r => sessionRow(r, terms)));
-    if (state.by === "project") {
-      const group = el("details", { class: "session-group" }, [el("summary", {}, heading), list]);
-      group.open = !!terms.length || index < 3;
-      content.appendChild(group);
-    } else content.append(el("h2", { class: "session-day" }, heading), list);
-    index++;
+  const hidden = groups.filter(group => sessionPrivate(group[0]));
+  const rows = groups.filter(group => !hidden.includes(group)).map(group => sessionRow(group, terms));
+  if (hidden.length) rows.splice(groups.indexOf(hidden[0]), 0, sessionCurtain(hidden, terms));
+  return rows;
+}
+function sessionDayTitle(day) {
+  if (!day) return t("Undated");
+  const weekday = new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", weekday: "short" });
+  const name = daysSince(day) === 0 ? t("Today") : daysSince(day) === 1 ? t("Yesterday") : new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short", day: "numeric" });
+  return [el("span", { text: name }), el("span", { class: "session-weekday", text: weekday })];
+}
+const SESSION_PAGE = 60;
+function sessionGroups(records, terms, limit = SESSION_PAGE) {
+  const days = new Map(), content = document.createDocumentFragment();
+  for (const r of records.slice(0, limit)) days.set(r.session_date || "", [...(days.get(r.session_date || "") || []), r]);
+  for (const [day, rows] of days) content.append(el("h2", { class: "session-day" }, sessionDayTitle(day)), el("ul", { class: "session-rows" }, sessionDayRows(rows, terms)));
+  if (records.length > limit) {
+    const more = sessionButton("Earlier sessions", () => more.replaceWith(sessionGroups(records.slice(limit), terms)), { class: "session-more" });
+    content.appendChild(more);
   }
   return content;
 }
@@ -5570,80 +5784,27 @@ function sessionButton(text, action, attrs = {}) {
   button.onclick = action;
   return button;
 }
-function sessionSegments(name, key, choices, change) {
-  const group = el("div", { class: "session-segments", role: "group", "aria-label": t(name) });
-  for (const [value, text] of choices) group.appendChild(sessionButton(text, () => change(key, value), { "data-session-key": key, "data-value": value, "aria-pressed": "false" }));
-  return el("div", { class: "session-filter" }, [el("span", { text: t(name) }), group]);
+// "You stopped here": the newest unfinished session, with its to-dos and one way back in.
+function sessionStopped(records) {
+  const r = records.find(r => r.session_outcome === "partial" && r.session_summary && !sessionPrivate(r));
+  if (!r) return null;
+  const tool = sessionTool(r), todos = sessionFollowUps(r).slice(0, 3);
+  return el("section", { class: "session-stopped", "aria-label": t("You stopped here") }, [
+    el("p", { class: "session-stopped-kicker" }, [el("span", { class: "chip lamp", text: t("Unfinished") }),
+      [t("You stopped here"), fmtDate(r.session_date), sessionPlace(r), tool.name].join(" · ")]),
+    el("h2", {}, [el("a", { href: href(r), text: sessionPreview(sessionText(r).title) })]),
+    el("p", { class: "session-stopped-summary", text: plainLine(r.session_summary) }),
+    todos.length ? el("ul", { class: "session-stopped-todos" }, todos.map(item => el("li", { text: item }))) : null,
+    el("div", { class: "session-stopped-actions" }, [
+      el("a", { class: "btn-act play", href: href(r) + "&h=session-continue", text: t("Continue in {tool}", { tool: tool.name }) }),
+      el("a", { class: "session-stopped-full", href: href(r), text: t("Full record") })])]);
 }
-function sessionProjectSelect(records, change) {
-  const counts = new Map();
-  for (const r of records) counts.set(r.session_project || "none", (counts.get(r.session_project || "none") || 0) + 1);
-  const select = el("select", { "aria-label": t("Project"), "data-session-key": "project" }, [el("option", { value: "", text: t("All projects") })]);
-  for (const [path, count] of [...counts].filter(([path]) => path !== "none").sort((a, b) => b[1] - a[1]))
-    select.appendChild(el("option", { value: path, text: (byPath(path)?.title || path) + " · " + count }));
-  if (counts.has("none")) select.appendChild(el("option", { value: "none", text: t("No project · ") + counts.get("none") }));
-  select.onchange = () => change("project", select.value);
-  return el("label", { class: "session-filter" }, [el("span", { text: t("Project") }), select]);
-}
-function sessionDates(change, state) {
-  const dates = el("details", { class: "session-dates" }, [el("summary", { text: t("Choose dates") })]);
-  dates.open = !!(state.from || state.to);
-  const inputs = el("div", { class: "session-date-inputs" });
-  for (const key of ["from", "to"]) {
-    const input = el("input", { type: "date", "aria-label": t(key === "from" ? "From" : "To"), "data-session-key": key });
-    input.onchange = () => change(key, input.value);
-    inputs.appendChild(el("label", {}, [t(key === "from" ? "From" : "To") + " ", input]));
-  }
-  dates.appendChild(inputs);
-  return el("div", { class: "session-filter session-date-filter" }, [el("span", { text: t("Dates") }), dates]);
-}
-function sessionTopics(records, change) {
-  const tags = [...new Set(records.flatMap(r => r.session_tags || []))];
-  const row = el("div", { class: "session-topics" }, [el("span", { text: t("Topics") })]);
-  const top = el("div", { class: "session-topic-buttons" });
-  const more = el("details", {}, [el("summary", { text: t("More topics"), "aria-controls": "session-topic-list" })]);
-  top.id = "session-topic-list";
-  const buttons = new Map(tags.map(tag => [tag, sessionButton(tag, () => change("tag", tag), { "aria-pressed": "false", "data-topic": "true" })]));
-  top.append(...buttons.values());
-  more.ontoggle = () => {
-    for (const button of buttons.values()) button.hidden = button.dataset.available !== "true" || button.dataset.overflow === "true" && !more.open;
-  };
-  const outcomes = el("div", { class: "session-outcomes" });
-  const outcomeButtons = Object.entries(SESSION_OUTCOMES).map(([value, text]) => [value, sessionButton(text, () => change("outcome", value), { "aria-pressed": "false" })]);
-  outcomes.append(...outcomeButtons.map(([, button]) => button));
-  const missing = el("span", { class: "session-unsummarised" });
-  row.append(top, more, outcomes, missing);
-  row.hidden = !tags.length;
-  function sync(base, state) {
-    const counts = new Map();
-    for (const r of base) for (const tag of new Set(r.session_tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1);
-    row.hidden = !counts.size;
-    const limit = matchMedia("(max-width: 719px)").matches ? 6 : 16;
-    const sorted = [...buttons].sort((a, b) => (counts.get(b[0]) || 0) - (counts.get(a[0]) || 0) || a[0].localeCompare(b[0]));
-    let visible = 0;
-    for (const [tag, button] of sorted) {
-      const count = counts.get(tag) || 0;
-      const available = !!count || state.tag === tag;
-      button.dataset.available = String(available);
-      button.dataset.overflow = String(visible >= limit);
-      button.style.order = String(visible);
-      if (state.tag === tag && available && visible >= limit) more.open = true;
-      button.hidden = !available || visible >= limit && !more.open;
-      button.textContent = tag + " " + count;
-      button.setAttribute("aria-pressed", String(state.tag === tag));
-      if (available) visible++;
-    }
-    more.hidden = visible <= limit;
-    for (const [value, button] of outcomeButtons) {
-      const count = base.filter(r => r.session_outcome === value).length;
-      button.hidden = !count && state.outcome !== value;
-      button.textContent = t(SESSION_OUTCOMES[value]) + " " + count;
-      button.setAttribute("aria-pressed", String(state.outcome === value));
-    }
-    const n = base.filter(r => !r.session_summary && !r.session_tags?.length && !r.session_outcome).length;
-    missing.textContent = n ? t("Not summarised") + " " + n : "";
-  }
-  return { node: row, outcomes, sync };
+const SESSION_TABS = [["", "", "All"], ["outcome", "partial", "Unfinished"], ["agent", "codex", "Codex"], ["agent", "claude-code", "Claude Code"]];
+function sessionTabs(records, change) {
+  const unfinished = records.filter(r => r.session_outcome === "partial").length;
+  return el("div", { class: "session-tabs", role: "group", "aria-label": t("Show") }, SESSION_TABS.map(([key, value, name]) =>
+    sessionButton(name, () => change("tab", key + "=" + value), { "data-tab": key + "=" + value, "aria-pressed": "false",
+      "data-count": key === "outcome" ? String(unfinished) : "" })));
 }
 function sessionFilterNames(state) {
   const names = { find: t("Search") + ': “' + state.find + '”',
@@ -5657,10 +5818,9 @@ function sessionFilterNames(state) {
 function sessionResults(records, total, state, terms, change) {
   const active = sessionActive(state), results = document.createDocumentFragment();
   if (state.person) results.appendChild(sessionButton(t("Mentioning {name}", { name: byPath(state.person)?.title || state.person }) + " ×", () => change("person", ""), { class: "session-person" }));
-  const line = el("div", { class: "session-result-line" }, [el("span", { role: "status", text: active.length ? t("{n} of {m} sessions", { n: records.length, m: total }) : t("{n} sessions", { n: total }) })]);
-  if (active.length) line.appendChild(sessionButton(t("Clear"), () => change("clear", "")));
-  results.appendChild(line);
-  if (records.length) results.appendChild(sessionGroups(records, state, terms));
+  if (active.length) results.appendChild(el("div", { class: "session-result-line" }, [el("span", { role: "status", text: t("{n} of {m} sessions", { n: records.length, m: total }) }),
+    sessionButton(t("Clear"), () => change("clear", ""))]));
+  if (records.length) results.appendChild(sessionGroups(records, terms));
   else {
     const empty = emptyState("No session matches", "Clear filters →", "#c=sessions", () => change("clear", ""));
     empty.insertBefore(el("p", { text: sessionFilterNames(state) }), empty.lastChild);
@@ -5676,46 +5836,33 @@ function sessionsView() {
   }
   const state = Object.fromEntries(SESSION_KEYS.map(key => [key, route()[key] || ""]));
   if (state.from || state.to) state.when = "";
-  const view = el("section", { class: "sessions-view" }), results = el("div", { id: "session-results" });
-  const topics = sessionTopics(records, change);
+  const view = el("section", { class: "sessions-view r4" }), results = el("div", { id: "session-results" }), tabs = sessionTabs(records, change);
   const search = el("input", { id: "session-search", type: "search", "aria-label": t("Search sessions"), placeholder: t("Search what you typed and what the agent replied"), value: state.find });
   let timer;
   search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { if (view.isConnected) change("find", search.value); }, 120); };
-  const panel = el("div", { class: "session-filter-panel", id: "session-filter-panel" }, [sessionProjectSelect(records, change),
-    sessionSegments("Agent", "agent", [["", "All"], ["codex", "Codex"], ["claude-code", "Claude Code"]], change),
-    sessionSegments("Time", "when", [["", "All"], ["today", "Today"], ["week", "This week"], ["month", "This month"]], change), sessionDates(change, state),
-    sessionSegments("View", "by", [["", "By day"], ["project", "By project"]], change)]);
-  const toggle = sessionButton("Filter", () => { const open = panel.classList.toggle("is-open"); toggle.setAttribute("aria-expanded", String(open)); },
-    { class: "session-filter-toggle", "aria-expanded": "false", "aria-controls": "session-filter-panel" });
-  main.replaceChildren(el("div", { class: "mobile-back" }, [el("a", { href: "#", text: "← " + t("Contents") })]), el("h1", { text: label("sessions") }), el("p", { class: "lede", text: t("What you worked on with your coding agents") }), view);
-  view.append(search, topics.node, toggle, panel, results);
-  const mobile = matchMedia("(max-width: 719px)");
-  function placeOutcomes() { (mobile.matches ? panel : topics.node).appendChild(topics.outcomes); update(); }
-  mobile.addEventListener("change", () => { if (view.isConnected) placeOutcomes(); });
-  if (mobile.matches) panel.appendChild(topics.outcomes);
-  view.onclick = event => { const tag = event.target.closest("a[data-session-tag]"); if (tag) { event.preventDefault(); change("tag", tag.dataset.sessionTag); } };
+  view.append(el("p", { class: "page-kicker", text: label("sessions") }),
+    el("h1", { class: "page-state" }, [t("{n} sessions", { n: records.length }), pageStateSub(t("What you worked on with your coding agents"))]),
+    sessionStopped(records) || document.createDocumentFragment(), el("div", { class: "session-controls" }, [search, tabs]), results);
+  main.replaceChildren(view);
   function change(key, value) {
     clearTimeout(timer);
     state.find = search.value;
-    if (key === "clear") for (const name of SESSION_KEYS) { if (name !== "by") state[name] = ""; }
-    else state[key] = ["tag", "outcome"].includes(key) && state[key] === value ? "" : value;
+    if (key === "clear") for (const name of SESSION_KEYS) state[name] = "";
+    else if (key === "tab") { const [name, chosen] = value.split("="); state.agent = name === "agent" ? chosen : ""; state.outcome = name === "outcome" ? chosen : ""; }
+    else state[key] = value;
     if (key === "from" || key === "to") state.when = "";
-    if (key === "when") { state.from = ""; state.to = ""; }
     history.replaceState(null, "", sessionHash(state));
     update();
   }
   function update() {
     lastSessionListHash = sessionHash(state);
-    const terms = sessionTerms(state.find), base = records.filter(r => sessionMatches(r, state, terms, false));
-    const matches = base.filter(r => sessionMatches(r, state, terms));
+    const terms = sessionTerms(state.find), matches = records.filter(r => sessionMatches(r, state, terms));
     if (search.value !== state.find) search.value = state.find;
-    for (const control of panel.querySelectorAll("[data-session-key]")) {
-      const value = state[control.dataset.sessionKey];
-      if (control.tagName === "BUTTON") control.setAttribute("aria-pressed", String(control.dataset.value === value)); else control.value = value;
+    const tab = state.outcome === "partial" ? "outcome=partial" : state.agent ? "agent=" + state.agent : "=";
+    for (const button of tabs.children) {
+      button.setAttribute("aria-pressed", String(button.dataset.tab === tab));
+      button.textContent = t(SESSION_TABS.find(([key, value]) => key + "=" + value === button.dataset.tab)[2]) + (button.dataset.count ? " " + button.dataset.count : "");
     }
-    const count = sessionActive(state).filter(key => key !== "find").length;
-    toggle.textContent = t("Filter") + (count ? " · " + count : "");
-    topics.sync(base, state);
     results.replaceChildren(sessionResults(matches, records.length, state, terms, change));
   }
   update();
