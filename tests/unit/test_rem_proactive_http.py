@@ -61,3 +61,24 @@ def test_rem_draft_endpoint_prepares_a_thread_now_for_the_owner(host, monkeypatc
     assert status == 200 and calls == [('outlook', 'mail:outlook:abc')] and json.loads(body)['status'] == 'prepared'
     status, _, _ = call(host.routes, 'POST', '/rem/draft', cookie=f'co_rem={host.token}', body=json.dumps({'action': 'prepare', 'provider': 'outlook'}).encode())
     assert status == 400
+
+
+def test_rem_thread_endpoint_owner_json_gating_and_undo(host):
+    payload = json.dumps({'key': 'people/alice-chen.md\nA promise', 'state': 'done'}).encode()
+    assert call(host.routes, 'POST', '/rem/thread', body=payload)[0] == 401
+    cookie = f'co_rem={host.token}'
+    assert call(host.routes, 'POST', '/rem/thread', cookie=cookie, body=payload, content_type='text/plain')[0] == 415
+    for kwargs in ({'client': '192.168.1.2'}, {'host_header': 'evil.test'}):
+        assert call(host.routes, 'POST', '/rem/thread', cookie=cookie, body=payload, **kwargs)[0] == 404
+    assert call(host.routes, 'POST', '/rem/thread', cookie=cookie, body=payload)[0] == 200
+    status, _, body = call(host.routes, 'GET', '/rem/thread', cookie=cookie)
+    assert status == 200 and json.loads(body)['people/alice-chen.md\nA promise']['state'] == 'done'
+    assert read_json(state_path(host.root, 'threads.json'), {})
+    payload = json.dumps({'key': 'people/alice-chen.md\nA promise', 'state': 'open'}).encode()
+    assert call(host.routes, 'POST', '/rem/thread', cookie=cookie, body=payload)[0] == 200
+    assert read_json(state_path(host.root, 'threads.json'), {}) == {}
+
+
+def test_rem_thread_endpoint_rejects_invalid_actions(host):
+    for value in ({'key': '../x', 'state': 'done'}, {'key': 'x', 'state': 'sent'}, {}, [], None):
+        assert call(host.routes, 'POST', '/rem/thread', cookie=f'co_rem={host.token}', body=json.dumps(value).encode())[0] == 400

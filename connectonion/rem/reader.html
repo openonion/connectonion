@@ -1740,6 +1740,14 @@ const UI = {
     "Continue in {provider} drafts": "前往 {provider} 草稿箱",
     "Discard": "丢弃",
     "Draft discarded": "草稿已丢弃",
+    "Marked done": "已完成",
+    "Done or skipped ({n})": "已完成或跳过（{n}）",
+    "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
+    "Skipped — returns with new mail": "已跳过，收到新邮件时回来",
+    "Saved in notebook": "已保存到笔记本",
+    "Saved on this device — sync pending": "已保存在此设备，等待同步",
+    "Saving…": "保存中…",
+    "New mail · {date}": "新邮件 · {date}",
     "Subject": "主题",
     "Body": "正文",
     "CC": "抄送",
@@ -3259,9 +3267,10 @@ function threads(r) {
     const due = after("due(?:\\s+(?:on|is))?|deadline(?:\\s+(?:on|is))?|by");
     const requested = after("since|requested(?:\\s+on)?|asked(?:\\s+on)?");
     const moved = after("last moved(?:\\s+on)?");
-    const since = moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
-    const quiet = !!since && !due && daysSince(since) > 60;
-    return { text: displayed, originalText: text, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
+    const returnedAt = REM.threads?.[doneKey({ r, t: { text } })]?.returned_at;
+    const since = returnedAt ? calendarDay(returnedAt) : moved || requested || days.find(d => d !== due && (!today || d <= today)) || "";
+    const quiet = !returnedAt && !!since && !due && daysSince(since) > 60;
+    return { text: displayed, originalText: text, returnedAt, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
   return { items, calm };
 }
@@ -3276,7 +3285,7 @@ function threadEntries() {
     const chosen = [...group].sort((a, b) => Number(a.t.dir === "plain") - Number(b.t.dir === "plain") || (b.t.since || b.t.due || "").localeCompare(a.t.since || a.t.due || "")
       || (b.t.originalText || b.t.text).length - (a.t.originalText || a.t.text).length)[0];
     const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path && obligationWords(entry.r.title) !== obligationWords(chosen.r.title)).map(entry => [entry.r.path, entry.r])).values()];
-    return { ...chosen, also };
+    return { ...chosen, also, members: group };
   }).sort(order);
 }
 // Source numbers belong to their page; copied promises share the resolved id.
@@ -3336,33 +3345,90 @@ function threadGroups(entries) {
   });
   return groups.map(group => group.sort((a, b) => a - b).map(i => entries[i]));
 }
-let doneThreads = new Set();
+let threadStates = {}, pendingThreads = {};
+let threadWrite = Promise.resolve();
 function doneKey(entry) {
   return shortHash(entry.r.path + "\n" + (entry.t.originalText || entry.t.text));
 }
 function doneStorageKey() {
   return "co-rem-done:" + shortHash(REM.root || "");
 }
-function isDone(entry) {
-  return doneThreads.has(doneKey(entry));
+function threadStorageKey() {
+  return "co-rem-threads:" + shortHash(REM.root || "");
 }
-function setDone(entry, done) {
-  if (done) doneThreads.add(doneKey(entry));
-  else doneThreads.delete(doneKey(entry));
-  readerStorage(doneStorageKey(), JSON.stringify([...doneThreads]));
+function isDone(entry) {
+  const value = threadStates[doneKey(entry)];
+  return ["done", "skipped"].includes(value?.state) && !value.returned_at;
+}
+async function reconcileThreads() {
+  if (!REM.live) return;
+  const response = await fetch("/rem/thread").catch(() => null);
+  if (!response?.ok) return;
+  threadStates = { ...await response.json(), ...pendingThreads };
+  REM.threads = threadStates;
+  for (const [key, value] of Object.entries(pendingThreads)) await saveThreadState(key, value);
+  await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
+}
+async function saveThreadState(key, value) {
+  pendingThreads[key] = value;
+  if (value.state === "open") delete threadStates[key];
+  else threadStates[key] = value;
+  REM.threads = threadStates;
+  await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
+  if (!REM.live) return false;
+  threadWrite = threadWrite.then(async () => {
+    if (pendingThreads[key] !== value) return true;
+    const response = await fetch("/rem/thread", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, device: navigator.platform || "browser" }) }).catch(() => null);
+    if (!response?.ok) return false;
+    const saved = await response.json();
+    if (pendingThreads[key] !== value) return true;
+    delete pendingThreads[key];
+    const { keys = [key], ...decision } = saved;
+    for (const item of keys) {
+      if (pendingThreads[item]) continue;
+      if (value.state === "open") delete threadStates[item];
+      else threadStates[item] = { ...decision, keys };
+    }
+    await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
+    return true;
+  });
+  return threadWrite;
+}
+function setDone(entry, done, state = "done", entries = [entry]) {
+  const key = doneKey(entry), value = { state: done ? state : "open", at: new Date().toISOString(), device: navigator.platform || "browser" };
+  const members = entries.flatMap(item => item.members || [item]);
+  value.keys = [...new Set([...members.map(doneKey), ...(threadStates[key]?.keys || [])])];
+  const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
+  value.versions = Object.fromEntries(related.filter(d => d.version).map(d => [d.thread, d.version]));
+  const saved = saveThreadState(key, value);
+  for (const memberKey of value.keys) {
+    if (done) threadStates[memberKey] = value;
+    else delete threadStates[memberKey];
+  }
+  for (const draft of related) {
+    if (draft.status !== "sent") draft.status = done && state === "skipped" ? "skipped" : draft.body ? "prepared" : "pending";
+  }
   const scroll = window.scrollY;
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  if (done) doneNotice(entry);
+  if (done) doneNotice(entry, state, entries);
+  return saved.then(synced => {
+    if (synced) render();
+    const status = document.getElementById("thread-save-status");
+    if (status) status.textContent = t(synced ? "Saved in notebook" : "Saved on this device — sync pending");
+    return synced;
+  });
 }
-function doneNotice(entry) {
+function doneNotice(entry, state, entries) {
   const undo = el("button", { type: "button", text: t("Undo") });
-  undo.onclick = () => setDone(entry, false);
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done on this device — "), undo]);
+  undo.onclick = () => setDone(entry, false, "done", entries);
+  const status = el("span", { id: "thread-save-status", text: t("Saving…") });
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
-  setTimeout(() => notice.remove(), 6000);
+  setTimeout(() => notice.remove(), 5000);
 }
 
 // The one thing to do next: write to the person the thread is with. The address and
@@ -3440,7 +3506,9 @@ function threadActions(entry) {
   const ids = obligationEvidence(entry).ids;
   const draft = (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return el("div", { class: "thread-actions" }, [
-    undo ? el("span", { class: "done-tag", text: t("marked done here") }) : primaryAction(entry), done]);
+    undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
+      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : primaryAction(entry),
+    ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), done]);
 }
 // Full-screen writing: the letter on the left, editable; on the right what the
 // owner needs to remember, the Chinese reading, and the cited messages.
@@ -3480,7 +3548,7 @@ function threadDraft(entry) {
 }
 function draftNote(draft) {
   if (!draft || draft.status === "prepared") return null;
-  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded"
+  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
 }
 // A reply is shown as the mail it will become: who it goes to, the subject, the
@@ -3514,7 +3582,7 @@ function replyDraftCard(draft) {
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]), status]);
   if (!REM.live) {
-    send.disabled = edit.disabled = skip.disabled = true;
+    send.disabled = edit.disabled = true;
     status.textContent = t("Open the live reader on this computer to send or edit this draft.");
   }
   const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; };
@@ -3543,14 +3611,32 @@ function replyDraftCard(draft) {
   send.onclick = () => run("send");
   write.onclick = () => openWriter(draft, who, body => run("send", body));
   edit.onclick = () => run("open");
-  skip.onclick = () => run("discard");
+  skip.onclick = () => {
+    const entries = threadEntries().filter(entry => obligationEvidence(entry).ids.has("thread:" + draft.provider + ":" + draft.thread));
+    if (entries.length) setDone(entries[0], true, "skipped", entries);
+  };
   return draft.private ? privateFallback(el("div", {}, [el("div", { class: "private" }, [card])])) : card;
+}
+function threadDecisionHistory(r) {
+  const current = new Set(threads(r).items.map(t => doneKey({ r, t })));
+  const saved = Object.entries(threadStates).filter(([key]) => key.startsWith(r.path + "\n") && !current.has(key));
+  if (!saved.length) return null;
+  return el("details", { class: "done-details thread-history" }, [el("summary", { text: t("Done or skipped ({n})", { n: saved.length }) }),
+    el("ul", { class: "threads" }, saved.map(([key, value]) => {
+      const entry = { r, t: { text: key.slice(r.path.length + 1) } };
+      const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
+      undo.onclick = () => setDone(entry, false);
+      return el("li", {}, [privateFallback(el("span", { text: entry.t.text })), " · ",
+        el("span", { class: "done-tag", text: t(value.state === "skipped" ? "Skipped" : "Marked done")
+          + " · " + fmtDate(calendarDay(value.at || REM.as_of)) }), undo]);
+    }))]);
 }
 function markedDone(entries) {
   const done = entries.filter(isDone);
   if (!done.length) return null;
-  return el("details", { class: "done-details" }, [el("summary", { text: t("Marked done on this device ({n})", { n: done.length }) }),
-    el("p", { class: "quiet-line", text: t("Only this browser remembers this. The notebook changes when the next pass sees the reply.") }),
+  return el("details", { class: "done-details" }, [el("summary", { text: t("Done or skipped ({n})", { n: done.length }) }),
+    el("p", { class: "quiet-line", text: t(Object.keys(pendingThreads).length
+      ? "Saved on this device — sync pending" : "Saved in your notebook. Undo here or on the record page at any time.") }),
     el("ul", { class: "threads" }, done.map(({ r, t, also }) => threadRow(r, t, true, also, true)))]);
 }
 function threadCounterpart({ r, t }, person) {
@@ -6255,6 +6341,8 @@ function record(path, heading) {
   if (person) head.appendChild(relationshipHeader(r) || document.createTextNode(""));
   main.appendChild(head);
   main.appendChild(recordFocus(r));
+  const decisions = threadDecisionHistory(r);
+  if (decisions) main.appendChild(decisions);
   if (r.category === "projects") {
     const cites = main.querySelector(".project-purpose-cites"), unsure = head.querySelector(".unsure");
     if (cites && unsure) cites.appendChild(unsure);
@@ -7030,15 +7118,23 @@ function showLanguage(r, tag) {
   render();
 }
 
+window.addEventListener("focus", () => reconcileThreads().then(render));
+window.addEventListener("online", () => reconcileThreads().then(render));
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
-Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey())]).then(([language, theme, privacy, columns, done]) => {
+Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey())]).then(async ([language, theme, privacy, columns, done, saved]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   morePeopleColumns = columns === "more";
-  doneThreads = new Set(done ? JSON.parse(done) : []);
+  const fallback = saved ? JSON.parse(saved) : null;
+  pendingThreads = fallback?.pending || Object.fromEntries((done ? JSON.parse(done) : []).map(key => [key, { state: "done" }]));
+  threadStates = { ...(REM.live ? REM.threads : { ...REM.threads, ...fallback?.states }), ...pendingThreads };
+  REM.threads = threadStates;
+  await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
+  await readerStorage(doneStorageKey(), "[]");
   if (location.protocol === "file:" && (theme === "light" || theme === "dark")) document.documentElement.dataset.theme = theme;
   if (REM?.shared || location.protocol === "file:" && privacy === "hidden") document.documentElement.classList.add("hide-private");
   render();
+  reconcileThreads().then(() => render());
 });
 </script>
 </body>

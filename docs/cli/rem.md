@@ -692,8 +692,8 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
 - **Today is one queue**: everything that needs you, newest and due first, one card
-  each, with one primary action per card and a quiet **Mark done** that only this
-  browser remembers. The schedule prepares one local reply draft per mail thread
+  each, with one primary action per card and a quiet **Mark done** saved in the
+  notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
   waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day,
   on the `rem-reply-draft` skill: it reads who you both are (your page, their page,
   the relationship, how they write), decides on each ask in the latest message, and
@@ -705,7 +705,12 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   from your mailbox; **Write full screen** opens the letter to edit by hand, with
   that background and the thread beside it, and sends your edited text; **Edit in
   Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
-  skipped until new mail arrives. The channel switch (Mail / Lark / WhatsApp)
+  skipped until new mail arrives, when it returns with the new message date.
+  Done and Skip offer **Undo** for five seconds; the record page keeps Undo
+  available later, including a collapsed history if the original thread text
+  has changed. Skipping preserves the draft body. The live reader shares these
+  decisions through `.state/threads.json`; localStorage holds unsynced offline
+  actions and reconciles them on load, focus or reconnection. The channel switch (Mail / Lark / WhatsApp)
   rewrites the reply for that channel and sends it as you through `lark-cli` or
   `co whatsapp`, when the notebook knows how to reach the person there. Sending
   and rewriting work in the live reader on this computer only; a click is the

@@ -290,7 +290,7 @@ def test_rem_discarded_state_survives_reader_reload_and_new_mail_resets_it(noteb
     drafts.promote(notebook, {**row, 'body': 'I will review it.', 'sources': ['gmail:one']})
     drafts.discard(notebook, row['id'])
     state = reply_drafts(notebook, local=True)[0]
-    assert state['status'] == 'discarded' and 'body' not in state
+    assert state['status'] == 'skipped' and state['body'] == 'I will review it.'
     assert not drafts.queue(notebook)
     mail_thread(notebook, latest='two')
     assert reply_drafts(notebook, local=True)[0]['status'] == 'pending'
