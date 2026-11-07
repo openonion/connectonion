@@ -526,3 +526,33 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
     assert commands[1][:3] == ['lark-cli', 'im', '+messages-send'] and 'ou_mia' in commands[1] and '看过了，周二前给你反馈。' in commands[1]
     client.reply.assert_not_called()
     assert read_json(drafts.path(notebook, row['id']), {})['sent_receipt'] == {'message_id': 'om_1'}
+
+
+def test_rem_prepare_now_drafts_one_waiting_thread_on_the_owners_click(notebook, monkeypatch):
+    from connectonion.rem import drafts, runner
+    mail_thread(notebook, 'gmail')
+    row = drafts.queue(notebook)[0]
+
+    def fake_turn(workspace, prompt, config, stage, session=''):
+        (workspace / 'candidate.json').write_text(json.dumps({'body': 'Hi Mia, Tuesday works.', 'gist': '周二可以', 'why': '她在等回复', 'sources': ['gmail:one']}))
+        return {'outcome': 'natural'}
+    monkeypatch.setattr(runner, 'run_task', fake_turn)
+    saved = drafts.prepare_now(notebook, row['provider'], row['thread'])
+    assert saved['status'] == 'prepared' and saved['body'] == 'Hi Mia, Tuesday works.' and saved['id'] == row['id']
+    assert drafts.queue(notebook) == []
+    with pytest.raises(Exception, match='cannot be drafted yet'):
+        drafts.prepare_now(notebook, 'gmail', 'mail:gmail:no-such-thread')
+
+
+def test_rem_send_refuses_a_second_send_of_the_same_draft(notebook, monkeypatch):
+    from connectonion.rem import drafts
+    mail_thread(notebook, 'outlook')
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Sent once.', 'sources': ['outlook:one']})
+    client = Mock()
+    client.reply.return_value = {'id': 'sent-1'}
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    assert drafts.send(notebook, row['id']) == {'status': 'sent'}
+    with pytest.raises(Exception, match='already sent'):
+        drafts.send(notebook, row['id'])
+    assert client.reply.call_count == 1

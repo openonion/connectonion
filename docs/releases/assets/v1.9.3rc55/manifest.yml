@@ -8,7 +8,7 @@ images:
   scenario: Open the fictional notebook's Today page with a prepared reply for Mia
     Chen's thread; no copy-prompt button exists.
   viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
-  commit: e8a0e1ba561cf853ef1a3a0f4d29cffeb22ff33c
+  commit: 25962979db064ae26210540baf379d85dd335a37
   source_run: 'local: python scripts/capture_193rc55_release_reader.py docs/releases/assets/v1.9.3rc55'
 - file: rem-reply-writer.png
   alt: The full-screen writer with the letter on the left and the background on the
@@ -17,7 +17,7 @@ images:
     reply and the gist sit beside it, and Send is the only strong control.
   scenario: Click Write full screen on Mia's card.
   viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
-  commit: e8a0e1ba561cf853ef1a3a0f4d29cffeb22ff33c
+  commit: 25962979db064ae26210540baf379d85dd335a37
   source_run: 'local: python scripts/capture_193rc55_release_reader.py docs/releases/assets/v1.9.3rc55'
 - file: rem-today-phone.png
   alt: Today on a 390px phone with the primary action on the first screen
@@ -25,5 +25,5 @@ images:
     and nothing scrolls sideways.
   scenario: Load the same page at 390x844 with the prepared reply injected.
   viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
-  commit: e8a0e1ba561cf853ef1a3a0f4d29cffeb22ff33c
+  commit: 25962979db064ae26210540baf379d85dd335a37
   source_run: 'local: python scripts/capture_193rc55_release_reader.py docs/releases/assets/v1.9.3rc55'

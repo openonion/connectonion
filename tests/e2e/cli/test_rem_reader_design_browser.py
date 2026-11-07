@@ -281,7 +281,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('.waiting-ledger > li').count() == 3
     assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
-    assert page.locator('.today-thread .waiting-age').inner_text().startswith('due Oct 3, 2026')
+    assert page.locator('.today-thread .waiting-age b').inner_text().startswith('due Oct 3, 2026')
     assert 'Data-sharing addendum' in page.locator('.waiting-ledger .waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1

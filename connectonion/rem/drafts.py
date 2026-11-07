@@ -190,24 +190,39 @@ def open_provider(root, draft_id):
         return receipt
 
 
-def redraft(root, draft_id, channel):
-    """Write the same reply for another channel: a chat message is not a mail body."""
+def _write_now(root, row, channel):
+    """One drafting turn for one thread, the same path the night turn takes."""
     from . import runner
     from .config import read_config
+    config = read_config(root)
+    state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+        task = prepare(root, {**row, 'channel': channel}, config, directory=Path(directory))
+        runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
+        plan = check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
+    promote(root, {**plan, 'channel': channel, 'phone': _phone(_identities(root, row)['person'])})
+    return read_json(path(root, row['id']), {})
+
+
+def redraft(root, draft_id, channel):
+    """Write the same reply for another channel: a chat message is not a mail body."""
     from .files import maintenance_lock
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
     with maintenance_lock(root):
         _current(root, draft_id)
         row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
-        config = read_config(root)
-        state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
-            task = prepare(root, {**row, 'channel': channel}, config, directory=Path(directory))
-            runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
-            plan = check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
-        promote(root, {**plan, 'channel': channel, 'phone': _phone(_identities(root, row)['person'])})
-    return read_json(path(root, draft_id), {})
+        return _write_now(root, row, channel)
+
+
+def prepare_now(root, provider, thread):
+    """Draft one waiting reply on the owner's click instead of waiting for the night."""
+    from .files import maintenance_lock
+    with maintenance_lock(root):
+        row = next((row for row in candidates(root) if row['provider'] == provider and row['thread'] == thread), None)
+        if row is None:
+            raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
+        return _write_now(root, row, 'mail')
 
 
 def _phone(person):
@@ -251,6 +266,8 @@ def send(root, draft_id, body=None):
         raise RemError('The reply body is empty')
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        if saved.get('status') == 'sent':
+            raise RemError('This reply was already sent; nothing was sent again')
         text = body if body is not None else saved['body']
         if saved.get('channel', 'mail') != 'mail':
             receipt = _send_chat(saved, text)

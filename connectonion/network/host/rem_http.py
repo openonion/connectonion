@@ -103,6 +103,8 @@ async def _action(scope, receive, send, root, headers):
     from ...rem import drafts, translate
     if scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
+    elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
+        operation = lambda: drafts.prepare_now(root, body["provider"], body["thread"])
     elif (body.get("action") in ("open", "discard", "send", "redraft") and isinstance(body.get("id"), str)
           and isinstance(body.get("body"), (str, type(None))) and isinstance(body.get("channel"), (str, type(None)))):
         operation = lambda: (drafts.send(root, body["id"], body.get("body")) if body["action"] == "send"

@@ -49,3 +49,15 @@ def test_rem_actions_reject_malformed_or_non_object_json(host):
             status, _, body = call(host.routes, 'POST', endpoint, cookie=f'co_rem={host.token}', body=payload)
             assert status == 400
             assert json.loads(body)['error']
+
+
+def test_rem_draft_endpoint_prepares_a_thread_now_for_the_owner(host, monkeypatch):
+    calls = []
+    monkeypatch.setattr(drafts, 'prepare_now', lambda root, provider, thread: calls.append((provider, thread)) or {'id': 'b' * 32, 'status': 'prepared'})
+    payload = json.dumps({'action': 'prepare', 'provider': 'outlook', 'thread': 'mail:outlook:abc'}).encode()
+    status, _, _ = call(host.routes, 'POST', '/rem/draft', body=payload)
+    assert status == 401 and calls == []
+    status, _, body = call(host.routes, 'POST', '/rem/draft', cookie=f'co_rem={host.token}', body=payload)
+    assert status == 200 and calls == [('outlook', 'mail:outlook:abc')] and json.loads(body)['status'] == 'prepared'
+    status, _, _ = call(host.routes, 'POST', '/rem/draft', cookie=f'co_rem={host.token}', body=json.dumps({'action': 'prepare', 'provider': 'outlook'}).encode())
+    assert status == 400

@@ -1430,8 +1430,8 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadDraft', 'draftNote', 'replyDraftCard'])
-    result = _run_reader_js(functions + r'''
+                          for name in ['threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
+    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
       const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
@@ -1458,7 +1458,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == 'mailto:avery@example.com?subject=Re%3A%20Pilot'
-    assert result['actions']['children'][0]['text'] == 'Reply to Avery'
+    assert result['actions']['children'][0]['text'] == 'Reply in mail'  # the button names what the click does
     assert result['actions']['children'][1]['text'] == 'Mark done'
     assert result['fallback']['children'][0]['text'] == 'Open the page'
     assert result['fallback']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1472,9 +1472,9 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['queueCard', 'threadDraft', 'draftNote', 'replyDraftCard',
-                                       'threadActions', 'primaryAction'])
-    result = _run_reader_js(functions + r'''
+                          for name in ['queueCard', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
+                                       'threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton'])
+    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
@@ -1506,7 +1506,10 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children']
     assert mail['children'][3]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
-    assert result['withoutDraft']['children'][3]['children'][0]['href'].startswith('mailto:avery@example.com')
+    # Without a draft the primary drafts in place; the mailbox is the explicit way out.
+    actions = result['withoutDraft']['children'][3]['children'][0]
+    assert actions['class'] == 'draft-now' and actions['children'][0]['text'] == 'Draft the reply'
+    assert actions['children'][1]['href'].startswith('mailto:avery@example.com')
     assert 'Copy prompt' not in json.dumps(result)
 
 
@@ -1592,7 +1595,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['todayEntries', 'todayThread', 'queueCard', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -1615,14 +1618,14 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
         row: todayThread(entries[2]), quoted: todayThread(quoted), dated: todayThread(dated)}));
     ''')
     assert result['selected'] == ['overdue', 'today', 'three days', 'new']
-    assert result['row']['children'][1]['children'][0]['text'] == 'due 2026-11-02'
+    assert result['row']['children'][1]['children'][1]['text'] == 'due 2026-11-02'  # [0] is the kind badge
     assert result['row']['children'][2]['children'][2]['also'] == [{'path': 'orgs/northgate-university.md'}]
     quoted = result['quoted']['children'][2]['children']
     assert quoted[0]['text'] == '“Please include the contribution details.”'
     assert 'Letter of Support draft' in quoted[1]['html']
     assert '[4]' in quoted[1]['html']
     assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot'
-    assert result['dated']['children'][1]['children'][0]['text'] == 'due 2026-11-02'
+    assert result['dated']['children'][1]['children'][1]['text'] == 'due 2026-11-02'
 
 
 def test_claim_values_use_only_current_cached_facts_for_chinese_after():
@@ -1838,7 +1841,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2140,7 +2143,7 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'threadRow'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, classList: {add() {}}});
       const href = r => '#r=' + r.path, morningWords = () => ({words: 'Review the pilot.', context: ''});
