@@ -779,3 +779,128 @@ def test_reply_boundaries_refuse_no_reply_and_empty_final_body(notebook, monkeyp
             else:
                 drafts.open_provider(notebook, row['id'])
         assert not client.mock_calls
+
+
+def test_nights_three_drafts_cover_the_first_three_today_cards(notebook, monkeypatch):
+    from connectonion.rem import drafts
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.reader import snapshot
+    from connectonion.rem.store import refresh
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    from datetime import datetime, timezone
+    monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
+    set_config(notebook, ['limits.drafts_per_night', '3'])
+    book = Notebook(notebook)
+    write_json(state_path(notebook, 'map.json'), {'owner': {'record': 'people/me.md', 'addresses': ['owner@example.test']}})
+    for index in range(12):
+        book.write(f'people/fern-{index}.md', f'# Fern {index}\n\n## Open threads\n'
+                   f'- You owe Fern {index} a review; due 2026-11-{index + 1:02}. [1]\n\n'
+                   f'## Sources\n- [1] gmail:review-{index}\n')
+        retain_message(notebook, 'gmail', {'id': f'review-{index}', 'from': f'fern-{index}@example.test',
+                       'to': ['owner@example.test'], 'subject': 'Review', 'thread': f'review-{index}',
+                       'date': f'2026-11-{index + 1:02}T01:00:00+00:00'}, 'Please review.', fetched_at=service.now().isoformat())
+    refresh(notebook)
+    cap = read_config(notebook)['limits']['drafts_per_night']
+    rows = drafts.queue(notebook)[:cap]
+    assert [row['thread'] for row in rows] == [f'mail:gmail:review-{i}' for i in range(3)]
+    for row in rows:
+        drafts.promote(notebook, {**row, 'body': 'The review is attached.', 'sources': [row['version']]})
+    data = snapshot(notebook, local=True)
+    first = [row for row in data['today_queue'] if row['section'] == 'today'][:cap]
+    assert [row['reply']['thread'] for row in first] == [row['thread'] for row in rows]
+    assert {row['thread'] for row in data['drafts'] if row['status'] == 'prepared'} == {row['reply']['thread'] for row in first}
+
+
+@pytest.mark.parametrize('body', ['My feedback: [Add your feedback on Demo A here.]',
+                                 'My feedback: 【Please add feedback】', 'My feedback: ［填写意见］',
+                                 'My feedback: 【需要你：意见】', 'My feedback: 【需要你： — 】', 'My feedback: 【需要你：意见 — date not agreed',
+                                 'My feedback: [Add feedback'])
+def test_reply_check_rejects_noncanonical_bracketed_slots(notebook, body):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, send='owner')
+    with pytest.raises(RemError, match='slot'):
+        drafts.check(task, {'result': json.dumps({'body': body, 'sources': ['gmail:one'], 'send': 'owner'})})
+
+
+@pytest.mark.parametrize('body', ['Feedback: 【需要你：演示意见 — date not agreed】',
+                                 'Feedback: [Add feedback here.]', 'Feedback: [Add feedback',
+                                 'Feedback: 【需要你：意见 — date not agreed'])
+@pytest.mark.parametrize('edited', [False, True])
+def test_reply_send_refuses_marked_parts_before_contacting_any_provider(notebook, monkeypatch, body, edited):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Complete.' if edited else body, 'sources': ['gmail:one']})
+    client = Mock()
+    client.reply.return_value = {'id': 'sent'}
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    with pytest.raises(RemError, match='Fill the marked part first'):
+        drafts.send(notebook, row['id'], body if edited else None)
+    client.reply.assert_not_called()
+    assert read_json(drafts.path(notebook, row['id']), {})['status'] == 'prepared'
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+def test_today_reply_state_uses_latest_archived_sender_and_missing_original(notebook, provider):
+    from connectonion.rem.mail_archive import retain_message, observed_message_path
+    from connectonion.rem.store import refresh
+    from connectonion.rem.today import queue
+    mail_thread(notebook, provider)
+    assert queue(notebook)[0]['reply']['state'] == 'queued'
+    observed_message_path(notebook, provider, 'one').unlink()
+    reply = queue(notebook)[0]['reply']
+    assert reply['state'] == 'unarchived' and reply['provider'] == provider
+    retain_message(notebook, provider, {'id': 'own-promise', 'from': 'owner@example.test',
+                   'to': ['fern@example.test'], 'subject': 'Pilot review', 'thread': 'pilot',
+                   'date': '2026-11-07T03:00:00+00:00'}, "I'll watch the demo and send feedback.", fetched_at=service.now().isoformat())
+    refresh(notebook)
+    reply = queue(notebook)[0]['reply']
+    assert reply['state'] == 'task' and reply['last_word_yours']
+    assert reply['since'] == '2026-11-07'
+    assert reply['source'] == provider + ':own-promise'
+    assert reply['promise'] == "I'll watch the demo and send feedback."
+
+
+def test_today_morning_selects_the_named_counterparts_request_once_per_page(notebook):
+    from datetime import date
+    from connectonion.rem.today import queue
+    records = []
+    for name, lines in [('Mara', ['You owe Fern a talk abstract.', 'You owe Mara the signed draft.', 'You owe Mara a second answer.']),
+                        ('Fern', ['You owe Fern the signed draft.']), ('Avery', ['You owe Avery the receipts.'])]:
+        path = f'people/{name.lower()}.md'
+        text = '# ' + name + '\n\n## Open threads\n' + '\n'.join('- ' + line for line in lines)
+        Notebook(notebook).write(path, text)
+        records.append({'path': path, 'text': text, 'title': name})
+    morning = [row for row in queue(notebook, records=records, contexts={}, as_of=date(2026, 11, 8)) if row['section'] == 'morning']
+    assert [row['text'] for row in morning] == ['You owe Mara the signed draft.', 'You owe Fern the signed draft.', 'You owe Avery the receipts.']
+
+
+def test_today_order_does_not_depend_on_reader_excerpt_budget(notebook):
+    from datetime import date
+    from connectonion.rem.today import queue
+    mail_thread(notebook)
+    Notebook(notebook).write('people/avery.md', '# Avery\n\n## Open threads\n- You owe Avery a receipt.\n')
+    full = queue(notebook, as_of=date(2026, 11, 8))
+    without_excerpts = queue(notebook, contexts={}, as_of=date(2026, 11, 8))
+    assert [(row['key'], row['since']) for row in without_excerpts] == [(row['key'], row['since']) for row in full]
+
+
+@pytest.mark.parametrize('day', ['31 November', 'November 00', '2026-13-12', '2026-11-31'])
+def test_today_ignores_invalid_notebook_dates_instead_of_breaking_the_reader(notebook, day):
+    from datetime import date
+    from connectonion.rem.today import queue
+    Notebook(notebook).write('people/fern.md', f'# Fern\n\n## Open threads\n- You owe Fern a review; since {day}.\n')
+    rows = queue(notebook, contexts={}, as_of=date(2026, 11, 8))
+    assert rows[0]['since'] == '' and rows[0]['section'] == 'morning'
+
+
+def test_waiting_on_someone_else_is_not_advertised_as_draftable(notebook):
+    from connectonion.rem import drafts
+    from connectonion.rem.today import queue
+    mail_thread(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('You owe Fern a pilot review.', 'You asked Fern for a pilot review.'))
+    assert drafts.queue(notebook) == []
+    assert queue(notebook)[0]['reply']['state'] == 'waiting'

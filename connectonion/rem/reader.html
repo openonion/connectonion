@@ -207,6 +207,12 @@
   .waiting-intro, .quiet-line { color: var(--ink-2); font-size: 14px; }
   .morning-primary { max-width: 760px; }
   .today-brief .section { margin-top: 0; }
+  .owner-slot { background: #fff1bd; color: #4b3300; border: 1px solid #b07800; border-radius: 5px; padding: 2px 5px; box-decoration-break: clone; }
+  .draft-reason { grid-column: 1 / -1; }
+  .mail-actions .cmd { min-width: 0; max-width: 100%; flex-basis: 100%; }
+  .mail-actions .cmd:not([hidden]) { display: flex; align-items: center; gap: 8px; }
+  .mail-actions .cmd code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mail-actions .cmd button { min-height: 44px; }
   .today-threads, .waiting-ledger { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   .today-threads + .waiting-ledger { margin-top: 12px; }
   .qcard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 18px 20px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); box-shadow: 0 1px 2px rgba(21, 26, 51, .04); }
@@ -1672,6 +1678,19 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    "Task: {promise} · since {since}": "任务：{promise} · 自 {since} 起",
+    "Task": "任务",
+    "Open the recorded source": "打开已记录的来源",
+    "Waiting for their reply; open the thread to follow up.": "正在等对方回复；可打开原会话跟进。",
+    "Draft now": "现在起草",
+    "Open the {channel} thread": "打开 {channel} 原会话",
+    "The original is not archived from {channel}.": "{channel} 原文尚未归档。",
+    "The original is not archived from {channel}; its last read failed.": "{channel} 原文尚未归档；上次读取失败。",
+    "The last word was yours — this is a task: {promise} · since {since}": "最后一句是你说的，这是任务：{promise} · 自 {since} 起",
+    "Fill the marked part first": "先填好标出的部分",
+    "Fill in": "需要你填",
+    "Open in the live reader": "在实时阅读器里打开",
+    "date not agreed": "日期未约定",
     "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start.": "上次定时任务未完成：{evidence} · 处理阻塞后运行 co rem start。",
     "Last scheduled turn did not finish: {evidence} · Retried automatically.": "上次定时任务未完成：{evidence} · 已自动重试。",
     "Translating": "翻译中",
@@ -3307,6 +3326,20 @@ function threads(r) {
 // One merged row set for home, Open threads and the rail.
 function threadEntries() {
   if (threadEntries.cached) return threadEntries.cached;
+  if (REM.today_queue) {
+    const records = new Map(listedRecords().map(r => [r.path, r]));
+    const entries = new Map([...records.values()].flatMap(r => threads(r).items.map(t => [doneKey({r, t}), {r, t}])));
+    const rows = REM.today_queue.map(row => {
+      const chosen = entries.get(row.key);
+      if (!chosen) return null;
+      const members = row.keys.map(key => entries.get(key)).filter(Boolean);
+      const also = [...new Map(members.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
+      return {...chosen, t: {...chosen.t, since: row.since, due: row.due, quiet: row.quiet, dir: row.dir}, also, members};
+    }).filter(Boolean);
+    if (threadEntries.cacheEnabled) threadEntries.cached = rows;
+    return rows;
+  }
+  // Older snapshots lack the Python projection; only their page ledger uses this parser.
   const order = (a, b) => (a.t.due || "9999").localeCompare(b.t.due || "9999")
     || (b.t.since || "").localeCompare(a.t.since || "");
   const entries = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category))
@@ -3512,7 +3545,7 @@ function mailtoLink(contact, cls, label) {
   return el("a", { class: cls, href: "mailto:" + contact.address + (subject ? "?subject=" + encodeURIComponent(subject) : ""), text: label });
 }
 function draftNowButton(entry, kind, contact) {
-  const button = el("button", { type: "button", class: "btn-act", text: t("Draft the reply") });
+  const button = el("button", { type: "button", class: "btn-act", text: t("Draft now") });
   const status = el("span", { class: "quiet-line draft-status", role: "status" });
   const thread = kind.thread.split(":").slice(2).join(":") || kind.thread;
   button.onclick = async () => {
@@ -3525,18 +3558,29 @@ function draftNowButton(entry, kind, contact) {
     REM.drafts = [...(REM.drafts || []).filter(d => d.id !== result.id), result];
     render();
   };
-  return el("span", { class: "draft-now" }, [button, mailtoLink(contact, "btn-quiet", t("Reply in {channel}", { channel: kind.channel })), status]);
+  return el("span", { class: "draft-now" }, [button, status]);
 }
 function primaryAction(entry) {
-  const { r, t: thread } = entry, contact = threadContact(entry), kind = threadKind(entry);
-  if (contact && r.path !== REM.owner) {
-    if (kind?.mail && thread.dir === "mine" && REM.live && kind.thread) return draftNowButton(entry, kind, contact);
-    const channel = kind?.mail ? kind.channel : t("mail");
-    const label = thread.dir === "theirs" ? t("Follow up in {channel}", { channel }) : t("Reply in {channel}", { channel });
-    return mailtoLink(contact, "btn-act", label);
+  const { r } = entry, kind = threadKind(entry);
+  const reply = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
+  if (REM.live && reply?.state === "queued") {
+    return draftNowButton(entry, {kind: reply.provider, thread: reply.thread}, null);
+  }
+  if (reply?.state === "unarchived" && !reply.thread) {
+    const number = /\[(W?\d+)\]/.exec(entry.t.originalText || entry.t.text)?.[1];
+    return el("a", {class: "btn-act", href: href(r) + (number ? "&h=src-" + number : "&h=open-threads"), text: t("Open the recorded source")});
+  }
+  if (reply?.provider || kind?.mail) {
+    const provider = reply?.provider || kind.kind, channel = provider === "outlook" ? "Outlook" : "Gmail";
+    const raw = reply?.thread || kind?.thread || "", thread = raw.split(":").slice(2).join(":") || raw;
+    const source = reply?.source?.replace(/^(gmail|outlook):/, "") || "";
+    const url = provider === "gmail" ? "https://mail.google.com/mail/u/0/#all/" + encodeURIComponent(thread || source)
+      : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(source);
+    return el("a", {class: "btn-act", href: url, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel})});
   }
   return el("a", { class: "btn-act", href: href(r) + "&h=open-threads", text: t("Open the page") });
 }
+
 function threadActions(entry) {
   const undo = isDone(entry);
   const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
@@ -3556,6 +3600,7 @@ function openWriter(draft, who, onSend) {
   body.value = draft.body;
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
+  const notice = el("span", { class: "mail-status", role: "status" });
   const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
   const dialog = el("dialog", { class: "writer" }, [
     el("div", { class: "writer-letter" }, [
@@ -3564,7 +3609,7 @@ function openWriter(draft, who, onSend) {
         draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]),
       body,
-      el("div", { class: "writer-actions" }, [send, close, el("span", { class: "mail-note", text: t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" }) })])]),
+      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" }) })])]),
     el("aside", { class: "writer-side" }, [
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
@@ -3573,7 +3618,14 @@ function openWriter(draft, who, onSend) {
       cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
         el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
         el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
-  send.onclick = () => { dialog.close(); onSend(body.value.trim() === draft.body.trim() ? undefined : body.value); };
+  send.onclick = () => {
+    if (/[\[\]［］【】]/.test(body.value)) {
+      notice.textContent = t("Fill the marked part first");
+      body.focus();
+      return;
+    }
+    dialog.close(); onSend(body.value.trim() === draft.body.trim() ? undefined : body.value);
+  };
   close.onclick = () => dialog.close();
   dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
@@ -3584,8 +3636,22 @@ function threadDraft(entry) {
   const ids = obligationEvidence(entry).ids;
   return (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
 }
-function draftNote(draft) {
-  if (!draft || draft.status === "prepared") return null;
+function draftNote(draft, entry) {
+  if (draft?.status === "prepared") return null;
+  const reply = entry && (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
+  if ((!draft || draft.status === "pending") && reply) {
+    const channel = reply.provider === "outlook" ? "Outlook" : "Gmail";
+    const state = REM.status?.mailboxes?.[reply.provider] || "";
+    const text = reply.state === "task" ? t(reply.last_word_yours === false ? "Task: {promise} · since {since}" : "The last word was yours — this is a task: {promise} · since {since}",
+      {promise: unlabelled(reply.promise || entry.t.text), since: reply.since || entry.t.since || t("date not agreed")})
+      : reply.state === "unarchived" ? t(/last read failed|read failed/i.test(state)
+        ? "The original is not archived from {channel}; its last read failed."
+        : "The original is not archived from {channel}.", {channel})
+      : reply.state === "waiting" ? t("Waiting for their reply; open the thread to follow up.")
+      : t(REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off");
+    return el("p", {class: "quiet-line draft-reason", text});
+  }
+  if (!draft) return null;
   if (draft.status === "no_reply") return el("p", { class: "quiet-line", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
   return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
@@ -3593,6 +3659,7 @@ function draftNote(draft) {
 // A reply is shown as the mail it will become: who it goes to, the subject, the
 // words, and beside them the owner's-language reading. One button sends it.
 function replyDraftCard(draft) {
+  const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
@@ -3605,6 +3672,9 @@ function replyDraftCard(draft) {
     if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
     return pill;
   }));
+  const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip,
+      el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
+        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]);
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -3614,15 +3684,20 @@ function replyDraftCard(draft) {
       : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
           el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
     el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
-      el("div", { class: "mail-text", text: draft.body }),
+      el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
+        parts.length > 1 ? parts.map(part =>
+          /^(?:\[|［|【)/.test(part) ? el("mark", {class: "owner-slot", text: t("Fill in") + " · " + part}) : part) : []),
       draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist })]) : null]),
     draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null,
-    el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip,
-      el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
-        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]), status]);
+    actions, status]);
   if (!REM.live) {
-    send.disabled = edit.disabled = true;
-    status.textContent = t("Open the live reader on this computer to send or edit this draft.");
+    const open = el("button", {type: "button", class: "btn-act", text: t("Open in the live reader")});
+    const command = commandChip(remCommand("open"));
+    command.hidden = true;
+    open.onclick = () => {command.hidden = false;};
+    actions.replaceChildren(open, command);
+    channels.replaceChildren(el("span", {text: t({mail: "Mail", lark: "Lark", whatsapp: "WhatsApp"}[channel])}));
+    return draft.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [card])])) : card;
   }
   const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; };
   const act = async (action, body, channel) => {
@@ -3647,7 +3722,10 @@ function replyDraftCard(draft) {
     card.replaceChildren(el("p", { class: "mail-done", text: t(next === "sent" ? "Sent to {name}" : "Skipped", { name: who?.title || to.name }) }));
   };
   const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); status.textContent = t("Could not update draft. Check the connection and try again."); });
-  send.onclick = () => run("send");
+  send.onclick = () => {
+    if (/[\[\]［］【】]/.test(draft.body)) {status.textContent = t("Fill the marked part first"); return;}
+    run("send");
+  };
   write.onclick = () => openWriter(draft, who, body => run("send", body));
   edit.onclick = () => run("open");
   skip.onclick = () => {
@@ -4575,27 +4653,9 @@ function morningWords(text, r, thread = {}) {
 }
 // A copied obligation belongs on its named counterpart's page, once per morning.
 function morningEntries(entries) {
-  const people = inCategory("people"), pages = new Set(), obligations = new Set(), chosen = [];
-  for (const entry of entries) {
-    const { r, t } = entry;
-    if (t.dir !== "mine" || t.quiet || isDone(entry) || pages.has(r.path)) continue;
-    const prefix = /^you owe\s+(.+)/i.exec(plainLine(t.originalText || t.text));
-    const addressed = name => prefix?.[1].toLowerCase().startsWith(name.toLowerCase() + " ") || prefix?.[1].toLowerCase().startsWith(name.toLowerCase() + ":");
-    const titles = people.map(person => person.title.trim().replace(/\s*\([^()]*\)$/, "").toLowerCase());
-    const full = titles.filter(name => /\s/.test(name) && addressed(name));
-    const longest = Math.max(0, ...full.map(name => name.length));
-    const names = new Set(full.length ? full.filter(name => name.length === longest)
-      : titles.map(name => name.split(/\s+/)[0]).filter(addressed));
-    const candidates = people.filter(person => recordedNames(person).some(name => names.has(full.length ? name : name.split(/\s+/)[0])));
-    const counterpart = candidates.length === 1 ? candidates[0] : null;
-    if (r.category === "people" && counterpart && r.path !== counterpart.path && !entry.also?.length) continue;
-    const obligation = (counterpart?.path || r.path) + ":" + morningWords(t.text, r, t).words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-    if (obligations.has(obligation)) continue;
-    chosen.push(entry); pages.add(r.path); obligations.add(obligation);
-    if (chosen.length === 3) break;
-  }
-  return chosen;
+  return todayEntries(entries, "morning");
 }
+
 function threadDate(day) {
   return fmtDate(day);
 }
@@ -4610,14 +4670,15 @@ function queueCard(entry, dateText) {
   const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
   const overdue = thread.due && thread.due < calendarDay(REM.as_of);
   const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join(""), draft = threadDraft(entry);
+  const reply = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
   const fold = el("button", { type: "button", class: "fold", "aria-expanded": "true", text: t("Less") });
   const card = el("li", { class: "qcard" + (overdue ? " overdue" : "") + (draft?.status === "prepared" ? " has-mail" : "") }, [
     el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: r.path === REM.owner ? t("You") : initials }),
       el("div", {}, [el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
         metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
-    el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
+    el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [reply?.state === "task" ? el("span", {class: "kind-badge", text: t("Task")}) : kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, r.path) }) : null]), alsoOn(also)]),
-    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft), fold]);
+    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), fold]);
   fold.onclick = () => {
     const open = card.classList.toggle("folded");
     fold.textContent = t(open ? "More" : "Less");
@@ -4722,11 +4783,12 @@ function waitingMore(counts) {
   const parts = [counts.mine ? t("{n} waiting on you", { n: counts.mine }) : "", counts.theirs ? t("{n} on others", { n: counts.theirs }) : ""];
   return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: parts.filter(Boolean).join(" · ") + " →" })]);
 }
-function todayEntries(entries) {
-  // Today's brief looks three days ahead so a Friday deadline is seen on Tuesday.
-  const today = calendarDay(REM.as_of), soon = new Date(Date.parse(today + "T00:00:00Z") + 3 * DAY_MS).toISOString().slice(0, 10);
-  return entries.filter(entry => !entry.t.quiet && !isDone(entry) && ["mine", "theirs"].includes(entry.t.dir)
-    && (entry.t.due ? entry.t.due <= soon : entry.t.since === today));
+function todayEntries(entries, section = "today") {
+  // Python's snapshot is the ranking authority for both the reader and the night.
+  return (REM.today_queue || []).filter(row => row.section === section).map(row =>
+    entries.find(entry => (row.keys || [row.key]).includes(doneKey(entry))
+      || entry.members?.some(member => (row.keys || [row.key]).includes(doneKey(member)))))
+    .filter((entry, i, rows) => entry && !isDone(entry) && rows.indexOf(entry) === i);
 }
 
 function todayThread(entry) {

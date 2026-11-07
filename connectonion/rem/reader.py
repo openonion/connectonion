@@ -252,6 +252,11 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": listing(root), "counts": counts(root, found),
             "owner": owner}
+    from .today import queue as today_queue
+    data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    if not local:
+        for row in data['today_queue']:
+            row.pop('reply', None)
     return _today_data(data) if today else data
 
 

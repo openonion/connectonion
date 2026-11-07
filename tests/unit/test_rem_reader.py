@@ -1408,6 +1408,7 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
         make('Old thread', 'mine', '', '2026-10-19'), make('Future thread', 'mine', '2026-10-23'),
         {...make('Quiet thread', 'theirs', '2026-09-01'), t: {text: 'Quiet thread', dir: 'theirs', due: '2026-09-01', quiet: true}}];
       const threadEntries = () => entries;
+      REM.today_queue = [0, 1, 2, 4].map(i => ({key: doneKey(entries[i]), section: 'today'}));
       (async () => {
         const before = todayEntries(entries).length;
         setDone(entries[0], true);
@@ -1498,8 +1499,8 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     buttons = result['prepared']['children'][3]['children']
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
-    assert result['actions']['children'][0]['href'] == 'mailto:avery@example.com?subject=Re%3A%20Pilot'
-    assert result['actions']['children'][0]['text'] == 'Reply in mail'  # the button names what the click does
+    assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
+    assert result['actions']['children'][0]['text'] == 'Open the page'  # no archived thread identity
     assert result['actions']['children'][1]['text'] == 'Mark done'
     assert result['fallback']['children'][0]['text'] == 'Open the page'
     assert result['fallback']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1519,7 +1520,8 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
-      const REM = {live: true, as_of: '2026-10-30', drafts: [draft]};
+      const REM = {live: true, as_of: '2026-10-30', drafts: [draft], today_queue: [{key: 'avery', keys: ['avery'], reply: {state: 'queued', provider: 'gmail', thread: 'mail:gmail:pilot'}}]};
+      const doneKey = () => 'avery';
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
       const mailbox = address => ({address, name: 'Avery'}), personByAddress = () => null;
@@ -1547,10 +1549,10 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children']
     assert mail['children'][3]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
-    # Without a draft the primary drafts in place; the mailbox is the explicit way out.
+    # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
-    assert actions['class'] == 'draft-now' and actions['children'][0]['text'] == 'Draft the reply'
-    assert actions['children'][1]['href'].startswith('mailto:avery@example.com')
+    assert actions['class'] == 'draft-now' and actions['children'][0]['text'] == 'Draft now'
+    assert 'mailto:' not in json.dumps(actions)
     assert 'Copy prompt' not in json.dumps(result)
 
 
@@ -1599,7 +1601,9 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       lines.push('- You owe Mara an access decision; since 2026-10-20 [4].');
       REM.records = [{path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', category: 'people',
         text: '# Mara\n\n## Open threads\n' + lines.join('\n') + '\n\n## Sources\n- [4] outlook:shared'}];
-      const entries = threadEntries(), today = todayEntries(entries);
+      const entries = threadEntries(), doneKey = entry => entry.r.path + '\n' + entry.t.text;
+      REM.today_queue = entries.map(entry => ({key: doneKey(entry), section: 'today'}));
+      const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
         headline: briefHeader({mine: entries.length}, today).children[1].text}));
@@ -1646,7 +1650,8 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
         make('new', '', '2026-10-30', {dir: 'theirs'}), make('old', '', '2026-10-29'),
         make('done', '2026-10-30'), make('quiet', '2026-10-01', '', {quiet: true}),
         make('undirected', '2026-10-30', '', {dir: 'plain'})];
-      const isDone = entry => entry.t.text === 'done';
+      const isDone = entry => entry.t.text === 'done', doneKey = entry => entry.r.path + '\n' + entry.t.text;
+      REM.today_queue = [0, 1, 2, 4, 6].map(i => ({key: doneKey(entries[i]), section: 'today'}));
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children, classList: {add() {}}}), href = page => page.path;
       const capFirst = text => text, threadWords = text => text, plainLine = text => text;
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
@@ -2818,3 +2823,131 @@ def test_plain_words_preserves_document_dates_and_a_deadline_not_shown_in_meta()
     assert result == ['You owe Mara the agreement dated (2026-10-03).',
                       'Send the plan — due 2026-10-03.', 'Send the plan.',
                       'She asked “Deliver by 2026-10-03 [1]”.']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_undrafted_today_reason_and_action_follow_archived_reply_state(language):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['draftNote', 'primaryAction', 'draftNowButton'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const REM = {live: true, status: {worker: {enabled: true}, mailboxes: {outlook: 'last read failed 2026-11-07'}}, today_queue: []};
+      const entry = {r: {path: 'people/fern.md'}, t: {text: 'You promised to watch the demo and send feedback.', since: '2026-11-01', dir: 'mine'}};
+      const doneKey = () => 'fern', href = () => '#r=fern';
+      const threadContact = () => ({address: 'fern@example.test'}), threadKind = () => ({mail: true, kind: 'outlook', channel: 'Outlook', thread: 'mail:outlook:demo'});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const mailtoLink = () => ({text: 'compose is not a thread'}), fmtDate = day => day;
+      const states = ['queued', 'unarchived', 'task'].map(state => {
+        REM.today_queue = [{key: 'fern', keys: ['fern'], reply: {state, provider: 'outlook', thread: 'mail:outlook:demo',
+          source: 'outlook:demo', promise: 'watch the demo and send feedback', since: '2026-11-01'}}];
+        return {state, note: draftNote(null, entry), action: primaryAction(entry)};
+      });
+      console.log(JSON.stringify(states));
+    ''')
+    queued, missing, task = result
+    assert queued['action']['children'][0]['text'] == ('现在起草' if language == 'zh' else 'Draft now')
+    assert ('今晚' if language == 'zh' else 'tonight') in queued['note']['text']
+    assert 'Outlook' in missing['note']['text']
+    assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing['note']['text']
+    assert ('尚未归档' if language == 'zh' else 'not archived') in missing['note']['text']
+    assert ('任务' if language == 'zh' else 'task') in task['note']['text']
+    assert 'watch the demo and send feedback' in task['note']['text'] and '2026-11-01' in task['note']['text']
+    for row in (missing, task):
+        assert row['action']['text'] == ('打开 Outlook 原会话' if language == 'zh' else 'Open the Outlook thread')
+        assert row['action']['href'].startswith('https://outlook.live.com/')
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['replyDraftCard'])
+    result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;}});
+      const mailbox = address => ({address, name: 'Fern'}), personByAddress = () => null;
+      const remCommand = args => "co rem --root '/tmp/fictional notebook' " + args;
+      const commandChip = command => ({tag: 'div', class: 'cmd', text: command});
+      const draft = {id: 'demo', provider: 'gmail', to: 'fern@example.test', subject: 'Demo',
+        body: 'Hello Fern. 【需要你：演示意见 — date not agreed】\nSecond 【需要你：时间 — date not agreed】'};
+      const card = replyDraftCard(draft);
+      const nodes = [];
+      function visit(node) { if (node && typeof node === 'object') {nodes.push(node); (node.children || []).forEach(visit);} }
+      visit(card);
+      console.log(JSON.stringify({card, chips: nodes.filter(node => node.class === 'owner-slot'),
+        buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
+        commands: nodes.filter(node => node.class === 'cmd')}));
+    ''')
+    assert len(result['chips']) == 2
+    assert all('Fill in' in chip['text'] for chip in result['chips'])
+    if live:
+        assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
+    else:
+        assert result['buttons'] == ['Open in the live reader']
+        assert result['commands'][0]['text'] == "co rem --root '/tmp/fictional notebook' open"
+
+
+def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
+    function = re.search(r'function openWriter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const nodes = [], sent = [], REM = {};
+      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children,
+        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}}; nodes.push(node); return node;};
+      const mailbox = address => ({address, name: 'Fern'}), document = {body: {appendChild() {}}};
+      openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, body => sent.push(body));
+      const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
+      const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
+      send.onclick();
+      const blocked = {sent: sent.length, closed: !!dialog.closed, notice: nodes.some(node => node.textContent === 'Fill the marked part first')};
+      body.value = 'The demo is ready.';
+      send.onclick();
+      console.log(JSON.stringify({blocked, sent}));
+    ''')
+    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': True}
+    assert result['sent'] == ['The demo is ready.']
+
+
+def test_today_reader_preserves_python_ranks_for_similar_requests_in_distinct_mail_threads(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import drafts, service
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.reader import snapshot
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    moment = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/owner.md', 'addresses': ['owner@example.test']}})
+    for name, ask in [('Fern', 'the signed permit review'), ('Mara', 'the signed permit review'), ('Avery', 'a separate budget decision')]:
+        Notebook(tmp_path).write(f'people/{name.lower()}.md', f'# {name}\n\n## Open threads\n'
+                                f'- You owe {name} {ask}; due 2026-11-08. [1]\n\n## Sources\n- [1] gmail:{name.lower()}\n')
+        retain_message(tmp_path, 'gmail', {'id': name.lower(), 'from': name.lower() + '@example.test',
+                       'to': ['owner@example.test'], 'subject': 'Review', 'thread': name.lower(),
+                       'date': '2026-11-07T01:00:00+00:00'}, 'Please review.', fetched_at=moment.isoformat())
+    refresh(tmp_path)
+    data = snapshot(tmp_path, local=True)
+    names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm', 'direction', 'owing',
+             'rawSection', 'threadEntries', 'obligationWords', 'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'doneKey', 'shortHash']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
+    result = _run_reader_js(functions + '\nconst REM = ' + json.dumps(data) + ';\n' + r'''
+      const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
+      let OWING = null;
+      const calendarDay = value => value.slice(0, 10), daysSince = () => 0;
+      const byPath = path => REM.records.find(row => row.path === path), listedRecords = () => REM.records;
+      const plainLine = text => text, threadWords = text => text, isDone = () => false;
+      console.log(JSON.stringify(todayEntries(threadEntries()).map(entry => doneKey(entry))));
+    ''')
+    assert result == [row['key'] for row in data['today_queue'] if row['section'] == 'today']
+    assert {item['record'] for row in drafts.queue(tmp_path)[:2] for item in row['obligations']} == {key.split('\n')[0] for key in result[:2]}
+
+
+def test_unresolved_mail_alias_opens_recorded_source_instead_of_a_guessed_provider_url():
+    function = re.search(r'function primaryAction\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {today_queue: [{key: 'fern', reply: {state: 'unarchived', provider: 'outlook', source: 'outlook:123456789abc'}}]};
+      const doneKey = () => 'fern', threadKind = () => ({kind: 'outlook', mail: true}), href = () => '#r=fern';
+      const el = (tag, attrs) => ({tag, ...attrs});
+      console.log(JSON.stringify(primaryAction({r: {}, t: {text: 'You owe Fern a review. [3]'}})));
+    ''')
+    assert result['text'] == 'Open the recorded source'
+    assert result['href'] == '#r=fern&h=src-3'
