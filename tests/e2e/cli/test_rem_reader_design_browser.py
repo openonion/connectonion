@@ -279,8 +279,8 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     total = page.locator('.waiting-more a').inner_text().split()[0]
     assert f'{total} waiting on you' in page.locator('.brief-header h1').inner_text()
     assert page.locator('.waiting-ledger > li').count() == 3
-    assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.today-who').all_inner_texts() == ['Inès Halvorsen']
+    assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
+    assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
     assert page.locator('.today-thread .waiting-age').inner_text().startswith('due Oct 3, 2026')
     assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')

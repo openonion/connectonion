@@ -216,8 +216,7 @@
   .waiting-person .meta { display: block; margin: 1px 0 0; color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
   .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; font-size: 12px; color: var(--ink-2); background: var(--line-2); }
   .waiting-age { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; font: 12px/1.5 var(--ui); color: var(--ink-3); white-space: nowrap; }
-  .waiting-age b { font-weight: 600; color: var(--ink-2); }
-  .waiting-age.overdue b { color: var(--lamp); }
+  .waiting-age b { font-weight: 600; color: var(--lamp); }
   .waiting-ask { grid-column: 1 / -1; min-width: 0; }
   .waiting-ask .words { font: 18px/1.45 var(--text); margin: 0 0 6px; color: var(--ink); }
   .waiting-ask .context { color: var(--ink-2); font: 13px/1.55 var(--ui); margin: 0; }
@@ -275,6 +274,7 @@
   .mail-status { margin: 0; padding: 0 16px 10px; background: var(--sheet); }
   .mail-status:empty { display: none; }
   .mail-done { margin: 0; padding: 14px 16px; font: 600 14px var(--ui); color: var(--act-text); }
+  @media (max-width: 820px), (pointer: coarse) { .btn-act, .btn-quiet, .mail-channels .channel { min-height: 44px; } }
   @media (max-width: 719px) {
     .mail-body.bilingual { grid-template-columns: minmax(0, 1fr); }
     .mail-gist { border-left: 0; border-top: 1px solid var(--line); }
