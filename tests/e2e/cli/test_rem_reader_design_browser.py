@@ -282,7 +282,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
     assert page.locator('.today-thread .waiting-age').inner_text().startswith('due Oct 3, 2026')
-    assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
+    assert 'Data-sharing addendum' in page.locator('.waiting-ledger .waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
     assert 'Head of Partnerships' in changes.inner_text()
@@ -2033,7 +2033,7 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
     assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
     assert page.locator('.category-cards').count() == 0
-    assert 'Maps' not in page.locator('.task-links').inner_text()
+    assert page.locator('.task-links').count() == 0  # the Find section is gone; the rail is the only navigation
     page.goto(path.as_uri() + '#q=coverage')
     assert 'weekly-brief runs' not in page.locator('#main').inner_text()
     page.goto(path.as_uri() + '#r=logs%2Fskill-runs-0123456789ab.md')
@@ -4039,7 +4039,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.night-details').get_attribute('open') is not None
     assert page.locator('.night-details .night').is_visible()
     assert page.evaluate(r'''() => {
-      const keys = [...document.querySelectorAll('.today-who')].map(a => a.textContent);
+      const keys = [...document.querySelectorAll('.today-thread .today-who')].map(a => a.textContent);
       return document.documentElement.scrollWidth <= innerWidth && keys.length === 5;
     }''')
     page.locator('#q').fill('pilot renewal')
@@ -4458,8 +4458,8 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     notice = page.locator('#main > .translation-note')
     if language == 'zh':
         assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
-        assert notice.bounding_box()['y'] > page.locator('.brief-header').bounding_box()['y']
-        assert notice.bounding_box()['y'] < page.locator('.overnight').bounding_box()['y']
+        # The notice follows the queue: nothing about the reader's own upkeep sits above what needs you.
+        assert notice.bounding_box()['y'] > page.locator('.today-brief').bounding_box()['y']
         assert notice.locator('span').inner_text() == '翻译待处理，后台更新未开启'
         assert notice.locator('button, code').count() == 0
     else:
