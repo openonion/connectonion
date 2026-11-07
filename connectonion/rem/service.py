@@ -650,10 +650,8 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     return "", ""
 
 
-def status(root: Path, *, live_quota: bool = False) -> dict:
-    """`live_quota` reads the Codex meter now (#1843). Only `co rem status` asks:
-    the round and sync call this inside the lock, where a Codex process per
-    call would only slow them."""
+def status(root: Path, *, include_quota: bool = False) -> dict:
+    """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage
     config = read_config(root)
@@ -698,7 +696,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "translation_coverage": translation_coverage(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
-            **(_quota_status(config, logs) if live_quota else {})}
+            **(_quota_status(config, logs) if include_quota else {})}
 
 
 def _status_worker(worker: dict) -> dict:
@@ -771,7 +769,12 @@ def daily_cap(root: Path) -> dict:
 
 def _quota_status(config: dict, logs: list[dict]) -> dict:
     from . import quota
-    meter = quota.read(config)
+    meter = next((reading for run in logs for key in ("after", "before")
+                  if "used_percent" in (reading := (run.get("quota") or {}).get(key, {}))
+                  and reading.get("resets_at", 0) > now().timestamp()),
+                 {"unknown": "No saved quota reading for the current window"})
+    if config.get("runner") != "codex":
+        meter = {"unknown": f"the {config.get('runner')} runner has no quota meter"}
     spent = quota.points_spent(logs, meter)
     limits = config["limits"]
     if "unknown" in meter:
@@ -780,7 +783,7 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
-        week = f"{meter['used_percent']}% used on {meter['plan']}; resets {resets}"
+        week = f"{meter['used_percent']}% used on {meter['plan']} (last recorded); resets {resets}"
     # Sentences first for people; the same numbers stay structured for --json.
     return {"codex_week": week,
             "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "

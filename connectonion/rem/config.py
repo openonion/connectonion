@@ -178,9 +178,7 @@ def _drop_superseded(root: Path, config: dict) -> None:
 def read_config(root: Path, *, validated: bool = True) -> dict:
     path = safe_path(root, "config.yaml")
     if not path.exists():
-        config = default_config()
-        config['schedule']['runner'] = schedule_runner()
-        return config
+        return default_config()
     try:
         config = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeError) as error:
@@ -196,7 +194,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     config.setdefault("speed", "fast")
     config.setdefault("effort", "medium")
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
-        config['schedule']['runner'] = schedule_runner()
+        config['schedule']['runner'] = default_config()['schedule']['runner']
     _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.

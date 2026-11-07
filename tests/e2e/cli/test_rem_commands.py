@@ -1260,16 +1260,14 @@ def test_start_help_explains_linux_systemd_and_linger():
 
 
 def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
-    """After stop, `start` resumed the schedule and printed `First batch:
-    Unknown` while its help promised it runs the first update. Only the first
-    start runs one; the output says so and names the command that runs one now."""
+    """After stop, `start` explains that scheduled upkeep will run the next batch."""
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     assert invoke(root, "stop").exit_code == 0
     again = invoke(root, "start", "--yes")
     assert again.exit_code == 0, again.output
     assert "First batch: Unknown" not in again.output
-    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert "Queued for the next scheduled run." in again.output.split("First batch:")[1].splitlines()[0]
     assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
 
 
@@ -1414,7 +1412,7 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
     assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
-    assert 'sync resumes it from the saved bodies' in status.output
+    assert 'background updates resume it from saved bodies when enabled' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):

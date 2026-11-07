@@ -130,6 +130,10 @@ def status_next(value: dict) -> list:
         if "Codex missed the " in value["state"]:
             return ["start"]
         return ["logs"] if value.get("next_run") else ["start"]
+    if value.get("root"):
+        _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
+        if arguments:
+            return arguments
     return ["logs"] if str(value.get("state", "")).startswith(("Running", "Scheduled")) else ["start"]
 
 
@@ -162,13 +166,13 @@ def next_to_write(root, counts: dict) -> tuple:
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
     book = Notebook(root)
     if owner and book.path(owner).is_file() and mapped_only(book.read(owner)):
-        return "your own page queued for tonight", []
+        return "your own page", ["investigate", "me"]
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
-            return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
+            return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
 
 
@@ -242,9 +246,11 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     what, arguments = next_to_write(root, counts)
     if what:
-        lines.append(rem_look.row("Scheduled work", what))
+        lines.append(rem_look.row("To write next", what))
         if arguments:
             lines.append(rem_look.follow(style.command(spell(arguments))))
+        if value.get("next_run") and value.get("worker", {}).get("enabled") and arguments[:1] == ["investigate"]:
+            lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
     for language, coverage in value.get("translation_coverage", {}).items():
         done, total = coverage["translated"], coverage["total"]
         share = round(100 * done / total) if total else 0
@@ -299,9 +305,12 @@ def _archive(value: dict, spell=lambda arguments: "co rem " + " ".join(arguments
     if not archive.get("stalled"):
         return [rem_look.row("Archive", saved + style.muted(" · saving"), style.muted(rem_look.RESUMES))]
     since = str(archive.get("updated", ""))[:16].replace("T", " ")
+    resume = ("queued to resume from saved bodies on the next scheduled run"
+              if value.get("next_run") and value.get("worker", {}).get("enabled")
+              else "background updates resume it from saved bodies when enabled")
     return [rem_look.row("Archive", saved + " · " + style.warn(f"stalled since {since}"), style.warn(rem_look.RESUMES)),
             rem_look.follow(style.muted("investigations ask the mail servers until it is done"), glyph=""),
-            rem_look.follow(style.muted("queued to resume from saved bodies tonight"), glyph="")]
+            rem_look.follow(style.muted(resume), glyph="")]
 
 
 def _last_run(run, zone) -> str:

@@ -60,7 +60,7 @@ def owner_first(ctx, root) -> list[str]:
     if record and notebook.path(record).is_file():
         status = next((line for line in notebook.read(record).splitlines() if line.startswith("Investigation:")), "")
         if last_investigated(status) is None:
-            lines.append(f"Your own page ({record}) queued for tonight.")
+            lines.append(f"Your own page ({record}) has not been written.")
     possible = [row for row in state.get("possible_own_addresses") or [] if row.get("address")][:6]
     if possible:
         # Spelled here, never read from the map: a 1.8 map stored `co wiki init --mine`.

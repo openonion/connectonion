@@ -86,26 +86,21 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
-    human_init = bool(arguments) and arguments[0] == "init" and any(
-        flag in arguments for flag in ("--name", "--mine", "--yes"))
-    deferred = isinstance(value, dict) and value.get("build_deferred")
-    automatic = bool(arguments) and not human_init and not deferred and ctx.info_name != "status" and arguments[0] in (
-        "init", "investigate", "translate", "sync", "projects", "import")
-    command = "" if automatic or not arguments else _next(ctx, arguments)
-    queued = "Work queued for the next scheduled run."
+    command = _next(ctx, arguments or ["status"])
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
         typer.echo(value["reason"])
+        rem_look.say(next_line(command))
     elif draw and not isinstance(value, str) and (drawn := draw(value)) is not None:
         # A drawing may decline a result of another shape (sync's dry run) by
         # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
         rem_look.say(printable(drawn), hanging=True)
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
-        rem_look.say(next_line(tip) if command else queued if automatic else "")
         if isinstance(value, dict) and value.get("continuation"):
             rem_look.say(value["continuation"])
+        rem_look.say(next_line(tip))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
@@ -113,7 +108,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
             parent = parent.parent
         text = render(value, " ".join(path), failed=failed)
         rem_look.say(rem_look.result(text, titled=not isinstance(value, str)), err=failed, plain=text)
-        rem_look.say(next_line(command) if command else queued if automatic else "", err=failed)
+        rem_look.say(next_line(command), err=failed)
     if failed:
         raise typer.Exit(1)
 
@@ -422,14 +417,14 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
                 "background updates prepare your page after sign-in.")
     if want is False or problem:
         return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
-               "Queued for the next scheduled run."
+               "Background updates can write it when enabled."
     page = Notebook(root).path(owner["record"])
     status = next((line for line in page.read_text(encoding="utf-8").splitlines()
                    if line.startswith("Investigation:")), "") if page.is_file() else ""
     if status and "not investigated" not in status:
         return "Your page was already written; scheduled runs handle refreshes. Nothing spent."
     shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix)
-    return f"Your page was not written: {shared} Queued for the next scheduled run." if shared else ""
+    return f"Your page was not written: {shared} Background updates can write it when enabled." if shared else ""
 
 
 def _spending_skipped(ctx, *, want, problem, fix) -> str:
@@ -1534,7 +1529,9 @@ def make_rem_app(factory):
             # Your own page first while it has never been investigated (#1943,
             # #1974); "has an Unknown" kept the Next line on it forever.
             first_lines = owner_first(ctx, root)
-            pending = bool(owner) and any(line.startswith("First, your own page") for line in first_lines)
+            from ...rem.queue import last_investigated
+            book = Notebook(root)
+            pending = bool(owner) and book.exists(owner) and last_investigated(book.read(owner)) is None
             if owner:
                 rows["me"] = {"page": owner, "investigated": not pending}
             if first_lines:
@@ -1939,7 +1936,11 @@ def make_rem_app(factory):
         from .rem_status import status_next
 
         def operation(root):
-            value = status(root, live_quota=True)
+            value = status(root, include_quota=True)
+            # Keep the CLI's JSON contract; translation coverage is drawn in
+            # the dashboard and consumed separately by the notebook reader.
+            if ctx.obj["json"]:
+                value.pop("translation_coverage", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
                 draw=_dashboard(ctx, verbose))
