@@ -271,6 +271,7 @@ def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> t
             reply = _reply(row, kind)
             if reply:
                 session["reply"] = _redact(reply)
+                session["ended"] = row.get("timestamp", "")
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
             if first_typed:
@@ -281,6 +282,8 @@ def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> t
                 continue
             session["id"] = item.get("session") or session["id"]
             session["cwd"] = item.get("cwd") or session["cwd"]
+            session["reply"] = ""  # A later owner turn makes an earlier reply non-final.
+            session["ended"] = item["timestamp"]
             session["messages"].append({**item, "text": _redact(item["text"]),
                 "source": source.session_source(kind, session['id'], at, item["text"])})
     why = next((reason for reason in ("rem_task", "program_prompt", "sidechain") if reason in reasons),
@@ -399,6 +402,9 @@ def _structure_lines(session: dict, notebook: Notebook, folders: dict, zone, day
     lines += ["## Facts", f"- Date: {day}",
              f"- Agent: {AGENTS[session['kind']]}", f"- Project: {linked}", f"- Folder: {cwd}",
              f"- Session: {session['id']}", f"- Turns: {len(messages)}"]
+    if session.get("ended"):
+        ended = source.timestamp(session["ended"]).astimezone(zone)
+        lines += [f"- Ended: {ended.strftime('%Y-%m-%d %H:%M')}"]
     if saved:
         lines += [f"- Outcome: {saved.get('outcome', 'unknown')}", f"- Tags: {', '.join(saved.get('tags', []))}"]
         if saved.get("title"):
