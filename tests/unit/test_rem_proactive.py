@@ -418,3 +418,84 @@ def test_rem_owner_setup_does_not_hand_work_back_as_a_command(notebook, state):
             _investigate_me(notebook, days=None, quick=False)
         assert 'co auth google' in str(error.value)
         assert 'co rem' not in str(error.value)
+
+
+def test_rem_reply_draft_keeps_the_owner_language_gist_and_background():
+    from connectonion.rem import drafts
+    task = {'row': {'id': 'x', 'material': [{'source': 'gmail:one'}], 'obligations': [], 'to': 'mia@example.com'}}
+    result = drafts.check(task, {'result': json.dumps({'body': 'Hi Mia,\n\nThanks.', 'sources': ['gmail:one'],
+                                                       'gist': '感谢并确认下周见。', 'why': 'Mia 是 Aurora 试点的负责人。'})})
+    assert result['gist'] == '感谢并确认下周见。' and result['why'] == 'Mia 是 Aurora 试点的负责人。'
+    assert 'material' not in result and 'obligations' not in result
+    bare = drafts.check(task, {'result': json.dumps({'body': 'Hi', 'sources': ['gmail:one'], 'gist': '   '})})
+    assert 'gist' not in bare and 'why' not in bare
+
+
+def test_rem_reply_draft_prompt_runs_on_the_fixed_skill_and_the_owners_voice(tmp_path, monkeypatch):
+    from connectonion.rem import drafts
+    from connectonion.rem.config import default_config
+    home = tmp_path / 'home'
+    (home / '.claude/skills/email-writing').mkdir(parents=True)
+    (home / '.claude/skills/email-writing/SKILL.md').write_text('# voice\n')
+    monkeypatch.setattr(drafts.Path, 'home', classmethod(lambda cls: home))
+    task = drafts.prepare(tmp_path, {'id': 'x', 'material': []}, default_config(), directory=tmp_path)
+    assert 'rem-reply-draft/SKILL.md' in task['prompt']
+    assert str(home / '.claude/skills/email-writing/SKILL.md') in task['prompt']
+    assert 'Never send' not in task['prompt'] or 'follow it' in task['prompt']
+    (home / '.claude/skills/email-writing/SKILL.md').unlink()
+    assert 'email-writing' not in drafts.prepare(tmp_path, {'id': 'x', 'material': []}, default_config(), directory=tmp_path)['prompt']
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+def test_rem_send_replies_in_thread_with_the_edited_body_and_records_it(notebook, monkeypatch, provider):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import read_json
+    mail_thread(notebook, provider)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'I will review it.', 'sources': [provider + ':one']})
+    client = Mock()
+    client.reply.return_value = {'id': 'sent-1'}
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    assert drafts.send(notebook, row['id'], 'I will review it on Tuesday.') == {'status': 'sent'}
+    args, kwargs = client.reply.call_args
+    assert args == (row['in_reply_to'], 'I will review it on Tuesday.')
+    assert kwargs == ({'cc': row['cc'] or None} if provider == 'outlook' else {})
+    saved = read_json(drafts.path(notebook, row['id']), {})
+    assert saved['status'] == 'sent' and saved['body'] == 'I will review it on Tuesday.' and saved['sent_receipt'] == {'id': 'sent-1'}
+    client.create_draft.assert_not_called()
+    with pytest.raises(Exception, match='empty'):
+        drafts.send(notebook, row['id'], '   ')
+
+
+def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool(notebook, monkeypatch):
+    from connectonion.rem import drafts, runner
+    from connectonion.rem.files import read_json
+    mail_thread(notebook, 'gmail')
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Dear Mia, I will review it.', 'sources': ['gmail:one']})
+
+    def fake_turn(workspace, prompt, config, stage, session=''):
+        material = json.loads((workspace / 'reply-material.json').read_text())
+        assert material['channel'] == 'lark' and 'owner' in material and 'person' in material
+        (workspace / 'candidate.json').write_text(json.dumps({'body': '看过了，周二前给你反馈。', 'gist': '简短确认', 'why': '她是试点负责人', 'sources': ['gmail:one']}))
+        return {'outcome': 'natural'}
+    monkeypatch.setattr(runner, 'run_task', fake_turn)
+    saved = drafts.redraft(notebook, row['id'], 'lark')
+    assert saved['channel'] == 'lark' and saved['body'] == '看过了，周二前给你反馈。' and saved['status'] == 'prepared'
+    with pytest.raises(Exception, match='Unknown channel'):
+        drafts.redraft(notebook, row['id'], 'pigeon')
+
+    commands = []
+
+    def fake_run(command, capture_output, text):
+        commands.append(command)
+        payload = {'items': [{'name': 'Mia', 'open_id': 'ou_mia'}]} if command[1] == 'contact' else {'message_id': 'om_1'}
+        return type('Done', (), {'returncode': 0, 'stdout': json.dumps(payload), 'stderr': ''})()
+    monkeypatch.setattr(drafts.subprocess, 'run', fake_run)
+    client = Mock()
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    assert drafts.send(notebook, row['id']) == {'status': 'sent'}
+    assert commands[0][:3] == ['lark-cli', 'contact', '+search-user'] and row['to'] in commands[0]
+    assert commands[1][:3] == ['lark-cli', 'im', '+messages-send'] and 'ou_mia' in commands[1] and '看过了，周二前给你反馈。' in commands[1]
+    client.reply.assert_not_called()
+    assert read_json(drafts.path(notebook, row['id']), {})['sent_receipt'] == {'message_id': 'om_1'}

@@ -145,7 +145,7 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.goto(page_path.as_uri())
             page.locator(".brief-header h1").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
-            page.locator('.home-find a[href="#c=projects"]').click()
+            page.locator('#nav a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
             assert page.locator(".next-exchanges .thread").count() == 0
             assert page.locator(".next-exchanges .empty-line").inner_text().startswith("No confirmed pending work")
@@ -190,7 +190,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
         frame.locator(".brief-header h1").wait_for()
-        assert frame.locator('.home-find a[href="#c=projects"]').is_visible()
+        assert frame.locator('.today-brief').is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
 
@@ -405,7 +405,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
         assert page.locator('#nav a[href="#c=all"] .n').inner_text() == '1'
-        page.locator('.home-find a[href="#c=all"]').click()
+        page.locator('#nav a[href="#c=all"]').click()
         assert page.locator('.hits > li').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1

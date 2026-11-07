@@ -279,9 +279,9 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     total = page.locator('.waiting-more a').inner_text().split()[0]
     assert f'{total} waiting on you' in page.locator('.brief-header h1').inner_text()
     assert page.locator('.waiting-ledger > li').count() == 3
-    assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.today-who').all_inner_texts() == ['Inès Halvorsen']
-    assert page.locator('.today-meta').inner_text().startswith('due Oct 3, 2026')
+    assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
+    assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
+    assert page.locator('.today-thread .waiting-age').inner_text().startswith('due Oct 3, 2026')
     assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
@@ -4007,6 +4007,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert '1 overdue · 5 due soon' in page.locator('.brief-header h1').inner_text()
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 7
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
+    assert page.locator('.today-thread .btn-act').count() == 5
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
@@ -4018,8 +4019,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
       const keys = [...document.querySelectorAll('.today-who')].map(a => a.textContent);
       return document.documentElement.scrollWidth <= innerWidth && keys.length === 5;
     }''')
-    page.locator('.home-find input[type=search]').fill('pilot renewal')
-    page.locator('.home-find input').press('Enter')
+    page.locator('#q').fill('pilot renewal')
+    page.locator('#q').press('Enter')
     page.wait_for_url(uri + '#q=pilot%20renewal')
     assert 'pilot renewal' in page.locator('h1').inner_text()
 
@@ -4029,11 +4030,7 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.goto(uri + '#view=open')
     target = page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').first
     before = int(page.locator('#nav a[href="#view=open"] .n').inner_text())
-    page.evaluate(r'''() => { copyToClipboard = text => window.copiedThreadPrompt = text; }''', isolated_context=False)
-    target.get_by_role('button', name='Copy prompt', exact=True).click()
-    copied = page.evaluate(r'''() => window.copiedThreadPrompt''', isolated_context=False)
-    assert 'outlook:e4a2c1907bd3' in copied and 'people/mara-ostrowski.md' in copied
-    assert 'do not send, sign, pay or contact anyone without my approval' in copied
+    assert target.locator('.btn-act').count() == 1 and target.get_by_role('button', name='Copy prompt').count() == 0
     target.get_by_role('button', name='Mark done', exact=True).click()
     assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 0
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before - 1
@@ -4089,7 +4086,7 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    action = page.locator('.waiting-ledger .thread-actions button').first
+    action = page.locator('.waiting-ledger .thread-actions .btn-act').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()
@@ -4133,9 +4130,8 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
         assert page.evaluate(r'''() => {
           const bottom = selector => document.querySelector(selector).getBoundingClientRect().bottom;
           const top = selector => document.querySelector(selector).getBoundingClientRect().top;
-          return bottom('.overnight') <= top('.home-find')
-            && bottom('.open-brief') <= top('.home-find')
-            && bottom('.home-find') <= top('.recall')
+          return bottom('.today-brief') <= top('.overnight')
+            && bottom('.overnight') <= top('.recall')
             && (!document.querySelector('.gone-quiet') || bottom('.recall') <= top('.gone-quiet'));
         }''')
     summaries = page.locator(':is(.gone-quiet, .week-details, .night-details, .done-details) > summary')

@@ -103,8 +103,11 @@ async def _action(scope, receive, send, root, headers):
     from ...rem import drafts, translate
     if scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
-    elif body.get("action") in ("open", "discard") and isinstance(body.get("id"), str):
-        operation = lambda: (drafts.open_provider if body["action"] == "open" else drafts.discard)(root, body["id"])
+    elif (body.get("action") in ("open", "discard", "send", "redraft") and isinstance(body.get("id"), str)
+          and isinstance(body.get("body"), (str, type(None))) and isinstance(body.get("channel"), (str, type(None)))):
+        operation = lambda: (drafts.send(root, body["id"], body.get("body")) if body["action"] == "send"
+                             else drafts.redraft(root, body["id"], body.get("channel") or "mail") if body["action"] == "redraft"
+                             else {"open": drafts.open_provider, "discard": drafts.discard}[body["action"]](root, body["id"]))
     else:
         await _reply(send, 400, json.dumps({"error": "Unknown draft action"}), "application/json")
         return

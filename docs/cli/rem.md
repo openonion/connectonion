@@ -691,16 +691,26 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   everything). **Worth remembering** and **Gone quiet** sit beside the brief on
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
-- **Thread actions**: the schedule prepares one local reply draft per mail thread
-  waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day.
-  The mail card shows From, To, CC, Subject, Body and cited sources. **Open in
-  Gmail/Outlook drafts** creates an unsent provider draft; **Discard** keeps it
-  dismissed until newer mail arrives. A newer message invalidates the old local
-  draft and queues a replacement. Labelled private material stays behind the
-  reader's privacy toggle. REM never sends mail. Provider draft creation needs
-  the mailbox's existing draft-write permission; final editing and sending happen
-  in your mailbox. **Mark done** and **Undo** still affect this browser only;
-  the next pass that sees your reply closes the notebook thread.
+- **Today is one queue**: everything that needs you, newest and due first, one card
+  each, with one primary action per card and a quiet **Mark done** that only this
+  browser remembers. The schedule prepares one local reply draft per mail thread
+  waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day,
+  on the `rem-reply-draft` skill: it reads who you both are (your page, their page,
+  the relationship, how they write), decides on each ask in the latest message, and
+  writes in your register for that relationship, using your own `email-writing`
+  skill when one is installed under `~/.claude`, `~/.codex`, `~/.cursor` or `~/.co`.
+  A prepared reply is shown as the mail it becomes: recipient, subject, the body in
+  the thread's language, a gist in your language, and **Why this reply** (who they
+  are, what was agreed, what you owe and since when). **Send** replies in the thread
+  from your mailbox; **Write full screen** opens the letter to edit by hand, with
+  that background and the thread beside it, and sends your edited text; **Edit in
+  Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
+  skipped until new mail arrives. The channel switch (Mail / Lark / WhatsApp)
+  rewrites the reply for that channel and sends it as you through `lark-cli` or
+  `co whatsapp`, when the notebook knows how to reach the person there. Sending
+  and rewriting work in the live reader on this computer only; a click is the
+  approval, and nothing is sent without one. Labelled private material stays
+  behind the reader's privacy toggle.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
