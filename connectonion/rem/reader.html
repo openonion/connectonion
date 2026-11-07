@@ -3511,7 +3511,7 @@ function threadActions(entry) {
   const draft = (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return el("div", { class: "thread-actions" }, [
     undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
-      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : primaryAction(entry),
+      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : threadDraft(entry)?.status === "no_reply" ? null : primaryAction(entry),
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), done]);
 }
 // Full-screen writing: the letter on the left, editable; on the right what the
@@ -3552,6 +3552,7 @@ function threadDraft(entry) {
 }
 function draftNote(draft) {
   if (!draft || draft.status === "prepared") return null;
+  if (draft.status === "no_reply") return el("p", { class: "quiet-line", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
   return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
 }
@@ -4354,7 +4355,7 @@ function threadRow(r, thread, withPage, also = [], grouped = false) {
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? text.replace(/\s*\[W?\d{1,3}\]/g, "") : text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
-      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also })]),
+      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }), draftNote(threadDraft({ r, t: thread, also }))]),
     el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
@@ -6017,7 +6018,7 @@ function ledgerRow(r, thread) {
   return el("li", { class: "ledger-row" + (thread.quiet ? " quiet" : "") }, [
     privateFallback(el("p", { html: inline(capFirst(text), r.path) })),
     el("span", { class: "ledger-meta" + (!thread.quiet && thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta }),
-    !thread.quiet || isDone({ r, t: thread }) ? threadActions({ r, t: thread }) : null]);
+    !thread.quiet || isDone({ r, t: thread }) ? threadActions({ r, t: thread }) : null, draftNote(threadDraft({ r, t: thread }))]);
 }
 function ledgerColumn(r, items, dir) {
   if (!items.length) return null;
