@@ -556,3 +556,175 @@ def test_rem_send_refuses_a_second_send_of_the_same_draft(notebook, monkeypatch)
     with pytest.raises(Exception, match='already sent'):
         drafts.send(notebook, row['id'])
     assert client.reply.call_count == 1
+
+
+def draft_check_task(root, *, direct_send='partner', send='now', kind='reply'):
+    from connectonion.rem import drafts
+    mail_thread(root)
+    book = Notebook(root)
+    book.write('people/fern.md', book.read('people/fern.md') + '\n## Facts\n- Email: fern@example.test\n- Direct send: ' + direct_send + '\n')
+    directory = root / 'check-draft'
+    directory.mkdir()
+    write_json(directory / 'verdict.json', {'kind': kind, 'send': send})
+    task = drafts.prepare(root, drafts.queue(root)[0], read_config(root), directory=directory)
+    return task
+
+
+@pytest.mark.parametrize('change, direct_send, problem', [
+    ({'body': '可以。 【需要你：成本假设怎么看 — 11月10日】'}, 'partner', 'slot'),
+    ({'needs_owner': ['【需要你：成本假设怎么看 — 11月10日】']}, 'close', 'needs_owner'),
+    ({}, 'none', 'direct_send'),
+])
+def test_rem_reply_draft_check_enforces_each_direct_send_gate(notebook, change, direct_send, problem):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, direct_send=direct_send)
+    candidate = {'body': '周二可以。', 'sources': ['gmail:one'], 'verdict': 'reply', 'send': 'now', 'needs_owner': [], **change}
+    with pytest.raises(RemError, match=problem) as error:
+        drafts.check(task, {'result': json.dumps(candidate)})
+    assert 'Fix ' + task['candidate'] in str(error.value)
+
+
+@pytest.mark.parametrize('direct_send', ['partner', 'close'])
+@pytest.mark.parametrize('decision, writer', [('now', 'now'), ('now', 'owner'), ('owner', 'owner')])
+def test_rem_reply_draft_check_preserves_or_lowers_send(notebook, direct_send, decision, writer):
+    from connectonion.rem import drafts
+    task = draft_check_task(notebook, direct_send=direct_send, send=decision)
+    needs = ['【需要你：成本假设怎么看 — 11月10日】'] if writer == 'owner' else []
+    value = {'body': '周二可以。' + ''.join(needs), 'sources': ['gmail:one'],
+             'verdict': 'reply', 'send': writer, 'needs_owner': needs, 'why': '合伙人；11月7日约定；已等3天'}
+    result = drafts.check(task, {'result': json.dumps(value)})
+    assert {key: result[key] for key in ('verdict', 'send', 'needs_owner')} == {
+        'verdict': 'reply', 'send': writer, 'needs_owner': needs}
+
+
+@pytest.mark.parametrize('decision', ['owner', None])
+def test_rem_reply_draft_writer_cannot_raise_send(notebook, decision):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, send=decision)
+    if decision is None:
+        (Path(task['candidate']).parent / 'verdict.json').unlink()
+    with pytest.raises(RemError, match='raise'):
+        drafts.check(task, {'result': json.dumps({'body': 'Confirmed.', 'sources': ['gmail:one'],
+                     'verdict': 'reply', 'send': 'now', 'needs_owner': [], 'person': {'direct_send': 'partner'}})})
+
+
+def test_rem_writer_cannot_raise_send_by_rewriting_the_verdict_file(notebook):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, send='owner')
+    write_json(Path(task['candidate']).parent / 'verdict.json', {'kind': 'reply', 'send': 'now'})
+    with pytest.raises(RemError, match='raise'):
+        drafts.check(task, {'result': json.dumps({'body': 'Confirmed.', 'sources': ['gmail:one'],
+                     'verdict': 'reply', 'send': 'now', 'needs_owner': []})})
+
+
+def test_rem_direct_send_permission_must_belong_to_the_recipient(notebook):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('Email: fern@example.test', 'Email: other@example.test'))
+    task = drafts.prepare(notebook, task['row'], read_config(notebook), directory=Path(task['candidate']).parent)
+    assert read_json(Path(task['input_paths'][0]), {})['person']['direct_send'] == 'none'
+    with pytest.raises(RemError, match='direct_send'):
+        drafts.check(task, {'result': json.dumps({'body': 'Confirmed.', 'sources': ['gmail:one'],
+                     'verdict': 'reply', 'send': 'now', 'needs_owner': []})})
+
+
+@pytest.mark.parametrize('body', [None, ''])
+def test_rem_no_reply_needs_no_body_and_is_promoted_as_no_reply(notebook, body):
+    from connectonion.rem import drafts
+    task = draft_check_task(notebook, send='owner', kind='no_reply')
+    value = {'verdict': 'no_reply', 'send': 'owner', 'needs_owner': [], 'sources': ['gmail:one'],
+             'gist': '需要你到场，已等3天。', 'why': '合伙人；11月7日约定；到场已等3天'}
+    if body is not None:
+        value['body'] = body
+    result = drafts.check(task, {'result': json.dumps(value)})
+    drafts.promote(notebook, result)
+    saved = drafts.listing(notebook)[0]
+    assert saved['status'] == 'no_reply' and saved['verdict'] == 'no_reply'
+    assert saved['gist'] == value['gist'] and not saved.get('body')
+    assert drafts.queue(notebook) == []
+
+
+def test_rem_no_reply_still_requires_thread_evidence(notebook):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, send='owner', kind='no_reply')
+    with pytest.raises(RemError, match='sources'):
+        drafts.check(task, {'result': json.dumps({'verdict': 'no_reply', 'sources': ['gmail:invented']})})
+
+
+@pytest.mark.parametrize('action', ['send', 'open_provider'])
+def test_rem_no_reply_cannot_create_or_send_an_empty_reply(notebook, monkeypatch, action):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    task = draft_check_task(notebook, send='owner', kind='no_reply')
+    result = drafts.check(task, {'result': json.dumps({'verdict': 'no_reply', 'sources': ['gmail:one'],
+                         'gist': '需要你到场。'})})
+    drafts.promote(notebook, result)
+    client = Mock()
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    with pytest.raises(RemError, match='no reply'):
+        getattr(drafts, action)(notebook, result['id'])
+    client.reply.assert_not_called()
+    client.create_draft.assert_not_called()
+
+
+@pytest.mark.parametrize('level', ['partner', 'close', 'none'])
+def test_rem_draft_identities_include_owner_voice_open_threads_and_permission(notebook, level):
+    from connectonion.rem import drafts
+    mail_thread(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md') + '\n## How the user writes to them\n名字加逗号，一行，不用谢谢。\n\n## Facts\n- Email: fern@example.test\n- Direct send: ' + level + '\n')
+    task = drafts.prepare(notebook, drafts.queue(notebook)[0], read_config(notebook), directory=notebook)
+    material = read_json(Path(task['input_paths'][0]), {})
+    assert material['person']['how_the_user_writes_to_them'] == '名字加逗号，一行，不用谢谢。'
+    assert 'You owe Fern a pilot review.' in material['person']['open_threads']
+    assert material['person']['direct_send'] == level
+    assert material['owner_samples'] == []
+
+
+def test_rem_draft_permission_is_not_inferred_from_relationship(notebook):
+    from connectonion.rem import drafts
+    mail_thread(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md') + '\n## Our relationship\nClose partner. Direct send: partner\n')
+    assert drafts._identities(notebook, drafts.queue(notebook)[0])['person']['direct_send'] == 'none'
+
+
+def test_rem_draft_direct_send_recognizes_the_pages_mapped_alias(notebook):
+    from connectonion.rem import drafts
+    task = draft_check_task(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('Email: fern@example.test', 'Email: primary@example.test'))
+    mapped = read_json(state_path(notebook, 'map.json'), {})
+    mapped['people'] = [{'record': 'people/fern.md', 'address': 'primary@example.test', 'addresses': ['FERN@example.test']}]
+    write_json(state_path(notebook, 'map.json'), mapped)
+    assert drafts._identities(notebook, task['row'])['person']['direct_send'] == 'partner'
+
+
+def test_rem_owner_samples_are_verbatim_to_this_address_recent_and_thread_language_first(notebook):
+    from connectonion.rem import drafts
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+    mail_thread(notebook)
+    for number, (sender, recipient, body) in enumerate([
+        ('owner@example.test', 'fern@example.test', 'Fern, confirmed for Tuesday.\nOwner'),
+        ('OWNER@example.test', 'FERN@example.test', 'Fern, the pilot works.\nOwner'),
+        ('owner@example.test', 'fern@example.test', 'Fern, use the second file.\nOwner'),
+        ('owner@example.test', 'fern@example.test', 'Fern, the review is attached.\nOwner'),
+        ('owner@example.test', 'fern@example.test', '小芬，周二见，带上那份合同。'),
+        ('owner@example.test', 'other@example.test', 'Wrong recipient, never include this.'),
+        ('fern@example.test', 'owner@example.test', 'Other person, never include this.'),
+    ]):
+        retain_message(notebook, 'outlook', {'id': f'sample-{number}', 'from': sender, 'to': [recipient],
+                       'subject': 'Earlier', 'thread': 'earlier', 'date': f'2026-11-06T0{number}:00:00Z'}, body,
+                       fetched_at=service.now().isoformat())
+    refresh(notebook)
+    task = drafts.prepare(notebook, drafts.queue(notebook)[0], read_config(notebook), directory=notebook)
+    samples = read_json(Path(task['input_paths'][0]), {})['owner_samples']
+    assert [sample['source'] for sample in samples] == ['outlook:sample-3', 'outlook:sample-2', 'outlook:sample-1']
+    assert samples[0]['message']['body'] == 'Fern, the review is attached.\nOwner'

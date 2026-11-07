@@ -1427,6 +1427,44 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
     assert result['rendered'] == 2 and result['records'] == 6
 
 
+@pytest.mark.parametrize('enabled', [True, False])
+def test_no_reply_draft_note_shows_the_reason_instead_of_a_pending_draft(enabled):
+    function = re.search(r'function draftNote\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js('const REM = ' + json.dumps({'status': {'worker': {'enabled': enabled}}}) + ';\n' + function + r'''
+      const el = (tag, attrs) => ({tag, ...attrs});
+      console.log(JSON.stringify(draftNote({status: 'no_reply', gist: '需要你到场，已等3天。'})));
+    ''')
+    assert result['text'] == '不用回：需要你到场，已等3天。'
+    assert result['class'] == 'quiet-line'
+
+
+def test_no_reply_actions_offer_completion_without_another_reply():
+    function = re.search(r'function threadActions\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {drafts: [{status: 'no_reply', provider: 'gmail', thread: 'mail:gmail:pilot'}]};
+      const isDone = () => false, setDone = () => {}, primaryAction = () => ({text: 'Draft the reply'});
+      const obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      console.log(JSON.stringify(threadActions({})));
+    ''')
+    assert [node['text'] for node in result['children'] if node] == ['Mark done']
+
+
+@pytest.mark.parametrize('renderer', ['threadRow', 'ledgerRow'])
+def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(renderer):
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in [renderer, 'draftNote'])
+    result = _run_reader_js(functions + r'''
+      const REM = {owner: 'people/owner.md'}, DIRECTION_LABEL = {mine: 'Waiting on you'};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const draft = {status: 'no_reply', gist: '需要你到场，已等3天。'}, threadDraft = () => draft;
+      const inline = text => text, threadWords = text => text, capFirst = text => text, privateFallback = node => node;
+      const threadActions = () => null, age = () => '', threadAge = () => '', blockerTag = () => null, daysSince = () => 1;
+      const r = {path: 'people/fern.md'}, thread = {text: 'You owe Fern a response.', dir: 'mine'};
+    ''' + f'console.log(JSON.stringify({renderer}(r, thread, false)));')
+    assert '不用回：需要你到场，已等3天。' in json.dumps(result, ensure_ascii=False)
+
+
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
