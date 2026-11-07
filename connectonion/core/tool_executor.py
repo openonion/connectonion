@@ -373,8 +373,18 @@ def execute_single_tool(
     tool_agent = agent
     original_instance = None
     tool_instance = None
+    auto_context = None
 
     def interrupted_tool_result():
+        # The copied tool transaction is discarded, but a notice already shown
+        # on the live lane still belongs to this session.
+        if tool_session and tool_session.get('_host_auto_notice_sent') and not agent.current_session.get('_host_auto_notice_sent'):
+            from .host_context import add_auto_notice_to_model
+            agent.current_session['_host_auto_notice_sent'] = True
+            for event in tool_session.get('trace', []):
+                if event.get('type') == 'host_notice' and event.get('code') == 'non_admin_auto':
+                    agent._record_trace(copy.deepcopy(event))
+            add_auto_notice_to_model(agent.current_session)
         interruption = "Interrupted by user"
         agent.current_session['stop_signal'] = interruption
         trace_entry.update({
@@ -394,6 +404,7 @@ def execute_single_tool(
             'id': tool_id,
             'description': getattr(tool_func, 'description', '')
         }
+        pending = agent.current_session['pending_tool']
 
         # #2408: the special classes are decided by code, before any plugin
         # can approve the call, in every mode.
@@ -411,6 +422,16 @@ def execute_single_tool(
         finally:
             agent.current_session.pop('pending_tool', None)
         cleared = True
+        policy = pending.get('approval_policy') or {}
+        from .mode import FULL_ACCESS, mode_of
+        from ..plugins.coding_agents import _CodingAgentPlugin
+        # Native providers own profile eligibility, empty opens and outcomes.
+        provider_owned = isinstance(getattr(tool_func, "_bound_instance", None), _CodingAgentPlugin)
+        if not provider_owned and (mode_of(agent.current_session) == FULL_ACCESS or (
+                policy.get('decision') == 'allow'
+                and policy.get('effect_class') not in {'read', 'workflow', 'managed_delegation'})):
+            from .host_context import begin_auto_run
+            auto_context = begin_auto_run(agent, tool_name, summary or agent.current_session.get('user_prompt') or tool_args)
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
@@ -617,6 +638,8 @@ def execute_single_tool(
         # after_tool fires later, after the LLM tool message is added.
 
     finally:
+        from .host_context import finish_auto_run
+        finish_auto_run(agent, auto_context, trace_entry['status'])
         if getattr(agent, 'current_session', None):
             agent.current_session.pop('_active_tool_call_id', None)
         if tool_session is not None:
