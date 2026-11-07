@@ -1471,7 +1471,7 @@ def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone
     assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1'
     assert other.evaluate("fmtDate('2026-07-31')", isolated_context=False) == 'Jul 31'
     other.evaluate("REM.as_of = '2026-12-31T14:00:00Z'", isolated_context=False)
-    assert other.evaluate("shortDate('2026-12-31')", isolated_context=False) == 'Dec 31, 2026'
+    assert other.evaluate("shortDate('2026-12-31')", isolated_context=False) == 'Yesterday'  # notebook calendar, not the browser's
     other.evaluate("REM.as_of = '2026-10-03T15:30:00Z'", isolated_context=False)
     assert other.evaluate("daysSince('2026-10-03')", isolated_context=False) == 1
     other.close()
@@ -4043,10 +4043,11 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.overnight-change').count() == 3
     assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
     assert page.locator('.today-thread').count() == 5
-    assert 'overdue · Oct 18, 2026' in page.locator('.today-thread').first.inner_text()
+    assert 'overdue · 2 days ago' in page.locator('.today-thread').first.inner_text()  # one date grammar: within a week, relative
     # 108ac316 separates the overdue request from the five due today.
     assert '1 overdue · 5 due soon' in page.locator('.brief-header h1').inner_text()
-    assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 7
+    # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
+    assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
     assert page.locator('.today-thread .btn-act').count() == 5
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
@@ -4471,14 +4472,15 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert page.locator('.overnight .quiet-line').inner_text() == (
         '笔记本刚刚建立。下次更新后，这里会显示夜间变化。' if language == 'zh'
         else 'Your notebook was just built. Overnight changes appear here after the next update.')
-    page.locator('.overnight .cmd button').click()
-    assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem start'
+    assert page.locator('.overnight .cmd').count() == 0  # commands left the primary surface
+    page.locator('.reader-settings > summary').click()
+    assert 'co rem start' in page.locator('.reader-settings').inner_text()
+    page.locator('.reader-settings > summary').click()
     notice = page.locator('#main > .translation-note')
     if language == 'zh':
-        assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
+        assert notice.inner_text() == '打开页面时会翻译成中文。'
         # The notice follows the queue: nothing about the reader's own upkeep sits above what needs you.
         assert notice.bounding_box()['y'] > page.locator('.today-brief').bounding_box()['y']
-        assert notice.locator('span').inner_text() == '翻译待处理，后台更新未开启'
         assert notice.locator('button, code').count() == 0
     else:
         assert notice.count() == 0
@@ -4496,7 +4498,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
     if language == 'zh':
-        assert notice.locator('span').inner_text() == '翻译待处理，已排入今晚队列'
+        assert notice.inner_text() == '打开页面时会翻译成中文。'
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
@@ -4508,7 +4510,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert page.locator('#main > .translation-note span').inner_text() == '翻译待处理，已排入今晚队列'
+    assert page.locator('#main > .translation-note').inner_text() == '打开页面时会翻译成中文。'
     assert page.locator('#main > .translation-note button, #main > .translation-note code').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 

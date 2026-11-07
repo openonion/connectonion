@@ -342,8 +342,8 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator("#nav").get_by_role("link", name="People").click()
     expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
     expect(button).to_have_attribute("aria-expanded", "false")
-    assert page.locator('#main .empty .lead').inner_text() == 'Not mapped yet'
-    assert page.locator('#main .empty a').inner_text() == 'Copy setup command'
+    assert page.locator('#main .empty .lead').inner_text() == 'No contacts yet'
+    assert page.locator('#main .empty a').inner_text() == 'Explore memory →'
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
