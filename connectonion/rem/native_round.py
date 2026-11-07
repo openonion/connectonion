@@ -27,6 +27,7 @@ def prepare(root, config, *, scheduled):
     from .tidy import tidy
     from .languages import refresh
     from .project_material import extract as collect_projects
+    service.refresh_init_mailboxes(root, lock_held=True)
     imported = sessions.import_sessions(root, consented_only=True, lock_held=True)
     tidy(root, lock_held=True)
     sources = service.subscriptions(root)

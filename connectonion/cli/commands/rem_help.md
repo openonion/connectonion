@@ -40,16 +40,16 @@ Options (before the command):
   --json        Machine-readable output: {"ok", "data", "next"}.
 
 Start here:   co init
-In a terminal, it offers to connect mail and asks once before reading your sources.
-It schedules daily updates with Codex desktop, launchd or systemd and builds the notebook,
-pausing at the cost estimate.
-For scripts, co init --yes creates storage only. Then connect mail:
-  co auth google or co auth microsoft
-Build the notebook without confirmation prompts:
-  co rem init --yes
+co init asks no questions: it grants local Codex / Claude Code sessions and all
+connected Google/Microsoft mailboxes, installs upkeep and builds in the foreground.
+The cost estimate is information. --yes and no terminal do the same work.
+With no mailbox it continues on sessions; connect with co auth google or co auth microsoft.
+A mailbox connected later joins the next scheduled round automatically.
+Undo: co rem stop; co rem sources remove SOURCE; co auth logout for OpenOnion.
+Revoke mailbox access in your provider account; stop upkeep before deleting ~/.co/rem.
+co init --no-rem skips REM. Repeated global init keeps existing REM unchanged.
+Use co rem init to rebuild; it retains its terminal estimate pause unless --yes.
 Add --no-start to leave background updates off. An existing schedule stays on.
-Without --yes, co rem init pauses at the estimate in a terminal.
-co init --no-rem skips REM.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
@@ -63,6 +63,14 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build your notebook from connected email accounts and recent coding sessions.
 Create pages, then use a model to fill them from your sources.
+
+Global co init performs this build without prompts, records an init source grant
+and installs upkeep. This command reruns the build and reuses the grant, including
+mailboxes connected later. In a terminal it pauses at the estimate unless --yes.
+Undo: co rem stop disables scheduling; co rem sources lists sources and
+co rem sources remove SOURCE removes one. co auth logout removes OpenOnion
+credentials; revoke mailbox access in your Google/Microsoft account. After stopping
+upkeep, delete ~/.co/rem to remove the notebook.
 
 First, list your sources without a model. Create a page for each person you write
 to, organisation, coding project and installed skill. Also create your own page,
@@ -143,7 +151,8 @@ Output:   Your page's facts and where it is; one progress line per stage on stde
 Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           --no-mail-archive. Mailboxes it read are subscribed for the daily round;
           background upkeep is installed only after its source and schedule
-          summary is approved. Noninteractive init without --yes leaves it off.
+          summary is approved, including by the grant from global co init. Without an
+          existing grant, noninteractive init needs --yes to install upkeep.
           The map costs nothing; the subsequent investigation uses the configured
           model for your own page and selected people, projects, organisations and skills.
 Takes:    About 10 minutes to map 90 days of two mailboxes (the default 180, about twice that); saving bodies takes

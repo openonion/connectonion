@@ -58,25 +58,33 @@ instead of summarising is
 ## Start here
 
 ```bash
-co init                     # Approve sources and upkeep, then build the first notebook
+co init                     # Grant sources, install upkeep and build without questions
 co rem status               # Check notebook coverage and upkeep
 co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
 co rem start                # Approve sources if needed and install or resume upkeep
 ```
 
-Global `co init` offers mailbox login and asks for source/model/schedule consent.
-With a supported scheduler, it installs upkeep before building the first notebook
-in the foreground. Without one, it prints `co rem init` to build manually. Both init commands pause after the total estimate,
-before model spending: `Build the first map now? [Y/n]`. Enter builds; `n` keeps
-installed upkeep and prints `co rem init` to continue. The final summary reports
-mapped and written pages and names the scheduler; read with `co rem open`.
-`co rem init` skips this pause without a terminal or with its `--yes` flag.
-Global `co init --yes` or non-tty setup creates storage only, with no source
-reads, consent or scheduler; connect later with `co auth google` or
-`co auth microsoft`, then `co rem init`. `co init --no-rem` skips REM, rerunning
-init leaves existing REM unchanged, `--background` uses this same REM step,
-and project setup (`co init ./`) does not initialize REM.
+Global `co init` never prompts. It records an init consent grant, reads all
+already authenticated Google/Microsoft mailboxes and local Codex / Claude Code
+sessions, installs upkeep and builds in the foreground. The estimate is
+informational. `--yes` and non-TTY runs behave identically. With no mailbox,
+it continues on sessions and prints `co auth google` / `co auth microsoft`.
+Mail connected later joins the next scheduled round without further approval;
+explicitly removed sources stay removed. Without a supported scheduler it
+still builds and prints guidance for manual scheduling.
+
+The final summary reports mapped and written pages and names the scheduler.
+Its undo block lists `co rem stop` to disable upkeep, `co rem sources` to see
+sources and `co rem sources remove SOURCE` to remove one, and `co auth logout`
+to remove OpenOnion credentials. Mailbox access can be revoked in your Google
+or Microsoft account (there is no CLI disconnect command). Stop upkeep before
+deleting the notebook folder, `~/.co/rem`.
+
+`co init --no-rem` skips REM. Repeating global init leaves existing REM
+unchanged; `co rem init` reruns the build. `--background` uses the same REM step,
+and project setup (`co init ./`) does not initialize REM. Standalone
+`co rem init` retains its estimate confirmation in a terminal; `--yes` skips it.
 
 The full first run is one command (#1943). Before mapping, `co rem init`
 checks runner availability and asks for source/model/schedule consent if it has

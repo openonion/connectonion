@@ -225,14 +225,14 @@ def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
-    yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts; global REM storage only, without source consent or scheduling"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip project prompts; global setup always runs without questions"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
     background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and the same REM setup'),
     no_rem: bool = typer.Option(False, '--no-rem', help='Skip REM setup during global initialization'),
 ):
-    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup asks for source consent, installs upkeep and builds the first REM notebook in the foreground after an estimate confirmation. Without a terminal or with --yes, only REM storage is created. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
+    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup never asks questions: it grants local session and connected mailbox access, installs upkeep and builds the first REM notebook in the foreground. The cost estimate is informational; --yes and no terminal behave the same. Future connected mailboxes join automatically. Ends with undo commands and the notebook path. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file

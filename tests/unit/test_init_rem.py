@@ -1,4 +1,4 @@
-"""Global setup shares REM first-run mapping, consent and the spending gate."""
+"""Global setup builds REM without prompts and retains a revocable init grant."""
 
 import io
 import json
@@ -42,58 +42,6 @@ def rem_setup(tmp_path, monkeypatch):
     return tmp_path / ".co/rem", installed
 
 
-@pytest.mark.parametrize("answer", ["y", "n"])
-def test_init_rem_records_consent_only_after_yes(rem_setup, monkeypatch, capsys, answer):
-    root, installed = rem_setup
-    monkeypatch.setattr(sys, "stdin", Terminal(f"skip\n{answer}\n"))
-    rem_commands.init_global_rem()
-    assert (root / "config.yaml").is_file()
-    assert (root / ".state/consent.json").exists() == (answer == "y")
-    assert installed.call_count == (1 if answer == "y" else 0)
-    output = capsys.readouterr().out
-    before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
-    assert question
-    summary = before.split("co rem start — source access and schedule")[1]
-    assert len(summary.splitlines()) <= 25
-    assert "gmail: waiting for co auth google" in summary
-    assert "whatsapp: not subscribed" in summary
-    assert "Permissions:" in summary and "Daily cap:" in summary
-    assert "Input chars per batch" not in summary and "/inbox/whatsapp" not in summary
-    assert "co rem start" in output and "co rem status" in output
-    if answer == "n":
-        assert "Next: co rem init" in output
-    if answer == "y":
-        consent = json.loads((root / ".state/consent.json").read_text())
-        assert consent["authorized_at"]
-        assert service.subscriptions(root)["codex"]["consented"]
-        assert "launchd" in output.splitlines()[-1]
-
-
-@pytest.mark.parametrize("flags", [[], ["--yes"]])
-def test_noninteractive_init_prepares_storage_without_consent(rem_setup, monkeypatch, flags):
-    root, installed = rem_setup
-    monkeypatch.setattr("typer.confirm", lambda *a, **kw: pytest.fail("consent prompt"))
-    monkeypatch.setattr("typer.prompt", lambda *a, **kw: pytest.fail("mailbox prompt"))
-    result = CliRunner().invoke(app, ["init", *flags])
-    assert result.exit_code == 0, result.output
-    assert (root / "config.yaml").exists()
-    assert not (root / ".state/consent.json").exists()
-    installed.assert_not_called()
-    assert "co auth google" in result.output and "co auth microsoft" in result.output
-    assert "co rem start" in result.output
-    assert "Next: co rem init" in result.output
-
-
-def test_yes_in_a_terminal_does_not_grant_rem_consent(rem_setup, monkeypatch, capsys):
-    root, installed = rem_setup
-    monkeypatch.setattr(sys, "stdin", Terminal())
-    monkeypatch.setattr("typer.confirm", lambda *a, **kw: pytest.fail("consent prompt"))
-    rem_commands.init_global_rem(yes=True)
-    assert not (root / ".state/consent.json").exists()
-    installed.assert_not_called()
-    assert "co auth google" in capsys.readouterr().out
-
-
 def test_no_rem_leaves_storage_absent(rem_setup):
     root, installed = rem_setup
     result = CliRunner().invoke(app, ["init", "--no-rem"])
@@ -115,28 +63,19 @@ def test_second_init_rem_changes_nothing(rem_setup, monkeypatch, capsys, approve
     rem_commands.init_global_rem()
     assert before == {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
     installed.assert_not_called()
-    assert capsys.readouterr().out.splitlines() == ["REM is already initialized. Watch: co rem status"]
+    assert "REM is already initialized. Watch: co rem status" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("provider,kind", [("google", "gmail"), ("microsoft", "outlook")])
-def test_mailbox_offer_runs_auth_before_consent(rem_setup, monkeypatch, provider, kind):
+@pytest.mark.parametrize("mailboxes", [{"gmail"}, {"outlook"}, {"gmail", "outlook"}])
+def test_authenticated_mailboxes_are_granted_at_init(rem_setup, monkeypatch, mailboxes):
     root, _ = rem_setup
-    connected = set()
-    monkeypatch.setattr(service, "mail_available", lambda name: name in connected)
-    monkeypatch.setattr(f"connectonion.cli.commands.auth_commands.handle_{provider}_auth",
-                        lambda: connected.add(kind))
-    monkeypatch.setattr(sys, "stdin", Terminal(f"{provider}\ny\n"))
+    monkeypatch.setattr(service, "mail_available", lambda kind: kind in mailboxes)
+    monkeypatch.setattr(typer, "prompt", lambda *a, **kw: pytest.fail("mailbox choice"))
+    monkeypatch.setattr(typer, "confirm", lambda *a, **kw: pytest.fail("consent prompt"))
     rem_commands.init_global_rem()
-    assert service.subscriptions(root)[kind]["consented"]
-
-
-def test_connected_mailbox_skips_offer(rem_setup, monkeypatch):
-    root, _ = rem_setup
-    monkeypatch.setattr(service, "mail_available", lambda kind: kind == "gmail")
-    monkeypatch.setattr("typer.prompt", lambda *a, **kw: pytest.fail("already connected"))
-    monkeypatch.setattr(sys, "stdin", Terminal("y\n"))
-    rem_commands.init_global_rem()
-    assert service.subscriptions(root)["gmail"]["consented"]
+    for kind in mailboxes:
+        assert service.subscriptions(root)[kind]["enabled"]
+        assert service.subscriptions(root)[kind]["consented"]
 
 
 def test_codex_scheduler_is_named_in_final_summary(rem_setup, monkeypatch, capsys):
@@ -144,7 +83,7 @@ def test_codex_scheduler_is_named_in_final_summary(rem_setup, monkeypatch, capsy
     installed.return_value = {"scheduler": "codex-native"}
     monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\n"))
     rem_commands.init_global_rem()
-    assert "Codex Scheduled task" in capsys.readouterr().out.splitlines()[-1]
+    assert "Codex Scheduled task" in next(line for line in capsys.readouterr().out.splitlines() if line.startswith("REM ready;"))
 
 
 def test_start_after_global_setup_reports_deferred_first_batch(rem_setup, monkeypatch):
@@ -166,9 +105,9 @@ def test_background_init_uses_the_same_rem_step(rem_setup, monkeypatch, flags):
     result = CliRunner().invoke(app, ["init", "--background", *flags])
     assert result.exit_code == 0, result.output
     assert root.exists() == (not flags)
-    assert not (root / ".state/consent.json").exists()
+    assert (root / ".state/consent.json").exists() == (not flags)
     if not flags:
-        assert "REM storage created" in result.output.splitlines()[-1]
+        assert "REM ready" in result.output
 
 
 def test_unsupported_platform_preserves_consent_without_scheduling(rem_setup, monkeypatch, capsys):
@@ -178,7 +117,8 @@ def test_unsupported_platform_preserves_consent_without_scheduling(rem_setup, mo
     rem_commands.init_global_rem()
     assert (root / ".state/consent.json").exists()
     installed.assert_not_called()
-    assert "no scheduler available" in capsys.readouterr().out
+    assert "No scheduler available" in capsys.readouterr().out
+    rem_commands.init_rem_flow.assert_called_once()
 
 
 def test_scheduler_failure_leaves_an_actionable_recovery(rem_setup, monkeypatch, capsys):
@@ -226,41 +166,24 @@ def first_notebook(rem_setup, monkeypatch):
     return root, installed, model
 
 
-@pytest.mark.parametrize("answer", ["Y", ""])
-def test_global_init_builds_first_notebook_with_one_consent(first_notebook, monkeypatch, capsys, answer):
+def test_global_init_builds_first_notebook_without_questions(first_notebook, monkeypatch, capsys):
     root, installed, model = first_notebook
     from connectonion.cli import main
-    monkeypatch.setattr(sys, "stdin", Terminal(f"skip\ny\n{answer}\n"))
+    monkeypatch.setattr(sys, "stdin", Terminal())
     main.init(path=None, template=None, yes=False, key=None, description=None,
               force=False, background=False, no_rem=False)
     output = capsys.readouterr().out
     rem_commands.init_rem_flow.assert_called_once()
-    assert rem_commands.init_rem_flow.call_args.kwargs == {}
-    assert output.count("Read these sources with this model and schedule?") == 1
-    assert output.count("Build the first map now? [Y/n]") == 1
-    assert output.index("Estimate: About") < output.index("Build the first map now?")
+    assert rem_commands.init_rem_flow.call_args.kwargs == {"yes": True, "start_background": False}
+    assert "Read these sources with this model and schedule?" not in output
+    assert "Build the first map now?" not in output
+    assert "Estimate: About" in output
     assert model.called
     installed.assert_called_once()
     assert service.worker_state(root)["enabled"]
-    assert "Written this run: your page" in output.splitlines()[-1]
-    assert "launchd" in output.splitlines()[-1]
+    assert "Written this run: your page" in next(line for line in output.splitlines() if line.startswith("REM ready;"))
+    assert "launchd" in next(line for line in output.splitlines() if line.startswith("REM ready;"))
     assert "Full first map" not in output
-
-
-def test_global_init_can_defer_model_work_at_estimate(first_notebook, monkeypatch, capsys):
-    root, installed, model = first_notebook
-    monkeypatch.setattr(sys, "stdin", Terminal("skip\ny\nn\n"))
-    summary = Mock(side_effect=AssertionError("session model work before approval"))
-    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions", summary)
-    rem_commands.init_global_rem()
-    output = capsys.readouterr().out
-    model.assert_not_called()
-    summary.assert_not_called()
-    installed.assert_called_once()
-    assert service.worker_state(root)["enabled"]
-    assert output.count("Read these sources with this model and schedule?") == 1
-    assert "Next: co rem init" in output
-    assert "launchd" in output.splitlines()[-1]
 
 
 @pytest.mark.parametrize("tty,yes,answer", [(True, False, "n"), (True, False, "Y"),
@@ -308,7 +231,7 @@ def test_connected_mailbox_consent_fingerprint_is_reused_by_first_build(first_no
     monkeypatch.setattr(sys, "stdin", Terminal("y\nY\n"))
     rem_commands.init_global_rem()
     output = capsys.readouterr().out
-    assert output.count("Read these sources with this model and schedule?") == 1
+    assert "Read these sources with this model and schedule?" not in output
     assert service.subscriptions(root)["gmail"]["consented"]
     installed.assert_called_once()
     assert model.called
@@ -324,7 +247,7 @@ def test_global_summary_reports_each_written_page_kind(rem_setup, monkeypatch, c
         "project_pages": {"pages": [{"outcome": "accepted"}]},
         "org_pages": {"pages": [{"outcome": "accepted"}]}}
     rem_commands.init_global_rem()
-    final = capsys.readouterr().out.splitlines()[-1]
+    final = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("REM ready;"))
     assert "Written this run: your page, 2 people, 1 project page and 1 organisation page." in final
     assert "launchd" in final
 
@@ -361,7 +284,7 @@ def test_native_registration_failure_falls_back_to_launchd(rem_setup, monkeypatc
     out = capsys.readouterr().out
     launchd.assert_called_once()
     assert "Using launchd for upkeep meanwhile" in out
-    assert "Scheduler installed: launchd (Codex did not register the task" in out.splitlines()[-1]
+    assert "Scheduler installed: launchd (Codex did not register the task" in next(line for line in out.splitlines() if line.startswith("REM ready;"))
     assert "Traceback" not in out
 
 
@@ -379,3 +302,65 @@ def test_co_init_says_a_scheduler_error_in_one_line(rem_setup, monkeypatch, caps
     assert "synthetic scheduler failure" in out
     assert "Next: co rem start" in out
     assert "Traceback" not in out
+
+@pytest.mark.parametrize("tty,yes", [(True, False), (True, True), (False, False)])
+def test_global_rem_init_never_asks_and_builds(rem_setup, monkeypatch, capsys, tty, yes):
+    root, installed = rem_setup
+    monkeypatch.setattr(sys, "stdin", Terminal() if tty else io.StringIO())
+    monkeypatch.setattr(typer, "prompt", lambda *a, **kw: pytest.fail("mailbox prompt"))
+    monkeypatch.setattr(typer, "confirm", lambda *a, **kw: pytest.fail("confirmation prompt"))
+    rem_commands.init_global_rem(yes=yes)
+    consent = json.loads((root / ".state/consent.json").read_text())
+    assert consent["granted_by"] == "init"
+    assert consent["summary"] == service.summary_fingerprint(root)
+    installed.assert_called_once()
+    rem_commands.init_rem_flow.assert_called_once()
+    assert rem_commands.init_rem_flow.call_args.kwargs["yes"] is True
+    output = capsys.readouterr().out
+    assert "co auth google or co auth microsoft" in output
+    assert "co rem stop" in output and "co rem sources" in output
+    assert "co auth logout" in output and str(root) in output
+
+@pytest.mark.parametrize("kind", ["gmail", "outlook"])
+def test_init_grant_admits_later_mail_on_scheduled_selection(rem_setup, monkeypatch, kind):
+    root, _ = rem_setup
+    rem_commands.init_global_rem()
+    monkeypatch.setattr(service, "mail_available", lambda name: name == kind)
+    from connectonion.rem.files import maintenance_lock
+    with maintenance_lock(root):
+        service.refresh_init_mailboxes(root, lock_held=True)
+    selected = service._selected_sources(root, "")
+    assert selected[kind]["consented"]
+    assert selected[kind]["adapter"] == "available"
+    assert service.ensure_consent(root, confirm=lambda summary: pytest.fail("later mailbox consent"))
+    service.toggle_source(root, kind, False)
+    service.refresh_init_mailboxes(root)
+    assert kind not in service._selected_sources(root, "")
+    assert service.subscriptions(root)[kind]["unsubscribed"]
+
+
+def test_init_grant_does_not_approve_new_chat(rem_setup):
+    root, _ = rem_setup
+    rem_commands.init_global_rem()
+    service.toggle_source(root, "whatsapp", True, chats=["fictional-chat"])
+    assert not service.ensure_consent(root, confirm=lambda summary: False)
+    assert not service.subscriptions(root)["whatsapp"]["consented"]
+
+
+def test_init_grant_survives_explicit_approval(rem_setup, monkeypatch):
+    root, _ = rem_setup
+    rem_commands.init_global_rem()
+    service.approve_sources(root)
+    monkeypatch.setattr(service, "mail_available", lambda kind: kind == "gmail")
+    assert service.ensure_consent(root, confirm=lambda summary: pytest.fail("init grant lost"))
+    assert service.subscriptions(root)["gmail"]["consented"]
+
+
+def test_init_grant_admits_mail_enabled_before_login(rem_setup, monkeypatch):
+    root, _ = rem_setup
+    rem_commands.init_global_rem()
+    service.toggle_source(root, "gmail", True)
+    monkeypatch.setattr(service, "mail_available", lambda kind: kind == "gmail")
+    assert service.ensure_consent(root, confirm=lambda summary: pytest.fail("mail already granted"))
+    assert service.subscriptions(root)["gmail"]["consented"]
+    assert service.subscriptions(root)["gmail"]["adapter"] == "available"
