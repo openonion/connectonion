@@ -269,6 +269,9 @@ def prepared_status(draft):
 
 
 def promote(root, draft):
+    saved = read_json(path(root, draft['id']), {})
+    if saved.get('version') == draft.get('version'):
+        _not_held(saved)
     write_json(path(root, draft['id']), {**draft, 'status': prepared_status(draft), 'prepared_at': now().isoformat()})
 
 
@@ -280,11 +283,17 @@ def _current(root, draft_id):
     return saved
 
 
+def _not_held(saved):
+    if saved.get('status') == 'held':
+        raise RemError('This reply is held; Undo it before changing it')
+
+
 def open_provider(root, draft_id):
     """Create only an unsent provider draft, and reuse it on subsequent clicks."""
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        _not_held(saved)
         if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
             raise RemError('This thread needs no reply')
         if not saved['body'].strip():
@@ -324,7 +333,7 @@ def redraft(root, draft_id, channel):
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
     with maintenance_lock(root):
-        _current(root, draft_id)
+        _not_held(_current(root, draft_id))
         row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
         return _write_now(root, row, channel)
 
@@ -336,6 +345,7 @@ def prepare_now(root, provider, thread):
         row = next((row for row in candidates(root) if row['provider'] == provider and row['thread'] == thread), None)
         if row is None:
             raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
+        _not_held(read_json(path(root, row['id']), {}))
         return _write_now(root, row, 'mail')
 
 
@@ -379,25 +389,31 @@ def send(root, draft_id, body=None):
     if body is not None and not body.strip():
         raise RemError('The reply body is empty')
     with maintenance_lock(root):
-        saved = _current(root, draft_id)
-        if saved.get('status') in ('skipped', 'discarded'):
-            raise RemError('Restore this skipped reply before sending')
-        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
-            raise RemError('This thread needs no reply')
-        if saved.get('status') == 'sent':
-            raise RemError('This reply was already sent; nothing was sent again')
-        text = body if body is not None else saved['body']
-        if not text.strip():
-            raise RemError('The reply body is empty')
-        if has_slots(text):
-            raise RemError('Fill the marked part first / 先填好标出的部分')
-        if saved.get('channel', 'mail') != 'mail':
-            receipt = _send_chat(saved, text)
-        else:
-            client = mail_client(saved['provider'])
-            receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
-                       else client.reply(saved['in_reply_to'], text))
-        write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
+        return _send_locked(root, draft_id, body)
+
+
+def _send_locked(root, draft_id, body=None, *, held=False):
+    saved = _current(root, draft_id)
+    if saved.get('status') == 'held' and not held:
+        raise RemError('This reply is held; Undo it before sending again')
+    if saved.get('status') in ('skipped', 'discarded'):
+        raise RemError('Restore this skipped reply before sending')
+    if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
+        raise RemError('This thread needs no reply')
+    if saved.get('status') == 'sent':
+        raise RemError('This reply was already sent; nothing was sent again')
+    text = body if body is not None else saved['body']
+    if not text.strip():
+        raise RemError('The reply body is empty')
+    if has_slots(text):
+        raise RemError('Fill the marked part first / 先填好标出的部分')
+    if saved.get('channel', 'mail') != 'mail':
+        receipt = _send_chat(saved, text)
+    else:
+        client = mail_client(saved['provider'])
+        receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
+                   else client.reply(saved['in_reply_to'], text))
+    write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
     return {'status': 'sent'}
 
 
@@ -405,6 +421,7 @@ def discard(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        _not_held(saved)
         if saved.get('status') == 'sent':
             raise RemError('This reply was already sent')
         row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)

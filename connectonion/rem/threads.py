@@ -102,7 +102,7 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
         if not any(done_key(item['record'], item['text']) == key for item in row['obligations']):
             continue
         saved = read_json(drafts.path(root, row['id']), {})
-        if (saved.get('version') != row['version'] or saved.get('status') == 'sent'
+        if (saved.get('version') != row['version'] or saved.get('status') in ('sent', 'held')
                 or state == 'skipped' and versions is not None and row['thread'] in versions and versions[row['thread']] != row['version']):
             continue
         if state != 'open':

@@ -1234,3 +1234,173 @@ def test_night_sent_reply_promise_is_still_work(notebook, monkeypatch, body, kin
     assert outcome['owner_quote'] == body
     if kind == 'task':
         assert body in outcome['task']['prompt']
+@pytest.mark.parametrize('provider,channel', [('gmail', 'mail'), ('outlook', 'mail'), ('gmail', 'whatsapp')])
+def test_approve_holds_reply_and_undo_survives_reload(notebook, monkeypatch, provider, channel):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook, provider)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'I will review it.', 'sources': [provider + ':one'], 'channel': channel, 'phone': '15555550101'})
+    client = Mock()
+    client.reply.return_value = {'id': 'scheduled-fern'}
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    chat = Mock(return_value={'id': 'chat-fern'})
+    monkeypatch.setattr(drafts, '_send_chat', chat)
+    item = approvals.outcomes(notebook)[0]
+    result = approvals.approve(notebook, [item['id'], item['id']])
+    assert len(result['results']) == 1
+    assert result['results'][0]['status'] == 'held'
+    assert approvals.pending(notebook)[0]['id'] == item['id']
+    assert approvals.approve(notebook, [item['id']])['results'][0]['status'] == 'held'
+    assert approvals.release(notebook, at=service.now() + timedelta(minutes=9)) == []
+    if provider == 'outlook' and channel == 'mail':
+        assert client.reply.call_count == 1
+        assert client.reply.call_args.kwargs['send_at'] == result['release_at']
+    else:
+        client.reply.assert_not_called()
+        chat.assert_not_called()
+    assert approvals.undo(notebook, [item['id']])['results'][0]['status'] == 'cancelled'
+    assert approvals.release(notebook, at=service.now() + timedelta(minutes=11)) == []
+    chat.assert_not_called()
+    if provider == 'outlook' and channel == 'mail':
+        client.cancel_scheduled.assert_called_once_with('scheduled-fern')
+    else:
+        client.reply.assert_not_called()
+
+
+def test_approve_release_uses_existing_send_path_once_and_checks_slots(notebook, monkeypatch):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': '【需要你：日期 — 未约定】', 'sources': ['gmail:one']})
+    item = approvals.outcomes(notebook)[0]
+    assert item['blocked']
+    assert approvals.approve(notebook, [item['id']])['results'][0]['status'] == 'error'
+    client = Mock()
+    client.reply.return_value = 'sent'
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    result = approvals.approve(notebook, [item['id']], bodies={item['id']: 'Friday works.'})
+    assert result['results'][0]['status'] == 'held'
+    assert result['results'][0]['blocked'] is False
+    assert approvals.release(notebook, at=service.now() + timedelta(minutes=10))[0]['status'] == 'sent'
+    assert approvals.release(notebook, at=service.now() + timedelta(minutes=11)) == []
+    client.reply.assert_called_once_with('one', 'Friday works.')
+    assert read_json(drafts.path(notebook, row['id']), {})['status'] == 'sent'
+
+
+def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, monkeypatch):
+    from connectonion.rem import approvals, today, threads
+    book = Notebook(notebook)
+    book.write('people/fern.md', '# Fern Vale\n\n## Open threads\n- You owe Fern a review.\n- You owe Fern a date.\n')
+    keys = ['people/fern.md\nYou owe Fern a review.', 'people/fern.md\nYou owe Fern a date.']
+    monkeypatch.setattr(today, 'queue', lambda *a, **kw: [
+        {'key': key, 'keys': [key], 'title': 'Fern Vale', 'text': key.split('\n')[1], 'dir': 'mine',
+         'reply': {'state': state}, 'closed': False, 'quiet': False} for key, state in zip(keys, ['replied', 'task'])])
+    items = approvals.outcomes(notebook)
+    assert [r['kind'] for r in items] == ['handled', 'task']
+    result = approvals.approve(notebook, [r['id'] for r in items] + ['invented'])
+    assert [r['status'] for r in result['results']] == ['done', 'queued', 'error']
+    assert threads.listing(notebook)[keys[0]]['state'] == 'done'
+    dispatched = []
+    approvals.release(notebook, dispatch=lambda task: dispatched.append(task) or {'status': 'done'})
+    assert len(dispatched) == 1 and dispatched[0]['text'] == 'You owe Fern a date.'
+    approvals.release(notebook, dispatch=lambda task: dispatched.append(task))
+    assert len(dispatched) == 1
+
+
+def test_approval_dispatch_does_not_lock_notebook(notebook):
+    from concurrent.futures import ThreadPoolExecutor
+    from connectonion.rem import approvals
+    from connectonion.rem.files import maintenance_lock
+    item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'text': 'Review the pilot.'}
+    write_json(state_path(notebook, 'approvals.json'), {item['id']: item})
+    def dispatch(task):
+        def edit():
+            with maintenance_lock(notebook):
+                return 'notebook available'
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(edit).result(timeout=2)
+    assert approvals.release(notebook, dispatch=dispatch)[0]['status'] == 'dispatched'
+
+
+@pytest.mark.parametrize('action', ['redraft', 'discard', 'open_provider', 'prepare_now', 'promote'])
+def test_held_reply_cannot_be_changed_through_older_controls(notebook, monkeypatch, action):
+    from connectonion.rem import approvals, drafts
+    from connectonion.rem.files import RemError
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    plan = {**row, 'body': 'Friday works.', 'sources': ['gmail:one']}
+    drafts.promote(notebook, plan)
+    item = approvals.outcomes(notebook)[0]
+    approvals.approve(notebook, [item['id']])
+    monkeypatch.setattr(drafts, '_write_now', Mock(return_value={}))
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: Mock())
+    with pytest.raises(RemError, match='held'):
+        if action == 'redraft':
+            drafts.redraft(notebook, row['id'], 'mail')
+        elif action == 'prepare_now':
+            drafts.prepare_now(notebook, 'gmail', row['thread'])
+        elif action == 'promote':
+            drafts.promote(notebook, plan)
+        else:
+            getattr(drafts, action)(notebook, row['id'])
+    assert read_json(drafts.path(notebook, row['id']), {})['status'] == 'held'
+
+
+def test_undo_does_not_replace_a_newer_prepared_reply(notebook):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Friday works.', 'sources': ['gmail:one']})
+    item = approvals.outcomes(notebook)[0]
+    approvals.approve(notebook, [item['id']])
+    saved = read_json(drafts.path(notebook, row['id']), {})
+    newer = {**saved, 'version': 'gmail:two', 'status': 'sent', 'body': 'A newer reply.'}
+    write_json(drafts.path(notebook, row['id']), newer)
+    approvals.undo(notebook, [item['id']])
+    assert read_json(drafts.path(notebook, row['id']), {}) == newer
+
+
+@pytest.mark.parametrize('transport', ['requests', 'httpx'])
+def test_outlook_timeout_is_durable_and_never_schedules_twice(notebook, monkeypatch, transport):
+    from requests import Timeout
+    from httpx import ReadTimeout
+    Timeout = Timeout if transport == 'requests' else ReadTimeout
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook, 'outlook')
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Friday works.', 'sources': ['outlook:one'], 'private': True})
+    item = approvals.outcomes(notebook)[0]
+    assert item['private'] is True
+    client = Mock()
+    client.reply.side_effect = Timeout('Delivery not confirmed')
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    assert approvals.approve(notebook, [item['id']])['results'][0]['status'] == 'error'
+    assert approvals.approve(notebook, [item['id']])['results'][0]['status'] == 'error'
+    assert client.reply.call_count == 1
+    assert approvals.pending(notebook)[0]['error'] == 'Delivery not confirmed'
+
+
+def test_held_local_reply_never_sends_old_words_against_a_new_version(notebook, monkeypatch):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Friday works.', 'sources': ['gmail:one']})
+    item = approvals.outcomes(notebook)[0]
+    approvals.approve(notebook, [item['id']])
+    mail_thread(notebook, latest='two')
+    latest = drafts.candidates(notebook)[0]
+    drafts.promote(notebook, {**latest, 'body': 'Tuesday works.', 'sources': ['gmail:two']})
+    client = Mock()
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    assert approvals.release(notebook, at=service.now() + timedelta(minutes=11))[0]['status'] == 'error'
+    client.reply.assert_not_called()
+    assert read_json(drafts.path(notebook, row['id']), {})['body'] == 'Tuesday works.'
+
+
+def test_outlook_scheduled_reply_receipt_keeps_normal_return_compatible():
+    from connectonion.useful_tools.outlook import Outlook
+    client = object.__new__(Outlook)
+    client._scheduled_reply = Mock(return_value='scheduled-fern')
+    stamp = '2026-11-08T01:10:00+00:00'
+    assert client.reply('one', 'Friday works.', stamp, return_receipt=True) == {'id': 'scheduled-fern', 'send_at': stamp}
+    assert client.reply('one', 'Friday works.', stamp) == f'Reply scheduled for {stamp}'

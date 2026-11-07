@@ -260,6 +260,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     for row in data['today_queue']:
         if row['key'] in outcomes:
             row['outcome'] = outcomes[row['key']]
+    from . import approvals
+    data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
+    data['approval_pending'] = approvals.pending(root) if local else []
     if not local:
         data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:

@@ -2857,6 +2857,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
     for row in (missing, task):
         assert row['action']['text'] == ('打开 Outlook 原会话' if language == 'zh' else 'Open the Outlook thread')
         assert row['action']['href'].startswith('https://outlook.live.com/')
+        assert row['action']['class'] == 'btn-quiet'
 
 
 @pytest.mark.parametrize('live', [False, True])
@@ -2952,3 +2953,141 @@ def test_unresolved_mail_alias_opens_recorded_source_instead_of_a_guessed_provid
     ''')
     assert result['text'] == 'Open the recorded source'
     assert result['href'] == '#r=fern&h=src-3'
+
+
+APPROVAL_DOM = r'''
+class ApprovalNode {
+  constructor(tag, attrs = {}, children = []) {
+    this.tagName = tag; Object.assign(this, attrs); this.children = []; this.listeners = {};
+    this.disabled = !!attrs.disabled; this.checked = false; this._text = attrs.text || '';
+    this.classList = {contains: name => (this.class || '').split(' ').includes(name)};
+    this.append(...children);
+  }
+  append(...nodes) { for (const n of nodes.filter(n => n != null)) this.appendChild(n); }
+  appendChild(n) { this.children.push(n); if (typeof n === 'object') n.parent = this; return n; }
+  get textContent() { return this._text + this.children.map(n => typeof n === 'string' ? n : n.textContent).join(''); }
+  set textContent(value) { this._text = value; this.children = []; }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter(n => n !== this); }
+  removeAttribute(key) { delete this[key]; }
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+  showModal() { this.open = true; }
+  close() { this.open = false; this.listeners.close?.(); }
+  querySelectorAll(selector) {
+    const names = selector.split(',').map(s => s.trim());
+    const matches = n => names.some(s => s.startsWith('.') ? n.classList.contains(s.slice(1)) : s.startsWith('#') ? n.id === s.slice(1) : n.tagName === s);
+    return this.children.filter(n => typeof n === 'object').flatMap(n => [...(matches(n) ? [n] : []), ...n.querySelectorAll(selector)]);
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0]; }
+}
+const el = (tag, attrs, children) => new ApprovalNode(tag, attrs, children);
+const document = {body: el('body'), documentElement: {classList: {contains: () => true}},
+  getElementById(id) {return this.body.querySelector('#' + id);}};
+const remCommand = command => 'co rem ' + command, render = () => {}, threadStates = {};
+const privateFallback = node => node;
+let approvalTimer; const setInterval = () => 1, clearInterval = () => {};
+const REM = {live: true, drafts: [], approval_pending: [], approval_outcomes: [
+  {id: 'reply:fern', kind: 'reply', to: 'fern@example.test', subject: 'Review', body: 'Friday works.', private: true},
+  {id: 'reply:elara', kind: 'reply', to: 'elara@example.test', body: '【需要你：日期 — 未约定】', blocked: true},
+  {id: 'handled:fern', kind: 'handled', title: 'Fern Vale', text: 'Invite sent.'},
+  {id: 'task:fern', kind: 'task', title: 'Fern Vale', text: 'Review pilot.'}]};
+const calls = [];
+let failUndo = true;
+const approvalRequest = async payload => {
+  calls.push(payload);
+  return {results: payload.ids.map(id => ({id, release_at: new Date(Date.now() + 600000).toISOString(),
+    status: payload.action === 'undo' ? (failUndo ? 'error' : 'cancelled') : id.startsWith('handled') ? 'done' : id.startsWith('task') ? 'queued' : 'held',
+    ...(payload.action === 'undo' && failUndo ? {error: 'Cancellation failed'} : {})}))};
+};
+'''
+
+
+def approval_functions(*names):
+    return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
+
+
+def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+(async () => {
+  openApprovalSheet(REM.approval_outcomes);
+  const sheet = document.getElementById('approval-sheet'), checks = sheet.querySelectorAll('input');
+  const initially = checks.map(c => [c.checked, c.disabled]);
+  const edits = sheet.querySelectorAll('textarea'), saves = sheet.querySelectorAll('button').filter(b => b.textContent === 'Save reply');
+  edits[1].value = 'Tuesday works.'; edits[1].oninput(); saves[1].onclick();
+  await document.getElementById('approval-confirm').onclick();
+  console.log(JSON.stringify({initially, calls, frozen: [...edits, ...saves].every(node => node.disabled),
+    privateRows: sheet.querySelectorAll('.private').length, results: sheet.querySelectorAll('.approval-result').map(n => n.textContent)}));
+})();
+''')
+    assert result['initially'] == [[True, False], [False, True], [True, False], [True, False]]
+    assert result['calls'][0]['bodies'] == {'reply:elara': 'Tuesday works.'}
+    assert result['frozen'] is True
+    assert result['privateRows'] == 1
+    assert result['results'] == ['Held for 10 minutes', 'Held for 10 minutes', 'Marked done', 'Task queued']
+
+
+def test_approval_undo_failure_can_be_retried_before_expiry():
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
+(async () => {
+  REM.approval_pending = [{...REM.approval_outcomes[0], status: 'held', release_at: new Date(Date.now() + 600000).toISOString()}];
+  approvalUndoBar();
+  const bar = document.getElementById('approval-undo'), undo = bar.querySelector('button');
+  await undo.onclick(); const retryable = !undo.disabled;
+  failUndo = false; await undo.onclick();
+  console.log(JSON.stringify({retryable, calls, final: bar.textContent, pending: REM.approval_pending}));
+})();
+''')
+    assert result['retryable'] is True
+    assert len(result['calls']) == 2
+    assert result['final'].startswith('Cancelled') and result['pending'] == []
+
+
+def test_static_approval_cta_and_durable_failure_copy():
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+      REM.live = false;
+      REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
+      const header = approvalHeader();
+      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code').textContent,
+        failures: header.querySelector('.approval-problems').textContent}));
+    ''')
+    assert result['disabled'] is True and result['instruction'] == 'co rem open'
+    assert 'Delivery not confirmed' in result['failures'] and 'Timed out' in result['failures']
+
+
+def test_approval_header_reads_restored_outcomes_when_reopened():
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+      let opened;
+      const openApprovalSheet = items => {opened = items.map(item => item.id);};
+      const restored = REM.approval_outcomes[0]; REM.approval_outcomes = [];
+      const header = approvalHeader();
+      REM.approval_outcomes = [restored]; header.querySelector('button').onclick();
+      console.log(JSON.stringify(opened));
+    ''')
+    assert result == ['reply:fern']
+
+
+def test_static_snapshot_never_offers_live_undo():
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
+      REM.live = false;
+      REM.approval_pending = [{id:'reply:fern', status:'held', release_at:new Date(Date.now() + 600000).toISOString()}];
+      approvalUndoBar();
+      console.log(JSON.stringify({bar:!!document.getElementById('approval-undo'), calls}));
+    ''')
+    assert result == {'bar': False, 'calls': []}
+
+
+def test_approval_request_freezes_all_controls_until_response():
+    dom = APPROVAL_DOM.replace('const approvalRequest = async payload =>', 'let approvalRequest = async payload =>')
+    result = _run_reader_js(dom + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+(async () => {
+  let settle;
+  approvalRequest = payload => new Promise(resolve => {settle = resolve;});
+  openApprovalSheet(REM.approval_outcomes);
+  const sheet = document.getElementById('approval-sheet');
+  const pending = document.getElementById('approval-confirm').onclick();
+  const controls = sheet.querySelectorAll('.approval-row').flatMap(row => row.querySelectorAll('input, textarea, button'));
+  const frozen = [...controls, document.getElementById('approval-confirm'), sheet.querySelectorAll('button').find(b => b.textContent === 'Close')].every(n => n.disabled);
+  settle({results: []}); await pending;
+  console.log(JSON.stringify({frozen, restored: !sheet.querySelector('input').disabled}));
+})();
+''')
+    assert result == {'frozen': True, 'restored': True}
