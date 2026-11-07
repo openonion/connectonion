@@ -40,8 +40,11 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
         lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        if turn.get('reason'):
+            lines += [rem_look.follow(highlight(turn['reason']), glyph=''),
+                      rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
-            lines += [rem_look.follow(f"Read turn log: {turn['log']}", glyph='')]
+            lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
     lines += [*_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines

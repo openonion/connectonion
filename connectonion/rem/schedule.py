@@ -300,6 +300,7 @@ class CodexExec(Launchd):
 
     def render(self, root: Path, config: dict) -> str:
         from .codex_schedule import desktop_timezone, fire_times
+        from .codex_exec import _codex_command
         if config['schedule']['timezone'] != desktop_timezone():
             raise RemError('codex-exec fire times use this computer’s timezone; set schedule.timezone to the local timezone')
         root = Path(root).resolve()
@@ -311,8 +312,10 @@ class CodexExec(Launchd):
                                         for t in fire_times(config)]
         if os.environ.get('CODEX_HOME'):
             job['EnvironmentVariables']['CODEX_HOME'] = os.environ['CODEX_HOME']
-        if os.environ.get('CODEX_CMD'):
-            job['EnvironmentVariables']['CODEX_CMD'] = os.environ['CODEX_CMD']
+        # Pin the delegate, not only PATH: login-shell overrides and launchd's
+        # later environment must never redirect this job back to its launcher.
+        delegate = _codex_command()
+        job['EnvironmentVariables']['CODEX_CMD'] = delegate[0] if len(delegate) == 1 else shlex.join(delegate)
         return plistlib.dumps(job, sort_keys=False).decode()
 
     def install(self, root: Path, config: dict) -> dict:
