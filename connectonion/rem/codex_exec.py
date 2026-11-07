@@ -111,8 +111,13 @@ def _run_locked(root, run, lock_fd):
     receipt = {'started_at': started.isoformat(), 'result': 'running',
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
-    result = None
+    result, skipped = None, False
     try:
+        from .codex_schedule import CodexNative
+        if CodexNative().recent_desktop_fire(root):
+            skipped = True
+            receipt['reason'] = 'desktop automation fired in the last 10 minutes'
+            return 'skipped'
         with log.open('w') as output:
             startup = time.monotonic()
             command = _start_command(root, last)
@@ -128,7 +133,7 @@ def _run_locked(root, run, lock_fd):
         raise
     finally:
         code = result.returncode if result is not None else None
-        outcome = 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
+        outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
         receipt.update(result=outcome, exit_code=code, finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)
         write_json(state_path(root, 'last-turn.json'), receipt)

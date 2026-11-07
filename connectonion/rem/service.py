@@ -503,7 +503,7 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = _status_worker(worker_state(root))
     native = {}
-    if worker.get("scheduler") == "codex-native" or sys.platform == "darwin":
+    if worker.get("scheduler") == "codex-native" or (sys.platform == "darwin" and worker.get("scheduler") != "codex-exec"):
         from .codex_schedule import CodexNative
         scheduler = CodexNative()
         if worker.get("scheduler") == "codex-native" or scheduler.installed(root):
@@ -653,6 +653,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
     the round and sync call this inside the lock, where a Codex process per
     call would only slow them."""
     from .census import people_coverage
+    from .translate import coverage as translation_coverage
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -692,6 +693,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
             "people_coverage": people_coverage(root),
+            "translation_coverage": translation_coverage(root),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if live_quota else {})}
@@ -756,7 +758,9 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"]
+    _, runs = runs_today(run_logs(root), zone)
+    translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
+    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"] - translation_attempts
     resets = midnight.isoformat(timespec="minutes")
     return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
             "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
@@ -1466,7 +1470,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         forget_digest(root)
         write_json(path, record)
         return {"done": True, "record": record}
-    room = limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
+    room = daily_cap(root)["remaining"] - extract_calls
     if room < 1:
         cap = daily_cap(root)
         reason = (f"{CAP_LIMIT} ({cap['used']} of {cap['limit']} used today; this batch needs "

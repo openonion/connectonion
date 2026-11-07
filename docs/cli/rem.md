@@ -530,7 +530,10 @@ claims pass the audit; review names problems back to the writer once at most).
 The claim audit judges only lines the run wrote; carried lines are recorded, not refused.
 
 Native scheduled rounds investigate pages before summarising sessions, with at
-most five summaries per round. Set `limits.jobs_per_round` (default 8 pages) and
+most five summaries per round. Unwritten people, projects and other mapped
+pages stay in the scheduled queues until processed; your own page refresh is
+queued each day. Status and the reader show queued progress instead of asking
+you to copy a REM command for that work. Set `limits.jobs_per_round` (default 8 pages) and
 `limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
 `co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
 The weekly quota safety floor remains 90% by default.
@@ -686,17 +689,16 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   everything). **Worth remembering** and **Gone quiet** sit beside the brief on
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
-- **Thread actions**: every open thread on Home and in Open threads has
-  **Copy prompt** and **Mark done**. Copy prompt puts a ready-to-paste prompt
-  for Codex or Claude Code on the clipboard. It contains the thread, its page
-  with the `co rem show` command, other pages carrying the same thread, and
-  the cited source ids and dates, and it asks the agent to draft without
-  sending anything. Labelled private passages are left out. Mark done hides
-  the thread from Home and the counts in this browser only (local storage,
-  per notebook); with storage blocked it lasts for the session. **Undo** is
-  offered at once and under **Marked done on this device** in Open threads.
-  Nothing is sent and the notebook is not changed; the next pass that sees
-  your reply closes the thread there.
+- **Thread actions**: the schedule prepares one local reply draft per mail thread
+  waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day.
+  The mail card shows From, To, CC, Subject, Body and cited sources. **Open in
+  Gmail/Outlook drafts** creates an unsent provider draft; **Discard** keeps it
+  dismissed until newer mail arrives. A newer message invalidates the old local
+  draft and queues a replacement. Labelled private material stays behind the
+  reader's privacy toggle. REM never sends mail. Provider draft creation needs
+  the mailbox's existing draft-write permission; final editing and sending happen
+  in your mailbox. **Mark done** and **Undo** still affect this browser only;
+  the next pass that sees your reply closes the notebook thread.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1047,6 +1049,16 @@ an overdue trigger and a failed REM pass; a file alone is not a working schedule
 `stop` pauses the native task and retains its history. It does not cancel a native
 model turn already in progress.
 
+New `co rem start` registrations on a Mac with a ready Codex CLI use the
+`codex-exec` OS job to run the native REM task loop through the existing Codex CLI.
+Select `schedule.runner=codex-app` to keep the desktop scheduler.
+Switching saves the desktop automation as PAUSED. If Codex's index has not caught
+up within the wait, REM installs the exec job and records the switch anyway,
+printing that Codex will pick up the saved pause. Before each exec turn REM reads
+Codex's `automation_runs` index and skips the turn if this notebook's desktop
+automation fired in the last ten minutes. Account-managed automations still need
+to be paused through their supported management interface.
+
 The native adapter in rc21 uses Codex's legacy local-file registration. Newer
 desktop code also has account-managed registration, which can replace the local
 file and task ID. That registration route has not passed REM's live acceptance;
@@ -1064,9 +1076,8 @@ desktop directly at Scheduled, including when its process is already running,
 then independently confirms activation. After the native index is ready it
 opens Scheduled again, so a cold launch does not depend on an early URL request.
 It rechecks the same registration before removing the old clock; migration or
-a concurrent change aborts that handover. Stopping
-waits for native pause acknowledgement before marking the worker disabled or
-starting a replacement launchd timer. A known account-migrated task is identified
+a concurrent change aborts that handover. Stopping a desktop-native registration waits for pause acknowledgement.
+The codex-exec migration described above accepts a saved PAUSED definition. A known account-migrated task is identified
 by its legacy association and requires management in Codex Scheduled until an
 authoritative account registration API has been verified. REM does not recreate
 its old file or treat a cached account status as confirmation of a pause.
@@ -1166,7 +1177,8 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before, up to `limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
+the run before and unfinished pages from the existing queues, up to
+`limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
@@ -1903,17 +1915,19 @@ as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 
 ### Cached page languages
 
-After refreshing the owner's languages, each daily run translates pages changed
-by maintenance or investigation into the first non-English language in
-the owner's languages (configured or detected), when the runner is ready.
-`limits.translations_per_day` defaults to **10** new translation attempts across
-all daily slots; current cached translations use no attempts. Set it with
-`co rem config set limits.translations_per_day 5`. Failures are reported per page
-in the maintenance result and daily translation run log, and the next page continues.
+Every daily run works through all missing or stale translations. Opened pages
+requesting a translation and pages changed this round come first, then your own
+page, people by recent activity, organisations/projects, decisions/agenda, and
+sessions last. Current caches spend no budget. `limits.translations_per_day`
+defaults to **100**, independently of investigation's daily call budget; the
+weekly quota floor still stops translation. Follow-up slots keep the translation
+pass moving, including when an investigation is waiting on its next portion.
+`co rem status` reports coverage for each target language.
 
-The reader uses current cached prose for its selected interface language and
-shows the original when no translation is available. Rendering never starts a
-translation. The per-page Read in menu still allows an explicit language choice.
+The reader marks an untranslated page **Translation pending** while showing the
+original. Opening it in a non-English interface queues that language for the
+next pass, even if it was not detected among the owner's languages. The Read in
+menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
 
 What the model sees and must keep: the `## Sources` section is never sent; it is

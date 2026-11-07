@@ -355,3 +355,11 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         if budget <= 0:
             break
     return found
+
+
+def reply_drafts(root: Path, *, local=False) -> list[dict]:
+    """Reply bodies and mailboxes belong only in the owner's local reader."""
+    if not local:
+        return []
+    from .drafts import listing
+    return listing(root, include_pending=True)

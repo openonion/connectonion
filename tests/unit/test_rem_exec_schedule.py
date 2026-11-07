@@ -72,7 +72,7 @@ def test_exec_status_reports_mode_and_last_turn(tmp_path, monkeypatch):
     assert scheduler.describe(tmp_path)['last_turn']['exit_code'] == 7
 
 
-def test_start_exec_removes_desktop_registration_and_wake(tmp_path, monkeypatch):
+def test_start_exec_pauses_desktop_registration_and_removes_wake(tmp_path, monkeypatch):
     from connectonion.rem import service
     from connectonion.rem.config import prepare, set_config
     from connectonion.rem.files import write_json
@@ -93,7 +93,7 @@ def test_start_exec_removes_desktop_registration_and_wake(tmp_path, monkeypatch)
     assert result['runner'] == 'codex-exec'
     assert scheduler.plist_path(root).is_file()
     assert not scheduler.wake_path(root).exists()
-    assert not native.definition_path(root).exists()
+    assert native.definition(root)['status'] == 'PAUSED'
 
 
 def test_app_install_removes_exec_job_and_installs_wake(tmp_path, monkeypatch):
@@ -200,3 +200,13 @@ def test_saved_scheduler_choice_does_not_probe_cli_on_read(tmp_path, monkeypatch
     monkeypatch.setattr('connectonion.rem.runner.ready', no_probe)
     assert read_config(tmp_path)['schedule']['runner'] == 'codex-exec'
 
+
+def test_exec_turn_skips_recent_desktop_fire_with_durable_receipt(tmp_path, monkeypatch):
+    from connectonion.rem import codex_exec
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: True)
+    def no_spawn(*args, **kwargs):
+        pytest.fail('Desktop fire must prevent another Codex turn')
+    assert codex_exec.run_turn(tmp_path, run=no_spawn) == 'skipped'
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['result'] == 'skipped'
+    assert 'desktop automation' in receipt['reason']

@@ -305,6 +305,46 @@ class CodexNative:
         removed_wake = self.launcher.uninstall_wake(root)
         return bool(definition) or removed_wake
 
+    def pause_for_exec(self, root: Path) -> bool:
+        """A saved pause is sufficient for migration; the exec turn checks actual fires."""
+        if self._account_task(root):
+            raise RemError(ACCOUNT_STORAGE + "; pause it in Codex Scheduled before switching")
+        definition = self.definition(root)
+        if not definition:
+            if self._indexed(root).get("status") == "ACTIVE":
+                raise RemError("Active desktop task has no definition; pause it in Codex Scheduled")
+            return False
+        definition.update(status="PAUSED", updated_at=int(time.time() * 1000))
+        self._write(root, definition)
+        # With no indexed task there is no running desktop clock to acknowledge.
+        adopted = not self._indexed(root) or self._wait_for_definition(root, definition)
+        self.launcher.uninstall_wake(root)
+        return not adopted
+
+    def recent_desktop_fire(self, root: Path) -> bool:
+        """Read Codex's run index, scoped to this notebook, without changing it."""
+        from .service import now
+        cutoff = int((now().timestamp() - 10 * 60) * 1000)
+        ids = [automation_id(root)]
+        indexed = self._indexed(root)
+        if indexed.get("id") and indexed["id"] not in ids:
+            ids.append(indexed["id"])
+        for name in ("codex.db", "codex-dev.db"):
+            database = self.home / "sqlite" / name
+            if not database.is_file():
+                continue
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+                columns = {row[1] for row in db.execute("PRAGMA table_info(automation_runs)")}
+                if not columns:
+                    continue
+                if not {"automation_id", "created_at"}.issubset(columns):
+                    raise RemError("Unrecognized Codex automation_runs index")
+                for task_id in ids:
+                    if db.execute("SELECT 1 FROM automation_runs WHERE automation_id = ? AND created_at >= ? LIMIT 1",
+                                  (task_id, cutoff)).fetchone():
+                        return True
+        return False
+
     def installed(self, root: Path) -> bool:
         return bool(self.definition(root) or self._indexed(root) or self.launcher.wake_path(root).is_file())
 

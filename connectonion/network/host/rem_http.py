@@ -81,8 +81,40 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, page, "text/html")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/translation-request"):
+        await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _action(scope, receive, send, root, headers):
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 4096) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    if not isinstance(body, dict):
+        await _reply(send, 400, json.dumps({"error": "JSON object required"}), "application/json")
+        return
+    from ...rem.files import RemError
+    from ...rem import drafts, translate
+    if scope["path"] == "/rem/translation-request":
+        operation = lambda: translate.request(root, body.get("page"), body.get("language"))
+    elif body.get("action") in ("open", "discard") and isinstance(body.get("id"), str):
+        operation = lambda: (drafts.open_provider if body["action"] == "open" else drafts.discard)(root, body["id"])
+    else:
+        await _reply(send, 400, json.dumps({"error": "Unknown draft action"}), "application/json")
+        return
+    # Provider/authentication errors must reach the card instead of leaving an empty tab.
+    try:
+        result = await asyncio.to_thread(operation)
+    except (RemError, ValueError) as error:
+        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        return
+    await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 
 async def _translate(scope, receive, send, root, headers):

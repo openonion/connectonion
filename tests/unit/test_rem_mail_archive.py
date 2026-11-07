@@ -744,7 +744,7 @@ def test_first_archive_fetches_bodies_concurrently_and_reuses_them(tmp_path):
     assert reused["reused"] == 10 and reused["saved"] == 0
 
 
-def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):
+def test_a_stalled_archive_reports_automatic_scheduled_resumption(tmp_path):
     """#2035: archive.json sat at `phase: running` (550 of 3,152) for a day and status said nothing."""
     from connectonion.rem.files import read_json, state_path, write_json
     from connectonion.rem.mail_archive import archive_state
@@ -761,7 +761,8 @@ def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):
     stalled = archive_state(tmp_path, now=T0 + timedelta(hours=20))
     assert stalled["stalled"] and (stalled["on_disk"], stalled["target"]) == (2, 6)
     assert "no progress since 2026-09-30T09:00" in stalled["summary"]
-    assert "co rem sync" in stalled["summary"]
+    assert "next scheduled run resumes it" in stalled["summary"]
+    assert "co rem sync" not in stalled["summary"]
     write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "complete"})
     assert archive_state(tmp_path, now=T0) is None                       # nothing to say
 

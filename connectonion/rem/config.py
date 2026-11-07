@@ -79,7 +79,7 @@ def default_config() -> dict:
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
             "limits": {"runner_calls_per_day": 200, "jobs_per_round": 8,
-                       "translations_per_day": 10, "items_per_batch": 20,
+                       "translations_per_day": 100, "drafts_per_night": 10, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -156,6 +156,7 @@ def validate(config: dict) -> dict:
 # these is read as unset, unless the owner chose it with `config set`.
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
               "limits.timeout_seconds": {600},
+              "limits.translations_per_day": {10},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},

@@ -519,18 +519,18 @@ Effects:  Saves your approval, installs daily updates and runs the first update
           on first start. Each run reads new mail bodies and coding sessions,
           calls the model and saves page changes. runner_calls_per_day limits
           model calls each day.
-Schedule: Updates run automatically through Codex desktop, launchd or systemd at saved
-          local times (default: 03:00, 04:00, 06:00, 17:00, 18:00, 19:00).
-          On macOS, uses Codex desktop when the runner is Codex, the app is
-          installed and the saved timezone matches this computer. Keep the app
-          open and computer awake. Other runners, headless Macs and different
-          saved timezones use launchd.
-          Linux uses a systemd user timer; loginctl enable-linger keeps it
-          running while logged out.
-          Codex desktop follows the rem skill with co rem next --scheduled.
-          launchd and systemd run co rem sync --scheduled. Checks that the new schedule
-          is saved before removing an old timer; keeps any old batch still
-          running. Status shows whether the schedule is saved and has run.
+Schedule: Updates run automatically through the OS at saved local times
+          (default: 03:00, 04:00, 06:00, 17:00, 18:00, 19:00).
+          On macOS with the Codex runner, launchd runs the native REM task loop
+          through Codex CLI (codex-exec). It saves the old desktop definition
+          as PAUSED and proceeds even while Codex's index catches up.
+          Before each exec turn, a desktop fire within ten minutes skips it.
+          Other runners use launchd; Linux uses a systemd user timer.
+          loginctl enable-linger keeps Linux upkeep running while logged out.
+          Keep this computer awake. Status shows the saved schedule and runs.
+          Unwritten pages, reply drafts and missing/stale translations are queued
+          automatically. Translations have their own daily limit (default 100);
+          reply drafts are capped at 10 a night. Nothing is sent by REM.
 Access:   Background models can write only under the notebook's .state/tasks,
           with no shell commands or network access.
           Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
