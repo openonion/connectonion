@@ -18,6 +18,7 @@ import yaml
 from . import quota, runner, service
 from .config import read_config
 from .daily import record_cap_stop
+from ..environment import selected_command
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
 
 
@@ -47,14 +48,18 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def _config_hash(config, *, include_languages=False):
+def _config_hash(config, *, include_languages=False, include_models=False):
     # Scheduling, concurrency and budgets govern future work. Prepared material
     # (including its language and local dates) is already saved. Reader translation
     # targets do not change page-task material. Keep evidence-sizing limits.
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    ignored = ("schedule", "effort") if include_languages else ("schedule", "effort", "language", "languages")
+    ignored = {"schedule", "effort"}
+    if not include_languages:
+        ignored.update(("language", "languages"))
+    if not include_models:
+        ignored.update(("model", "speed", "models"))
     content = {key: value for key, value in config.items() if key not in ignored}
     content["limits"] = {key: value for key, value in config["limits"].items() if key not in run_limits}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
@@ -65,19 +70,30 @@ def _input_hash(root, path):
     return _config_hash(read_config(root)) if path == root / "config.yaml" and digest is not None else digest
 
 
+def _legacy_config_hashes(config):
+    return (_config_hash(config, include_models=True),
+            _config_hash(config, include_languages=True, include_models=True))
+
+
 def _input_matches(root, task, path, digest):
     if _input_hash(root, path) == digest:
         return True
-    if path != root / "config.yaml":
+    if path != root / "config.yaml" or not path.is_file():
         return False
-    if _hash(path) == digest or _config_hash(read_config(root), include_languages=True) == digest:
-        return True  # Unchanged raw-file or rc59 semantic config, even without a snapshot.
-    # Recover raw-file and rc59 semantic digests only when the saved stage
-    # config reproduces them; never guess missing inputs.
+    current = read_config(root)
+    # Reproduce the pre-model-split view of an unchanged saved file. read_config
+    # adds models and migrates Luna, neither of which existed in those digests.
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    legacy_current = {**current, "model": saved["model"]}
+    if "models" not in saved:
+        legacy_current.pop("models")
+    if _hash(path) == digest or digest in _legacy_config_hashes(legacy_current):
+        return True  # Unchanged raw-file or old semantic config, without a snapshot.
+    # A saved stage config must reproduce the old digest. Never guess missing inputs.
     previous = task["task"].get("config")
     return (previous is not None
             and digest in (hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest(),
-                           _config_hash(previous, include_languages=True))
+                           *_legacy_config_hashes(previous))
             and _config_hash(previous) == _input_hash(root, path))
 
 
@@ -346,7 +362,7 @@ def _save(root, cursor, task):
     atomic_write(directory / "instructions.md", prompt)
     _readable_files(directory)
     task.update(instructions=prompt, material=str(directory), candidate=stage_task["candidate"] or stage_task.get("task_root"),
-                submit=f"co rem --root {shlex.quote(str(root))} submit {task['id']}",
+                submit=selected_command(f"co rem --root {shlex.quote(str(root))} submit {task['id']}"),
                 inputs=_inputs(root, stage_task, directory, handler=task["handler"]),
                 today=re.findall(r"Today is (\d{4}-\d{2}-\d{2})", prompt)[-1])
     task["render_stage"] = task["stage"]

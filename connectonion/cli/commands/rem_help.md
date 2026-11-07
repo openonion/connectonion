@@ -714,7 +714,9 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
+Keys:     model                          gpt-6.1-sol (default): investigation, writing, audit and judgement
+          models.summary                 gpt-6-luna (Codex default): standalone coding-session summaries
+                                         existing other runners keep their working model until you choose one
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
@@ -730,7 +732,7 @@ Keys:     model                          gpt-6-luna (default); a new one is chec
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  a model for one stage of planned investigation:
                                          plan, extract, synthesize or render ("default" clears it)
-Example:  co rem config set model gpt-6-luna schedule.times "06:00,18:00"
+Example:  co rem config set model gpt-6.1-sol schedule.times "06:00,18:00"
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when model or runner changes, never read off the name. Unchecked runs
@@ -774,7 +776,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set model gpt-6-luna limits.runner_calls_per_day 4
+Example:  co rem config set model gpt-6.1-sol limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.
@@ -868,20 +870,20 @@ The import is deterministic and uses no model.
 Includes your typed messages and the final agent reply, with secret-shaped text removed.
 Automation, subagents and REM's own sessions stay out. Repeating the import updates
 changed sessions in place and skips unchanged files.
-With --summarise, the configured model adds a title, summary, tags, outcome,
+With --summarise, models.summary adds a title, summary, tags, outcome,
 verified owner decisions and open follow-ups in batches. Init and daily rounds
 summarise up to 40 sessions when the runner is ready.
 
 Usage:    co rem import sessions [--days N] [--summarise] [--limit N] [--json]
 Example:  co rem import sessions --days 30 --summarise --json
           --days       read sessions active in the last N days (default 180)
-          --summarise  summarise new or changed sessions with the configured model
+          --summarise  summarise new or changed sessions with models.summary
           --limit      maximum sessions to summarise (default 40), newest first
           --json       print one {"ok", "data", "next"} result
 Effects:  Reads enabled local coding sources and writes sessions/ pages and private
           progress. This explicit command authorizes the import; automatic runs
-          read only sources you have approved. Summaries use the configured runner
-          and model; failed batches are left for next time. Usage is in rem logs.
+          read only sources you have approved. Standalone summaries use models.summary
+          with the configured runner; failed batches are left for next time. Usage is in rem logs.
 Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
           With --summarise, a summary report (under "summary" in JSON).
 Next:     co rem list sessions

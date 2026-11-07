@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..codex_cli import resolve_codex
+from ..environment import subprocess_environment
 from .files import RemError, read_json, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
@@ -185,7 +186,7 @@ def _run_locked(root, run, lock_fd):
             # Inherit the lock so killing the launcher cannot overlap a still
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                         cwd=root, pass_fds=(lock_fd,), env={**os.environ, 'CO_REM_TURN_ID': name})
+                         cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
     except Exception as error:
         # Persist the failure for unattended users, then preserve the traceback.
         receipt['reason'] = str(error) or type(error).__name__

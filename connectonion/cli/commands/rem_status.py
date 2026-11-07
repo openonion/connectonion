@@ -34,6 +34,8 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
+    if value.get('models'):
+        lines += [rem_look.section('Models', value['models'])]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
     if value.get('last_turn'):

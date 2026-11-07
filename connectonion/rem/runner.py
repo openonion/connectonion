@@ -119,7 +119,9 @@ def co_command() -> list[str]:
         return [sys.executable]
     if not sys.executable:
         raise RemError("Cannot tell which Python is running ConnectOnion; run co rem from a normal install")
-    return [sys.executable, "-m", "connectonion.cli.main"]
+    from ..environment import explicit_env_file
+    selector = ["--env-file", str(explicit_env_file())] if explicit_env_file() is not None else []
+    return [sys.executable, "-m", "connectonion.cli.main", *selector]
 
 
 def preflight() -> list[str]:
@@ -136,7 +138,8 @@ def child_env(config: dict | None = None) -> dict:
     installed connectonion and failed with "Skill 'rem-investigate' not found"
     after minutes of gathering (#1974).
     """
-    environment = os.environ.copy()
+    from ..environment import subprocess_environment
+    environment = subprocess_environment()
     # Keep resumable traces, without promoting every maintenance page to a
     # recent Codex conversation. This is private to the REM child process.
     environment["CO_REM_CODEX_ARCHIVE"] = "1"
