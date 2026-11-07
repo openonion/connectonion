@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc53
+## Current Version: 1.9.3rc54
+
+Hotfix: scheduled `codex exec` turns run with network access. On 1.9.3rc53 each one stopped at its first
+mail read with a DNS error from Codex's sandbox. Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc54.md).
+
+- 1.9.3rc54 (scheduled codex exec turns reach the network).
+
+### Previous candidate: 1.9.3rc53
 
 Scheduled REM runs through `codex exec` on macOS (#2844, #2856): one ephemeral session per saved time keeps
 working across the round, `co init` sets REM up without questions and survives a missing scheduler, basic
