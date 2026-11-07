@@ -453,3 +453,111 @@ def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
     page.set_viewport_size({'width': 375, 'height': 812})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(shots / 'reviews-mobile.png'), full_page=True)
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('live', [False, True])
+def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkeypatch, width, language, live):
+    from datetime import datetime, timezone
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem import drafts, reader as rem_reader, service
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+
+    root = tmp_path / 'fictional notebook'
+    prepare(root)
+    moment = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    write_json(state_path(root, 'map.json'), {'owner': {'record': 'people/owner.md', 'addresses': ['owner@example.test']}})
+    book = Notebook(root)
+    book.write('people/owner.md', '# Avery\n')
+    for index, (name, provider) in enumerate([('Fern', 'gmail'), ('Mara', 'gmail'), ('Hazel', 'outlook'), ('Nova', 'gmail')]):
+        book.write(f'people/{index}-{name.lower()}.md', f'# {name}\n\n## Facts\n- Email: {name.lower()}@example.test\n\n'
+                   f'## Open threads\n- You owe {name} a demo review; due 2026-11-08. [1]\n\n'
+                   f'## Sources\n- [1] {provider}:{name.lower()}\n')
+        if name != 'Hazel':
+            retain_message(root, provider, {'id': name.lower(), 'from': name.lower() + '@example.test',
+                           'to': ['owner@example.test'], 'subject': 'Demo review', 'thread': name.lower(),
+                           'date': '2026-11-07T01:00:00+00:00'}, 'Please send your feedback.', fetched_at=moment.isoformat())
+    retain_message(root, 'gmail', {'id': 'promise', 'from': 'owner@example.test', 'to': ['mara@example.test'],
+                   'subject': 'Demo review', 'thread': 'mara', 'date': '2026-11-07T02:00:00+00:00'},
+                   "I'll watch the demo and send feedback.", fetched_at=moment.isoformat())
+    refresh(root)
+    row = next(row for row in drafts.queue(root) if row['to'] == 'fern@example.test')
+    drafts.promote(root, {**row, 'body': 'Hello Fern,\n\nThe demo is clear. 【需要你：演示反馈 — date not agreed】',
+                         'sources': ['gmail:fern']})
+    snapshot = rem_reader.snapshot
+
+    def frozen_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
+        data['as_of'] = moment.isoformat()
+        data['status']['worker']['enabled'] = True
+        data['status']['mailboxes']['outlook'] = 'last read failed 2026-11-07'
+        return data
+
+    monkeypatch.setattr(rem_reader, 'snapshot', frozen_snapshot)
+    path = tmp_path / 'reader.html'
+    path.write_text(rem_reader.render(root, local=True))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(path.as_uri())
+        page.evaluate(r'''({language, live}) => {
+          REM.live = live;
+          window.draftRequests = [];
+          const template = REM.drafts.find(d => d.status === 'prepared');
+          window.fetch = async (url, options) => {
+            const request = JSON.parse(options.body); draftRequests.push(request);
+            const result = request.action === 'prepare'
+              ? {...template, id: 'nova-ready', thread: 'mail:gmail:nova',
+                  to: 'nova@example.test', body: 'The demo is ready.', status: 'prepared'} : {status: 'sent'};
+            return {ok: true, json: async () => result};
+          };
+          setInterfaceLanguage(language);
+        }''', {'language': language, 'live': live}, isolated_context=False)
+        cards = page.locator('.qcard')
+        letter = cards.filter(has=page.locator('.today-who', has_text='Fern'))
+        task = cards.filter(has=page.locator('.today-who', has_text='Mara'))
+        missing = cards.filter(has=page.locator('.today-who', has_text='Hazel'))
+        queued = cards.filter(has=page.locator('.today-who', has_text='Nova'))
+        assert letter.locator('.owner-slot').count() == 1
+        assert ('需要你填' if language == 'zh' else 'Fill in') in letter.locator('.owner-slot').inner_text()
+        assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
+        assert '2026-11-07' in task.locator('.draft-reason').inner_text()
+        assert task.locator('.kind-badge').inner_text() == ('任务' if language == 'zh' else 'Task')
+        assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
+        assert missing.locator('.btn-act').inner_text() == ('打开已记录的来源' if language == 'zh' else 'Open the recorded source')
+        assert ('今晚' if language == 'zh' else 'tonight') in queued.locator('.draft-reason').inner_text()
+        if live:
+            letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            assert letter.locator('.mail-status').inner_text() == ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first')
+            assert page.evaluate('draftRequests.length', isolated_context=False) == 0
+        else:
+            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['在实时阅读器里打开' if language == 'zh' else 'Open in the live reader']
+            letter.locator('.mail-actions .btn-act').click()
+            assert letter.locator('.cmd code').inner_text() == f"co rem --root '{root}' open"
+            assert letter.get_by_role('button', name='复制命令' if language == 'zh' else 'Copy the command').is_visible()
+            assert letter.locator('.mail-channels button').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        evidence = Path('/tmp/rem-draft-coverage')
+        evidence.mkdir(exist_ok=True)
+        page.screenshot(path=str(evidence / f'today-{language}-{width}-{"live" if live else "snapshot"}.png'), full_page=True)
+        if live:
+            letter.get_by_role('button', name='全屏写' if language == 'zh' else 'Write full screen').click()
+            dialog = page.locator('dialog.writer')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            assert dialog.is_visible()
+            assert ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first') in dialog.inner_text()
+            dialog.get_by_role('textbox').fill('The demo is ready for release.')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            assert not dialog.count()
+            assert page.evaluate('draftRequests[0].body', isolated_context=False) == 'The demo is ready for release.'
+            queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
+            assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
+        assert not errors, errors
+        browser.close()

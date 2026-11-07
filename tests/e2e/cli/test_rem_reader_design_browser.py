@@ -194,6 +194,8 @@ def reader(tmp_path, monkeypatch):
     def fixed_snapshot(root, local=False, today=False):
         data = snapshot(root, local, today=today)
         data["as_of"] = frozen.isoformat()
+        from connectonion.rem.today import queue
+        data['today_queue'] = queue(root, records=data['records'], contexts=data['source_context'], states=data['threads'], as_of=frozen.date())
         return data
 
     monkeypatch.setattr(rem_reader, "snapshot", fixed_snapshot)
@@ -201,6 +203,15 @@ def reader(tmp_path, monkeypatch):
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        from connectonion.rem.today import queue
+        page.expose_function('projectToday', lambda payload: queue(Path(payload['root']), records=payload['records'],
+                             contexts=payload['source_context'], states=payload.get('threads', {}),
+                             as_of=datetime.fromisoformat(payload['as_of']).date()))
+        page.add_init_script("""window.refreshTodayQueue = async () => {
+          REM.today_queue = await projectToday({root: REM.root, as_of: REM.as_of, threads: REM.threads,
+            records: REM.records.map(r => ({...r, text: r.shown ? r.original ?? r.text : r.text})), source_context: REM.source_context});
+          threadEntries.cached = null;
+        };""")
         errors, requests = [], []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
@@ -1237,7 +1248,7 @@ def test_changes_and_open_threads_are_actionable_destinations(reader):
 @pytest.mark.parametrize("mine,theirs", [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)])
 def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, theirs):
     page, _ = reader
-    page.evaluate(r"""({mine, theirs}) => {
+    page.evaluate(r"""async ({mine, theirs}) => {
       for (const r of REM.records)
         r.text = r.text.replace(/(^## Open threads[^\n]*\n)[\s\S]*?(?=^## |^Investigation:|(?![\s\S]))/mi, '$1Unknown\n\n');
       const items = [
@@ -1246,7 +1257,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
       ];
       const r = byPath('people/mara-ostrowski.md');
       r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + (items.join('\n') || 'Unknown'));
-      KNOWN.clear(); FACTS.clear(); render();
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }""", {"mine": mine, "theirs": theirs}, isolated_context=False)
     primary = page.locator('.morning-primary')
     assert 'See all 0' not in primary.inner_text()
@@ -2281,7 +2292,7 @@ def test_morning_selection_keeps_distinct_pages_and_named_obligations(reader):
       const mara = byPath('people/mara-ostrowski.md'), tomas = byPath('people/tomas-reyes.md');
       const ines = byPath('people/ines-halvorsen.md'), project = byPath('projects/harbour.md');
       const item = (r, text) => ({r, t: {text, dir: 'mine', quiet: false}});
-      return morningEntries([
+      const entries = [
         item(mara, 'You owe Tomás a talk abstract [1].'),
         item(mara, 'You owe Mara the signed draft [4].'),
         item(mara, 'You owe Mara a second answer [5].'),
@@ -2289,7 +2300,9 @@ def test_morning_selection_keeps_distinct_pages_and_named_obligations(reader):
         item(project, 'You owe Tomás Reyes the signed draft [1].'),
         item(ines, 'You owe Inès the Q3 receipts [1].'),
         item(project, 'You owe Harbour a deployment [1].')
-      ]).map(({r, t}) => [r.path, t.text]);
+      ];
+      REM.today_queue = [1, 3, 5].map(i => ({key: doneKey(entries[i]), section: 'morning'}));
+      return morningEntries(entries).map(({r, t}) => [r.path, t.text]);
     }""", isolated_context=False)
     assert [row[0] for row in got] == ['people/mara-ostrowski.md', 'people/tomas-reyes.md', 'people/ines-halvorsen.md']
     assert 'signed draft' in got[1][1]
@@ -2324,7 +2337,7 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=theme)
-    page.evaluate(r"""() => {
+    page.evaluate(r"""async () => {
       const quote = "I'll come back to you shortly with a draft and a couple of questions about the contribution details.";
       for (const [path, n] of [['people/mara-ostrowski.md', '91'], ['people/tomas-reyes.md', 'W92']]) {
         const r = byPath(path);
@@ -2333,7 +2346,7 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
           '- The user owes [Tomás Reyes](../people/tomas-reyes.md): a Letter of Support draft; “' + words + '” [' + n + ']; due: 2026-10-01.\n');
         r.text = r.text.replace('## Sources\n', '## Sources\n- [' + n + '] gmail:27472b21b17e — Letter of Support promise\n');
       }
-      KNOWN.clear(); FACTS.clear(); render();
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }""", isolated_context=False)
     home = page.locator('.waiting-ledger > li, .today-thread').filter(has_text='Letter of Support draft')
     assert home.count() == 1
@@ -2361,7 +2374,9 @@ def test_morning_keeps_separate_people_with_the_same_kind_of_request(reader):
     page, _ = reader
     assert page.evaluate(r"""() => {
       const people = ['people/mara-ostrowski.md', 'people/tomas-reyes.md', 'people/ines-halvorsen.md'].map(byPath);
-      return morningEntries(people.map(r => ({r, t: {text: 'You owe ' + r.title + ' a reply [1].', dir: 'mine', quiet: false}}))).length;
+      const entries = people.map(r => ({r, t: {text: 'You owe ' + r.title + ' a reply [1].', dir: 'mine', quiet: false}}));
+      REM.today_queue = entries.map(entry => ({key: doneKey(entry), section: 'morning'}));
+      return morningEntries(entries).length;
     }""", isolated_context=False) == 3
 
 
@@ -4022,7 +4037,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 1000})
     page.emulate_media(color_scheme=theme)
-    page.evaluate(r'''() => {
+    page.evaluate(r'''async () => {
       REM.as_of = '2026-10-20T12:00:00Z';
       for (const r of REM.records) {
         r.original = undefined;
@@ -4037,7 +4052,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
       REM.logs = [{...pass, started_at: '2026-10-18T12:00:00Z', claim_changes: []},
         {...pass, started_at: REM.as_of, claim_changes: Array.from({length: 4}, () => ({record: r.path,
         field: 'role', before: 'Partnerships lead', after: 'Head of Partnerships', sources: ['2']}))}];
-      KNOWN.clear(); FACTS.clear(); render();
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }''', isolated_context=False)
     assert page.locator('.night-strip').count() == 0
     assert page.locator('.overnight-change').count() == 3
@@ -4519,7 +4534,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
 def test_round10_owner_is_your_page_in_today_waiting_and_open_threads(reader, language):
     page, uri = reader
     page.goto(uri)
-    page.evaluate(r'''language => {
+    page.evaluate(r'''async language => {
       const owner = byPath(REM.owner);
       owner.title = 'Theo Park';
       REM.as_of = '2026-10-20T12:00:00Z';
@@ -4529,7 +4544,7 @@ def test_round10_owner_is_your_page_in_today_waiting_and_open_threads(reader, la
       for (const r of REM.records) if (r !== owner) {
         r.text = '# ' + r.title + '\n'; r.original = r.text; delete r.translations;
       }
-      KNOWN.clear(); FACTS.clear(); OWING = null;
+      KNOWN.clear(); FACTS.clear(); OWING = null; await refreshTodayQueue();
       setInterfaceLanguage(language);
     }''', language, isolated_context=False)
     who = '你的页面' if language == 'zh' else 'Your page'

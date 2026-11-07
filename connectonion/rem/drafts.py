@@ -98,8 +98,12 @@ def candidates(root, *, refresh_index=True, records=None):
 def queue(root):
     rows = candidates(root)
     states = threads.listing(root)
-    return [row for row in rows if not closed(root, row, states=states)
-            and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    from .today import queue as today_queue
+    ranks = {key: entry['rank'] for entry in today_queue(root, states=states) for key in entry['keys']}
+    pending = [row for row in rows if not closed(root, row, states=states)
+               and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    return sorted(pending, key=lambda row: min((ranks.get(threads.done_key(item['record'], item['text']), float('inf'))
+                                             for item in row['obligations']), default=float('inf')))
 
 
 def closed(root, row, *, states=None):
@@ -228,6 +232,14 @@ def _check_send(task, value, body, needs_owner):
     return send
 
 
+BRACKETED = re.compile(r'\[[^\]]*\]|［[^］]*］|【[^】]*】')
+OWNER_SLOT = re.compile(r'【需要你：\S(?:[^【】\n]*\S)? — \S(?:[^【】\n]*\S)?】')
+
+
+def has_slots(body):
+    return bool(re.search(r'[\[\]［］【】]', body))
+
+
 def check(task, output):
     value = json.loads(output['result'])
     allowed = {item['source'] for item in task['row']['material']}
@@ -240,6 +252,9 @@ def check(task, output):
             or not isinstance(value.get('sources'), list) or not value['sources']
             or any(not isinstance(source, str) or source not in allowed for source in value['sources'])):
         raise RemError('Reply draft needs a body and cited sources from its thread')
+    if (has_slots(BRACKETED.sub('', body))
+            or any(not OWNER_SLOT.fullmatch(slot) for slot in BRACKETED.findall(body))):
+        raise RemError(f'Reply draft slot must use 【需要你：<what> — <by when or date not agreed>】. Fix {task.get("candidate", "candidate.json")}.')
     needs_owner = value.get('needs_owner', [])
     if not isinstance(needs_owner, list) or any(not isinstance(slot, str) for slot in needs_owner):
         raise RemError('Reply draft needs_owner must be a list of slots')
@@ -374,6 +389,8 @@ def send(root, draft_id, body=None):
         text = body if body is not None else saved['body']
         if not text.strip():
             raise RemError('The reply body is empty')
+        if has_slots(text):
+            raise RemError('Fill the marked part first / 先填好标出的部分')
         if saved.get('channel', 'mail') != 'mail':
             receipt = _send_chat(saved, text)
         else:
