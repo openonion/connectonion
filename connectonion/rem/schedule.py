@@ -151,6 +151,7 @@ class Launchd:
         dirs += os.environ.get("PATH", "").split(os.pathsep)
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
         pythonpath = _checkout_path()
         if pythonpath:
             # The job must run the same connectonion the user is running now; a
@@ -318,6 +319,17 @@ class CodexExec(Launchd):
         job['EnvironmentVariables']['CODEX_CMD'] = delegate[0] if len(delegate) == 1 else shlex.join(delegate)
         return plistlib.dumps(job, sort_keys=False).decode()
 
+    def _install(self, root, config):
+        from .codex_schedule import CodexNative
+        lagging = CodexNative(launcher=self, run=self.run).pause_for_exec(root)
+        path = self.plist_path(root)
+        self._write_plist(path, self.render(root, config))
+        self._remove_legacy(root)
+        self._load(path)
+        note = ("Desktop task paused in its definition; Codex will pick it up." if lagging else "")
+        return {"scheduler": "codex-exec", "label": label_for(root), "plist": str(path),
+                "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
     def install(self, root: Path, config: dict) -> dict:
         from .runner import ready
         problem, fix = ready({**config, 'runner': 'codex'})
@@ -327,7 +339,8 @@ class CodexExec(Launchd):
         self.render(root, config)
         result = super().install(root, config)
         return {**result, 'runner': 'codex-exec',
-                'note': 'Codex exec keeps working across tasks in one turn; desktop automation turns can end early. Keep this computer awake.'}
+                'note': ' '.join(filter(None, [result.get('note'),
+                    'Codex exec keeps working across tasks in one turn; desktop automation turns can end early. Keep this computer awake.']))}
 
     def describe(self, root: Path) -> dict:
         from .files import read_json, state_path
@@ -363,6 +376,7 @@ class Systemd:
                 dirs.append(str(Path(binary).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
         pythonpath = _checkout_path()
         if pythonpath:
             env["PYTHONPATH"] = pythonpath
@@ -456,6 +470,25 @@ class Systemd:
             if value and value != "n/a":
                 info["next_run"] = value
         return info
+
+
+def exec_round(root, *, scheduled=True):
+    from . import native, runner
+    from .codex_schedule import CodexNative
+    from .config import read_config
+    if scheduled and CodexNative().recent_desktop_fire(root):
+        return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+    task = native.next_task(root, scheduled=scheduled)
+    while task.get("outcome") == "task":
+        if scheduled and CodexNative().recent_desktop_fire(root):
+            return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+        result = runner.run_task(Path(task["material"]), task["instructions"], read_config(root), task["stage"])
+        task = native.submit(root, task["id"], usage=result.get("usage"))
+        if task.get("outcome") == "refused":
+            return task
+        if task.get("outcome") != "task":
+            task = native.next_task(root, scheduled=scheduled)
+    return task
 
 
 class Unsupported:

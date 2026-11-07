@@ -667,7 +667,7 @@ def test_scheduled_sync_leaves_slot_owed_while_a_local_run_is_alive(rem, monkeyp
         assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
 
 
-def test_scheduled_busy_cli_prints_one_line_and_starts_no_daily_work(rem, monkeypatch):
+def test_scheduled_busy_cli_prints_reason_and_next_and_starts_no_daily_work(rem, monkeypatch):
     from typer.testing import CliRunner
     from connectonion.cli.main import app
     from connectonion.rem import service
@@ -682,7 +682,8 @@ def test_scheduled_busy_cli_prints_one_line_and_starts_no_daily_work(rem, monkey
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "sync", "--scheduled"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running"]
+    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running",
+                                                f"Next: co rem --root {root} logs"]
 
 
 def test_scheduled_ownership_covers_gaps_between_stage_records_and_retries_next_tick(rem, monkeypatch):

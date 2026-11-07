@@ -367,15 +367,18 @@ def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
 
 
 class _CliScheduler:
-    installed, uninstalled = [], []
+    installations, uninstalled = [], []
 
     def install(self, root, config):
-        self.installed.append(root)
+        self.installations.append(root)
         return {"scheduler": "fake", "label": "fake", "plist": "/dev/null"}
 
     def uninstall(self, root):
         self.uninstalled.append(root)
         return True
+
+    def installed(self, root):
+        return root in self.installations and root not in self.uninstalled
 
     def describe(self, root):
         return {"installed": True}
@@ -442,7 +445,7 @@ def test_start_yes_then_stop(lifecycle):
     result = invoke(root, "start", "--yes")
     assert result.exit_code == 0, result.output
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed and "status" in result.output.split("Next:")[1]
+    assert _CliScheduler.installations and "status" in result.output.split("Next:")[1]
     stopped = invoke(root, "stop")
     assert stopped.exit_code == 0, stopped.output
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
@@ -472,19 +475,20 @@ def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, 
     assert approved.exit_code == 0, approved.output
     assert json.loads(approved.stdout)["data"]["background"]["started"] is True
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed[-1] == root.resolve() and calls == []
+    assert _CliScheduler.installations[-1] == root.resolve() and calls == []
+    assert json.loads(approved.stdout)['next'].endswith(' status')
 
 
 def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
     root, sessions, calls = lifecycle
-    _CliScheduler.installed.clear()
+    _CliScheduler.installations.clear()
     for args in (("--estimate-only", "--yes"), ("--no-investigate", "--no-start", "--yes")):
         result = invoke(root, "--json", "init", *args)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["data"]["background"]["started"] is False
     # --yes approves the sources the map scans (#2443: nothing is scanned before
     # consent); neither run installs the schedule.
-    assert _CliScheduler.installed == []
+    assert _CliScheduler.installations == []
 
 
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):
@@ -1260,16 +1264,14 @@ def test_start_help_explains_linux_systemd_and_linger():
 
 
 def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
-    """After stop, `start` resumed the schedule and printed `First batch:
-    Unknown` while its help promised it runs the first update. Only the first
-    start runs one; the output says so and names the command that runs one now."""
+    """After stop, `start` explains that scheduled upkeep will run the next batch."""
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     assert invoke(root, "stop").exit_code == 0
     again = invoke(root, "start", "--yes")
     assert again.exit_code == 0, again.output
     assert "First batch: Unknown" not in again.output
-    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert "Queued for the next scheduled run." in again.output.split("First batch:")[1].splitlines()[0]
     assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
 
 
@@ -1414,7 +1416,7 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
     assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
-    assert 'sync resumes it from the saved bodies' in status.output
+    assert 'background updates resume it from saved bodies when enabled' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):

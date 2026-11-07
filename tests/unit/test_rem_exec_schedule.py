@@ -39,6 +39,7 @@ def test_exec_plist_shares_prompt_fire_times_and_user_path(tmp_path, monkeypatch
     assert command[command.index('-m') + 1] == config['model']
     assert 'model_reasoning_effort=high' in command
     assert command[command.index('-s') + 1] == 'workspace-write'
+    assert ('-c', 'sandbox_workspace_write.network_access=true') in list(zip(command, command[1:]))
     assert command[-1] == codex_schedule.automation_prompt(tmp_path)
 
 
@@ -61,6 +62,7 @@ def test_exec_turn_lock_blocks_overlapping_fire(tmp_path, monkeypatch):
     assert len(calls) == 1
     result = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert result['result'] == 'completed' and result['exit_code'] == 0
+    assert result['killed_descendants'] == 0
     assert Path(result['log']).is_file()
 
 
@@ -72,7 +74,7 @@ def test_exec_status_reports_mode_and_last_turn(tmp_path, monkeypatch):
     assert scheduler.describe(tmp_path)['last_turn']['exit_code'] == 7
 
 
-def test_start_exec_removes_desktop_registration_and_wake(tmp_path, monkeypatch):
+def test_start_exec_pauses_desktop_registration_and_removes_wake(tmp_path, monkeypatch):
     from connectonion.rem import service
     from connectonion.rem.config import prepare, set_config
     from connectonion.rem.files import write_json
@@ -93,7 +95,7 @@ def test_start_exec_removes_desktop_registration_and_wake(tmp_path, monkeypatch)
     assert result['runner'] == 'codex-exec'
     assert scheduler.plist_path(root).is_file()
     assert not scheduler.wake_path(root).exists()
-    assert not native.definition_path(root).exists()
+    assert native.definition(root)['status'] == 'PAUSED'
 
 
 def test_app_install_removes_exec_job_and_installs_wake(tmp_path, monkeypatch):
@@ -162,29 +164,112 @@ def test_child_retains_lock_when_launch_wrapper_exits(tmp_path):
         child.communicate(b'finish', timeout=5)
 
 
-def test_legacy_runner_defaults_to_app_without_ready_cli(tmp_path, monkeypatch):
+def test_legacy_runner_uses_default_without_ready_cli(tmp_path, monkeypatch):
     import yaml
-    from connectonion.rem.config import read_config
+    from connectonion.rem.config import read_config, set_config
     monkeypatch.setattr(codex_schedule, 'app_installed', lambda: True)
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Codex is not signed in', 'codex login'))
     config = default_config()
     config['schedule'].pop('runner')
     (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
+    assert read_config(tmp_path)['schedule']['runner'] == default_config()['schedule']['runner'] == 'codex-exec'
+    set_config(tmp_path, ['schedule.runner', 'codex-app'])
     assert read_config(tmp_path)['schedule']['runner'] == 'codex-app'
-    config['schedule']['runner'] = 'codex-exec'
-    (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
-    assert read_config(tmp_path)['schedule']['runner'] == 'codex-exec'
 
 
-@pytest.mark.parametrize('code, outcome', [(7, 'failed'), (124, 'timed-out')])
-def test_exec_nonzero_turn_result_is_durable(tmp_path, monkeypatch, code, outcome):
+@pytest.mark.parametrize('code, outcome, reason', [
+    (7, 'failed', None),
+    (124, 'timed-out', 'Turn exceeded 3 hours; the next fire continues the round'),
+])
+def test_exec_nonzero_turn_result_is_durable(tmp_path, monkeypatch, code, outcome, reason):
     from connectonion.rem import codex_exec
     monkeypatch.setattr(codex_exec, 'read_config', lambda root: default_config())
     monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['fictional-codex', 'exec'])
-    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, code)) == outcome
+    result = CompletedProcess(['fictional-codex', 'exec'], code)
+    result.killed_descendants = 2 if code == 124 else 0
+    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: result) == outcome
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert receipt['result'] == outcome and receipt['exit_code'] == code
-    assert len(list(state_path(tmp_path, 'turns').glob('*.json'))) == 1
+    assert receipt.get('reason') == reason
+    assert receipt['killed_descendants'] == result.killed_descendants
+    receipts = list(state_path(tmp_path, 'turns').glob('*.json'))
+    assert len(receipts) == 1
+    assert read_json(receipts[0], {}) == receipt
+
+
+def test_exec_deadline_is_three_hours_and_kills_the_process_group(monkeypatch):
+    import signal
+    import subprocess
+    from unittest.mock import MagicMock, call
+    from connectonion.rem import codex_exec
+    command = ['fictional-codex', 'exec']
+    process = MagicMock(pid=123)
+    process.wait.side_effect = [subprocess.TimeoutExpired(command, 3 * 3600), -signal.SIGKILL]
+    popen = MagicMock()
+    popen.return_value.__enter__.return_value = process
+    killpg = MagicMock()
+    monkeypatch.setattr(codex_exec.subprocess, 'Popen', popen)
+    monkeypatch.setattr(codex_exec.os, 'killpg', killpg)
+    monkeypatch.setattr(codex_exec, '_terminate_descendants', lambda pid: 0)
+
+    assert codex_exec._execute(command).returncode == 124
+    popen.assert_called_once_with(command, start_new_session=True)
+    assert process.wait.call_args_list == [call(timeout=3 * 3600), call()]
+    killpg.assert_called_once_with(process.pid, signal.SIGKILL)
+
+
+def test_exec_descendants_are_terminated_deepest_first(monkeypatch):
+    import signal
+    from unittest.mock import Mock, call
+    from connectonion.rem import codex_exec
+
+    table = CompletedProcess(['ps'], 0, '30 20\n10 1\n20 10\n40 1\n')
+    monkeypatch.setattr(codex_exec.subprocess, 'run', lambda *a, **kw: table)
+    kill = Mock(side_effect=[None, None, ProcessLookupError(), None])
+    monkeypatch.setattr(codex_exec.os, 'kill', kill)
+    monkeypatch.setattr(codex_exec.time, 'sleep', lambda seconds: None)
+
+    assert codex_exec._terminate_descendants(10) == 2
+    assert kill.call_args_list == [call(30, signal.SIGTERM), call(20, signal.SIGTERM),
+                                   call(30, signal.SIGKILL), call(20, signal.SIGKILL)]
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX sessions and signals')
+@pytest.mark.parametrize('ignore_term', [False, True])
+def test_exec_deadline_kills_detached_grandchild(tmp_path, ignore_term):
+    import subprocess
+    import sys
+    import time
+    from connectonion.rem.codex_exec import _execute
+
+    pid_file = tmp_path / 'grandchild.pid'
+    grandchild = (
+        'import os, signal, time; from pathlib import Path; '
+        f'signal.signal(signal.SIGTERM, {"signal.SIG_IGN" if ignore_term else "signal.SIG_DFL"}); '
+        f'Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(60)'
+    )
+    child = (
+        'import subprocess, sys, time; '
+        f'process = subprocess.Popen([sys.executable, "-c", {grandchild!r}], start_new_session=True); '
+        'process.wait(); time.sleep(60)'
+    )
+    try:
+        result = _execute([sys.executable, '-c', child], timeout=0.5)
+        assert result.returncode == 124
+        pid = int(pid_file.read_text())
+        for _ in range(100):
+            status = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='],
+                                    capture_output=True, text=True).stdout.strip()
+            # A zombie has exited and released its locks, but awaits reaping.
+            if not status or status.startswith('Z'):
+                break
+            time.sleep(0.01)
+        assert not status or status.startswith('Z'), f'grandchild {pid} survived: {status}'
+        assert result.killed_descendants == 1
+    finally:
+        if pid_file.exists():
+            # The red test must not leave its deliberately detached sleeper behind.
+            subprocess.run(['kill', '-KILL', pid_file.read_text()], capture_output=True)
 
 
 def test_saved_scheduler_choice_does_not_probe_cli_on_read(tmp_path, monkeypatch):
@@ -200,3 +285,13 @@ def test_saved_scheduler_choice_does_not_probe_cli_on_read(tmp_path, monkeypatch
     monkeypatch.setattr('connectonion.rem.runner.ready', no_probe)
     assert read_config(tmp_path)['schedule']['runner'] == 'codex-exec'
 
+
+def test_exec_turn_skips_recent_desktop_fire_with_durable_receipt(tmp_path, monkeypatch):
+    from connectonion.rem import codex_exec
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: True)
+    def no_spawn(*args, **kwargs):
+        pytest.fail('Desktop fire must prevent another Codex turn')
+    assert codex_exec.run_turn(tmp_path, run=no_spawn) == 'skipped'
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['result'] == 'skipped'
+    assert 'desktop automation' in receipt['reason']

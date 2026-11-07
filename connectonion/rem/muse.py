@@ -355,8 +355,10 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
 def _prior_runs(root: Path, record: str) -> list[dict]:
     logs = run_logs(root)
     reports = []
-    for phase, label in (("enrich", "Open leads from enrich"), ("muse", "Questions the last muse run left")):
-        latest = next((run for run in logs if run.get("phase") == phase and run.get("record") == record
+    for stages, label in ((("enrich",), "Open leads from enrich"), (("muse",), "Questions the last muse run left"),
+                          (("investigate", "continue"), "Open questions from the predecessor's investigate/continue report")):
+        latest = next((run for run in logs if run.get("render_stage", run.get("stage", run.get("phase"))) in stages
+                       and run.get("record") == record and run.get("report") and not run.get("pending_review")
                        and run.get("outcome") == "completed"), None)
         if latest and latest.get("report"):
             reports.append(f"## {label}\n{latest['report']}")

@@ -685,7 +685,8 @@ def test_projects_shows_the_order_and_the_cost_and_spends_nothing(world, monkeyp
     assert result.exit_code == 0, result.output
     assert "projects/tide.md  (last active" in result.stdout and "first write" in result.stdout
     assert "Cost: 1 model call(s)" in result.stdout and "Nothing was spent." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def _two_active_projects(world):
@@ -729,7 +730,8 @@ def test_ctrl_c_in_projects_write_names_what_was_written_and_the_next_command(wo
     result = CliRunner().invoke(app, ["rem", "--root", str(world.root), "projects", "write"])
     assert result.exit_code == 130
     assert f"Stopped: 1 page written before the stop ({done[0]}), and kept." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def test_one_new_message_is_singular(world):

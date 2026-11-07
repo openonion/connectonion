@@ -256,7 +256,7 @@ def test_later_runs_follow_only_what_is_new(root, monkeypatch, now):
     _round(monkeypatch, clients={"gmail": client})
     first = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: {})
     assert first["run"]["phase"] == "daily-investigation"
-    for slug in ("ada", "bob", "cy", "dee"):
+    for slug in ("ada", "bob", "cy", "dee", "owner"):
         investigated(root, f"people/{slug}.md", (now - timedelta(days=4)).date().isoformat())
     # Bob writes after the first run; nobody else does.
     now += timedelta(seconds=1)
@@ -289,6 +289,9 @@ def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypat
     from connectonion.rem import project_pages
     _round(monkeypatch)
     daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: {})
+    # The injected investigator above does not write pages; model its successful writes.
+    for slug in ("ada", "bob", "cy", "dee", "owner"):
+        investigated(root, f"people/{slug}.md", NOW.date().isoformat())
     calls = []
     monkeypatch.setattr(project_pages, "queue", lambda root, since="", **kw: calls.append(since) or [
         {"record": "projects/tide.md", "mode": "update", "last_activity": ago(0), "recent": True}])

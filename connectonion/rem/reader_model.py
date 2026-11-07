@@ -355,3 +355,46 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         if budget <= 0:
             break
     return found
+
+
+def reply_drafts(root: Path, *, local=False) -> list[dict]:
+    """Reply bodies and mailboxes belong only in the owner's local reader."""
+    if not local:
+        return []
+    from .drafts import listing
+    return listing(root, include_pending=True)
+
+
+def session_detail(text: str, *, private: bool = False) -> dict:
+    """Project only the transcript retained in a session page, never live logs.
+
+    Labelled turns follow cited_context's boundary: only an owner's local
+    snapshot may carry them, and the UI still hides them behind its toggle.
+    """
+    from .sessions import AGENTS, _section
+    facts = dict(re.findall(r"^- ([A-Za-z ]+): (.*)$", _section(text, "Facts"), re.M))
+    kind = next((key for key, name in AGENTS.items() if name == facts.get("Agent")), "")
+    sources = re.findall(rf"^- ({SESSION_SOURCE_PATTERN})$", _section(text, "Sources"), re.M)
+    turns = []
+    parts = re.split(r"^### ([^\n]+)\n", _section(text, "What you typed"), flags=re.M)
+    for index, (stamp, body) in enumerate(zip(parts[1::2], parts[2::2])):
+        raw = re.sub(r"^> ?", "", body, flags=re.M).strip()
+        if not raw or (PRIVATE.search(raw) and not private):
+            continue
+        turns.append({"id": f"session-message-{index + 1}", "role": "user", "time": stamp,
+                      "text": raw, "source": sources[index] if index < len(sources) else ""})
+    reply = re.sub(r"^> ?", "", _section(text, "Final reply"), flags=re.M).strip()
+    if reply and (private or not PRIVATE.search(reply)):
+        turns.append({"id": "session-final", "role": "assistant", "time": facts.get("Ended", ""), "text": reply})
+    return {"session_kind": kind, "session_id": facts.get("Session", ""), "session_messages": turns,
+            "session_commands": _session_commands(text, private),
+            "session_status": facts.get("Status", ""), "session_ended": facts.get("Ended", "")}
+
+
+def _session_commands(text: str, private: bool) -> list[dict]:
+    from .sessions import _section
+    command_line = next((line for line in _section(text, "Artifacts").splitlines()
+                         if line.startswith("- Commands:") and "; notable: " in line), "")
+    return [{"text": command, "private": bool(PRIVATE.search(command_line))}
+                for command in re.findall(r"`([^`]+)`", command_line.partition("; notable: ")[2])
+                if private or not PRIVATE.search(command_line)]

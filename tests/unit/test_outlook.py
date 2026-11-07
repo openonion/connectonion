@@ -2022,3 +2022,25 @@ class TestOutlookDraftWithoutAddress:
             from connectonion.useful_tools.outlook import Outlook
             drafts = Outlook().get_drafts()
         assert [(d["id"], d["to"]) for d in drafts] == [("empty", ""), ("d1", "a@example.com")]
+
+
+def test_rem_attachment_listing_requests_only_metadata_and_follows_pages(monkeypatch):
+    from connectonion.useful_tools.outlook import Outlook
+    client = object.__new__(Outlook)
+    calls = []
+    rows = [{'id': 'a1', 'name': 'invoice.pdf', 'contentType': 'application/pdf', 'size': 2000},
+            {'id': 'a2', 'name': 'identity.docx', 'contentType': 'application/msword', 'size': 3000}]
+
+    def request(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        if len(calls) == 1:
+            return {'value': rows[:1], '@odata.nextLink': 'https://graph.microsoft.com/v1.0/next-page'}
+        return {'value': rows[1:]}
+
+    monkeypatch.setattr(client, '_request', request)
+    assert client.list_attachments('mail-1') == [
+        {'id': row['id'], 'filename': row['name'], 'mime_type': row['contentType'], 'size': row['size']}
+        for row in rows]
+    assert calls[0] == ('GET', '/me/messages/mail-1/attachments',
+                        {'params': {'$select': 'id,name,contentType,size'}})
+    assert calls[1][1] == '/next-page'

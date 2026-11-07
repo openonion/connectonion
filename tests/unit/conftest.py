@@ -41,3 +41,25 @@ def _claim_audit_passes(request, monkeypatch):
     monkeypatch.setattr(runner, "run_claim_task", lambda *_args: {
         "result": json.dumps({"verdict": "PASS", "findings": []}), "usage": {}})
     return original
+
+
+@pytest.fixture(autouse=True)
+def _codex_onboarding_is_offline(request, monkeypatch):
+    """Unit tests never install a CLI or open the operator's OAuth browser.
+
+    Codex onboarding tests mock each external boundary themselves. Other CLI
+    tests exercise their own behavior with that machine-setup step already ready.
+    Desktop bundle discovery must not depend on applications on the test host.
+    """
+    from connectonion import codex_cli
+    from connectonion.cli import codex_setup
+    monkeypatch.setattr(codex_cli, "BUNDLED_CODEX", ())
+    if request.module.__name__.endswith("test_init_codex"):
+        return
+    monkeypatch.setattr(codex_setup, "claude_ready", lambda: False)
+    from connectonion.rem.quota import _codex_auth
+    # Existing provider fixtures represent a synthetic signed-in CLI with this file.
+    monkeypatch.setattr(codex_cli, "signed_in", lambda command: _codex_auth().is_file())
+    monkeypatch.setattr(codex_setup, "setup_codex", lambda: {
+        "ready": True, "summary": "Codex CLI: found at /test/codex",
+        "undo": "rm -f /test/codex", "login_command": "/test/codex login", "next_action": ""})

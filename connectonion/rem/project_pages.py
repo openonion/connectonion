@@ -53,7 +53,7 @@ def pending(root: Path, record: str) -> tuple[list[dict], str]:
 
 
 def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = None,
-          since: str = "") -> list[dict]:
+          since: str = "", include_backlog: bool = False) -> list[dict]:
     """Pages with messages they were not written from: recent first, then older, newest first in each.
 
     `since` is what the daily round's later runs follow (#1943 stage 3): a page
@@ -75,7 +75,7 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
             continue   # refused for exactly this material; wait for newer messages (#2026)
         sent, left_out = _fit(messages)
         last = page_state(root, record).get("last_activity") or messages[-1]["timestamp"]
-        if since and mode == "first" and not timestamp(last) > timestamp(since):
+        if since and not include_backlog and mode == "first" and not timestamp(last) > timestamp(since):
             continue
         if since and mode == "update" and not _update_due(page_state(root, record), len(messages), now):
             continue

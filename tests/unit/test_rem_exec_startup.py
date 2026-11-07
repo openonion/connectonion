@@ -13,6 +13,18 @@ from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, read_json, state_path
 
 
+@pytest.mark.parametrize('custom_config', [False, True])
+def test_exec_allows_only_the_account_directory_for_credential_refresh(tmp_path, monkeypatch, custom_config):
+    monkeypatch.delenv('AGENT_CONFIG_PATH', raising=False)
+    account = tmp_path / 'account config' if custom_config else Path.home() / '.co'
+    if custom_config:
+        monkeypatch.setenv('AGENT_CONFIG_PATH', str(account))
+    monkeypatch.setattr(codex_exec, '_codex_command', lambda: ['codex'])
+    monkeypatch.setattr(codex_schedule, 'automation_prompt', lambda root: 'prompt')
+    command = codex_exec.exec_command(tmp_path / 'notebook', default_config(), last_message=tmp_path / 'last.md')
+    assert [value for flag, value in zip(command, command[1:]) if flag == '--add-dir'] == [str(account)]
+
+
 def test_exec_slow_start_still_runs_and_records_startup_time(tmp_path, monkeypatch):
     import signal
     import time
@@ -86,15 +98,20 @@ def test_exec_rejects_launcher_recursion(tmp_path, monkeypatch, command):
         codex_exec.exec_command(tmp_path, default_config(), last_message=tmp_path / 'last.md')
 
 
-def test_exec_cannot_start_records_the_reason_and_status_shows_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize('code', [None, 124])
+def test_exec_failure_records_the_reason_and_status_shows_it(tmp_path, monkeypatch, code):
     from connectonion.cli.commands import rem_status
     monkeypatch.setattr(codex_exec, 'read_config', lambda root: default_config())
     monkeypatch.setenv('CODEX_CMD', '/missing/codex')
-    with pytest.raises(RemError, match='Codex CLI'):
-        codex_exec.run_turn(tmp_path)
+    if code is None:
+        with pytest.raises(RemError, match='Codex CLI'):
+            codex_exec.run_turn(tmp_path)
+    else:
+        monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['codex', 'exec'])
+        assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: subprocess.CompletedProcess(a, code)) == 'timed-out'
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
-    assert receipt['result'] == 'failed'
-    assert 'Codex CLI' in receipt['reason']
+    assert receipt['result'] == ('failed' if code is None else 'timed-out')
+    assert ('Codex CLI' if code is None else 'the next fire continues the round') in receipt['reason']
     assert receipt['finished_at']
     worker = schedule.CodexExec(run=lambda *a, **kw: subprocess.CompletedProcess(a, 1, '', ''))
     assert worker.describe(tmp_path)['last_turn'] == receipt
@@ -105,7 +122,9 @@ def test_exec_cannot_start_records_the_reason_and_status_shows_it(tmp_path, monk
         monkeypatch.setattr(rem_status, name, lambda *args: [])
     rendered = rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
     from rich.text import Text
-    assert receipt['reason'] in Text.from_markup(rendered).plain
+    plain = Text.from_markup(rendered).plain
+    assert receipt['reason'] in plain
+    assert ('after fixing the cause' in plain) == (code is None)
 
 
 def test_exec_failed_spawn_preserves_reason(tmp_path, monkeypatch):
@@ -183,7 +202,7 @@ def test_exec_turn_is_ephemeral_and_falls_back_to_the_app_bundled_cli(tmp_path, 
     bundled.chmod(0o755)
     monkeypatch.delenv('CODEX_CMD', raising=False)
     monkeypatch.setattr(codex_exec.shutil, 'which', lambda name: None)
-    monkeypatch.setattr(codex_exec, 'BUNDLED_CODEX', ('/missing/codex', str(bundled)))
+    monkeypatch.setattr('connectonion.codex_cli.BUNDLED_CODEX', (Path('/missing/codex'), bundled))
     monkeypatch.setattr('connectonion.rem.codex_schedule.automation_prompt', lambda root: 'prompt')
     argv = codex_exec.exec_command(tmp_path, {'effort': 'medium', 'model': 'default'}, last_message=tmp_path / 'last.md')
     assert argv[0] == str(bundled)

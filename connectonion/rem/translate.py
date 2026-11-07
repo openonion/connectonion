@@ -198,6 +198,7 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
 
 
 def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .service import now
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")
@@ -205,7 +206,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     task = prepare(root, record, language, directory=workspace, text=text)
     prose = task["prose"]
-    run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
+    run = {"id": "run_" + uuid4().hex, "started_at": now().isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "failed",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
     if on_run:
@@ -220,7 +221,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         error = sys.exc_info()[1]
         if error:
             run.update(error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
-        run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
+        run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
 
@@ -320,3 +321,54 @@ def written_pages(root: Path) -> list[str]:
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
             or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+
+
+def backlog(root, language, *, changed=()):
+    """Missing and stale pages, changed/requested first, then useful notebook pages."""
+    from .files import read_json
+    from .people_pages import last_activity
+    book = Notebook(root)
+    owner = (read_json(state_path(root, 'map.json'), {}).get('owner') or {}).get('record')
+    requested = read_json(state_path(root, 'translation-requests.json'), {}).get(language, [])
+    categories = {'people': 1, 'orgs': 2, 'projects': 2, 'decisions': 3, 'agenda': 3, 'sessions': 5}
+    records = book.list()
+    people = {record: last_activity(root, record) for record in records if record.startswith('people/')}
+    recent = {record: position for position, record in enumerate(sorted(people, key=lambda r: people[r], reverse=True))}
+    records.sort(key=lambda record: (0 if record == owner else categories.get(record.split('/')[0], 4),
+                                      recent.get(record, 0), record))
+    return [record for record in dict.fromkeys([*requested, *changed, *records])
+            if record in records and cached(root, record, language) is None]
+
+
+def attempts_today(root):
+    from . import service
+    from .config import read_config
+    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(read_config(root)))
+    # Summary records describe the same work as their individual translate runs.
+    return sum(row.get('runner_attempts', 0) for row in runs
+               if row.get('phase') in ('daily-translation', 'translate'))
+
+
+def languages(root):
+    from .files import read_json
+    from .languages import owner_languages
+    requested = read_json(state_path(root, 'translation-requests.json'), {})
+    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
+
+
+def coverage(root):
+    from .languages import owner_languages
+    records = Notebook(root).list()
+    return {language: {'total': len(records), 'translated': sum(cached(root, record, language) is not None for record in records)}
+            for language in languages(root) if language.split('-')[0].lower() != 'en'}
+
+
+def request(root, record, language):
+    from .files import maintenance_lock, read_json
+    checked_language(language)
+    if record not in Notebook(root).list():
+        raise RemError('No such page')
+    with maintenance_lock(root):
+        pending = read_json(state_path(root, 'translation-requests.json'), {})
+        pending[language] = list(dict.fromkeys([record, *pending.get(language, [])]))
+        write_json(state_path(root, 'translation-requests.json'), pending)

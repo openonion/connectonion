@@ -95,10 +95,10 @@ def index_rows(root: Path) -> dict:
     naming the command that rebuilds it.
     """
     try:
-        from . import store
+        from .store import people_table
     except ImportError:
         return {}
-    return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
+    return {row["record"]: row for row in people_table(root, include_unlisted=True) or []}
 
 
 def contact_candidates(root: Path) -> tuple[list[dict], dict]:
@@ -138,6 +138,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
     from .project_pages import private
     from .reviews import listing
     from .sessions import mentions, reader_fields
+    from .reader_model import session_detail
     notebook = Notebook(root)
     records = []
     for record in notebook.list():
@@ -175,6 +176,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
+            record.update(session_detail(record["text"], private=local))
     owner = owner_record(root)
     people = [record for record in records if record["category"] == "people" and record["path"] != owner]
     mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])
@@ -193,7 +195,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
-    from .reader_model import cited_context, cited_conversations, relationships
+    from .reader_model import cited_context, cited_conversations, relationships, reply_drafts
     links = relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
@@ -236,6 +238,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             "categories": list(CATEGORIES), "records": records,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status["people_coverage"],
+            "drafts": reply_drafts(root, local=local),
             "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
