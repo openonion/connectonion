@@ -630,6 +630,10 @@ class _BrowserCommand(typer.core.TyperCommand):
     """
 
     def parse_args(self, ctx, args):
+        if _browser_verb(args) == "history" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_history import history_parser
+            print(history_parser().format_help())
+            ctx.exit(0)
         if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_import import IMPORT_HELP
             print(IMPORT_HELP)
@@ -660,7 +664,13 @@ def browser(
     give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
+    cookies · close. Local Chrome data: {history,import} — history lists visits;
+    import carries Chrome logins into this browser.
+    `co browser help` shows how to use each one."""
+    if args and args[0] == "history":
+        from .commands.browser_history import handle_browser_history
+        raise typer.Exit(handle_browser_history(args[1:]))
+
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
