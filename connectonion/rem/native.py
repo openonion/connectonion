@@ -376,7 +376,10 @@ def submit(root, task_id, *, usage=None):
             return _accept(root, cursor, task, committed)
         if _promoted(root, task):
             return _accept(root, cursor, task, _recovered_result(root, task))
-        if (any(not _input_matches(root, task, Path(path), digest) for path, digest in task["inputs"].items())
+        inputs = _inputs(root, task["task"], Path(task["directory"]), handler=task["handler"])
+        # Older tasks also saved unrelated notebook files; apply today's input scope.
+        if (any(not _input_matches(root, task, Path(path), digest)
+                for path, digest in task["inputs"].items() if path in inputs)
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
