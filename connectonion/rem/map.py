@@ -1118,6 +1118,14 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
         report['coverage'].append(f"{len(material['created'])} project folders found from messages typed in a "
                                   "workspace folder or after a cd; made pages")
     report['projects_dropped'] = dropped
+    jira = subscriptions.get('jira', {})
+    if jira.get('enabled') and jira.get('consented'):
+        from .jira_imports import map_jira
+        from .files import RemError
+        try:
+            map_jira(root, jira, report)
+        except (RemError, OSError, UnicodeError) as error:
+            report['errors'].append({'source': 'jira', 'stage': 'local imports', 'error': str(error)})
     if dropped:
         report['coverage'].append(f"{len(dropped)} folder{'s' if len(dropped) > 1 else ''} with sessions not made "
                                   "projects (home, caches, one-off chats; reasons in .state/map.json)")

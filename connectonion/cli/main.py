@@ -74,7 +74,7 @@ def _typer_app(**kwargs) -> typer.Typer:
     The doubling above was present on all twelve groups, and a fix applied at
     the call sites is a fix that the thirteenth group will not get.
     """
-    return typer.Typer(cls=_OneSuggestion, **kwargs)
+    return typer.Typer(cls=kwargs.pop("cls", _OneSuggestion), **kwargs)
 
 
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
@@ -2778,6 +2778,243 @@ app.add_typer(canny_app, name="canny")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
+
+
+# Jira (F13FCAKE-9/10/18): verify, list projects, and read selected issues.
+from .commands.import_feedback import ImportFeedbackCommand, ImportFeedbackGroup
+
+jira_app = _typer_app(
+    cls=ImportFeedbackGroup,
+    help="""Read-only access to Jira projects, issues and history; sync commands write local source records.
+
+    Start with verify, then projects to discover project keys. Use issues to read
+    known issue keys copied from Jira. Use sync for selected-issue snapshots or
+    sync-inc for repeatable project imports with a checkpoint. Nothing edits Jira.
+
+    Set JIRA_URL and JIRA_EMAIL with co env set. For background REM, enter the
+    token with hidden input, save it encrypted, then unset the shell variable:
+    read -rsp "Jira API token: " JIRA_API_TOKEN; echo; co env set JIRA_API_TOKEN
+    "$JIRA_API_TOKEN" --secret; unset JIRA_API_TOKEN. One-off commands may still
+    use a temporary no-echo shell export.
+    Default configuration is global; co --env-file PATH jira verify explicitly
+    selects another configuration. Never paste a token into a command argument.
+
+    Imports report local file paths and record counts. They do not generate
+    knowledge pages or refresh Reader immediately. Automatic REM uses
+    co rem sources connect jira, then init/start approval. Scripts can add --config FILE.
+    No command in this Jira group installs a scheduler.
+    """,
+    epilog="Example:  co jira verify",
+)
+app.add_typer(jira_app, name="jira")
+
+
+@jira_app.command("verify", cls=ImportFeedbackCommand, epilog="Example:  co jira verify --json")
+def _jira_verify(
+    as_json: bool = typer.Option(False, "--json", help="Output connection info as JSON"),
+):
+    """Read-only check of Jira access; display the authorised account and site.
+
+    Configure the saved account (replace the example site and account email):
+
+    \b
+      co env set JIRA_URL https://your-team.atlassian.net
+      co env set JIRA_EMAIL you@example.com
+      read -rsp "Jira API token: " JIRA_API_TOKEN; echo
+      co env set JIRA_API_TOKEN "$JIRA_API_TOKEN" --secret
+      unset JIRA_API_TOKEN
+      co jira verify
+
+    JIRA_URL is the HTTPS site root, not an issue URL or page content.
+    For https://your-team.atlassian.net/browse/DEMO-1 use only
+    https://your-team.atlassian.net. The email is your Atlassian account email.
+    Token input is hidden and saved encrypted; never put its literal value in a command argument.
+    To fix an invalid URL, repeat only the JIRA_URL command above, then verify.
+
+    After success, use co rem sources connect jira for numbered project/issue
+    selection and normal REM approval. No scope file is needed in a terminal.
+    co jira projects is the standalone project-listing alternative.
+    Use co rem sources connect --help for the complete connection workflow.
+    Exit 0 confirms connectivity, not access to every project; exit 1 reports
+    configuration, authentication, permission or provider failure with recovery.
+    """
+    from .commands.jira_commands import handle_jira_verify
+    handle_jira_verify(as_json=as_json)
+
+
+@jira_app.command("projects", cls=ImportFeedbackCommand, epilog="Example:  co jira projects --json")
+def _jira_projects(
+    as_json: bool = typer.Option(False, "--json", help="Output project list as JSON"),
+):
+    """Read-only listing of accessible Jira project keys and names.
+
+    Run co jira verify first. Copy a listed key into --project for sync-inc,
+    or use it with known issue keys in issues/sync. Empty means no accessible
+    projects were returned, not that authentication necessarily failed.
+    --json returns a projects array, empty or populated. Exit 1 reports a
+    failed read; follow its recovery command before trusting the result.
+    """
+    from .commands.jira_commands import handle_jira_projects
+    handle_jira_projects(as_json=as_json)
+
+
+@jira_app.command("issues", cls=ImportFeedbackCommand, epilog="Example:  co jira issues ALPHA ALPHA-1 ALPHA-2 --json")
+def _jira_issues(
+    project_key: str = typer.Argument(..., help="Jira project key, e.g. ALPHA"),
+    issue_keys: list[str] = typer.Argument(..., help="One or more issue keys, e.g. ALPHA-1 ALPHA-2"),
+    as_json: bool = typer.Option(False, "--json", help="Output issues as JSON"),
+):
+    """Read-only fetch of known issue keys within PROJECT_KEY.
+
+    Discover PROJECT_KEY with co jira projects; copy ISSUE_KEYS from your Jira
+    project (for example ALPHA-1). All keys must belong to the selected project.
+    This prints keys and summaries, or the returned issue fields with --json.
+    It writes no local source files. Any missing requested key fails the read;
+    the key may be absent, deleted or inaccessible to the selected account.
+    Use sync to save the selected records or sync-inc to import a whole project.
+    Exit 1 reports a failed read; argument errors exit 2.
+    """
+    from .commands.jira_commands import handle_jira_issues
+    handle_jira_issues(project_key, issue_keys, as_json=as_json)
+
+
+@jira_app.command(
+    "sync",
+    cls=ImportFeedbackCommand,
+    epilog="Example:  co jira sync ALPHA ALPHA-1 ALPHA-2  |  co jira sync ALPHA ALPHA-1 --output ~/my/dir --json"
+           "  |  co jira sync ALPHA ALPHA-1 ALPHA-2 --export ALPHA-history-2026-10-12"
+           "  |  co jira sync ALPHA ALPHA-1 --no-history",
+)
+def _jira_sync(
+    project_key: str = typer.Argument(..., help="Jira project key, e.g. ALPHA"),
+    issue_keys: list[str] = typer.Argument(..., help="One or more issue keys to collect, e.g. ALPHA-1 ALPHA-2"),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        help="Local source directory; default ~/.co/rem/docs/jira",
+        show_default=False,
+    ),
+    export: Optional[str] = typer.Option(
+        None,
+        "--export",
+        help="One-off import: write exports/<ID>/ (records.jsonl + manifest.json) instead of today's daily file",
+        show_default=False,
+    ),
+    history: bool = typer.Option(
+        True,
+        "--history/--no-history",
+        help="Also read each issue's change history (one extra read per issue); --no-history skips it",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Output result as JSON"),
+):
+    """Writes selected Jira issues and history to local source records; Jira stays Read-only.
+
+    Get PROJECT_KEY from co jira projects and ISSUE_KEYS from Jira. Verify access,
+    read the selected issues and history, then write source.yaml and daily JSONL
+    under --output. With --export ID, write a one-off exports/ID/ snapshot and
+    manifest instead; choose a new ID because existing exports are not overwritten.
+    Use a separate --output if the directory already holds an incremental source
+    or a different account/scope. Such existing source metadata is preserved.
+
+    Check written/jsonl and mapped/appended counts in --json. A repeat may append
+    zero records. This command does not manage an incremental checkpoint; use
+    sync-inc for that workflow. History limitations are reported per issue.
+    --no-history skips those additional reads for this invocation only.
+
+    Exit 0 means import completed, 1 means failure or rejected records (valid
+    records may have been retained), 2 means invalid arguments. Follow the
+    recovery output. Success confirms that local records were saved; generating
+    knowledge pages and updating the Reader are separate steps.
+    """
+    from .commands.jira_commands import handle_jira_sync
+    handle_jira_sync(project_key, issue_keys, output_dir=output, as_json=as_json, export_id=export,
+                     history=history)
+
+
+@jira_app.command(
+    "sync-inc",
+    cls=ImportFeedbackCommand,
+    epilog=(
+        "Example:  co jira sync-inc --project ALPHA"
+        "  |  co jira sync-inc --project ALPHA --issues ALPHA-1 --issues ALPHA-2"
+        "  |  co jira sync-inc --project ALPHA --full"
+        "  |  co jira sync-inc --project ALPHA --json"
+    ),
+)
+def _jira_sync_inc(
+    project_key: str = typer.Option(..., "--project", help="Jira project key, e.g. ALPHA"),
+    issue_keys: Optional[List[str]] = typer.Option(
+        None, "--issues",
+        help="Restrict the sync to these issue keys (repeat per key: --issues ALPHA-1 --issues ALPHA-2)",
+        show_default=False,
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        help="Local source directory; default ~/.co/rem/docs/jira",
+        show_default=False,
+    ),
+    state: Optional[Path] = typer.Option(
+        None,
+        "--state",
+        help="Checkpoint/recovery directory; default ~/.co/rem/docs/jira/.state",
+        show_default=False,
+    ),
+    full: bool = typer.Option(
+        False,
+        "--full/--no-full",
+        help="Read all matching issues; keep the existing incremental cursor unchanged",
+    ),
+    history: bool = typer.Option(
+        True,
+        "--history/--no-history",
+        help="Also read each issue's change history (one extra read per issue); --no-history skips it",
+    ),
+    migrate_source: bool = typer.Option(
+        False,
+        "--migrate-source/--no-migrate-source",
+        help="Upgrade a v1 source.yaml to v2 in place (otherwise a v1 file causes an error)",
+        show_default=False,
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Output result as JSON"),
+):
+    """Writes new and changed Jira issues to local files; never modifies Jira.
+
+    Get --project from co jira projects. By default read the whole project;
+    repeat --issues for a narrower set of keys copied from Jira. First run reads
+    all matches; repeats use a two-minute overlap and deduplicate versions.
+
+    --output holds source.yaml and daily JSONL; --state holds checkpoints and
+    crash-recovery files. These defaults are independent: custom --output alone
+    does not relocate --state. Keep both paths and the selected account/scope
+    consistent when repeating a run. Nothing schedules automatic polling.
+
+    --full rereads all matches with the existing incremental cursor unchanged.
+    --full does not reset corrupt or mismatched state. Preserve such state for
+    inspection; use a separate --state for a fresh read. A different account or
+    scope may also require a separate --output. --migrate-source only upgrades
+    a matching v1 source.yaml; it cannot resolve an identity or scope conflict.
+
+    Check net_new_records and checkpoint_result in --json. Reading overlap
+    records can add zero versions. --no-history skips history for this run only.
+    Exit 0 means import completed/no changes, 1 means partial mapping failure
+    (valid records retained, cursor unchanged), 2 means a hard failure or invalid
+    arguments. Follow recovery output. Success confirms that source files were
+    saved; knowledge pages and Reader updates need separate verification.
+    """
+    from .commands.jira_commands import handle_jira_sync_incremental
+    handle_jira_sync_incremental(
+        project_key,
+        issue_keys or [],
+        output_dir=output,
+        state_dir=state,
+        as_json=as_json,
+        full=full,
+        history=history,
+        migrate_source=migrate_source,
+    )
+
+
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
