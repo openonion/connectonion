@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc57
+## Current Version: 1.9.3rc58
+
+Hotfix on 1.9.3rc57: the promotion validator compared source ids as raw strings, so a mail id
+`resolve_sources` had rewritten to its digest form counted as dropped and one page task was refused
+on every scheduled retry (#2877). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc58.md).
+
+- 1.9.3rc58 (hotfix: resolved source ids in the retention check).
+
+### Previous candidate: 1.9.3rc57
 
 Hotfix on 1.9.3rc56 (tagged, never published): offline `co init --yes` spent 80 s in `npm install`
 through a dead proxy and the release workflow's installed-wheel check timed out; the installer
