@@ -6707,11 +6707,12 @@ function cacheChineseInterface() {
   }
 }
 let entranceView = "";
-let detailLoad = null, detailReady = false;
+let detailLoad = null, detailReady = !REM?.deferred_details && !REM?.detail_url;
 function needsDetails(state) {
   return state.record || state.category || state.query || state.reviews || ["activity", "changes"].includes(state.view);
 }
 function loadDetails() {
+  if (detailReady) return Promise.resolve();
   if (detailLoad) return detailLoad;
   detailLoad = (REM.detail_url ? fetch(REM.detail_url).then(response => {
     if (!response.ok) throw Error("Could not load notebook (" + response.status + ")");
@@ -6724,7 +6725,10 @@ function loadDetails() {
     const drafts = REM.drafts;
     for (const r of data.records) {
       const current = records.get(r.path);
-      if (current) Object.assign(current, r, { original: r.text, shown: "" });
+      if (current) {
+        Object.assign(current, r, { shown: "" });
+        delete current.original;
+      }
       else records.set(r.path, r);
     }
     const source_context = { ...data.source_context, ...REM.source_context };
@@ -7221,6 +7225,11 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   if (location.protocol === "file:" && (theme === "light" || theme === "dark")) document.documentElement.dataset.theme = theme;
   if (REM?.shared || location.protocol === "file:" && privacy === "hidden") document.documentElement.classList.add("hide-private");
   render();
+  // Offline snapshots finish loading after the shell without navigation.
+  if (!detailReady && !REM.detail_url) {
+    await loadDetails();
+    render();
+  }
   reconcileThreads().then(() => render());
 });
 </script>

@@ -16,7 +16,8 @@ from test_rem_reader import _run_reader_js
 def test_inline_detail_waits_for_document_and_preserves_queue_state():
     function = re.search(r'function loadDetails\(.*?\n\}', TEMPLATE.read_text(), re.S)[0]
     result = _run_reader_js(function + r'''
-      const current = {path: 'people/alice.md', text: 'Queue projection', readLanguage: 'zh'};
+      const current = {path: 'people/alice.md', text: 'Queue projection', readLanguage: 'zh',
+        original: 'Untranslated queue projection', shown: 'zh'};
       const REM = {records: [current], drafts: [{id: 'edited', body: 'Edited on Today'}],
         source_context: {'gmail:queue': {excerpt: 'Queue evidence'}}};
       let detailLoad = null, detailReady = false, ready, parsed = false;
@@ -32,12 +33,48 @@ def test_inline_detail_waits_for_document_and_preserves_queue_state():
         ready(); await pending;
         console.log(JSON.stringify({before, detailReady, text: current.text,
           language: current.readLanguage, sameRecord: REM.records[0] === current,
+          original: current.original ?? null, shown: current.shown,
           body: REM.drafts[0].body, contexts: Object.keys(REM.source_context).sort()}));
       })();
     ''')
     assert result == {'before': False, 'detailReady': True, 'text': 'Full fictional prose',
-                      'language': 'zh', 'sameRecord': True, 'body': 'Edited on Today',
+                      'language': 'zh', 'sameRecord': True, 'original': None, 'shown': '',
+                      'body': 'Edited on Today',
                       'contexts': ['gmail:other', 'gmail:queue']}
+
+
+def test_full_snapshot_does_not_parse_a_deferred_payload():
+    template = TEMPLATE.read_text()
+    function = re.search(r'function loadDetails\(.*?\n\}', template, re.S)[0]
+    readiness = re.search(r'let detailLoad = .*?;', template)[0]
+    assert _run_reader_js('const REM = {};\n' + readiness + '\n' + function + r'''
+      loadDetails().then(() => console.log(JSON.stringify('ready')));
+    ''') == 'ready'
+
+
+def test_offline_startup_finishes_details_without_navigation():
+    template = TEMPLATE.read_text()
+    loader = re.search(r'function loadDetails\(.*?\n\}', template, re.S)[0]
+    startup = template[template.index('Promise.all([readerStorage('):].split('</script>')[0]
+    result = _run_reader_js(loader + r'''
+      const REM = {records: [], drafts: [], threads: {}, source_context: {}};
+      let detailLoad = null, detailReady = false, morePeopleColumns,
+        pendingThreads, threadStates;
+      const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
+      let PEOPLE_BY_ADDRESS = new Map();
+      const location = {protocol: 'file:'};
+      const document = {readyState: 'complete', documentElement: {dataset: {}},
+        getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
+      const readerStorage = () => Promise.resolve(null);
+      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads';
+      const reconcileThreads = () => Promise.resolve();
+      const frames = [];
+      function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}
+    ''' + 'const startup = ' + startup + r'''
+      startup.then(() => console.log(JSON.stringify(frames)));
+    ''')
+    assert result[0] == {'ready': False, 'logs': False}
+    assert result[-1] == {'ready': True, 'logs': True}
 
 
 def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monkeypatch):
@@ -120,6 +157,7 @@ Full relationship prose belongs in the lazy record.
               '## Open threads\n- 请给 Alice 反馈 [1].\n'})
     page = render(tmp_path, local=True)
     shell = json.loads(re.search(r'const REM = (.*);', page).group(1))
+    assert shell['deferred_details'] is True
     assert 'Full relationship prose' not in json.dumps(shell)
     assert 'Heavy conversation history' not in json.dumps(shell)
     assert 'Full translated prose' not in json.dumps(shell)

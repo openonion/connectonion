@@ -52,7 +52,12 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             assert "/work/journal" not in statement
             assert "Needs your explicit request" in page.locator(".focus-kicker").inner_text()
             assert "This private project waits for your request." in page.locator(".missing").inner_text()
-            assert "investigate 'projects/journal.md'" in page.locator(".missing .cmd").inner_text()
+            # Primary reading surfaces no longer expose terminal commands.
+            assert page.locator(".missing .cmd").count() == 0
+            if width < 720:
+                page.locator(".nav-toggle").click()
+            page.locator(".reader-settings > summary").click()
+            assert "investigate 'projects/journal.md'" in page.locator(".reader-settings .cmd").inner_text()
             assert page.get_by_role("button", name="Copy the command").is_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
@@ -346,14 +351,12 @@ def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(read
     directory.get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
     assert directory.locator("tbody tr").count() == 1
     assert "leah@old-friends.example" in directory.locator("tbody").inner_text()
-    directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").click()
-    assert "stub person" in directory.locator(".directory-action code").inner_text()
-    assert directory.locator("tbody tr").first.evaluate(
-        "row => row.nextElementSibling.classList.contains('directory-action')")
+    assert directory.locator("tbody td").last.inner_text()
+    assert directory.locator('a[href="mailto:leah@old-friends.example"]').is_visible()
+    assert directory.locator(".directory-action").count() == 0
     page.set_viewport_size({"width": 390, "height": 844})
     assert directory.locator("tbody tr").first.evaluate(
         "row => getComputedStyle(row).display === 'grid'")
-    assert directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").bounding_box()["height"] >= 44
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -998,7 +1001,9 @@ def test_investigation_command_targets_the_notebook_being_viewed(reader):
       r.original = r.text; KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     root = page.evaluate('REM.root', isolated_context=False)
-    command = page.locator('.missing .cmd code').inner_text()
+    # Private investigation commands now live in Reader settings.
+    page.locator('.reader-settings > summary').click()
+    command = page.locator('.reader-settings .cmd code').inner_text()
     assert '--root' in command and root in command
     assert "investigate 'projects/harbour.md'" in command
 

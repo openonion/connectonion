@@ -317,7 +317,8 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     `local`: read on this machine by its owner (see `snapshot`)."""
     full = snapshot(root, local, today=live)
     shell = full if live else _today_data(full)
-    data = _script_json({**shell, "live": live, "detail_url": "/rem/data.json" if live else ""})
+    data = _script_json({**shell, "live": live, "deferred_details": True,
+                         "detail_url": "/rem/data.json" if live else ""})
     detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")
     if PLACEHOLDER not in template:
