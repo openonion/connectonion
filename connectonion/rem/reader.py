@@ -289,8 +289,22 @@ def _today_data(data: dict) -> dict:
                            if key in run} for run in data['logs']]
     for brief, run in zip(shell['brief_logs'], data['logs']):
         brief['claim_changes'] = run.get('claim_changes', [])
+        brief['failure_reasons'] = _failure_reasons(str(run.get('error', '')))
+        if 'translat' in run.get('phase', ''):
+            brief['translation_failures'] = sum(page.get('outcome') == 'failed' for page in run.get('pages', []))
     shell['reviews'] = data.get('reviews', [])
     return shell
+
+
+def _failure_reasons(error: str) -> list[str]:
+    """Safe recovery hints for Today, without copying private runner output."""
+    patterns = (
+        (r'authenticate|authentication|\b40[13]\b|request not allowed',
+         'Model access was refused. Restore access before retrying.'),
+        (r'timeout|timed out', 'A request timed out.'),
+        (r'quota|usage limit|rate limit|\b429\b', 'A model usage limit was reached.'),
+    )
+    return [hint for pattern, hint in patterns if re.search(pattern, error, re.I)]
 
 
 def owner_record(root: Path) -> str:

@@ -3271,7 +3271,8 @@ function writtenDates(text) {
   });
 }
 function threads(r) {
-  const original = rawSection({ ...r, text: r.original ?? r.text }, "Open threads");
+  const sourceText = r.shown ? r.original ?? r.text : r.text;
+  const original = rawSection({ ...r, text: sourceText }, "Open threads");
   if (!original) return { items: [], calm: "" };
   const all = listItems(original);
   const displayed = listItems(rawSection(r, "Open threads"));
@@ -3290,7 +3291,7 @@ function threads(r) {
     const requested = after("since|requested(?:\\s+on)?|asked(?:\\s+on)?");
     const moved = after("last moved(?:\\s+on)?");
     const returnedAt = REM.threads?.[doneKey({ r, t: { text } })]?.returned_at;
-    const sources = new Map([...rawSection({ ...r, text: r.original ?? r.text }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+    const sources = new Map([...rawSection({ ...r, text: sourceText }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
     const messages = [...text.matchAll(/\[(W?\d+)\]/g)].map(m => REM.source_context?.[sources.get(m[1])]?.time)
       .filter(Boolean).map(calendarDay).filter(day => day && (!today || day <= today)).sort();
     const since = returnedAt ? calendarDay(returnedAt) : messages.at(-1) || moved || requested || days.filter(d => d !== due && (!today || d <= today)).sort().at(-1) || "";
@@ -3322,7 +3323,7 @@ function obligationWords(text) {
 }
 function obligationEvidence({ r, t }) {
   const text = t.originalText || t.text;
-  const sources = new Map([...rawSection({ ...r, text: r.original ?? r.text }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
+  const sources = new Map([...rawSection({ ...r, text: r.shown ? r.original ?? r.text : r.text }, "Sources").matchAll(/^\s*- \[(W?\d+)\]\s+(\S+)/gm)].map(m => [m[1], m[2]]));
   const ids = new Set([...text.matchAll(/\[(W?\d+)\]/g)].map(m => sources.get(m[1])).filter(Boolean));
   for (const id of [...ids]) {
     const context = REM.source_context?.[id];
@@ -3737,7 +3738,7 @@ const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "
 const PARSED_FACTS = new Map();
 function parseFacts(r) {
   const language = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
-  const text = r.translations?.[language] ?? r.original ?? r.text;
+  const text = r.translations?.[language] ?? (r.shown ? r.original ?? r.text : r.text);
   const key = JSON.stringify([r.path, language]), cached = PARSED_FACTS.get(key);
   if (cached?.text === text) return cached.facts;
   const out = new Map();
@@ -4393,7 +4394,7 @@ function threadRow(r, thread, withPage, also = [], grouped = false) {
 
 function emptyLine(thread) {
   const calm = thread.calm ? withoutDateClutter(thread.calm) : "";
-  return el("p", { class: "empty-line", text: !calm || calm === "Nothing" ? t("Nothing open.") : calm });
+  return el("p", { class: "empty-line", text: !calm || /^Nothing\.?$/i.test(calm) ? t("Nothing open.") : calm });
 }
 function emptyState(lead, action = "Explore memory →", href = "#c=all", clear = null) {
   const link = el("a", { href, text: t(action) });
@@ -4520,25 +4521,27 @@ function morningBrief() {
 }
 function failureSummary(pass) {
   // Name the recovery step without exposing private runner output.
-  const errors = pass.failed.map(run => String(run.error || "")).join("\n"), reasons = [];
+  const errors = pass.failed.map(run => String(run.error || "")).join("\n"), reasons = [...new Set(pass.failed.flatMap(run => run.failure_reasons || []))];
   if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
   if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
   if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
   if (!pass.changed.some(r => r.path !== REM.owner && known(r).status !== "Mapped")) reasons.push("No memory pages were written in the last pass.");
-  return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + reasons.map(reason => t(reason)).join(" ") });
+  return el("p", { class: "quiet-line", text: t(pass.failed.length === 1 ? "{n} investigation failed. " : "{n} investigations failed. ", { n: pass.failed.length }) + [...new Set(reasons)].map(reason => t(reason)).join(" ") });
 }
 // Remove presentation metadata only; commitments and quoted evidence keep their dates.
 function withoutDateClutter(text, { since = "", due = "" } = {}) {
   const quotes = [];
   text = text.replace(/"(?:[^"\\]|\\.)*"|“[^”]*”|‘.*?’(?!\p{L})|「[^」]*」|『[^』]*』|(?<!\p{L})'.*?'(?!\p{L})/gu,
     quote => { quotes.push(quote); return "\u0005" + (quotes.length - 1) + "\u0005"; });
-  return text.replace(/(?:最近联系|Last contact)[:：]\s*\d{4}-\d{2}-\d{2}(?:[,，]\s*(?:邮件|mail|email))?\s*(?:[\[［]W?\d{1,3}[\]］]\s*)*(?:[.!?。！？]|$)/gi, "")
+  return text.replace(/^\s*(\d{4}-\d{2}-\d{2})\s*[:：]\s*/, (clause, day) => since === day ? "" : clause)
+    .replace(/(?:最近联系|Last contact)[:：]\s*\d{4}-\d{2}-\d{2}(?:[,，]\s*(?:邮件|mail|email))?\s*(?:[\[［]W?\d{1,3}[\]］]\s*)*(?:[.!?。！？]|$)/gi, "")
     .replace(/[;；]?\s*open as of\s*[:：]?\s*\d{4}-\d{2}-\d{2}/gi, "")
     .replace(/\s*(?:since\s*[:：]?\s*|(?:从|自)\s*)(\d{4}-\d{2}-\d{2})(?:\s*(?:起|开始))?/gi,
       (clause, day) => since && day === since ? "" : clause)
     .replace(/\s*[—–-]\s*\d+\s+days\b/gi, clause => since ? "" : clause)
-    .replace(/\s*[—–-]?\s*[（(]\d{4}-\d{2}-\d{2}[)）]/g, "")
-    .replace(/\s*[—–-]\s*due\s+\d{4}-\d{2}-\d{2}(?:,\s*overdue)?/gi, clause => due ? "" : clause)
+    .replace(/\s*[—–-]?\s*[（(]\d{4}-\d{2}-\d{2}[)）]/g, (clause, at, all) =>
+      /(?:\b(?:dated|on|by|until|before|after)|日期为|截止于|于)\s*$/i.test(all.slice(0, at)) ? clause : "")
+    .replace(/\s*[—–;；,-]\s*due\s*[:：]?\s*(\d{4}-\d{2}-\d{2})(?:,\s*overdue)?/gi, (clause, day) => due === day ? "" : clause)
     .replace(/[,，]?\s*已过\s*\d+\s*天/g, clause => since ? "" : clause)
     .replace(/\s*[\[［]W?\d{1,3}[\]］]/g, "")
     .replace(/\s*[—–:：;,，；-]+\s*(?=[.!?。！？]|$)/g, "")
@@ -4782,7 +4785,10 @@ function translationNotice() {
   const pages = listedRecords().filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "skills"].includes(r.category));
   const missing = pages.filter(r => !r.translations?.zh && !/^zh(?:-|$)/i.test(r.written_in || ""));
   if (!missing.length) return null;
-  return el("p", { class: "translation-note quiet-line", text: t("Pages are translated when you open them.") });
+  const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
+  const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
+  const failure = failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) + " " : "";
+  return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") });
 }
 
 function overview() {
@@ -6032,7 +6038,7 @@ function contactLine(r) {
   const f = facts(r);
   const fields = [["Role", f.role], ["Company", f.company]].filter(([, v]) => v && !/^Unknown\b/i.test(String(v)));
   const meta = el("span", { class: "lead-meta" });
-  if (f.last) meta.appendChild(changedValue(el("span", { text: t("Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
+  if (f.last) meta.appendChild(changedValue(el("span", { title: mappedContact(r) ? t("Last contact in map") : "", text: t("Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
   for (const [label, value] of fields) {
     if (meta.childNodes.length) meta.append(" · ");
     meta.appendChild(changedValue(label === "Role" ? el("span", {}, [roleSummary(String(value), r.path)]) : el("span", { html: inline(String(value), r.path) }), r, label));
