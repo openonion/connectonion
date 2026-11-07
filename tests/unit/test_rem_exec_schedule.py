@@ -39,6 +39,7 @@ def test_exec_plist_shares_prompt_fire_times_and_user_path(tmp_path, monkeypatch
     assert command[command.index('-m') + 1] == config['model']
     assert 'model_reasoning_effort=high' in command
     assert command[command.index('-s') + 1] == 'workspace-write'
+    assert ('-c', 'sandbox_workspace_write.network_access=true') in list(zip(command, command[1:]))
     assert command[-1] == codex_schedule.automation_prompt(tmp_path)
 
 

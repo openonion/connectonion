@@ -13,6 +13,18 @@ from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, read_json, state_path
 
 
+@pytest.mark.parametrize('custom_config', [False, True])
+def test_exec_allows_only_the_account_directory_for_credential_refresh(tmp_path, monkeypatch, custom_config):
+    monkeypatch.delenv('AGENT_CONFIG_PATH', raising=False)
+    account = tmp_path / 'account config' if custom_config else Path.home() / '.co'
+    if custom_config:
+        monkeypatch.setenv('AGENT_CONFIG_PATH', str(account))
+    monkeypatch.setattr(codex_exec, '_codex_command', lambda: ['codex'])
+    monkeypatch.setattr(codex_schedule, 'automation_prompt', lambda root: 'prompt')
+    command = codex_exec.exec_command(tmp_path / 'notebook', default_config(), last_message=tmp_path / 'last.md')
+    assert [value for flag, value in zip(command, command[1:]) if flag == '--add-dir'] == [str(account)]
+
+
 def test_exec_slow_start_still_runs_and_records_startup_time(tmp_path, monkeypatch):
     import signal
     import time

@@ -50,9 +50,12 @@ def _bundled_codex() -> str | None:
 
 
 def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
+    from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
+    # Mailbox refresh locks and atomically replaces keys.env beside the file.
     command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
-               '-C', str(root), '-s', 'workspace-write', '--skip-git-repo-check',
+               '-C', str(root), '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
+               '--add-dir', str(selected_env_file().parent), '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
