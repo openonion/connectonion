@@ -138,6 +138,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
     from .project_pages import private
     from .reviews import listing
     from .sessions import mentions, reader_fields
+    from .reader_model import session_detail
     notebook = Notebook(root)
     records = []
     for record in notebook.list():
@@ -175,6 +176,7 @@ def snapshot(root: Path, local: bool = False) -> dict:
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
+            record.update(session_detail(record["text"], private=local))
     owner = owner_record(root)
     people = [record for record in records if record["category"] == "people" and record["path"] != owner]
     mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])

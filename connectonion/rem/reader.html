@@ -1460,6 +1460,100 @@
     .thread-actions button { min-height: 44px; }
     .done-notice button { min-height: 44px; }
   }
+  /* An archived app inside the notebook: familiar conversation, quiet hardware. */
+  .session-rows { border: 0; display: grid; gap: 12px; position: relative; }
+  .session-row { display: flex; gap: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); box-shadow: var(--shadow); }
+  .session-row:hover { border-color: var(--dawn-line); }
+  .session-card-content { min-width: 0; flex: 1; }
+  .session-title { white-space: normal; font: 500 21px/1.4 var(--display); }
+  .session-excerpt { margin: 8px 0 10px; max-width: 78ch; }
+  .session-card-foot { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); font: 12px/1.5 var(--ui); color: var(--ink-3); }
+  .session-outcome { margin-left: auto; }
+  .session-outcome.running { color: var(--dawn); }
+  .session-outcome.running::before { content: '●'; margin-right: 6px; }
+  .session-day { font-size: 20px; margin-top: 30px; }
+  .session-tool-mark { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; color: var(--dawn); background: var(--dawn-soft); }
+  .session-tool-mark.claude-code { color: var(--said); background: var(--said-soft); }
+  .session-tool-mark svg { width: 21px; height: 21px; }
+  .session-page { max-width: 1100px; margin: 0 auto; }
+  .session-page > .page-head h1 { font-size: clamp(28px, 3vw, 40px); max-width: 26ch; line-height: 1.18; }
+  .session-page > .session-summary { max-width: 75ch; margin-bottom: 28px; }
+  .session-page .session-summary h2 { font: 11px var(--ui); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); }
+  .session-page .session-summary .lede { font: 17px/1.6 var(--text); }
+  .session-device { border: 1px solid var(--line); border-radius: 14px; background: var(--sheet); box-shadow: 0 22px 55px -30px var(--night-dim), 0 0 0 5px var(--line-2); margin: 32px 0 40px; overflow: hidden; }
+  .session-window-bar { display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 22px; border-bottom: 1px solid var(--line); background: var(--paper); font: 12px/1.4 var(--ui); color: var(--ink-3); }
+  .session-window-dots { font-size: 10px; letter-spacing: 2px; color: var(--ink-3); opacity: .55; white-space: nowrap; }
+  .session-window-bar strong { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-weight: 600; white-space: nowrap; }
+  .session-window-bar .session-tool-mark { width: 25px; height: 25px; background: transparent; border: 0; }
+  .session-window-folder { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--line); }
+  .session-window-bar > time { margin-left: auto; white-space: nowrap; }
+  .session-app-heading { display: flex; justify-content: space-between; gap: 12px; padding: 24px 36px 10px; color: var(--ink-3); font: 11px/1.5 var(--ui); }
+  .session-app-heading > :first-child { letter-spacing: .14em; }
+  .session-device .session-find { padding: 0 36px; margin: 8px 0 20px; }
+  .session-device .session-find input { background: var(--paper); font-size: 13px; border-color: transparent; }
+  .session-transcript { padding: 8px 36px 24px; }
+  .session-turn { padding: 14px 0 22px; scroll-margin: 30px; min-width: 0; border-radius: 10px; }
+  .session-turn-label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font: 600 12px/1.5 var(--ui); margin: 0 0 10px; }
+  .session-turn-label time { margin-left: auto; font-weight: 400; color: var(--ink-3); }
+  .session-turn-label .session-tool-mark { width: 22px; height: 22px; border: 0; background: transparent; }
+  .session-turn-label .session-tool-mark svg { width: 19px; height: 19px; }
+  .session-device .session-quote { color: var(--ink); border: 0; background: transparent; padding: 0; font: 15px/1.8 var(--ui); }
+  .session-device .owner-turn { margin-left: 12%; }
+  .session-device .owner-turn .session-quote { background: var(--paper); border: 1px solid var(--line-2); border-radius: 14px 3px 14px 14px; padding: 18px 22px; }
+  .session-device.claude-code .owner-turn { margin-left: 0; }
+  .session-device.claude-code .owner-turn .session-quote { background: var(--said-soft); border-radius: 5px; border-left: 3px solid var(--said); font-family: var(--code); font-size: 13px; }
+  .session-device.claude-code .assistant-turn .session-quote { font: 13px/1.85 var(--code); }
+  .session-device.claude-code .session-turn-label { font-family: var(--code); }
+  .session-page .session-missing { margin: 0 0 20px; border-bottom: 1px solid var(--line-2); }
+  .session-page .session-missing summary { font-size: 12px; color: var(--ink-3); min-height: 42px; }
+  .session-missing p, .session-tool-archive > p, .session-tool-call > p, .session-archive-note { color: var(--ink-3); font: 12px/1.65 var(--ui); }
+  .session-tool-archive { margin: 12px 0 28px; }
+  .session-page .session-tool-call { border: 1px solid var(--line); border-radius: 7px; margin: 7px 0; overflow: hidden; }
+  .session-page .session-tool-call summary { display: flex; align-items: center; gap: 10px; padding: 11px 14px; min-height: 44px; font: 12px var(--ui); list-style: none; }
+  .session-tool-call summary::-webkit-details-marker { display: none; }
+  .session-tool-call[open] summary > :first-child { transform: rotate(90deg); }
+  .session-page .session-tool-call summary code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .session-tool-call pre { margin: 0; padding: 14px; background: var(--paper); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .session-tool-call > p { padding: 0 14px; }
+  .session-page .session-cited { outline: 2px solid var(--lamp-line); outline-offset: 7px; background: var(--lamp-soft); }
+  .session-composer { margin: 0 26px 26px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+  .session-composer textarea { display: block; resize: vertical; width: 100%; min-height: 64px; padding: 0; border: 0; color: var(--ink); background: transparent; font: 15px/1.6 var(--ui); }
+  .session-composer textarea::placeholder { color: var(--ink-3); opacity: 1; }
+  .session-resume { display: flex; align-items: center; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .session-resume code { flex: 1; min-width: 0; color: var(--ink-2); user-select: all; }
+  .session-page .session-resume button { color: var(--sheet); background: var(--ink); border-color: var(--ink); border-radius: 7px; }
+  .session-composer-note { color: var(--ink-3); font: 11px/1.6 var(--ui); margin: 10px 0 0; }
+  .session-home-indicator { display: none; }
+  @media (max-width: 719px) {
+    .session-row { padding: 16px; gap: 12px; }
+    .session-row > .session-tool-mark { width: 28px; height: 28px; border-radius: 7px; }
+    .session-title { font-size: 19px; }
+    .session-card-foot { gap: 6px 12px; }
+    .session-outcome { margin-left: 0; }
+    .session-device { border: 3px solid var(--line); border-radius: 30px; margin: 24px 0 30px; box-shadow: 0 12px 32px -24px var(--night-dim); }
+    .session-window-bar { flex-wrap: wrap; gap: 4px 8px; padding: 31px 17px 14px; position: relative; }
+    .session-window-bar::before { content: ''; position: absolute; top: 9px; left: calc(50% - 30px); width: 60px; height: 5px; background: var(--ink-3); border-radius: 8px; opacity: .45; }
+    .session-window-dots { display: none; }
+    .session-window-bar strong { flex: 1 1 100%; font-size: 14px; }
+    .session-window-folder { border: 0; padding-left: 0; max-width: 50%; }
+    .session-window-bar > time { font-size: 11px; }
+    .session-app-heading { padding: 20px 17px 8px; flex-wrap: wrap; font-size: 10px; gap: 6px; }
+    .session-device .session-find { padding: 0 14px; gap: 6px; }
+    .session-device .session-find input { flex-basis: 100%; font-size: 16px; }
+    .session-transcript { padding: 0 17px 12px; }
+    .session-device .owner-turn { margin-left: 7%; }
+    .session-device .owner-turn .session-quote { padding: 13px; }
+    .session-device .session-quote { font-size: 14px; line-height: 1.75; }
+    .session-device.claude-code .assistant-turn .session-quote { font-size: 12px; }
+    .session-turn-label { font-size: 11px; }
+    .session-composer { margin: 0 10px 12px; padding: 12px; }
+    .session-composer textarea { font-size: 16px; }
+    .session-resume { flex-wrap: wrap; gap: 10px; }
+    .session-resume code { flex-basis: 100%; }
+    .session-page .session-resume button { width: 100%; min-height: 44px; }
+    .session-home-indicator { display: block; width: 72px; height: 4px; border-radius: 5px; background: var(--ink-3); margin: 18px auto 9px; opacity: .5; }
+  }
+
 </style>
 </head>
 <body>
@@ -1514,6 +1608,24 @@ const UI = {
     "Threads started in the last 90 days; first indexed message": "最近90天开始的话题，按最早收录的邮件统计",
     "Median reply time · all indexed history; consecutive turns in the same thread": "全部收录邮件的回复时间中位数；按同一话题中双方相邻的回复统计",
     "Daily message rate: last 30 days vs prior 90 days": "每日邮件频率：最近30天与此前90天相比",
+    "Open session transcript →": "打开会话记录 →",
+    "Continue this session…": "继续这个会话…",
+    "Copy resume command": "复制继续命令",
+    "Session id not archived": "未归档会话 ID",
+    "Resume in your project folder, then paste your message.": "在项目文件夹中恢复会话，然后粘贴你的消息。",
+    "SESSION ARCHIVE": "会话档案",
+    "session transcript": "会话记录",
+    "Duration not archived": "时长未归档",
+    "Time not archived": "时间未归档",
+    "At least {duration}": "至少 {duration}",
+    "Outcome not recorded": "结果未记录",
+    "Running": "进行中",
+    "Assistant activity · not archived": "助手活动 · 未归档",
+    "This archive keeps your turns and the final reply. Intermediate replies and tool results were not retained.": "本档案保留了你的发言和最终回复，中间回复及工具结果未被保留。",
+    "Archived commands · execution order not retained": "已归档命令 · 执行顺序未保留",
+    "Terminal": "终端",
+    "Tool output not archived": "工具输出未归档",
+    "No visible turns in this archive.": "此档案中没有可显示的发言。",
     "Open page →": "打开页面 →",
     "Choose a page": "选择一个页面",
     "Several pages match this name. Choose one to keep their facts and connections separate.": "多个页面匹配这个名字。请选择一个，分别查看各自的信息与关联。",
@@ -2318,6 +2430,7 @@ function setInterfaceLanguage(language) {
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
   document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
+  document.querySelectorAll(".session-find").forEach(bar => bar.refreshSessionFind?.());
   if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
   button.classList.toggle("active", hidden);
@@ -4654,6 +4767,87 @@ function sessionExcerpt(r, terms) {
   }
   return { speaker: "", text: text.summary || text.agent };
 }
+function sessionTool(r) {
+  const kind = r.session_kind || sessionAgent(r);
+  return { kind, name: kind === "codex" ? "Codex" : kind === "claude-code" ? "Claude Code" : r.session_agent || t("Agent") };
+}
+function sessionToolMark(r) {
+  const { kind } = sessionTool(r);
+  // Original geometric marks: a prompt bracket and a four-point compass.
+  const path = kind === "claude-code" ? '<path d="M12 3v18M3 12h18M6 6l12 12M6 18L18 6"/>'
+    : '<path d="m8 5-5 7 5 7m8-14 5 7-5 7M13 8l-2 8"/>';
+  return el("span", { class: "session-tool-mark " + kind, "aria-hidden": "true", html:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>' });
+}
+function sessionResumeCommand(r) {
+  const { kind } = sessionTool(r), id = r.session_id || (/^- Session: (.+)$/m.exec(sessionSection(r, "Facts")) || [])[1];
+  if (!id || !["codex", "claude-code"].includes(kind)) return "";
+  const quoted = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id) ? id : "'" + id.replaceAll("'", "'\\''") + "'";
+  return (kind === "codex" ? "codex resume " : "claude --resume ") + quoted;
+}
+function sessionDuration(r) {
+  const messages = sessionMessages(r), first = messages[0]?.time, last = r.session_ended || messages.at(-1)?.time;
+  const date = stamp => !stamp ? NaN : Date.parse((stamp.length <= 5 ? r.session_date + " " + stamp : stamp).replace(" ", "T") + ":00Z");
+  const minutes = Math.round((date(last) - date(first)) / 60000);
+  if (!Number.isFinite(minutes) || minutes < 0 || !r.session_ended && messages.length < 2) return t("Duration not archived");
+  const duration = minutes >= 60 ? Math.floor(minutes / 60) + "h " + minutes % 60 + "m" : minutes + "m";
+  return r.session_ended ? duration : t("At least {duration}", { duration });
+}
+function sessionComposer(r) {
+  const command = sessionResumeCommand(r);
+  const input = el("textarea", { rows: "2", placeholder: t("Continue this session…"), "aria-label": t("Continue this session…") });
+  const copy = sessionButton("Copy resume command", () => copyToClipboard(command, copy));
+  copy.disabled = !command;
+  copy.setAttribute("aria-live", "polite");
+  const form = el("form", { class: "session-composer", "data-session-id": r.session_id || "" }, [input,
+    el("div", { class: "session-resume" }, [el("code", { text: command || t("Session id not archived") }), copy]),
+    el("p", { class: "session-composer-note", text: t("Resume in your project folder, then paste your message.") })]);
+  // Future run adapters can consume this event. No dispatch is enabled in this snapshot.
+  form.sessionContinuation = () => ({ sessionId: r.session_id, kind: sessionTool(r).kind, message: input.value, command, cwd: r.session_folder });
+  form.onsubmit = event => { event.preventDefault(); form.dispatchEvent(new CustomEvent("rem:session-continue", { bubbles: true, detail: form.sessionContinuation() })); };
+  return form;
+}
+function sessionArchivedTools(r) {
+  const artifacts = sessionSection(r, "Artifacts"), notable = /; notable: (.+)/.exec(artifacts)?.[1] || "";
+  const commands = r.session_commands || [...notable.matchAll(/`([^`]+)`/g)].map(match => ({ text: match[1], private: hasPrivacy(artifacts) }));
+  if (!commands.length) return null;
+  return el("section", { class: "session-tool-archive" }, [el("p", { text: t("Archived commands · execution order not retained") }),
+    ...commands.map(command => el("details", { class: "session-tool-call" + (command.private || hasPrivacy(command.text) ? " private" : "") }, [
+      el("summary", {}, [el("span", { text: "›", "aria-hidden": "true" }), el("span", { text: t("Terminal") }), el("code", { text: command.text })]),
+      el("pre", {}, [el("code", { text: command.text })]), el("p", { text: t("Tool output not archived") })]))]);
+}
+function sessionTranscriptTurn(r, message) {
+  const owner = message.role === "user", quote = sessionQuote(message.text);
+  quote.sessionFullText = message.text;
+  return el("section", { class: "session-turn " + (owner ? "owner-turn" : "assistant-turn") + (hasPrivacy(message.text) ? " private" : ""), id: message.id, "data-source": message.source || "" }, [
+    el("div", { class: "session-turn-label" }, [owner ? null : sessionToolMark(r), el("span", { text: owner ? t("You") : sessionTool(r).name }),
+      el("time", { text: message.time || t("Time not archived"), datetime: (message.time.length === 5 ? r.session_date + "T" + message.time : message.time.replace(" ", "T")) })]), quote]);
+}
+function sessionMissingReply() {
+  return el("details", { class: "session-missing" }, [el("summary", { text: t("Assistant activity · not archived") }),
+    el("p", { text: t("This archive keeps your turns and the final reply. Intermediate replies and tool results were not retained.") })]);
+}
+function sessionFrame(r) {
+  const tool = sessionTool(r), messages = Array.isArray(r.session_messages) ? r.session_messages
+    : [...sessionMessages(r).map(m => ({ ...m, role: "user" })), ...(sessionSection(r, "Final reply") ? [{ id: "session-final", role: "assistant", time: "", text: sessionUnquote(sessionSection(r, "Final reply")) }] : [])];
+  const body = el("div", { class: "session-transcript", id: "original-conversation" });
+  for (const message of messages) {
+    if (message.role === "assistant") body.appendChild(sessionArchivedTools(r) || document.createDocumentFragment());
+    body.appendChild(sessionTranscriptTurn(r, message));
+    if (message.role === "user") body.appendChild(sessionMissingReply());
+  }
+  if (!messages.some(m => m.role === "assistant")) body.appendChild(sessionArchivedTools(r) || document.createDocumentFragment());
+  if (!messages.length) body.appendChild(el("p", { class: "session-archive-note", text: t("No visible turns in this archive.") }));
+  const node = el("section", { class: "session-device " + tool.kind, "aria-label": tool.name + " " + t("session transcript") });
+  const find = sessionFind(node, body, route().find || route().query);
+  const folder = (r.session_folder || "").split(/[\\/]/).filter(Boolean).pop() || t("No project");
+  node.append(el("div", { class: "session-window-bar" }, [el("span", { class: "session-window-dots", "aria-hidden": "true", text: "● ● ●" }),
+    el("strong", {}, [sessionToolMark(r), tool.name]), el("span", { class: "session-window-folder", text: folder, title: r.session_folder || "" }), el("time", { text: fmtDate(r.session_date) })]),
+    el("div", { class: "session-app-heading" }, [el("span", { text: t("SESSION ARCHIVE") }), el("span", { text: sessionDuration(r) + " · " + t("{n} turns", { n: r.session_turns || 0 }) })]),
+    find.node, body, sessionComposer(r), el("div", { class: "session-home-indicator", "aria-hidden": "true" }));
+  return { node, find };
+}
+
 function sessionRow(r, terms) {
   const state = route(), text = sessionText(r), excerpt = sessionExcerpt(r, terms);
   const project = byPath(r.session_project), folder = r.session_folder || "";
@@ -4663,22 +4857,23 @@ function sessionRow(r, terms) {
   meta.appendChild(document.createTextNode(" · " + [r.session_agent, clock.trim(), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 })].filter(Boolean).join(" · ")));
   const tags = el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", {
     href: sessionHash({ ...state, tag }), "data-session-tag": tag, html: sessionHighlight(tag, terms) })));
-  if (["done", "partial", "abandoned"].includes(r.session_outcome)) tags.appendChild(el("span", { text: t(SESSION_OUTCOMES[r.session_outcome]) }));
-  return el("li", { class: "session-row" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
+  return el("li", { class: "session-row" }, [sessionToolMark(r), el("div", { class: "session-card-content" }, [el("a", { class: "session-title", href: href(r) + (state.find ? "&find=" + encodeURIComponent(state.find) : ""), html: sessionHighlight(text.title, terms) }),
     el("div", { class: "session-excerpt" }, [excerpt.speaker ? el("span", { class: "session-speaker", text: excerpt.speaker + " " }) : null,
-      el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta]);
+      el("span", { html: sessionHighlight(excerpt.text, terms) })]), tags, meta, el("div", { class: "session-card-foot" }, [
+      el("span", { text: sessionDuration(r) }),
+      el("span", { class: "session-outcome " + (r.session_status === "running" ? "running" : ""), text: r.session_status === "running" ? t("Running") : t(SESSION_OUTCOMES[r.session_outcome] || "Outcome not recorded") })])])]);
 }
 function sessionGroups(records, state, terms) {
   const groups = new Map(), content = document.createDocumentFragment();
   for (const r of records) {
-    const key = state.by === "project" ? r.session_project || "none" : r.session_date || "Undated";
+    const key = r.session_status === "running" ? "Running" : state.by === "project" ? r.session_project || "none" : r.session_date || "Undated";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
   }
   if (state.by === "project" && groups.has("none")) { const none = groups.get("none"); groups.delete("none"); groups.set("none", none); }
   let index = 0;
   for (const [key, rows] of groups) {
-    const title = state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
+    const title = key === "Running" ? t("Running") : state.by === "project" ? byPath(key)?.title || (key === "none" ? "No project" : key) : fmtDate(key);
     const heading = [el("span", { text: state.by === "project" && key === "none" ? t("No project") : title }), el("span", { class: "session-count", text: String(rows.length) })];
     const list = el("ul", { class: "session-rows" }, rows.map(r => sessionRow(r, terms)));
     if (state.by === "project") {
@@ -4848,7 +5043,7 @@ function sessionsView() {
 }
 
 function sessionOrder(a, b) {
-  return ((b.session_date || "") + (b.session_time || "")).localeCompare((a.session_date || "") + (a.session_time || "")) || b.path.localeCompare(a.path);
+  return Number(b.session_status === "running") - Number(a.session_status === "running") || ((b.session_date || "") + (b.session_time || "")).localeCompare((a.session_date || "") + (a.session_time || "")) || b.path.localeCompare(a.path);
 }
 
 function sessionContextRow(r, find = "") {
@@ -4891,11 +5086,12 @@ function sessionMessages(r) {
 function sessionUnquote(text) { return text.replace(/^> ?/gm, "").replace(/^\n+|\n+$/g, ""); }
 function sessionJump(id) {
   const target = document.getElementById(id);
-  if (!target) return;
+  if (!target || target.closest(".private") && document.documentElement.classList.contains("hide-private")) return;
   for (let parent = target.parentElement; parent; parent = parent.parentElement) {
     if (parent.tagName === "DETAILS") parent.open = true;
   }
-  target.scrollIntoView({ block: "start" });
+  target.classList.add("session-cited");
+  target.scrollIntoView({ block: "center" });
 }
 function sessionMessageLink(r, message, text) {
   const link = el("a", { href: href(r) + "&h=" + message.id, text });
@@ -4953,8 +5149,9 @@ function sessionFind(attachment, body, initial) {
     const needle = input.value.trim().toLowerCase();
     for (const quote of quotes) {
       const full = quote.sessionFullText;
+      const hidden = hasPrivacy(full) && document.documentElement.classList.contains("hide-private");
       const clipped = quote.closest(".session-final") && full.length > 1200 && !quote.sessionExpanded && !needle;
-      sessionMarkText(quote, clipped ? full.slice(0, 600) + "…" : full, needle);
+      sessionMarkText(quote, clipped ? full.slice(0, 600) + "…" : full, hidden ? "" : needle);
     }
     matches = [...body.querySelectorAll("mark")]; current = -1;
     previous.disabled = next.disabled = !matches.length;
@@ -4966,6 +5163,7 @@ function sessionFind(attachment, body, initial) {
   body.addEventListener("session-reply-expanded", find);
   const bar = el("div", { class: "session-find" }, [input, status, previous, next]);
   input.value = initial || "";
+  bar.refreshSessionFind = find;
   return { node: bar, run: find };
 }
 function sessionAttachment(r, messages) {
@@ -5041,7 +5239,7 @@ function sessionDetails(r) {
 }
 function sessionRecord(r, heading) {
   const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
-  const attachment = sessionAttachment(r, messages);
+  const attachment = sessionFrame(r);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   const summary = unlabelled(r.session_summary || sessionSection(r, "Summary")), followups = sessionSection(r, "Follow-ups");
   const page = el("article", { class: "session-page" }, [
@@ -5051,15 +5249,20 @@ function sessionRecord(r, heading) {
       el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
     el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
       el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + unlabelled(r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+    attachment.node,
     sessionDecisions(r, messages),
     followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: t("Follow-ups") }),
       el("ul", {}, listItems(followups).map(text => el("li", { html: inline(text, r.path) })))]) : null,
-    sessionArtifacts(r), sessionNeighbours(r), attachment.node, sessionDetails(r)]);
+    sessionArtifacts(r), sessionNeighbours(r), sessionDetails(r)]);
   main.replaceChildren(page);
   if (route().find || route().query) {
     attachment.node.open = true;
     requestAnimationFrame(() => { if (page.isConnected) attachment.find.run(); });
-  } else if (heading) requestAnimationFrame(() => sessionJump(heading));
+  } else if (heading) requestAnimationFrame(() => {
+    const source = /^src-/.test(heading) ? citationId(r, heading.slice(4)) : heading;
+    const message = r.session_messages?.find(m => m.source === source);
+    sessionJump(message?.id || heading);
+  });
 }
 
 // ---------- a page ----------
@@ -6404,6 +6607,14 @@ function openEvidence(r, number, trigger) {
       ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
       : chipLabel(r, source.n) }),
     context && !/^(gmail|outlook)$/.test(context.source) ? el("p", { class: "evidence-subject", text: context.subject || REM.conversations?.[context.thread]?.subject || "" }) : null]));
+  const sessionSource = sourceId(source.text, source.plain);
+  const session = (REM.records || []).find(record => record.category === "sessions" && record.session_messages?.some(message => message.source === sessionSource));
+  if (session) {
+    const message = session.session_messages.find(message => message.source === sessionSource);
+    const link = el("a", { class: "evidence-session-link", href: href(session) + "&h=" + message.id, text: t("Open session transcript →") });
+    link.onclick = closeEvidence;
+    panel.appendChild(link);
+  }
   if (context) {
     const reveal = el("button", { class: "btn-action", type: "button", text: t("Show labelled passages") });
     reveal.onclick = () => { togglePrivate(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
