@@ -1299,7 +1299,7 @@ def scrub_task(directory: Path) -> None:
     Native completion is in the run log; its workspace goes once the round
     no longer needs the earlier task outputs.
     """
-    if not directory.is_dir() or directory.is_symlink():
+    if directory.name.startswith("do-") or not directory.is_dir() or directory.is_symlink():
         return
     native_task = read_json(directory / "task.json", {})
     active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
@@ -1342,7 +1342,7 @@ def scrub_finished_tasks(workdir: Path) -> None:
     stale = time.time() - ABANDONED_TASK_SECONDS
     finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
-        if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
+        if folder.name.startswith("do-") or folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
         native_task = read_json(folder / "task.json", {})

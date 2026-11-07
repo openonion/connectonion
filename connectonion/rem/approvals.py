@@ -42,7 +42,12 @@ def outcomes(root, *, rows=None, prepared=None):
         kind = {'replied': 'handled', 'task': 'task'}.get(row.get('reply', {}).get('state'))
         if not kind or row['closed'] or row['quiet'] or row['dir'] != 'mine' or covered.intersection(row['keys']):
             continue
-        result.append({'id': _id(kind, row['key']), 'kind': kind, 'keys': row['keys'],
+        from .tasks import receipt_for
+        if kind == 'task' and receipt_for(root, row['key']):
+            continue
+        from .night import _task as prepared_task
+        task = prepared_task(root, {**row, 'record': row.get('record') or row['key'].split('\n')[0]}) if kind == 'task' else {}
+        result.append({**task, 'id': _id(kind, row['key']), 'kind': kind, 'keys': row['keys'],
                        'title': row['title'], 'text': row.get('reply', {}).get('promise') or row['text'], 'blocked': False})
     queued = read_json(state_path(root, 'approvals.json'), {})
     return [item for item in result if queued.get(item['id'], {}).get('status') not in
@@ -86,7 +91,9 @@ def _handled(root, item, body, release_at):
 
 
 def _task(root, item, body, release_at):
-    return {**item, 'status': 'queued'}
+    from .tasks import reserve
+    receipt = reserve(root, item)
+    return {**item, 'status': 'queued', 'receipt_id': receipt['id']}
 
 
 # A new prepared outcome kind adds one handler here; the reader renders the common fields.

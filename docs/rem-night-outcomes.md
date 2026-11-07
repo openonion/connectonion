@@ -17,8 +17,10 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
-`task` outcomes. There is no obligation-task dispatcher on this base branch:
-tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
+`task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
+Morning approval reserves a receipt and the Host starts `co rem task run ID`.
+The night may dispatch after drafting only when `tasks.auto: true`; its default
+is false. `co rem status` names this choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
 Nothing here sends messages or marks an obligation done; the morning UI still
@@ -58,7 +60,7 @@ for a non-mail task). Recorded outcomes carry `prepared_at`. Kind-specific field
 | --- | --- |
 | `prepared` | `draft_id` references the existing `drafts` payload with body, recipients and sources. |
 | `already_handled` | `owner_quote`, `reason`; a sent local draft may also supply `draft_id`. |
-| `task` | `task: {status: "ready", prompt: string}`, `owner_quote` (empty without owner-authored evidence). |
+| `task` | `task: {status: "ready", prompt: string, id: string}`, plus receipt fields when dispatched; `owner_quote` is empty without owner-authored evidence. |
 | `no_reply` | `draft_id`, `reason`; the writer's validated no-reply verdict. |
 | `could_not_prepare` | `reason`, including the configured cap or safe provider diagnosis. Before a round, the reason is `Not prepared yet.` |
 
@@ -81,5 +83,36 @@ A nonzero `no_reply` count is appended as `N no reply needed`. JSON
 Provider failures retain safe error classes/HTTP diagnoses, never raw exception
 text that might contain credentials or private URLs.
 
-`reader.html` is unchanged. This contract supplies the other engineer's morning
-approval UI; no new rendered UI or batch-confirmation endpoint is claimed here.
+## Obligation work
+
+Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
+`co rem task stop ID` to stop it. Each ID gets one Codex session, using the
+configured work model and the same sandbox/network/credential-directory flags
+as upkeep. An unambiguous existing repository from the obligation's project
+page (or an explicit project link on its page) is the working directory;
+otherwise the working directory is `.state/tasks/do-ID/work`.
+
+The prepared prompt is extended with the completion criteria, the absolute
+`.state/tasks/do-ID/result.md` deliverable path, and “do not send anything to
+anyone; write the result and stop”. Reviewable work can include repository edits;
+the deliverable names changed files, evidence, checks and missing inputs.
+
+`do-ID/receipt.json` records `queued_at`, `started_at`, `finished_at`, `exit_code`,
+`result`, worker/Codex process identities, `cwd`, `log`, `last_message` and
+`deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
+`stopped`. A zero exit without a nonempty deliverable is failed. Repeated `run`
+returns the same receipt, including failures; automatic retries are deliberately
+absent. `status` reconciles dead workers into a durable failure and stops verified
+orphan Codex groups. Stop and timeout terminate tools before the Codex group.
+Native maintenance cleanup preserves every `do-*` directory.
+
+Local Today snapshots attach receipt fields to `outcome.task`; shared snapshots
+still expose no private outcomes. The Today card shows receipt progress and,
+after completion, the deliverable path plus a copyable prepared reply:
+`REM 已经做完：<one line> · 附：<path>`. The owner sends it. Existing receipts
+are not offered for another batch approval. Live cards provide a refresh action;
+offline snapshots need a new `co rem open` to obtain later receipts.
+
+This is execution evidence, not an independent judgement of work quality: the
+owner reviews the deliverable before sending or marking the obligation done.
+Tasks do not send messages, mark threads done, or make external commitments.

@@ -66,7 +66,8 @@ def _tonight(value):
             f"{night['could_not_prepare']} could not be prepared")
     if night['no_reply']:
         line += f" · {night['no_reply']} no reply needed"
-    return [highlight(line), *(highlight(f"  {row['title']}: {row['text']} — {row['reason']}")
+    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto=false)'
+    return [highlight(line), highlight('tasks: ' + mode), *(highlight(f"  {row['title']}: {row['text']} — {row['reason']}")
                               for row in night['unprepared']), '']
 
 

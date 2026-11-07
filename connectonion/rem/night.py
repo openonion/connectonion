@@ -53,6 +53,10 @@ def listing(root, *, rows=None):
         draft = read_json(drafts.path(root, candidate['id']), {}) if candidate else {}
         if candidate and draft.get('version') == candidate['version'] and draft.get('status') in ('prepared', 'no_reply', 'sent'):
             outcome = _draft_outcome(root, row, draft)
+        if outcome and outcome['kind'] == 'task':
+            from .tasks import identity, receipt_for
+            receipt = receipt_for(root, row['key'])
+            outcome = {**outcome, 'task': {**outcome['task'], 'id': identity(row['key']), **(receipt or {})}}
         result.append(outcome or _base(row, 'could_not_prepare', reason='Not prepared yet.'))
     return result
 

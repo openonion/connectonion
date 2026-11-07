@@ -698,6 +698,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
     return {"state": state, "tonight": night_summary(root),
+            "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": f"Work: {config['model']} · standalone summaries: {config['models']['summary']}",
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",

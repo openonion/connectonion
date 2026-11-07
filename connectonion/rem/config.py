@@ -45,7 +45,7 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    return {"version": 1, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone(), "runner": "codex-exec"},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -107,6 +107,8 @@ def validate(config: dict) -> dict:
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    if not isinstance(config["tasks"], dict) or set(config["tasks"]) != {"auto"} or type(config["tasks"]["auto"]) is not bool:
+        raise RemError("tasks.auto must be true or false")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != {"summary"}
             or not isinstance(models["summary"], str) or not models["summary"].strip()):
@@ -184,6 +186,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    config.setdefault("tasks", {"auto": False})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")
@@ -262,7 +265,7 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models"):
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
@@ -270,7 +273,11 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
             raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[-1] not in target:
             raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
-        if key == "schedule.times":
+        if key == "tasks.auto":
+            if raw not in ("true", "false"):
+                raise RemError("tasks.auto must be true or false")
+            value = raw == "true"
+        elif key == "schedule.times":
             value = sorted(raw.split(","))
         elif key == "languages":
             value = [tag.strip() for tag in raw.split(",") if tag.strip()]

@@ -209,6 +209,10 @@
   .today-brief .section { margin-top: 0; }
   .owner-slot { background: #fff1bd; color: #4b3300; border: 1px solid #b07800; border-radius: 5px; padding: 2px 5px; box-decoration-break: clone; }
   .draft-reason { grid-column: 1 / -1; }
+  .task-result { grid-column: 1 / -1; min-width: 0; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+  .task-result p { margin: 6px 0 12px; overflow-wrap: anywhere; }
+  .task-result textarea { box-sizing: border-box; display: block; width: 100%; min-height: 100px; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font: 14px/1.6 var(--ui); resize: vertical; }
+  .qcard.folded .task-result textarea, .qcard.folded .task-result button { display: none; }
   .mail-actions .cmd { min-width: 0; max-width: 100%; flex-basis: 100%; }
   .mail-actions .cmd:not([hidden]) { display: flex; align-items: center; gap: 8px; }
   .mail-actions .cmd code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1712,6 +1716,18 @@ const UI = {
     "Could not approve. Try again.": "未能批准，请重试。",
     "Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.": "回信将在 10 分钟后发送，可撤销。已处理项标为完成；任务立即排队。",
     "Held for 10 minutes": "等待 10 分钟后发送",
+    "Task result": "任务结果",
+    "Awaiting approval": "等待批准",
+    "Refresh task progress": "刷新任务进度",
+    "Could not refresh. Try again.": "未能刷新，请重试。",
+    "Awaiting Host": "等待 Host 派发",
+    "Starting": "正在启动",
+    "Task failed": "任务失败",
+    "Task timed out": "任务超时",
+    "Task stopped": "任务已停止",
+    "Deliverable": "交付物",
+    "Prepared reply": "已备好回信",
+    "Copy prepared reply": "复制回信",
     "Task queued": "任务已排队",
     "Task dispatched": "任务已派发",
     "Cancelled": "已撤销",
@@ -4725,6 +4741,35 @@ function dueLabel(thread) {
   return t(thread.due < calendarDay(REM.as_of) ? "overdue · " : "due ") + threadDate(thread.due);
 }
 
+function taskResult(entry) {
+  const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
+  const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
+  if (!task || (!task.result && !REM.live)) return null;
+  const labels = {ready: "Awaiting approval", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
+    el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
+    task.reason ? el("p", {text: task.reason}) : null]);
+  if (task.result === "completed" && task.prepared_reply) {
+    result.appendChild(el("p", {}, [el("span", {text: t("Deliverable") + ": "}), el("code", {text: task.deliverable})]));
+    const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
+    reply.value = task.prepared_reply;
+    const copy = el("button", {type: "button", class: "btn-quiet", text: t("Copy prepared reply")});
+    copy.onclick = () => copyToClipboard(task.prepared_reply);
+    result.append(reply, copy);
+  }
+  if (REM.live && location.protocol !== "file:") {
+    const refresh = el("button", {type: "button", class: "btn-quiet", text: t("Refresh task progress")});
+    refresh.onclick = async () => {
+      refresh.disabled = true;
+      const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id})}).catch(() => null);
+      if (response?.ok) location.reload();
+      else {refresh.disabled = false; refresh.textContent = t("Could not refresh. Try again.");}
+    };
+    result.appendChild(refresh);
+  }
+  return result;
+}
+
 function queueCard(entry, dateText) {
   const { r, t: thread, also } = entry;
   const { words, context } = morningWords(thread.text, r, thread);
@@ -4739,7 +4784,7 @@ function queueCard(entry, dateText) {
         metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
     el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
     el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, r.path) }) : null]), alsoOn(also)]),
-    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), fold]);
+    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), taskResult(entry), fold]);
   fold.onclick = () => {
     const open = card.classList.toggle("folded");
     fold.textContent = t(open ? "More" : "Less");
