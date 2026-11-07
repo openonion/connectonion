@@ -258,7 +258,7 @@ def init(
             import json
             try:
                 result = prepare_mac_host()
-                console.print(json.dumps(result), markup=False)
+                print(json.dumps(result))
             except (HostServiceError, OSError) as error:
                 console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
                 raise typer.Exit(1) from None
@@ -304,8 +304,8 @@ def create(
 def host(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
     background: bool = typer.Option(False, '--background', help='Install/start a macOS login service for this project; preserves foreground behavior'),
-    status: bool = typer.Option(False, '--status', help='Read-only: inspect this project service and process; no device-ready claim'),
-    stop: bool = typer.Option(False, '--stop', help='Stop and disable this project service across login'),
+    status: bool = typer.Option(False, '--status', help="Read-only: the Host serving this address on this computer (co ai, a project, the background service) and this project's service"),
+    stop: bool = typer.Option(False, '--stop', help="Stop the Host serving this address, wherever it was started, and disable this project's service across login"),
     uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove this project service; preserve agent, identity, memory and logs'),
     native_codex: bool = typer.Option(False, '--native-codex', help='Serve native Codex directly from this initialized profile; no agent.py or outer model'),
 ):
@@ -320,13 +320,26 @@ def host(
         if sum((background, status, stop, uninstall)) != 1 or (port is not None and not background):
             console.print('Choose one service action; --port applies to --background. Next: co host --help')
             raise typer.Exit(2)
-        from .host_service import HostService, HostServiceError
+        from .host_service import HostService, HostServiceError, serving, stop_serving
         from ..environment import explicit_env_file
         import json
         try:
+            # --status and --stop act on the one Host serving this address,
+            # wherever it was started: co ai, a project, the background service (#2750).
+            if status:
+                print(json.dumps({'serving': serving(Path.cwd()),
+                                  **(HostService(Path.cwd()).status() if sys.platform == 'darwin' else {})}))
+                return
+            if stop:
+                stopped = stop_serving(Path.cwd())
+                here = HostService(Path.cwd())
+                print(json.dumps({'stopped': stopped,
+                                  **(here.stop() if sys.platform == 'darwin' and here.plist.exists() else {})}))
+                return
             service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
-            operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
-            console.print(json.dumps(operation()), markup=False)
+            operation = service.start if background else service.uninstall
+            # print, not console.print: rich wraps a long path and the JSON stops parsing.
+            print(json.dumps(operation()))
         except (HostServiceError, OSError) as error:
             console.print(str(error) if isinstance(error, HostServiceError) else 'Cannot write the service files. Next: co host --status', markup=False)
             raise typer.Exit(1) from None

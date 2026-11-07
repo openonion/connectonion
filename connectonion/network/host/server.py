@@ -625,6 +625,64 @@ def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
     )
 
 
+HOST_LOCK_FILE = "host.lock"
+HOST_RECORD_FILE = "host.json"
+_held_identities = {}  # identity dir -> open lock: this process serves it until it exits
+
+
+def identity_dir(identity: dict, co_dir: Path) -> Path:
+    return Path(identity.get("source") or co_dir)
+
+
+def running_host(directory: Path) -> Optional[dict]:
+    """The Host serving the key in `directory` on this machine, or None.
+
+    The lock is the liveness: the OS drops it when that process dies, so a
+    record left by a crash reads as nobody.
+    """
+    from .schedule import _lock, _release_tick_lock
+    directory = Path(directory)
+    if directory in _held_identities:
+        pass  # this process: probing would release its own Windows lock
+    elif not (directory / HOST_LOCK_FILE).is_file():
+        return None
+    elif (handle := _lock(directory / HOST_LOCK_FILE, attempts=1)) is not None:
+        _release_tick_lock(handle)
+        return None
+    record = directory / HOST_RECORD_FILE
+    return json.loads(record.read_text(encoding="utf-8")) if record.is_file() else {}
+
+
+def hold_identity(co_dir: Path, identity: dict, name: str, port: int) -> None:
+    """Serve this address from this process only, or refuse to start.
+
+    Every local Host — `co ai`, a project's `co host`, the background service
+    and the `co ai` REM starts — uses ~/.co's key. Two of them at once both
+    announce it, and the relay routes to whichever re-announced last: measured
+    flipping between two ports every heartbeat (#2750).
+    """
+    from .schedule import _lock
+    directory = identity_dir(identity, co_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    # A second host() in the same process (tests, a restarted server) already holds it.
+    handle = _held_identities.get(directory) or _lock(directory / HOST_LOCK_FILE, attempts=1)
+    if handle is None:
+        other = running_host(directory) or {}
+        raise SystemExit(
+            f"[host] {identity['address'][:10]}… is already served on this computer by "
+            f"'{other.get('name')}' in {other.get('project')} (pid {other.get('pid')}, "
+            f"http://localhost:{other.get('port')}). One address, one Host: the relay "
+            f"would pick between them at random.\n"
+            f"       Use that one, or stop it first: co host --stop")
+    _held_identities[directory] = handle
+    # launchd names the job it started: `co host --stop` stops that job, since
+    # killing only the pid makes KeepAlive start it again.
+    service = os.environ.get("XPC_SERVICE_NAME", "")
+    record = {"pid": os.getpid(), "port": port, "name": name, "project": str(co_dir.parent),
+              "service": service if service.startswith("ai.connectonion.host.") else ""}
+    (directory / HOST_RECORD_FILE).write_text(json.dumps(record), encoding="utf-8")
+
+
 def usable_uvicorn_options(workers, reload) -> tuple:
     """What uvicorn can actually be given, and a word about the difference.
 
@@ -700,7 +758,8 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: co host --port {port + 1}")
+            f"or for one run: co host --port {port + 1} (co ai --port {port + 1} for co ai, "
+            f"which does not read `port:`)")
 
 
 def _print_host_banner(
@@ -1256,6 +1315,12 @@ def host(
     for path, old, new in refresh():
         print(f"Refreshed the command index for co in {path} ({old or 'none'} → {new})")
 
+    # Load or generate agent identity -- the one `co status` reports, not a new one.
+    # Held before the port check: when this address's own Host has the port,
+    # "already served by <it>" is the answer, not "port in use".
+    addr_data = resolve_agent_identity(co_dir)
+    hold_identity(co_dir, addr_data, config.get("name") or co_dir.parent.name, port)
+
     if _port_in_use(port):
         raise SystemExit(_port_taken_message(port, co_dir))
 
@@ -1280,9 +1345,6 @@ def host(
 
     if blacklist is None:
         blacklist = load_list_file(config.get('blacklist'))
-
-    # Load or generate agent identity -- the one `co status` reports, not a new one
-    addr_data = resolve_agent_identity(co_dir)
 
     # Said before the banner, where the address is about to be printed as if it
     # belonged to this agent alone.
@@ -1353,7 +1415,9 @@ def host(
     )
     route_handlers["rem_root"] = _rem_root(rem_root, config)
     # Where the local reader's token lives (rem_http.py): beside this Host's key.
-    route_handlers["identity_dir"] = co_dir
+    # The key's directory, not co_dir: the background service's co_dir is its
+    # own profile, and `co rem open` writes the token beside ~/.co's key.
+    route_handlers["identity_dir"] = identity_dir(addr_data, co_dir)
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
 
