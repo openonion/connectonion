@@ -1680,6 +1680,7 @@ const UI = {
     "Translation pending — background updates off": "翻译待处理，后台更新未开启",
     "No runs yet — background updates off": "尚无运行记录，后台更新未开启",
     "Agent sessions pending — background updates off": "智能体会话待处理，后台更新未开启",
+    "Agent sessions queued for tonight": "智能体会话已排入今晚队列",
     "Page queued for tonight": "此页已排入今晚队列",
     "Unwritten pages queued for tonight": "未写页面已排入今晚队列",
     "No Chinese translation yet; showing original": "尚无中文译文，显示原文",
@@ -6102,7 +6103,7 @@ function record(path, heading) {
       el("span", { class: "lead", text: t(r.private_project ? "Private project — waiting for your request" : !REM.status?.worker?.enabled ? "Page pending — background updates off" : mapped ? "Page queued for tonight" : "Unresolved sections queued for a future pass") }),
       r.private_project ? el("p", { text: t("This private project waits for your request.") }) : null,
       r.private_project ? commandChip(investigateCommand(r)) : null,
-      el("div", { class: "names", text: t("Still unknown: ") + youify(k.missing.join(", ")) + "." })]);
+      el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.join(", ")) + "." })]);
     if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
 

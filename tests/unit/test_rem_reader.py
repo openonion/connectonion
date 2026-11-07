@@ -1401,6 +1401,61 @@ def test_brief_header_distinguishes_overdue_from_due_soon_and_translates_find():
     assert result['find'] == '查找'
 
 
+def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
+    """The round-seven browser fixture shares a citation, but has seven requests."""
+    page = TEMPLATE.read_text()
+    names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
+             'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'briefHeader']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
+      const REM = {as_of: '2026-10-20T12:00:00Z', records: []};
+      const calendarDay = value => value.slice(0, 10), daysSince = () => 0;
+      let OWING = null;
+      const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
+      const plainLine = text => text, threadWords = text => text, isDone = () => false;
+      const lastPass = () => null, firstBuild = () => false;
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
+      const lines = pairs.map((words, i) => '- You owe Mara a review of the ' + words
+        + '; due ' + (i === 0 ? '2026-10-18' : '2026-10-20') + ' [4].');
+      lines.push('- You owe Mara an access decision; since 2026-10-20 [4].');
+      REM.records = [{path: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', category: 'people',
+        text: '# Mara\n\n## Open threads\n' + lines.join('\n') + '\n\n## Sources\n- [4] outlook:shared'}];
+      const entries = threadEntries(), today = todayEntries(entries);
+      console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
+        merged: entries.length, today: today.length,
+        headline: briefHeader({mine: entries.length}, today).children[1].text}));
+    ''')
+    assert result == {'parsed': 7, 'merged': 7, 'today': 7,
+                      'headline': '1 overdue · 5 due soon · 7 waiting on you'}
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(language):
+    page = TEMPLATE.read_text()
+    notice = page[page.index('  if (k.missing.length) {'):page.index('\n  if (REM.live && uiLanguage')]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js('UI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const REM = {status: {worker: {enabled: true}}}, r = {}, deep = {};
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children}), youify = text => text;
+      const rows = [], main = {insertBefore: node => rows.push(node)}, column = {appendChild: node => rows.push(node)};
+      const k = {status: 'Mapped', missing: ['Insight', 'Who they are']};
+    ''' + notice + r'''
+      k.status = 'Partly investigated';
+    ''' + notice + r'''
+      console.log(JSON.stringify(rows));
+    ''')
+    mapped, written = result
+    assert mapped['children'][0]['text'] == ('此页已排入今晚队列' if language == 'zh' else 'Page queued for tonight')
+    assert mapped['children'][-1]['text'] == (
+        '调查后会写出 2 个章节。' if language == 'zh'
+        else '2 sections will be written when it is investigated.')
+    assert written['children'][-1]['text'] == (
+        '仍不明确：Insight, Who they are.' if language == 'zh' else 'Still unknown: Insight, Who they are.')
+
+
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)

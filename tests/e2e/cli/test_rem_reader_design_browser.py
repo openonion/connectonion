@@ -3368,18 +3368,20 @@ def test_empty_sessions_offer_one_copy_action_without_filters(reader, width, lan
     page.set_viewport_size({'width': width, 'height': 844})
     page.goto(uri + '#c=sessions')
     page.evaluate(r'''language => {
+      REM.status = {worker: {enabled: true}};
       REM.default_root = true; setInterfaceLanguage(language);
-      window.copiedCommand = '';
-      copyToClipboard = command => { window.copiedCommand = command; };
     }''', language, isolated_context=False)
-    assert page.locator('.empty .lead').inner_text() == ('还没有智能体会话。' if language == 'zh' else 'No agent sessions yet.')
-    assert page.locator('.empty a').count() == 1
-    assert page.locator('.empty h2, .session-filter-panel, #session-search').count() == 0
-    page.locator('.empty a').click()
-    assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem import sessions'
-    page.evaluate(r'''() => { REM.default_root = false; REM.root_display = '/tmp/theo notebook'; render(); }''', isolated_context=False)
-    page.locator('.empty a').click()
-    assert "--root '/tmp/theo notebook'" in page.evaluate('window.copiedCommand', isolated_context=False)
+    # b1927e56: scheduled work shows queue status instead of a copy/import action.
+    status = page.locator('#main > .quiet-line')
+    assert status.inner_text() == ('智能体会话已排入今晚队列' if language == 'zh' else 'Agent sessions queued for tonight')
+    assert page.locator('#main a, #main button, .session-filter-panel, #session-search').count() == 0
+    page.evaluate(r'''() => {
+      REM.status.worker.enabled = false;
+      REM.default_root = false; REM.root_display = '/tmp/theo notebook'; render();
+    }''', isolated_context=False)
+    assert status.inner_text() == ('智能体会话待处理，后台更新未开启' if language == 'zh'
+                                   else 'Agent sessions pending — background updates off')
+    assert page.locator('#main a, #main button, .session-filter-panel, #session-search').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4001,7 +4003,9 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
     assert page.locator('.today-thread').count() == 5
     assert 'overdue · Oct 18, 2026' in page.locator('.today-thread').first.inner_text()
-    assert '6 due soon' in page.locator('.brief-header h1').inner_text()
+    # 108ac316 separates the overdue request from the five due today.
+    assert '1 overdue · 5 due soon' in page.locator('.brief-header h1').inner_text()
+    assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 7
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
@@ -4299,7 +4303,9 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
     assert purpose.evaluate(r'''node => node.nextElementSibling.nextElementSibling.classList.contains('project-purpose-cites')''')
     more.click()
     assert more.get_attribute('aria-expanded') == 'false'
-    assert page.locator('.eyebrow .pill').evaluate(r'''node => getComputedStyle(node).whiteSpace''') == 'nowrap'
+    # a409b633 omits the redundant Investigated pill and its separator.
+    assert page.evaluate("known(byPath('projects/harbour.md')).status", isolated_context=False) == 'Investigated'
+    assert page.locator('.eyebrow .pill, .eyebrow .sep').count() == 0
     assert '文件更新于' not in page.locator('.eyebrow').inner_text()
     assert 'file updated' not in page.locator('.eyebrow').inner_text()
     assert ('文件更新于' if language == 'zh' else 'File updated') in page.locator('.deep-head').inner_text()
@@ -4406,6 +4412,8 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     page.goto(uri)
     page.evaluate(r'''language => {
       REM.logs = [REM.logs.reduce((a, b) => runTime(a) > runTime(b) ? a : b)];
+      // fbdd25e3 keeps this independent of the displayed (possibly truncated) logs.
+      REM.first_run_at = REM.logs[0].started_at;
       REM.status = {state: 'Stopped — background maintenance is off'};
       REM.default_root = true;
       window.cachedPages = REM.records.filter(r => r.translations?.zh).map(r => ({...r, translations: {...r.translations}}));
@@ -4427,8 +4435,8 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
         assert notice.inner_text().startswith('大部分页面还没有中文版本，目前显示英文原文。')
         assert notice.bounding_box()['y'] > page.locator('.brief-header').bounding_box()['y']
         assert notice.bounding_box()['y'] < page.locator('.overnight').bounding_box()['y']
-        notice.locator('button').click()
-        assert page.evaluate('window.copiedCommand', isolated_context=False) == 'co rem translate --all'
+        assert notice.locator('span').inner_text() == '翻译待处理，后台更新未开启'
+        assert notice.locator('button, code').count() == 0
     else:
         assert notice.count() == 0
     page.locator('.pass-summary a').click()
@@ -4440,8 +4448,12 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert page.locator('.changed-pages, .claim-grid').count() == 0
     # A fragment change keeps this document and the edited snapshot; a bare uri would reload it.
     page.goto(uri + '#')
-    page.evaluate(r'''() => { REM.status.state = 'Running in background (launchd)'; render(); }''', isolated_context=False)
+    page.evaluate(r'''() => {
+      REM.status = {state: 'Running in background (launchd)', worker: {enabled: true}}; render();
+    }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
+    if language == 'zh':
+        assert notice.locator('span').inner_text() == '翻译待处理，已排入今晚队列'
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
@@ -4453,7 +4465,8 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert page.locator('#main > .translation-note code').evaluate(r'node => node.scrollWidth <= node.clientWidth')
+    assert page.locator('#main > .translation-note span').inner_text() == '翻译待处理，已排入今晚队列'
+    assert page.locator('#main > .translation-note button, #main > .translation-note code').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 

@@ -45,6 +45,28 @@ def functions(*names):
     return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
 
 
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_empty_sessions_report_queue_or_paused_status_without_manual_actions(language):
+    page = TEMPLATE.read_text()
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions('sessionsView') + 'UI.zh = ' + ui
+                            + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const REM = {status: {worker: {enabled: true}}}, inCategory = () => [], sessionOrder = () => 0;
+      const label = () => 'Agent sessions', el = (tag, attrs) => ({tag, ...attrs});
+      const views = [], main = {replaceChildren: (...nodes) => views.push(nodes)};
+      const document = {getElementById: () => main};
+      sessionsView(); REM.status.worker.enabled = false; sessionsView();
+      console.log(JSON.stringify(views));
+    ''')
+    queued, paused = result
+    assert [node['tag'] for node in queued] == ['h1', 'p']
+    assert [node['tag'] for node in paused] == ['h1', 'p']
+    assert queued[1]['text'] == ('智能体会话已排入今晚队列' if language == 'zh'
+                                  else 'Agent sessions queued for tonight')
+    assert paused[1]['text'] == ('智能体会话待处理，后台更新未开启' if language == 'zh'
+                                  else 'Agent sessions pending — background updates off')
+
+
 def test_reader_session_detail_has_ordered_turns_and_tool_kind():
     detail = session_detail(PAGE, private=True)
     assert detail['session_kind'] == 'codex'

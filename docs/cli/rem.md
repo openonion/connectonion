@@ -674,9 +674,11 @@ typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
-  sentence count what matters ("1 change overnight · 1 due soon · 4 waiting
+  sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
   on you"); a quiet line under it summarises the last pass, with its
   hypnogram one click away in **How co rem processed the last pass**.
+  Overdue and due-soon counts are separate. First-build wording uses the
+  notebook's earliest run, even when only recent runs fit in the snapshot.
   **Overnight** lists only verified field changes from the run log (old and
   new value, with a link to the source). In 中文 mode the new value comes
   from the page's cached translation when it matches; a value with no
@@ -736,6 +738,8 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
+  Investigated records omit the redundant status pill; mapped and partly
+  investigated records keep it, and reviewed skills say **Source reviewed**.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never
@@ -775,8 +779,11 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   `[sensitive]` appear only in the reader on this computer (the snapshot and
   the local live reader), behind **Hide labelled passages**; the O Chat view
   never receives them and starts with labelled passages hidden. Missing original bodies are labeled, never
-  replaced by a generated summary. A page only mapped from metadata says so
-  and gives the command to investigate it.
+  replaced by a generated summary. A page only mapped from metadata shows its
+  queue status and a count of sections awaiting investigation; written pages
+  name their remaining gaps. Private projects retain an explicit investigation
+  command. Empty Agent sessions shows queued status when background updates
+  are enabled, or pending status when they are off, without import controls.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from
