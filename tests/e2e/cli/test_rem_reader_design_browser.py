@@ -281,7 +281,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('.waiting-ledger > li').count() == 3
     assert page.locator('.waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert page.locator('.today-who').all_inner_texts() == ['Inès Halvorsen']
-    assert page.locator('.today-meta').inner_text().startswith('due 3 Oct')
+    assert page.locator('.today-meta').inner_text().startswith('due Oct 3, 2026')
     assert 'Data-sharing addendum' in page.locator('.waiting-ask .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
@@ -595,8 +595,8 @@ def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
     assert "Head of Partnerships" in value("Role").inner_text()
     assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
     role_source = value('Role').locator('.cite')
-    assert role_source.inner_text() == '22 Aug'
-    assert role_source.get_attribute('aria-label') == 'Source: Outlook, 22 Aug, original not in this snapshot'
+    assert role_source.inner_text() == 'Aug 22, 2026'
+    assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, 2026, original not in this snapshot'
     assert 'title and company in signature' in page.locator('#src-2').inner_text()
     role_source.click()
     assert "The original isn't in this snapshot." in page.locator('#evidence-panel').inner_text()
@@ -1038,8 +1038,7 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
         assert cell.inner_text() == 'Hidden labelled passage'
         assert cell.locator('.clamp').get_attribute('title') == ''
         if width == 375:
-            assert row.locator('.mobile-status-label').inner_text() == 'Investigated'
-            assert row.locator('.mobile-status-label').is_visible()
+            assert row.locator('.mobile-status-label').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
         page.evaluate('togglePrivate()', isolated_context=False)
@@ -1097,7 +1096,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
     assert purpose.bounding_box()['y'] < 812
     assert page.locator('.scope-note').count() == 0
     purpose_source = page.locator('.project-purpose-cites a.cite').first
-    assert purpose_source.get_attribute('aria-label').startswith('Source: Session, 2 Aug')
+    assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2, 2026')
     assert purpose_source.get_attribute('data-tip') is None
     sources = page.locator('.focus-source').bounding_box()
     assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
@@ -1365,9 +1364,11 @@ def test_native_conversation_shares_common_limits_and_keeps_voice_limits(reader)
     page.evaluate("""() => {
       const c = REM.conversations[REM.source_context['outlook:77c09ad1e3f0'].thread];
       const common = 'Your input only. Assistant replies and tool results are not included, so this does not verify what was completed.';
-      c.messages = [{excerpt: 'Approve the design.', input_scope: common},
-        {excerpt: 'Make the title shorter.', input_scope: common},
-        {excerpt: 'Voice request.', input_scope: 'Codex Desktop voice transcription; recognition errors possible'}];
+      c.messages = [{id: 'example:1', excerpt: 'Approve the design.', input_scope: common},
+        {id: 'example:2', excerpt: 'Make the title shorter.', input_scope: common},
+        {id: 'example:3', excerpt: 'Voice request.', input_scope: 'Codex Desktop voice transcription; recognition errors possible'}];
+      c.windows = {'outlook:77c09ad1e3f0': c.messages.map(m => m.id)};
+      c.anchors = {'outlook:77c09ad1e3f0': 'example:2'};
       c.total = 3;
     }""", isolated_context=False)
     page.locator('details.deep-note:not([open]) > summary').click()
@@ -1404,9 +1405,9 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
       KNOWN.clear(); render();
     }""", isolated_context=False)
     row = page.locator('.ledger-column.mine .ledger-row').first
-    assert row.locator('.ledger-meta').inner_text() == 'due 3 Oct'
+    assert row.locator('.ledger-meta').inner_text() == 'due Oct 3, 2026'
     page.evaluate("REM.as_of = '2026-10-03T14:30:00Z'; render()", isolated_context=False)
-    assert page.locator('.ledger-column.mine .ledger-meta').first.inner_text() == 'overdue · 3 Oct'
+    assert page.locator('.ledger-column.mine .ledger-meta').first.inner_text() == 'overdue · Oct 3, 2026'
     dates = page.evaluate("threads(byPath('people/mara-ostrowski.md')).items[0]", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == '2026-10-03'
     dates = page.evaluate(r"""() => {
@@ -1446,7 +1447,7 @@ def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone
       r.text = r.text.replace(/Last contact:[^\\n]+/g, 'Last contact: 2026-10-02 [1]');
       KNOWN.delete(r.path); FACTS.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last contact 2 Oct' in other.locator('.contact-line').inner_text()
+    assert 'Last contact Oct 2, 2026' in other.locator('.contact-line').inner_text()
     assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1, 2026'
     assert other.evaluate("fmtDate('2026-07-31')", isolated_context=False) == 'Jul 31, 2026'
     other.evaluate("REM.as_of = '2026-12-31T14:00:00Z'", isolated_context=False)
@@ -1467,7 +1468,7 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.activity-day').all_inner_texts() == ['4 Sep', '3 Sep', '2 Sep', '1 Sep']
+    assert page.locator('.activity-day').all_inner_texts() == ['Sep 4, 2026', 'Sep 3, 2026', 'Sep 2, 2026', 'Sep 1, 2026']
     assert page.locator('.activity-text').count() == 4
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.activity-text').all_inner_texts())
     assert page.locator('.activity-list').evaluate('e => e.scrollHeight <= e.clientHeight')
@@ -2071,8 +2072,8 @@ def test_citations_name_the_source_and_open_marked_margin_or_sheet(reader):
           KNOWN.clear(); FACTS.clear(); render();
         }""", isolated_context=False)
         chip = page.locator('.person-insight a.cite[href$="src-5"]').first
-        assert chip.inner_text() == '14 Oct'
-        assert 'Mara, Outlook, 14 Oct' in chip.get_attribute('title')
+        assert chip.inner_text() == 'Oct 14, 2026'
+        assert 'Mara, Outlook, Oct 14, 2026' in chip.get_attribute('title')
         assert 'subject “Harbour renewal”' in chip.get_attribute('aria-label')
         assert 'data-tip' not in chip.evaluate('e => e.outerHTML')
         box = chip.bounding_box()
@@ -2129,7 +2130,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
       return [chipLabel(r, '5'), chipLabel(r, '1'), chipLabel(r, '99'),
         sourceChannel('claude-session'), sourceChannel('project-source'), sourceChannel('whatsapp')];
     }""", isolated_context=False)
-    assert values == ['you, Outlook, 14 Oct', 'Outlook, 22 Aug', 'source 99', 'Session', 'Repo', 'WhatsApp']
+    assert values == ['you, Outlook, Oct 14, 2026', 'Outlook, Aug 22, 2026', 'source 99', 'Session', 'Repo', 'WhatsApp']
     page.locator('details.deep-note > summary').click()
     missing = page.locator('.factlist a.cite[href$="src-1"]').first
     assert 'missing' in missing.get_attribute('class')
@@ -2237,7 +2238,7 @@ def test_morning_rows_quote_only_original_words_and_format_overdue_dates(reader)
     assert values[1]['words'] == 'A draft' and 'due: 2026-10-22' in values[1]['context']
     assert values[2]['words'] == '“Send the draft and questions.”' and '[5]' in values[2]['context']
     assert not values[3]['words'].startswith('“')
-    assert values[4] == 'overdue · 10 Sep'
+    assert values[4] == 'overdue · Sep 10, 2026'
     assert values[5] != 'third'
 
 
@@ -3093,7 +3094,7 @@ def test_project_threads_only_label_explicit_direction_and_deduplicate_date(read
     assert rows.locator('.dir').all_inner_texts() == ['Open', 'You owe', 'They owe']
     assert rows.first.locator('.what').inner_text().startswith('You asked to revisit')
     assert '2026-09-13' not in rows.first.locator('.what').inner_text()
-    assert 'since 13 Sep' in rows.first.locator('.when').get_attribute('title')
+    assert 'since Sep 13, 2026' in rows.first.locator('.when').get_attribute('title')
 
 
 @pytest.mark.parametrize('path', ['people/quinn-alder.md', 'skills/catalog/weekly-brief.md'])
@@ -3564,7 +3565,7 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
                         page.locator('.lede .mono').inner_text())
     assert page.locator('.hits .bar').count() == 0
     assert page.locator('.hits .usage').first.inner_text().endswith(
-        '最近 9月30日' if language == 'zh' else 'last Sep 30')
+        '最近 2026年9月30日' if language == 'zh' else 'last Sep 30, 2026')
     assert page.evaluate(r"byPath('skills/catalog/weekly-brief.md').text", isolated_context=False) == original
     page.evaluate(r"""() => {
       const r = byPath('skills/catalog/weekly-brief.md');
@@ -3629,7 +3630,7 @@ def test_decision_memory_starts_collapsed_and_sources_use_readable_ids(reader, l
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
     chip = page.locator('.block-sources .id')
-    assert chip.inner_text() == ('Claude Code 会话 · 9月3日' if language == 'zh' else 'Claude Code session · 3 Sep')
+    assert chip.inner_text() == ('Claude Code 会话 · 2026年9月3日' if language == 'zh' else 'Claude Code session · Sep 3, 2026')
     assert chip.get_attribute('title') == source
     page.evaluate(r'''source => { delete REM.source_context[source]; render(); }''', source, isolated_context=False)
     page.locator('details.deep-note > summary').click()
@@ -3999,7 +4000,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.overnight-change').count() == 3
     assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
     assert page.locator('.today-thread').count() == 5
-    assert 'overdue · 18 Oct' in page.locator('.today-thread').first.inner_text()
+    assert 'overdue · Oct 18, 2026' in page.locator('.today-thread').first.inner_text()
     assert '6 due soon' in page.locator('.brief-header h1').inner_text()
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
@@ -4666,3 +4667,104 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
     assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' translate --all"
     assert notice.locator('code').evaluate(r'''node => node.scrollWidth <= node.clientWidth''')
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+
+
+def test_cited_conversation_shows_only_this_pages_window_and_highlights_citation(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const source = 'outlook:77c09ad1e3f0', thread = REM.source_context[source].thread;
+      REM.conversations[thread] = {subject: 'Example session', total: 1358,
+        cited_ids: ['example:3', 'example:100'], anchors: {[source]: 'example:3'},
+        windows: {[source]: ['example:1', 'example:2', 'example:3', 'example:4', 'example:5'],
+          'codex:another-page:100': ['example:99', 'example:100']},
+        messages: [1, 2, 3, 4, 5, 99, 100].map(i => ({id: 'example:' + i,
+          sender: 'You', time: '2026-10-01T10:00:00Z', excerpt: 'Example turn ' + i + (i < 3 ? ' Example context.'.repeat(80) : '')}))};
+      render();
+    }""", isolated_context=False)
+    page.locator('details.deep-note > summary').click()
+    page.locator('.conversation-open').first.click()
+    dialog = page.locator('#conversation-dialog')
+    assert dialog.locator('.conversation-message').count() == 5
+    assert dialog.locator('.conversation-message.cited').count() == 1
+    assert 'Example turn 3' in dialog.locator('.conversation-message.cited').inner_text()
+    bounds, cited = dialog.bounding_box(), dialog.locator('.conversation-message.cited').bounding_box()
+    assert bounds['y'] <= cited['y'] and cited['y'] + cited['height'] <= bounds['y'] + bounds['height']
+    assert 'Example turn 99' not in dialog.inner_text() and 'Example turn 100' not in dialog.inner_text()
+    assert 'people/' not in dialog.inner_text()
+    assert 'You' in dialog.inner_text()
+    assert 'Latest' not in dialog.inner_text()
+    assert 'around' in dialog.locator('.evidence-summary').inner_text()
+    assert '1358' not in dialog.locator('.evidence-summary').inner_text()
+    # An unrelated thread may be embedded for another page, but cannot be opened here.
+    page.get_by_role('button', name='Close conversation').click()
+    page.evaluate("openConversation(byPath('people/mara-ostrowski.md'), 'session:uncited', document.body)", isolated_context=False)
+    assert not dialog.is_visible()
+
+
+def test_conversation_dialog_closes_on_page_navigation(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('details.deep-note > summary').click()
+    page.locator('.conversation-open').first.click()
+    assert page.locator('#conversation-dialog').is_visible()
+    page.evaluate("location.hash = '#r=projects%2Fharbour.md'")
+    page.wait_for_function("document.querySelector('.page-head h1')?.textContent === 'Harbour'")
+    assert not page.locator('#conversation-dialog').is_visible()
+    assert page.locator('.page-head h1').inner_text() == 'Harbour'
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_mail_header_stays_visible_when_opening_and_finding_a_deep_highlight(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.emulate_media(reduced_motion='reduce')
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace("the pilot's renewal depends on two things you each owe the other [4][5].",
+        'Mara promised “I will send the usage export” by Friday. [5]');
+      REM.source_context['outlook:77c09ad1e3f0'].excerpt = 'Example background.\\n'.repeat(90)
+        + 'I will send the usage export by Friday.\\n' + 'Example footer.\\n'.repeat(30);
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    page.locator('.person-insight a.cite[href$="src-5"]').first.click()
+    panel = page.locator('#evidence-panel')
+    for finding in (False, True):
+        if finding:
+            panel.get_by_role('searchbox', name='Find in archived source').fill('Example footer')
+        assert panel.locator('.msg-head').is_visible()
+        assert panel.locator('.msg-subject').is_visible()
+        assert panel.locator('.msg-time').is_visible()
+        assert panel.locator('.msg-from').is_visible()
+        bounds = panel.bounding_box()
+        head = panel.locator('.msg-head').bounding_box()
+        subject = panel.locator('.msg-subject').bounding_box()
+        mark = panel.locator('.msg-body mark').first.bounding_box()
+        assert bounds['y'] <= head['y'] < subject['y'] < mark['y']
+        assert mark['y'] + mark['height'] <= bounds['y'] + bounds['height']
+        assert head['y'] + head['height'] <= bounds['y'] + bounds['height']
+        assert panel.evaluate('e => e.scrollWidth <= e.clientWidth')
+    page.keyboard.press('Escape')
+    assert not panel.is_visible()
+
+
+def test_reader_copy_uses_one_local_date_format_and_omits_owner_and_redundant_badges(reader):
+    page, uri = reader
+    page.goto(uri + '#c=people')
+    assert page.locator('main a[href="#r=people%2Favery-lin.md"]').count() == 0
+    assert page.locator('#nav a[href="#r=people%2Favery-lin.md"]').count() == 1
+    assert not page.locator('main .pill.status').filter(has_text=re.compile('^Investigated$')).count()
+    values = page.evaluate("""() => {
+      REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-28T00:00:00Z';
+      const r = byPath('people/mara-ostrowski.md');
+      REM.source_context['outlook:77c09ad1e3f0'].time = '2026-10-26T13:17:00Z';
+      return [fmtDate('2026-10-27'), shortDate('2026-10-27'), citationDate(r, '5'), chipLabel(r, '5'),
+        fmtTime('2026-10-26T13:17:00Z'), messageMeta(REM.source_context['outlook:77c09ad1e3f0'])];
+    }""", isolated_context=False)
+    assert values[:3] == ['Oct 27, 2026'] * 3
+    assert all('Oct 27, 2026' in text for text in values[3:])
+    page.goto(uri + '#c=people')
+    lede = page.locator('.lede').inner_text()
+    assert 'qualifying correspondents have a page' in lede
+    assert 'written of' not in lede
