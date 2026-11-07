@@ -924,6 +924,8 @@ def test_changed_original_candidate_cannot_become_a_symlink_during_audit(trial):
     assert _canonical(trial) == before
 
 
+# The complete cold-interpreter journey takes over three minutes on this macOS sandbox.
+@pytest.mark.timeout(600)
 def test_three_investigation_parts_resume_across_fresh_processes(trial):
     import subprocess
     import sys

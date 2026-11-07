@@ -393,7 +393,7 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
     searching the user's home directory. File names alone prove no project fact.
     """
     roots = [Path(path).expanduser() for path in project_paths(collapse_worktree_paths(page))]
-    leads = []
+    leads = {}
     excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
     for root in roots[:4]:
@@ -415,7 +415,7 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
                 path = Path(current) / name
                 if _private_folder(str(path), opted_in) or path.is_symlink():
                     continue
-                leads.append(str(path))
+                leads.setdefault(str(path), path.relative_to(root).as_posix())
                 seen += 1
                 if seen >= 1000:
                     break
@@ -425,8 +425,8 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
         name = Path(path).name.lower()
         return (0 if name.startswith("readme") else
                 1 if name in ("pyproject.toml", "package.json") else
-                2 if "rem" in path.lower() else 3, len(Path(path).parts), path)
-    return sorted(set(leads), key=priority)[:max_files]
+                2 if "rem" in leads[path].lower() else 3, len(Path(path).parts), path)
+    return sorted(leads, key=priority)[:max_files]
 
 
 def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
