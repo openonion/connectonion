@@ -29,12 +29,16 @@ def test_rem_later_round_queues_unwritten_people_projects_and_owner(notebook, mo
     assert {r['record'] for r in rows} >= {'people/fern.md', 'projects/pilot.md', 'people/me.md'}
 
 
-def test_rem_status_reports_queued_work_without_commands(notebook):
+@pytest.mark.parametrize('scheduled, enabled', [(False, False), (False, True), (True, False), (True, True)])
+def test_rem_status_reports_queued_work_and_the_next_command(notebook, scheduled, enabled):
     from connectonion.cli.commands.rem_status import _notebook, notebook as counts
     Notebook(notebook).stub_person('people/fern.md', 'Fern Vale', ['fern@example.test'], email='fern@example.test')
-    text = '\n'.join(_notebook(notebook, {'root': str(notebook), 'configured': True}, counts(notebook), lambda args: 'co rem ' + ' '.join(args)))
-    assert 'people page queued for tonight' in text
-    assert 'co rem investigate' not in text
+    value = {'root': str(notebook), 'configured': True, 'next_run': 'tonight' if scheduled else None,
+             'worker': {'enabled': enabled}}
+    text = '\n'.join(_notebook(notebook, value, counts(notebook), lambda args: 'co rem ' + ' '.join(args)))
+    assert '1 people page not written' in text
+    assert 'co rem investigate people' in text
+    assert ('Work queued for the next scheduled run.' in text) == (scheduled and enabled)
 
 
 def test_rem_translation_backlog_orders_changed_owner_people_and_sessions(notebook):
