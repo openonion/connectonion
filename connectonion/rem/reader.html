@@ -1751,6 +1751,7 @@ const UI = {
     "Continue in {provider} drafts": "前往 {provider} 草稿箱",
     "Discard": "丢弃",
     "Draft discarded": "草稿已丢弃",
+    "No reply needed: ": "不用回：",
     "Marked done": "已完成",
     "Done or skipped ({n})": "已完成或跳过（{n}）",
     "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
@@ -3532,7 +3533,7 @@ function threadActions(entry) {
   const draft = (REM.drafts || []).find(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return el("div", { class: "thread-actions" }, [
     undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
-      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : threadDraft(entry)?.status === "no_reply" ? null : primaryAction(entry),
+      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : draft?.status === "no_reply" ? null : primaryAction(entry),
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), done]);
 }
 // Full-screen writing: the letter on the left, editable; on the right what the
@@ -4622,8 +4623,8 @@ function quietThreads(entries, count, home = false) {
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
   return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
-    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t, also }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: translationPending(r) ? t("Translating") : threadPreview(t.text) }), alsoOn(also)]), el("span", { text: age(t.since) })])))
+    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
+      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: translationPending(r) ? t("Translating") : threadPreview(thread.text) }), alsoOn(also)]), el("span", { text: age(thread.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
 }

@@ -1437,7 +1437,7 @@ def test_no_reply_draft_note_shows_the_reason_instead_of_a_pending_draft(enabled
       const el = (tag, attrs) => ({tag, ...attrs});
       console.log(JSON.stringify(draftNote({status: 'no_reply', gist: '需要你到场，已等3天。'})));
     ''')
-    assert result['text'] == '不用回：需要你到场，已等3天。'
+    assert result['text'] == 'No reply needed: 需要你到场，已等3天。'
     assert result['class'] == 'quiet-line'
 
 
@@ -1448,7 +1448,7 @@ def test_no_reply_actions_offer_completion_without_another_reply():
       const isDone = () => false, setDone = () => {}, primaryAction = () => ({text: 'Draft the reply'});
       const obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      console.log(JSON.stringify(threadActions({})));
+      console.log(JSON.stringify(threadActions({t: {}})));
     ''')
     assert [node['text'] for node in result['children'] if node] == ['Mark done']
 
@@ -1465,7 +1465,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
       const threadActions = () => null, age = () => '', threadAge = () => '', blockerTag = () => null, daysSince = () => 1;
       const r = {path: 'people/fern.md'}, thread = {text: 'You owe Fern a response.', dir: 'mine'};
     ''' + f'console.log(JSON.stringify({renderer}(r, thread, false)));')
-    assert '不用回：需要你到场，已等3天。' in json.dumps(result, ensure_ascii=False)
+    assert 'No reply needed: 需要你到场，已等3天。' in json.dumps(result, ensure_ascii=False)
 
 
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
@@ -2640,3 +2640,15 @@ def test_missing_chinese_prose_is_hidden_on_cards_people_and_open_threads():
     assert result['native'] == [False] * 3
     assert 'English' not in json.dumps(result['nodes'])
     assert all('翻译中' in json.dumps(node, ensure_ascii=False) for node in result['nodes'])
+
+
+def test_quiet_threads_on_home_keep_the_translator_when_a_thread_is_pending_translation():
+    function = re.search(r'function quietThreads\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const href = r => '#r=' + r.path, threadWho = () => 'Fern', threadPreview = text => text, alsoOn = () => null, age = () => '3 days';
+      const translationPending = () => true, threadRow = () => null;
+      const entries = [{r: {path: 'people/fern.md'}, t: {quiet: true, text: 'Still waiting on the slides.', since: '2026-11-01'}}];
+      console.log(JSON.stringify(quietThreads(entries, 1, true)));
+    ''')
+    assert 'Translating' in json.dumps(result)

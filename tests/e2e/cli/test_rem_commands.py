@@ -1527,7 +1527,7 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     assert 'grants local Codex / Claude Code sessions and all connected Google/Microsoft mailboxes' in text
     assert 'installs upkeep and builds in the foreground' in text
     assert 'Undo: co rem stop; co rem sources remove SOURCE; co auth logout' in text
-    assert 'Use co rem init to rebuild; it retains its terminal estimate pause unless --yes' in text
+    assert 'Use co rem init to rebuild; a terminal prints its summary, undo block and estimate, then proceeds' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text
