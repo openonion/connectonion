@@ -34,6 +34,25 @@ COVERAGE = re.compile(r"^\s*- \[(W?\d+)\] investigation:coverage\b.*$")
 RUNNER_COVERAGE = "source-collection record for this investigation"
 
 
+def notebook_checks(root: Path) -> list[dict]:
+    """Read-only doctor findings: broken affiliations and entities filed as people."""
+    from .census import pages
+    from .reader_model import organisation_links
+    book, checks = Notebook(root), []
+    found = pages(root)
+    paths = set(book.list())
+    for person in book.people():
+        path = person['path']
+        if found[path]['service']:
+            checks.append({'check': 'non-person page', 'ok': False, 'detail': path,
+                           'fix': f'Review {path}; move this entity out of people/ to orgs/ or notes/ and update its links.'})
+        for org in organisation_links(path, book.read(path)):
+            if org not in paths:
+                checks.append({'check': 'organisation link', 'ok': False, 'detail': f'{path} → {org}',
+                               'fix': f'Correct Company in {path} to an existing orgs/ page, or create {org} from cited evidence.'})
+    return checks
+
+
 def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> dict:
     """Tidy under the notebook lock; returns {action: [pages]} for what changed."""
     root = Path(root)

@@ -22,6 +22,7 @@ sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
+- Team: Unknown
 - Location: Unknown
 - Time zone: Unknown
 - Links: Unknown
@@ -95,6 +96,7 @@ Rules:
   not email”) and lists no channel they did not offer or use.
 - **`Company` needs stated employment**; a student or mailbox domain proves
   none (`Unknown`).
+- `Team`: cite the unit/team only if explicitly named.
 - **`Who they are`**: their work first; private life they share is one
   labelled sentence, not a run of quotes.
 - **`Why they are here` is not `Who they are`**: how they entered the user's

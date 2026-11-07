@@ -1416,14 +1416,24 @@ the block as a card.
   `Domains`.
 - One line a field: `- <Label>: <value>`. Every label of the page's kind is
   always present, in this order, spelled exactly:
-  - **person**: Email, Phone, Company, Role, Location, Time zone, Links,
+  - **person**: Email, Phone, Company, Role, Team, Location, Time zone, Links,
     How we know them, First contact, Last contact, Signing entity, Handles,
     Language, Also known as
   - **project**: Repository, Stack, Status, People, Organisation, Started,
     Last activity
-  - **organisation**: What they do, Website, Location, Legal entity,
+  - **organisation**: Kind, To you, What they do, Website, Location, Legal entity,
     Your contacts, First contact, Last contact
 - An empty field is exactly `Unknown`.
+- Organisation `Kind` is `university`, `investor`, `client_partner`, `supplier`,
+  `community`, `own_company` or `personal`. `To you` is one sentence in the page
+  language about the owner's relationship. Both require citations.
+- A person's `Team` records a cited unit/team name only when evidence names it.
+  A project's `Organisation` links its evidenced organisation as
+  `[[orgs/fernhill]] [1]`; existing relative Markdown links work too.
+- `co rem doctor` reports missing organisation pages linked from `Company`, with
+  a correction/create instruction, and non-person pages filed under `people/`.
+  Explicit entities and shared mailboxes are excluded from the people count,
+  including investigated pages; doctor does not move or rewrite them.
 - A field with several values separates them with `; `. Each value may end in
   a `(qualifier)` (`work`, `mobile`, `personal`) and then its citations
   `[n]`, which are numbers defined under `## Sources` like every other claim.

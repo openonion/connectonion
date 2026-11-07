@@ -2249,6 +2249,8 @@ def make_rem_app(factory):
 
         def operation(root):
             checks, rem_fixes = [], []
+            from ...rem.tidy import notebook_checks
+            checks.extend(notebook_checks(root))
 
             def check(name, ok, detail, fix="", rem_fix=None):
                 """`rem_fix` is a co rem command, spelled for this root; `fix` is anything else."""
