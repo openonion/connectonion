@@ -393,7 +393,7 @@ def check_task(root, task, output):
         from . import drafts
         plan = drafts.check(prepared, output)
         current = next((row for row in drafts.candidates(root) if row["id"] == plan["id"]), None)
-        if not current or current["version"] != plan["version"]:
+        if not current or current["version"] != plan["version"] or drafts.closed(root, current):
             return {"discarded": "Reply thread changed; a fresh draft is queued", "changed": []}
         return _commit(root, task, plan, {"draft": plan["id"]})
     if handler == "extract":

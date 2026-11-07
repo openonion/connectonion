@@ -4065,11 +4065,11 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.locator('.done-details summary').wait_for()
     assert page.locator('.done-details').get_attribute('open') is None
     page.locator('.done-details summary').click()
-    assert 'Only this browser remembers this.' in page.locator('.done-details').inner_text()
+    assert 'sync pending' in page.locator('.done-details').inner_text()
     assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     row = page.locator('.ledger-row').filter(has_text='Data-sharing addendum')
-    assert row.locator('.done-tag').inner_text() == 'marked done here'
+    assert row.locator('.done-tag').inner_text().startswith('Marked done ·')
     row.get_by_role('button', name='Undo', exact=True).click()
     assert row.locator('.done-tag').count() == 0
     page.goto(uri)

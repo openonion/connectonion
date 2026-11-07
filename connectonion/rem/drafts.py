@@ -13,6 +13,7 @@ from pathlib import Path
 from .files import Notebook, RemError, read_json, state_path, write_json
 from .mail import _address, _addresses
 from .service import mail_client, now
+from . import threads
 from ..skills_catalog import useful_skills_dir
 
 
@@ -87,18 +88,27 @@ def candidates(root, *, refresh_index=True):
 
 
 def queue(root):
-    return [row for row in candidates(root) if read_json(path(root, row['id']), {}).get('version') != row['version']]
+    rows = candidates(root)
+    states = threads.listing(root)
+    return [row for row in rows if not closed(root, row, states=states)
+            and read_json(path(root, row['id']), {}).get('version') != row['version']]
+
+
+def closed(root, row, *, states=None):
+    states = threads.listing(root) if states is None else states
+    return bool(row['obligations']) and all(threads.blocked(root, threads.done_key(item['record'], item['text']), states=states)
+                                            for item in row['obligations'])
 
 
 def listing(root, *, include_pending=False):
     found = []
     for row in candidates(root, refresh_index=False):
         saved = read_json(path(root, row['id']), {})
-        if saved.get('version') == row['version'] and saved.get('status') != 'discarded':
+        if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
             found.append({**saved, "private": saved.get("private", False) or row["private"]})
         elif include_pending:
-            found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private')} |
-                         {'status': 'discarded' if saved.get('version') == row['version'] else 'pending'})
+            found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
+                         {'status': 'skipped' if saved.get('version') == row['version'] else 'pending'})
     return found
 
 
@@ -165,7 +175,7 @@ def promote(root, draft):
 def _current(root, draft_id):
     saved = read_json(path(root, draft_id), {})
     row = next((row for row in candidates(root) if row['id'] == draft_id), None)
-    if not row or saved.get('version') != row['version'] or saved.get('status') == 'discarded':
+    if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved
 
@@ -266,6 +276,8 @@ def send(root, draft_id, body=None):
         raise RemError('The reply body is empty')
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        if saved.get('status') in ('skipped', 'discarded'):
+            raise RemError('Restore this skipped reply before sending')
         if saved.get('status') == 'sent':
             raise RemError('This reply was already sent; nothing was sent again')
         text = body if body is not None else saved['body']
@@ -283,4 +295,11 @@ def discard(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
-        write_json(path(root, draft_id), {**saved, 'status': 'discarded'})
+        if saved.get('status') == 'sent':
+            raise RemError('This reply was already sent')
+        row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+        keys = [threads.done_key(item['record'], item['text']) for item in row['obligations']]
+        stamp = now().isoformat()
+        for key in keys:
+            threads._set_state(root, key, 'skipped', at=stamp, keys=keys)
+        return {'status': 'skipped'}

@@ -311,7 +311,10 @@ def open_threads(root: Path, found: dict | None = None, *, as_of: date | None = 
     title = next((line[2:] for line in notebook.read(owner).splitlines() if line.startswith("# ")), "") \
         if owner and notebook.path(owner).is_file() else ""
     first = (title.split() or [""])[0]
-    items = _thread_items(notebook, found, first)
+    from . import threads as thread_state
+    states = thread_state.listing(root)
+    items = [item for item in _thread_items(notebook, found, first)
+             if not thread_state.blocked(root, thread_state.done_key(item[0]["path"], item[1]), states=states)]
     from .config import read_config
     from .service import notebook_zone
     today = as_of or datetime.now(notebook_zone(read_config(root))).date()

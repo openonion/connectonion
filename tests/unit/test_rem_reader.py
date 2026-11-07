@@ -1392,11 +1392,12 @@ def test_written_thread_dates_and_evidence_backed_request_groups():
 @pytest.mark.parametrize('blocked', [False, True])
 def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
     page = TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'isDone', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'saveThreadState', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
+    functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
-      let doneThreads = new Set(), saved = {}, rendered = 0;
+      let threadStates = {}, pendingThreads = {}, saved = {}, rendered = 0;
+      const navigator = {platform: "test"};
       const localStorage = {setItem: (key, value) => { if (blocked) throw new Error('Storage blocked'); saved[key] = value; }};
       const render = () => rendered++, doneNotice = () => {}, window = {scrollY: 0, scrollTo() {}};
       const document = {getElementById: () => null}, calendarDay = value => value.slice(0, 10);
@@ -1421,9 +1422,10 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
     assert result['before'] == result['after'] == 4
     assert result['marked']['today'] == 3
     assert result['marked']['counts'] == {'mine': 3, 'theirs': 1, 'other': 0, 'quiet': 1, 'open': 4}
-    assert result['marked']['saved'] == [] if blocked else len(result['marked']['saved'][0]) == 1
+    assert result['marked']['saved'] == [] if blocked else len(result['marked']['saved'][0]['states']) == 1
     assert result['marked']['sameTranslation']
-    assert result['open'] == 4 and result['stored'] == ([] if blocked else [[]])
+    assert result['open'] == 4
+    assert result['stored'] == [] if blocked else result['stored'][0]['states'] == {}
     assert result['rendered'] == 2 and result['records'] == 6
 
 
