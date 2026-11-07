@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 import time
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -74,15 +75,45 @@ def _start_command(root, last):
             signal.setitimer(signal.ITIMER_REAL, max(0.001, delay - (time.monotonic() - started)), interval)
 
 
-def _execute(command, **kwargs):
-    """A deadline kills the process group too, including tools still running."""
+def _terminate_descendants(pid):
+    """Kill deepest children first, including tools that created new sessions."""
+    table = subprocess.run(['ps', '-Ao', 'pid=,ppid='], check=True, capture_output=True, text=True)
+    children = {}
+    for row in table.stdout.splitlines():
+        child, parent = map(int, row.split())
+        children.setdefault(parent, []).append(child)
+    descendants, parents = [], [pid]
+    while parents:
+        parents = [child for parent in parents for child in children.get(parent, [])]
+        descendants.extend(parents)
+    descendants.reverse()
+    terminated = set()
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for child in descendants:
+            # Exiting between enumeration and signalling is normal; other errors propagate.
+            with suppress(ProcessLookupError):
+                os.kill(child, sig)
+                terminated.add(child)
+        if sig == signal.SIGTERM and descendants:
+            time.sleep(0.2)
+    return len(terminated)
+
+
+def _execute(command, *, timeout=TURN_SECONDS, **kwargs):
+    """A deadline kills detached descendants before the launcher's process group."""
     with subprocess.Popen(command, start_new_session=True, **kwargs) as process:
         try:
-            return subprocess.CompletedProcess(command, process.wait(timeout=TURN_SECONDS))
+            return subprocess.CompletedProcess(command, process.wait(timeout=timeout))
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            return subprocess.CompletedProcess(command, 124)
+            try:
+                killed = _terminate_descendants(process.pid)
+            finally:
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            result = subprocess.CompletedProcess(command, 124)
+            result.killed_descendants = killed
+            return result
 
 
 def run_turn(root: Path, *, run=_execute) -> str:
@@ -131,7 +162,8 @@ def _run_locked(root, run, lock_fd):
         outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
         if code == 124:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
-        receipt.update(result=outcome, exit_code=code, finished_at=datetime.now(timezone.utc).isoformat())
+        receipt.update(result=outcome, exit_code=code, killed_descendants=getattr(result, 'killed_descendants', 0),
+                       finished_at=datetime.now(timezone.utc).isoformat())
         write_json(directory / f'{name}.json', receipt)
         write_json(state_path(root, 'last-turn.json'), receipt)
 

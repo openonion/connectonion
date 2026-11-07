@@ -62,6 +62,7 @@ def test_exec_turn_lock_blocks_overlapping_fire(tmp_path, monkeypatch):
     assert len(calls) == 1
     result = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert result['result'] == 'completed' and result['exit_code'] == 0
+    assert result['killed_descendants'] == 0
     assert Path(result['log']).is_file()
 
 
@@ -184,10 +185,13 @@ def test_exec_nonzero_turn_result_is_durable(tmp_path, monkeypatch, code, outcom
     from connectonion.rem import codex_exec
     monkeypatch.setattr(codex_exec, 'read_config', lambda root: default_config())
     monkeypatch.setattr(codex_exec, 'exec_command', lambda *a, **kw: ['fictional-codex', 'exec'])
-    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, code)) == outcome
+    result = CompletedProcess(['fictional-codex', 'exec'], code)
+    result.killed_descendants = 2 if code == 124 else 0
+    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: result) == outcome
     receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
     assert receipt['result'] == outcome and receipt['exit_code'] == code
     assert receipt.get('reason') == reason
+    assert receipt['killed_descendants'] == result.killed_descendants
     receipts = list(state_path(tmp_path, 'turns').glob('*.json'))
     assert len(receipts) == 1
     assert read_json(receipts[0], {}) == receipt
@@ -206,11 +210,66 @@ def test_exec_deadline_is_three_hours_and_kills_the_process_group(monkeypatch):
     killpg = MagicMock()
     monkeypatch.setattr(codex_exec.subprocess, 'Popen', popen)
     monkeypatch.setattr(codex_exec.os, 'killpg', killpg)
+    monkeypatch.setattr(codex_exec, '_terminate_descendants', lambda pid: 0)
 
     assert codex_exec._execute(command).returncode == 124
     popen.assert_called_once_with(command, start_new_session=True)
     assert process.wait.call_args_list == [call(timeout=3 * 3600), call()]
     killpg.assert_called_once_with(process.pid, signal.SIGKILL)
+
+
+def test_exec_descendants_are_terminated_deepest_first(monkeypatch):
+    import signal
+    from unittest.mock import Mock, call
+    from connectonion.rem import codex_exec
+
+    table = CompletedProcess(['ps'], 0, '30 20\n10 1\n20 10\n40 1\n')
+    monkeypatch.setattr(codex_exec.subprocess, 'run', lambda *a, **kw: table)
+    kill = Mock(side_effect=[None, None, ProcessLookupError(), None])
+    monkeypatch.setattr(codex_exec.os, 'kill', kill)
+    monkeypatch.setattr(codex_exec.time, 'sleep', lambda seconds: None)
+
+    assert codex_exec._terminate_descendants(10) == 2
+    assert kill.call_args_list == [call(30, signal.SIGTERM), call(20, signal.SIGTERM),
+                                   call(30, signal.SIGKILL), call(20, signal.SIGKILL)]
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX sessions and signals')
+@pytest.mark.parametrize('ignore_term', [False, True])
+def test_exec_deadline_kills_detached_grandchild(tmp_path, ignore_term):
+    import subprocess
+    import sys
+    import time
+    from connectonion.rem.codex_exec import _execute
+
+    pid_file = tmp_path / 'grandchild.pid'
+    grandchild = (
+        'import os, signal, time; from pathlib import Path; '
+        f'signal.signal(signal.SIGTERM, {"signal.SIG_IGN" if ignore_term else "signal.SIG_DFL"}); '
+        f'Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(60)'
+    )
+    child = (
+        'import subprocess, sys, time; '
+        f'process = subprocess.Popen([sys.executable, "-c", {grandchild!r}], start_new_session=True); '
+        'process.wait(); time.sleep(60)'
+    )
+    try:
+        result = _execute([sys.executable, '-c', child], timeout=0.5)
+        assert result.returncode == 124
+        pid = int(pid_file.read_text())
+        for _ in range(100):
+            status = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='],
+                                    capture_output=True, text=True).stdout.strip()
+            # A zombie has exited and released its locks, but awaits reaping.
+            if not status or status.startswith('Z'):
+                break
+            time.sleep(0.01)
+        assert not status or status.startswith('Z'), f'grandchild {pid} survived: {status}'
+        assert result.killed_descendants == 1
+    finally:
+        if pid_file.exists():
+            # The red test must not leave its deliberately detached sleeper behind.
+            subprocess.run(['kill', '-KILL', pid_file.read_text()], capture_output=True)
 
 
 def test_saved_scheduler_choice_does_not_probe_cli_on_read(tmp_path, monkeypatch):
