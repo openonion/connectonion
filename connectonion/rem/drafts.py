@@ -13,6 +13,7 @@ from pathlib import Path
 from .files import Notebook, RemError, read_json, state_path, write_json
 from .mail import _address, _addresses
 from .service import mail_client, now
+from . import threads
 from ..skills_catalog import useful_skills_dir
 
 
@@ -25,14 +26,22 @@ def path(root, draft_id):
     return state_path(root, f'drafts/{draft_id}.json')
 
 
-def _waiting_sources(root):
+def _waiting_sources(root, records=None):
     from .census import CITATION, _thread_items, direction, pages
     owner = (read_json(state_path(root, 'map.json'), {}).get('owner') or {}).get('record')
     book = Notebook(root)
     title = book.read(owner).splitlines()[0].lstrip('# ') if owner and book.exists(owner) else ''
     first = (title.split() or [''])[0]
     found = {}
-    for record, text, sources in _thread_items(book, pages(root), first):
+    if records is None:
+        items = _thread_items(book, pages(root), first)
+    else:
+        from .census import _thread_sources, threads
+        items = [(record, text, _thread_sources(record['text'])) for record in records
+                 if record['category'] in ('people', 'orgs', 'projects')
+                 and not (record.get('needs_review') or record.get('service'))
+                 for text in threads(record['text'])]
+    for record, text, sources in items:
         if direction(text, first) != 'mine':
             continue
         for number in CITATION.findall(text):
@@ -42,7 +51,7 @@ def _waiting_sources(root):
     return found
 
 
-def candidates(root, *, refresh_index=True):
+def candidates(root, *, refresh_index=True, records=None):
     """Resolve cited mail to its latest archived thread; a newer owner reply closes it."""
     from .store import refresh
     from .reader_model import _cited_row
@@ -55,7 +64,7 @@ def candidates(root, *, refresh_index=True):
     found = {}
     with closing(sqlite3.connect(state_path(root, 'rem.db'))) as db:
         db.row_factory = sqlite3.Row
-        for source, obligations in _waiting_sources(root).items():
+        for source, obligations in _waiting_sources(root, records).items():
             cited = _cited_row(db, source)
             if cited is None:
                 continue
@@ -87,18 +96,27 @@ def candidates(root, *, refresh_index=True):
 
 
 def queue(root):
-    return [row for row in candidates(root) if read_json(path(root, row['id']), {}).get('version') != row['version']]
+    rows = candidates(root)
+    states = threads.listing(root)
+    return [row for row in rows if not closed(root, row, states=states)
+            and read_json(path(root, row['id']), {}).get('version') != row['version']]
 
 
-def listing(root, *, include_pending=False):
+def closed(root, row, *, states=None):
+    states = threads.listing(root) if states is None else states
+    return bool(row['obligations']) and all(threads.blocked(root, threads.done_key(item['record'], item['text']), states=states)
+                                            for item in row['obligations'])
+
+
+def listing(root, *, include_pending=False, records=None):
     found = []
-    for row in candidates(root, refresh_index=False):
+    for row in candidates(root, refresh_index=False, **({'records': records} if records is not None else {})):
         saved = read_json(path(root, row['id']), {})
-        if saved.get('version') == row['version'] and saved.get('status') != 'discarded':
+        if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
             found.append({**saved, "private": saved.get("private", False) or row["private"]})
         elif include_pending:
-            found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private')} |
-                         {'status': 'discarded' if saved.get('version') == row['version'] else 'pending'})
+            found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
+                         {'status': 'skipped' if saved.get('version') == row['version'] else 'pending'})
     return found
 
 
@@ -122,20 +140,64 @@ def _page_excerpt(root, record, sections, limit=1800):
         match = re.search(r'^## ' + re.escape(title) + r'\n(.*?)(?=^## |\Z)', text, re.S | re.M)
         if match:
             found[title.lower().replace(' ', '_')] = match.group(1).strip()[:limit]
+            if title == 'Facts':
+                permission = re.search(r'^- Direct send: (partner|close|none)[ \t]*$', match.group(1), re.M)
+                found['direct_send'] = permission.group(1) if permission else 'none'
     return found
 
 
 def _identities(root, row):
-    owner = (read_json(state_path(root, 'map.json'), {}).get('owner') or {}).get('record')
+    mapped = read_json(state_path(root, 'map.json'), {})
+    owner = (mapped.get('owner') or {}).get('record')
     person = next((item['record'] for item in row.get('obligations', []) if item.get('record') and item['record'] != owner), None)
-    return {'owner': _page_excerpt(root, owner, ('Facts', 'Who they are', 'How they communicate'), 1200),
-            'person': _page_excerpt(root, person, ('Facts', 'Who they are', 'Our relationship', 'How they communicate'))}
+    identities = {'owner': _page_excerpt(root, owner, ('Facts', 'Who they are', 'How they communicate'), 1200),
+                  'person': _page_excerpt(root, person, ('Facts', 'Who they are', 'Our relationship', 'How they communicate',
+                                                         'Open threads', 'How the user writes to them'))}
+    identities['person'].setdefault('direct_send', 'none')
+    addresses = [address.casefold() for item in mapped.get('people', []) if item.get('record') == person
+                 for address in [item.get('address', ''), *item.get('addresses', [])]]
+    addresses += [address for line in re.findall(r'^- Email: (.+)$', identities['person'].get('facts', ''), re.M)
+                  for address in _addresses(line)]
+    if row.get('to', '').casefold() not in addresses:
+        identities['person']['direct_send'] = 'none'
+    return identities
+
+
+def _owner_samples(root, row):
+    """Recent archived mail to this recipient, in the thread's language first, unmodified."""
+    from .languages import language_of, own_words
+    from .store_messages import archived_message, owner_addresses
+    owner = owner_addresses(root)
+    database = state_path(root, 'rem.db')
+    if not owner or not row.get('to') or not database.is_file():
+        return []
+    latest = next((item.get('message') or {} for item in reversed(row.get('material', [])) if item.get('message')), {})
+    language = language_of(own_words(latest.get('body', '')))
+    matching, other = [], []
+    with closing(sqlite3.connect(f'file:{database}?mode=ro', uri=True)) as db:
+        db.row_factory = sqlite3.Row
+        messages = db.execute('select * from messages where source in (\'gmail\', \'outlook\') '
+                              'and lower(sender) in (' + ','.join('?' for _ in owner) + ') '
+                              'and exists (select 1 from json_each(messages.recipients) where lower(value) = ?) '
+                              'order by time desc, id desc', (*sorted(owner), row['to'].casefold()))
+        for message in messages:
+            saved = archived_message(root, dict(message))
+            if not saved or not isinstance(saved.get('body'), str) or not saved['body'].strip():
+                continue
+            target = matching if language and language_of(own_words(saved['body'])) == language else other
+            if len(target) < 3:
+                target.append({'source': message['id'], 'message': saved})
+            if len(matching) == 3 or (not language and len(other) == 3):
+                break
+    return (matching + other)[:3]
 
 
 def prepare(root, row, config, *, directory):
     from .languages import owner_languages
+    from .runner import today_note
     material = directory / 'reply-material.json'
-    write_json(material, {**row, 'channel': row.get('channel', 'mail'), **_identities(root, row)})
+    identities = _identities(root, row)
+    write_json(material, {**row, 'channel': row.get('channel', 'mail'), **identities, 'owner_samples': _owner_samples(root, row)})
     candidate = directory / 'candidate.json'
     language = next(iter(owner_languages(root)['languages']), config['language'])
     skill = useful_skills_dir() / 'rem-reply-draft' / 'SKILL.md'
@@ -143,29 +205,62 @@ def prepare(root, row, config, *, directory):
     prompt = (f'Read {skill} and follow it. '
               + (f'The owner\'s own writing skill is {voice}; it comes first for voice and wording. ' if voice else '')
               + f'The material is {material}; the owner\'s language is {language}. '
+              + today_note(root) + ' '
               f'Write JSON to {candidate} as the skill says. Never send or contact anyone. Reply DONE.')
-    return {'row': row, 'prompt': prompt, 'candidate': str(candidate), 'input_paths': [str(material)]}
+    return {'row': row, 'person': identities['person'], 'verdict': read_json(directory / 'verdict.json', {}),
+            'prompt': prompt, 'candidate': str(candidate), 'input_paths': [str(material)]}
+
+
+def _check_send(task, value, body, needs_owner):
+    send = value.get('send', 'owner')
+    fix = f'Fix {task.get("candidate", "candidate.json")}.'
+    if send not in ('now', 'owner'):
+        raise RemError(f'Reply draft send must be now or owner. {fix}')
+    if send == 'now':
+        if task.get('verdict', {}).get('send') != 'now':
+            raise RemError(f'The writer cannot raise send to now. {fix}')
+        if '【需要你' in body:
+            raise RemError(f'Direct send body must have no owner slot. {fix}')
+        if needs_owner:
+            raise RemError(f'Direct send needs_owner must be empty. {fix}')
+        if task.get('person', {}).get('direct_send') not in ('partner', 'close'):
+            raise RemError(f'Direct send requires person.direct_send partner or close. {fix}')
+    return send
 
 
 def check(task, output):
     value = json.loads(output['result'])
     allowed = {item['source'] for item in task['row']['material']}
-    if (not isinstance(value, dict) or not isinstance(value.get('body'), str) or not value['body'].strip()
+    if not isinstance(value, dict):
+        raise RemError('Reply draft needs a JSON object')
+    verdict, body = value.get('verdict', 'reply'), value.get('body', '')
+    if verdict not in ('reply', 'no_reply'):
+        raise RemError('Reply draft verdict must be reply or no_reply')
+    if (not isinstance(body, str) or (verdict != 'no_reply' and not body.strip())
             or not isinstance(value.get('sources'), list) or not value['sources']
             or any(not isinstance(source, str) or source not in allowed for source in value['sources'])):
         raise RemError('Reply draft needs a body and cited sources from its thread')
+    needs_owner = value.get('needs_owner', [])
+    if not isinstance(needs_owner, list) or any(not isinstance(slot, str) for slot in needs_owner):
+        raise RemError('Reply draft needs_owner must be a list of slots')
+    send = _check_send(task, value, body, needs_owner)
     notes = {key: value[key].strip() for key in ('gist', 'why') if isinstance(value.get(key), str) and value[key].strip()}
-    return {key: val for key, val in task['row'].items() if key not in ('material', 'obligations')} | {'body': value['body'], 'sources': value['sources']} | notes
+    return {key: val for key, val in task['row'].items() if key not in ('material', 'obligations')} | {
+        'body': body, 'sources': value['sources'], 'verdict': verdict, 'send': send, 'needs_owner': needs_owner} | notes
+
+
+def prepared_status(draft):
+    return 'no_reply' if draft.get('verdict') == 'no_reply' else 'prepared'
 
 
 def promote(root, draft):
-    write_json(path(root, draft['id']), {**draft, 'status': 'prepared', 'prepared_at': now().isoformat()})
+    write_json(path(root, draft['id']), {**draft, 'status': prepared_status(draft), 'prepared_at': now().isoformat()})
 
 
 def _current(root, draft_id):
     saved = read_json(path(root, draft_id), {})
     row = next((row for row in candidates(root) if row['id'] == draft_id), None)
-    if not row or saved.get('version') != row['version'] or saved.get('status') == 'discarded':
+    if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved
 
@@ -175,6 +270,10 @@ def open_provider(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
+            raise RemError('This thread needs no reply')
+        if not saved['body'].strip():
+            raise RemError('The reply body is empty')
         if saved.get('provider_draft'):
             return saved['provider_draft']
         client = mail_client(saved['provider'])
@@ -266,9 +365,15 @@ def send(root, draft_id, body=None):
         raise RemError('The reply body is empty')
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        if saved.get('status') in ('skipped', 'discarded'):
+            raise RemError('Restore this skipped reply before sending')
+        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
+            raise RemError('This thread needs no reply')
         if saved.get('status') == 'sent':
             raise RemError('This reply was already sent; nothing was sent again')
         text = body if body is not None else saved['body']
+        if not text.strip():
+            raise RemError('The reply body is empty')
         if saved.get('channel', 'mail') != 'mail':
             receipt = _send_chat(saved, text)
         else:
@@ -283,4 +388,11 @@ def discard(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
-        write_json(path(root, draft_id), {**saved, 'status': 'discarded'})
+        if saved.get('status') == 'sent':
+            raise RemError('This reply was already sent')
+        row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+        keys = [threads.done_key(item['record'], item['text']) for item in row['obligations']]
+        stamp = now().isoformat()
+        for key in keys:
+            threads._set_state(root, key, 'skipped', at=stamp, keys=keys)
+        return {'status': 'skipped'}

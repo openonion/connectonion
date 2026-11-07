@@ -340,7 +340,7 @@ def test_init_yes_records_existing_consent_before_mapping(first_run, monkeypatch
     assert mapped == [True]
 
 
-def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkeypatch):
+def test_interactive_init_proceeds_with_summary_and_undo_for_selected_mailboxes(first_run, monkeypatch):
     import sys
     from types import SimpleNamespace
     from connectonion.cli.commands import rem_commands
@@ -360,7 +360,8 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output
-    assert len(prompts) == 1
+    assert prompts == []
+    assert 'Undo REM setup:' in result.output
     assert len(summaries) == 1
     assert summaries[0]['sources']['gmail']['state'].startswith('will be read')
     assert installed == [root]

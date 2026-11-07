@@ -84,7 +84,7 @@ def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_pat
             page.goto(path.as_uri() + "#r=projects%2Fbrowser.md")
             statement = page.locator(".focus-statement").inner_text()
             assert "/work/browser" not in statement
-            assert statement == "Not written yet: 13 sessions, last on Aug 2, 2026."
+            assert statement == "Not written yet: 13 sessions, last on Aug 2."
             assert "Where the work stands" not in page.locator(".focus-kicker").inner_text()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
@@ -186,8 +186,8 @@ def reader(tmp_path, monkeypatch):
     frozen = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
     snapshot = rem_reader.snapshot
 
-    def fixed_snapshot(root, local=False):
-        data = snapshot(root, local)
+    def fixed_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
         data["as_of"] = frozen.isoformat()
         return data
 
@@ -518,7 +518,7 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     data["records"].extend({**example, "path": f"people/example-{i}.md",
                             "title": f"Alexandria Margaret Historical Correspondent {i:03d}"}
                            for i in range(570))
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "large-roster.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -559,7 +559,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     visible_people = sum(r["category"] == "people" and r["path"] != data["owner"]
                          and not r.get("needs_review") and not r.get("service")
                          for r in data["records"])
-    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _, local=False, today=False: data)
     path = tmp_path / "first-map.html"
     path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
 
@@ -1906,7 +1906,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
         {'started_at': '2026-10-07T11:01:00+00:00', 'outcome': 'failed',
          'error': 'TimeoutError: private payload must not appear here', 'changed': []},
     ]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'blocked.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -1944,7 +1944,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     ]
     # fbdd25e3: replacing the run window does not replace the notebook's age.
     data['first_run_at'] = data['as_of']
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'partial.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.goto(path.as_uri())
@@ -2053,7 +2053,7 @@ def test_activity_lists_each_run_with_pages_changed_and_refused(reader, tmp_path
                      'usage': {'input_tokens': 1200, 'output_tokens': 300}, 'changed': ['people/mara-ostrowski.md'],
                      'refusals': [{'record': 'projects/harbour.md',
                                    'errors': ['Candidate rejected, kept at /private/c.md: Changed page has no numbered evidence references']}]}]
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _, local=False, today=False: data)
     path = tmp_path / 'runs.html'
     path.write_text(rem_reader.render(tmp_path / 'rem'))
     page.set_viewport_size({'width': width, 'height': 900})
@@ -2399,7 +2399,7 @@ def session_reader(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     original = rem_reader.snapshot
 
-    def fixed_snapshot(root, local=False):
+    def fixed_snapshot(root, local=False, today=False):
         data = original(root, local)
         data["as_of"] = "2026-10-15T14:30:00+00:00"  # Already Friday in the notebook.
         data["status"]["timezone"] = "Australia/Sydney"
@@ -3333,7 +3333,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     data = rem_reader.snapshot(tmp_path / 'rem', local=True)
     data['your_languages'] = notebook_languages
     page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
-    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False: data)
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False, today=False: data)
     path = tmp_path / 'chinese-reader.html'
     path.write_text(rem_reader.render(tmp_path / 'rem', local=True), encoding='utf-8')
     page.evaluate(r'''() => localStorage.removeItem('co-rem-ui-language')''')
@@ -3930,8 +3930,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
     monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': ['zh', 'en'], 'from': 'detected'})
     snapshot = rem_reader.snapshot
 
-    def frozen_snapshot(root, local=False):
-        data = snapshot(root, local)
+    def frozen_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
         data['as_of'] = now.isoformat()
         data['shared'] = True  # Default hidden-labelled mode, without a local storage override.
         return data
@@ -4065,11 +4065,11 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.locator('.done-details summary').wait_for()
     assert page.locator('.done-details').get_attribute('open') is None
     page.locator('.done-details summary').click()
-    assert 'Only this browser remembers this.' in page.locator('.done-details').inner_text()
+    assert 'sync pending' in page.locator('.done-details').inner_text()
     assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     row = page.locator('.ledger-row').filter(has_text='Data-sharing addendum')
-    assert row.locator('.done-tag').inner_text() == 'marked done here'
+    assert row.locator('.done-tag').inner_text().startswith('Marked done ·')
     row.get_by_role('button', name='Undo', exact=True).click()
     assert row.locator('.done-tag').count() == 0
     page.goto(uri)

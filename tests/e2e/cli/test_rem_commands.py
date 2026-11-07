@@ -422,22 +422,35 @@ def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
     assert not (root / ".state" / "consent.json").exists()
 
 
-def test_start_consent_question_stays_on_the_same_screen(lifecycle, monkeypatch):
+def test_terminal_start_prints_summary_and_undo_then_proceeds(lifecycle, monkeypatch):
     root, sessions, calls = lifecycle
     # Typer may provide its own streams instead of Click's; use the runner's
     # actual stdin type so the command takes the interactive path in either.
     with runner.isolation():
         monkeypatch.setattr(type(sys.stdin), "isatty", lambda self: True)
         result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 0, result.output
     output = Text.from_ansi(result.output).plain
-    before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
-    assert question, output
-    assert len(before.splitlines()) <= 25
-    assert f"Details: co rem --root {root} config" in before
-    assert f"Stop: co rem --root {root} stop" in before
-    assert "Input chars per batch" not in before and "/inbox/whatsapp" not in before
-    assert not (root / ".state" / "consent.json").exists() and calls == []
+    assert "Read these sources with this model and schedule?" not in output
+    assert f"Details: co rem --root {root} config" in output
+    assert f"co rem --root {root} stop" in output
+    assert "Undo REM setup:" in output
+    assert (root / ".state" / "consent.json").exists()
+
+
+def test_terminal_start_prints_only_consent_changes_on_restart(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    assert invoke(root, 'start', '--yes').exit_code == 0
+    from connectonion.rem.config import set_config
+    set_config(root, ['schedule.times', '03:00'])
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), 'isatty', lambda self: True)
+        result = runner.invoke(app, ['rem', '--root', str(root), 'start'])
+    assert result.exit_code == 0, result.output
+    assert 'Consent changes:' in result.output
+    assert 'schedule.times:' in result.output and '03:00' in result.output
+    assert 'Sources:' not in result.output and 'Permissions:' not in result.output
+    assert 'Read these sources' not in result.output
 
 
 def test_start_yes_then_stop(lifecycle):
@@ -1514,7 +1527,7 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     assert 'grants local Codex / Claude Code sessions and all connected Google/Microsoft mailboxes' in text
     assert 'installs upkeep and builds in the foreground' in text
     assert 'Undo: co rem stop; co rem sources remove SOURCE; co auth logout' in text
-    assert 'Use co rem init to rebuild; it retains its terminal estimate pause unless --yes' in text
+    assert 'Use co rem init to rebuild; a terminal prints its summary, undo block and estimate, then proceeds' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text

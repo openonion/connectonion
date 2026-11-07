@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc55
+## Current Version: 1.9.3rc56
+
+Done and Skip decisions persist in the notebook; the reader opens before the notebook is parsed;
+one date grammar and plain labels; overrunning scheduled turns end with their process tree and
+failures show on Today; `co init` proceeds without a browser login; the drafting skill may say no
+reply is needed (#2861, #2864, #2865, #2870). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc56.md).
+
+- 1.9.3rc56 (decisions persist; fast open; plain words; steady schedule).
+
+### Previous candidate: 1.9.3rc55 (tagged, not published)
 
 Today is one queue of actions; a reply is shown as the mail it becomes, drafted on the
 `rem-reply-draft` skill in the owner's voice with the background beside it, with Send, a full-screen

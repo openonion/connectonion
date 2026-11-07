@@ -101,21 +101,19 @@ deleting the notebook folder, `~/.co/rem`.
 `co init --no-rem` skips REM. Repeating global init leaves existing REM
 unchanged; `co rem init` reruns the build. `--background` uses the same REM step,
 and project setup (`co init ./`) does not initialize REM. Standalone
-`co rem init` retains its estimate confirmation in a terminal; `--yes` skips it.
+`co rem init` prints the summary, undo block and estimate in a terminal, then proceeds without pausing.
 
 The full first run is one command (#1943). Before mapping, `co rem init`
-checks runner availability and asks for source/model/schedule consent if it has
-not been recorded or the consent summary has changed. Enter declines this
-consent prompt: local Codex / Claude Code sessions stay unread and upkeep stays
-off; connected mail can still be mapped and archived. `--yes` explicitly
-approves; without a terminal, new consent requires `--yes`.
+checks runner availability and prints the source/model/schedule summary.
+Consent changes print a diff, then proceed in a terminal. Noninteractive runs
+ask nothing; first consent requires `--yes` unless an existing grant applies.
 
 Init maps 180 days of connected mail and approved local Codex / Claude Code
 sessions, saves the private mail material, then prints your own page's header
 facts — who you write to most, how much mail, and which projects you have been
 coding in — with the page's path. These facts appear after the map and archive
 finish; their timing depends on source volume and mailbox response times.
-After the estimate confirmation, init summarises pending sessions, checks model
+After printing the estimate, init summarises pending sessions, checks model
 access and writes a quick first pass of your page. The full owner pass then shares the worker queue with
 the selected pages. Both owner passes use your sent mail and coding sessions
 from the last 30 days by default, or the window given with `--days`. There is
@@ -248,8 +246,8 @@ Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
 you keep: `co rem init --mine a@example.org,b@example.org`. Mailboxes init read
 are subscribed, so they appear in the source summary. `co rem start` reuses
-unchanged consent recorded by init; it asks again when sources or anything
-else in the consent summary changes. On a notebook without prior consent,
+unchanged consent recorded by init; when sources or anything else in the
+summary changes, it prints the diff and proceeds in a terminal. On a notebook without prior consent,
 start approves access, runs one bounded sync, then installs the schedule.
 With consent already recorded, start installs or resumes upkeep without an
 immediate batch; run `co rem sync` for an update now.
@@ -479,13 +477,13 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem abstract` | Run rem-abstract over existing notebook evidence. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
-| `co rem start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co rem sync` runs one. |
+| `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co rem sync` | The whole update: one batch of new material; then the day's first run investigates unfinished pages, most recent first, and every later run updates only the people and projects with something new. What the schedule runs (`sync --scheduled`). |
 | `co rem sync --source codex --dry-run` | Pending metadata only; no model or source body reads. |
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
-| `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` shows it and asks before anything is read. `co rem sources remove whatsapp --chat <id>` stops one chat. |
+| `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
@@ -692,8 +690,8 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
 - **Today is one queue**: everything that needs you, newest and due first, one card
-  each, with one primary action per card and a quiet **Mark done** that only this
-  browser remembers. The schedule prepares one local reply draft per mail thread
+  each, with one primary action per card and a quiet **Mark done** saved in the
+  notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
   waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day,
   on the `rem-reply-draft` skill: it reads who you both are (your page, their page,
   the relationship, how they write), decides on each ask in the latest message, and
@@ -705,7 +703,12 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   from your mailbox; **Write full screen** opens the letter to edit by hand, with
   that background and the thread beside it, and sends your edited text; **Edit in
   Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
-  skipped until new mail arrives. The channel switch (Mail / Lark / WhatsApp)
+  skipped until new mail arrives, when it returns with the new message date.
+  Done and Skip offer **Undo** for five seconds; the record page keeps Undo
+  available later, including a collapsed history if the original thread text
+  has changed. Skipping preserves the draft body. The live reader shares these
+  decisions through `.state/threads.json`; localStorage holds unsynced offline
+  actions and reconciles them on load, focus or reconnection. The channel switch (Mail / Lark / WhatsApp)
   rewrites the reply for that channel and sends it as you through `lark-cli` or
   `co whatsapp`, when the notebook knows how to reach the person there. Sending
   and rewriting work in the live reader on this computer only; a click is the

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 import tempfile
 import threading
 from collections import deque
@@ -221,7 +222,16 @@ _THREADS = _InOrder()
 MAINTENANCE_BUSY = "co rem is busy; wait for the active maintenance run, then retry co rem next (the round is not over)"
 
 
-def _native_waiter(root: Path, waited_for: dict):
+def maintenance_busy(root: Path) -> str:
+    owner = read_json(state_path(root, "maintenance-owner.json"), {})
+    pid = owner.get("pid")
+    command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True).stdout.strip() if pid else ""
+    return (f"MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid {pid or 'unknown'}: "
+            f"{command or owner.get('operation') or 'command unavailable'}. Report this message and end the turn without retrying.")
+
+
+def _native_waiter(root: Path, waited_for: dict, *, scheduled=False):
     announced = False
     missing_since = None
 
@@ -233,8 +243,8 @@ def _native_waiter(root: Path, waited_for: dict):
         # that cannot identify itself, rather than misclassify a native next.
         if not owner and missing_since is None:
             missing_since = time.monotonic()
-        if owner and owner.get("operation") not in ("next", "submit") or (
-                not owner and time.monotonic() - missing_since >= 1):
+        if not scheduled and (owner and owner.get("operation") not in ("next", "submit") or (
+                not owner and time.monotonic() - missing_since >= 1)):
             raise RemError(MAINTENANCE_BUSY)
         if owner:
             waited_for.update(owner)
@@ -248,19 +258,20 @@ def _native_waiter(root: Path, waited_for: dict):
 
 
 @contextmanager
-def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False):
+def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False, scheduled=False):
     """One OS-owned lock for every write path; process death releases it.
 
-    `wait` bounds the wait. Native next waits only for another next/submit;
-    other scheduled maintenance still gives up immediately.
+    `wait` bounds thread and file waits together. Manual next waits only for
+    another next/submit; scheduled next waits for any maintenance holder.
     """
     deadline = time.monotonic() + wait
     waited_for = {}
-    on_busy = _native_waiter(root, waited_for) if wait_for_native else None
+    on_busy = _native_waiter(root, waited_for, scheduled=scheduled) if wait_for_native else None
     if not _THREADS.acquire(timeout=wait, on_busy=on_busy):
-        raise RemError(MAINTENANCE_BUSY)
+        raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY)
     try:
-        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy):
+        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy,
+                        scheduled=scheduled):
             yield waited_for
     finally:
         _THREADS.release()
@@ -293,7 +304,7 @@ def _try_lock(fd: int) -> None:
 
 
 @contextmanager
-def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None):
+def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None, scheduled=False):
     """The lock other processes see: a scheduled tick, a second terminal."""
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -308,10 +319,11 @@ def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None):
                 if on_busy:
                     on_busy()
                 if time.monotonic() >= deadline:
-                    raise RemError(MAINTENANCE_BUSY) from error
-                time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
+                    raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY) from error
+                time.sleep(min(1.0, max(0, deadline - time.monotonic())))
         owner = state_path(root, "maintenance-owner.json")
-        write_json(owner, {"pid": os.getpid(), "operation": operation})
+        write_json(owner, {"pid": os.getpid(), "operation": operation,
+                           "turn_id": os.environ.get("CO_REM_TURN_ID")})
         try:
             yield
         finally:

@@ -79,9 +79,22 @@ async def handle_rem_http(scope, receive, send, routes):
                 cache.update(version=version, page=page)
             page = cache["page"]
         await _reply(send, 200, page, "text/html")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/data.json":
+        from ...rem.reader import reader_version, snapshot
+        cache = routes.setdefault("rem_detail_cache", {})
+        async with routes.setdefault("rem_detail_lock", asyncio.Lock()):
+            version = await asyncio.to_thread(reader_version, root)
+            if cache.get("version") != version:
+                data = await asyncio.to_thread(snapshot, root, local=True)
+                cache.update(version=version, data=json.dumps(data, ensure_ascii=False, default=str))
+            data = cache["data"]
+        await _reply(send, 200, data, "application/json")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/translation-request"):
+    elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
+        from ...rem.threads import listing
+        await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -92,7 +105,7 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 415, "application/json required")
         return
     try:
-        body = json.loads(await read_body(receive, 4096) or b"{}")
+        body = json.loads(await read_body(receive, 65536 if scope["path"] == "/rem/thread" else 4096) or b"{}")
     except (ValueError, UnicodeDecodeError):
         await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
         return
@@ -100,8 +113,19 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 400, json.dumps({"error": "JSON object required"}), "application/json")
         return
     from ...rem.files import RemError
-    from ...rem import drafts, translate
-    if scope["path"] == "/rem/translation-request":
+    from ...rem import drafts, threads, translate
+    if scope["path"] == "/rem/thread":
+        if (not isinstance(body.get("key"), str) or "\n" not in body["key"]
+                or body.get("state") not in ("done", "skipped", "open")
+                or not isinstance(body.get("device"), (str, type(None)))
+                or not isinstance(body.get("keys"), (list, type(None)))
+                or any(not isinstance(key, str) for key in body.get("keys") or [])
+                or not isinstance(body.get("versions"), (dict, type(None)))
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
+            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
+            return
+        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+    elif scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
     elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
         operation = lambda: drafts.prepare_now(root, body["provider"], body["thread"])

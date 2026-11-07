@@ -406,7 +406,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert page.locator('#nav a[href="#c=all"] .n').inner_text() == '1'
+        page.wait_for_function("document.querySelector('#nav a[href=\"#c=all\"] .n')?.textContent === '1'")
         page.locator('#nav a[href="#c=all"]').click()
         assert page.locator('.hits > li').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
