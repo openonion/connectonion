@@ -364,3 +364,14 @@ def test_init_grant_admits_mail_enabled_before_login(rem_setup, monkeypatch):
     assert service.ensure_consent(root, confirm=lambda summary: pytest.fail("mail already granted"))
     assert service.subscriptions(root)["gmail"]["consented"]
     assert service.subscriptions(root)["gmail"]["adapter"] == "available"
+
+
+def test_pending_codex_login_finishes_real_init_without_model_turns(first_notebook, capsys):
+    root, installed, model = first_notebook
+    # Even a stale readiness hint must not launch a turn after OAuth failed.
+    rem_commands.init_global_rem(codex={"ready": False, "next_action": "/bin/codex login"})
+    assert (root / "people/ada-vale.md").is_file()
+    model.assert_not_called()
+    installed.assert_not_called()
+    assert "waiting for Codex login" in capsys.readouterr().out
+    assert service.worker_state(root)["waiting_for"]

@@ -21,6 +21,10 @@ def onboarding(tmp_path, monkeypatch):
     for module in (init, create, auth_commands):
         monkeypatch.setattr(module, "authenticate", lambda *a, **k: False)
     monkeypatch.setattr(init, "show_progress", lambda *a: None)
+    # Keep OS scheduling and source/model work out of local integration checks.
+    from connectonion.rem.schedule import Unsupported
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *a, **kw: Unsupported())
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands.init_rem_flow", lambda *a, **kw: {})
     for module in (init, create):
         monkeypatch.setattr(module, "check_environment_for_api_keys", lambda: None)
     for tool in (".codex", ".claude"):
@@ -93,7 +97,7 @@ def test_profile_and_links_follow_the_current_home(onboarding, monkeypatch, comm
     if command == ["init", "--yes"]:
         assert set(default_root.iterdir()) == {default_root / "rem"}
         assert (default_root / "rem/config.yaml").is_file()
-        assert not (default_root / "rem/.state/consent.json").exists()
+        assert (default_root / "rem/.state/consent.json").exists()
     else:
         assert not default_root.exists()
 

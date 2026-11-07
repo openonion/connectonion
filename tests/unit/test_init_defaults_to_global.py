@@ -21,6 +21,8 @@ def setup_init(tmp_path, monkeypatch):
     monkeypatch.chdir(work)
     monkeypatch.setattr(init_command, "show_progress", lambda *args: None)
     monkeypatch.setattr(init_command, "check_environment_for_api_keys", lambda: None)
+    # REM has its own first-run tests; these tests concern global configuration.
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands.init_global_rem", lambda **kwargs: None)
 
     def authenticate(co_dir, save_to_project=True):
         assert co_dir == Path.home() / ".co"
