@@ -937,15 +937,38 @@ therefore closes its delegate before co rem process timeout is reached.
 
 ## Scheduling and accounting
 
-In opt-in preview **1.9.3rc21**, Codex notebooks default to **Codex desktop Scheduled** when the app
-is installed and the notebook timezone matches this computer. The desktop
-adopts a private local automation definition; there is no public App Server
-schedule RPC in the tested version. Keep the app open and computer awake.
-A background wake job opens a closed Codex 15 minutes before each slot, because
-Codex fires a slot a few minutes either side of it (a 19:00 slot ran at 18:55).
-Run `co rem start` again after upgrading to move an existing wake job.
-Completed native wrapper conversations and REM's internal Codex calls are
-archived, retaining their trace IDs without filling active project history.
+Codex notebooks on macOS use `schedule.runner: codex-exec` by default when the
+Codex CLI is installed and signed in. launchd runs `codex exec` directly through
+REM's turn worker, using the same work-loop prompt as the desktop automation.
+Exec sessions can continue across tasks; desktop automation sessions can end early.
+The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
+
+```bash
+co rem config set schedule.runner codex-exec effort high
+co rem start
+# To use Codex desktop Scheduled instead:
+co rem config set schedule.runner codex-app
+co rem start
+```
+
+Both modes fire at the saved starts plus the same 15-minute follow-ups.
+The saved timezone must match this computer for these Codex modes. Exec runs
+with the PATH captured at installation, including user command directories.
+Each turn has a process lock: a fire during a running turn is skipped. A turn
+ends after at most 50 minutes, terminating its child tools too. Keep the computer
+awake. No desktop app is needed for exec.
+
+`co rem start` switches clocks: exec pauses and removes the desktop definition
+and wake plist; app removes the exec plist and installs its automation and wake
+job. Account-managed desktop tasks still require a confirmed pause before switching.
+`co rem status` shows the installed runner and last exec turn result. Exec logs,
+last messages and receipts are under `.state/turns/`; `.state/last-turn.json`
+points to the latest turn. `co rem stop` removes the clock; a running turn can finish.
+
+For `codex-app`, the desktop adopts a private local automation definition.
+Its wake job opens Codex 15 minutes before each fire. Keep the app open and the
+computer awake. Completed native wrapper conversations and REM's internal Codex
+calls are archived, retaining trace IDs without filling active project history.
 
 `co rem start` stages a paused task and verifies native index adoption before
 removing an old launchd clock. A running old batch or failed registration leaves
@@ -979,8 +1002,8 @@ by its legacy association and requires management in Codex Scheduled until an
 authoritative account registration API has been verified. REM does not recreate
 its old file or treat a cached account status as confirmation of a pause.
 
-Other runners, headless Macs and saved timezones different from the desktop retain
-launchd. Its five-minute tick keeps the saved timezone and coalesces missed slots.
+Other model runners and desktop-mode notebooks with a different saved timezone retain
+the legacy launchd sync job. Its five-minute tick keeps the saved timezone and coalesces missed slots.
 The native desktop uses its own local wall clock and startup/missed-run behavior;
 REM coalesces overdue saved slots when the next native trigger reaches the CLI.
 Exact time pairs use one rule with position selection, avoiding extra combinations.
@@ -1864,7 +1887,7 @@ available for explicit resume and `co rem logs`. Before resuming, REM
 unarchives the thread, then archives it again after the turn. Ordinary interactive Codex
 threads are unchanged.
 History archiving also applies when launchd owns the timer. In rc21, eligible
-Codex notebooks use Codex desktop Scheduled; see [Scheduling](#scheduling-and-accounting)
+Codex notebooks use the configured exec or desktop runner; see [Scheduling](#scheduling-and-accounting)
 for eligibility and fallback. Registration uses the desktop's task file format;
 Scheduled is not a public App Server scheduling API.
 
@@ -1891,7 +1914,7 @@ Existing notebook pages are not automatically corrected.
 
 ## Native round: next and submit
 
-A native Codex Scheduled session can do the model work itself. The `rem` skill
+A Codex exec or desktop Scheduled session can do the model work itself. The `rem` skill
 runs this loop; launchd retains `co rem sync --scheduled` as its child-runner fallback.
 
 ```bash
@@ -1921,10 +1944,20 @@ supplied as exact JSON rather than an unreadable initial Markdown copy.
 Session summaries use one file per session, such as `sessions/s1.json`.
 The single-call child runner keeps its existing inline packets and JSON replies.
 
-Codex Scheduled fires at each saved time, then every 15 minutes until the next
+Audit checkpoint lines must contain `excerpt: "verbatim original span"`, at least
+20 characters copied exactly from that citation's `context.excerpt` in
+`audit-material.json`. If the whole original is shorter, quote it in full.
+Bare verdicts and forged excerpts do not count; progress reports rejected lines.
+Malformed audit decisions are refused for correction, never promoted.
+PASS is refused until every citation has a verified checkpoint, with the next
+unchecked batch shown after `Now:`. A missing original cannot be marked checked; retrieve it or repair the candidate
+before submitting PASS. Repair preserves verified checkpoints only
+when the cited claims and original are unchanged.
+
+Both Codex scheduler modes fire at each saved time, then every 15 minutes until the next
 saved time or three hours after that start, whichever comes first. A fire at
 exactly three hours is included unless another saved time has arrived. The
-macOS wake job opens Codex 15 minutes before every fire. Saved times and the
+macOS wake job in codex-app mode opens Codex 15 minutes before every fire. Saved times and the
 saved timezone remain what `co rem status` and the consent summary show;
 follow-ups do not change the consent fingerprint. Run `co rem start` to apply
 the updated automation and wake job to an existing installation.

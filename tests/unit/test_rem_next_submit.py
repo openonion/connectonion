@@ -71,10 +71,26 @@ def _candidate(root, task, record, source):
     Path(task["candidate"]).write_text(text, encoding="utf-8")
 
 
+
+def _audit_entries(task):
+    packet = read_json(Path(task['material']) / 'audit-material.json', {})
+    lines = {}
+    for row in packet.get('sources', []):
+        parts = row['context']['excerpt'].replace('"', '\n').splitlines()
+        excerpt = max(parts, key=len)[:80]
+        lines[row['citation']] = f"[{row['citation']}] PASS — excerpt: \"{excerpt}\"\n"
+    return lines
+
+
+def _audit_notes(task):
+    Path(task['material'], 'notes.md').write_text(''.join(_audit_entries(task).values()))
+
+
 def _submit(root, task):
     result = native.submit(root, task["id"])
     if result["outcome"] == "task":
         before = _canonical(root)
+        _audit_notes(result)
         Path(result["candidate"]).write_text(json.dumps({"verdict": "PASS", "findings": []}))
         assert _canonical(root) == before
         result = native.submit(root, task["id"])
@@ -144,6 +160,7 @@ def test_scheduled_tasks_keep_the_same_turn_rule_through_audit_and_acceptance(tr
     review = native.pending(trial)[0]
     assert 'Do not use tools, browse, or edit files.' not in review['instructions']
     assert (Path(review['material']) / 'instructions.md').read_text() == review['instructions']
+    _audit_notes(review)
     Path(review["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
     assert accepted.exit_code == 0, accepted.output
@@ -179,6 +196,7 @@ def test_pending_legacy_audit_updates_the_linked_instructions_safely(trial, monk
         return
     offered = native.next_task(trial)
     assert instructions.read_text() == audit['instructions'] == offered['instructions']
+    _audit_notes(offered)
     Path(offered['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
@@ -573,6 +591,7 @@ def test_schedule_change_and_start_accept_pending_audit(trial, monkeypatch):
     assert changed.exit_code == 0, changed.output
     started = cli.invoke(app, [*prefix, "start", "--yes"])
     assert started.exit_code == 0, started.output
+    _audit_notes(audit)
     Path(audit["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     accepted = cli.invoke(app, [*prefix, "submit", task["id"]])
     assert accepted.exit_code == 0, accepted.output
@@ -591,7 +610,7 @@ def test_audit_notes_are_not_task_inputs_and_edits_allow_submit(trial):
     assert str(notes) not in saved['inputs']
     audit = native.submit(trial, task['id'])
     assert audit['stage'] == 'claim-audit'
-    notes.write_text('[1] PASS — The original requests a pilot review.\n')
+    _audit_notes(audit)
     Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
@@ -627,9 +646,8 @@ def test_next_resumes_claim_audit_with_checkpoint_progress(trial, monkeypatch, s
     notes = directory / 'notes.md'
     first_now = (f"Now: check {' '.join(f'[{citation}]' for citation in ids[:8])} "
                  f'(next 8 unchecked, in Sources order) and append one line per citation to {notes} before doing anything else.')
-    entries = ['[W74] PASS — The team page names Avery as lead.\n',
-               '[1] PASS — The original requests a pilot review.\n']
-    entries += [f'[{number}] PASS — The original requests pilot review {number}.\n' for number, _ in extra_sources]
+    evidence = _audit_entries(audit)
+    entries = [evidence[citation] for citation in ids]
     notes.write_text('Audit notes: [1] is not checked by this heading.\n[999] PASS — Unrelated.\n'
                      + ''.join(entries[:checked]) + (entries[0] if checked else ''))
     monkeypatch.setattr(native, '_alive', lambda pid: False)
@@ -675,7 +693,7 @@ def test_native_insufficient_audit_continues_until_all_citations_checked(trial, 
     notes = directory / 'notes.md'
     if checked is not None:
         notes.write_text('Audit notes: [1] is not a checkpoint.\n[999] PASS — Unrelated.\n'
-                         + '[W74] PASS — Avery leads Atlas.\n' * checked)
+                         + _audit_entries(audit)['W74'] * checked)
     before_notes = notes.read_bytes() if notes.exists() else None
     candidate = Path(task['candidate']).read_bytes()
     before = _canonical(trial)
@@ -707,23 +725,25 @@ def test_native_insufficient_audit_continues_until_all_citations_checked(trial, 
     assert (notes.read_bytes() if notes.exists() else None) == before_notes
     assert _canonical(trial) == before
     # Finish the same audit without another writer or repair turn.
-    notes.write_text('[1] PASS — Pilot review requested.\n[W74] INSUFFICIENT — Original unverifiable.\n')
+    _audit_notes(audit)
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
 
 def test_native_insufficient_audit_accepts_complete_notes(trial, checkpoint_audit):
     task, audit = checkpoint_audit
     notes = Path(task['material']) / 'notes.md'
-    notes.write_text('[W74] INSUFFICIENT — Original unverifiable.\n[1] PASS — Pilot review requested.\n')
+    _audit_notes(audit)
     Path(audit['candidate']).write_text('{"verdict":"INSUFFICIENT","findings":[]}')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
 
 
 @pytest.mark.parametrize('decision', [{'verdict': 'UNKNOWN', 'findings': []}, {'verdict': 'INSUFFICIENT'}])
-def test_native_code_normalized_insufficient_still_accepts_without_notes(trial, checkpoint_audit, decision):
+def test_native_invalid_decision_stays_in_claim_audit(trial, checkpoint_audit, decision):
     task, audit = checkpoint_audit
     Path(audit['candidate']).write_text(json.dumps(decision))
-    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused' and result['stage'] == 'claim-audit'
+    assert 'valid' in result['reason']
 
 
 def test_native_invalid_audit_json_keeps_claim_audit_and_candidate(trial, checkpoint_audit):
@@ -847,6 +867,7 @@ def test_audit_handoff_respects_daily_cap_and_resumes_tomorrow(trial, monkeypatc
     audit = native.next_task(trial)
     assert audit["outcome"] == "task"
     assert service.daily_cap(trial)["remaining"] == 0
+    _audit_notes(audit)
     Path(audit["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     assert native.submit(trial, task["id"])["outcome"] == "accepted"
 
@@ -895,6 +916,7 @@ def test_changed_original_candidate_cannot_become_a_symlink_during_audit(trial):
     original = Path(task["candidate"])
     original.unlink()
     original.symlink_to(Notebook(trial).path(record))
+    _audit_notes(audit)
     Path(audit["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     before = _canonical(trial)
     assert native.submit(trial, task["id"])["outcome"] == "refused"
@@ -952,6 +974,7 @@ runner.run_task = runner.run_claim_task = forbidden
             Path(prepared["material"], "report.md").write_text("NO CHANGE; the fixture has no new supported page claims.")
         result = process(f"native.submit(root, {prepared['id']!r})")
         if result["outcome"] == "task":
+            _audit_notes(result)
             Path(result["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
             process(f"native.submit(root, {prepared['id']!r})")
         prepared = process("native.next_task(root)")
@@ -965,6 +988,7 @@ def test_promotion_recovers_after_process_dies_before_task_acceptance(trial, mon
     task = native.next_task(trial)
     _candidate(trial, task, record, source)
     audit = native.submit(trial, task["id"])
+    _audit_notes(audit)
     Path(audit["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
     accept = native._accept
     def killed(*args):
@@ -1838,6 +1862,7 @@ def test_one_native_claim_audit_finding_returns_to_writer_and_can_be_repaired(tr
                                                      'The owner recorded Avery’s pilot review request.'))
     audit = native.submit(trial, task['id'])
     assert audit['outcome'] == 'task'
+    _audit_notes(audit)
     Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
     assert 'The owner recorded' in Notebook(trial).read(record)
@@ -2061,4 +2086,83 @@ def test_native_refusal_keeps_malformed_long_output_repairable(trial, filename):
     assert bad.read_text() == malformed
     bad.unlink()
     candidate.write_text(valid)
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+def test_native_pass_refused_without_verified_checkpoints(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    notes = Path(task['material']) / 'notes.md'
+    notes.write_text('[W74] PASS — Previously checked citation\n[1] PASS — Previously checked citation\n')
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused' and result['stage'] == 'claim-audit'
+    assert '0 of 2 citations checked' in result['audit_progress']
+    assert '2 rejected' in result['audit_progress']
+    assert 'Now: check [W74] [1]' in result['audit_progress']
+
+
+@pytest.mark.parametrize('decision', [{'verdict': 'PASS'}, {'verdict': 'PASS', 'findings': None}])
+def test_native_malformed_pass_cannot_bypass_checkpoint_coverage(trial, checkpoint_audit, decision):
+    task, audit = checkpoint_audit
+    Path(audit['candidate']).write_text(json.dumps(decision))
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused' and result['stage'] == 'claim-audit'
+    assert '0 of 2 citations checked' in result['audit_progress']
+
+
+def test_native_repair_preserves_verified_unchanged_citation(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    _audit_notes(audit)
+    notes = Path(task['material']) / 'notes.md'
+    retained = _audit_entries(audit)['1']
+    Path(audit['candidate']).write_text(json.dumps({'verdict': 'FAIL', 'findings': [{
+        'claim': 'Avery leads Atlas.', 'issue': 'Clarify the team scope',
+        'evidence': 'The fictional original describes the Atlas team.',
+        'required_correction': 'Specify the Atlas team.'}]}))
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused'
+    candidate = Path(task['candidate'])
+    candidate.write_text(candidate.read_text().replace('Avery leads Atlas.', 'Avery leads the Atlas team.'))
+    revised = native.submit(trial, task['id'])
+    assert revised['stage'] == 'claim-audit'
+    assert notes.read_text() == retained
+    assert '1 of 2 citations checked' in revised['audit_progress']
+    assert 'Now: check [W74]' in revised['audit_progress']
+
+
+def test_scheduler_effort_change_keeps_pending_audit_valid(trial):
+    from connectonion.rem.config import set_config
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    audit = native.submit(trial, task['id'])
+    _audit_notes(audit)
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    set_config(trial, ['effort', 'high'])
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+def test_native_empty_fail_cannot_bypass_checkpoint_coverage(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    Path(audit['candidate']).write_text('{"verdict":"FAIL","findings":[]}')
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused' and result['stage'] == 'claim-audit'
+    assert '0 of 2 citations checked' in result['audit_progress']
+
+
+def test_legacy_audit_refusal_refreshes_excerpt_instructions(trial, checkpoint_audit):
+    task, audit = checkpoint_audit
+    directory = Path(task['material'])
+    saved = native.pending(trial)[0]
+    saved['instructions'] = 'Legacy audit: append [N] PASS to notes.md and submit PASS.'
+    native._write_instructions(saved)
+    write_json(directory / 'task.json', saved, readable=True)
+    notes = directory / 'notes.md'
+    notes.write_text('[W74] PASS — Previously checked citation\n[1] PASS — Previously checked citation\n')
+    Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused' and refused['stage'] == 'claim-audit'
+    assert 'at least 20 verbatim characters' in (directory / 'instructions.md').read_text()
+    assert 'at least 20 verbatim characters' in native.pending(trial)[0]['instructions']
+    _audit_notes(audit)
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'

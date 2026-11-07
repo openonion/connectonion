@@ -878,13 +878,15 @@ def test_stopped_worker_cannot_claim_account_authority_from_a_cached_pause(tmp_p
     assert "needs confirmation" in text and "Stopped" not in text
 
 
-def test_default_prefers_native_for_codex_with_app_and_stop_finds_saved_provider(tmp_path, monkeypatch):
+def test_explicit_app_runner_and_stop_find_saved_provider(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     root = tmp_path / "notes"
-    assert isinstance(default_scheduler(root, for_start=True), CodexNative)
     config = default_config()
+    config["schedule"]["runner"] = "codex-app"
+    atomic_write(root / "config.yaml", yaml.safe_dump(config))
+    assert isinstance(default_scheduler(root, for_start=True), CodexNative)
     config["runner"] = "coai"
     atomic_write(root / "config.yaml", yaml.safe_dump(config))
     assert isinstance(default_scheduler(root, for_start=True), Launchd)
@@ -898,6 +900,9 @@ def test_different_desktop_timezone_retains_the_existing_os_scheduler(tmp_path, 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_timezone", lambda: "Asia/Kathmandu")
+    config = default_config()
+    config["schedule"]["runner"] = "codex-app"
+    atomic_write(tmp_path / "notes/config.yaml", yaml.safe_dump(config))
     assert isinstance(default_scheduler(tmp_path / "notes", for_start=True), Launchd)
 
 

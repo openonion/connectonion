@@ -678,6 +678,10 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
+            "schedule_runner": worker_state(root).get("runner") or (
+                "codex-app" if worker_state(root).get("scheduler") == "codex-native"
+                else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
+            "last_turn": read_json(state_path(root, "last-turn.json"), None),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
