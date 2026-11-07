@@ -1635,6 +1635,24 @@ def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
     assert "investigation:page" not in fixed
 
 
+def test_resolved_mail_spelling_is_not_dropped_or_restored(tmp_path, monkeypatch):
+    from connectonion.rem import page_review
+
+    raw, digest = 'gmail:1a02327b9e6d2c51', 'gmail:94449e945db3'
+    monkeypatch.setattr(page_review, '_mail_digest', lambda root, source:
+                        digest if source in (raw, digest) else source)
+    before = ('# Avery\n\n## Who they are\n- Builds small research tools. [23]\n'
+              '\n## Sources\n- [23] ' + raw + ' — 2026-08-21\n')
+    after = before.replace(raw, digest).replace('[23]', '[1]')
+    resolved = page_review.resolve_sources(tmp_path, 'people/avery.md', before)
+
+    assert page_review.dropped(resolved, after) == []
+    assert page_review.restore_dropped(resolved, after) == after
+    assert page_review.shrinkage(resolved, after) == ''
+    assert page_review.dropped(resolved, after.replace(digest, 'gmail:different')) == [
+        f'Dropped source id the page had: {digest}']
+
+
 def test_dropped_reports_exact_quote_and_source_losses():
     from connectonion.rem.page_review import dropped, quotes
     before = ('# Avery Lin\n\n“Keep [these words](https://example.com) unchanged”. [7]\n'

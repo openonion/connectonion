@@ -907,12 +907,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         stage_progress("reviewing")
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
+    # Compare evidence by its resolved id; keep the raw snapshot for the write guard.
+    snapshot = original
+    original = resolve_sources(notebook.root, record, original)
+    carried = resolve_sources(notebook.root, record, carried)
     from .evidence import additional_research
     items = [*items, *additional_research(notebook.root, directory, items)]
     from . import facts
     from .fact_extract import OTHERS_PHONE
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))
     text = merge_duplicate_definitions(text)
+    text = resolve_sources(notebook.root, record, text)
     cleared_facts = fact_removals(record, text, original, report)
     if carried and cleared_facts:
         # The retention guard still protects every other line using those sources.
@@ -1131,7 +1136,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
     # because the scheduled sync had just started (#1885).
     with _promotion_lock(notebook.root, candidate, total_usage, lock_held):
-        if not notebook.path(record).is_file() or notebook.read(record) != original:
+        if not notebook.path(record).is_file() or notebook.read(record) != snapshot:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
@@ -1213,26 +1218,29 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
         from . import facts
+        # `before` stays untouched for the concurrent-write check below.
+        original = resolve_sources(notebook.root, record, before.get(record, ''))
+        text = resolve_sources(notebook.root, record, after[record])
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_missing_facts(record, restore_runner_fields(record, after[record], before.get(record, '')), before.get(record, '')))))
-        text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
+            restore_missing_facts(record, restore_runner_fields(record, text, original), original))))
+        text, dropped = drop_unresolved(record, text, original, items, pages=set(before),
                                         root=notebook.root)
         unverified = []
         if record.startswith("people/") and record != owner:
-            text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
+            text, unverified = verify_contacts(notebook.root, record, text, items, original)
         text, overview_replaced = repair_project_overview(record, text)
-        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
+        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), original)
         text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
         # Upkeep has no repair turn: a quote or source the page had and this
         # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
         # A gutted page is still refused on what the turn wrote, before anything is put back.
-        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
+        shrunk = shrinkage(original, text) if headings(record) else ''
         written = text
-        text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
+        text = fold_history(restore_dropped(original, text)) if original and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         text = drop_empty_owner_section(text, owner=record == owner)
         text = timezone_from_location(record, text)
-        text = drop_uncited_sources(facts.names_not_addresses(record, text, before.get(record, '')))
+        text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
@@ -1240,7 +1248,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                            "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                            "restored_lines": restored_lines}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = (validate(record, text, before.get(record, ''), items, pages=set(before),
+        errors = (validate(record, text, original, items, pages=set(before),
                            owner=record == owner, root=notebook.root)
                   if headings(record) else [])
         errors += [shrunk] if shrunk else []
