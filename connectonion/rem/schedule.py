@@ -1,33 +1,9 @@
-"""Background maintenance uses Codex Scheduled or the OS; no REM timer daemon.
+"""OS clocks for REM: launchd exec or Codex desktop on macOS, systemd on Linux.
 
-Codex notebooks use the desktop's native file scheduler when the application
-is installed on macOS. Other runners and headless Macs retain launchd;
-Linux uses a systemd user timer with the same five-minute tick.
-
-`co rem daily` uses sync's lock, attempt cap and incremental
-checkpoint, so the only thing the background needs is something that survives a
-closed terminal and a reboot and wakes us now and then. launchd is that on
-macOS: one declarative job file. A worker process of ours would still need a
-login launcher per OS and would add a process on top -- so the per-OS part is
-kept to this one file, and everything else stays one implementation in `sync`.
-
-The job is a tick, and it is set twice, because each trigger has been
-measured dead on one macOS. 2026-09-07, macOS 26: a `StartCalendarInterval`
-job -- array or dict form, plain /bin/sh, with or without ProcessType -- never
-fired in three experiments, while `StartInterval` fired to the second.
-2026-10-11, macOS 14.1: the installed job had runs = 0 a day after install, a
-60 s `StartInterval` test job ran 0 times in four minutes, and a calendar job
-bootstrapped the same way ran every minute. So the job carries both: every
-TICK_SECONDS, and on every matching minute of the clock. So launchd runs `co rem sync --scheduled` (formerly `daily --scheduled`, which still works)
-every TICK_SECONDS, and `sync` decides whether one of the saved times has come
-due since the last scheduled batch, in the saved timezone rather than the
-machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
-first tick after wake, and a tick that finds nothing due exits at once without
-touching the notebook. RunAtLoad is off: the first tick is the catch-up, and
-nothing races the foreground batch `start` just ran.
-
-Known launchd behaviour (measured 2026-08-18): a job still running when its
-interval elapses is skipped silently -- harmless here, the next tick catches up.
+Exec uses exact saved fire times and follow-ups. Legacy child-runner jobs use
+five-minute ticks so sync can coalesce due slots in the saved timezone.
+launchd skips a job still running at its next fire; exec also holds a process
+lock so a manual fire or replacement job cannot overlap the previous turn.
 """
 
 import hashlib
@@ -172,6 +148,7 @@ class Launchd:
             binary = shutil.which(name)
             if binary:
                 dirs.append(str(Path(binary).parent))
+        dirs += os.environ.get("PATH", "").split(os.pathsep)
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
         pythonpath = _checkout_path()
@@ -213,6 +190,8 @@ class Launchd:
         native = CodexNative(launcher=self, run=self.run)
         if native.installed(root):
             native.uninstall(root)
+            if config['schedule']['runner'] == 'codex-exec':
+                native.definition_path(root).unlink(missing_ok=True)
         path = self.plist_path(root)
         self._write_plist(path, self.render(root, config))
         self._remove_legacy(root)  # one job per root, not the old label beside the new
@@ -314,6 +293,43 @@ class Launchd:
             elif line.startswith("runs = "):
                 info["runs"] = int(line.split("=", 1)[1])
         return info
+
+
+class CodexExec(Launchd):
+    """launchd owns the clock; a separate lock spans the whole Codex turn."""
+
+    def render(self, root: Path, config: dict) -> str:
+        from .codex_schedule import desktop_timezone, fire_times
+        if config['schedule']['timezone'] != desktop_timezone():
+            raise RemError('codex-exec fire times use this computer’s timezone; set schedule.timezone to the local timezone')
+        root = Path(root).resolve()
+        job = plistlib.loads(super().render(root, config).encode())
+        job['ProgramArguments'] = ['/usr/bin/caffeinate', '-i', sys.executable,
+                                   '-m', 'connectonion.rem.codex_exec', '--root', str(root)]
+        job.pop('StartInterval')
+        job['StartCalendarInterval'] = [dict(zip(('Hour', 'Minute'), map(int, t.split(':'))))
+                                        for t in fire_times(config)]
+        if os.environ.get('CODEX_HOME'):
+            job['EnvironmentVariables']['CODEX_HOME'] = os.environ['CODEX_HOME']
+        if os.environ.get('CODEX_CMD'):
+            job['EnvironmentVariables']['CODEX_CMD'] = os.environ['CODEX_CMD']
+        return plistlib.dumps(job, sort_keys=False).decode()
+
+    def install(self, root: Path, config: dict) -> dict:
+        from .runner import ready
+        problem, fix = ready({**config, 'runner': 'codex'})
+        if problem:
+            raise RemError(f'{problem}; {fix}')
+        # Validate before pausing the other clock.
+        self.render(root, config)
+        result = super().install(root, config)
+        return {**result, 'runner': 'codex-exec',
+                'note': 'Codex exec keeps working across tasks in one turn; desktop automation turns can end early. Keep this computer awake.'}
+
+    def describe(self, root: Path) -> dict:
+        from .files import read_json, state_path
+        return {**super().describe(root), 'runner': 'codex-exec',
+                'last_turn': read_json(state_path(root, 'last-turn.json'), None)}
 
 
 class Systemd:
@@ -470,10 +486,15 @@ def default_scheduler(root=None, *, for_start=False):
                                            or native.describe(root).get("observed_active")):
                 return native
             if Launchd().installed(root):
+                path = Launchd().plist_path(root)
+                if path.is_file() and 'connectonion.rem.codex_exec' in plistlib.loads(path.read_bytes()).get('ProgramArguments', []):
+                    return CodexExec()
                 return Launchd()
             if native.installed(root):
                 return native
         config = read_config(root)
+        if config.get("runner") == "codex" and config["schedule"]["runner"] == "codex-exec":
+            return CodexExec()
         if (config.get("runner") == "codex" and app_installed()
                 and config["schedule"]["timezone"] == desktop_timezone()):
             return native

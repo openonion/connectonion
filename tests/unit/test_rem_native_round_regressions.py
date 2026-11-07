@@ -33,9 +33,21 @@ def save_round(root, jobs, **extra):
     return cursor
 
 
+def audit_notes(task):
+    directory = Path(task["material"])
+    packet = read_json(directory / "audit-material.json", {})
+    lines = []
+    for row in packet["sources"]:
+        parts = row["context"]["excerpt"].replace('"', '\n').splitlines()
+        excerpt = max(parts, key=len)[:80]
+        lines.append(f'[{row["citation"]}] PASS — excerpt: "{excerpt}"\n')
+    (directory / "notes.md").write_text("".join(lines))
+
+
 def accept(root, task):
     result = native.submit(root, task["id"])
     if result.get("stage") == "claim-audit":
+        audit_notes(result)
         Path(result["candidate"]).write_text('{"verdict":"PASS","findings":[]}')
         result = native.submit(root, task["id"])
     return result
@@ -143,6 +155,7 @@ def test_native_multi_round_page_has_one_final_audit_and_no_early_promotion(note
             decision = {"verdict": verdict, "findings": [] if verdict == "PASS" else [{
                 "claim": "A pilot review was requested.", "issue": "Synthetic failure", "evidence": "Fixture",
                 "required_correction": "Correct the claim"}]}
+            audit_notes(result)
             Path(result["candidate"]).write_text(json.dumps(decision))
             result = native.submit(notebook, task["id"])
             assert result["outcome"] == ("accepted" if verdict == "PASS" else "refused")

@@ -29,6 +29,14 @@ def local_timezone() -> str:
 # Every stage runs through co ai. "default" lets the selected harness choose its model.
 RUNNERS = ("codex", "coai", "claude-code")
 
+
+def schedule_runner() -> str:
+    """Prefer persistent exec sessions when the installed CLI can run."""
+    from .runner import ready
+    from .codex_schedule import app_installed
+    return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
+
+
 def default_config() -> dict:
     # Spark was the default until Codex 0.155 refused it for ChatGPT logins
     # ("not supported when using Codex with a ChatGPT account"), which made every
@@ -46,9 +54,9 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty means the ones detected from the owner's own words (languages.py).
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "speed": "fast", "language": "en", "languages": [],
+    return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
-                         "timezone": local_timezone()},
+                         "timezone": local_timezone(), "runner": "codex-exec"},
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
             # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
@@ -108,6 +116,8 @@ def validate(config: dict) -> dict:
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
+        raise RemError("effort must be minimal, low, medium, high or xhigh")
     if config["speed"] not in ("fast", "standard"):
         raise RemError("speed must be fast or standard")
     if not isinstance(config["language"], str) or not LANGUAGE.fullmatch(config["language"]):
@@ -116,8 +126,10 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone"}:
+    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner"}:
         raise RemError("Schedule requires times and timezone")
+    if schedule["runner"] not in ("codex-exec", "codex-app"):
+        raise RemError("schedule.runner must be codex-exec or codex-app")
     times = schedule["times"]
     if (not isinstance(times, list) or not times or len(times) != len(set(map(str, times)))
             or any(not isinstance(t, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", t) for t in times)):
@@ -165,7 +177,9 @@ def _drop_superseded(root: Path, config: dict) -> None:
 def read_config(root: Path, *, validated: bool = True) -> dict:
     path = safe_path(root, "config.yaml")
     if not path.exists():
-        return default_config()
+        config = default_config()
+        config['schedule']['runner'] = schedule_runner()
+        return config
     try:
         config = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeError) as error:
@@ -179,6 +193,9 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")
+    config.setdefault("effort", "medium")
+    if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
+        config['schedule']['runner'] = schedule_runner()
     _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.
@@ -219,6 +236,7 @@ def prepare(root: Path) -> None:
 def first_runner(config: dict) -> dict:
     """Codex when it can run; otherwise Claude Code, if that can."""
     from .runner import ready
+    config['schedule']['runner'] = schedule_runner()
     if not ready(config)[0]:
         return config
     fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5"}
@@ -238,10 +256,10 @@ def set_config(root: Path, pairs: list[str]) -> dict:
                 target = config.get(parts[0])
                 if not isinstance(target, dict):
                     raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
-            elif len(parts) != 1 or key not in ("model", "runner", "speed", "language", "languages"):
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, language, languages, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
+                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
             if parts[-1] not in target:
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, language, languages, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
             if key == "schedule.times":
                 value = sorted(raw.split(","))
             elif key == "languages":

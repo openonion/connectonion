@@ -53,7 +53,7 @@ def _config_hash(config):
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    content = {key: value for key, value in config.items() if key != "schedule"}
+    content = {key: value for key, value in config.items() if key not in ("schedule", "effort")}
     content["limits"] = {key: value for key, value in config["limits"].items() if key not in run_limits}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
@@ -105,7 +105,7 @@ def _inputs(root, task, directory, *, handler):
 
 
 def _audit_progress(task):
-    from .project_claim_review import audit_progress
+    from .project_claim_review import audit_progress, rejected_checkpoints
     directory = Path(task["material"])
     notes = directory / "notes.md"
     if task["stage"] != "claim-audit":
@@ -117,7 +117,8 @@ def _audit_progress(task):
         batch = " ".join(f"[{citation}]" for citation in unchecked[:AUDIT_BATCH_SIZE])
         now = (f"Now: check {batch} (next {AUDIT_BATCH_SIZE} unchecked, in Sources order) "
                f"and append one line per citation to {notes} before doing anything else.")
-    return f"Audit progress: {checked} of {total} citations checked ({notes})\n{now}"
+    rejected = rejected_checkpoints(directory)
+    return f"Audit progress: {checked} of {total} citations checked ({notes}); {rejected} rejected\n{now}"
 
 
 def _display(root, task):
@@ -492,6 +493,8 @@ def _continue_review(root, task, reason):
 
 def _request_review(root, task, result):
     if result.get("continue_review"):
+        task["instructions"] = result["needs_review"]
+        _write_instructions(task)
         return _continue_review(root, task, result["continue_review"])
     directory = Path(task["directory"])
     task["review_unreserved"] = True
