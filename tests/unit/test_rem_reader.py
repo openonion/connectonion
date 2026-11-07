@@ -2300,7 +2300,8 @@ def test_translation_notice_is_one_quiet_line_for_missing_written_pages():
     ''')
     assert result['mapped'] is None and result['english'] is None
     for state in ['missing', 'failed', 'last', 'queued']:
-        assert result[state]['text'] == 'Pages are translated when you open them.'
+        prefix = '1 page could not be translated. ' if state == 'failed' else ''
+        assert result[state]['text'] == prefix + 'Pages are translated when you open them.'
         assert 'children' not in result[state]
 
 
@@ -2678,3 +2679,77 @@ def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():
     ''')
     assert 'Still waiting on the slides.' in json.dumps(result)
     assert 'Gone quiet' in json.dumps(result)
+
+
+def test_today_keeps_safe_failure_recovery_without_runner_payload():
+    from connectonion.rem.reader import _today_data
+
+    shell = _today_data({'records': [], 'drafts': [], 'source_context': {}, 'logs': [
+        {'phase': 'init', 'outcome': 'failed', 'error': 'Failed to authenticate: 403 private payload'},
+        {'phase': 'init', 'outcome': 'failed', 'error': 'TimeoutError: private payload'},
+        {'phase': 'init-translation', 'pages': [{'page': 'people/mara.md', 'outcome': 'failed'}]},
+    ]})
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['failureSummary', 'translationNotice'])
+    result = _run_reader_js(functions + '\nconst REM = ' + json.dumps(shell) + ';\n' + r'''
+      REM.owner = 'people/owner.md';
+      const known = () => ({status: 'Investigated'}), listedRecords = () => [{written: true, category: 'people'}];
+      const el = (tag, attrs) => attrs;
+      const failure = failureSummary({failed: REM.brief_logs.slice(0, 2), changed: []});
+      uiLanguage = 'zh'; UI.zh = {};
+      console.log(JSON.stringify([failure.text, translationNotice().text]));
+    ''')
+    assert 'Model access was refused. Restore access before retrying.' in result[0]
+    assert 'A request timed out.' in result[0]
+    assert 'No memory pages were written' in result[0]
+    assert result[1].startswith('1 page could not be translated.')
+    assert 'private payload' not in json.dumps(shell)
+
+
+def test_threads_use_current_original_and_preserve_translated_deadline():
+    names = ['threads', 'rawSection', 'listItems', 'isCalm', 'writtenDates', 'writtenDatePattern', 'calendarDay', 'daysSince']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-10-03', source_context: {}}, DAY_MS = 86400000;
+      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/, direction = () => 'mine';
+      const r = {path: 'people/mara.md', category: 'people', original: '# Mara\n\n## Open threads\n- You owe Mara the old plan.\n',
+        text: '# Mara\n\n## Open threads\n- You owe Mara the draft; requested 2026-10-01; due 2026-10-03 [1].\n'};
+      const current = threads(r).items[0];
+      r.original = r.text; r.shown = 'zh';
+      r.text = '# Mara\n\n## Open threads\n- 请交初稿 [1]。\n';
+      const translated = threads(r).items[0];
+      r.shown = ''; r.text = '# Mara\n\n## Open threads\nUnknown. Historical requests do not establish pending work.\n';
+      console.log(JSON.stringify([current, translated, threads(r).items.length]));
+    ''')
+    assert result[0]['due'] == result[1]['due'] == '2026-10-03'
+    assert result[0]['since'] == result[1]['since'] == '2026-10-01'
+    assert result[1]['text'] == '请交初稿 [1]。'
+    assert result[2] == 0
+
+
+def test_reviewed_facts_use_updated_english_instead_of_saved_original():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['parseFacts', 'rawSection'])
+    result = _run_reader_js(functions + r'''
+      const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
+      const r = {path: 'people/mara.md', original: '# Mara\n\n## Facts\n- Role: Old CEO\n',
+        text: '# Mara\n\n## Facts\n- Role: Programme manager (historical current unknown) [1]\n- Company: Unknown\n'};
+      console.log(JSON.stringify([...parseFacts(r)]));
+    ''')
+    assert result == [['Role', [{'value': 'Programme manager', 'qualifier': 'historical current unknown', 'citations': ['1']}]],
+                      ['Company', []]]
+
+
+def test_plain_words_preserves_document_dates_and_a_deadline_not_shown_in_meta():
+    function = re.search(r'function withoutDateClutter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      console.log(JSON.stringify([
+        withoutDateClutter('You owe Mara the agreement dated (2026-10-03).'),
+        withoutDateClutter('Send the plan — due 2026-10-03.', {due: '2026-10-04'}),
+        withoutDateClutter('Send the plan — due 2026-10-03.', {due: '2026-10-03'}),
+        withoutDateClutter('She asked “Deliver by 2026-10-03 [1]”. [1]')
+      ]));
+    ''')
+    assert result == ['You owe Mara the agreement dated (2026-10-03).',
+                      'Send the plan — due 2026-10-03.', 'Send the plan.',
+                      'She asked “Deliver by 2026-10-03 [1]”.']
