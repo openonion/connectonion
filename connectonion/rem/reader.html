@@ -1619,9 +1619,6 @@
   .r4-btn.ghost { box-shadow: none; background: none; color: var(--r4-ink2); }
   .r4-btn.ghost:hover { background: var(--r4-hover); }
   .r4 .r4-today { flex: none; align-self: center; color: var(--r4-ink2); font: 500 14px var(--r4-font); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-  .r4 .r4-primary { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 18px; border-radius: 10px; font: 650 14px var(--r4-font); white-space: nowrap; background: var(--r4-fresh); color: var(--r4-on-fresh); flex: none;
-    box-shadow: 0 1px 0 rgba(5,48,27,.12), 0 4px 14px -4px color-mix(in srgb, var(--r4-fresh) 70%, transparent); transition: background 120ms ease-out; }
-  .r4 .r4-primary:hover { background: var(--r4-fresh-h); }
   .r4-card { background: var(--r4-surface); border-radius: 14px; box-shadow: var(--r4-shadow); }
   /* The person page */
   .r4-crumb { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); }
@@ -1681,11 +1678,6 @@
   /* The People list */
   .r4-people { max-width: 720px; }
   .r4-people.wide { max-width: none; }
-  .r4-focus { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--r4-surface); box-shadow: var(--r4-shadow-up); }
-  .r4-focus .body { flex: 1; min-width: 0; }
-  .r4-focus .k { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); display: flex; gap: 8px; align-items: center; }
-  .r4-focus .t { display: block; font: 650 17px/24px var(--r4-font); letter-spacing: -.01em; margin-top: 3px; }
-  .r4-focus .s { font-size: 13.5px; color: var(--r4-ink2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .r4-bar { display: flex; align-items: center; gap: 8px; margin: 36px 0 12px; }
   .r4-find { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--r4-surface); box-shadow: var(--r4-shadow); color: var(--r4-ink); font: 13.5px var(--r4-font); }
   .r4-find::placeholder { color: var(--r4-ink3); }
@@ -1732,7 +1724,6 @@
     .r4 h2 { margin-top: 32px; }
     .r4-headrow { flex-wrap: wrap; gap: 14px; margin-top: 10px; }
     .r4 .face.lg { width: 48px; height: 48px; font-size: 16px; }
-    .r4 .r4-primary { width: 100%; justify-content: center; height: 46px; order: 3; }
     .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .r4-rail h4:first-child { margin-top: 32px; }
     .r4-stats { gap: 18px; overflow: hidden; }
@@ -1741,9 +1732,6 @@
     .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
     .tl-more { margin-left: 0; }
     .owe { padding: 14px; }
-    .r4-focus { flex-wrap: wrap; padding: 16px; margin-top: 20px; }
-    .r4-focus .face { display: none; }
-    .r4-focus .s { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .r4-bar { flex-wrap: wrap; margin-top: 28px; }
     .r4-find { flex-basis: 100%; }
     .r4-tabs button:nth-child(n+3) { display: none; }
@@ -1787,14 +1775,6 @@
   .projects-view .btn-act, .sessions-view.r4 .btn-act { gap: 8px; min-height: 40px; padding: 0 20px; border-radius: 10px; background: var(--act); color: var(--act-ink) !important; font-family: var(--r4font); box-shadow: 0 6px 16px -6px rgba(34, 210, 122, .55); transition: background .12s ease-out; }
   .projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover { background: var(--act-hover); }
   .btn-act.play::before { content: ""; width: 0; height: 0; border-left: 9px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-  .project-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 24px; margin: 0 0 40px; padding: 24px 22px 24px 24px; border-radius: 18px; background: var(--sheet); box-shadow: var(--lift); }
-  .project-hero-kicker { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; color: var(--ink-3); font-size: 13px; }
-  .project-hero h2 { margin: 0 0 4px; font: 650 20px/28px var(--r4font); letter-spacing: -.015em; }
-  .project-hero h2 a { color: var(--ink); text-decoration: none; }
-  .project-hero-line { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .project-weeks { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
-  .project-weeks span { width: 6px; border-radius: 1.5px; background: var(--ink-4); }
-  .project-weeks span.none { background: var(--line); }
   .project-lane-tabs { display: none; }
   .project-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
   .project-lane-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 12px 4px; font: 600 13px/18px var(--r4font); color: var(--ink); border: 0; padding: 0; }
@@ -1876,9 +1856,6 @@
     .projects-view h1.page-state, .sessions-view.r4 h1.page-state { font-size: 24px; line-height: 31px; margin-bottom: 20px; }
     .page-state-sub { display: block; font-size: 16px; line-height: 24px; letter-spacing: 0; }
     .page-state-sub .sep { display: none; }
-    .project-hero { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 18px; margin-bottom: 24px; }
-    .project-hero .project-weeks { display: none; }
-    .project-hero-go { width: 100%; min-height: 46px !important; }
     .project-lane-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; margin: 0 0 16px; border-radius: 10px; background: var(--sunk); }
     .project-lane-tabs button { min-height: 36px; border: 0; border-radius: 8px; background: none; color: var(--ink-3); font: 500 14px var(--r4font); }
     .project-lane-tabs button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--ring); }
@@ -2048,8 +2025,6 @@
   .ov-chip.mute { color: var(--ov-ink3); background: var(--ov-sunk); }
   .ov-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
   .ov-dot.lamp { background: var(--ov-lamp); } .ov-dot.late { background: var(--ov-late); }
-  .ov-primary { display: block; height: 40px; line-height: 40px; padding: 0 18px; border-radius: 10px; font-size: 14px; font-weight: 650; background: var(--ov-fresh); color: var(--ov-on-fresh) !important; border: 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; flex: none; min-width: 0; box-shadow: 0 1px 0 rgba(5,48,27,.12), 0 4px 14px -4px color-mix(in srgb, var(--ov-fresh) 70%, transparent); transition: background 120ms ease-out; }
-  .ov-primary:hover { background: var(--ov-fresh-h); text-decoration: none; }
   .ov-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 7px; font-family: inherit; font-size: 13px; font-weight: 550; white-space: nowrap; border: 0; box-shadow: inset 0 0 0 1px var(--ov-line2); background: var(--ov-surface); color: var(--ov-ink); cursor: pointer; transition: background 120ms ease-out; }
   .ov-btn:hover { background: var(--ov-sunk); }
   .ov-btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
@@ -2072,8 +2047,6 @@
   .ov-more { display: flex; width: 100%; justify-content: center; align-items: center; gap: 4px; min-height: 44px; border: 0; background: none; color: var(--ov-ink3); font-family: inherit; font-size: 13px; cursor: pointer; }
   .ov-more:hover { background: var(--ov-hover); }
   /* list */
-  .ov-focal .ov-primary { max-width: 260px; }
-  .ov-focal { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--ov-surface); box-shadow: var(--ov-shadow-up); }
   .ov-k { font-size: 12.5px; color: var(--ov-ink3); font-weight: 500; display: flex; gap: 8px; align-items: center; }
   .ov-ft { display: block; font-size: 17px; line-height: 24px; font-weight: 650; letter-spacing: -.01em; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .ov-fs { font-size: 13.5px; color: var(--ov-ink2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2152,14 +2125,11 @@
     .ov-list .ov-row { align-items: flex-start; }
     .ov-list .ov-row > .ov-end { padding-top: 2px; flex-direction: column; align-items: flex-end; gap: 6px; }
     .ov-list .ov-s { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    .ov-list .ov-stack, .ov-list .ov-kind, .ov-focal > .ov-tile, .ov-tabs, .ov-hint { display: none; }
-    .ov-focal { flex-wrap: wrap; padding: 16px; margin-top: 20px; }
+    .ov-list .ov-stack, .ov-list .ov-kind, .ov-tabs, .ov-hint { display: none; }
     .ov-fs { white-space: normal; }
-    .ov .ov-primary { width: 100%; max-width: none; height: 46px; line-height: 46px; text-align: center; box-sizing: border-box; }
     .ov-bar { margin-top: 28px; }
     .ov-head { flex-wrap: wrap; gap: 14px; margin-top: 6px; }
     .ov-head .ov-tile.xl { width: 48px; height: 48px; font-size: 17px; }
-    .ov-head > .ov-primary, .ov-head > .draft-now { order: 3; }
     .ov-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .ov-stats { gap: 18px; overflow: hidden; }
     .ov-stats div:nth-child(n+4) { display: none; }
@@ -2346,6 +2316,12 @@
     .ov-r6 .ov-section > .ov-btn.ghost { margin-left: 0; }
   }
 </style>
+<style id="art-style">
+  /* Entity lists are records: the title alone, and at most one quiet link to Today. */
+  .list-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; }
+  .list-today { flex: none; font: 400 14px/22px var(--today-font); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+  .list-today:hover { color: var(--ink); text-decoration-color: currentColor; }
+</style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -2417,7 +2393,8 @@ const UI = {
     "About this person": "关于这个人",
     "{n} items": "{n} 件",
     "1 item in Today": "今天里有 1 件", "{n} items in Today": "今天里有 {n} 件",
-    "Answer first": "最该先回的人",
+    "1 person waiting in Today →": "今天里有 1 人在等你 →", "{n} people waiting in Today →": "今天里有 {n} 人在等你 →",
+    "1 organisation waiting in Today →": "今天里有 1 个组织在等你 →", "{n} organisations waiting in Today →": "今天里有 {n} 个组织在等你 →",
     "{name} is waiting on you": "{name} 在等你",
     "Waiting on you · {n}": "在等你 · {n}",
     "Recently in touch": "最近联系",
@@ -2426,7 +2403,6 @@ const UI = {
     "Rows": "列表",
     "People waiting": "在等你",
     "{n} more items": "其余 {n} 件",
-    "{n} people waiting on you": "{n} 人在等你",
     "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
@@ -3373,8 +3349,6 @@ const UI = {
     "{n} sessions in 30 days": "30 天里 {n} 个会话",
     "{n} more projects": "还有 {n} 个",
     "Newest: {what}": "最新一件：{what}",
-    "Busiest this week": "本周最忙",
-    "Go through them one by one": "逐件过一遍",
     "Sessions per week · 12 weeks": "每周会话数 · 12 周",
     "Not investigated yet. REM only knows its folder and sessions.": "还没调查，REM 只知道它的文件夹和会话。",
     "Another page, {name}, may be the same project": "另有一页 {name}，可能是同一个项目",
@@ -5254,8 +5228,8 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
   }
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
   if ((REM.reviews || []).length || active === "reviews") nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
@@ -6290,40 +6264,6 @@ function owedCard(r, entries) {
     rows.length ? el("div", { class: "r4-card owed" }, [...rows, more])
       : emptyLine(threads(r))]);
 }
-function openPersonDraft(draft, trigger) {
-  const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
-  const dialog = el("dialog", { class: "person-draft-review", "aria-label": t("Reply draft"),
-    style: "box-sizing:border-box;width:min(880px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:16px;overflow:auto" }, [close, replyDraftCard(draft)]);
-  close.onclick = () => dialog.close();
-  dialog.addEventListener("click", () => { if (draft.status === "skipped") dialog.close(); });
-  dialog.addEventListener("close", () => {
-    dialog.remove();
-    const target = trigger.isConnected ? trigger : document.querySelector("#done-notice button, .r4-primary, #q");
-    target?.focus({ preventScroll: true });
-  });
-  document.body.appendChild(dialog);
-  dialog.showModal();
-  close.focus({ preventScroll: true });
-}
-function personPrimary(r, entry) {
-  if (!entry) return null;
-  const draft = threadDraft(entry), contact = threadContact(entry);
-  if (draft?.status === "no_reply") {
-    const done = el("button", { type: "button", class: "r4-primary", text: t("Mark done") });
-    done.insertAdjacentHTML("afterbegin", CHECK_ICON);
-    done.onclick = () => setDone(entry, true);
-    return done;
-  }
-  const reply = draft?.status !== "prepared" && REM.live
-    && (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
-  if (reply?.state === "queued") return draftNowButton(entry, {kind: reply.provider, thread: reply.thread}, null);
-  const button = draft?.status === "prepared" ? el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("Review REM's draft") })
-    : contact && !contact.subject ? mailtoLink(contact, "r4-primary", t("Write to {name}", { name: firstName(r) }))
-    : el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("See what you owe") });
-  button.insertAdjacentHTML("afterbegin", PEN_ICON);
-  if (draft?.status === "prepared") button.onclick = event => { event.preventDefault(); openPersonDraft(draft, button); };
-  return button;
-}
 function replyDuration(seconds) {
   return seconds < 3600 ? t("{n} min", { n: Math.max(1, Math.round(seconds / 60)) })
     : seconds < 48 * 3600 ? t("{n} hours", { n: Math.round(seconds / 3600) }) : t("{n} days", { n: Math.round(seconds / 86400) });
@@ -6482,13 +6422,6 @@ function peopleRow(r) {
     meta === null ? el("div", { class: "s lock", text: t("Personal item") }) : meta ? privateFallback(el("div", { class: "s", text: meta })) : null]),
     el("div", { class: "end" }, [chip, peopleSpark(r), el("span", { class: "when", text: facts(r).last ? fmtDate(facts(r).last) : "—" })])]);
 }
-function peopleFocus(r) {
-  const entry = waitingOn(r)[0], late = overdueDays(entry.t), parts = owedParts(entry), org = personOrg(r);
-  const sub = [org?.name, parts.head].filter(Boolean).join(" · ");
-  return el("section", { class: "r4-focus" }, [face(r.title, "lg"), el("div", { class: "body" }, [
-    el("div", { class: "k" }, [late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) }) : el("span", { class: "chip lamp", text: age(entry.t.since) }), t("Answer first")]),
-    el("a", { class: "t", href: href(r), text: t("{name} is waiting on you", { name: r.title }) }), sub ? el("div", { class: "s", text: sub }) : null]), personPrimary(r, entry)]);
-}
 function peopleTabs(items, waiting) {
   const orgs = new Map();
   for (const r of items) { const org = personOrg(r)?.name; if (org) orgs.set(org, (orgs.get(org) || 0) + 1); }
@@ -6539,13 +6472,16 @@ function peopleList(items) {
   find.onkeydown = event => { if (event.key === "Enter") list.querySelector(".row.prow")?.click(); };
   table.onclick = () => { peopleTable = true; readerStorage("co-rem-people-view", "table"); render(); };
   state.draw();
-  return [waiting.length ? peopleFocus(waiting[0]) : null, el("div", { class: "r4-bar" }, [find, tabs, table]), list];
+  return [el("div", { class: "r4-bar" }, [find, tabs, table]), list];
+}
+// Entity lists are records; what you owe lives in Today, reached by this one quiet line.
+function listTodayLink(text) {
+  return text ? el("a", { class: "list-today", href: "#", text }) : null;
 }
 function peopleView(items) {
   const main = document.getElementById("main");
   const waiting = items.filter(r => waitingOn(r).length).length;
-  const head = [el("div", { class: "eyebrow", text: t("People") }), el("h1", {}, [t("{n} people", { n: items.length }),
-    waiting ? el("span", { class: "soft", text: t("{n} people waiting on you", { n: waiting }) }) : null])];
+  const head = [el("div", { class: "eyebrow", text: t("People") }), el("div", { class: "list-head" }, [el("h1", { text: t("{n} people", { n: items.length }) }), listTodayLink(waiting ? t(waiting === 1 ? "1 person waiting in Today →" : "{n} people waiting in Today →", { n: waiting }) : "")])];
   if (peopleTable) {
     const rows = el("button", { type: "button", class: "r4-btn sm ghost table-toggle", "aria-pressed": "true", text: t("Rows") });
     rows.onclick = () => { peopleTable = false; readerStorage("co-rem-people-view", "rows"); render(); };
@@ -6645,44 +6581,6 @@ function projectCard(r, days) {
         recent ? el("span", { text: t(recent === 1 ? "{n} session · 30 days" : "{n} sessions · 30 days", { n: recent }) }) : null]) : null]),
     projectTwin(r)]);
 }
-// Twelve weeks of sessions, oldest first, in neutral ink: shape only, no axis.
-function projectWeeks(days) {
-  const weeks = Array(12).fill(0);
-  for (const day of days) { const week = Math.floor(daysSince(day) / 7); if (week < 12) weeks[11 - week]++; }
-  const peak = Math.max(1, ...weeks), title = t("Sessions per week · 12 weeks");
-  return el("span", { class: "project-weeks", title, role: "img", "aria-label": title },
-    weeks.map(n => el("span", { style: "height:" + (n ? Math.max(18, Math.round(100 * n / peak)) : 7) + "%", class: n ? "" : "none" })));
-}
-// The hero line is a glance: each part is cut at its first clause.
-function firstClause(text) {
-  const clause = plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim();
-  const unquoted = clause.split(/[：:]?\s*[“"「]/)[0].trim();
-  const short = unquoted.length >= 6 ? unquoted : clause;
-  if (short.length <= 40) return short;
-  const cut = short.slice(0, 39), space = cut.lastIndexOf(" ");
-  return (space > 24 ? cut.slice(0, space) : cut) + "…";
-}
-function projectHero(r, days) {
-  const f = facts(r), open = f.open.length;
-  const standing = [...(section(r, "where it stands")?.text || "").matchAll(/^\s*-\s+(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]).sort().at(-1);
-  const shipped = newestStanding(r) ? [standing ? fmtDate(standing) : "", firstClause(newestStanding(r))].filter(Boolean).join(" ") : "";
-  const latest = [...f.open].sort((a, b) => (b.since || "").localeCompare(a.since || ""))[0];
-  const newest = [latest.since ? fmtDate(latest.since) : "", firstClause(latest.text)].filter(Boolean).join(" ");
-  const recent = projectRecent(days);
-  const line = [shipped, recent ? t("{n} sessions in 30 days", { n: recent }) : "", t("Newest: {what}", { what: newest })].filter(Boolean).join(" · ");
-  return el("section", { class: "project-hero", "aria-label": t("Busiest this week") }, [
-    el("div", { class: "project-hero-text" }, [
-      el("p", { class: "project-hero-kicker" }, [el("span", { class: "chip lamp", text: t(open === 1 ? "{n} open item" : "{n} open items", { n: open }) }), t("Busiest this week")]),
-      el("h2", {}, [el("a", { href: href(r), text: r.title })]),
-      el("p", { class: "project-hero-line", text: line })]),
-    projectWeeks(days),
-    el("a", { class: "btn-act project-hero-go", href: href(r) + "&h=open-threads", text: t("Go through them one by one") })]);
-}
-// Busiest = the most open items among projects that moved this week; else the most open items anywhere.
-function projectBusiest(items) {
-  const open = items.filter(r => facts(r).open.length && !r.private_project).sort((a, b) => facts(b).open.length - facts(a).open.length);
-  return open.find(r => projectLane(r) === "week") || open[0];
-}
 function projectLaneNode(lane, label, rows, days, shown, caption) {
   const list = el("ul", { class: "project-lane-cards" }, rows.slice(0, 7).map(r => projectCard(r, days.get(r.path) || [])));
   const more = rows.length > 7 ? sessionButton(t("{n} more projects", { n: rows.length - 7 }), () => {
@@ -6695,13 +6593,11 @@ function projectLaneNode(lane, label, rows, days, shown, caption) {
 function pageStateSub(text) { return el("span", { class: "page-state-sub" }, [el("span", { class: "sep", text: " · " }), text]); }
 function projectsBoard() {
   const main = document.getElementById("main"), items = inCategory("projects").sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
-  // The lifted project is not repeated in its lane.
-  const days = projectSessionDays(), busiest = projectBusiest(items), week = items.filter(r => projectLane(r) === "week").length;
-  const lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => r !== busiest && projectLane(r) === key), caption]);
+  const days = projectSessionDays(), week = items.filter(r => projectLane(r) === "week").length;
+  const lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => projectLane(r) === key), caption]);
   main.replaceChildren(el("div", { class: "projects-view" }, [
     el("p", { class: "page-kicker", text: label("projects") }),
     el("h1", { class: "page-state" }, [t("{n} projects", { n: items.length }), week ? pageStateSub(t("{n} active this week", { n: week })) : null]),
-    busiest ? projectHero(busiest, days.get(busiest.path) || []) : null,
     projectBoardLanes(lanes, days)]));
 }
 // Phone shows one lane at a time; the segmented control picks it.
@@ -6727,8 +6623,7 @@ const ORG_UI_ZH = {
   "University": "大学", "Investor": "投资方", "Client or partner": "客户与合作", "Supplier": "供应商",
   "Community and events": "社区与活动", "Your company": "你的公司", "Personal": "个人",
   "Not sure what this is yet": "还不清楚是什么机构",
-  "{n} organisations": "{n} 个组织", "{n} waiting on you": "{n} 个在等你", "nothing waiting on you": "没有在等你的事",
-  "Most urgent organisation": "最该先处理的组织",
+  "{n} organisations": "{n} 个组织",
   "{org} has {n} waiting on you; most urgent: {who}, {thing}": "{org} 有 {n} 件在等你，最急的是 {who}：{thing}",
   "{org} is waiting on one thing: {who}, {thing}": "{org} 有 1 件在等你：{who}，{thing}",
   "{n} people you know": "{n} 位你认识的人", "1 person you know": "1 位你认识的人",
@@ -6853,20 +6748,6 @@ function owedWords(entry) {
   const said = quote ? quote[1] || quote[2] || quote[3] : "";
   return { title: capFirst(lead), quote: /^0x[0-9a-f]{24,}$/i.test(said) ? said.slice(0, 10) + "…" + said.slice(-9) : said };
 }
-// The one green button: Today's own action for the most urgent owed thing, named.
-function orgPrimary(entry) {
-  const who = owedPerson(entry), name = who ? orgFirstName(who) : orgName(entry.r);
-  const noReply = threadDraft(entry)?.status === "no_reply";
-  const node = noReply ? el("button", { type: "button", text: orgT("Mark done") }) : primaryAction(entry);
-  if (noReply) node.onclick = () => setDone(entry, true);
-  const button = node.matches("a, button") ? node : node.querySelector("button");
-  const thing = orgThing(entry);
-  const completion = button.textContent === orgT("Mark done");
-  button.className = "ov-primary";
-  if (!completion) button.textContent = orgT(threadKind(entry)?.mail ? "Reply to {name} · {thing}" : "Follow up with {name} · {thing}", { name, thing });
-  button.title = thing;
-  return node;
-}
 
 // ---------- the list ----------
 // Two pages with one name (one company, two mail domains) are one organisation.
@@ -6900,27 +6781,13 @@ function orgsView() {
   const main = document.getElementById("main");
   main.textContent = "";
   const rows = orgRows(), waiting = rows.filter(o => o.owed.length).sort(orgByUrgency);
+  const today = waiting.length ? t(waiting.length === 1 ? "1 organisation waiting in Today →" : "{n} organisations waiting in Today →", { n: waiting.length }) : "";
   const box = el("div", { class: "ov ov-list" }, [el("div", { class: "ov-eyebrow", text: label("orgs") }),
-    el("h1", {}, [orgT("{n} organisations", { n: rows.length }), el("span", { class: "ov-soft",
-      text: waiting.length ? orgT("{n} waiting on you", { n: waiting.length }) : orgT("nothing waiting on you") })])]);
-  const focal = waiting.find(o => !orgHidden(o.r));
-  if (focal) box.appendChild(orgFocal(focal));
+    el("div", { class: "list-head" }, [el("h1", { text: orgT("{n} organisations", { n: rows.length }) }), listTodayLink(today)])]);
   const results = el("div", { class: "ov-groups" });
   box.append(orgFilterBar(rows, results), results);
   main.appendChild(box);
   orgResults(rows, results);
-}
-function orgFocal(o) {
-  const { r, owed } = o, top = owed[0], who = owedPerson(top);
-  const late = owed.find(overdue);
-  const values = { org: orgName(r), n: owed.length, who: who ? orgFirstName(who) : orgName(r), thing: owedWords(top).title };
-  return el("section", { class: "ov-focal", "aria-label": orgT("Most urgent organisation") }, [orgTile(r, "lg"),
-    el("div", { class: "ov-body" }, [
-      el("div", { class: "ov-k" }, [late ? orgChip("late", orgT("Overdue {n} days", { n: daysSince(late.t.due) })) : orgChip("lamp", orgT("{n} items", { n: owed.length })),
-        orgT("Most urgent organisation")]),
-      el("a", { class: "ov-ft", href: href(r), text: orgT(owed.length > 1 ? "{org} has {n} waiting on you; most urgent: {who}, {thing}" : "{org} is waiting on one thing: {who}, {thing}", values) }),
-      el("div", { class: "ov-fs", text: [orgKind(r), o.people.length ? orgT("{n} people you know", { n: o.people.length }) : "", orgRelation(r)].filter(Boolean).join(" · ") })]),
-    orgPrimary(top)]);
 }
 function orgFilterBar(rows, results) {
   const find = el("input", { type: "search", class: "ov-find", placeholder: orgT("Filter organisations, people, domains"),

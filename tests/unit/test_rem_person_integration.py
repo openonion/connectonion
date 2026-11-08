@@ -21,21 +21,6 @@ def run_js(names, script):
     return json.loads(result.stdout)
 
 
-def test_prepared_person_primary_opens_review_without_navigating_to_today():
-    result = run_js(['personPrimary'], r'''
-      const r = {path: 'people/mara.md'}, draft = {status: 'prepared', id: 'fixture'};
-      const threadDraft = () => draft, threadContact = () => null, href = r => '#r=' + r.path;
-      const t = value => value, PEN_ICON = '', el = (tag, attrs) => ({...attrs, insertAdjacentHTML() {}});
-      let prevented = false, reviewed = null;
-      const openPersonDraft = (value, trigger) => { reviewed = [value.id, trigger.href]; };
-      const button = personPrimary(r, {});
-      button.onclick({preventDefault() {prevented = true;}});
-      console.log(JSON.stringify({href: button.href, prevented, reviewed}));
-    ''')
-    assert result == {'href': '#r=people/mara.md&h=open-threads', 'prevented': True,
-                      'reviewed': ['fixture', '#r=people/mara.md&h=open-threads']}
-
-
 @pytest.mark.parametrize('text', [
     'Mara gives examples, e.g.support letters. Send the draft: include details, please. Third sentence.',
     'Version 3.5 uses example.test. Next sentence. Third sentence.',
@@ -79,38 +64,6 @@ def test_person_contact_metric_is_a_true_readable_sentence(language, history):
     assert result[0] == (['54', 'mails this year' if language == 'en' else '封邮件往来 · 一年内']
                           if history == 'active' else ['9', 'mails exchanged' if language == 'en' else '封邮件往来'])
     assert 'undefined' not in json.dumps(result) and 'null' not in json.dumps(result)
-
-
-def test_person_no_reply_primary_offers_completion_instead_of_another_mail():
-    result = run_js(['personPrimary'], r'''
-      const entry = {t: {dir: 'mine'}}, r = {path: 'people/mara.md'};
-      const threadDraft = () => ({status: 'no_reply'}), threadContact = () => ({address: 'mara@example.test'});
-      const t = value => value, CHECK_ICON = '', el = (tag, attrs) => ({tag, ...attrs, insertAdjacentHTML() {}});
-      let completed = false;
-      const setDone = (item, state) => { completed = item === entry && state; };
-      const button = personPrimary(r, entry);
-      button.onclick();
-      console.log(JSON.stringify({tag: button.tag, text: button.text, completed}));
-    ''')
-    assert result == {'tag': 'button', 'text': 'Mark done', 'completed': True}
-
-
-def test_person_draft_review_closes_after_skip_and_restores_a_connected_control():
-    result = run_js(['openPersonDraft'], r'''
-      const events = {}, draft = {status: 'prepared'};
-      let closed = false, removed = false, focused = '';
-      const trigger = {isConnected: false, focus() {throw Error('stale trigger');}};
-      const el = (tag, attrs, children) => tag === 'dialog' ? {
-        addEventListener(name, callback) {events[name] = callback;},
-        showModal() {}, close() {closed = true; events.close();}, remove() {removed = true;}
-      } : {focus() {focused = 'close';}};
-      const t = text => text, replyDraftCard = () => ({});
-      const document = {body: {appendChild() {}}, querySelector() {return {focus() {focused = 'undo';}};}};
-      openPersonDraft(draft, trigger);
-      draft.status = 'skipped'; events.click();
-      console.log(JSON.stringify({closed, removed, focused}));
-    ''')
-    assert result == {'closed': True, 'removed': True, 'focused': 'undo'}
 
 
 @pytest.mark.parametrize('company,label', [
