@@ -46,7 +46,11 @@ def default_config() -> dict:
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
     return {"version": 1, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
-            "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
+            # Each slot is followed by 15-minute turns for up to three hours. The old six
+            # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
+            # number of slots, bounds what the night spends.
+            "schedule": {"times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00",
+                                   "17:00", "18:00", "19:00", "22:00", "23:00"],
                          "timezone": local_timezone(), "runner": "codex-exec"},
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
@@ -157,7 +161,9 @@ SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},
-              "limits.quota_floor_percent": {70}}
+              "limits.quota_floor_percent": {70},
+              "limits.drafts_per_night": {10},
+              "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
 
 
@@ -168,7 +174,8 @@ def _drop_superseded(root: Path, config: dict) -> None:
         section, _, name = key.rpartition(".")
         saved = config.get(section) if section else config
         current = defaults[section] if section else defaults
-        if key not in explicit and isinstance(saved, dict) and saved.get(name) in old:
+        value = saved.get(name) if isinstance(saved, dict) else None
+        if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
             saved[name] = current[name]
 
 

@@ -1032,7 +1032,7 @@ def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, m
     root = tmp_path / 'notes'
     prepare(root)
     config = default_config()
-    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '19:00']
+    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '20:00']  # chosen, not the old default
     atomic_write(root / 'config.yaml', yaml.safe_dump(config))
     monkeypatch.setattr(service, 'mail_available', lambda kind: False)
     before = service.summary_fingerprint(root)

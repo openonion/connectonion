@@ -56,10 +56,27 @@ def test_start_prepares_layout_without_overwriting(tmp_path):
     assert not list(root.rglob("*.db"))
 
 
+NIGHT_TIMES = ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "17:00", "18:00", "19:00", "22:00", "23:00"]
+
+
+def test_an_old_default_schedule_and_draft_cap_take_the_new_night_defaults(tmp_path):
+    """The old six slots left 22:00-03:00 empty; an old notebook kept them, and 10 drafts a night."""
+    import yaml
+    prepare(tmp_path)
+    saved = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    saved["schedule"]["times"] = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+    saved["limits"]["drafts_per_night"] = 10
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(saved))
+    config = read_config(tmp_path)
+    assert config["schedule"]["times"] == NIGHT_TIMES and config["limits"]["drafts_per_night"] == 30
+    set_config(tmp_path, ["schedule.times", "03:00,04:00,06:00,17:00,18:00,19:00"])
+    assert read_config(tmp_path)["schedule"]["times"] == ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"], \
+        "times the owner set himself are kept"
+
+
 def test_confirmed_times_and_atomic_validation(tmp_path):
     prepare(tmp_path)
-    assert read_config(tmp_path)["schedule"]["times"] == [
-        "03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES
     old = (tmp_path / "config.yaml").read_bytes()
     with pytest.raises(RemError):
         set_config(tmp_path, ["model", "other", "schedule.times", "26:00"])
