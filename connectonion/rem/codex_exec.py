@@ -63,7 +63,14 @@ def _sealed(writable) -> list[str]:
             '-c', 'default_permissions="rem_task"', '-c', f'permissions.rem_task.filesystem={table}',
             '-c', 'permissions.rem_task.network.enabled=false',
             # connectonion's import loads keys.env into the environment; `env` must not show it.
-            '-c', 'shell_environment_policy.inherit="core"']
+            '-c', 'shell_environment_policy.inherit="core"',
+            # Memories persist in ~/.codex; subagents were not shown to inherit the profile; skill
+            # text stays off the prompt. code_mode_host stays on: in codex 0.167 it is the only
+            # command executor (off, a real run said "the execution tool is disabled"); the shells
+            # it starts run inside the seatbelt.
+            '-c', 'features.code_mode=false',
+            '-c', 'features.memories=false', '-c', 'features.multi_agent=false',
+            '-c', 'features.multi_agent_v2=false', '-c', 'skills.include_instructions=false']
 
 
 SECRET_NAME = re.compile('KEY|TOKEN|SECRET|PASSWORD|API', re.I)
