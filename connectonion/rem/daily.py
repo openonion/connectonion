@@ -138,7 +138,9 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
             reason = maintenance.get('error') or 'the last scheduled maintenance failed'
         outcome = 'failed' if result['outcome'] == 'partial' else result['outcome']
         write_json(worker_path, {**worker, 'last_scheduled_outcome': outcome,
-                                 'last_scheduled_reason': reason})
+                                 'last_scheduled_reason': reason,
+                                 'last_scheduled_failure': next((row for row in maintenance.get('source_failures', [])
+                                                               if row.get('error') == reason), {})})
     return result
 
 
@@ -235,28 +237,44 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
 
 def _draft_replies(root, config, maintenance):
-    from tempfile import TemporaryDirectory
-    from . import drafts, runner
-    from .service import daily_cap, notebook_zone, runs_today
+    from . import night, runner
+    from .service import daily_cap
     if runner.ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        _, runs = runs_today(run_logs(root), notebook_zone(config))
-        spent = sum(row.get('runner_attempts', 0) for row in runs if row.get('phase') == 'reply-draft')
-        rows = drafts.queue(root)[:max(0, config['limits']['drafts_per_night'] - spent)]
-        for row in rows:
-            if not daily_cap(root)['remaining'] or quota.floor_block(quota.read(config), config['limits']):
+        fetches, attempted = {}, []
+        for row in night.prepare(root, config, fetches=fetches):
+            stop = ("Daily runner cap reached." if not daily_cap(root)['remaining'] else
+                    quota.floor_block(quota.read(config), config['limits']))
+            if stop:
+                night.prepare(root, config, attempted=attempted, fetches=fetches, stop=stop)
                 break
-            record, log = _reserve(root, 'reply-draft', 1, {})
-            state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
-            with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
-                task = drafts.prepare(root, row, config, directory=Path(directory))
-                result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
-                plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
-                drafts.promote(root, plan)
-            record.update(outcome='completed', usage=result.get('usage'), finished_at=now().isoformat())
-            write_json(log, record)
-            maintenance.setdefault('drafts', []).append(plan['id'])
+            attempted.append([row['id'], row['version']])
+            _prepare_reply(root, row, config, maintenance)
+        from .tasks import auto_dispatch
+        auto_dispatch(root, config)
+
+
+def _prepare_reply(root, row, config, maintenance):
+    from tempfile import TemporaryDirectory
+    from . import drafts, night, runner
+    record, log = _reserve(root, 'reply-draft', 1, {})
+    state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
+    try:
+        with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+            task = drafts.prepare(root, row, config, directory=Path(directory))
+            result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
+            plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
+            drafts.promote(root, plan)
+        record.update(outcome='completed', usage=result.get('usage'))
+        maintenance.setdefault('drafts', []).append(plan['id'])
+    except (RemError, ValueError, FileNotFoundError) as error:
+        # A rejected/missing model candidate must not abandon the rest of Today.
+        reason = f'Reply preparation failed: {type(error).__name__}.'
+        record.update(outcome='failed', error=reason, usage=getattr(error, 'usage', None))
+        night.failed(root, row, reason)
+    record['finished_at'] = now().isoformat()
+    write_json(log, record)
 
 
 def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]:

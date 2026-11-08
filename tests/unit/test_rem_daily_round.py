@@ -167,6 +167,11 @@ def translation_root(tmp_path, monkeypatch):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
     from rem_reader_notebook import build
     root = build(tmp_path / 'rem', daily.now())
+    import os
+    from connectonion.rem.files import Notebook
+    for record in Notebook(root).list():
+        modified = {'projects/harbour.md': 300, 'orgs/fernhill-labs.md': 200}.get(record, 100)
+        os.utime(root / record, (modified, modified))
     monkeypatch.setattr(daily, 'subscriptions', lambda root: {})
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
     monkeypatch.setattr(daily.quota, 'read', lambda config, request=None: {'unknown': 'no meter'})
@@ -214,7 +219,7 @@ def test_daily_translates_investigation_changes_after_refresh(translation_root, 
     result = daily.run_daily(root, maintain=no_change,
                              investigate_one=lambda *a, **kw: {'changed': ['projects/harbour.md']},
                              translate_one=lambda root, page, language: calls.append((page, language)))
-    assert calls == ['refresh', ('projects/harbour.md', 'zh'), ('people/avery-lin.md', 'zh')]
+    assert calls == ['refresh', ('projects/harbour.md', 'zh'), ('orgs/fernhill-labs.md', 'zh')]
     assert result['maintenance']['translations']['pages'][0]['outcome'] == 'translated'
 
 

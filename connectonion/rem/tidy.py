@@ -34,6 +34,44 @@ COVERAGE = re.compile(r"^\s*- \[(W?\d+)\] investigation:coverage\b.*$")
 RUNNER_COVERAGE = "source-collection record for this investigation"
 
 
+def notebook_checks(root: Path) -> list[dict]:
+    """Read-only doctor findings: broken affiliations and entities filed as people."""
+    from .census import pages
+    from .reader_model import organisation_links
+    book, checks = Notebook(root), []
+    found = pages(root)
+    paths = set(book.list())
+    for person in book.people():
+        path = person['path']
+        if found[path]['service']:
+            checks.append({'check': 'non-person page', 'ok': False, 'detail': path,
+                           'fix': f'Review {path}; move this entity out of people/ to orgs/ or notes/ and update its links.'})
+        for org in organisation_links(path, book.read(path)):
+            if org not in paths:
+                checks.append({'check': 'organisation link', 'ok': False, 'detail': f'{path} → {org}',
+                               'fix': f'Correct Company in {path} to an existing orgs/ page, or create {org} from cited evidence.'})
+    from . import facts
+    from .org_hierarchy import structure
+    from .reader_model import notebook_links
+    orgs = [{'path': path, 'category': 'orgs', 'text': book.read(path),
+             'facts': facts.parse(book.read(path), path), 'people': []}
+            for path in book.list('orgs')]
+    structure(orgs)
+    for org in orgs:
+        for problem in org['hierarchy_issues']:
+            checks.append({'check': 'organisation hierarchy', 'ok': False,
+                           'detail': f"{org['path']}: {problem}",
+                           'fix': f"Correct Parent in {org['path']} to one cited, existing org without a cycle; use a unit Kind."})
+    units = {org['path'] for org in orgs if org['unit_kind']}
+    for person in book.people():
+        for value in facts.parse(book.read(person['path']), person['path'])['Unit']:
+            for unit in notebook_links(person['path'], value['value']):
+                if unit not in units:
+                    checks.append({'check': 'unit link', 'ok': False, 'detail': f"{person['path']} → {unit}",
+                                   'fix': f"Correct Unit in {person['path']} to a cited unit orgs/ page, or create {unit} from evidence."})
+    return checks
+
+
 def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> dict:
     """Tidy under the notebook lock; returns {action: [pages]} for what changed."""
     root = Path(root)

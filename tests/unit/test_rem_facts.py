@@ -90,7 +90,7 @@ def test_a_page_written_before_facts_is_read_from_its_contact_section():
 def test_a_project_and_an_org_have_their_own_fields():
     assert facts.fields("projects/x.md")[0] == "Repository"
     assert "Last activity" in facts.fields("projects/x.md")
-    assert facts.fields("orgs/x.md")[0] == "What they do"
+    assert facts.fields("orgs/x.md")[:3] == ("Kind", "To you", "What they do")
     assert facts.fields("notes/x.md") == ()
 
 

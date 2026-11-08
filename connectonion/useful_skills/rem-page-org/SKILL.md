@@ -50,7 +50,11 @@ not support says `Unknown`. **Every factual sentence carries a claim number**
 - example.test [1]
 
 ## Facts
+- Kind: Unknown
+- To you: Unknown
 - What they do: Unknown
+- Parent: Unknown
+- You are: Unknown
 - Website: Unknown
 - Location: Unknown
 - Legal entity: Unknown
@@ -88,8 +92,11 @@ Unknown — historical requests alone do not establish a current obligation. [2]
   (`# rmit.edu.au`) is renamed to the name the material uses
   (`# RMIT University`); the domain stays under `Domains`.
 - **One voice**: the owner is `the user`, never their name, `you` or `we`.
-- **`Facts` is data**: those seven labels, one line each, every one present,
+- **`Facts` is data**: these labels, one line each, every one present,
   a missing value exactly `Unknown`, every value cited, dates `YYYY-MM-DD`.
+- `Kind`: `university`, `investor`, `client_partner`, `supplier`, `community`,
+  `own_company` or `personal` for top-level orgs. Units use `faculty|school|department|course|team|programme|venue|lab` and one cited `Parent` org link; never store depth or totals. Optional cited `You are`: `client|incubatee|partner|alumnus|casual staff`. `To you`: one cited
+  sentence in the page language saying what this entity is to the user.
 - **`People here` is links, never copies.** A sentence true of the person and
   not the employer belongs on their page. A named person with no page yet is an
   unlinked line.
@@ -115,6 +122,9 @@ Unknown — historical requests alone do not establish a current obligation. [2]
   conditions and execution unknown when unsupported; do not invent a conflict.
 - **Record sourced current requests or agreed obligations.** Prerequisites,
   conditional offers and missing historical outcomes alone create no owed debt.
+  Write `- The user owes <name>: <what> — since YYYY-MM-DD [n] — due YYYY-MM-DD`
+  or `<name> owes the user:`; requests use `asked`, not `owes`. Quote the
+  agreement; omit unknown dates. Mark private pages `[sensitive]` or `[personal]`.
   Use `Nothing open as of YYYY-MM-DD [n].` for a supported closure; otherwise
   use `Unknown` with the evidence gap, rather than a task to settle history.
 - **Dates use the notebook calendar.** A bulk notice or calendar acceptance does
@@ -126,3 +136,5 @@ Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
 evidence supports the reasoning; it need not be a literal statement in a source.
 Outside research may answer identity or state in the lead/Insight. Keep exact
 quotes exact; never leave an answered research question in `Uncertainties`.
+
+Use deterministic hierarchy proposals: full course-team codes stay distinct; signatures/roles establish chains, domains do not. Shared mailboxes are units. Conflicts become review questions; web structure stays web-sourced. Scope an entity obligation with an indented `- Unit: [unit](../orgs/unit.md) [n]`; unknown stays unplaced.

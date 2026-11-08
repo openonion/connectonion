@@ -415,7 +415,7 @@ def test_private_file_pins_interpreter_root_model_and_archival(native, tmp_path)
     native._write(root, data)
     saved = tomllib.loads(native.definition_path(root).read_text())
     assert saved["status"] == "PAUSED" and saved["auto_archive"] is True
-    assert saved["model"] == "gpt-6-luna" and saved["execution_environment"] == "local"
+    assert saved["model"] == "gpt-6.1-sol" and saved["execution_environment"] == "local"
     assert "'/venv with spaces/bin/python' -m connectonion.cli.main" in saved["prompt"]
     assert "next --scheduled" in saved["prompt"] and "rem/SKILL.md" in saved["prompt"] and saved["cwds"] == [str(root.resolve())]
     assert native.definition_path(root).stat().st_mode & 0o777 == 0o600

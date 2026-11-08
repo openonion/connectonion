@@ -98,8 +98,12 @@ def candidates(root, *, refresh_index=True, records=None):
 def queue(root):
     rows = candidates(root)
     states = threads.listing(root)
-    return [row for row in rows if not closed(root, row, states=states)
-            and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    from .today import queue as today_queue
+    ranks = {key: entry['rank'] for entry in today_queue(root, states=states) for key in entry['keys']}
+    pending = [row for row in rows if not closed(root, row, states=states)
+               and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    return sorted(pending, key=lambda row: min((ranks.get(threads.done_key(item['record'], item['text']), float('inf'))
+                                             for item in row['obligations']), default=float('inf')))
 
 
 def closed(root, row, *, states=None):
@@ -228,6 +232,14 @@ def _check_send(task, value, body, needs_owner):
     return send
 
 
+BRACKETED = re.compile(r'\[[^\]]*\]|［[^］]*］|【[^】]*】')
+OWNER_SLOT = re.compile(r'【需要你：\S(?:[^【】\n]*\S)? — \S(?:[^【】\n]*\S)?】')
+
+
+def has_slots(body):
+    return bool(re.search(r'[\[\]［］【】]', body))
+
+
 def check(task, output):
     value = json.loads(output['result'])
     allowed = {item['source'] for item in task['row']['material']}
@@ -240,6 +252,9 @@ def check(task, output):
             or not isinstance(value.get('sources'), list) or not value['sources']
             or any(not isinstance(source, str) or source not in allowed for source in value['sources'])):
         raise RemError('Reply draft needs a body and cited sources from its thread')
+    if (has_slots(BRACKETED.sub('', body))
+            or any(not OWNER_SLOT.fullmatch(slot) for slot in BRACKETED.findall(body))):
+        raise RemError(f'Reply draft slot must use 【需要你：<what> — <by when or date not agreed>】. Fix {task.get("candidate", "candidate.json")}.')
     needs_owner = value.get('needs_owner', [])
     if not isinstance(needs_owner, list) or any(not isinstance(slot, str) for slot in needs_owner):
         raise RemError('Reply draft needs_owner must be a list of slots')
@@ -254,15 +269,23 @@ def prepared_status(draft):
 
 
 def promote(root, draft):
+    saved = read_json(path(root, draft['id']), {})
+    if saved.get('version') == draft.get('version'):
+        _not_held(saved)
     write_json(path(root, draft['id']), {**draft, 'status': prepared_status(draft), 'prepared_at': now().isoformat()})
 
 
-def _current(root, draft_id):
+def _current(root, draft_id, refresh_index=True):
     saved = read_json(path(root, draft_id), {})
-    row = next((row for row in candidates(root) if row['id'] == draft_id), None)
+    row = next((row for row in candidates(root, refresh_index=refresh_index) if row['id'] == draft_id), None)
     if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved
+
+
+def _not_held(saved):
+    if saved.get('status') == 'held':
+        raise RemError('This reply is held; Undo it before changing it')
 
 
 def open_provider(root, draft_id):
@@ -270,6 +293,7 @@ def open_provider(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        _not_held(saved)
         if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
             raise RemError('This thread needs no reply')
         if not saved['body'].strip():
@@ -303,25 +327,26 @@ def _write_now(root, row, channel):
     return read_json(path(root, row['id']), {})
 
 
+# The owner's clicks below run while a scheduled REM round may hold the
+# notebook lock for an hour.  They take no lock: they read the existing index
+# (never rebuild it) and write only their own draft file, atomically.
 def redraft(root, draft_id, channel):
     """Write the same reply for another channel: a chat message is not a mail body."""
-    from .files import maintenance_lock
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
-    with maintenance_lock(root):
-        _current(root, draft_id)
-        row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
-        return _write_now(root, row, channel)
+    _not_held(_current(root, draft_id, refresh_index=False))
+    row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+    return _write_now(root, row, channel)
 
 
 def prepare_now(root, provider, thread):
-    """Draft one waiting reply on the owner's click instead of waiting for the night."""
-    from .files import maintenance_lock
-    with maintenance_lock(root):
-        row = next((row for row in candidates(root) if row['provider'] == provider and row['thread'] == thread), None)
-        if row is None:
-            raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
-        return _write_now(root, row, 'mail')
+    """Draft one waiting reply on the owner's click, now, instead of waiting for the night."""
+    row = next((row for row in candidates(root, refresh_index=False)
+                if row['provider'] == provider and row['thread'] == thread), None)
+    if row is None:
+        raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
+    _not_held(read_json(path(root, row['id']), {}))
+    return _write_now(root, row, 'mail')
 
 
 def _phone(person):
@@ -364,23 +389,31 @@ def send(root, draft_id, body=None):
     if body is not None and not body.strip():
         raise RemError('The reply body is empty')
     with maintenance_lock(root):
-        saved = _current(root, draft_id)
-        if saved.get('status') in ('skipped', 'discarded'):
-            raise RemError('Restore this skipped reply before sending')
-        if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
-            raise RemError('This thread needs no reply')
-        if saved.get('status') == 'sent':
-            raise RemError('This reply was already sent; nothing was sent again')
-        text = body if body is not None else saved['body']
-        if not text.strip():
-            raise RemError('The reply body is empty')
-        if saved.get('channel', 'mail') != 'mail':
-            receipt = _send_chat(saved, text)
-        else:
-            client = mail_client(saved['provider'])
-            receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
-                       else client.reply(saved['in_reply_to'], text))
-        write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
+        return _send_locked(root, draft_id, body)
+
+
+def _send_locked(root, draft_id, body=None, *, held=False):
+    saved = _current(root, draft_id)
+    if saved.get('status') == 'held' and not held:
+        raise RemError('This reply is held; Undo it before sending again')
+    if saved.get('status') in ('skipped', 'discarded'):
+        raise RemError('Restore this skipped reply before sending')
+    if saved.get('status') == 'no_reply' or saved.get('verdict') == 'no_reply':
+        raise RemError('This thread needs no reply')
+    if saved.get('status') == 'sent':
+        raise RemError('This reply was already sent; nothing was sent again')
+    text = body if body is not None else saved['body']
+    if not text.strip():
+        raise RemError('The reply body is empty')
+    if has_slots(text):
+        raise RemError('Fill the marked part first / 先填好标出的部分')
+    if saved.get('channel', 'mail') != 'mail':
+        receipt = _send_chat(saved, text)
+    else:
+        client = mail_client(saved['provider'])
+        receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
+                   else client.reply(saved['in_reply_to'], text))
+    write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
     return {'status': 'sent'}
 
 
@@ -388,6 +421,7 @@ def discard(root, draft_id):
     from .files import maintenance_lock
     with maintenance_lock(root):
         saved = _current(root, draft_id)
+        _not_held(saved)
         if saved.get('status') == 'sent':
             raise RemError('This reply was already sent')
         row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)

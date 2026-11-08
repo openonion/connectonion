@@ -268,7 +268,7 @@ def test_skip_unobserved_thread_stays_blocked_and_skips_saved_draft(notebook, ve
 @pytest.mark.parametrize('new_mail', [False, True])
 def test_reader_skip_reconcile_and_fresh_snapshot_undo_uses_saved_status(new_mail):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'saveThreadState', 'setDone', 'reconcileThreads', 'threadActions', 'draftNote']
+    names = ['doneKey', 'threadStorageKey', 'saveThreadState', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     result = _run_reader_js(functions + 'const newMail = ' + json.dumps(new_mail) + ';' + r'''
       const REM = {root: '/test', live: true, mail_versions: {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:old'},

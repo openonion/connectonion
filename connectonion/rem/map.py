@@ -540,6 +540,11 @@ def _scratch_identity(path: str) -> str:
 
 
 def _mapped_only(page: str) -> bool:
+    from .facts import UNIT_KINDS, parse
+    fields = parse(page, 'orgs/unit.md')
+    if any(v['citations'] for v in fields['Parent']) and any(
+            v['citations'] and v['value'] in UNIT_KINDS for v in fields['Kind']):
+        return False  # Cited inferred structure is knowledge, not a disposable domain stub.
     return 'not investigated yet' in next(
         (line for line in page.splitlines() if line.startswith('Investigation:')), '')
 
@@ -907,6 +912,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     state.parent.mkdir(parents=True, exist_ok=True)
     # An upgraded notebook is tidied first, from the map before this one (#1999).
     from .tidy import tidy
+    from .org_inference import reconcile
+    report['hierarchy'] = reconcile(notebook, lock_held=True)
+    report['created'] += report['hierarchy']['created']
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
@@ -1090,6 +1098,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if progress:
         progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
+    from .mail_archive import mail_metadata
+    hierarchy = reconcile(notebook, inventory.records if inventory else mail_metadata(root), lock_held=True)
+    report['created'] += hierarchy['created']
+    report['hierarchy']['created'] += hierarchy['created']
+    report['hierarchy']['reviews'] += hierarchy['reviews']
     report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organisation identity unverified; existing organisation pages preserved')

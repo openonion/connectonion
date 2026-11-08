@@ -692,8 +692,10 @@ languages still take precedence. Page prose stays as written. On phones, a compa
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
   notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
-  waiting on you, up to `limits.drafts_per_night` (default **10**) per notebook day,
-  on the `rem-reply-draft` skill: it reads who you both are (your page, their page,
+  waiting on you, up to `limits.drafts_per_night` (default **30**) per notebook day,
+  with every capped or failed item named in status. Missing originals are fetched
+  from already-consented mailboxes. Owner-last answers and promised work receive
+  [morning outcomes](../rem-night-outcomes.md). Drafts use the `rem-reply-draft` skill: it reads who you both are (your page, their page,
   the relationship, how they write), decides on each ask in the latest message, and
   writes in your register for that relationship, using your own `email-writing`
   skill when one is installed under `~/.claude`, `~/.codex`, `~/.cursor` or `~/.co`.
@@ -1414,14 +1416,24 @@ the block as a card.
   `Domains`.
 - One line a field: `- <Label>: <value>`. Every label of the page's kind is
   always present, in this order, spelled exactly:
-  - **person**: Email, Phone, Company, Role, Location, Time zone, Links,
+  - **person**: Email, Phone, Company, Role, Team, Location, Time zone, Links,
     How we know them, First contact, Last contact, Signing entity, Handles,
     Language, Also known as
   - **project**: Repository, Stack, Status, People, Organisation, Started,
     Last activity
-  - **organisation**: What they do, Website, Location, Legal entity,
+  - **organisation**: Kind, To you, What they do, Website, Location, Legal entity,
     Your contacts, First contact, Last contact
 - An empty field is exactly `Unknown`.
+- Organisation `Kind` is `university`, `investor`, `client_partner`, `supplier`,
+  `community`, `own_company` or `personal`. `To you` is one sentence in the page
+  language about the owner's relationship. Both require citations.
+- A person's `Team` records a cited unit/team name only when evidence names it.
+  A project's `Organisation` links its evidenced organisation as
+  `[[orgs/fernhill]] [1]`; existing relative Markdown links work too.
+- `co rem doctor` reports missing organisation pages linked from `Company`, with
+  a correction/create instruction, and non-person pages filed under `people/`.
+  Explicit entities and shared mailboxes are excluded from the people count,
+  including investigated pages; doctor does not move or rewrite them.
 - A field with several values separates them with `; `. Each value may end in
   a `(qualifier)` (`work`, `mobile`, `personal`) and then its citations
   `[n]`, which are numbers defined under `## Sources` like every other claim.

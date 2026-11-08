@@ -59,14 +59,14 @@ def test_offline_startup_finishes_details_without_navigation():
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
       let detailLoad = null, detailReady = false, morePeopleColumns,
-        pendingThreads, threadStates;
+        pendingThreads, threadStates, peopleMode, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       let PEOPLE_BY_ADDRESS = new Map();
       const location = {protocol: 'file:'};
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
-      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads';
+      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done';
       const reconcileThreads = () => Promise.resolve();
       const frames = [];
       function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}
@@ -105,6 +105,7 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
       }
       const main = el('main');
       const document = {getElementById(id) {
+        if (id === 'approval-undo') return null;
         if (id !== 'main') throw Error('Today tried to load ' + id);
         return main;
       }};
@@ -127,7 +128,8 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
     assert any(n['tag'] == 'h1' and 'overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
     assert any(n.get('class') == 'words' and 'feedback' in n.get('text', '').lower() for n in nodes(card))
-    assert any(n.get('href', '').startswith('mailto:alice@example.test') for n in nodes(card))
+    # An uncached cited message opens its recorded source, rather than inventing a reply.
+    assert any(n.get('text') == 'Open the recorded source' and '&h=src-1' in n.get('href', '') for n in nodes(card))
     assert any(n.get('class') == 'fold' for n in nodes(card))
 
 

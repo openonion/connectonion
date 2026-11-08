@@ -266,3 +266,18 @@ def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, monkey
     (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')
     assert get()[0] == 200 and len(calls) == 2
     assert all(options == {'local': True} for _, options in calls)
+
+
+def test_task_refresh_is_owner_only_and_reads_the_receipt(host):
+    from connectonion.rem import tasks
+    from connectonion.rem.files import write_json
+    from pathlib import Path
+    receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
+        'keys': ['people/fern.md\nReview the pilot.'], 'record': 'people/fern.md',
+        'title': 'Fern Vale', 'text': 'Review the pilot.', 'task': {'prompt': 'Review it.'}})
+    write_json(Path(receipt['receipt']), {**receipt, 'result': 'failed', 'exit_code': 1})
+    body = json.dumps({'id': receipt['id']}).encode()
+    assert call(host.routes, 'POST', '/rem/task', body=body)[0] == 401
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 200 and json.loads(text)['result'] == 'failed'
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=b'{}')[0] == 400

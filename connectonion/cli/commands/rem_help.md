@@ -29,6 +29,7 @@ Keep it current
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
+  task          Run, inspect or stop work owed by the owner.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -548,7 +549,9 @@ Schedule: Updates run automatically through the OS at saved local times
           Keep this computer awake. Status shows the saved schedule and runs.
           Unwritten pages, reply drafts and missing/stale translations are queued
           automatically. Translations have their own daily limit (default 100);
-          reply drafts are capped at 10 a night. Nothing is sent by REM.
+          reply drafts default to 30 a night, in Today order. Every leftover is named
+          in status. Missing originals are fetched from consented mailboxes; owner-last
+          answers and promised work get morning outcomes. Nothing is sent by REM.
 Access:   Background models can write only under the notebook's .state/tasks,
           with no shell commands or network access.
           Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
@@ -583,6 +586,8 @@ Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
+          translation coverage and tonight's queue within the daily limit, or
+          "not requested" with co rem config set languages zh;
           each mailbox with the command that fixes it; the week's budget; the
           last run that finished, and one running now.
 Options:  --verbose   Show full run details, worker status, token counts and
@@ -712,7 +717,9 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
+Keys:     model                          gpt-6.1-sol (default): investigation, writing, audit and judgement
+          models.summary                 gpt-6-luna (Codex default): standalone coding-session summaries
+                                         existing other runners keep their working model until you choose one
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
@@ -728,7 +735,7 @@ Keys:     model                          gpt-6-luna (default); a new one is chec
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  a model for one stage of planned investigation:
                                          plan, extract, synthesize or render ("default" clears it)
-Example:  co rem config set model gpt-6-luna schedule.times "06:00,18:00"
+Example:  co rem config set model gpt-6.1-sol schedule.times "06:00,18:00"
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when model or runner changes, never read off the name. Unchecked runs
@@ -736,6 +743,8 @@ Tier:     agent    the model drives tools: it reads the material and writes the 
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
+Tasks:    tasks.auto is false by default: morning approval starts work.
+          co rem config set tasks.auto true opts into dispatch after nightly drafts.
 ```
 
 ## co rem logs
@@ -772,7 +781,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set model gpt-6-luna limits.runner_calls_per_day 4
+Example:  co rem config set model gpt-6.1-sol limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.
@@ -866,20 +875,20 @@ The import is deterministic and uses no model.
 Includes your typed messages and the final agent reply, with secret-shaped text removed.
 Automation, subagents and REM's own sessions stay out. Repeating the import updates
 changed sessions in place and skips unchanged files.
-With --summarise, the configured model adds a title, summary, tags, outcome,
+With --summarise, models.summary adds a title, summary, tags, outcome,
 verified owner decisions and open follow-ups in batches. Init and daily rounds
 summarise up to 40 sessions when the runner is ready.
 
 Usage:    co rem import sessions [--days N] [--summarise] [--limit N] [--json]
 Example:  co rem import sessions --days 30 --summarise --json
           --days       read sessions active in the last N days (default 180)
-          --summarise  summarise new or changed sessions with the configured model
+          --summarise  summarise new or changed sessions with models.summary
           --limit      maximum sessions to summarise (default 40), newest first
           --json       print one {"ok", "data", "next"} result
 Effects:  Reads enabled local coding sources and writes sessions/ pages and private
           progress. This explicit command authorizes the import; automatic runs
-          read only sources you have approved. Summaries use the configured runner
-          and model; failed batches are left for next time. Usage is in rem logs.
+          read only sources you have approved. Standalone summaries use models.summary
+          with the configured runner; failed batches are left for next time. Usage is in rem logs.
 Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
           With --summarise, a summary report (under "summary" in JSON).
 Next:     co rem list sessions
@@ -1102,4 +1111,93 @@ Requires: co rem init.
 Output:   One line per page: accepted, refused (and why) or failed; pages left.
 Next:     co rem show PAGE
 Back:     co rem projects --help
+```
+
+
+## co rem task
+
+```
+Run work owed by the owner in one background Codex session. Nothing is sent.
+
+Usage: co rem [--root DIR] [--json] task COMMAND
+
+Commands:
+  run           Start a prepared task by ID; repeated calls return its receipt.
+  status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
+  stop          Stop a task by ID and its children; keep all files.
+
+Uses the configured work model, workspace-write and network access, with the
+same credential-directory access as REM upkeep. Work uses the project page's
+repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
+done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+A zero exit without a nonempty result is failed, never completed work.
+One session per ID: failed and stopped receipts stay; run does not retry them.
+Night tasks wait for morning approval unless tasks.auto is true (default false).
+Do not send anything to anyone; write the result and stop.
+
+Example: co rem task status
+         co rem --root /tmp/mara-rem task run ID
+         co rem task status ID
+         co rem task stop ID
+Back: co rem --help
+```
+
+
+## co rem task run
+
+```
+Start one prepared obligation in background Codex; return its receipt immediately.
+
+Usage: co rem [--root DIR] [--json] task run ID
+
+Arguments:
+  ID            Task ID printed by co rem task status.
+
+Uses the configured work model, workspace-write and network access, with the
+same credential-directory access as REM upkeep. Work uses the project page's
+repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
+done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+A zero exit without a nonempty result is failed, never completed work.
+One session per ID: failed and stopped receipts stay; run does not retry them.
+Night tasks wait for morning approval unless tasks.auto is true (default false).
+Do not send anything to anyone; write the result and stop.
+
+Example: co rem --root /tmp/mara-rem task run ID
+Back: co rem task --help
+```
+
+
+## co rem task status
+
+```
+Read task progress from receipt.json; never infer completion from model text.
+
+Usage: co rem [--root DIR] [--json] task status [ID]
+
+Arguments:
+  ID            Optional task ID; omit to list IDs and receipt states.
+
+Completed receipts include a deliverable and a prepared reply for you to send.
+Failed, timed-out and stopped receipts retain logs and the last message.
+A dead worker is recorded as failed; any verified orphan Codex process is stopped.
+No ID lists current prepared tasks and retained receipts. Does not start work.
+
+Example: co rem task status
+         co rem --root /tmp/mara-rem --json task status ID
+Back: co rem task --help
+```
+
+
+## co rem task stop
+
+```
+Stop one task and its children. Keep all task files and its receipt.
+
+Usage: co rem [--root DIR] [--json] task stop ID
+
+Arguments:
+  ID            Task ID printed by co rem task status.
+
+Example: co rem --root /tmp/mara-rem task stop ID
+Back: co rem task --help
 ```

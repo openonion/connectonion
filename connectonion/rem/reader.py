@@ -136,7 +136,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .project_pages import private
     from .reviews import listing
     from .sessions import mentions, reader_fields
-    from .reader_model import session_detail
+    from .reader_model import (session_detail, organisation_fields, organisation_members,
+                               organisation_obligations)
     notebook = Notebook(root)
     records = []
     paths = [path for category in CATEGORIES if category not in ('sessions', 'logs', 'notes')
@@ -154,7 +155,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .census import counts, pages, written
     found = pages(root, records=records)
     mail, index = mail_facts(root), {} if today else index_rows(root)
+    record_paths = {record['path'] for record in records}
     for record in records:
+        record.update(organisation_fields(record, record_paths))
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
             domain = record["title"]
             name = _org_name(domain, record["text"]) or _org_company_name(record["path"], records)
@@ -178,6 +181,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
     owner = owner_record(root)
+    organisation_members(records, owner)
+    from .org_hierarchy import structure, rollups
+    structure(records, owner)
     people = [record for record in records if record["category"] == "people" and record["path"] != owner]
     mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])
     for record in people:
@@ -252,6 +258,26 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": listing(root), "counts": counts(root, found),
             "owner": owner}
+    from .project_data import enrich_records
+    data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
+    from .today import queue as today_queue
+    data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    from .night import listing as night_outcomes
+    data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
+    outcomes = {row['key']: row for row in data['night_outcomes']}
+    for row in data['today_queue']:
+        if row['key'] in outcomes:
+            row['outcome'] = outcomes[row['key']]
+    from . import approvals
+    data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
+    data['approval_pending'] = approvals.pending(root) if local else []
+    if not local:
+        data['status']['tonight'].pop('unprepared', None)
+        for row in data['today_queue']:
+            row.pop('reply', None)
+    organisation_obligations(records, data['today_queue'])
+    from .service import notebook_today
+    rollups(records, notebook_today(root))
     return _today_data(data) if today else data
 
 

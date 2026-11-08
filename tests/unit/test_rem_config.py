@@ -58,7 +58,7 @@ def test_a_new_notebook_runs_on_codex():
     Claude Code and announced ~460M input tokens on the user's Claude plan."""
     from connectonion.rem.config import default_config
     config = default_config()
-    assert (config["runner"], config["model"]) == ("codex", "gpt-6-luna")
+    assert (config["runner"], config["model"]) == ("codex", "gpt-6.1-sol")
 
 
 def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeypatch):
@@ -175,3 +175,70 @@ def test_daily_translations_limit_defaults_and_validates(tmp_path):
     assert set_config(tmp_path, ['limits.translations_per_day', '3'])['limits']['translations_per_day'] == 3
     with pytest.raises(RemError, match='positive integers'):
         set_config(tmp_path, ['limits.translations_per_day', '0'])
+
+
+def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config, set_config
+    old = default_config()
+    old.pop("models", None)
+    old["model"] = "gpt-6-luna"
+    saved = yaml.safe_dump(old)
+    (tmp_path / "config.yaml").write_text(saved)
+    assert read_config(tmp_path)["model"] == "gpt-6.1-sol"
+    assert read_config(tmp_path)["models"] == {"summary": "gpt-6-luna"}
+    assert (tmp_path / "config.yaml").read_text() == saved
+    set_config(tmp_path, ["model", "gpt-6-luna"])
+    assert read_config(tmp_path)["model"] == "gpt-6-luna"
+
+
+def test_summary_model_setting_is_validated_and_does_not_check_page_tier(tmp_path, monkeypatch):
+    import pytest
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import read_config, set_config
+    from connectonion.rem.files import RemError
+    monkeypatch.setattr("connectonion.rem.tier.check_and_record", lambda *a: pytest.fail("page tier check"))
+    result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "config", "set", "models.summary", "gpt-6-luna"])
+    assert result.exit_code == 0, result.output
+    assert read_config(tmp_path)["models"]["summary"] == "gpt-6-luna"
+    with pytest.raises(RemError, match="summary"):
+        set_config(tmp_path, ["models.summary", " "])
+
+
+def test_config_and_status_show_model_roles(tmp_path):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import set_config
+    set_config(tmp_path, ["schedule.timezone", "UTC"])
+    for command in ("config", "status"):
+        result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), command])
+        assert result.exit_code == 0, result.output
+        assert any("gpt-6.1-sol" in line and "gpt-6-luna" in line and "summar" in line.lower()
+                   for line in result.output.splitlines()), result.output
+
+
+def test_summary_default_stays_compatible_with_claude_fallback(tmp_path, monkeypatch):
+    import yaml
+    from connectonion.rem.config import default_config, prepare, read_config, set_config
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (
+        ("Codex is not installed", "install codex") if config["runner"] == "codex" else ("", "")))
+    root = tmp_path / "fresh"
+    prepare(root)
+    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    old = default_config()
+    old.update(runner="claude-code", model="claude-sonnet-5-5")
+    old.pop("models")
+    (root / "config.yaml").write_text(yaml.safe_dump(old))
+    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    set_config(root, ["models.summary", "default"])
+    assert read_config(root)["models"]["summary"] == "default"
+
+
+def test_runner_change_keeps_summary_compatible_unless_explicit(tmp_path):
+    from connectonion.rem.config import set_config
+    settings = set_config(tmp_path, ["runner", "claude-code"])
+    assert settings["models"]["summary"] == settings["model"] == "default"
+    set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
+    settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6.1-sol"])
+    assert settings["models"]["summary"] == "claude-sonnet-5-5"

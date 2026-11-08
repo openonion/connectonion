@@ -21,6 +21,100 @@ CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+
+
+def notebook_links(origin: str, text: str) -> list[str]:
+    """Markdown links are page-relative; [[orgs/name]] is notebook-relative."""
+    targets = [_destination(origin, raw) for _, raw in REFERENCE.findall(text)]
+    targets += [raw if raw.endswith('.md') else raw + '.md' for raw in WIKILINK.findall(text)]
+    return list(dict.fromkeys(targets))
+
+
+def organisation_links(record: str, text: str) -> list[str]:
+    from .facts import parse
+    label = 'Company' if record.startswith('people/') else 'Organisation'
+    return list(dict.fromkeys(path for fact in parse(text, record).get(label, [])
+                             for path in notebook_links(record, fact['value']) if path.startswith('orgs/')))
+
+
+def organisation_fields(record: dict, paths: set[str]) -> dict:
+    """Facts retain citation labels; the convenience fields never infer from a domain."""
+    from .facts import ORG_KINDS, parse
+    category, path, text = record['category'], record['path'], record['text']
+    if category not in ('people', 'orgs', 'projects'):
+        return {}
+    facts = parse(text, path)
+    value = lambda label: '; '.join(row['value'] for row in facts.get(label, []))
+    result = {'facts': facts}
+    if category == 'orgs':
+        kind = value('Kind')
+        result.update(kind=kind if kind in ORG_KINDS else '', to_you=value('To you'),
+                      private=bool(PRIVATE.search(_not_sources(text))) or kind == 'personal')
+    else:
+        result['organisations'] = [org for org in organisation_links(path, text) if org in paths]
+        if category == 'people':
+            result['team'] = value('Unit')  # compatibility alias, never a second concept
+    return result
+
+
+def _org_roster(org: dict) -> set[str]:
+    """The org's own contact roster establishes affiliation, not employment."""
+    contacts = [fact['value'] for fact in org['facts']['Your contacts']]
+    roster = re.search(r'^## People here\s*\n(.*?)(?=^## |\Z)', org['text'], re.M | re.S)
+    return set(notebook_links(org['path'], '\n'.join(contacts) + '\n' + (roster[1] if roster else '')))
+
+
+def organisation_members(records: list[dict], owner: str) -> None:
+    """Only listed people and explicit affiliations populate the org roster."""
+    people = [row for row in records if row['category'] == 'people' and row['path'] != owner
+              and not (row.get('service') or row.get('needs_review'))]
+    for org in records:
+        if org['category'] != 'orgs':
+            continue
+        roster = _org_roster(org)
+        for person in people:
+            if person['path'] in roster and org['path'] not in person['organisations']:
+                person['organisations'].append(org['path'])
+        linked = [row for row in records if org['path'] in row.get('organisations', [])
+                  and not (row.get('service') or row.get('needs_review')) and row['path'] != owner]
+        for category in ('people', 'projects'):
+            org[category] = [row['path'] for row in linked if row['category'] == category]
+
+
+def _obligation_people(row: dict, people: list[dict], origins: set[str]) -> list[str]:
+    from .census import _thread_counterpart
+    named = [person['path'] for person in people
+             if _thread_counterpart(({'path': row['record']}, row['text'], {}), person, '', '')]
+    # Names are a fallback only when unambiguous; copied page keys remain authoritative.
+    return sorted({person['path'] for person in people if person['path'] in origins}
+                  | (set(named) if len(named) == 1 else set()))
+
+
+def organisation_obligations(records: list[dict], queue: list[dict]) -> None:
+    """Reuse Today's obligation identity, including all copy keys and owner decisions."""
+    from .org_hierarchy import obligation_units
+    for row in queue:
+        row['units'] = obligation_units(row, records)
+        if not row['units'] and not any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys']):
+            origins = {key.partition('\n')[0] for key in row['keys']}
+            units = {unit['path'] for person in records if person['path'] in origins
+                     for unit in person.get('units', [])}
+            if len(units) == 1:
+                row['units'] = sorted(units)
+    for org in records:
+        if org['category'] != 'orgs':
+            continue
+        members = set(org['people'])
+        people = [person for person in records if person['path'] in members]
+        org['obligations'] = []
+        for row in queue:
+            origins = {key.partition('\n')[0] for key in row['keys']}
+            scoped = org['path'] in row['units']
+            direct = origins & (members | {org['path']})
+            explicit = any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys'])
+            if not row['closed'] and (scoped or direct and (not org.get('unit_kind') or not row['units'] and not explicit)):
+                org['obligations'].append({**row, 'people': _obligation_people(row, people, origins)})
 
 
 def source_definitions(sources: str) -> list[tuple[str, str]]:
@@ -59,8 +153,7 @@ def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re
     found = {}
     # An exact notebook path does not depend on its label or the target's title.
     for line in body.splitlines():
-        for _, raw in REFERENCE.findall(line):
-            target = _destination(origin, raw)
+        for target in notebook_links(origin, line):
             if target in paths and target != origin and target not in found:
                 found[target] = _relation(origin, target, line.strip(), "linked")
     # Match visible prose once per name, never Markdown URLs. Replacing link
@@ -163,10 +256,11 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
+    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
                       (provider, f"mail/messages/{provider}/{digest}%.json",
                        f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
+    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    if len(rows) == 1:
         return rows[0]
     return None
 

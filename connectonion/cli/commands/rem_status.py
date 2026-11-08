@@ -34,6 +34,8 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
+    if value.get('models'):
+        lines += [rem_look.section('Models', value['models'])]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
     if value.get('last_turn'):
@@ -48,11 +50,25 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
-    lines += [*_budget(root, value, verbose), *_last_runs(root)]
+    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
+
+
+def _tonight(value):
+    night = value.get('tonight')
+    if night is None:
+        return []
+    counts = f"{night['items']} items · {night['drafts']} drafts · {night['already_handled']} already handled · {night['tasks']} tasks"
+    rest = f"{night['could_not_prepare']} could not be prepared"
+    if night['no_reply']:
+        rest += f" · {night['no_reply']} no reply needed"
+    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto=false)'
+    return [rem_look.section('Tonight', counts), rem_look.follow(highlight(rest), glyph=''),
+            rem_look.follow(highlight('tasks ' + mode), glyph=''),
+            *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
 
 
 def _waiting(root, found: dict) -> list[str]:
@@ -260,8 +276,18 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
             lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
     for language, coverage in value.get("translation_coverage", {}).items():
         done, total = coverage["translated"], coverage["total"]
-        share = round(100 * done / total) if total else 0
-        lines.append(rem_look.row(language, f"{done} of {total} pages translated ({share}%)"))
+        if not coverage.get("requested"):
+            outcome = "not requested"
+            from ...rem.config import read_config
+            requested = list(dict.fromkeys([*read_config(root)["languages"], language]))
+            command = ["config", "set", "languages", ",".join(requested)]
+        elif scheduled:
+            outcome, command = f"{coverage['queued']} queued for tonight", []
+        else:
+            outcome, command = "schedule off", ["start"]
+        lines.append(rem_look.row(language, f"{done} of {total} pages translated · {outcome}"))
+        if command:
+            lines.append(rem_look.follow(style.command(spell(command))))
     return lines
 
 

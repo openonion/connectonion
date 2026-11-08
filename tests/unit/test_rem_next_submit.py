@@ -655,6 +655,9 @@ def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
 
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("key,value", [
+    ("language", "zh"), ("languages", "zh,en"),
+    ("model", "gpt-6-astra"), ("speed", "standard"), ("effort", "high"),
+    ("models.summary", "gpt-6.1-sol"),
     ("schedule.times", "09:00,21:00"), ("schedule.timezone", "Pacific/Honolulu"),
     ("limits.runner_calls_per_day", "100"), ("limits.translations_per_day", "20"),
     ("limits.timeout_seconds", "1800"), ("limits.workers", "8"),
@@ -681,7 +684,6 @@ def test_run_control_config_change_accepts_pending_task(trial, legacy, key, valu
 
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("key,value", [
-    ("language", "zh"), ("languages", "zh,en"), ("model", "default"),
     ("limits.input_chars_per_batch", "100000"), ("limits.items_per_batch", "10"),
     ("limits.extract_chars_per_batch", "100000"), ("limits.extract_items_per_batch", "20"),
     ("limits.investigation_rounds", "4"),
@@ -1733,6 +1735,7 @@ def test_later_scheduled_slot_keeps_translation_backlog_in_progress(
         write_json(state_path(trial, 'round.json'), cursor)
     # One translation succeeded; two pages remain uncached.
     task = native.next_task(trial)
+    translated_record = task['record']
     Path(task['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
     if pending:
@@ -1755,7 +1758,7 @@ def test_later_scheduled_slot_keeps_translation_backlog_in_progress(
     current = read_json(state_path(trial, 'round.json'), {})
     assert current['started_at'] == cursor['started_at']
     assert current['run']['id'] == cursor['run']['id']
-    assert current['translations'] == [cursor['changed'][0]]
+    assert current['translations'] == [translated_record]
     if pending:
         assert result['id'] == task['id']
         assert read_json(Path(task['material']) / 'task.json', {})['status'] == 'pending'
@@ -1827,10 +1830,11 @@ def test_later_slot_recovers_accepted_translation_and_continues_backlog(trial, m
     monkeypatch.setattr(service, 'now', lambda: moment)
     record, _ = _feedback(trial)
     result = native.next_task(trial, scheduled=True)
-    assert result['outcome'] == 'task' and result['record'] == translation_round['changed'][1], result
+    assert result['outcome'] == 'task' and result['stage'] == 'translate', result
+    assert result['record'] != task['record']  # Recovery skips the accepted cache, even as new pages arrive.
     recovered = read_json(state_path(trial, 'round.json'), {})
     assert recovered['run']['id'] == translation_round['run']['id']
-    assert recovered['translations'] == translation_round['changed'][:1]
+    assert recovered['translations'] == [task['record']]
 
 
 def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, translation_round):
@@ -2396,3 +2400,98 @@ def test_finishing_native_round_removes_accepted_workspaces(trial, monkeypatch):
     assert result['outcome'] == 'done'
     assert list(directory.parent.iterdir()) == []
     assert any(row.get('task_id') == task['id'] for row in service.run_logs(trial))
+
+
+@pytest.mark.parametrize('change,accepted', [
+    ([], True), (['languages', 'zh,en'], True), (['language', 'zh'], True),
+    (['model', 'default'], True), (['limits.items_per_batch', '10'], False),
+])
+def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, accepted):
+    import hashlib
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    # Reproduce the on-disk rc59 digest, which included both language settings.
+    previous = saved['task']['config']
+    controls = {'runner_calls_per_day', 'jobs_per_round', 'translations_per_day', 'drafts_per_night',
+                'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
+                'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes'}
+    material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
+    material['limits'] = {key: value for key, value in previous['limits'].items() if key not in controls}
+    saved['inputs'][str(trial / 'config.yaml')] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+    write_json(Path(task['material']) / 'task.json', saved)
+    if change:
+        set_config(trial, change)
+    if accepted:
+        assert _submit(trial, task)['outcome'] == 'accepted'
+        assert 'Avery Lin requested a pilot review.' in Notebook(trial).read(record)
+    else:
+        with pytest.raises(RemError, match='input changed'):
+            native.submit(trial, task['id'])
+
+
+def test_rc59_translation_without_config_snapshot_submits_when_config_is_unchanged(trial, translation_round):
+    task = native.next_task(trial)
+    saved = native.pending(trial)[0]
+    assert 'config' not in saved['task']
+    saved['inputs'][str(trial / 'config.yaml')] = native._config_hash(read_config(trial), include_languages=True, include_models=True)
+    write_json(Path(task['material']) / 'task.json', saved)
+    Path(task['candidate']).write_text('# Pilot\n\n阅读试点笔记。\n')
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+
+
+@pytest.mark.parametrize("languages", [False, True])
+@pytest.mark.parametrize("change", [["model", "gpt-6.1-sol"], ["speed", "standard"], ["effort", "high"]])
+def test_pre_model_split_digest_accepts_model_controls(trial, languages, change):
+    import hashlib
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    previous = saved["task"]["config"]
+    previous["model"] = "gpt-6-luna"
+    previous.pop("models", None)
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+                "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
+                "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
+    ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
+    material = {k: v for k, v in previous.items() if k not in ignored}
+    material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
+    saved["inputs"][str(trial / "config.yaml")] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+    write_json(Path(task["material"]) / "task.json", saved)
+    set_config(trial, change)
+    assert _submit(trial, task)["outcome"] == "accepted"
+
+
+@pytest.mark.parametrize("languages", [False, True])
+@pytest.mark.parametrize("changed", [False, True])
+def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, translation_round, languages, changed):
+    import hashlib
+    import yaml
+    previous = read_config(trial)
+    previous.pop("models")
+    previous["model"] = "gpt-6-luna"
+    (trial / "config.yaml").write_text(yaml.safe_dump(previous, sort_keys=False))
+    task = native.next_task(trial)
+    saved = native.pending(trial)[0]
+    assert "config" not in saved["task"]
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+                "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
+                "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
+    ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
+    material = {k: v for k, v in previous.items() if k not in ignored}
+    material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
+    saved["inputs"][str(trial / "config.yaml")] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+    write_json(Path(task["material"]) / "task.json", saved)
+    Path(task["candidate"]).write_text("# Pilot\n\n阅读试点笔记。\n")
+    if changed:
+        set_config(trial, ["limits.items_per_batch", "10"])
+        with pytest.raises(RemError, match="input changed"):
+            native.submit(trial, task["id"])
+    else:
+        assert native.submit(trial, task["id"])["outcome"] == "accepted"
+
+
+def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_path):
+    assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False

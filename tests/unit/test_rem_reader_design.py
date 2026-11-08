@@ -34,7 +34,10 @@ def test_both_themes_define_every_colour_token():
 
 def test_the_template_names_no_remote_host_and_loads_no_font():
     page = TEMPLATE.read_text(encoding="utf-8")
-    assert not re.search(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)
+    # Explicit navigation to the original mail is allowed; remote assets are not.
+    assert set(re.findall(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)) == {
+        'https://mail.google.com', 'https://outlook.live.com'}
+    assert not re.search(r'(?:src\s*=\s*["\']|fetch\(["\'])https?://', page)
     assert "@font-face" not in page and "@import" not in page and "<link" not in page
 
 
@@ -192,3 +195,12 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
         for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
+
+    assert colors['--act'] == ('#22d27a' if theme == 'light' else '#3be38f')
+    for surface, foreground in [('--act', '--act-ink'), ('--act-hover', '--act-ink'),
+                                ('--sheet', '--act-text'), ('--act-tint', '--ink')]:
+        a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
+        assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
+    button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
+    assert 'background: var(--act)' in button and 'color: var(--act-ink)' in button
+    assert '.btn-act:hover { background: var(--act-hover); }' in css

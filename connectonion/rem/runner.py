@@ -119,7 +119,9 @@ def co_command() -> list[str]:
         return [sys.executable]
     if not sys.executable:
         raise RemError("Cannot tell which Python is running ConnectOnion; run co rem from a normal install")
-    return [sys.executable, "-m", "connectonion.cli.main"]
+    from ..environment import explicit_env_file
+    selector = ["--env-file", str(explicit_env_file())] if explicit_env_file() is not None else []
+    return [sys.executable, "-m", "connectonion.cli.main", *selector]
 
 
 def preflight() -> list[str]:
@@ -136,7 +138,8 @@ def child_env(config: dict | None = None) -> dict:
     installed connectonion and failed with "Skill 'rem-investigate' not found"
     after minutes of gathering (#1974).
     """
-    environment = os.environ.copy()
+    from ..environment import subprocess_environment
+    environment = subprocess_environment()
     # Keep resumable traces, without promoting every maintenance page to a
     # recent Codex conversation. This is private to the REM child process.
     environment["CO_REM_CODEX_ARCHIVE"] = "1"
@@ -1191,6 +1194,16 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
+    if record.startswith(("people/", "orgs/")):
+        from .org_inference import infer, apply
+        hierarchy_evidence = [row for item in items if item.get('role') == 'facts'
+                              for row in item.get('facts', [])]
+        apply(notebook, infer(notebook, record, hierarchy_evidence), lock_held=True)
+        final = notebook.read(record)
+        if final != saved:
+            prepare_promotion(notebook.root, record, final, items)
+            if receipt:
+                write_json(receipt, {"record": record, "sha256": hashlib.sha256(final.encode()).hexdigest()})
     if record.startswith("people/"):
         store.refresh(notebook.root)
 
@@ -1296,7 +1309,7 @@ def scrub_task(directory: Path) -> None:
     Native completion is in the run log; its workspace goes once the round
     no longer needs the earlier task outputs.
     """
-    if not directory.is_dir() or directory.is_symlink():
+    if directory.name.startswith("do-") or not directory.is_dir() or directory.is_symlink():
         return
     native_task = read_json(directory / "task.json", {})
     active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
@@ -1339,7 +1352,7 @@ def scrub_finished_tasks(workdir: Path) -> None:
     stale = time.time() - ABANDONED_TASK_SECONDS
     finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
-        if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
+        if folder.name.startswith("do-") or folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
         native_task = read_json(folder / "task.json", {})

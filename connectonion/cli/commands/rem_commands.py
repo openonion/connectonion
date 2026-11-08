@@ -2103,6 +2103,25 @@ def make_rem_app(factory):
                   days: int = typer.Option(30, "--days", min=1)):
         _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days)
 
+    task_app = factory(help="co rem task", no_args_is_help=True)
+    task_app.info.cls = verbatim("co rem task", task_app.info.cls)
+    rem.add_typer(task_app, name="task")
+
+    @task_app.command("run", cls=V("co rem task run"))
+    def task_run(ctx: typer.Context, task_id: str = typer.Argument(...)):
+        from ...rem.tasks import start
+        _handle(ctx, lambda root: (start(root, task_id), ["task", "status", task_id]), ["task", "status"])
+
+    @task_app.command("status", cls=V("co rem task status"))
+    def task_status(ctx: typer.Context, task_id: Optional[str] = typer.Argument(None)):
+        from ...rem.tasks import status
+        _handle(ctx, lambda root: (status(root, task_id), ["task", "status"]), ["task", "status"])
+
+    @task_app.command("stop", cls=V("co rem task stop"))
+    def task_stop(ctx: typer.Context, task_id: str = typer.Argument(...)):
+        from ...rem.tasks import stop
+        _handle(ctx, lambda root: (stop(root, task_id), ["task", "status", task_id]), ["task", "status"])
+
     # --------------------------------------------------------------- Settings
 
     sources_app = factory(help="co rem sources", no_args_is_help=False)
@@ -2178,6 +2197,7 @@ def make_rem_app(factory):
                                  + " (one or two model calls)")
             from ...rem.languages import owner_languages
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
+                     "models": f"work {config['model']} · summaries {config['models']['summary']}",
                      "config": config, "tier": tier, "routes": routing(root),
                      "your languages": owner_languages(root)}, ["status"])
         if ctx.invoked_subcommand is None:
@@ -2248,6 +2268,8 @@ def make_rem_app(factory):
 
         def operation(root):
             checks, rem_fixes = [], []
+            from ...rem.tidy import notebook_checks
+            checks.extend(notebook_checks(root))
 
             def check(name, ok, detail, fix="", rem_fix=None):
                 """`rem_fix` is a co rem command, spelled for this root; `fix` is anything else."""

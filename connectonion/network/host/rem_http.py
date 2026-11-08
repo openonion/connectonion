@@ -94,7 +94,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -105,7 +105,7 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 415, "application/json required")
         return
     try:
-        body = json.loads(await read_body(receive, 65536 if scope["path"] == "/rem/thread" else 4096) or b"{}")
+        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve") else 4096) or b"{}")
     except (ValueError, UnicodeDecodeError):
         await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
         return
@@ -114,7 +114,24 @@ async def _action(scope, receive, send, root, headers):
         return
     from ...rem.files import RemError
     from ...rem import drafts, threads, translate
-    if scope["path"] == "/rem/thread":
+    if scope["path"] == "/rem/task":
+        from ...rem.tasks import status
+        if not isinstance(body.get("id"), str):
+            await _reply(send, 400, json.dumps({"error": "Expected task id"}), "application/json")
+            return
+        operation = lambda: status(root, body['id'])
+    elif scope["path"] == "/rem/approve":
+        from ...rem import approvals
+        if (body.get("action", "approve") not in ("approve", "undo")
+                or not isinstance(body.get("ids"), list) or len(body["ids"]) > 500
+                or any(not isinstance(key, str) for key in body["ids"])
+                or not isinstance(body.get("bodies", {}), dict)
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in body.get("bodies", {}).items())):
+            await _reply(send, 400, json.dumps({"error": "Expected selected ids and reply bodies"}), "application/json")
+            return
+        operation = lambda: (approvals.undo(root, body["ids"]) if body.get("action") == "undo"
+                             else approvals.approve(root, body["ids"], bodies=body.get("bodies")))
+    elif scope["path"] == "/rem/thread":
         if (not isinstance(body.get("key"), str) or "\n" not in body["key"]
                 or body.get("state") not in ("done", "skipped", "open")
                 or not isinstance(body.get("device"), (str, type(None)))
@@ -125,6 +142,9 @@ async def _action(scope, receive, send, root, headers):
             await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
             return
         operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+    elif scope["path"] == "/rem/language":
+        from ...rem.config import request_language
+        operation = lambda: request_language(root, body.get("language"))
     elif scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
     elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
@@ -180,3 +200,20 @@ def _progress(root, page: str, language: str) -> dict:
     if task.exception() is not None:
         return {"state": "failed", "error": str(task.exception())}
     return {"state": "ready", "text": task.result()}
+
+
+def approval_tick(root, create_agent, storage, result_ttl, extra_tick=None):
+    """Attach durable REM outbox delivery to the Host's existing minute clock."""
+    async def tick(at):
+        from ...rem.approvals import release
+        from ...rem.tasks import host_dispatch
+
+        def dispatch(item):
+            return host_dispatch(root, item)
+
+        if root is not None and root.is_dir():
+            await asyncio.to_thread(release, root, at=at, dispatch=dispatch)
+        if extra_tick is not None:
+            await extra_tick(at)
+
+    return tick

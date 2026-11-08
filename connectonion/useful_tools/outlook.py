@@ -790,7 +790,7 @@ class Outlook:
 
     def reply(self, email_id: str, body: str, send_at: str = None, *,
               attachments: list = None, cc: str = None, bcc: str = None,
-              reply_all: bool = False, draft: bool = False) -> str:
+              reply_all: bool = False, draft: bool = False, return_receipt: bool = False) -> str | dict:
         """Reply to an email, immediately or at a scheduled time, or save the
         reply to Drafts in the same thread for the owner to finish and send.
 
@@ -816,6 +816,7 @@ class Outlook:
                 dropped, or answered through a fresh `send` in a new thread (#1834).
             draft: Save the reply in Drafts, threaded with To and Cc filled in,
                 instead of sending it (needs Mail.ReadWrite)
+            return_receipt: With send_at, return the scheduled message id for cancellation
 
         Returns:
             Confirmation message
@@ -849,7 +850,9 @@ class Outlook:
             return f"Reply draft saved{suffix}, not sent. Open it in Outlook: {saved.get('webLink')}"
 
         if send_at:
-            self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
+            message_id = self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
+            if return_receipt:
+                return {"id": message_id, "send_at": send_at}
             return f"Reply scheduled for {send_at}{suffix}"
 
         # The reply action takes writable message properties beside the

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..codex_cli import resolve_codex
+from ..environment import subprocess_environment
 from .files import RemError, read_json, state_path, write_json
 
 # Leave room for overloaded machines; this bounds hangs, not normal startup.
@@ -43,7 +44,7 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
+def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=()) -> list[str]:
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
@@ -53,7 +54,9 @@ def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
-    return [*command, automation_prompt(root)]
+    for directory in add_dirs:
+        command += ['--add-dir', str(directory)]
+    return [*command, automation_prompt(root) if prompt is None else prompt]
 
 
 def _startup_timeout(signum, frame):
@@ -185,7 +188,7 @@ def _run_locked(root, run, lock_fd):
             # Inherit the lock so killing the launcher cannot overlap a still
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                         cwd=root, pass_fds=(lock_fd,), env={**os.environ, 'CO_REM_TURN_ID': name})
+                         cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
     except Exception as error:
         # Persist the failure for unattended users, then preserve the traceback.
         receipt['reason'] = str(error) or type(error).__name__
