@@ -1,14 +1,16 @@
 """The real-home guard must watch the account's home even when a run sets HOME to scratch."""
 import os
-import pwd
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 
 
 def test_a_scratch_home_does_not_move_what_the_guard_watches(tmp_path):
+    pwd = pytest.importorskip("pwd")  # Windows has no pwd; the guard falls back to ~ there
     env = {key: value for key, value in os.environ.items() if key != "CONNECTONION_TEST_REAL_HOME"}
     env["HOME"] = str(tmp_path)
     out = subprocess.run([sys.executable, "-c", "from tests.real_home_guard import REAL_CO, IMPORT_CO; print(REAL_CO); print(IMPORT_CO)"],

@@ -170,13 +170,15 @@ def _constants_under_the_real_home():
     count, found = _frozen_home_constants
     if count == len(sys.modules):
         return found
-    real_home = _REAL_CO.parent
+    # Only ~/.co: CI checks the repository out under the runner's home, and
+    # rebasing the package's own paths (reader.html, useful_skills) broke 282 tests.
+    real_co = _REAL_CO
     found = []
     for module_name, module in list(sys.modules.items()):
         if not module_name.startswith("connectonion") or module is None:
             continue
         for name, value in list(vars(module).items()):
-            if isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_home):
+            if isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_co):
                 found.append((module, name, value))
     _frozen_home_constants = (len(sys.modules), found)
     return found

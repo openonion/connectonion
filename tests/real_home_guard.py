@@ -40,7 +40,6 @@ red-first check; nothing else should set it.
 """
 
 import os
-import pwd
 import subprocess
 import sys
 import tempfile
@@ -53,7 +52,15 @@ _GUARD_SELF_TEST = bool(os.environ.get("CONNECTONION_TEST_REAL_HOME"))
 # Captured at import, before anything is patched.
 # Watch the account's own home, not $HOME: runs are told to use HOME=$(mktemp -d),
 # and a guard watching that scratch home proves nothing about the real ~/.co.
-REAL_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or pwd.getpwuid(os.getuid()).pw_dir) / ".co"
+def _account_home():
+    """The account's own home; Windows has no pwd module, and its HOME override is rare."""
+    if os.name == "nt":
+        return os.path.expanduser("~")
+    import pwd
+    return pwd.getpwuid(os.getuid()).pw_dir
+
+
+REAL_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or _account_home()) / ".co"
 # Module constants froze whatever $HOME was at import; conftest rebases from here.
 IMPORT_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or os.path.expanduser("~")) / ".co"
 _PREFIXES = tuple({str(REAL_CO), os.path.realpath(REAL_CO)})
