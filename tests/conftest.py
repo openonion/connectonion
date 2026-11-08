@@ -53,7 +53,7 @@ for _name in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR", "COLORTERM", "NO_COLO
 
 # The real-home guard goes in before connectonion is imported, so its audit hook
 # sees writes made at import too. See tests/real_home_guard.py.
-from tests.real_home_guard import REAL_CO as _REAL_CO  # noqa: E402
+from tests.real_home_guard import IMPORT_CO as _REAL_CO  # noqa: E402  (the home module constants froze)
 from tests.real_home_guard import (  # noqa: E402,F401  (pytest finds hooks by name here)
     pytest_runtest_logfinish, pytest_runtest_logstart, pytest_sessionfinish,
     pytest_sessionstart, pytest_terminal_summary,
