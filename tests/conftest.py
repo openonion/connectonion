@@ -4,9 +4,12 @@ LLM-Note: Global pytest configuration and shared test fixtures
 
 Module level: FORCE_COLOR & co. are stripped so output matches CI.
 
+Session hooks: the controller fails the run if the real ~/.co changed (lstat
+manifest, never opens a file); see the comment above _REAL_CO.
+
 Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
-- _never_touch_the_real_home: HOME and ~/.co are a fresh tmp dir per test
+- _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
 - _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
@@ -45,6 +48,105 @@ import pytest
 # inherit os.environ, so this covers `co` invoked as a child too.
 for _name in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR", "COLORTERM", "NO_COLOR", "PY_COLORS"):
     os.environ.pop(_name, None)
+
+
+# ---- the real ~/.co is the same at the end of the run as at the start -------
+#
+# _never_touch_the_real_home below repoints HOME and Path.home() per test, but
+# only for code that asks at call time. A module constant such as
+# `SSH_PRIVATE_KEY = Path.home() / ".co" / "ssh" / "id_ed25519"` is evaluated
+# when its module is imported -- and this file imports connectonion at module
+# level, before any fixture exists -- so it holds the operator's real home for
+# the whole run. On 2026-11-08 a unit run wrote id_ed25519_prod and
+# id_ed25519_staging into the real ~/.co/ssh through exactly such a constant,
+# on two machines, with every test green.
+#
+# So the run checks the outcome rather than the mechanism: the controller
+# records a manifest of the real ~/.co at session start and compares it at
+# session end. The manifest is lstat() only -- size, mtime_ns, inode -- and
+# never opens a file, because ~/.co/ssh holds private keys.
+#
+# The real home is captured here, before anything is patched.
+# CONNECTONION_TEST_REAL_HOME exists only so the guard's own red-first check
+# can point it at a scratch directory; nothing else should set it.
+_GUARD_SELF_TEST = bool(os.environ.get("CONNECTONION_TEST_REAL_HOME"))
+_REAL_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or os.path.expanduser("~")) / ".co"
+
+# Top-level entries a live process on the operator's machine writes while the
+# suite runs, so a change there says nothing about the tests:
+# - browser, browser_profile, browser_context, browser_network, browser.log:
+#   the `co browser` daemon, which stays up across sessions
+# - logs: hosted agents and `co ai` sessions append here as they run
+# Never listed, whatever is running: ssh/, keys.env and rem/. A change there
+# fails the run. A scratch home has no live writers, so the self-test ignores
+# nothing -- which is how it found a test writing logs/oo.log through a
+# frozen constant that this list would have hidden on the operator's machine.
+_LIVE_WRITERS = frozenset() if _GUARD_SELF_TEST else frozenset({
+    "browser", "browser_profile", "browser_context", "browser_network", "browser.log", "logs",
+})
+
+
+def _real_co_manifest():
+    """{relative path: (size, mtime_ns, inode)} of the real ~/.co, by lstat only."""
+    manifest = {}
+    if not _REAL_CO.is_dir():
+        return manifest
+    for root, dirs, files in os.walk(_REAL_CO):
+        top = root == str(_REAL_CO)
+        if top:
+            dirs[:] = [d for d in dirs if d not in _LIVE_WRITERS]
+        for name in files + dirs:
+            if top and name in _LIVE_WRITERS:
+                continue
+            rel = os.path.relpath(os.path.join(root, name), _REAL_CO)
+            try:
+                st = os.lstat(os.path.join(root, name))
+            except FileNotFoundError:
+                continue  # removed between the listing and the stat
+            # A directory's own mtime moves whenever an entry is added; the
+            # entries themselves are in the manifest, so record only that it exists.
+            manifest[rel] = ("dir",) if name in dirs else (st.st_size, st.st_mtime_ns, st.st_ino)
+    return manifest
+
+
+def _real_co_diff(before, after):
+    """[(created|changed|deleted, relative path)] between two manifests."""
+    created = sorted(after.keys() - before.keys())
+    changed = sorted(p for p in before.keys() & after.keys() if before[p] != after[p])
+    deleted = sorted(before.keys() - after.keys())
+    return [("created", p) for p in created] + [("changed", p) for p in changed] + [("deleted", p) for p in deleted]
+
+
+def pytest_sessionstart(session):
+    # Under xdist only the controller watches; the workers share its filesystem.
+    if not hasattr(session.config, "workerinput"):
+        session.config._real_co_before = _real_co_manifest()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    before = getattr(session.config, "_real_co_before", None)
+    if before is None:
+        return
+    diff = _real_co_diff(before, _real_co_manifest())
+    session.config._real_co_diff = diff
+    if diff and session.exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter, config):
+    diff = getattr(config, "_real_co_diff", None)
+    if diff is None:
+        return
+    if not diff:
+        terminalreporter.write_line(f"real-home guard: {_REAL_CO} unchanged")
+        return
+    terminalreporter.section(f"the real {_REAL_CO} changed during this run", sep="!", red=True, bold=True)
+    for label, path in diff:
+        terminalreporter.write_line(f"{label}: {path}")
+    terminalreporter.write_line(
+        "A test wrote through a path resolved before HOME was repointed -- usually a "
+        "module-level constant built from Path.home(). Resolve it at call time."
+    )
 
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse
@@ -133,6 +235,40 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     # exercise a custom global directory select it explicitly.
     monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    # The two lines above reach code that asks for the home when it runs. A
+    # module constant asked once, at import -- before this fixture existed --
+    # and still holds the real home; see the guard at the top of this file.
+    # Rebase each such constant onto this test's home. A test that patches one
+    # itself still wins: its setattr runs after this one.
+    for module, name, value in _constants_under_the_real_home():
+        monkeypatch.setattr(module, name, home / value.relative_to(_REAL_CO.parent))
+
+
+_frozen_home_constants = (-1, [])
+
+
+def _constants_under_the_real_home():
+    """[(module, name, path)] for every connectonion module-level Path under the real home.
+
+    Found by scanning rather than listed, so a constant added next month is
+    covered without anyone remembering it. Rescanned only when a module has
+    been imported since the last scan. A module first imported *during* a test
+    freezes that test's tmp home instead, which is not the operator's home.
+    """
+    global _frozen_home_constants
+    count, found = _frozen_home_constants
+    if count == len(sys.modules):
+        return found
+    real_home = _REAL_CO.parent
+    found = []
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.startswith("connectonion") or module is None:
+            continue
+        for name, value in list(vars(module).items()):
+            if isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_home):
+                found.append((module, name, value))
+    _frozen_home_constants = (len(sys.modules), found)
+    return found
 
 
 
