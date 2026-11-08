@@ -15,7 +15,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import CATEGORIES, MAP_DAYS, Notebook, RemError
+from .files import CATEGORIES, MAP_DAYS, Notebook, RemError, read_json, state_path
 from .service import run_logs, seen_outcome, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
@@ -137,17 +137,21 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .reviews import listing
     from .sessions import mentions, reader_fields
     from .reader_model import (session_detail, organisation_fields, organisation_members,
-                               organisation_obligations)
+                               organisation_obligations, PRIVATE)
     notebook = Notebook(root)
     records = []
     paths = [path for category in CATEGORIES if category not in ('sessions', 'logs', 'notes')
              for path in notebook.list(category)] if today else notebook.list()
     for record in paths:
         text = notebook.read(record)
+        private_topic = record.startswith('knowledge/') and bool(PRIVATE.search(text.split('\n', 1)[0]))
+        if private_topic and not local:
+            continue
         updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
-                        "updated": updated.isoformat(timespec="seconds")})
+                        "updated": updated.isoformat(timespec="seconds"),
+                        **({'private': True} if private_topic else {})})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
     # What is counted, written, and when it was last active comes from one
@@ -206,6 +210,17 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     links = {} if today else relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
+    from .reader_model import graph_snapshot
+    graph = {} if today else graph_snapshot(records, links)
+    from .topic_map import topic_aliases
+    topic_rows = read_json(state_path(root, 'map.json'), {}).get('topics', [])
+    for record in records:
+        if record['category'] == 'knowledge':
+            candidate = next((r for r in topic_rows if r['record'] == record['path']), {})
+            record['topic'] = {'aliases': topic_aliases(record['text']),
+                               'sessions': candidate.get('sessions', 0), 'skills': candidate.get('skills', 0),
+                               'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
+                               'doubtful': candidate.get('doubtful', [])}
     # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
     context_records = [{**r, 'text': _today_text(r['text'])} for r in records
                        if r['category'] in ('people', 'orgs', 'projects')
@@ -245,7 +260,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
-            "categories": list(CATEGORIES), "records": records,
+            "categories": list(CATEGORIES), "records": records, "graph": graph,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status.get("people_coverage"),
             "drafts": reply_drafts(root, local=local, records=records),
@@ -256,7 +271,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
-            "reviews": listing(root), "counts": counts(root, found),
+            "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
+            "counts": counts(root, found),
             "owner": owner}
     from .project_data import enrich_records
     data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
@@ -299,7 +315,7 @@ def _today_text(text: str) -> str:
 def _today_data(data: dict) -> dict:
     """Small, independently usable Today payload; the complete snapshot stays lazy."""
     fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service',
-              'needs_review', 'catalog_parent', 'mail', 'private_project', 'written_in', 'speaks')
+              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks')
     records = [{**{key: r[key] for key in fields if key in r}, 'text': _today_text(r['text']),
                 'translations': {tag: _today_text(text) for tag, text in r.get('translations', {}).items()}}
                for r in data['records'] if r['category'] not in ('sessions', 'logs', 'notes')]

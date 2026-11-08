@@ -899,9 +899,10 @@ Back:     co rem import --help
 
 ```
 List what a map would find, without writing pages. Useful to check a threshold
-before init. Reads mail headers and session metadata. No model.
+before init. Reads mail headers and session metadata; topics read existing
+extraction notes and cited pages. No model.
 
-Usage:    co rem scan [people|orgs|projects] [--days N] [--min-mails N]
+Usage:    co rem scan [people|orgs|projects|topics] [--days N] [--min-mails N]
                        [--min-people N] [--mine ADDRESS]...
 Example:  co rem scan people --days 30 --min-mails 5
           --min-mails   people: fewer messages than this is not listed (default 3)

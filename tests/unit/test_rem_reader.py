@@ -21,6 +21,7 @@ def _run_reader_js(script):
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
@@ -364,6 +365,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
@@ -2036,7 +2038,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine'])
+                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
     result = _run_reader_js(functions + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
@@ -2383,7 +2385,7 @@ def test_page_navigation_closes_the_conversation_dialog():
 
 def test_redundant_investigation_badge_is_omitted_and_owner_stays_out_of_people():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['listedRecords', 'inCategory'])
+                          for name in ['listedRecords', 'inCategory', 'privateTopicHidden'])
     pill = re.search(r'function statusPill\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(functions + '\n' + pill + r'''
       const REM = {owner: 'people/owner.md', records: [
@@ -2436,7 +2438,7 @@ def test_source_find_uses_the_panel_scroll_that_reserves_mail_header_space():
 
 def test_owner_stays_in_obligation_inputs_when_removed_from_people_rows():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['listedRecords', 'inCategory'])
+                          for name in ['listedRecords', 'inCategory', 'privateTopicHidden'])
     result = _run_reader_js(functions + r'''
       const REM = {owner: 'people/owner.md', records: [
         {path: 'people/owner.md', category: 'people'}, {path: 'people/nora.md', category: 'people'}]};

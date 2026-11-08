@@ -113,7 +113,7 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
     assert len(given) < len(instructions("investigate")) - 10_000
 
 
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
     """#1960: "read the CLI reference first" was obeyed on every run, a 12.6k
     `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
@@ -144,7 +144,7 @@ INSTRUCTION_BUDGET = 24_000
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
     """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
     investigation and 22.9k for maintenance; rationale now lives in
@@ -197,13 +197,13 @@ def test_no_turn_is_pointed_at_the_rationale_docs(stage):
 
 
 @pytest.mark.parametrize("source", ["codex", "whatsapp"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_maintaining_extract_notes_stays_within_15k_whatever_the_source(tmp_path, source, kind):
     """#2000: a one-page maintain turn was 17.5k with the codex or whatsapp Skill
     appended, though it reads extraction notes, not the source."""
     from connectonion.rem.runner import task_prompt
 
-    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog'}[kind]}/x.md",
+    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog', 'topic': 'knowledge'}[kind]}/x.md",
               "text": "# X", "one_page": True},
              {"role": "extract", "source": f"{source}:s +3", "text": "## Projects\n- **X** — note"}]
     task_prompt(tmp_path, items, "maintain", source)

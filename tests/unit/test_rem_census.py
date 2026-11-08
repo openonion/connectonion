@@ -28,7 +28,7 @@ def test_one_census_counts_written_pages_and_leaves_services_out(tmp_path):
     found = pages(tmp_path)
     assert counts(tmp_path, found) == {"people": {"mapped": 2, "written": 1}, "projects": {"mapped": 1, "written": 0},
                                        "orgs": {"mapped": 0, "written": 0}, "skills": {"mapped": 1, "written": 0},
-                                       "sessions": {"mapped": 0, "written": 0}}
+                                       "sessions": {"mapped": 0, "written": 0}, "knowledge": {"mapped": 0, "written": 0}}
     assert found["people/apple.md"]["service"]
     # Each page's own last activity, never the mtime a map just gave every file.
     assert found["people/corin.md"]["last"] == "2026-09-20"      # last contact, not the day it was investigated

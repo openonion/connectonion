@@ -3176,6 +3176,7 @@ function togglePrivate() {
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
   if (query) search(query);
   refreshFocusExpansion();
+  if (REM.records.some(r => r.private && r.category === "knowledge")) render();
 }
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme;
@@ -3227,7 +3228,8 @@ function label(c) { return t(CATEGORY_LABEL[c] || c); }
 function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
-function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
+function privateTopicHidden(r) { return r.private && r.category === "knowledge" && document.documentElement.classList.contains("hide-private"); }
+function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
@@ -7675,7 +7677,7 @@ function relationCard(link, currentPath = "") {
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
-  const entry = el("div", { class: "relation-entry" }, [
+  const entry = el("div", { class: "relation-entry" + (other.private || origin?.private ? " private" : "") }, [
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: other.title }),
@@ -7706,6 +7708,7 @@ function dedupeRelationSnippets(links) {
 
 function connectedContext(r) {
   const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service
+    && !privateTopicHidden(byPath(link.path)) && !privateTopicHidden(byPath(link.via) || {})
     && !(r.category === "projects" && byPath(link.path).category === "sessions")).map(link => localizedRelation(link, r.path));
   if (!related.length) return null;
   const explicit = link => link.kind === "linked" || link.kind === "linked from";
@@ -7797,7 +7800,7 @@ function recordFocus(r) {
     "aria-label": t("At a glance") });
   const privateMapped = r.private_project && k.status === "Mapped";
   const projectMapped = r.category === "projects" && k.status === "Mapped" && !privateMapped;
-  const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
+  const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : r.category === "knowledge" ? "where you stand" : "");
   const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
   const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
@@ -8058,6 +8061,10 @@ function record(path, heading) {
     main.appendChild(emptyState("Not in this snapshot"));
     return;
   }
+  if (privateTopicHidden(r)) {
+    main.appendChild(el("p", { role: "status", text: t("Hidden labelled passage") }));
+    return;
+  }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
   if (translationQueued(r)) main.appendChild(el("p", { class: "quiet-line", role: "status", text: t("Translating") }));
   const parts = splitTrailers(r.text);
@@ -8289,7 +8296,7 @@ function search(q, relatedPath = "") {
   const grouped = new Map();
   const plain = l => (document.documentElement.classList.contains("hide-private") ? unlabelled(l) : l).replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
-    if (r.path === "skills/catalog/index.md" || skillReport(r)) continue;
+    if (privateTopicHidden(r) || r.path === "skills/catalog/index.md" || skillReport(r)) continue;
     if (r.category === "sessions") {
       if (sessionText(r).lower.includes(needle)) hits.push({ r, lines: [sessionExcerpt(r, [needle]).text.slice(0, 240)] });
       continue;
@@ -8368,6 +8375,7 @@ function reviewPage() {
   main.appendChild(el("p", { class: "lede", text: t("Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again.").replace("co rem open", () => remCommand("open")) }));
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
   for (const row of REM.reviews || []) {
+    if (row.subjects.some(path => privateTopicHidden(byPath(path) || {}))) continue;
     const box = el("section", { class: "review" });
     box.appendChild(el("div", { class: "eyebrow" }, [el("span", { class: "pill" + (row.status === "pending" ? " warn" : " quiet"), text: t(row.status) }), el("span", { text: t(row.kind || "") })]));
     box.appendChild(el("h2", { text: row.question }));
@@ -8471,7 +8479,7 @@ function render() {
   else if (view === "activity") activityView();
   else if (c) category(c);
   else overview();
-  document.title = (reviews ? t("Questions & connections") : r ? (byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
+  document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
   const viewKey = r || (c === "people" ? c + (peopleTable ? ":table" : ":rows") : c) || view || (reviews ? "reviews" : query ? "search" : "today");
