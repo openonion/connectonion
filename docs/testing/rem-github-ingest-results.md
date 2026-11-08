@@ -156,3 +156,102 @@ Deviations/limits:
   with temporary gh shims, mocked HTTPS and real local fictional Git worktrees.
 - The wiki/docs-site can link the contract when the separate reader UI ships;
   neither nested site was changed or published here.
+
+## Review fixes
+
+The code review of `origin/main..4bb71551f` blocked this branch on eight findings.
+All eight are fixed; each behavioural fix had a test that failed first.
+
+| # | Finding | Status | Commit |
+| --- | --- | --- | --- |
+| 1 | A 304 broke every later sync | Fixed. `github_read()` reads the status from the `--include` headers and accepts a non-zero exit only when that status is 304. The shim now behaves like real gh (exit 1, `gh: HTTP 304`, LF status line, CRLF headers), and a 404 exit is still an error. | `234792977` |
+| 2 | Session links crossed worktrees | Fixed. A link needs a SHA the session printed verbatim (`[branch sha]`), an exact repo/worktree cwd, and a commit no older than the session start. The 2 h grace is gone: the printed SHA is the evidence, and `ended` is the last reply, not the last tool output. The misnamed test is replaced by `test_worktree_session_links_only_the_commit_it_printed`. | `0ec153a52` |
+| 3 | A bad Facts slug failed the whole round | Fixed. Slugs are validated when collected. An invalid one is skipped with `reason`, and its projection is `status: invalid`. | `561435da4` |
+| 4 | False-positive joins | Fixed. Deploys count only on a push to the default branch (new `defaultBranchRef` in the fixed query) or on a tag push/release. Preview and staging runs are excluded, and `basis` gives the 「核对」 line the event and branch. Closing pairs use GraphQL `closingIssuesReferences` from the same repository; the join is renamed `merged_closes_open_issue`, and the UI must adopt the new name. `failed_release` needs a release/publish workflow that is not a drafter and was triggered by a tag, a release or a dispatch. A follow-up fixed `tags` being shadowed inside the release loop. | `b46bdde3b`, `5614a88b7` |
+| 5 | The shared projection leaked local paths | Fixed. With `local=False`, every absolute path named by a recorded command becomes `<local repository>`, including in error text. | `c3607ffa8` |
+| 6 | The legacy issue file beat a fresh cache | Fixed. A synced `.state/code` cache wins over the undated `project-issues.json`. An explicit in-memory `issues=` still wins over both. | `a2e08d6ea` |
+| 7 | Cost unmeasured; the format bump forced a 180-day re-import | Fixed. Format 4 is kept. An rc61 index is backfilled only for transcripts modified in the 14-day churn window. A round starts no new repository after 90 s. Measurements are below. | `0ec153a52`, `434965ba5` |
+| 8 | Low-severity items | Fixed. A refusal is `GitHubReadRefused(RuntimeError)`, so it is never cached as an error. The cooldown lives in one place (`_code_due`). `copy`, `tomllib`, `urllib`, `re`, `json`, `identity` and the project_pages imports moved to module level; only `investigate` stays lazy, because investigate imports project_pages, as five existing functions there already do. "OpenOnion key" is now "provider API key". | `8d5738acb` |
+
+### Red first (observed before each fix)
+
+1. With the real-gh shim: `assert cache['error'] is None` failed with
+   `Command '['gh', 'api', 'repos/fernhill/lanterns/issues?…', '-H', 'If-None-Match: "cedar"']' returned non-zero exit status 1.`
+2. `test_session_links_need_exact_cwd_and_a_printed_sha` failed with `AssertionError`.
+   The worktree test failed with `KeyError: 'branch'`, and the session test with
+   `KeyError: 'printed_commits'` (3 failed).
+   The backfill test failed with `assert (2, 0) == (1, 1)`: the format bump re-imported both files.
+3. `ValueError: Expected a canonical owner/repository` came out of `sync_project_repositories`.
+4. `assert 12 == 4`: "Deploy preview" was taken as the latest deploy. `KeyError: 'merged_closes_open_issue'`.
+   A later `failed_release` regression gave `assert [(5, ['v1.2.0'])] == [(5, …), (16, ['cedar-lights'])]`.
+5. `assert '/home/mara-quill' not in …`: the `git -C` path was present in `verification` and `failed_verification`.
+6. `assert 'quiet' == 'at_risk'`: the legacy `[]` overrode the cached bug issue.
+7. `assert 3 == 1`: three repositories started after the budget was spent.
+8. `Failed: DID NOT RAISE GitHubReadRefused`. The interim class was a ValueError, and the sync cached it as an error.
+
+### Live smoke (read-only, public `cli/cli`, gh 2.97.0, 2026-11-08)
+
+Only `gh api … --method GET --include`, through `github_read()`, with a fresh HOME.
+Script: `<session scratchpad>/smoke/live_smoke.py` (not committed).
+
+```text
+pass 1: 9.37s {'issues': 200, 'actions/runs': 200, 'releases': 100, 'tags': 100} statuses [200, 200, 200, 200, 200, 200] calls 6
+pass 2: 0.52s {'issues': 200, 'actions/runs': 200, 'releases': 100, 'tags': 100} statuses [304, 304, 304, 304, 304, 304] calls 6
+guard refused ['api', 'repos/cli/cli/issues'] -> REM GitHub ingest is read-only; refused gh arguments
+guard refused ['issue', 'comment'] -> REM GitHub ingest is read-only; refused gh arguments
+```
+
+All six revalidations returned real 304s, gh exited 1 on each, and the sync kept its data.
+Before writing the shim I checked real gh by hand on `repos/cli/cli/tags?per_page=1&page=1`:
+`exit304=1`, stderr `gh: HTTP 304`, status line ending in LF, headers in CRLF and an empty body.
+
+GraphQL was not exercised live. Under an isolated HOME, gh cannot reach the
+keychain token, so `gh auth status` fails. A full `sync_repository` therefore
+recorded its GraphQL step as a cache error, with `failed_verification` showing
+`[('issues', 200), ('issues', 200)]`. I did not copy the owner's token into the
+isolated HOME. The PR query, including `defaultBranchRef` and
+`closingIssuesReferences`, is covered only by the shim.
+
+### Measured round wall time
+
+Script: `<session scratchpad>/smoke/measure_round.py` (not committed). It used a
+fake gh and realistic-size fictional data: 34 project pages, 200 issues of about
+3 KB each, 100 PRs with 25 checks each, 200 runs, 100 tags and releases, one
+matched local checkout with 300 commits in the window, and 500 session entries.
+
+```text
+round 1: 1.22s wall, synced 3 of 34 repos: {'fernhill/alder': (200, 100, 200, 'matched', None), 'fernhill/grove1': …, 'fernhill/grove10': …}
+round 2: 0.62s wall, synced 3 of 34 repos: …
+```
+
+Local work is about 1.2 s per round. The network adds about 9.4 s per repository
+cold (six REST reads, measured live) or 0.5 s warm, plus one GraphQL read that was
+not measured. A cold round of three repositories is therefore around 30 s.
+`CODE_ROUND_SECONDS = 90` stops new repositories, so the worst case is about 90 s
+plus one repository's timeouts (7 × 20 s + 3 git calls), instead of three
+repositories' worth. 34 repositories take 12 rounds for a first full read.
+
+### Unit suite
+
+The requested command, run with a fresh HOME:
+
+```sh
+env -u FORCE_COLOR uv run --quiet --python 3.13 --extra dev python -m pytest -q -p no:cacheprovider tests/unit -n 6 --dist=worksteal
+```
+
+The suite was run from the worktree, which is itself under `/private/tmp`. It was
+not run from bare `/private/tmp`, for the harness reason recorded above. On head
+`5614a88b7`, with a fresh HOME and `OPENONION_API_KEY=fictional-not-a-key`, the
+summary line was:
+
+```text
+18785 passed, 19 skipped, 2944 warnings in 358.43s (0:05:58)
+```
+
+The fictional key is not a credential, and nothing calls a provider. Without it,
+the same command on the previous head `434965ba5` gave
+`18 failed, 18767 passed, 19 skipped, 2944 warnings in 235.58s (0:03:55)`.
+Seventeen of those failures were `MissingAmbientAPIKey`, and one was a subprocess
+`Agent(...)` construction that needs the same key. These are the base failures
+listed above, now 18 rather than 19 because the SIGHUP case passed. All eight
+affected files pass with the fictional key: `128 passed, 1 skipped`.
