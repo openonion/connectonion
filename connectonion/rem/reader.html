@@ -1920,6 +1920,190 @@
     .project-lane-head { display: none; }
   }
 </style>
+<style id="org-style">
+  /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
+  :root:has(#main > .ov) { --paper: #f6f6f3; }
+  .ov {
+    --ov-surface: #fff; --ov-sunk: #efefeb; --ov-hover: rgba(15,23,18,.045);
+    --ov-ink: #121a15; --ov-ink2: #4b554f; --ov-ink3: #868f89; --ov-ink4: #b4bab6;
+    --ov-line: rgba(18,26,21,.08); --ov-line2: rgba(18,26,21,.14);
+    --ov-fresh: #22d27a; --ov-fresh-h: #1bbf6c; --ov-on-fresh: #05301b;
+    --ov-lamp: #c98a06; --ov-lamp-bg: #fdf3dc; --ov-late: #c4362c;
+    --ov-shadow: 0 0 0 1px var(--ov-line), 0 1px 2px rgba(16,24,20,.04);
+    --ov-shadow-up: 0 0 0 1px var(--ov-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
+    color: var(--ov-ink); font: 400 14px/20px -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    font-feature-settings: "tnum" 1; margin: 0 auto; overflow-wrap: normal;
+  }
+  :root[data-theme="dark"]:has(#main > .ov) { --paper: #0e110f; }
+  :root[data-theme="dark"] .ov {
+    --ov-surface: #161a17; --ov-sunk: #1c211d; --ov-hover: rgba(255,255,255,.05);
+    --ov-ink: #ecefec; --ov-ink2: #a9b1ac; --ov-ink3: #727b75; --ov-ink4: #4b524d;
+    --ov-line: rgba(255,255,255,.07); --ov-line2: rgba(255,255,255,.13);
+    --ov-fresh: #3be38f; --ov-fresh-h: #2fd27f; --ov-lamp: #e8b440; --ov-lamp-bg: rgba(232,180,64,.12); --ov-late: #f0675c;
+    --ov-shadow: 0 0 0 1px var(--ov-line); --ov-shadow-up: 0 0 0 1px var(--ov-line2), 0 16px 40px -8px rgba(0,0,0,.6);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):has(#main > .ov) { --paper: #0e110f; }
+    :root:not([data-theme="light"]) .ov {
+      --ov-surface: #161a17; --ov-sunk: #1c211d; --ov-hover: rgba(255,255,255,.05);
+      --ov-ink: #ecefec; --ov-ink2: #a9b1ac; --ov-ink3: #727b75; --ov-ink4: #4b524d;
+      --ov-line: rgba(255,255,255,.07); --ov-line2: rgba(255,255,255,.13);
+      --ov-fresh: #3be38f; --ov-fresh-h: #2fd27f; --ov-lamp: #e8b440; --ov-lamp-bg: rgba(232,180,64,.12); --ov-late: #f0675c;
+      --ov-shadow: 0 0 0 1px var(--ov-line); --ov-shadow-up: 0 0 0 1px var(--ov-line2), 0 16px 40px -8px rgba(0,0,0,.6);
+    }
+  }
+  .ov a, .ov a:hover { color: inherit; text-decoration: none; }
+  .ov.ov-list { max-width: 720px; }
+  .ov.ov-page { max-width: 1000px; }
+  .ov .ov-i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .ov-eyebrow, .ov-crumb { font-size: 12.5px; color: var(--ov-ink3); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .ov-crumb .ov-i { width: 13px; height: 13px; }
+  .ov h1 { font-family: inherit; font-size: 28px; line-height: 36px; font-weight: 650; letter-spacing: -.022em; margin: 6px 0 0; color: var(--ov-ink); }
+  .ov h1 .ov-soft { color: var(--ov-ink3); font-weight: 500; }
+  .ov h1 .ov-soft::before { content: " · "; }
+  .ov h2 { font-family: inherit; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ov-ink2); display: flex; align-items: center; gap: 8px; margin: 40px 0 12px; letter-spacing: 0; }
+  .ov h2 .ov-n { color: var(--ov-ink3); font-weight: 500; }
+  .ov-hint { margin-left: auto; font-weight: 400; color: var(--ov-ink3); font-size: 12.5px; }
+  .ov-tile { width: 32px; height: 32px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--ov-sunk); color: var(--ov-ink2); box-shadow: inset 0 0 0 1px var(--ov-line); font-size: 13px; font-weight: 700; }
+  .ov-tile.sm { width: 28px; height: 28px; border-radius: 7px; font-size: 12px; }
+  .ov-tile.lg { width: 52px; height: 52px; border-radius: 14px; font-size: 18px; }
+  .ov-tile.xl { width: 56px; height: 56px; border-radius: 15px; font-size: 20px; }
+  .ov-av { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 650; flex: none; color: #fff; letter-spacing: .02em; }
+  .ov-av.xs { width: 22px; height: 22px; font-size: 9px; }
+  .ov-chip { white-space: nowrap; flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11.5px; font-weight: 600; }
+  .ov-chip.lamp { color: var(--ov-lamp); background: var(--ov-lamp-bg); }
+  .ov-chip.late { color: var(--ov-late); background: color-mix(in srgb, var(--ov-late) 10%, transparent); }
+  .ov-chip.mute { color: var(--ov-ink3); background: var(--ov-sunk); }
+  .ov-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+  .ov-dot.lamp { background: var(--ov-lamp); } .ov-dot.late { background: var(--ov-late); }
+  .ov-primary { display: block; height: 40px; line-height: 40px; padding: 0 18px; border-radius: 10px; font-size: 14px; font-weight: 650; background: var(--ov-fresh); color: var(--ov-on-fresh) !important; border: 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; flex: none; min-width: 0; box-shadow: 0 1px 0 rgba(5,48,27,.12), 0 4px 14px -4px color-mix(in srgb, var(--ov-fresh) 70%, transparent); transition: background 120ms ease-out; }
+  .ov-primary:hover { background: var(--ov-fresh-h); text-decoration: none; }
+  .ov-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 7px; font-family: inherit; font-size: 13px; font-weight: 550; white-space: nowrap; border: 0; box-shadow: inset 0 0 0 1px var(--ov-line2); background: var(--ov-surface); color: var(--ov-ink); cursor: pointer; transition: background 120ms ease-out; }
+  .ov-btn:hover { background: var(--ov-sunk); }
+  .ov-btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .ov-btn.ghost { box-shadow: none; background: none; color: var(--ov-ink2); }
+  .ov-card, .ov-rows { background: var(--ov-surface); border-radius: 14px; box-shadow: var(--ov-shadow); overflow: hidden; }
+  .ov-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 56px; box-sizing: border-box; }
+  .ov-row + .ov-row, .ov-rows > .ov-more, .ov-card > .ov-more { box-shadow: inset 0 1px 0 var(--ov-line); }
+  .ov-row:hover { background: var(--ov-hover); text-decoration: none; }
+  .ov-body { flex: 1; min-width: 0; }
+  .ov-t { font-size: 14px; font-weight: 500; line-height: 20px; display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .ov-kind, .ov-role { color: var(--ov-ink3); font-weight: 400; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .ov-s { font-size: 13px; color: var(--ov-ink3); line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-end { display: flex; align-items: center; gap: 8px; flex: none; color: var(--ov-ink3); font-size: 12.5px; }
+  .ov-when { width: 64px; text-align: right; white-space: nowrap; }
+  .ov-stack { display: flex; align-items: center; width: 84px; justify-content: flex-end; }
+  .ov-stack .ov-av { box-shadow: 0 0 0 2px var(--ov-surface); margin-left: -6px; }
+  .ov-stack em { font-style: normal; font-size: 12px; color: var(--ov-ink3); margin-left: 6px; min-width: 22px; }
+  .ov-lock { display: inline-flex; align-items: center; gap: 5px; color: var(--ov-ink3); }
+  .ov-lock .ov-i { width: 13px; height: 13px; }
+  .ov-more { display: flex; width: 100%; justify-content: center; align-items: center; gap: 4px; min-height: 44px; border: 0; background: none; color: var(--ov-ink3); font-family: inherit; font-size: 13px; cursor: pointer; }
+  .ov-more:hover { background: var(--ov-hover); }
+  /* list */
+  .ov-focal .ov-primary { max-width: 260px; }
+  .ov-focal { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--ov-surface); box-shadow: var(--ov-shadow-up); }
+  .ov-k { font-size: 12.5px; color: var(--ov-ink3); font-weight: 500; display: flex; gap: 8px; align-items: center; }
+  .ov-ft { display: block; font-size: 17px; line-height: 24px; font-weight: 650; letter-spacing: -.01em; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ov-fs { font-size: 13.5px; color: var(--ov-ink2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-bar { display: flex; align-items: center; gap: 8px; margin: 36px 0 4px; }
+  .ov-findbox { flex: 1; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 10px; background: var(--ov-surface); box-shadow: var(--ov-shadow); color: var(--ov-ink3); }
+  .ov-find { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ov-ink); font-family: inherit; font-size: 13.5px; padding: 0; box-shadow: none; }
+  .ov-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--ov-sunk); }
+  .ov-tabs button { border: 0; background: none; font-family: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; color: var(--ov-ink3); cursor: pointer; white-space: nowrap; }
+  .ov-tabs button[aria-pressed="true"] { background: var(--ov-surface); color: var(--ov-ink); box-shadow: var(--ov-shadow); }
+  .ov-tabs i { font-style: normal; color: var(--ov-ink3); margin-left: 4px; }
+  .ov h2.ov-grp { font-size: 12.5px; color: var(--ov-ink3); margin: 0; padding: 20px 4px 8px; }
+  .ov-kind.unknown { font-style: normal; }
+  /* page */
+  .ov-head { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
+  .ov-head h1 { margin: 0; }
+  .ov-sub { font-size: 14.5px; line-height: 21px; color: var(--ov-ink2); margin: 2px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ov-sub .ov-chip { vertical-align: 1px; }
+  .ov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 48px; margin-top: 8px; }
+  .ov-stats { display: flex; gap: 28px; margin-top: 22px; padding: 14px 0; box-shadow: inset 0 1px 0 var(--ov-line), inset 0 -1px 0 var(--ov-line); }
+  .ov-stats div { font-size: 12px; color: var(--ov-ink3); font-weight: 500; }
+  .ov-stats b { display: block; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--ov-ink); }
+  .ov-stats .late { color: var(--ov-late); }
+  .ov-owe { display: flex; gap: 12px; padding: 14px 16px; align-items: flex-start; }
+  .ov-owe + .ov-owe { box-shadow: inset 0 1px 0 var(--ov-line); }
+  .ov-ot { font-size: 14.5px; font-weight: 600; line-height: 21px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ov-who { font-size: 12.5px; color: var(--ov-ink3); margin-top: 1px; }
+  .ov-who a { color: var(--ov-ink2); font-weight: 550; }
+  .ov-ev { font-size: 13px; color: var(--ov-ink2); margin-top: 4px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .ov-ev q { quotes: "“" "”"; }
+  .ov-ev sup { white-space: nowrap; font-size: 10.5px; color: var(--ov-ink3); margin-left: 2px; font-weight: 500; }
+  .ov-owe > .ov-end { flex-direction: column; align-items: flex-end; gap: 8px; }
+  .ov-quiet { font-size: 13px; color: var(--ov-ink3); margin: 12px 0 0; display: flex; gap: 8px; align-items: baseline; line-height: 20px; }
+  .ov-quiet .ov-i { width: 14px; height: 14px; position: relative; top: 2px; }
+  .ov-quiet b, .ov-quiet a { color: var(--ov-ink2); font-weight: 550; }
+  .ov-none { font-size: 14px; color: var(--ov-ink2); margin: 32px 0 0; }
+  .ov-teams { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .ov-team { padding: 12px 14px 10px; }
+  .ov-tn { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .ov-tn .ov-dot { margin-left: auto; }
+  .ov-m { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; min-width: 0; }
+  .ov-m > span:not(.ov-av) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-m .ov-role { margin-left: auto; font-size: 12px; flex: none; max-width: 45%; }
+  .ov-tl { list-style: none; margin: 4px 0 0; padding: 0; }
+  .ov-month { font-size: 12px; font-weight: 600; color: var(--ov-ink3); padding: 16px 0 6px 92px; }
+  .ov-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: 14px; line-height: 21px; }
+  .ov-d { font-size: 12.5px; color: var(--ov-ink3); text-align: right; padding-right: 4px; }
+  .ov-w { display: grid; place-items: center; }
+  .ov-w i { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ov-ink4); }
+  .ov-w i.me { background: var(--ov-ink3); box-shadow: none; }
+  .ov-x { color: var(--ov-ink2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ov-x b { color: var(--ov-ink); font-weight: 550; }
+  .ov-section > .ov-btn.ghost { margin: 8px 0 0 88px; }
+  .ov-rail h4 { font-size: 12px; font-weight: 600; color: var(--ov-ink3); margin: 28px 0 10px; }
+  .ov-rail h4:first-child { margin-top: 20px; }
+  .ov-kv { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 10px; font-size: 13px; margin: 0; }
+  .ov-kv dt { color: var(--ov-ink3); }
+  .ov-kv dd { margin: 0; overflow-wrap: anywhere; }
+  .ov-mini { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 13.5px; }
+  .ov-mini + .ov-mini { box-shadow: inset 0 1px 0 var(--ov-line); }
+  .ov-mini > span:last-child { min-width: 0; }
+  .ov-mini small { display: block; color: var(--ov-ink3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-unsure { font-size: 13px; color: var(--ov-ink2); line-height: 20px; margin: 0; padding: 0; }
+  .ov-unsure li { list-style: none; padding-left: 14px; position: relative; margin-bottom: 6px; }
+  .ov-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--ov-ink4); font-weight: 700; }
+  .ov-src { font-size: 12.5px; color: var(--ov-ink3) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
+  .ov-src .ov-i { width: 13px; height: 13px; }
+  .ov-curtain { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 16px; }
+  main:has(> .ov) > .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
+  @media (max-width: 1180px) { .ov-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 719px) {
+    .ov h1 { font-size: 24px; line-height: 31px; }
+    .ov-list h1 .ov-soft { display: block; font-size: 16px; line-height: 22px; margin-top: 2px; }
+    .ov-list h1 .ov-soft::before { content: none; }
+    .ov-row { padding: 12px 14px; }
+    .ov-list .ov-row { align-items: flex-start; }
+    .ov-list .ov-row > .ov-end { padding-top: 2px; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .ov-list .ov-s { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .ov-list .ov-stack, .ov-list .ov-kind, .ov-focal > .ov-tile, .ov-tabs, .ov-hint { display: none; }
+    .ov-focal { flex-wrap: wrap; padding: 16px; margin-top: 20px; }
+    .ov-fs { white-space: normal; }
+    .ov .ov-primary { width: 100%; max-width: none; height: 46px; line-height: 46px; text-align: center; box-sizing: border-box; }
+    .ov-bar { margin-top: 28px; }
+    .ov-head { flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .ov-head .ov-tile.xl { width: 48px; height: 48px; font-size: 17px; }
+    .ov-head > .ov-primary, .ov-head > .draft-now { order: 3; }
+    .ov-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .ov-stats { gap: 18px; overflow: hidden; }
+    .ov-stats div:nth-child(n+4) { display: none; }
+    .ov h2 { margin-top: 32px; }
+    .ov-owe { flex-wrap: wrap; }
+    .ov-owe > .ov-body { flex: 1 1 calc(100% - 44px); }
+    .ov-owe > .ov-end { flex-direction: row; width: 100%; padding-left: 44px; justify-content: space-between; align-items: center; box-sizing: border-box; }
+    .ov-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .ov-team { padding: 10px 12px 8px; }
+    .ov-m .ov-role { display: none; }
+    .ov-page .ov-row .ov-t { display: block; }
+    .ov-page .ov-row .ov-role { display: block; }
+    .ov-month { padding-left: 0; }
+    .ov-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
+    .ov-section > .ov-btn.ghost { margin-left: 0; }
+  }
+</style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -6006,6 +6190,7 @@ function categoryCount(c, counts, total) {
 function category(c) {
   if (c === "sessions") { sessionsView(); return; }
   if (c === "projects" && inCategory("projects").length) { projectsBoard(); return; }
+  if (c === "orgs") { orgsView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
@@ -6149,6 +6334,423 @@ function projectBoardLanes(lanes, days) {
       for (const tab of tabs.children) tab.setAttribute("aria-pressed", String(tab.dataset.lane === key));
     }, { "data-lane": key, "aria-pressed": String(key === first) })));
   return el("div", {}, [tabs, board]);
+}
+
+// ---------- organisations: the list (#c=orgs) and one organisation's page ----------
+// An organisation answers, in this order: what it is to you, what you owe it,
+// who you know there by where they sit, and what happened lately. Organisations
+// are neutral rounded squares; people stay coloured circles. Most pages were
+// written before Kind, To you and Team existed, so every unknown has a quiet
+// finished form instead of an empty slot (art direction, 2026-11-08).
+const ORG_UI_ZH = {
+  "University": "大学", "Investor": "投资方", "Client or partner": "客户与合作", "Supplier": "供应商",
+  "Community and events": "社区与活动", "Your company": "你的公司", "Personal": "个人",
+  "Not sure what this is yet": "还不清楚是什么机构",
+  "{n} organisations": "{n} 个组织", "{n} waiting on you": "{n} 个在等你", "nothing waiting on you": "没有在等你的事",
+  "Most urgent organisation": "最该先处理的组织",
+  "{org} has {n} waiting on you; most urgent: {who}, {thing}": "{org} 有 {n} 件在等你，最急的是 {who}：{thing}",
+  "{org} is waiting on one thing: {who}, {thing}": "{org} 有 1 件在等你：{who}，{thing}",
+  "{n} people you know": "{n} 位你认识的人",
+  "Filter organisations, people, domains": "筛选组织、人名、域名",
+  "All": "全部", "Waiting on you": "在等你", "Recently in touch": "最近有往来", "Quiet": "安静",
+  "overdue first": "逾期的在前", "within 45 days": "45 天内", "no contact for over 45 days": "45 天以上没有往来",
+  "{n} more →": "其余 {n} 个 →", "{n} more": "还有 {n} 件", "Overdue": "逾期", "{n} items": "{n} 件",
+  "Overdue {n} days": "逾期 {n} 天", "Personal · shown only on this Mac": "个人事项 · 只在这台 Mac 上显示",
+  "Show": "显示", "No organisation matches": "没有符合的组织",
+  "Reply to {name} · {thing}": "回复 {name} · {thing}", "Follow up with {name} · {thing}": "跟进 {name} · {thing}",
+  "people you know": "位你认识的人", "teams or departments": "个团队/部门", "things you owe": "件你欠的",
+  "{n} overdue": "{n} 件逾期", "last contact": "最近往来",
+  "You owe {org}": "你欠 {org} 的", "Colleagues waiting on you": "同事在等你的",
+  "{n} more items": "其余 {n} 件", "{n} more with them": "这里还有 {n} 件",
+  "Waiting on them, {n}: ": "在等对方 {n} 件：",
+  "You owe {org} nothing": "你不欠 {org} 什么", "{n} waiting on them": "{n} 件在等对方",
+  "People you know here": "你在这里认识的人", "by where they sit": "按所在部门",
+  "{n} more people in {org}, department not known yet: ": "还有 {n} 人在 {org}，还不清楚在哪个部门：",
+  "Department not known yet: ": "还不清楚在哪个部门：",
+  "Lately": "最近往来", "newest first": "最新在前", "Show all {n} entries": "显示全部 {n} 条",
+  "About": "关于", "What": "是什么", "Website": "网站", "Where": "所在",
+  "Related projects": "相关项目", "REM is not sure yet": "REM 还不确定",
+  "What kind of organisation this is": "它是哪一类机构", "What it is to you": "它对你来说是什么",
+  "Which department {n} people sit in": "{n} 个人在哪个部门",
+  "{n} sources": "{n} 个来源",
+  "REM only knows its domain and {n} people": "REM 只知道它的域名和 {n} 位联系人",
+  "Not investigated yet": "还没调查", "writes from it": "从这里来信",
+  "You": "你"
+};
+function orgT(key, values = {}) {
+  const words = uiLanguage === "zh" ? ORG_UI_ZH[key] : null;
+  return words ? words.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match) : t(key, values);
+}
+const ORG_KINDS = { university: "University", investor: "Investor", client_partner: "Client or partner", supplier: "Supplier",
+  community: "Community and events", own_company: "Your company", personal: "Personal" };
+const ORG_RECENT_DAYS = 45;
+const EARTH = ["#7d8c6c", "#8c765f", "#6c7e8f", "#8d6e7b", "#5f8678", "#927a52", "#6c7096", "#81706a"];
+const ORG_ICONS = {
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  chev: '<path d="m9 6 6 6-6 6"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'
+};
+const revealedOrgs = new Set();
+let orgFilter = { query: "", tab: "all" };
+
+function orgIcon(name) {
+  const box = el("span", { "aria-hidden": "true", html: '<svg class="ov-i" viewBox="0 0 24 24">' + ORG_ICONS[name] + "</svg>" });
+  return box.firstChild;
+}
+// "University of New South Wales (UNSW)" is UNSW in lists and headings.
+function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.title; }
+function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
+function orgKind(r) { return r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
+function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
+function orgRelation(r) { return firstSentence(plainLine(r.to_you || "") || plainLine(facts(r).how || "") || known(r).summary); }
+function orgHidden(r) { return !!r.private && !revealedOrgs.has(r.path); }
+function orgTile(r, size = "") { return el("span", { class: "ov-tile " + size, "aria-hidden": "true", text: [...orgName(r)][0].toUpperCase() }); }
+function orgFace(p, size = "") {
+  const words = p.title.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/);
+  const initials = (words.length > 1 ? words[0][0] + words.at(-1)[0] : [...(words[0] || "?")].slice(0, 2).join("")).toUpperCase();
+  let hash = 0;
+  for (const c of p.title) hash = (hash * 31 + c.codePointAt(0)) >>> 0;
+  return el("span", { class: "ov-av " + size, style: "background:" + EARTH[hash % EARTH.length], "aria-hidden": "true", text: initials });
+}
+function orgChip(tone, text) { return el("span", { class: "ov-chip " + tone, text }); }
+function orgLock() { return el("span", { class: "ov-lock" }, [orgIcon("lock"), orgT("Personal · shown only on this Mac")]); }
+function orgFirstName(p) { return p.title.trim().split(/\s+/)[0]; }
+
+// The organisation's deduplicated obligations (reader_model.organisation_obligations),
+// joined back to their page thread so done keys, drafts and actions are Today's own.
+function orgEntries(r) {
+  return (r.obligations || []).map(row => {
+    const page = byPath(row.record);
+    if (!page) return null;
+    const found = threads(page).items.find(item => doneKey({ r: page, t: item }) === row.key);
+    const members = row.keys.map(key => {
+      const text = key.slice(key.indexOf("\n") + 1);
+      return { r: byPath(key.slice(0, key.indexOf("\n"))) || page, t: { text, originalText: text } };
+    });
+    return { r: page, row, members, t: { ...(found || { text: row.text, originalText: row.text }), since: row.since, due: row.due, quiet: row.quiet, dir: row.dir } };
+  }).filter(entry => entry && !isDone(entry));
+}
+function overdue(entry) { return !!entry.t.due && entry.t.due < calendarDay(REM.as_of); }
+function owedFirst(a, b) {
+  return Number(overdue(b)) - Number(overdue(a)) || (overdue(a) ? a.t.due.localeCompare(b.t.due) : 0)
+    || (a.t.since || "9999").localeCompare(b.t.since || "9999");
+}
+function orgOwed(r) { return orgEntries(r).filter(entry => entry.t.dir === "mine" && !entry.t.quiet).sort(owedFirst); }
+function orgTheirs(r) { return orgEntries(r).filter(entry => entry.t.dir === "theirs" && !entry.t.quiet); }
+function owedPerson(entry) {
+  const path = (entry.row.people || [])[0];
+  return path ? byPath(path) : entry.r.category === "people" ? entry.r : null;
+}
+// The thing owed as a noun phrase, and the quoted words that prove it.
+function owedWords(entry) {
+  const { words } = morningWords(entry.t.text, entry.r, entry.t);
+  const quote = /“([^”]+)”|"([^"]+)"|「([^」]+)」/.exec(words);
+  const lead = (quote ? words.slice(0, quote.index) : words).replace(/[\s—–:：,，;；.。(（-]+$/, "").trim();
+  // "Weiwei wrote, “…”" names a speaker, not the thing: then the sentence itself is the title.
+  const frame = !lead || lead.split(/\s+/).length < 3 || /\b(?:wrote|writes|asked|asks|said|says|replied|followed up)(?: you| him| her)?$|\byou$/i.test(lead);
+  if (frame) return { title: capFirst(words), quote: "" };
+  const said = quote ? quote[1] || quote[2] || quote[3] : "";
+  return { title: capFirst(lead), quote: /^0x[0-9a-f]{24,}$/i.test(said) ? said.slice(0, 10) + "…" + said.slice(-9) : said };
+}
+function owedAge(entry) {
+  if (overdue(entry)) return orgChip("late", orgT("Overdue {n} days", { n: daysSince(entry.t.due) }));
+  return entry.t.since ? orgChip("mute", age(entry.t.since)) : null;
+}
+// The one green button: Today's own action for the most urgent owed thing, named.
+function orgPrimary(entry) {
+  const who = owedPerson(entry), name = who ? orgFirstName(who) : orgName(entry.r);
+  const noReply = threadDraft(entry)?.status === "no_reply";
+  const node = noReply ? el("button", { type: "button", text: orgT("Mark done") }) : primaryAction(entry);
+  if (noReply) node.onclick = () => setDone(entry, true);
+  const button = node.matches("a, button") ? node : node.querySelector("button");
+  const thing = owedWords(entry).title;
+  const completion = button.textContent === orgT("Mark done");
+  button.className = "ov-primary";
+  if (!completion) button.textContent = orgT(threadKind(entry)?.mail ? "Reply to {name} · {thing}" : "Follow up with {name} · {thing}", { name, thing });
+  button.title = thing;
+  return node;
+}
+
+// ---------- the list ----------
+// Two pages with one name (one company, two mail domains) are one organisation.
+function orgRows() {
+  const byName = new Map();
+  for (const r of inCategory("orgs")) {
+    const key = (orgHidden(r) ? "hidden:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
+    byName.set(key, [...(byName.get(key) || []), r]);
+  }
+  return [...byName.values()].map(pages => {
+    const r = [...pages].sort((a, b) => (b.people || []).length - (a.people || []).length)[0];
+    const seen = new Set();
+    const owed = pages.flatMap(orgOwed).filter(entry => !seen.has(entry.row.key) && seen.add(entry.row.key)).sort(owedFirst);
+    const people = [...new Set(pages.flatMap(page => page.people || []))].map(byPath).filter(p => p && !p.service);
+    return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
+  });
+}
+function orgByUrgency(a, b) {
+  const late = o => o.owed.some(overdue);
+  return Number(late(b)) - Number(late(a)) || (late(a) ? a.owed[0].t.due.localeCompare(b.owed[0].t.due) : 0)
+    || b.owed.length - a.owed.length || b.last.localeCompare(a.last);
+}
+function orgGroup(rows) {
+  const waiting = rows.filter(o => o.owed.length).sort(orgByUrgency);
+  const rest = rows.filter(o => !o.owed.length).sort((a, b) => b.last.localeCompare(a.last));
+  const recent = rest.filter(o => o.last && daysSince(o.last) <= ORG_RECENT_DAYS);
+  return [["Waiting on you", "overdue first", waiting], ["Recently in touch", "within 45 days", recent],
+    ["Quiet", "no contact for over 45 days", rest.filter(o => !recent.includes(o))]];
+}
+function orgsView() {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  const rows = orgRows(), waiting = rows.filter(o => o.owed.length).sort(orgByUrgency);
+  const box = el("div", { class: "ov ov-list" }, [el("div", { class: "ov-eyebrow", text: label("orgs") }),
+    el("h1", {}, [orgT("{n} organisations", { n: rows.length }), el("span", { class: "ov-soft",
+      text: waiting.length ? orgT("{n} waiting on you", { n: waiting.length }) : orgT("nothing waiting on you") })])]);
+  const focal = waiting.find(o => !orgHidden(o.r));
+  if (focal) box.appendChild(orgFocal(focal));
+  const results = el("div", { class: "ov-groups" });
+  box.append(orgFilterBar(rows, results), results);
+  main.appendChild(box);
+  orgResults(rows, results);
+}
+function orgFocal(o) {
+  const { r, owed } = o, top = owed[0], who = owedPerson(top);
+  const late = owed.find(overdue);
+  const values = { org: orgName(r), n: owed.length, who: who ? orgFirstName(who) : orgName(r), thing: owedWords(top).title };
+  return el("section", { class: "ov-focal", "aria-label": orgT("Most urgent organisation") }, [orgTile(r, "lg"),
+    el("div", { class: "ov-body" }, [
+      el("div", { class: "ov-k" }, [late ? orgChip("late", orgT("Overdue {n} days", { n: daysSince(late.t.due) })) : orgChip("lamp", orgT("{n} items", { n: owed.length })),
+        orgT("Most urgent organisation")]),
+      el("a", { class: "ov-ft", href: href(r), text: orgT(owed.length > 1 ? "{org} has {n} waiting on you; most urgent: {who}, {thing}" : "{org} is waiting on one thing: {who}, {thing}", values) }),
+      el("div", { class: "ov-fs", text: [orgKind(r), o.people.length ? orgT("{n} people you know", { n: o.people.length }) : "", orgRelation(r)].filter(Boolean).join(" · ") })]),
+    orgPrimary(top)]);
+}
+function orgFilterBar(rows, results) {
+  const find = el("input", { type: "search", class: "ov-find", placeholder: orgT("Filter organisations, people, domains"),
+    "aria-label": orgT("Filter organisations, people, domains"), value: orgFilter.query });
+  find.oninput = () => { orgFilter.query = find.value; orgResults(rows, results); };
+  const kinds = Object.entries(rows.reduce((count, o) => (o.r.kind ? { ...count, [o.r.kind]: (count[o.r.kind] || 0) + 1 } : count), {}))
+    .sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const tabs = [["all", orgT("All"), rows.length], ["waiting", orgT("Waiting on you"), rows.filter(o => o.owed.length).length],
+    ...kinds.map(([kind, n]) => [kind, orgT(ORG_KINDS[kind]), n])];
+  const bar = el("div", { class: "ov-tabs", role: "group", "aria-label": label("orgs") }, tabs.map(([key, name, n]) => {
+    const tab = el("button", { type: "button", "aria-pressed": String(orgFilter.tab === key) }, [name, el("i", { text: String(n) })]);
+    tab.onclick = () => {
+      orgFilter.tab = key;
+      bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === tab)));
+      orgResults(rows, results);
+    };
+    return tab;
+  }));
+  return el("div", { class: "ov-bar" }, [el("label", { class: "ov-findbox" }, [orgIcon("search"), find]), bar]);
+}
+function orgMatches(o) {
+  const { tab, query } = orgFilter;
+  if (tab === "waiting" && !o.owed.length) return false;
+  if (!["all", "waiting"].includes(tab) && o.r.kind !== tab) return false;
+  const words = query.trim().toLowerCase();
+  return !words || [o.r.title, ...o.pages.map(page => page.domain || ""), ...(o.r.private ? [] : o.people.map(p => p.title))]
+    .some(text => text.toLowerCase().includes(words));
+}
+function orgResults(rows, box) {
+  box.textContent = "";
+  for (const [name, hint, list] of orgGroup(rows.filter(orgMatches))) {
+    if (!list.length) continue;
+    const card = el("div", { class: "ov-rows" }, list.slice(0, 7).map(orgRow));
+    if (list.length > 7) {
+      const more = el("button", { type: "button", class: "ov-more" }, [orgT("{n} more →", { n: list.length - 7 })]);
+      more.onclick = () => { more.remove(); card.append(...list.slice(7).map(orgRow)); };
+      card.appendChild(more);
+    }
+    box.append(el("h2", { class: "ov-grp" }, [name === "Waiting on you" ? el("span", { class: "ov-dot lamp" }) : null,
+      orgT(name) + " · " + list.length, el("span", { class: "ov-hint", text: orgT(hint) })]), card);
+  }
+  if (!box.childElementCount) box.appendChild(el("p", { class: "ov-quiet", text: orgT("No organisation matches") }));
+}
+function orgRow(o) {
+  const { r, owed } = o, hidden = orgHidden(r), kind = hidden ? "" : orgKind(r);
+  const state = owed.some(overdue) ? orgChip("late", orgT("Overdue")) : owed.length > 1 ? orgChip("lamp", orgT("{n} items", { n: owed.length }))
+    : owed.length ? el("span", { class: "ov-dot lamp", title: orgT("Waiting on you") }) : null;
+  const meta = hidden ? orgLock() : owed.length ? owedWords(owed[0]).title + (owed.length > 1 ? " · " + orgT("{n} more", { n: owed.length - 1 }) : "") : orgRelation(r);
+  return el("a", { class: "ov-row", href: href(r) }, [orgTile(r), el("div", { class: "ov-body" }, [
+    el("div", { class: "ov-t" }, [orgName(r), hidden ? null : updatedMarker(r), kind ? el("small", { class: "ov-kind" + (r.kind ? "" : " unknown"), text: kind }) : null]),
+    r.domain ? el("small", { class: "ov-domain", text: r.domain }) : null,
+    el("div", { class: "ov-s" }, [meta])]),
+    el("div", { class: "ov-end" }, [state, hidden ? null : orgFaces(o.people), el("span", { class: "ov-when", text: fmtDate(o.last) })])]);
+}
+function orgFaces(people) {
+  if (!people.length) return el("span", { class: "ov-stack" });
+  const shown = [...people].sort((a, b) => known(b).last.localeCompare(known(a).last)).slice(0, 3);
+  return el("span", { class: "ov-stack", title: people.map(p => p.title).join(", ") },
+    [...shown.map(p => orgFace(p, "xs")), people.length > 3 ? el("em", { text: "+" + (people.length - 3) }) : null]);
+}
+
+// ---------- one organisation ----------
+function orgPage(r) {
+  const box = el("div", { class: "ov ov-page" }, [el("div", { class: "ov-crumb" }, [
+    el("a", { href: categoryHref("orgs"), text: label("orgs") }), r.kind ? orgIcon("chev") : null, r.kind ? orgT(ORG_KINDS[r.kind]) : null])]);
+  if (orgHidden(r)) {
+    box.append(orgHead(r, []), orgCurtain(r));
+    return box;
+  }
+  const owed = orgOwed(r);
+  const people = (r.people || []).map(byPath).filter(p => p && !p.service);
+  box.append(orgHead(r, owed, people), el("div", { class: "ov-grid" }, [
+    el("div", { class: "ov-col" }, [orgStats(r, owed, people), orgOwedSection(r, owed), orgPeopleSection(r, people, owed), orgTimeline(r, people)]),
+    el("aside", { class: "ov-rail", "aria-label": orgT("About") }, orgRail(r, people))]));
+  return box;
+}
+function orgSub(r, people) {
+  if (known(r).status === "Mapped") return [orgChip("mute", orgT("Not investigated yet")), " " + orgT("REM only knows its domain and {n} people", { n: people.length })];
+  if (orgUnknown(r) && !r.kind) return [[orgT("Not sure what this is yet"), people.length ? people.slice(0, 2).map(orgFirstName).join("、") + " " + orgT("writes from it") : ""].filter(Boolean).join(" · ")];
+  return [[orgKind(r), orgRelation(r)].filter(Boolean).join(" · ")];
+}
+function orgHead(r, owed, people = []) {
+  return el("header", { class: "ov-head" }, [orgTile(r, "xl"), el("div", { class: "ov-body" }, [el("h1", { text: orgName(r) }),
+    r.domain ? el("p", { class: "ov-domain", text: r.domain }) : null,
+    orgHidden(r) ? null : updatedMarker(r, true),
+    orgHidden(r) ? null : el("p", { class: "ov-sub" }, orgSub(r, people))]), owed.length ? orgPrimary(owed[0]) : null]);
+}
+function orgCurtain(r) {
+  const show = el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show") });
+  show.onclick = () => { revealedOrgs.add(r.path); render(); };
+  return el("div", { class: "ov-card ov-curtain" }, [orgLock(), show]);
+}
+function orgStats(r, owed, people) {
+  const units = new Set(people.map(p => (p.team || "").trim()).filter(Boolean)).size, late = owed.filter(overdue).length;
+  const stat = (value, words, extra) => el("div", {}, [el("b", { text: String(value) }), words, extra || null]);
+  return el("div", { class: "ov-stats" }, [stat(people.length, orgT("people you know")),
+    units ? stat(units, orgT("teams or departments")) : null,
+    stat(owed.length, orgT("things you owe"), late ? el("span", { class: "late", text: " · " + orgT("{n} overdue", { n: late }) }) : null),
+    known(r).last ? stat(fmtDate(known(r).last), orgT("last contact")) : null]);
+}
+function orgOwedSection(r, owed) {
+  const theirs = orgTheirs(r);
+  if (!owed.length) return el("p", { class: "ov-none" }, [orgT("You owe {org} nothing", { org: orgName(r) }) + (theirs.length ? " · " + orgT("{n} waiting on them", { n: theirs.length }) : "")]);
+  const counts = owed.reduce((map, entry) => map.set(owedPerson(entry)?.path, (map.get(owedPerson(entry)?.path) || 0) + 1), new Map());
+  const card = el("div", { class: "ov-card" }, owed.slice(0, 5).map((entry, i) => orgOwedRow(entry, i === 0, counts)));
+  if (owed.length > 5) {
+    const more = el("button", { type: "button", class: "ov-more" }, [orgT("{n} more items", { n: owed.length - 5 }), orgIcon("chev")]);
+    more.onclick = () => { more.remove(); card.append(...owed.slice(5).map(entry => orgOwedRow(entry, false, counts))); };
+    card.appendChild(more);
+  }
+  return el("section", { class: "ov-section ov-owed" }, [el("h2", {}, [orgT(r.kind === "own_company" ? "Colleagues waiting on you" : "You owe {org}", { org: orgName(r) }),
+    el("span", { class: "ov-n", text: String(owed.length) }), el("span", { class: "ov-hint", text: orgT("overdue first") })]), card, orgWaiting(theirs)]);
+}
+function orgOwedRow(entry, covered, counts) {
+  const who = owedPerson(entry), { title, quote } = owedWords(entry), more = who ? counts.get(who.path) - 1 : 0;
+  const done = el("button", { type: "button", class: "ov-btn sm", text: orgT("Mark done") });
+  done.onclick = () => setDone(entry, true, "done", [entry]);
+  return el("div", { class: "ov-owe" }, [who ? orgFace(who) : orgTile(entry.r), el("div", { class: "ov-body" }, [
+    el("div", { class: "ov-ot", text: title }),
+    who ? el("div", { class: "ov-who" }, [el("a", { href: href(who), text: who.title }), who.team ? " · " + who.team : "", more > 0 ? " · " + orgT("{n} more with them", { n: more }) : ""]) : null,
+    quote ? el("div", { class: "ov-ev" }, [el("q", { text: quote }), entry.t.since ? el("sup", { text: fmtDate(entry.t.since) }) : null]) : null]),
+    el("div", { class: "ov-end" }, [owedAge(entry), covered ? null : done])]);
+}
+function orgWaiting(theirs) {
+  if (!theirs.length) return null;
+  const items = theirs.slice(0, 3).flatMap((entry, i) => {
+    const who = owedPerson(entry);
+    const words = owedWords(entry).title, named = who && !/^you\b/i.test(words);
+    return [i ? " · " : "", named ? el("b", { text: orgFirstName(who) }) : null, (named ? " " : "") + words];
+  });
+  return el("p", { class: "ov-quiet" }, [orgIcon("clock"), el("span", {}, [orgT("Waiting on them, {n}: ", { n: theirs.length }), ...items])]);
+}
+// Where people sit, as a tree of units: { name, people, units, owed }. The page
+// holds the organisation's own people and owed items; each unit holds its people,
+// what they are owed, and child units. Today the only source is each person's
+// Team, so the tree is one level deep; the hierarchy round (org → faculty →
+// school → course → team) will build deeper units here and the body below
+// renders whatever depth it is given.
+function orgUnitTree(r, people, owed) {
+  const owing = owed.reduce((map, entry) => map.set(owedPerson(entry)?.path, [...(map.get(owedPerson(entry)?.path) || []), entry]), new Map());
+  const teams = new Map();
+  for (const p of people) if ((p.team || "").trim()) teams.set(p.team.trim(), [...(teams.get(p.team.trim()) || []), p]);
+  const unit = (name, members, units = []) => ({ name, people: members, units, owed: members.flatMap(p => owing.get(p.path) || []) });
+  return { tree: unit(orgName(r), people.filter(p => !(p.team || "").trim()), [...teams].map(([name, members]) => unit(name, members))), owing };
+}
+// Open items roll up: a unit is owed what its people and every child unit are owed.
+function unitOwed(unit) { return [...unit.owed, ...unit.units.flatMap(unitOwed)]; }
+function unitPeople(unit) { return [...unit.people, ...unit.units.flatMap(unitPeople)]; }
+function orgPeopleSection(r, people, owed) {
+  if (!people.length) return null;
+  const { tree, owing } = orgUnitTree(r, people, owed);
+  const loose = [...tree.people].sort((a, b) => (owing.get(b.path) || []).length - (owing.get(a.path) || []).length || known(b).last.localeCompare(known(a).last));
+  const units = [...tree.units].sort((a, b) => unitOwed(b).length - unitOwed(a).length || a.name.localeCompare(b.name));
+  const shown = units.length ? [] : people.length <= 6 ? loose : loose.slice(0, 5);
+  const rest = loose.filter(p => !shown.includes(p));
+  return el("section", { class: "ov-section ov-people" }, [
+    el("h2", {}, [orgT("People you know here"), el("span", { class: "ov-n", text: String(people.length) }), units.length ? el("span", { class: "ov-hint", text: orgT("by where they sit") }) : null]),
+    units.length ? el("div", { class: "ov-teams" }, units.map(orgTeam)) : null,
+    shown.length ? el("div", { class: "ov-rows" }, shown.map(p => orgPerson(p, owing))) : null,
+    rest.length ? el("p", { class: "ov-quiet" }, [orgIcon("users"), el("span", {}, [
+      shown.length || units.length ? orgT("{n} more people in {org}, department not known yet: ", { n: rest.length, org: orgName(r) }) : orgT("Department not known yet: "),
+      ...rest.slice(0, 8).flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })]), rest.length > 8 ? " …" : ""])]) : null]);
+}
+// One unit as a small card; its child units (when the hierarchy supplies them) follow as names.
+function orgTeam(unit) {
+  const items = unitOwed(unit), late = items.some(overdue);
+  return el("div", { class: "ov-card ov-team" }, [el("div", { class: "ov-tn" }, [unit.name, items.length ? el("span", { class: "ov-dot " + (late ? "late" : "lamp") }) : null]),
+    ...unit.people.map(p => el("a", { class: "ov-m", href: href(p) }, [orgFace(p, "xs"), el("span", { text: p.title }), orgRole(p, "small")])),
+    unit.units.length ? el("div", { class: "ov-s", text: unit.units.map(child => child.name + " · " + unitPeople(child).length).join("、") }) : null]);
+}
+function orgRole(p, tag = "small") {
+  const role = contactFields(p).find(f => f.label === "Role")?.value;
+  return role && !UNKNOWN_TEXT.test(role) && !/^unknown\b/i.test(role) ? el(tag, { class: "ov-role" }, [roleSummary(role, p.path)]) : null;
+}
+function orgPerson(p, owing) {
+  return el("a", { class: "ov-row", href: href(p) }, [orgFace(p), el("div", { class: "ov-body" }, [
+    el("div", { class: "ov-t" }, [p.title, orgRole(p)]), el("div", { class: "ov-s", text: plainLine(facts(p).how || "") || known(p).summary })]),
+    el("div", { class: "ov-end" }, [owing.has(p.path) ? el("span", { class: "ov-dot " + (owing.get(p.path).some(overdue) ? "late" : "lamp") }) : null,
+      el("span", { class: "ov-when", text: fmtDate(known(p).last) })])]);
+}
+// The dated History of the organisation and of everyone linked to it, newest first.
+function orgTimeline(r, people) {
+  const items = [r, ...people].flatMap(page => historyItems((section(page, "history") || { text: "" }).text)
+    .filter(item => item.day.length === 10).map(item => ({ ...item, page, words: withoutDateClutter(plainLine(item.text)) })))
+    .filter(item => /[\p{L}\p{N}]/u.test(item.words)).sort((a, b) => b.day.localeCompare(a.day));
+  if (!items.length) return null;
+  const list = el("ol", { class: "ov-tl" });
+  const draw = all => {
+    list.textContent = "";
+    let month = "";
+    for (const item of all ? items.slice(0, 60) : items.slice(0, 8)) {
+      const m = item.day.slice(0, 7);
+      if (m !== month) list.appendChild(el("li", { class: "ov-month", text: new Date(m + "-01T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "long", ...(m.slice(0, 4) !== calendarDay(REM.as_of).slice(0, 4) ? { year: "numeric" } : {}) }) }));
+      month = m;
+      list.appendChild(orgMoment(item));
+    }
+  };
+  draw(false);
+  const more = items.length > 8 ? el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show all {n} entries", { n: Math.min(items.length, 60) }) }) : null;
+  if (more) more.onclick = () => { draw(true); more.remove(); };
+  return el("section", { class: "ov-section" }, [el("h2", {}, [orgT("Lately"), el("span", { class: "ov-hint", text: orgT("newest first") })]), list, more]);
+}
+function orgMoment(item) {
+  const mine = /^you\b/i.test(item.words), name = item.page.category === "people" ? orgFirstName(item.page) : "";
+  const lead = mine ? item.words.split(/\s+/)[0] : name && item.words.startsWith(name) ? name : "";
+  const words = lead ? [el("b", { text: lead }), item.words.slice(lead.length)] : [name ? el("b", { text: name }) : null, (name ? " " : "") + item.words];
+  return el("li", { class: "ov-e" }, [el("span", { class: "ov-d", text: uiLanguage === "zh" ? Number(item.day.slice(8)) + "日" : String(Number(item.day.slice(8))) }),
+    el("span", { class: "ov-w" }, [el("i", { class: mine ? "me" : "" })]), el("span", { class: "ov-x" }, words)]);
+}
+function orgRail(r, people) {
+  const fact = name => (parseFacts(r).get(name) || []).map(item => plainLine(item.value)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
+  const about = [["What", fact("What they do")], ["Website", fact("Website").replace(/^https?:\/\/(?:www\.)?|\/$/g, "") || r.domain || ""], ["Where", fact("Location")]].filter(([, value]) => value);
+  const projects = (r.projects || []).map(byPath).filter(Boolean);
+  const unsure = [!r.kind ? orgT("What kind of organisation this is") : null, !r.to_you ? orgT("What it is to you") : null,
+    people.some(p => !(p.team || "").trim()) && people.some(p => (p.team || "").trim()) ? orgT("Which department {n} people sit in", { n: people.filter(p => !(p.team || "").trim()).length }) : null].filter(Boolean).slice(0, 2);
+  const sources = sourceList(r).length;
+  return [about.length ? el("h4", { text: orgT("About") }) : null,
+    about.length ? el("dl", { class: "ov-kv" }, about.flatMap(([name, value]) => [el("dt", { text: orgT(name) }), el("dd", { text: value })])) : null,
+    projects.length ? el("h4", { text: orgT("Related projects") }) : null,
+    projects.length ? el("div", { class: "ov-card" }, projects.map(p => el("a", { class: "ov-mini", href: href(p) }, [orgTile(p, "sm"),
+      el("span", {}, [p.title, el("small", { text: known(p).summary })])]))) : null,
+    unsure.length && known(r).status !== "Mapped" ? el("h4", { text: orgT("REM is not sure yet") }) : null,
+    unsure.length && known(r).status !== "Mapped" ? el("ul", { class: "ov-unsure" }, unsure.map(text => el("li", { text }))) : null,
+    sources ? el("a", { class: "ov-src", href: href(r) + "&h=full-memory-heading" }, [orgIcon("link"), orgT("{n} sources", { n: sources })]) : null];
 }
 
 // Recent use comes first; old and unobserved skills stay one disclosure away.
@@ -7409,10 +8011,12 @@ function record(path, heading) {
   let intro = k.intro;
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
   if (person) main.appendChild(personPage(r));
-  else {
+  else if (r.category === "orgs") {
+    main.appendChild(orgPage(r));
+    if (orgHidden(r)) return;
+  } else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
-    if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
     head.appendChild(leadRow(r));
     main.appendChild(head);
     main.appendChild(recordFocus(r));

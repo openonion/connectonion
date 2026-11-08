@@ -62,3 +62,25 @@ Markdown and translated labels. Added four fictional label/destination cases.
 Protected rc60 Today/approval/task-card functions remain byte-for-byte identical
 to `ce727ddc` (including overview, queueCard, taskResult, primaryAction,
 threadActions, replyDraftCard, openWriter and all approval helpers).
+
+Organisation data complete unit run: `18554 passed, 19 skipped, 2944 warnings in 132.12s (0:02:12)`;
+focused org-data/person compatibility: `38 passed in 1.11s`.
+
+4. `sprint9/org-ui` (`c902ddc1`): reader conflicts combined category routes,
+   Projects board and org insertion blocks, and People/person plus org record
+   layouts (including private-org early return). Restored the board function
+   closing brace shared by the insertion conflict. Browser append conflicts
+   retain every rc60/task/People/Projects/Sessions/org case and restore the org
+   list test's shared width/theme decorators. Renamed only org-region
+   firstName/byUrgency/owedRow to orgFirstName/orgByUrgency/orgOwedRow, preventing
+   function-hoisting overrides of People behavior. Org primary actions retain
+   Mark done labels for replied/no-reply items; added three semantic action
+   regressions. Domain metadata and last-night markers remain visible in the
+   new row/header design; the original domain test now uses those selectors.
+
+Org UI complete unit run: `18562 passed, 19 skipped, 2944 warnings in 134.13s (0:02:14)`.
+Separate AI review caught same-name private/public aggregate leakage; org rows
+now keep hidden pages outside public aggregates until revealed. Org Chinese
+wording is scoped through orgT instead of overwriting global Today/People
+translations. Added visibility-boundary and translation-isolation regressions;
+focused complete reader/person/org recheck follows these repairs.
