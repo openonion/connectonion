@@ -2328,6 +2328,54 @@
   .ov-key li + li { margin-top: 10px; }
   .ov-key li .ov-meta { display: block; margin: 0; font-size: 12px; line-height: 18px; }
   @media (max-width: 720px) { .ov-say { padding-top: 16px; } }
+  /* Person page: what is still open is a list on hairlines, not a card of cards. */
+  .r4-card.owed { background: none; box-shadow: none; border-radius: 0; border-top: 1.5px solid var(--ink); }
+  .r4-card.owed .owe { padding: 14px 0; }
+  .r4-card.owed .owe-t { font: 400 14px/22px var(--today-font); color: var(--ink); }
+  .r4-card.owed .owe.theirs .owe-t, .r4-card.owed .owe.closed .owe-t { color: var(--ink-2); }
+  .r4-card.owed .owe-s { font: 400 12px/18px var(--today-font); }
+  .r4-card.owed .owe .owe-acts.quiet { right: 0; }
+  .r4-card.owed .owe .owe-acts.quiet .r4-btn { background: var(--paper); box-shadow: -12px 0 12px var(--paper); }
+  .r4-card.owed .owe-more { text-align: left; padding: 12px 0; }
+  /* Today as a front page: who needs you on the left, what REM did for you on the right.
+     One sans, sizes 17 · 14 · 12, weights 400/700, rows on hairlines, no boxes. */
+  .morning-layout { font-family: var(--today-font); }
+  .morning-aside { max-width: 760px; }
+  .morning-aside > * + * { margin-top: 40px; }
+  .morning-aside h2, .morning-aside .section { margin: 0; padding: 0 0 10px; border-bottom: 1.5px solid var(--ink); font: 700 14px/22px var(--today-font); letter-spacing: 0; color: var(--ink); }
+  .morning-aside .section .n { display: none; }
+  .night-done { margin-top: 40px; }
+  .night-done ul { list-style: none; margin: 0; padding: 0; }
+  .night-done li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .night-done li b { display: block; font: 700 17px/27px var(--today-font); color: var(--ink); }
+  .night-done li[data-kind="could_not_prepare"] b { font-weight: 400; color: var(--ink-2); }
+  .night-done .who { display: block; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .night-done .who a { color: var(--ink-2); text-decoration: none; }
+  .night-done .who a:hover { color: var(--ink); text-decoration: underline; }
+  .morning-aside .overnight .quiet-line, .morning-aside .overnight-change { font: 400 14px/22px var(--today-font); color: var(--ink-2); }
+  .morning-aside .overnight .quiet-line { margin: 12px 0 0; }
+  .morning-aside .recall { display: block; padding: 0; border: 0; }
+  .morning-aside .recall .label { display: block; padding: 0 0 10px; border-bottom: 1.5px solid var(--ink); font: 700 14px/22px var(--today-font); color: var(--ink); }
+  .morning-aside .recall h2 { margin: 12px 0 4px; padding: 0; border: 0; font: 400 17px/27px var(--today-font); }
+  .morning-aside .recall .why { margin: 0; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .morning-aside .recall-toggle { margin-top: 12px; min-height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--ink-3); background: none; color: var(--ink); font: 700 14px var(--today-font); }
+  .morning-aside .recall-toggle:hover { border-color: var(--ink); }
+  .morning-aside .recall-answer p { font: 400 14px/22px var(--today-font); }
+  .morning-aside .connection-review { padding: 0; border: 0; background: none; border-radius: 0; }
+  .morning-layout > .gone-quiet, #main > .week-details, #main > .night-details, #main > .maint, #main > .translation-note { max-width: 760px; font-family: var(--today-font); }
+  .morning-layout > .gone-quiet, #main > .week-details, #main > .night-details { margin-top: 0; padding: 0; border-top: 1px solid var(--line); }
+  .morning-layout > .gone-quiet { margin-top: 48px; }
+  :is(.gone-quiet, .week-details, .night-details) > summary { padding: 12px 0; color: var(--ink-2); cursor: pointer; }
+  #main > .translation-note { margin: 0 0 0 16px; padding-bottom: 12px; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  #main > .maint { margin-top: 48px; }
+  #main > .maint > summary h2 { font: 700 14px/22px var(--today-font); }
+  @media (min-width: 1200px) {
+    .morning-layout { display: grid; grid-template-columns: minmax(0, 760px) 300px; column-gap: 56px; align-items: start; }
+    .morning-primary { grid-column: 1; grid-row: 1; }
+    .morning-aside { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 24px; }
+    .morning-layout > .gone-quiet { grid-column: 1; grid-row: 2; }
+    .night-done { margin-top: 0; }
+  }
 </style>
 </head>
 <body>
@@ -2560,6 +2608,11 @@ const UI = {
 
     "Find": "查找",
     "Overnight": "昨夜",
+    "REM drafted: ": "REM 已起草：",
+    "What REM did overnight": "昨夜 REM 替你做了", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
+    "Prepared 1 task": "准备好 1 件任务", "Prepared {n} tasks": "准备好 {n} 件任务", "1 thing needs no reply": "1 件不用回", "{n} things need no reply": "{n} 件不用回",
+    "1 thing was already handled": "1 件已经办完", "{n} things were already handled": "{n} 件已经办完",
+    "Could not draft for 1 person": "有 1 个人没能起草", "Could not draft for {n} people": "有 {n} 个人没能起草",
     "Supported by the cited source": "有引用来源支持",
     "Original": "原文",
     "Translation pending": "翻译待处理",
@@ -5435,6 +5488,26 @@ function overnightChange(claim) {
       claim.before ? " → " : "", claimValue(claim, r, true, true)]),
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(), text: t("source"), title: t("Supported by the cited source") })]);
 }
+// What REM did overnight, one line per kind of work, each naming whom it was for.
+const NIGHT_DONE = [["prepared", "Drafted a reply for 1 person", "Drafted replies for {n} people"],
+  ["task", "Prepared 1 task", "Prepared {n} tasks"], ["no_reply", "1 thing needs no reply", "{n} things need no reply"],
+  ["already_handled", "1 thing was already handled", "{n} things were already handled"],
+  ["could_not_prepare", "Could not draft for 1 person", "Could not draft for {n} people"]];
+function nightDone() {
+  const outcomes = [...new Map((REM.night_outcomes || []).map(o => [o.key, o])).values()].filter(o => byPath(o.record) && !byPath(o.record).private);
+  const rows = NIGHT_DONE.map(([kind, one, many]) => {
+    const records = [...new Set(outcomes.filter(o => o.kind === kind).map(o => o.record))].map(byPath);
+    const n = kind === "prepared" || kind === "could_not_prepare" ? records.length : outcomes.filter(o => o.kind === kind).length;
+    return n ? el("li", { "data-kind": kind }, [el("b", { text: t(n === 1 ? one : many, { n }) }), nightNames(records)]) : null;
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return el("section", { class: "night-done", "aria-label": t("What REM did overnight") }, [el("h2", { text: t("What REM did overnight") }), el("ul", {}, rows)]);
+}
+function nightNames(records) {
+  const shown = records.slice(0, 3);
+  return el("span", { class: "who" }, [...shown.flatMap((r, i) => [i ? (uiLanguage === "zh" ? "、" : ", ") : "", el("a", { href: href(r), text: threadWho(r) })]),
+    records.length > 3 ? " " + t("+{n} more", { n: records.length - 3 }) : ""]);
+}
 function morningBrief() {
   const pass = lastPass(), claims = pass?.claims || [];
   const first = firstBuild(), title = first ? "First build" : "Overnight";
@@ -5621,14 +5694,24 @@ function cardHead(group, late) {
     meta.length ? el("span", { class: "meta" }, meta.flatMap((part, i) => i ? [" · ", part] : [part])) : null,
     el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t) })]);
 }
-function cardItem(entry, many) {
+// On a 中文 reader the card speaks his language where REM already wrote it: the draft's gist.
+function ownerLine(draft) {
+  if (uiLanguage === "en" || draft?.private || !["prepared", "no_reply"].includes(draft?.status) || !/\p{Script=Han}/u.test(draft.gist || "")) return null;
+  return t(draft.status === "no_reply" ? "No reply needed: " : "REM drafted: ") + draft.gist;
+}
+function cardItem(entry, many, seen = new Set()) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
+  // One draft answering several items is said once, on the first of them.
+  const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
+  if (own) seen.add(draft.id);
   const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + " · E", "aria-label": t("Mark done"), html: CHECK_ICON });
   done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
   return el("li", { class: "qitem" }, [
-    el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
-      alsoOn(entry.also), draftNote(threadDraft(entry), entry), taskResult(entry)])]);
+    own ? el("p", { class: "words own", text: own, title: words })
+      : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+    el("div", { class: "qmore" }, [own ? el("p", { class: "qorig", lang: "en", text: words }) : null,
+      el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
+      alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry)])]);
 }
 function cardDraft(draft, group) {
   const n = group.entries.length;
@@ -5640,9 +5723,9 @@ function cardDraft(draft, group) {
 // show who and what, and reveal their action on hover, focus or tap.
 function personCard(group, focal) {
   const { r, entries } = group, next = groupStep(entries), late = overdueDays(entries[0].t);
-  const draft = next.step === "send" ? threadDraft(next.entry) : null;
+  const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
   const card = el("li", { class: "qcard" + (focal ? " open" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1))),
+    cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1, seen))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
@@ -5987,13 +6070,11 @@ function overview() {
   header.appendChild(approvalHeader());
   main.append(header);
   approvalUndoBar();
-  // One column, one order: who needs you, then what changed, then what is worth remembering.
-  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayCards(groups), morningBrief()]);
-  const recall = recallPrompt(), quiet = quietThreads(entries, counts.quiet, true), review = connectionReview();
-  for (const block of [recall, review, quiet]) if (block) primary.appendChild(block);
-  main.appendChild(el("div", { class: "morning-layout" }, [primary]));
-  const translations = translationNotice();
-  if (translations) main.appendChild(translations);
+  // Who needs you on the left; on a wide screen, what REM did for you sits beside it, front-page style.
+  // Narrow, one column in one order: who needs you, what REM did, what changed, what is worth remembering.
+  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayCards(groups)]);
+  const aside = el("div", { class: "morning-aside" }, [nightDone(), morningBrief(), recallPrompt(), connectionReview()].filter(Boolean));
+  main.appendChild(el("div", { class: "morning-layout" }, [primary, aside, quietThreads(entries, counts.quiet, true)]));
 
   // This week: what the nightly passes rewrote, newest first, each with its one line.
   const week = weekChanges();
@@ -6004,6 +6085,9 @@ function overview() {
         el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
           known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
   }
+  // Under the pages it is about, not floating between unrelated sections.
+  const translations = translationNotice();
+  if (translations) main.appendChild(translations);
 
   const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
@@ -6226,7 +6310,8 @@ function owedParts(entry) {
   const quote = /“([^”]{4,})”|"([^"]{4,})"|「([^」]{4,})」/.exec(text);
   const [head, ...rest] = text.split(/\s+[—–]\s+|\s*[“"「]/);
   const clean = words => withoutDateClutter(plainLine(words), entry.t).replace(/[:：;,，\s]+$/, "");
-  return { head: capFirst(clean(head)), quote: quote ? (quote[1] || quote[2] || quote[3]).trim() : "", rest: quote ? "" : clean(rest.join(" — ")) };
+  const after = quote ? "" : clean(rest.join(" — "));
+  return { head: capFirst(clean(head)), quote: quote ? (quote[1] || quote[2] || quote[3]).trim() : "", rest: /[\p{L}\p{N}]/u.test(after) ? after : "" };
 }
 function quoteSpan(words, day) {
   return [el("span", { class: "q", text: words }), day ? el("sup", { class: "c", text: fmtDate(day) }) : null];

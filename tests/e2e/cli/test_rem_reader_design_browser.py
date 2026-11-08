@@ -4158,9 +4158,9 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert source.get_attribute('href').endswith('h=src-2')
     assert page.locator('.recall-toggle').evaluate(r'''button => {
       const css = getComputedStyle(button);
+      // Today's secondary button: a 1px outline, no fill (no box on a box-free page).
       return css.borderTopStyle === 'solid' && css.borderTopWidth === '1px'
-        && parseFloat(css.borderTopLeftRadius) >= 6 && parseFloat(css.borderTopLeftRadius) <= 7
-        && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        && parseFloat(css.borderTopLeftRadius) === 8 && css.backgroundColor === 'rgba(0, 0, 0, 0)';
     }''')
     page.locator('.recall-toggle').click()
     assert page.locator('.recall-answer').is_visible()
@@ -5655,3 +5655,29 @@ def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person
         name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
         assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
         assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
+    """P大: "这替我干了什么？" — at 1440 the right half says what REM did, naming whom for;
+    on a phone the same block follows the queue. Duplicated outcomes count once."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#")
+    page.evaluate("""() => {
+      const people = REM.records.filter(r => r.category === 'people' && r.path !== REM.owner).slice(0, 2);
+      const o = (kind, r, n) => ({key: r.path + n, record: r.path, title: r.title, kind});
+      REM.night_outcomes = [o('prepared', people[0], 1), o('prepared', people[0], 1), o('prepared', people[1], 2), o('no_reply', people[1], 3)];
+      render();
+    }""", isolated_context=False)
+    done = page.locator(".night-done")
+    assert done.locator("h2").inner_text() == "What REM did overnight"
+    assert done.locator("li b").all_inner_texts() == ["Drafted replies for 2 people", "1 thing needs no reply"]
+    assert done.locator("li").first.locator("a").count() == 2
+    cards, aside = page.locator(".today-brief").bounding_box(), done.bounding_box()
+    if width == 1440:
+        assert aside["x"] >= cards["x"] + cards["width"], "beside the queue, in the right half"
+        assert aside["y"] < 400, "on the first screen"
+    else:
+        assert aside["y"] >= cards["y"] + cards["height"], "after the queue on a phone"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

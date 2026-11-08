@@ -301,3 +301,30 @@ def test_today_keys_never_fire_while_typing():
       console.log(JSON.stringify(['input', 'textarea', 'select', 'li', 'button'].map(tag => typingIn(target(tag)))));
     ''')
     assert result == [True, True, True, False, False]
+
+
+def test_today_card_speaks_chinese_where_rem_already_wrote_it():
+    """On 中文 the card's line is the draft's Chinese gist; English stays the original, private stays out."""
+    import json
+    import re
+    import shutil
+    import subprocess
+    from connectonion.rem.reader import TEMPLATE
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node runs the reader JavaScript")
+    page = TEMPLATE.read_text()
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0) for name in ["t", "ownerLine"])
+    ui = 'const UI = {en: {}, zh: {"REM drafted: ": "REM 已起草：", "No reply needed: ": "不用回："}};\n'
+    script = ui + "let uiLanguage = 'zh';\n" + functions + r"""
+      const prepared = {status: 'prepared', gist: '草稿回答了两个问题，未发送。'};
+      const out = {zh: ownerLine(prepared), noReply: ownerLine({status: 'no_reply', gist: '对方已确认，不用回。'}),
+        english: ownerLine({status: 'prepared', gist: 'Answers both questions.'}),
+        secret: ownerLine({...prepared, private: true}), pending: ownerLine({status: 'pending', gist: '还在写。'}), none: ownerLine(null)};
+      uiLanguage = 'en'; out.en = ownerLine(prepared);
+      console.log(JSON.stringify(out));
+    """
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"zh": "REM 已起草：草稿回答了两个问题，未发送。", "noReply": "不用回：对方已确认，不用回。",
+                                         "english": None, "secret": None, "pending": None, "none": None, "en": None}

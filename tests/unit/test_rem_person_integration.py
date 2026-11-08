@@ -94,3 +94,14 @@ def test_person_owed_sources_keep_the_origin_namespace_and_omit_private_passages
       console.log(JSON.stringify(owedRow(r, entry).children.at(-1).html));
     ''')
     assert result == {'text': '[2] [4]', 'from': 'orgs/fernhill.md'}
+
+
+def test_owed_parts_drop_a_rest_that_is_only_punctuation_after_date_clutter():
+    """"… before internal beta [11] — open as of 2026-11-03." left a lone "." on its own line."""
+    result = run_js(['owedParts'], r'''
+      const unlabelled = text => text, plainLine = text => text, capFirst = text => text;
+      const withoutDateClutter = text => text.replace(/open as of \d{4}-\d{2}-\d{2}/, '').trim();
+      console.log(JSON.stringify(owedParts({t: {text: 'Fern asked you to check the plan before beta [11] — open as of 2026-11-03.'}})));
+    ''')
+    assert result['rest'] == ''
+    assert result['head'] == 'Fern asked you to check the plan before beta [11]'
