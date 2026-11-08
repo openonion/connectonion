@@ -2108,9 +2108,9 @@
     .ov-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
     .ov-section > .ov-btn.ghost { margin-left: 0; }
   }
-  /* Organisation page, round 6 ("Bauhaus lightness"): four sizes (52 · 17 · 14 · 12), two weights
-     (400 · 700), red only for danger, green only for the one action, no boxes in boxes. */
-  main:has(> .ov-r6) { max-width: 1200px; overflow-x: clip; }
+  /* Organisation page, round 6 ("Bauhaus lightness"), a record of the organisation: four sizes
+     (52 · 17 · 14 · 12), two weights (400 · 700), no boxes in boxes, no green unless an action is natural. */
+  main:has(> .ov-r6) { max-width: 1200px; }
   main:has(> .ov-r6) > .deep-note { max-width: 1120px; }
   .ov.ov-r6 { max-width: 1120px; font-size: 14px; line-height: 22px; }
   .ov-r6 b, .ov-r6 strong, .ov-r6 h1, .ov-r6 h2, .ov-r6 h3 { font-weight: 700; }
@@ -2118,117 +2118,91 @@
   .ov-r6 .ov-red, .ov-r6 .red { color: var(--ov-late); }
   .ov-r6 .ov-lnk { font-size: 14px; color: var(--ov-ink2); border-bottom: 1px solid var(--ov-line2); padding-bottom: 1px; cursor: pointer; white-space: nowrap; }
   .ov-r6 .ov-lnk:hover { color: var(--ov-ink); border-color: var(--ov-ink); }
-  .ov-r6 .ov-btxt { font: 700 14px/22px inherit; font-family: inherit; color: var(--ov-ink); border: 0; border-bottom: 1.5px solid var(--ov-ink); background: none; padding: 0; cursor: pointer; white-space: nowrap; border-radius: 0; height: auto; box-shadow: none; }
+  .ov-r6 .ov-btxt { font-family: inherit; font-size: 14px; line-height: 22px; font-weight: 700; color: var(--ov-ink); border: 0; border-bottom: 1.5px solid var(--ov-ink); background: none; padding: 0; cursor: pointer; white-space: nowrap; border-radius: 0; height: auto; box-shadow: none; }
   .ov-r6 sup { font-size: 12px; color: var(--ov-ink3); vertical-align: 5px; line-height: 0; margin-left: 2px; font-weight: 400; cursor: help; }
   /* the stage: the first screen is a poster */
   .ov-stage { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; grid-template-rows: auto 1fr auto; min-height: calc(100vh - 64px); }
-  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; min-width: 0; font-size: 14px; line-height: 22px; }
-  .ov-over .ov-tile.sm { width: 24px; height: 24px; border-radius: 6px; font-size: 12px; }
-  .ov-over .ov-name { font-weight: 700; }
-  .ov-over .ov-domain, .ov-over .ov-sub { display: inline; font-size: 12px; line-height: 18px; color: var(--ov-ink3); margin: 0; min-width: 0; }
-  .ov-over .ov-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
-  .ov-wk { margin-left: auto; display: flex; gap: 16px; font-size: 12px; line-height: 18px; color: var(--ov-ink3); }
-  .ov-wk .ov-source-action { color: var(--ov-ink3); }
+  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 16px; min-width: 0; font-size: 12px; line-height: 18px; color: var(--ov-ink3); }
+  .ov-r6 .ov-crumb { font-size: 12px; font-weight: 400; color: var(--ov-ink3); display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; margin: 0; padding: 0; }
+  .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--ov-ink2); }
+  .ov-over .ov-source-action { margin-left: auto; color: var(--ov-ink3); white-space: nowrap; }
   .ov-say { grid-column: 1 / span 5; align-self: center; position: relative; z-index: 2; padding: 24px 0; min-width: 0; }
-  .ov.ov-r6 .ov-say h1 { font-size: 52px; line-height: 60px; font-weight: 700; letter-spacing: -.035em; margin: 14px 0 0; color: var(--ov-ink); }
-  .ov-r6 .ov-lede { font-size: 17px; line-height: 27px; color: var(--ov-ink2); margin: 18px 0 0; max-width: 460px; }
-  .ov-lede b { white-space: nowrap; }
-  .ov-go { display: flex; align-items: center; gap: 20px; margin-top: 32px; flex-wrap: wrap; }
-  .ov.ov-r6 .ov-primary { height: 44px; line-height: 44px; padding: 0 20px; font-weight: 700; max-width: 100%; }
-  .ov-r6 .ov-where { margin-top: 12px; }
-  .ov-xray { grid-column: 6 / -1; margin: 0 -40px 0 -24px; position: relative; min-height: 0; display: flex; flex-direction: column; }
+  .ov.ov-r6 .ov-say h1 { font-size: 52px; line-height: 60px; font-weight: 700; letter-spacing: -.035em; margin: 0; color: var(--ov-ink); overflow-wrap: anywhere; }
+  .ov-say .updated-label, .ov-say .fresh-label { font-size: 12px; }
+  .ov.ov-r6 .ov-say .ov-sub { display: block; font-size: 17px; line-height: 27px; color: var(--ov-ink2); margin: 16px 0 0; max-width: 460px; -webkit-line-clamp: unset; }
+  .ov-facts { font-size: 14px; line-height: 22px; color: var(--ov-ink2); margin: 20px 0 0; max-width: 460px; }
+  .ov-facts .ov-domain { display: inline; font-size: 14px; color: var(--ov-ink); margin: 0; }
+  .ov-key { margin-top: 32px; padding-left: 16px; border-left: 2px solid var(--ov-ink); }
+  .ov-key ul { list-style: none; margin: 6px 0 0; padding: 0; }
+  .ov-key li { font-size: 14px; line-height: 22px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .ov-key li a { font-weight: 700; }
+  .ov-today { display: inline-block; margin-top: 28px; font-size: 14px; color: var(--ov-ink2); border-bottom: 1px solid var(--ov-line2); padding-bottom: 1px; }
+  .ov-today:hover { color: var(--ov-ink); border-color: var(--ov-ink); }
+  .ov-xray { grid-column: 6 / -1; margin: 0; position: relative; min-height: 0; display: flex; flex-direction: column; }
   .ov-xsvg { width: 100%; height: 100%; max-height: 600px; min-height: 360px; display: block; overflow: visible; }
   .ov-xsvg text { font-family: inherit; }
-  .ov-legend { display: flex; gap: 18px; align-items: center; justify-content: flex-end; padding-right: 40px; }
+  .ov-legend { display: flex; gap: 18px; align-items: center; justify-content: flex-end; }
   .ov-legend span { display: inline-flex; align-items: center; gap: 5px; }
-  .ov-legend .ov-lnk { font-size: 12px; }
   .ov-sw { width: 12px; height: 12px; overflow: visible; }
-  .ov-outline { display: none; padding: 12px 40px 0 24px; }
-  .ov-xray.list .ov-xsvg { display: none; }
-  .ov-xray.list .ov-outline { display: block; }
-  .ov-r6 .ov-unit { padding-left: calc(var(--depth) * 20px); }
-  .ov-r6 .ov-tn small, .ov-r6 .ov-m small { margin-left: auto; font-size: 12px; color: var(--ov-ink3); font-weight: 400; }
-  .ov-outline .ov-tn { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--ov-line); font-size: 14px; font-weight: 700; margin: 0; }
-  .ov-outline .ov-m { display: flex; gap: 8px; padding: 4px 0 4px 16px; font-size: 14px; }
+  .ov-outline { columns: 2; column-gap: 48px; padding-top: 4px; }
+  .ov-r6 .ov-unit { break-inside: avoid; padding-left: calc(var(--depth) * 20px); }
+  .ov-outline .ov-tn { display: flex; gap: 10px; align-items: baseline; padding: 12px 0 4px; border-bottom: 1px solid var(--ov-line); font-size: 14px; font-weight: 700; margin: 0; }
+  .ov-r6 .ov-tn small { font-size: 12px; color: var(--ov-ink3); font-weight: 400; }
+  .ov-outline .ov-m { display: flex; gap: 10px; align-items: baseline; padding: 6px 0 6px 16px; font-size: 14px; line-height: 22px; break-inside: avoid; }
+  .ov-outline .ov-m small { font-size: 12px; color: var(--ov-ink3); }
+  .ov-outline .ov-m .ov-role { margin-left: 0; max-width: none; flex: 0 1 auto; }
+  .ov-facts .ov-nb { white-space: nowrap; }
+  .ov-outline .ov-m .ov-when { margin-left: auto; width: auto; white-space: nowrap; }
+  .ov-outline > .ov-meta { column-span: all; margin-top: 16px; }
   /* X-ray marks */
   .ov-link { fill: none; stroke: var(--ov-ink4); stroke-width: 1; }
   .ov-link.b { stroke: var(--ov-ink); stroke-width: 1.5; }
   .ov-node { cursor: pointer; outline: none; }
   .ov-node .ov-shape { transform-box: fill-box; transform-origin: center; transition: transform .2s; }
   .ov-node:hover .ov-shape, .ov-node:focus-visible .ov-shape { transform: scale(1.12); }
-  .ov-node:focus-visible .ov-shape, .ov-node.sel .ov-shape { stroke: var(--ov-ink); stroke-width: 2; }
+  .ov-node.sel .ov-shape { stroke: var(--ov-ink); stroke-width: 2; }
   .ov-shape.t-unknown { fill: var(--ov-ink4); }
   .ov-shape.t-warm { fill: var(--ov-ink); }
   .ov-shape.t-cooling { fill: url(#ov-hatch); stroke: var(--ov-ink); stroke-width: 1.5; }
   .ov-shape.t-cold { fill: var(--paper); stroke: var(--ov-ink2); stroke-width: 1.5; }
   .ov-hatch-bg { fill: var(--paper); } .ov-hatch-line { stroke: var(--ov-ink); stroke-width: 1.6; }
-  .ov-node.due .ov-shape { stroke: var(--ov-ink); stroke-width: 2.5; }
-  .ov-node.late .ov-shape { fill: var(--ov-late); stroke: none; }
   .ov-node[data-shape="root"] .ov-shape { fill: var(--ov-surface); stroke: var(--ov-ink); stroke-width: 2; }
   .ov-root-l { font-size: 14px; font-weight: 700; fill: var(--ov-ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
   .ov-label { font-size: 12px; font-weight: 700; fill: var(--ov-ink); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; }
-  .ov-note { font-size: 12px; font-weight: 400; fill: var(--ov-ink3); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; }
-  .ov-note.red { fill: var(--ov-late); font-weight: 700; }
+
   .ov-pd { fill: var(--ov-ink4); transform-box: fill-box; transform-origin: center; }
-  .ov-pulse { opacity: .5; r: var(--r1); fill: none; stroke: var(--ov-late); stroke-width: 2; }
+  .ov-recent { fill: none; stroke: var(--ov-ink); stroke-width: 1.25; }
+  /* Focus is a ring of its own, so no other state can hide it. */
+  .ov-ring { fill: none; stroke: var(--ov-ink); stroke-width: 2; stroke-dasharray: 3 2; opacity: 0; }
+  .ov-node:focus-visible .ov-ring { opacity: 1; }
   /* the time line */
-  .ov-time { grid-column: 1 / -1; margin-right: -40px; height: 118px; position: relative; }
+  .ov-time { grid-column: 1 / -1; height: 118px; position: relative; }
   .ov-tsvg { width: 100%; height: 100%; overflow: visible; display: block; }
   .ov-tsvg text { font-family: inherit; font-size: 12px; }
   .ov-axis { stroke: var(--ov-ink); stroke-width: 1.5; }
   .ov-fut { stroke: var(--ov-ink3); stroke-width: 1.5; stroke-dasharray: 3 7; }
-  .ov-late-seg { stroke: var(--ov-late); stroke-width: 3; stroke-dasharray: 7 4; }
-  .ov-late-due { fill: var(--ov-late); }
   .ov-ev { fill: var(--paper); stroke: var(--ov-ink); stroke-width: 1.5; }
   .ov-ev.me { fill: var(--ov-ink); stroke: none; }
-  .ov-ev.next { stroke-width: 2; }
-  .ov-ev.past { stroke-width: 2.5; }
   .ov-tlab { fill: var(--ov-ink2); font-weight: 400; } .ov-tlab.b { fill: var(--ov-ink); font-weight: 700; }
-  .ov-tlab.red { fill: var(--ov-late); font-weight: 700; } .ov-tlab.q { fill: var(--ov-ink3); }
   .ov-now-l { stroke: var(--ov-ink); stroke-width: 1.5; } .ov-now-w { fill: var(--ov-ink); }
-  .ov-minor { opacity: 0; transition: opacity .2s; } .ov-time:hover .ov-minor { opacity: 1; }
-  .ov-ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 0; }
   .ov-xray, .ov-time { z-index: 1; }
-  .ov-diag { stroke: var(--ov-late); stroke-width: 1.25; fill: none; }
   /* the unit panel: slides in when a unit is clicked */
-  .ov-np { position: absolute; top: 40px; right: 40px; width: 280px; background: var(--paper); padding: 4px 24px 4px 20px; border-left: 2px solid var(--ov-ink); transform: translateX(24px); opacity: 0; visibility: hidden; transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .2s, visibility 0s .32s; z-index: 3; box-sizing: border-box; }
+  .ov-np { position: absolute; top: 40px; right: 40px; width: 280px; background: var(--paper); padding: 4px 24px 4px 20px; border-left: 2px solid var(--ov-ink); transform: translateX(-12px); opacity: 0; visibility: hidden; transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .2s, visibility 0s .32s; z-index: 3; box-sizing: border-box; }
   .ov-np.on { transform: none; opacity: 1; visibility: visible; transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .2s; }
   .ov-np h3 { font-size: 17px; line-height: 24px; margin: 0; }
   .ov-np p { font-size: 14px; line-height: 22px; margin: 8px 0 0; }
   .ov-np .ov-acts { margin-top: 14px; }
+  .ov-np-people { list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; line-height: 22px; }
   .ov-npx { position: absolute; top: 0; right: 0; width: 24px; height: 24px; border: 0; background: none; color: var(--ov-ink3); font-size: 17px; cursor: pointer; padding: 0; }
-  .ov-r6 .ov-block { display: block; font-size: 12px; line-height: 18px; color: var(--ov-late); font-weight: 700; margin-top: 2px; }
-  .ov-r6 .ov-block::before { content: ""; display: inline-block; width: 7px; height: 7px; background: var(--ov-late); margin-right: 7px; vertical-align: 1px; }
   /* one scroll down: sections are a 1.5px rule under a 17px head; rows on hairlines */
   .ov-sec { margin-top: 88px; min-width: 0; }
   .ov-sh { display: flex; align-items: baseline; gap: 12px; padding-bottom: 14px; border-bottom: 1.5px solid var(--ov-ink); }
   .ov.ov-r6 .ov-sh h2 { all: unset; font-size: 17px; font-weight: 700; line-height: 24px; color: var(--ov-ink); }
-  .ov-r6 .ov-team { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: baseline; padding: 18px 0; border-bottom: 1px solid var(--ov-line); position: relative; overflow: hidden; border-radius: 0; box-shadow: none; background: none; }
-  .ov-r6 .ov-team .ov-tn { grid-column: 1 / span 3; display: block; font-size: 14px; font-weight: 700; margin: 0; min-width: 0; }
-  .ov-r6 .ov-team .ov-tn .ov-meta { display: block; }
-  .ov-r6 .ov-ow { grid-column: 4 / span 6; font-size: 14px; line-height: 22px; min-width: 0; }
-  .ov-r6 .ov-team.theirs .ov-ow { color: var(--ov-ink3); }
-  .ov-r6 .ov-they { display: block; max-height: 0; overflow: hidden; transition: max-height .25s; }
-  .ov-r6 .ov-team:hover .ov-they, .ov-r6 .ov-team:focus-within .ov-they, .ov-r6 .ov-team.open .ov-they { max-height: 40px; }
-  .ov-ball-line { grid-column: 10 / span 3; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ov-ink3); transition: opacity .15s; }
-  .ov-ball-line i { height: 2px; background: var(--ov-ink); flex: none; transform-origin: left; }
-  .ov-ball-line i.red { background: var(--ov-late); height: 3px; }
-  .ov-ball-line b { color: var(--ov-ink); } .ov-ball-line b.red { color: var(--ov-late); }
-  .ov-act { position: absolute; right: 0; top: 50%; transform: translate(16px, -50%); opacity: 0; transition: transform .2s cubic-bezier(.2,.8,.2,1), opacity .15s; background: var(--paper); padding-left: 16px; display: flex; gap: 14px; }
-  .ov-team:hover .ov-act, .ov-team:focus-within .ov-act, .ov-team.open .ov-act { transform: translateY(-50%); opacity: 1; }
-  .ov-team:hover .ov-ball-line, .ov-team:focus-within .ov-ball-line, .ov-team.open .ov-ball-line { opacity: 0; }
   .ov-r6 .ov-more6 { display: inline-block; margin-top: 14px; }
-  .ov-two { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; }
-  .ov-two > :first-child { grid-column: 1 / span 6; } .ov-two > :nth-child(2) { grid-column: 8 / span 5; }
-  .ov-score { font-size: 14px; color: var(--ov-ink2); margin: 16px 0 4px; }
-  .ov-score b { font-size: 17px; color: var(--ov-ink); } .ov-score b.red { color: var(--ov-late); }
+  .ov-two { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+  .ov-two > .ov-col:first-child { grid-column: 1 / span 5; } .ov-two > .ov-col:nth-child(2) { grid-column: 7 / span 6; }
+  .ov-one { max-width: 720px; }
   .ov-pl, .ov-wl, .ov-cl { list-style: none; margin: 0; padding: 0; }
-  .ov-r6 .ov-owe { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--ov-line); box-shadow: none; font-size: 14px; line-height: 22px; }
-  .ov-r6 .ov-owe .ov-body { flex: 1; min-width: 0; }
-  .ov-r6 .ov-ot { display: block; font-size: 14px; line-height: 22px; font-weight: 400; -webkit-line-clamp: unset; }
-  .ov-r6 .ov-who { display: block; margin: 0; }
-  .ov-age { flex: none; font-size: 12px; line-height: 22px; color: var(--ov-ink3); white-space: nowrap; }
-  .ov-age.red { color: var(--ov-late); font-weight: 700; }
   .ov-wl li { display: grid; grid-template-columns: 150px minmax(0, 1fr); column-gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--ov-line); font-size: 14px; }
   .ov-wl .ov-need { color: var(--ov-ink3); grid-row: 1 / 3; min-width: 0; }
   .ov-wl .ov-need .ov-role { font-size: 14px; color: inherit; white-space: normal; }
@@ -2260,53 +2234,39 @@
   @media (prefers-reduced-motion: no-preference) {
     .ov-say > * { animation: ov-rise .6s cubic-bezier(.2,.8,.2,1) backwards; }
     .ov-say > :nth-child(2) { animation-delay: .06s; } .ov-say > :nth-child(3) { animation-delay: .14s; }
-    .ov-say > :nth-child(4) { animation-delay: .2s; } .ov-say > :nth-child(5) { animation-delay: .3s; }
-    .ov-xsvg:not(.ov-still) .ov-link, .ov-axis { stroke-dasharray: 1; animation: ov-draw .7s cubic-bezier(.2,.8,.2,1) backwards var(--d, .2s); }
+    .ov-say > :nth-child(4) { animation-delay: .2s; } .ov-say > :nth-child(5) { animation-delay: .3s; } .ov-say > :nth-child(6) { animation-delay: .36s; }
+    .ov-xsvg:not(.ov-still) .ov-link, .ov-tsvg:not(.ov-still) .ov-axis { stroke-dasharray: 1; animation: ov-draw .7s cubic-bezier(.2,.8,.2,1) backwards var(--d, .2s); }
     .ov-xsvg:not(.ov-still) .ov-shape, .ov-xsvg:not(.ov-still) .ov-pd { animation: ov-land .55s cubic-bezier(.3,1.5,.5,1) backwards var(--d, 0s); }
-    .ov-xsvg:not(.ov-still) text, .ov-tlab { animation: ov-fade .4s ease-out backwards var(--d, 1.2s); }
-    .ov-pulse { opacity: 0; animation: ov-pulse 1.8s cubic-bezier(.2,.6,.3,1) infinite var(--pd, 1.8s); }
-    .ov-diag:not(.still) { stroke-dasharray: 1; animation: ov-draw .6s cubic-bezier(.2,.8,.2,1) 1.5s backwards; }
+    .ov-xsvg:not(.ov-still) text, .ov-tsvg:not(.ov-still) .ov-tlab { animation: ov-fade .4s ease-out backwards var(--d, 1.2s); }
     .ov-fut { animation: ov-flow 1.4s linear infinite; }
-    .ov-late-seg { animation: ov-flow 1s linear infinite reverse; }
-    .ov-now { animation: ov-slide 1.1s cubic-bezier(.2,.8,.2,1) .5s backwards; }
-    .ov-ball-line i { animation: ov-grow .8s cubic-bezier(.2,.8,.2,1) backwards .1s; }
+    .ov-tsvg:not(.ov-still) .ov-now { animation: ov-slide 1.1s cubic-bezier(.2,.8,.2,1) .5s backwards; }
   }
   @media (prefers-reduced-motion: reduce) { .ov-r6 *, .ov-r6 *::before { transition-duration: 0s !important; } }
   @keyframes ov-rise { from { opacity: 0; transform: translateY(14px); } }
   @keyframes ov-draw { from { stroke-dashoffset: 1; } }
   @keyframes ov-land { from { transform: scale(0); } }
   @keyframes ov-fade { from { opacity: 0; } }
-  @keyframes ov-pulse { 0% { r: var(--r0); opacity: .9; } 100% { r: var(--r1); opacity: 0; } }
   @keyframes ov-flow { to { stroke-dashoffset: -10; } }
   @keyframes ov-slide { from { transform: translateX(var(--from)); } }
-  @keyframes ov-grow { from { transform: scaleX(0); } }
   @media (max-width: 719px) {
     .ov-stage { display: block; min-height: 0; }
-    .ov-wk > span:first-child { display: none; }
-    .ov-over .ov-sub { white-space: normal; flex-basis: 100%; order: 5; }
-    .ov-wk .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; }
+    .ov-over .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; }
     .ov-say { padding: 18px 0 0; }
     .ov.ov-r6 .ov-say h1 { font-size: 34px; line-height: 40px; margin-top: 10px; }
-    .ov-r6 .ov-lede { font-size: 14px; line-height: 22px; margin-top: 10px; }
-    .ov-go { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 16px; }
-    .ov.ov-r6 .ov-primary { height: 46px; line-height: 46px; width: 100%; text-align: center; }
-    .ov-go .ov-lnk { align-self: flex-start; }
-    .ov-r6 .ov-where { display: none; }
-    .ov-xray { margin: 8px -16px 0; height: 270px; }
-    .ov-xsvg { max-height: 270px; min-height: 0; }
+    .ov.ov-r6 .ov-say .ov-sub { font-size: 14px; line-height: 22px; margin-top: 8px; }
+    .ov-facts { margin-top: 12px; }
+    .ov-key { margin-top: 20px; }
+    .ov-today { margin-top: 16px; }
+    .ov-xray { margin: 16px 0 0; }
+    .ov-xsvg { height: auto; max-height: none; min-height: 0; aspect-ratio: 680 / 540; }
+    .ov-outline { columns: 1; }
+    .ov-outline .ov-m .ov-role { display: inline; }
     .ov-legend { padding: 4px 16px 0; gap: 14px; flex-wrap: wrap; }
     .ov-time { margin: 12px -16px 0; }
     .ov-np { right: 16px; left: 16px; width: auto; top: auto; bottom: 0; transform: translateY(12px); }
     .ov-sec, .ov-r6 .ov-section, .ov-coda { margin-top: 56px; }
-    .ov-r6 .ov-team { grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
-    .ov-r6 .ov-team .ov-tn, .ov-r6 .ov-ow, .ov-ball-line { grid-column: 1; }
-    .ov-act { position: static; transform: none; display: none; padding: 8px 0 0; }
-    .ov-team.open .ov-act { display: flex; opacity: 1; }
-    .ov-team:hover .ov-ball-line, .ov-team.open .ov-ball-line { opacity: 1; }
     .ov-sh { flex-wrap: wrap; row-gap: 2px; }
     .ov-two { display: block; }
-    .ov-r6 .ov-owe { flex-wrap: wrap; row-gap: 0; }
-    .ov-r6 .ov-owe .ov-body { flex: 1 1 100%; }
     .ov-wl li { grid-template-columns: minmax(0, 1fr); }
     .ov-wl .ov-need { grid-row: auto; } .ov-wl .ov-meta { grid-column: 1; }
     .ov-r6 .ov-month { padding-left: 0; }
@@ -6603,26 +6563,16 @@ const ORG_UI_ZH = {
   "REM only knows its domain and {n} people": "REM 只知道它的域名和 {n} 位联系人",
   "Not investigated yet": "还没调查", "writes from it": "从这里来信",
   "You": "你",
-  "{n} teams|are waiting on you.": "{n} 个团队|在等你。", "1 team|is waiting on you.": "1 个团队|在等你。",
-  "{n} things|are waiting on you.": "{n} 件事|在等你。", "1 thing|is waiting on you.": "1 件事|在等你。",
-  "{n} parts of {org}|are waiting on you.": "{org} 有 {n} 个分支|在等你。", "One part of {org}|is waiting on you.": "{org} 有 1 个分支|在等你。",
-  "Most urgent is {place}: {thing}, ": "最急的是 {place}：{thing}，", "Most urgent is {place}: {thing}": "最急的是 {place}：{thing}",
-  "waiting {age}": "等了 {age}", "Nothing open between you right now.": "你们之间现在没有未结的事。",
-  "REM · as of {date}": "REM · 截至{date}", "All {n} you owe": "你欠的全部 {n} 件", "In {path}": "在 {path}",
-  "Where things wait at {org}": "{org} 里哪里在等你", "{n} open": "{n} 件未结", "Close": "关闭",
-  "List": "列表", "Picture": "图", "Size = open items, both ways": "大小 = 两个方向未结的事",
-  "In touch": "常来往", "Cooling": "在变冷", "Gone cold": "冷了", "Warmth not known yet": "冷热还不知道",
-  "Nothing you owe here.": "这里没有你欠的事。", "Blocking their work": "挡着他们的事", "Open {name}": "打开 {name}",
-  "Time line": "时间线", "Today": "今天", "Was due": "到期了",
-  "{who} owes you: {thing}": "{who} 欠你：{thing}",
-  "Ball in your court": "球在你手里", "{n} teams · {m} waiting on you": "{n} 个团队 · {m} 个在等你",
-  "{n} units · {m} waiting on you": "{n} 个单位 · {m} 个在等你", "{n} people · {m} waiting on you": "{n} 人 · {m} 个在等你",
-  "Blocking them: {thing}": "挡着他们：{thing}", "With them": "在他们那边",
-  "still open": "件还没办", "overdue": "件逾期", "they owe you": "件对方欠你", "to {name}": "对 {name}",
-  "Who to ask at {org}": "在 {org} 找谁", "who does what · who replies fast": "谁管什么 · 谁回得快",
-  "usually replies in {d}": "通常 {d} 内回", "{n} more people": "还有 {n} 人",
-  "less mail than before · 52 weeks": "邮件比以前少 · 52 周", "{n} days without mail": "{n} 天没有邮件",
-  "{n}% less mail in the last 30 days": "最近 30 天少了 {n}%", "REM has {n} questions for you": "REM 还有 {n} 个问题想问你"
+  "Close": "关闭", "In touch": "常来往", "Cooling": "在变冷", "Gone cold": "冷了", "Warmth not known yet": "冷热还不知道", "Open {name}": "打开 {name}",
+  "Today": "今天", "Who to ask at {org}": "在 {org} 找谁", "who does what · who replies fast": "谁管什么 · 谁回得快",
+  "usually replies in {d}": "通常 {d} 内回", "{n} more people": "还有 {n} 人", "less mail than before · 52 weeks": "邮件比以前少 · 52 周",
+  "{n} days without mail": "{n} 天没有邮件", "{n}% less mail in the last 30 days": "最近 30 天少了 {n}%",
+  "REM has {n} questions for you": "REM 还有 {n} 个问题想问你", "Where this sits": "所在位置", "{n} units": "{n} 个单位",
+  "In touch since {date}": "{date}起有往来", "Last contact {date}": "最近往来 {date}", "Most recently in touch": "最近联系的人",
+  "{n} things in Today involve {org} →": "今天里有 {n} 件和 {org} 有关的事 →", "How {org} is built": "{org} 的结构",
+  "Size = people you know there": "大小 = 你在那里认识的人数", "In touch within 45 days": "45 天内有往来", "When you were in touch": "你们什么时候有往来",
+  "First contact": "第一次往来", "Latest contact": "最近一次往来", "{n} people here": "{n} 人", "Units and people": "分支与团队",
+  "{n} units · {m} people": "{n} 个单位 · {m} 人", "Projects with {org}": "和 {org} 有关的项目"
 };
 function orgT(key, values = {}) {
   const words = uiLanguage === "zh" ? ORG_UI_ZH[key] : null;
@@ -6838,36 +6788,32 @@ function orgFaces(people) {
     [...shown.map(p => orgFace(p, "xs")), people.length > 3 ? el("em", { text: "+" + (people.length - 3) }) : null]);
 }
 
-// ---------- one organisation (round 6: one statement, one picture, one action) ----------
-// The first screen is a poster: a statement counted from the notebook, the X-ray of
-// where things wait, and the one green action. Everything else sits one scroll down
-// or behind hover. Nothing is drawn that the notebook does not record: warmth with no
-// mail signal stays neutral, undated things stay off the time line, and there is no
-// briefing paragraph until REM writes one with sources.
-const ORG_RING = [0, 104, 196], ORG_CX = 330, ORG_CY = 262, ORG_ROT = -Math.PI * 0.86;
+// ---------- one organisation (round 6, a record): what this organisation is to you ----------
+// An organisation page is a record, not a to-do list (owner, 2026-11-08): who they are, how
+// they are built, who you know there and how long you have been in touch. What you owe lives
+// in Today; this page links there in one quiet line. Nothing is drawn that the notebook does
+// not record: warmth with no mail signal stays neutral, undated events stay off the time line.
+const ORG_RING = [0, 104, 196], ORG_CX = 330, ORG_CY = 262, ORG_ROT = -Math.PI * 0.86, ORG_W = 680;
 let orgCurrent = null;
 
 function orgPage(r) {
   const box = el("div", { class: "ov ov-page ov-r6" });
   orgCurrent = null;
   if (orgHidden(r)) {
-    box.append(el("section", { class: "ov-stage" }, [orgOver(r, [])]), orgCurtain(r));
+    box.append(el("section", { class: "ov-stage ov-closed" }, [orgOver(r), el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", text: orgName(r) })])]), orgCurtain(r));
     return box;
   }
   const v = orgView(r);
   orgCurrent = v;
-  box.append(orgStage(v), orgBall(v),
-    el("div", { class: "ov-two" }, [orgOwedSection(v), orgAsk(v)]),
-    el("div", { class: "ov-two" }, [orgTimeline(r, v.people), orgCooling(v)]),
-    orgCoda(v));
+  box.append(orgStage(v), orgStructure(v), orgColumns(v), orgCoda(v));
   return box;
 }
-// The time line and the red diagonal need the laid-out page; record() calls this after appending.
-function orgLayout() {
+// The time line needs the laid-out page; record() calls this after appending, resize calls it still.
+function orgLayout(still = false) {
   const v = orgCurrent, box = document.querySelector("#main .ov-r6 .ov-time");
   if (!v || !box) return;
-  orgTime(v, box);
-  orgOverlay(v, false);
+  orgTime(v, box, still === true);
+  if ((innerWidth < 720) !== v.phone) orgMove(v);
 }
 // Deterministic frames for review and tests: every animation on the page paused at ms.
 function orgFreeze(ms) { for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = ms; } }
@@ -6879,36 +6825,41 @@ function svgEl(tag, attrs = {}, children = []) {
 }
 
 function orgView(r) {
-  const owed = orgOwed(r), theirs = orgTheirs(r), people = orgMembers(r);
-  const { tree } = orgUnitTree(r, people, owed);
-  const v = { r, owed, theirs, people, tree, top: owed[0] || null, rot: ORG_ROT, focus: null, nodes: orgNodes(r, tree, people, owed, theirs) };
-  v.lateNode = v.top && overdue(v.top) ? orgAll(v).filter(d => d.depth).sort((a, b) => b.depth - a.depth).find(d => d.owed.includes(v.top)) || null : null;
+  const people = orgMembers(r), owed = orgOwed(r), { tree } = orgUnitTree(r, people, owed);
+  const v = { r, people, owed, tree, rot: ORG_ROT, focus: null, spin: 0, phone: innerWidth < 720 };
+  v.nodes = orgNodes(r, tree, people);
+  v.events = orgEvents(r, people);
   return v;
 }
-// Two rings: branches, then the units under them (deeper units fold into the one they
-// sit under). With no known units the people themselves are the ring.
-function orgNodes(r, tree, people, owed, theirs) {
+// Two rings: branches, then the units under them (deeper units fold into the one they sit
+// under). With no known units the people themselves are the ring.
+function orgNodes(r, tree, people) {
   const node = (unit, depth, parent) => {
-    const paths = orgUnitPaths(unit), all = unitPeople(unit);
+    const all = unitPeople(unit);
     const d = { name: unit.name, path: unit.path || "", depth, parent, unit, kind: unit.path ? byPath(unit.path)?.unit_kind || "" : "team",
-      owed: unitOwed(unit), all, people: unit.units.length ? [] : all,
-      theirs: theirs.filter(e => (e.row.units || []).some(path => paths.has(path)) || !(e.row.units || []).length && !unit.path && all.includes(owedPerson(e))) };
+      all, people: unit.units.length ? [] : all };
     d.kids = depth === 1 ? unit.units.map(child => node(child, 2, d)) : [];
     return d;
   };
-  const root = { name: orgName(r), path: r.path, depth: 0, owed, theirs, people: [], all: people, kids: [] };
+  const root = { name: orgName(r), path: r.path, depth: 0, all: people, people: [], kids: [] };
   root.kids = tree.units.length ? tree.units.map(unit => node(unit, 1, root))
-    : people.slice(0, 12).map(p => ({ name: p.title, path: p.path, depth: 1, parent: root, person: p, kind: "person", all: [p], people: [], kids: [],
-      owed: owed.filter(e => owedPerson(e)?.path === p.path), theirs: theirs.filter(e => owedPerson(e)?.path === p.path) }));
+    : people.slice(0, 12).map(p => ({ name: p.title, path: p.path, depth: 1, parent: root, person: p, kind: "person", all: [p], people: [], kids: [] }));
   return root;
 }
-function orgUnitPaths(unit) { return new Set([unit.path, ...unit.units.flatMap(child => [...orgUnitPaths(child)])].filter(Boolean)); }
 function orgAll(v) { return [v.nodes, ...v.nodes.kids, ...v.nodes.kids.flatMap(d => d.kids)]; }
 function orgShape(d) { return !d.depth ? "root" : d.kind === "person" ? "dot" : d.depth === 1 && d.kind !== "team" ? "square" : "circle"; }
+// Size = how many people you know there.
 function orgSize(d) {
-  const n = d.owed.length + d.theirs.length;
-  return orgShape(d) === "square" ? 8 + 2.2 * Math.sqrt(n) : orgShape(d) === "dot" ? 4.2 + 2.4 * Math.sqrt(n) : 6 + 5.2 * Math.sqrt(n);
+  const n = d.all.length;
+  return orgShape(d) === "square" ? 8 + 1.8 * Math.sqrt(n) : orgShape(d) === "dot" ? 5 : 6 + 3.4 * Math.sqrt(n);
 }
+// A person's last contact: the page's own date, or the newest dated History line on it.
+function orgLast(p) {
+  const days = [known(p).last, ...historyItems((section(p, "history") || { text: "" }).text).map(item => item.day).filter(day => day.length === 10)];
+  return days.filter(Boolean).sort().at(-1) || "";
+}
+// In touch lately: somebody there wrote or was written to in the last 45 days.
+function orgRecent(d) { return d.all.some(p => orgLast(p) && daysSince(orgLast(p)) <= ORG_RECENT_DAYS); }
 // Warmth comes only from synced mail metadata (relationship_stats.py); without it the node is neutral.
 function personWarmth(p) {
   const rel = p.index?.relationship;
@@ -6921,105 +6872,80 @@ function orgTemp(d) {
   const found = new Set((d.all || []).map(personWarmth));
   return ["warm", "cooling", "cold"].find(temp => found.has(temp)) || "unknown";
 }
-function orgUnitOf(entry, v) { return (entry.row.units || []).map(byPath).find(unit => unit && unit.path !== v.r.path && !orgHidden(unit)) || null; }
-function orgChain(unit, r) {
-  const names = [], seen = new Set();
-  for (let page = unit; page && page.path !== r.path && !seen.has(page.path); page = byPath(page.parent)) { seen.add(page.path); names.unshift(orgName(page)); }
-  return names.join(" › ");
-}
-// The thing owed, short: the noun phrase before any dash or clause.
-function orgThing(entry) { return owedWords(entry).title.split(/\s+[—–]\s+|[;；]\s*/)[0]; }
+function orgUnitRole(p, path) { return (p.units || []).find(edge => edge.path === path)?.role || ""; }
+function orgPersonRole(p) { return orgUnitRole(p, (p.units || [])[0]?.path) || orgRole(p, "span")?.textContent || ""; }
 // Shorten at a word boundary when the text has spaces; CJK is cut by character.
 function orgShort(text, n = 18) {
   if ([...text].length <= n) return text;
   const cut = [...text].slice(0, n - 1).join(""), word = cut.replace(/\s+\S*$/, "");
   return (word.length > n / 2 ? word : cut) + "…";
 }
-function orgTheyLine(entry) {
-  const who = owedPerson(entry);
-  return orgT("{who} owes you: {thing}", { who: who ? orgFirstName(who) : orgName(entry.r), thing: orgThing(entry) }) + (entry.t.since ? " · " + age(entry.t.since) : "");
-}
+// The thing owed, short: used by the green action on the organisation list.
+function orgThing(entry) { return owedWords(entry).title.split(/\s+[—–]\s+|[;；]\s*/)[0]; }
 
-// ---------- the first screen ----------
+// ---------- the first screen: name, what it is, how you are connected, its structure ----------
 function orgSub(r, people) {
   if (known(r).status === "Mapped") return [orgT("Not investigated yet") + " · " + orgT("REM only knows its domain and {n} people", { n: people.length })];
   if (orgUnknown(r) && !r.kind) return [[orgT("Not sure what this is yet"), people.length ? people.slice(0, 2).map(orgFirstName).join("、") + " " + orgT("writes from it") : ""].filter(Boolean).join(" · ")];
   return [[orgKind(r), orgRelation(r)].filter(Boolean).join(" · ")];
 }
-function orgOver(r, people) {
-  const hidden = orgHidden(r);
-  return el("header", { class: "ov-over" }, [orgTile(r, "sm"), el("b", { class: "ov-name", text: orgName(r) }),
-    r.domain ? el("span", { class: "ov-domain", text: r.domain }) : null,
-    hidden ? null : el("span", { class: "ov-sub" }, orgSub(r, people)),
-    hidden ? null : updatedMarker(r, true),
-    el("span", { class: "ov-wk" }, [hidden || !people.length ? null : el("span", { text: orgT("{n} people you know", { n: people.length }) }),
-      !hidden && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null])]);
+// A unit's crumb is its whole chain, so a team opens back up to its course and university.
+function orgCrumb(r) {
+  const chain = [], seen = new Set([r.path]);
+  for (let page = byPath(r.parent); page && !seen.has(page.path); page = byPath(page.parent)) { seen.add(page.path); chain.unshift(page); }
+  const links = chain.length ? chain.map(page => el("a", { href: href(page), text: orgName(page) }))
+    : [el("a", { href: categoryHref("orgs"), text: label("orgs") }), ...(r.kind ? [document.createTextNode(orgT(ORG_KINDS[r.kind]))] : [])];
+  return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
+}
+function orgOver(r) {
+  return el("header", { class: "ov-over" }, [orgCrumb(r),
+    !orgHidden(r) && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null]);
 }
 function orgStage(v) {
-  return el("section", { class: "ov-stage" }, [orgOver(v.r, v.people),
-    el("div", { class: "ov-say" }, [el("p", { class: "ov-meta", text: orgT("REM · as of {date}", { date: fmtDate(REM.as_of) }) }),
-      el("h1", v.owed.length ? {} : { class: "ov-none" }, orgStatement(v)),
-      el("p", { class: "ov-lede" }, orgLede(v)),
-      v.top ? el("div", { class: "ov-go" }, [orgPrimary(v.top), v.owed.length > 1 ? orgJump(v) : null]) : null,
-      v.top ? orgWhere(v) : null]),
-    orgXray(v), el("div", { class: "ov-time" }), svgEl("svg", { class: "ov-ov", "aria-hidden": "true" })]);
+  const r = v.r;
+  return el("section", { class: "ov-stage" }, [orgOver(r),
+    el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", text: orgName(r) }), updatedMarker(r, true),
+      el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
+    orgXray(v), el("div", { class: "ov-time" })]);
 }
-// Units holding something the owner owes; free-text teams never count as units.
-function orgWaitingUnits(v) {
-  const known = orgUnitPaths(v.tree);
-  known.delete(v.r.path);
-  return [...new Set(v.owed.flatMap(entry => (entry.row.units || []).filter(path => known.has(path))))];
+function orgFacts(v) {
+  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day, last = known(v.r).last || v.events.at(-1)?.day;
+  const parts = [v.r.domain ? el("span", { class: "ov-domain", text: v.r.domain }) : null,
+    v.people.length ? orgT("{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
+    first ? orgT("In touch since {date}", { date: fmtDate(first) }) : null, last ? orgT("Last contact {date}", { date: fmtDate(last) }) : null].filter(Boolean);
+  const keep = part => typeof part === "string" ? el("span", { class: "ov-nb", text: part }) : part;
+  return parts.length ? el("p", { class: "ov-facts" }, parts.flatMap((part, i) => i ? [" · ", keep(part)] : [keep(part)])) : null;
 }
-function orgStatement(v) {
-  if (!v.owed.length) return [orgT("You owe {org} nothing", { org: orgName(v.r) })];
-  const units = orgWaitingUnits(v), n = units.length || v.owed.length;
-  const teams = units.length && units.every(path => byPath(path)?.unit_kind === "team");
-  const key = !units.length ? (n === 1 ? "1 thing|is waiting on you." : "{n} things|are waiting on you.")
-    : teams ? (n === 1 ? "1 team|is waiting on you." : "{n} teams|are waiting on you.")
-    : (n === 1 ? "One part of {org}|is waiting on you." : "{n} parts of {org}|are waiting on you.");
-  return orgT(key, { n, org: orgName(v.r) }).split("|").flatMap((part, i) => i ? [el("br"), part] : [part]);
+// The three people you were most recently in touch with, with the role they hold here.
+function orgKeyPeople(v) {
+  const people = [...v.people].filter(orgLast).sort((a, b) => orgLast(b).localeCompare(orgLast(a))).slice(0, 3);
+  if (!people.length) return null;
+  return el("div", { class: "ov-key" }, [el("p", { class: "ov-meta", text: orgT("Most recently in touch") }),
+    el("ul", {}, people.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }),
+      el("span", { class: "ov-meta", text: [orgPersonRole(p), fmtDate(orgLast(p))].filter(Boolean).join(" · ") })])))]);
 }
-function orgLede(v) {
-  if (!v.top) return [v.theirs.length ? orgT("{n} waiting on them", { n: v.theirs.length }) : orgT("Nothing open between you right now.")];
-  const e = v.top, unit = orgUnitOf(e, v), who = owedPerson(e);
-  const place = unit ? orgName(unit) : who ? orgFirstName(who) : orgName(v.r);
-  const late = overdue(e) ? el("b", { class: "ov-red", "data-mark": "lede", text: orgT("Overdue {n} days", { n: daysSince(e.t.due) }) })
-    : e.t.since ? orgT("waiting {age}", { age: age(e.t.since) }) : null;
-  return [orgT(late ? "Most urgent is {place}: {thing}, " : "Most urgent is {place}: {thing}", { place, thing: orgThing(e) }), late, uiLanguage === "zh" ? "。" : ".",
-    e.t.since ? el("sup", { text: fmtDate(e.t.since), title: owedWords(e).title }) : null];
-}
-function orgJump(v) {
-  const link = el("a", { class: "ov-lnk", href: href(v.r), text: orgT("All {n} you owe", { n: v.owed.length }) });
-  link.onclick = event => {
-    event.preventDefault();
-    document.getElementById("ov-owed")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-  };
-  return link;
-}
-// Where the urgent thing lives, from Parent/Unit facts: "In Capstone course › T11A · Fern, Product Owner".
-function orgWhere(v) {
-  const unit = orgUnitOf(v.top, v), who = owedPerson(v.top);
-  const role = who && unit ? (who.units || []).find(edge => edge.path === unit.path)?.role : "";
-  const parts = [unit ? orgT("In {path}", { path: orgChain(unit, v.r) }) : "", who ? who.title + (role ? (uiLanguage === "zh" ? "，" : ", ") + unlabelled(role) : "") : ""];
-  return parts.some(Boolean) ? el("p", { class: "ov-meta ov-where", text: parts.filter(Boolean).join(" · ") }) : null;
+// What you owe lives in Today: one quiet line, never a ledger or a button here.
+function orgTodayLink(v) {
+  return v.owed.length ? el("a", { class: "ov-today", href: "#view=open", text: orgT("{n} things in Today involve {org} →", { n: v.owed.length, org: orgName(v.r) }) }) : null;
 }
 
-// ---------- the X-ray: square = branch, circle = team, dot = person; red = overdue only ----------
+// ---------- the X-ray: square = branch, circle = team, dot = person; ring = in touch lately ----------
 function orgXray(v) {
-  const svg = svgEl("svg", { class: "ov-xsvg", viewBox: "0 0 680 540", role: "group", "aria-label": orgT("Where things wait at {org}", { org: orgName(v.r) }) });
-  orgDraw(v, svg, false);
-  return el("div", { class: "ov-xray" }, [svg, orgOutline(v), orgLegend(v), el("aside", { class: "ov-np", "aria-live": "polite" })]);
+  const svg = svgEl("svg", { class: "ov-xsvg", viewBox: `0 0 ${ORG_W} 540`, role: "group", "aria-label": orgT("How {org} is built", { org: orgName(v.r) }) });
+  const box = el("div", { class: "ov-xray" }, [svg, orgLegend(v), el("aside", { class: "ov-np", "aria-live": "polite" })]);
+  orgDraw(v, svg);
+  return box;
 }
-function orgDraw(v, svg, still) {
-  svg.textContent = "";
-  svg.classList.toggle("ov-still", still);
+// Built once; turning and resizing move these same elements, so keyboard focus survives.
+function orgDraw(v, svg) {
   svg.append(svgEl("defs", {}, [svgEl("pattern", { id: "ov-hatch", width: 4.5, height: 4.5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
     [svgEl("rect", { class: "ov-hatch-bg", width: 4.5, height: 4.5 }), svgEl("line", { class: "ov-hatch-line", x1: 0, y1: 0, x2: 0, y2: 4.5 })])]));
   const all = orgPlace(v);
-  for (const d of all.filter(d => d.depth)) svg.append(svgEl("path", { class: "ov-link" + (d.depth === 1 ? " b" : ""), pathLength: 1,
-    d: `M${d.parent.x},${d.parent.y}L${d.x},${d.y}`, style: `--d:${0.15 + d.depth * 0.18}s` }));
-  for (const d of all) svg.append(...orgPeopleDots(d));
-  for (const d of all) svg.append(orgMark(d, v));
+  for (const d of all.filter(d => d.depth)) { d.link = svgEl("path", { class: "ov-link" + (d.depth === 1 ? " b" : ""), pathLength: 1, style: `--d:${0.15 + d.depth * 0.18}s` }); svg.append(d.link); }
+  v.dots = svgEl("g", { class: "ov-dots" });
+  svg.append(v.dots);
+  for (const d of all) { d.el = orgMark(d, v); svg.append(d.el); }
+  orgMove(v, all);
 }
 // Leaves spaced like a radial cluster (siblings 1, cousins 1.6); a branch sits between its first and last child.
 function orgPlace(v) {
@@ -7037,6 +6963,19 @@ function orgPlace(v) {
   }
   return all;
 }
+function orgMove(v, all = orgPlace(v)) {
+  if (orgCurrent && orgCurrent !== v) return;
+  v.phone = innerWidth < 720;
+  const plan = orgLabelPlan(v, all);
+  for (const d of all) {
+    d.link?.setAttribute("d", `M${d.parent.x},${d.parent.y}L${d.x},${d.y}`);
+    d.el.setAttribute("transform", `translate(${d.x},${d.y})`);
+    d.el.classList.toggle("sel", d === v.focus);
+    d.el.querySelectorAll(".ov-label").forEach(node => node.remove());
+    if (plan.has(d)) d.el.append(plan.get(d));
+  }
+  v.dots.replaceChildren(...all.flatMap(orgPeopleDots));
+}
 function orgPeopleDots(d) {
   if (!d.depth || d.kind === "person" || !d.people.length) return [];
   const n = Math.min(8, d.people.length), r = ORG_RING[d.depth] + orgSize(d) + 9, step = d.depth === 1 ? 0.05 : 0.07;
@@ -7046,63 +6985,62 @@ function orgPeopleDots(d) {
   });
 }
 function orgMark(d, v) {
-  const n = d.owed.length + d.theirs.length, shape = orgShape(d), size = orgSize(d), late = d === v.lateNode;
-  const g = svgEl("g", { class: "ov-node" + (late ? " late" : d.owed.some(overdue) ? " due" : "") + (d === v.focus ? " sel" : ""),
-    transform: `translate(${d.x},${d.y})`, "data-depth": d.depth, "data-shape": shape, "data-temp": orgTemp(d), tabindex: d.depth ? 0 : -1,
-    "aria-label": d.name + " · " + orgT("{n} open", { n }), ...(late ? { "data-mark": "node" } : {}) });
-  if (late) for (const delay of [0, 0.9]) g.append(svgEl("circle", { class: "ov-pulse", r: size + 4, style: `--r0:${size + 3}px;--r1:${size + 22}px;--pd:${1.8 + delay}s` }));
+  const shape = orgShape(d), size = orgSize(d), recent = d.depth > 0 && orgRecent(d);
+  const g = svgEl("g", { class: "ov-node", "data-depth": d.depth, "data-shape": shape, "data-temp": orgTemp(d), "data-recent": recent ? "1" : "0",
+    ...(d.depth ? { tabindex: 0, role: "button", "aria-label": d.name + " · " + orgT("{n} people you know", { n: d.all.length }) } : {}) });
   const kind = "ov-shape t-" + orgTemp(d), dl = `--d:${0.35 + d.depth * 0.2}s`;
   if (shape === "root") g.append(svgEl("circle", { class: "ov-shape", r: 22, style: "--d:0s" }), svgEl("text", { class: "ov-root-l", y: 1 }, [[...d.name][0].toUpperCase()]));
   else if (shape === "square") g.append(svgEl("rect", { class: kind, x: -size, y: -size, width: 2 * size, height: 2 * size, style: dl }));
   else g.append(svgEl("circle", { class: kind, r: size, style: dl }));
-  g.append(...orgLabels(d, v, size));
+  if (recent) g.append(svgEl("circle", { class: "ov-recent", r: size + 3.5 }));
+  if (d.depth) g.append(svgEl("circle", { class: "ov-ring", r: size + 7 }));
   g.addEventListener("click", () => d.depth ? orgFocus(v, d) : orgUnfocus(v));
-  g.addEventListener("keydown", event => { if (event.key === "Enter") orgFocus(v, d); });
+  g.addEventListener("keydown", event => { if (d.depth && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); orgFocus(v, d); } });
   return g;
 }
-// Names face outward; on a phone only branches and the overdue team are named.
-function orgLabels(d, v, size) {
-  const phone = innerWidth < 720, late = d === v.lateNode, fs = phone ? 21 : 12;
-  if (!d.depth || phone && d.depth > 1 && !late) return [];
-  const sx = Math.sin(d.turn), cy = -Math.cos(d.turn), off = size + (late ? 16 : 7);
-  const anchor = orgShape(d) === "square" || Math.abs(sx) < .25 ? "middle" : sx > 0 ? "start" : "end";
-  let x = sx * off, y = cy * off + fs * .35;
-  if (anchor === "middle") y = cy > 0 ? off + fs : -off - (late ? fs + 2 : 2);
-  if (orgShape(d) === "square") { x = 0; y = -size - 6; }
-  const text = (cls, words, dy = 0) => svgEl("text", { class: cls, x, y: y + dy, "text-anchor": anchor, style: `font-size:${fs}px;--d:${0.7 + d.depth * 0.15}s` }, [words]);
-  return [text("ov-label", orgShort(d.name, 20)), late ? text("ov-note red", orgT("Overdue {n} days", { n: daysSince(v.top.t.due) }), fs + 3) : null].filter(Boolean);
+// Labels face outward, stay inside the picture, never overlap, and are capped so a large
+// organisation stays readable; the rest are named in the panel and in the units section.
+function orgTextWidth(text, fs) { return [...text].reduce((w, c) => w + (/[⺀-鿿＀-￯]/.test(c) ? fs : fs * 0.62), 0); }
+function orgLabelPlan(v, all) {
+  const fs = v.phone ? 21 : 12, cap = v.phone ? 6 : 14, placed = [{ x0: ORG_CX - 26, x1: ORG_CX + 26, y0: ORG_CY - 26, y1: ORG_CY + 26 }], plan = new Map();
+  const order = all.filter(d => d.depth).sort((a, b) => a.depth - b.depth || Number(orgRecent(b)) - Number(orgRecent(a)) || b.all.length - a.all.length);
+  let ring = 0;
+  for (const d of order) {
+    if (d.depth === 2 && ring >= cap) continue;
+    const spot = orgLabelSpots(d, fs).find(spot => !placed.some(b => spot.x0 < b.x1 && spot.x1 > b.x0 && spot.y0 < b.y1 && spot.y1 > b.y0));
+    if (!spot) continue;
+    placed.push(spot);
+    plan.set(d, svgEl("text", { class: "ov-label", x: spot.x, y: spot.y, "text-anchor": spot.anchor, style: `font-size:${fs}px;--d:${0.7 + d.depth * 0.15}s` }, [spot.text]));
+    if (d.depth === 2) ring++;
+  }
+  return plan;
+}
+// Where a label may go, best first: outward from the centre, then above, below and beside the mark.
+function orgLabelSpots(d, fs) {
+  const size = orgSize(d), sx = Math.sin(d.turn), cy = -Math.cos(d.turn), off = size + 7;
+  const outward = Math.abs(sx) < .25 ? ["middle", 0, cy > 0 ? off + fs : -off - 2] : [sx > 0 ? "start" : "end", sx * off, cy * off + fs * .35];
+  const spots = orgShape(d) === "square" ? [["middle", 0, -size - 6], ["middle", 0, size + fs + 2], [sx > 0 ? "start" : "end", sx > 0 ? off : -off, fs * .35]]
+    : [outward, ["middle", 0, -off - 2], ["middle", 0, off + fs]];
+  return spots.map(([anchor, x, y]) => orgLabelSpot(d, fs, anchor, x, y));
+}
+function orgLabelSpot(d, fs, anchor, x, y) {
+  const text = orgShort(d.name, 20), w = orgTextWidth(text, fs);
+  const left = () => d.x + x - (anchor === "middle" ? w / 2 : anchor === "end" ? w : 0);
+  // Slide the label back inside the picture rather than letting the edge cut it.
+  if (left() < 4) x += 4 - left();
+  if (left() + w > ORG_W - 4) x -= left() + w - (ORG_W - 4);
+  const x0 = left();
+  return { text, x, y, anchor, x0, x1: x0 + w, y0: d.y + y - fs, y1: d.y + y + 4 };
 }
 function orgLegend(v) {
-  const temps = new Set(orgAll(v).filter(d => d.depth).map(orgTemp));
-  const swatch = temp => svgEl("svg", { class: "ov-sw", viewBox: "0 0 12 12", "aria-hidden": "true" }, [svgEl("circle", { class: "ov-shape t-" + temp, cx: 6, cy: 6, r: 4.5 })]);
-  const item = (temp, words) => temps.has(temp) ? el("span", {}, [swatch(temp), orgT(words)]) : null;
-  const list = el("a", { class: "ov-lnk", href: href(v.r), text: orgT("List") });
-  list.onclick = event => {
-    event.preventDefault();
-    const box = list.closest(".ov-xray"), shown = box.classList.toggle("list");
-    list.textContent = orgT(shown ? "Picture" : "List");
-    orgOverlay(v, true);
-  };
-  return el("div", { class: "ov-legend ov-meta", title: orgT("Size = open items, both ways") },
-    [item("warm", "In touch"), item("cooling", "Cooling"), item("cold", "Gone cold"), item("unknown", "Warmth not known yet"), list]);
+  const nodes = orgAll(v).filter(d => d.depth), temps = new Set(nodes.map(orgTemp));
+  const swatch = (cls, inner) => svgEl("svg", { class: "ov-sw", viewBox: "0 0 12 12", "aria-hidden": "true" }, [inner || svgEl("circle", { class: cls, cx: 6, cy: 6, r: 4.5 })]);
+  const item = (temp, words) => temps.has(temp) ? el("span", {}, [swatch("ov-shape t-" + temp), orgT(words)]) : null;
+  return el("div", { class: "ov-legend ov-meta", title: orgT("Size = people you know there") }, [
+    nodes.some(orgRecent) ? el("span", {}, [swatch("", svgEl("circle", { class: "ov-recent", cx: 6, cy: 6, r: 4.5 })), orgT("In touch within 45 days")]) : null,
+    item("warm", "In touch"), item("cooling", "Cooling"), item("cold", "Gone cold"), item("unknown", "Warmth not known yet")]);
 }
-// The same structure as text: every unit links to its page, people keep the role they hold there.
-function orgOutline(v) {
-  const unit = (u, depth) => el("div", { class: "ov-unit", style: `--depth:${depth}` }, [
-    el("div", { class: "ov-tn" }, [u.path ? el("a", { href: href(byPath(u.path)), text: u.name }) : u.name,
-      unitOwed(u).length ? el("small", { text: orgT("{n} items", { n: unitOwed(u).length }) }) : null]),
-    ...u.people.map(p => orgMember(p, u.path)), ...u.units.map(child => unit(child, depth + 1))]);
-  const loose = v.tree.units.length ? v.tree.people.filter(p => !(p.units || []).length) : [];
-  return el("div", { class: "ov-outline" }, [...v.tree.people.filter(p => !loose.includes(p)).map(p => orgMember(p, v.r.path)),
-    ...v.tree.units.map(u => unit(u, 0)),
-    loose.length ? el("p", { class: "ov-meta" }, [orgT("{n} more people in {org}, department not known yet: ", { n: loose.length, org: orgName(v.r) }),
-      ...loose.slice(0, 8).flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })])]) : null]);
-}
-function orgMember(p, unitPath) {
-  const role = (p.units || []).find(edge => edge.path === unitPath)?.role;
-  return el("a", { class: "ov-m", href: href(p) }, [el("span", { text: p.title }), role ? el("small", { class: "ov-role", text: unlabelled(role) }) : orgRole(p, "small")]);
-}
-// Clicking a unit turns the whole tree so it faces the statement, then its panel slides in.
+// Clicking a unit turns the whole tree so it faces the name, then its panel slides in.
 function orgFocus(v, d) {
   let to = -Math.PI / 2 - (d.a || 0);
   while (to - v.rot > Math.PI) to -= 2 * Math.PI;
@@ -7113,59 +7051,66 @@ function orgFocus(v, d) {
 }
 function orgUnfocus(v) {
   const panel = document.querySelector("#main .ov-np");
-  if (!v?.focus || !panel) return;
+  if (!v?.focus || !panel || orgCurrent !== v) return;
   v.focus = null;
   panel.classList.remove("on");
   orgSpin(v, ORG_ROT);
 }
+// One turn at a time: a newer turn or another page ends the previous loop.
 function orgSpin(v, to, done) {
-  const from = v.rot, start = performance.now();
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { v.rot = to; orgRedraw(v); done?.(); return; }
+  const id = ++v.spin, from = v.rot, start = performance.now();
+  document.querySelector("#main .ov-xsvg")?.classList.add("ov-still");
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { v.rot = to; orgMove(v); done?.(); return; }
   const step = now => {
+    if (v.spin !== id || orgCurrent !== v) return;
     const t = Math.min(1, (now - start) / 720), ease = t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     v.rot = from + (to - from) * ease;
-    orgRedraw(v);
+    orgMove(v);
     if (t < 1) requestAnimationFrame(step);
     else done?.();
   };
   requestAnimationFrame(step);
 }
-function orgRedraw(v) {
-  const svg = document.querySelector("#main .ov-xsvg");
-  if (!svg || orgCurrent !== v) return;
-  orgDraw(v, svg, true);
-  orgOverlay(v, true);
-}
 function orgPanel(v, d) {
-  const panel = document.querySelector("#main .ov-np"), top = d.owed[0], they = d.theirs[0];
-  if (!panel) return;
+  const panel = document.querySelector("#main .ov-np");
+  if (!panel || orgCurrent !== v || v.focus !== d) return;
   const close = el("button", { type: "button", class: "ov-npx", "aria-label": orgT("Close"), text: "×" });
   close.onclick = () => orgUnfocus(v);
+  const people = d.all.slice(0, 5), last = d.all.map(orgLast).filter(Boolean).sort().at(-1);
   panel.replaceChildren(...[close, el("h3", { text: d.name }),
-    el("p", { class: "ov-meta", text: [orgT("{n} open", { n: d.owed.length + d.theirs.length }), d.parent?.depth ? d.parent.name : ""].filter(Boolean).join(" · ") }),
-    el("p", {}, [top ? orgThing(top) : d.kids.length ? d.kids.map(kid => kid.name).join("、") : orgT("Nothing you owe here."),
-      top && blocksWork(top.t) ? el("span", { class: "ov-block", text: orgT("Blocking their work") }) : null]),
-    they ? el("p", { class: "ov-meta", text: orgTheyLine(they) }) : null,
+    el("p", { class: "ov-meta", text: [d.kind && d.kind !== "person" ? orgT(d.kind) : "", d.parent?.depth ? d.parent.name : "", last ? orgT("Last contact {date}", { date: fmtDate(last) }) : ""].filter(Boolean).join(" · ") }),
+    people.length ? el("ul", { class: "ov-np-people" }, people.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }), " ", el("span", { class: "ov-meta", text: orgUnitRole(p, d.path) || orgPersonRole(p) })]))) : null,
+    d.kids.length ? el("p", {}, [d.kids.map(kid => kid.name).join("、")]) : null,
     d.path ? el("p", { class: "ov-acts" }, [el("a", { class: "ov-btxt", href: href(byPath(d.path)), text: orgT("Open {name}", { name: orgShort(d.name, 24) }) })]) : null].filter(Boolean));
   panel.classList.add("on");
 }
 
-// ---------- the time line: compressed past, the last ten weeks, three months ahead ----------
-function orgEvents(v) {
+// ---------- the time line: when you were in touch, from dated History only ----------
+// One event written on two pages ("Basil Thorne confirmed…" on the org, "Basil confirmed…" on
+// his own page) is one event: same day, same words once the person's name is set aside.
+function orgEventKey(day, words, people) {
+  let text = words.toLowerCase().replace(/[\s.。!！]+$/, "");
+  for (const p of people) {
+    const name = [p.title, orgFirstName(p)].map(n => n.toLowerCase()).find(n => text.startsWith(n + " "));
+    if (name) { text = text.slice(name.length + 1); break; }
+  }
+  return day + "\n" + text;
+}
+function orgHistory(r, people) {
   const seen = new Set();
-  const history = [v.r, ...v.people].flatMap(page => historyItems((section(page, "history") || { text: "" }).text)
-    .filter(item => item.day.length === 10).map(item => {
-      const words = withoutDateClutter(plainLine(item.text));
-      return { day: item.day, words, kind: /^you\b/i.test(words) ? "me" : "them" };
-    })).filter(e => /[\p{L}\p{N}]/u.test(e.words) && !seen.has(e.day + e.words) && seen.add(e.day + e.words));
-  const dues = v.owed.filter(e => e.t.due).map(e => ({ day: e.t.due, words: orgThing(e), kind: e === v.top && overdue(e) ? "late" : overdue(e) ? "past" : "next" }));
-  return [...history, ...dues].sort((a, b) => a.day.localeCompare(b.day));
+  return [r, ...people].flatMap(page => historyItems((section(page, "history") || { text: "" }).text)
+    .filter(item => item.day.length === 10).map(item => ({ ...item, page, words: withoutDateClutter(plainLine(item.text)) })))
+    .filter(item => /[\p{L}\p{N}]/u.test(item.words))
+    .filter(item => { const key = orgEventKey(item.day, item.words, people); return !seen.has(key) && seen.add(key); });
+}
+function orgEvents(r, people) {
+  return orgHistory(r, people).map(item => ({ day: item.day, words: item.words, kind: /^you\b/i.test(item.words) ? "me" : "them" }))
+    .sort((a, b) => a.day.localeCompare(b.day));
 }
 function orgScale(events, today, left, width) {
   const day = text => new Date(text + "T00:00:00Z").getTime(), now = day(today), recent = now - 70 * DAY_MS;
-  const first = Math.min(recent, ...events.map(e => day(e.day)));
-  const last = Math.min(now + 365 * DAY_MS, Math.max(now + 90 * DAY_MS, ...events.map(e => day(e.day) + 14 * DAY_MS)));
-  const stops = first < recent ? [[first, 0], [recent, .28], [now, .55], [last, 1]] : [[first, 0], [now, .55], [last, 1]];
+  const first = Math.min(recent, ...events.map(e => day(e.day))), last = now + 30 * DAY_MS;
+  const stops = first < recent ? [[first, 0], [recent, .45], [now, .9], [last, 1]] : [[first, 0], [now, .9], [last, 1]];
   return text => {
     const x = day(text);
     for (let i = 1; i < stops.length; i++) if (x <= stops[i][0]) {
@@ -7175,129 +7120,80 @@ function orgScale(events, today, left, width) {
     return left + width;
   };
 }
-// At most five named events: the overdue promise, the next date, today, the first and the latest exchange.
-function orgTimeLabels(events, phone) {
-  const late = events.find(e => e.kind === "late"), next = events.find(e => e.kind === "next");
-  const past = events.filter(e => e.kind === "me" || e.kind === "them");
-  return new Set([late, next, ...(phone ? [] : [past[0], past.at(-1)])].filter(Boolean));
-}
-function orgTime(v, box) {
-  const phone = innerWidth < 720, left = phone ? 16 : 0, width = box.clientWidth - (phone ? 32 : 40), Y = 64;
-  const today = calendarDay(REM.as_of), events = orgEvents(v), x = orgScale(events, today, left, width), now = x(today);
-  const named = orgTimeLabels(events, phone), placed = [];
-  const svg = svgEl("svg", { class: "ov-tsvg", role: "img", "aria-label": orgT("Time line") }, [
+function orgTime(v, box, still) {
+  if (!v.events.length) { box.replaceChildren(); box.hidden = true; return; }
+  const phone = innerWidth < 720, left = phone ? 16 : 0, width = box.clientWidth - (phone ? 32 : 0), Y = 64;
+  const today = calendarDay(REM.as_of || new Date().toISOString()), x = orgScale(v.events, today, left, width), now = x(today);
+  const svg = svgEl("svg", { class: "ov-tsvg" + (still ? " ov-still" : ""), role: "img", "aria-label": orgT("When you were in touch") }, [
     svgEl("line", { class: "ov-axis", pathLength: 1, x1: left, x2: now, y1: Y, y2: Y }),
     svgEl("line", { class: "ov-fut", x1: now, x2: left + width, y1: Y, y2: Y })]);
-  for (const e of events) {
-    const at = x(e.day), above = e.kind === "late" || e.kind === "them" && named.has(e) && e === [...named].at(-1);
-    const free = named.has(e) && !placed.some(p => p.above === above && Math.abs(p.at - at) < 120);
-    if (free) placed.push({ at, above });
-    svg.append(orgTimeEvent(e, at, now, Y, free, above, phone));
+  for (const e of v.events) svg.append(e.kind === "me" ? svgEl("rect", { class: "ov-ev me", x: x(e.day) - 4, y: Y - 4, width: 8, height: 8 }, [svgEl("title", {}, [fmtDate(e.day) + " · " + e.words])])
+    : svgEl("circle", { class: "ov-ev", cx: x(e.day), cy: Y, r: 4 }, [svgEl("title", {}, [fmtDate(e.day) + " · " + e.words])]));
+  const first = v.events[0], latest = v.events.at(-1), spots = [[first, "First contact"]];
+  if (latest !== first && x(latest.day) - x(first.day) > 140) spots.push([latest, "Latest contact"]);
+  for (const [e, words] of spots) {
+    const at = x(e.day), anchor = at < left + 60 ? "start" : at > now - 70 ? "end" : "middle";
+    svg.append(svgEl("text", { class: "ov-tlab b", x: at, y: Y + 30, "text-anchor": anchor }, [orgT(words)]),
+      svgEl("text", { class: "ov-tlab q", x: at, y: Y + 45, "text-anchor": anchor }, [fmtDate(e.day)]));
   }
-  const n = svgEl("g", { class: "ov-now", "data-x": Math.round(now), style: `transform:translateX(${now}px);--from:${x(new Date(new Date(today + "T00:00:00Z").getTime() - 70 * DAY_MS).toISOString().slice(0, 10))}px` }, [
-    svgEl("line", { x1: 0, x2: 0, y1: 14, y2: Y + 18, class: "ov-now-l" }), svgEl("path", { d: "M-9,0 L9,0 L0,14 Z", class: "ov-now-w" }),
-    svgEl("text", { class: "ov-tlab b", x: 10, y: 13 }, [orgT("Today")])]);
-  svg.append(n);
+  svg.append(svgEl("g", { class: "ov-now", "data-x": Math.round(now), style: `transform:translateX(${now}px);--from:${x(new Date(new Date(today + "T00:00:00Z").getTime() - 70 * DAY_MS).toISOString().slice(0, 10))}px` }, [
+    svgEl("line", { x1: 0, x2: 0, y1: 14, y2: Y + 12, class: "ov-now-l" }), svgEl("path", { d: "M-9,0 L9,0 L0,14 Z", class: "ov-now-w" }),
+    svgEl("text", { class: "ov-tlab b", x: -12, y: 12, "text-anchor": "end" }, [orgT("Today")])]));
+  box.hidden = false;
   box.replaceChildren(svg);
 }
-function orgTimeEvent(e, at, now, Y, named, above, phone) {
-  const g = svgEl("g", { class: named ? "" : "ov-minor", ...(e.kind === "late" ? { "data-mark": "time" } : {}) });
-  if (e.kind === "late") g.append(svgEl("line", { class: "ov-late-seg", x1: at, x2: now, y1: Y, y2: Y }), svgEl("circle", { class: "ov-late-due", cx: at, cy: Y, r: 5.5 }));
-  else if (e.kind === "me") g.append(svgEl("rect", { class: "ov-ev me", x: at - 4, y: Y - 4, width: 8, height: 8 }));
-  else g.append(svgEl("circle", { class: "ov-ev " + e.kind, cx: at, cy: Y, r: e.kind === "next" ? 7 : 4 }));
-  g.append(svgEl("title", {}, [fmtDate(e.day) + " · " + e.words]));
-  if (!named || phone && !["late", "next"].includes(e.kind)) return g;
-  const y = above ? Y - 30 : Y + 30, anchor = at < 60 ? "start" : e.kind === "late" ? "end" : "middle", lx = e.kind === "late" ? at - 10 : at;
-  const first = e.kind === "late" ? orgT("Was due") : orgShort(e.words, phone ? 12 : 36), second = e.kind === "late" ? orgT("Overdue {n} days", { n: daysSince(e.day) }) : e.kind === "next" ? fmtDate(e.day) : "";
-  g.append(svgEl("text", { class: "ov-tlab" + (e.kind === "late" ? " red" : e.kind === "next" ? " b" : ""), x: lx, y, "text-anchor": anchor }, [first]));
-  if (second) g.append(svgEl("text", { class: "ov-tlab q", x: lx, y: y + 15, "text-anchor": anchor }, [second]));
-  return g;
-}
-// The red diagonal ties the overdue team to the day it fell due.
-function orgOverlay(v, still) {
-  const stage = document.querySelector("#main .ov-r6 .ov-stage"), ov = stage?.querySelector(".ov-ov");
-  if (!ov) return;
-  ov.textContent = "";
-  const node = stage.querySelector(".ov-node.late .ov-shape"), due = stage.querySelector(".ov-late-due");
-  if (!node || !due || stage.querySelector(".ov-xray.list")) return;
-  const base = stage.getBoundingClientRect();
-  const centre = item => { const box = item.getBoundingClientRect(); return [box.left + box.width / 2 - base.left, box.top + box.height / 2 - base.top]; };
-  const [x1, y1] = centre(node), [x2, y2] = centre(due);
-  ov.append(svgEl("path", { class: "ov-diag" + (still ? " still" : ""), "data-mark": "diag", pathLength: 1, d: `M${x1},${y1}L${x2},${y2}` }));
-}
 
-// ---------- one scroll down: rows on hairlines, actions behind hover ----------
-function orgBallNodes(v) {
-  const days = d => Math.max(0, ...d.owed.map(e => daysSince(e.t.since) || 0));
-  return orgAll(v).filter(d => d.depth && !d.kids.length && (d.owed.length || d.theirs.length))
-    .sort((a, b) => Number(b.owed.some(overdue)) - Number(a.owed.some(overdue)) || Number(!!b.owed.length) - Number(!!a.owed.length) || days(b) - days(a));
+// ---------- one scroll down: units and people, the directory, history, projects ----------
+// The structure as text: every unit links to its page, people keep the role they hold there.
+function orgOutline(v) {
+  const unit = (u, depth) => el("div", { class: "ov-unit", style: `--depth:${depth}` }, [
+    el("div", { class: "ov-tn" }, [u.path ? el("a", { href: href(byPath(u.path)), text: u.name }) : u.name,
+      el("small", { text: [u.path ? orgT(byPath(u.path)?.unit_kind || "") : "", unitPeople(u).length ? orgT("{n} people here", { n: unitPeople(u).length }) : ""].filter(Boolean).join(" · ") })]),
+    ...u.people.map(p => orgMember(p, u.path)), ...u.units.map(child => unit(child, depth + 1))]);
+  const loose = v.tree.units.length ? v.tree.people.filter(p => !(p.units || []).length) : [];
+  return el("div", { class: "ov-outline" }, [...v.tree.people.filter(p => !loose.includes(p)).map(p => orgMember(p, v.r.path)),
+    ...v.tree.units.map(u => unit(u, 0)),
+    loose.length ? el("p", { class: "ov-meta" }, [orgT("{n} more people in {org}, department not known yet: ", { n: loose.length, org: orgName(v.r) }),
+      ...loose.slice(0, 8).flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })])]) : null]);
 }
-function orgBall(v) {
-  const rows = orgBallNodes(v), leaves = orgAll(v).filter(d => d.depth && !d.kids.length);
-  if (!rows.length) return null;
-  const word = leaves.every(d => d.kind === "person") ? "{n} people · {m} waiting on you" : leaves.every(d => d.kind === "team") ? "{n} teams · {m} waiting on you" : "{n} units · {m} waiting on you";
-  const list = el("div", { class: "ov-rows6" }, rows.slice(0, 6).map(d => orgBallRow(d, v)));
-  const more = rows.length > 6 ? el("a", { class: "ov-lnk ov-more6", href: href(v.r), text: orgT("{n} more →", { n: rows.length - 6 }) }) : null;
-  if (more) more.onclick = event => { event.preventDefault(); list.append(...rows.slice(6).map(d => orgBallRow(d, v))); more.remove(); };
-  return el("section", { class: "ov-sec ov-ball" }, [el("div", { class: "ov-sh" }, [el("h2", { text: orgT("Ball in your court") }),
-    el("span", { class: "ov-meta", text: orgT(word, { n: leaves.length, m: leaves.filter(d => d.owed.length).length }) })]), list, more]);
+function orgMember(p, unitPath) {
+  const role = (p.units || []).find(edge => edge.path === unitPath)?.role;
+  return el("a", { class: "ov-m", href: href(p) }, [el("span", { text: p.title }), role ? el("small", { class: "ov-role", text: unlabelled(role) }) : orgRole(p, "small"),
+    orgLast(p) ? el("small", { class: "ov-when", text: fmtDate(orgLast(p)) }) : null]);
 }
-function orgBallRow(d, v) {
-  const top = d.owed[0], they = d.theirs[0], late = d.owed.some(overdue), block = d.owed.find(e => blocksWork(e.t));
-  const lead = d.all.find(p => (p.units || []).some(edge => edge.path === d.path && edge.role)) || d.all[0];
-  const meta = [d.parent?.depth ? d.parent.name : "", lead && d.kind !== "person" ? lead.title : d.person ? (orgRole(d.person, "span")?.textContent || "") : ""].filter(Boolean).join(" · ");
-  const days = top?.t.since ? daysSince(top.t.since) : null;
-  const row = el("div", { class: "ov-team" + (top ? "" : " theirs") }, [
-    el("span", { class: "ov-tn" }, [d.name, meta ? el("span", { class: "ov-meta", text: meta }) : null]),
-    el("span", { class: "ov-ow" }, [top ? orgThing(top) + (d.owed.length > 1 ? " · " + orgT("{n} more", { n: d.owed.length - 1 }) : "") : orgTheyLine(they),
-      block ? el("span", { class: "ov-block", text: orgT("Blocking them: {thing}", { thing: orgThing(block) }) }) : null,
-      top && they ? el("span", { class: "ov-meta ov-they", text: orgTheyLine(they) }) : null]),
-    el("span", { class: "ov-ball-line" }, top ? [el("i", { class: late ? "red" : "", style: `width:${Math.round(Math.min(1, (days || 0) / 40) * 120)}px` }),
-      el("b", { class: late ? "red" : "", text: top.t.since ? age(top.t.since) : "—" })] : [orgT("With them")]),
-    el("span", { class: "ov-act" }, [orgRowAction(d, top)])]);
-  row.onclick = event => { if (innerWidth < 720 && !event.target.closest("a, button")) row.classList.toggle("open"); };
-  return row;
+function orgStructure(v) {
+  if (!v.people.length && !v.tree.units.length) return null;
+  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length;
+  return el("section", { class: "ov-sec ov-structure" }, [el("div", { class: "ov-sh" }, [
+    el("h2", { text: orgT(units ? "Units and people" : "People you know here") }),
+    el("span", { class: "ov-meta", text: units ? orgT("{n} units · {m} people", { n: units, m: v.people.length }) : orgT("{n} people you know", { n: v.people.length }) })]),
+    orgOutline(v)]);
 }
-function orgRowAction(d, top) {
-  if (!top) return d.path ? el("a", { class: "ov-btxt", href: href(byPath(d.path)), text: orgT("Open {name}", { name: orgShort(d.name, 24) }) }) : null;
-  const node = primaryAction(top);
-  for (const part of [node, ...node.querySelectorAll("a, button")]) if (part.matches("a, button")) part.className = "ov-btxt";
-  return node;
-}
-function orgOwedSection(v) {
-  if (!v.owed.length) return null;
-  const late = v.owed.filter(overdue).length;
-  const rows = el("ul", { class: "ov-pl" }, v.owed.slice(0, 3).map(orgOwedRow));
-  const more = v.owed.length > 3 ? el("a", { class: "ov-lnk ov-more6", href: href(v.r), text: orgT("{n} more items", { n: v.owed.length - 3 }) }) : null;
-  if (more) more.onclick = event => { event.preventDefault(); rows.append(...v.owed.slice(3).map(orgOwedRow)); more.remove(); };
-  const count = (n, words, cls = "") => [el("b", { class: cls, text: String(n) }), " " + orgT(words)];
-  return el("section", { class: "ov-sec ov-owed", id: "ov-owed" }, [
-    el("div", { class: "ov-sh" }, [el("h2", { text: orgT(v.r.kind === "own_company" ? "Colleagues waiting on you" : "You owe {org}", { org: orgName(v.r) }) })]),
-    el("p", { class: "ov-score" }, [...count(v.owed.length, "still open"), ...(late ? [" · ", ...count(late, "overdue", "red")] : []),
-      ...(v.theirs.length ? [" · ", ...count(v.theirs.length, "they owe you")] : [])]),
-    rows, more]);
-}
-// The owner's own words when the page quotes them; otherwise the thing owed.
-function orgOwedRow(entry) {
-  const who = owedPerson(entry), said = /“([^”]+)”/.exec(owedWords(entry).title)?.[1];
-  return el("li", { class: "ov-owe" }, [el("span", { class: "ov-body" }, [
-      el("span", { class: "ov-ot", text: said ? "“" + said + "”" : orgThing(entry) }),
-      el("span", { class: "ov-meta ov-who", text: [said ? orgThing(entry) : "", who ? orgT("to {name}", { name: orgFirstName(who) }) : orgName(entry.r), entry.t.since ? fmtDate(entry.t.since) : ""].filter(Boolean).join(" · ") })]),
-    el("span", { class: "ov-age" + (overdue(entry) ? " red" : ""), text: overdue(entry) ? orgT("Overdue {n} days", { n: daysSince(entry.t.due) }) : age(entry.t.since) })]);
+// Two filled columns side by side, or one measured column: never half a page of nothing.
+function orgColumns(v) {
+  const left = [orgAsk(v), orgProjects(v)].filter(Boolean), right = [orgTimeline(v.r, v.people), orgCooling(v)].filter(Boolean);
+  if (!left.length || !right.length) return el("div", { class: "ov-one" }, [...left, ...right]);
+  return el("div", { class: "ov-two" }, [el("div", { class: "ov-col" }, left), el("div", { class: "ov-col" }, right)]);
 }
 // Who to ask: the role each person holds here, and how fast they reply when mail says so.
 function orgAsk(v) {
   const reply = p => p.index?.relationship?.reply_seconds_them;
-  const rows = v.people.map(p => ({ p, role: (p.units || []).find(edge => edge.role && orgUnitPaths(v.tree).has(edge.path))?.role })).filter(row => row.role || orgRole(row.p))
-    .sort((a, b) => Number(reply(b.p) != null) - Number(reply(a.p) != null) || known(b.p).last.localeCompare(known(a.p).last));
+  const rows = v.people.map(p => ({ p, role: orgPersonRole(p) })).filter(row => row.role)
+    .sort((a, b) => Number(reply(b.p) != null) - Number(reply(a.p) != null) || orgLast(b.p).localeCompare(orgLast(a.p)));
   if (!rows.length) return null;
-  const line = ({ p, role }) => el("li", {}, [el("span", { class: "ov-need" }, [role ? unlabelled(role) : orgRole(p, "span")]), el("a", { href: href(p), text: p.title }),
+  const line = ({ p, role }) => el("li", {}, [el("span", { class: "ov-need", text: unlabelled(role) }), el("a", { href: href(p), text: p.title }),
     el("span", { class: "ov-meta", text: reply(p) != null ? orgT("usually replies in {d}", { d: replyDuration(reply(p)) }) : orgTeamLabel(p) })]);
-  const list = el("ul", { class: "ov-wl" }, rows.slice(0, 4).map(line));
-  const more = rows.length > 4 ? el("a", { class: "ov-lnk ov-more6", href: href(v.r), text: orgT("{n} more people", { n: rows.length - 4 }) }) : null;
-  if (more) more.onclick = event => { event.preventDefault(); list.append(...rows.slice(4).map(line)); more.remove(); };
+  const list = el("ul", { class: "ov-wl" }, rows.slice(0, 6).map(line));
+  const more = rows.length > 6 ? el("a", { class: "ov-lnk ov-more6", href: href(v.r), text: orgT("{n} more people", { n: rows.length - 6 }) }) : null;
+  if (more) more.onclick = event => { event.preventDefault(); list.append(...rows.slice(6).map(line)); more.remove(); };
   return el("section", { class: "ov-sec ov-people" }, [el("div", { class: "ov-sh" }, [el("h2", { text: orgT("Who to ask at {org}", { org: orgName(v.r) }) }),
     el("span", { class: "ov-meta", text: orgT("who does what · who replies fast") })]), list, more]);
+}
+function orgProjects(v) {
+  const projects = (v.r.projects || []).map(byPath).filter(Boolean);
+  if (!projects.length) return null;
+  return el("section", { class: "ov-sec ov-projects" }, [el("div", { class: "ov-sh" }, [el("h2", { text: orgT("Projects with {org}", { org: orgName(v.r) }) })]),
+    el("ul", { class: "ov-wl" }, projects.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }), el("span", { class: "ov-meta", text: known(p).summary })])))]);
 }
 // Cooling only from synced mail: quiet for 90 days, or less mail in the last 30 than the 90 before.
 function orgCooling(v) {
@@ -7319,10 +7215,9 @@ function orgQuestions(r, people) {
 function orgCoda(v) {
   const r = v.r, fact = name => (parseFacts(r).get(name) || []).map(item => plainLine(item.value)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
   const about = [["What", fact("What they do")], ["Website", fact("Website").replace(/^https?:\/\/(?:www\.)?|\/$/g, "") || r.domain || ""], ["Where", fact("Location")]].filter(([, value]) => value);
-  const projects = (r.projects || []).map(byPath).filter(Boolean), sources = sourceList(r).length, unsure = orgQuestions(r, v.people);
+  const sources = sourceList(r).length, unsure = orgQuestions(r, v.people);
   return el("footer", { class: "ov-coda" }, [
-    about.length || projects.length ? el("p", { class: "ov-about" }, [...about.flatMap(([name, value], i) => [i ? " · " : "", el("span", { class: "ov-meta", text: orgT(name) + " " }), value]),
-      ...projects.flatMap((p, i) => [i || about.length ? " · " : "", el("a", { href: href(p), text: p.title })])]) : null,
+    about.length ? el("p", { class: "ov-about" }, about.flatMap(([name, value], i) => [i ? " · " : "", el("span", { class: "ov-meta", text: orgT(name) + " " }), value])) : null,
     el("p", { class: "ov-meta ov-foot" }, [sources ? el("a", { class: "ov-src", href: href(r) + "&h=full-memory-heading", text: orgT("{n} sources", { n: sources }) }) : null,
       unsure.length ? el("details", { class: "ov-unsure-d" }, [el("summary", { text: orgT("REM has {n} questions for you", { n: unsure.length }) }),
         el("ul", { class: "ov-unsure" }, unsure.map(text => el("li", { text })))]) : null])]);
@@ -7381,9 +7276,7 @@ function orgRole(p, tag = "small") {
 }
 // The dated History of the organisation and of everyone linked to it, newest first.
 function orgTimeline(r, people) {
-  const items = [r, ...people].flatMap(page => historyItems((section(page, "history") || { text: "" }).text)
-    .filter(item => item.day.length === 10).map(item => ({ ...item, page, words: withoutDateClutter(plainLine(item.text)) })))
-    .filter(item => /[\p{L}\p{N}]/u.test(item.words)).sort((a, b) => b.day.localeCompare(a.day));
+  const items = orgHistory(r, people).sort((a, b) => b.day.localeCompare(a.day));
   if (!items.length) return null;
   const list = el("ol", { class: "ov-tl" });
   const draw = all => {
@@ -9376,8 +9269,11 @@ window.addEventListener("hashchange", () => {
 });
 window.addEventListener("resize", evidenceLayout);
 // The organisation page's time line and diagonal follow the window; Esc turns its tree back.
-window.addEventListener("resize", orgLayout);
-document.addEventListener("keydown", event => { if (event.key === "Escape") orgUnfocus(orgCurrent); });
+window.addEventListener("resize", () => orgLayout(true));
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || document.querySelector("dialog[open]") || document.getElementById("evidence-panel")?.parentElement?.hidden === false) return;
+  orgUnfocus(orgCurrent);
+});
 // Fixed positioning and measured bounds keep even an unbroken source id on a phone.
 function hideCitationTip() { document.getElementById("citation-tip")?.remove(); }
 function showCitationTip(event) {

@@ -38,16 +38,16 @@ def _person(name: str, unit: str, role: str, threads: list[str], history: list[s
 
 def pages(now: datetime) -> dict:
     d = lambda n: _day(now, n)  # noqa: E731
-    course, founders, office = "orgs/capstone-course.md", "orgs/founders-programme.md", "orgs/global-office.md"
-    team = lambda code: f"orgs/team-{code.lower()}.md"  # noqa: E731
+    course, founders, office = "orgs/fieldwork-studio.md", "orgs/founders-programme.md", "orgs/global-office.md"
+    team = lambda code: f"orgs/team-{code.split()[0].lower()}.md"  # noqa: E731
     result = {
         UNIVERSITY: f"""# Fernhill University
 
-A public university; the user is a client of its capstone course and an incubatee of its founders programme [1].
+A public university; the user is a client of its fieldwork studio and an incubatee of its founders programme [1].
 
 ## Facts
 - Kind: university [1]
-- To you: your capstone client, and the programme that incubates you [1]
+- To you: your fieldwork client, and the programme that incubates you [1]
 - What they do: Teaching and research university [1]
 - Website: https://fernhill-university.example [1]
 
@@ -55,7 +55,7 @@ A public university; the user is a client of its capstone course and an incubate
 - fernhill-university.example [1]
 
 ## History
-- {d(345)}: You first joined the capstone course as a client [1].
+- {d(345)}: You first joined the fieldwork studio as a client [1].
 - {d(220)}: The founders programme accepted the user [1].
 - {d(84)}: The global office proposed a summer internship [1].
 - {d(9)}: Basil Thorne confirmed the final demo week [1].
@@ -63,33 +63,33 @@ A public university; the user is a client of its capstone course and an incubate
 ## Sources
 - [1] gmail:fixture-university — introductions; observed {d(9)}.
 """,
-        course: _unit("Capstone course", "course", UNIVERSITY, "client"),
+        course: _unit("Fieldwork studio", "course", UNIVERSITY, "client"),
         founders: _unit("Founders programme", "programme", UNIVERSITY, "incubatee"),
         office: _unit("Global office", "department", UNIVERSITY, "partner"),
         "orgs/accelerator-cohort.md": _unit("Accelerator cohort", "programme", founders),
         "orgs/maker-space.md": _unit("Maker space", "venue", founders),
         "orgs/summer-internship.md": _unit("Summer internship", "programme", office),
     }
-    for code in ("T11A-KESTREL", "T12B-HERON", "T13C-WREN", "W14D-OSPREY", "T15E-FINCH", "T16F-LARK"):
+    for code in ("Kestrel squad", "Heron squad", "Wren squad", "Osprey squad", "Finch squad", "Lark squad"):
         result[team(code)] = _unit(code, "team", course)
     people = [
-        ("Fern Okafor", team("T11A-KESTREL"), "Product Owner",
+        ("Fern Okafor", team("Kestrel squad"), "Product Owner",
          [f"The user owes Fern: Sprint 1 demo feedback — the user wrote “I'll watch the demo and send feedback that week”; since {d(30)}; due {d(14)}",
           f"Fern owes the user: the review questions in the backlog; since {d(37)}"],
          [f"{d(30)}: You promised feedback on the Sprint 1 demo"]),
-        ("Rowan Pike", team("T12B-HERON"), "Scrum Master",
+        ("Rowan Pike", team("Heron squad"), "Scrum Master",
          [f"The user owes Rowan: written feedback on Demo A; since {d(22)}",
           f"The user owes Rowan: tell the team the Windows fix is on main, which blocks their testing; since {d(20)}"],
          [f"{d(22)}: Rowan sent the Demo A recording"]),
-        ("Juno Hale", team("T13C-WREN"), "Product Owner",
+        ("Juno Hale", team("Wren squad"), "Product Owner",
          [f"The user owes Juno: whether the client meeting is weekly or fortnightly; since {d(33)}"],
          [f"{d(33)}: Juno asked about the meeting cadence a second time"]),
-        ("Ilse Marr", team("W14D-OSPREY"), "Developer",
+        ("Ilse Marr", team("Osprey squad"), "Developer",
          [f"The user owes Ilse: credits for the new test agent address; since {d(37)}"], []),
-        ("Theo Brand", team("W14D-OSPREY"), "Developer", [], []),
-        ("Wren Ashby", team("T15E-FINCH"), "Product Owner",
+        ("Theo Brand", team("Osprey squad"), "Developer", [], []),
+        ("Wren Ashby", team("Finch squad"), "Product Owner",
          [f"Wren owes the user: the discovery report; since {d(37)}"], []),
-        ("Cass Moreno", team("T16F-LARK"), "Product Owner", [], []),
+        ("Cass Moreno", team("Lark squad"), "Product Owner", [], []),
         ("Basil Thorne", course, "Course convenor", [], [f"{d(9)}: Basil confirmed the final demo week"]),
         ("Nina Vale", "orgs/accelerator-cohort.md", "Programme lead", [], []),
         ("Tess Rowe", "orgs/maker-space.md", "Space manager",

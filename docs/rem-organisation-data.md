@@ -61,22 +61,25 @@ records even when investigated; snapshot `service: true` exposes that decision.
 
 ## What the organisation page draws from these fields (round 6)
 
-The page (`orgPage` in `connectonion/rem/reader.html`) adds no fields; it reads:
+The organisation page (`orgPage` in `connectonion/rem/reader.html`) is a record of the
+organisation, not a to-do list (owner, 2026-11-08); what you owe stays in Today. It adds
+no fields and reads:
 
 | On screen | Source | When the source is missing |
 | --- | --- | --- |
-| Statement "N teams are waiting on you." | distinct `units` paths of open, non-quiet `mine` obligations; "teams" only when every unit's `unit_kind` is `team` | no placed units: counts things owed; nothing owed: "You owe <org> nothing" |
-| X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units` | no units: the people form the ring |
-| Node size | open `mine` + `theirs` obligations in the subtree | — |
-| Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey, legend says warmth is not known yet |
-| Red node, diagonal, time-line segment | the most urgent `mine` obligation with a `due` before today | no red at all |
-| Blocking flag | explicit blocking words in the obligation text (same rule as Today's blocker tag) | no flag |
-| Time line | dated `History` lines of the org and its people, plus `due` dates | undated items are not drawn |
-| Who to ask | Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no speed claimed |
+| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` | "还不清楚是什么机构" / "还没调查" |
+| Facts line | domain, roster size, unit count, first and latest dated History line, page last contact | the missing part is left out |
+| Recently in touch (3 people) | each person's last contact or newest dated History line, role in unit | the block is left out |
+| One link to Today | count of open `mine` obligations | no line |
+| X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units`; size = people you know there | no units: the people form the ring |
+| Ring around a unit | someone there in touch within 45 days | no ring |
+| Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey; legend says warmth is not known yet |
+| Time line and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once | no time line |
+| Units and people, who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no reply speed claimed |
+| Unit crumb | the `parent` chain | top-level: 组织 › kind |
 
-Not drawn because REM does not record them yet: a written briefing and proposed
-meeting, term weeks, the owner's calendar, settled-by links ("looks done"), a
-gave/received value ledger, kept promises (so no kept rate), renewal cycles.
+Not drawn because REM does not record them yet: term weeks, settled agreements, a
+gave/received value ledger, renewal cycles, logos.
 
 ## Hierarchy contract (sprint9/org-hierarchy)
 

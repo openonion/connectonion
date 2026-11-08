@@ -85,7 +85,7 @@ def test_explicit_unit_tree_keeps_nested_members_roles_and_unique_rollups():
       const REM = {owner: ''}, orgHidden = () => false, orgName = r => r.title, orgTeamLabel = p => p.team || '';
       const entry = {row: {key: 'one', units: [team.path]}, t: {}};
       const owedPerson = () => mara, overdue = () => false, unlabelled = text => text;
-      const href = r => '#' + r.path, orgT = text => text;  // orgRole arrives with unitPeople's extraction
+      const href = r => '#' + r.path, orgT = text => text, orgLast = () => '';  // orgRole arrives with unitPeople's extraction
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const people = orgMembers(org), {tree} = orgUnitTree(org, people, [entry]);
       console.log(JSON.stringify({people: people.map(p => p.path), loose: tree.people.map(p => p.path),
@@ -148,7 +148,7 @@ def test_explicit_parent_and_child_memberships_keep_both_scoped_roles():
         {path: parent.path, role: 'Tutor'}, {path: child.path, role: 'Product Owner'}]};
       const rows = [parent, child, mara], byPath = path => rows.find(row => row.path === path);
       const orgName = r => r.title, orgHidden = () => false, owedPerson = () => null;
-      const href = r => '#' + r.path, orgT = text => text;  // orgRole arrives with unitPeople's extraction
+      const href = r => '#' + r.path, orgT = text => text, orgLast = () => '';  // orgRole arrives with unitPeople's extraction
       const unlabelled = text => text;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const {tree} = orgUnitTree(parent, [mara], []);
@@ -162,7 +162,7 @@ def test_parent_unit_page_renders_direct_members_in_their_known_unit():
     result = run_js(['orgOutline'], r'''
       const mara = {path: 'people/mara.md', units: [{path: 'orgs/course.md', role: 'Tutor'}]}, child = {name: 'Squad', people: [], units: [], owed: []};
       const tree = {people: [mara], units: [child]};
-      const unitOwed = () => [], orgT = text => text, orgName = r => r.path, href = r => r.path, byPath = path => ({path});
+      const unitOwed = () => [], unitPeople = () => [], orgT = text => text, orgName = r => r.path, href = r => r.path, byPath = path => ({path});
       const orgMember = (p, unitPath) => ({path: p.path, unitPath});
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const page = orgOutline({r: {path: 'orgs/course.md', unit_kind: 'course'}, tree});
