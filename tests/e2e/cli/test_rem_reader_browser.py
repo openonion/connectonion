@@ -555,7 +555,11 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         # REM cannot draft from an unarchived message: the next step is writing, never the mailbox.
         assert missing.locator('.card-acts > :first-child').text_content() in (
             ['回复 Hazel', '打开 Hazel'] if language == 'zh' else ['Reply to Hazel', 'Open Hazel'])
-        assert ('今晚' if language == 'zh' else 'tonight') in queued.locator('.draft-reason').inner_text()
+        if live:  # Draft now drafts now: no "queued for tonight" beside it.
+            assert queued.locator('.draft-reason').count() == 0
+        else:
+            note = queued.locator('.draft-reason').inner_text()
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'open' in note
         open_card(letter)
         if live:
             letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
