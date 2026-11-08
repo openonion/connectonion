@@ -20,7 +20,7 @@ was read or modified, no credentials were loaded, and no branch was pushed.
 | `connectonion/rem/project_pages.py` | Closed read-only gh argv guard, bounded API/ETag cache, cooldown/error preservation, local repo identity and churn, exact session links, PyPI reads, three-repo round refresh. |
 | `connectonion/rem/project_data.py` | Cache-only repository JSON projection, six deterministic joins with command/time provenance, cached-issue fallback for existing scoring, shared-session-link omission. |
 | `connectonion/rem/native_round.py` | One model-free repository refresh per consented native round under the existing lock. |
-| `connectonion/rem/sessions.py` | UTC link evidence in the existing session index, printed branches only, mixed-cwd exclusion, one-time session format refresh. |
+| `connectonion/rem/sessions.py` | UTC link evidence in the existing session index, printed commits (SHA + branch) only, mixed-cwd exclusion, bounded 14-day backfill instead of a format bump (see Review fixes). |
 | `tests/unit/test_rem_github_ingest.py` | Temporary PATH gh shim, absolute HOME isolation, guard rejection, caps, cooldown, ETags, errors, joins, churn/worktrees, package reads and regression boundaries. |
 | `tests/unit/test_rem_sessions.py` | Imported session evidence rejects changed cwd and excludes branch names that were merely requested. |
 | `docs/rem-project-data.md` | Fields, caps, cache shape/path, guard, link rule, provenance and one fictional projection example for the separate UI builder. |
@@ -124,7 +124,7 @@ Baseline coverage comprised all files containing the original failing tests:
 `test_the_host_quick_start_runs.py`,
 `test_the_session_history_belongs_to_the_project.py`,
 `test_what_the_agent_serves_comes_from_the_project.py`, and `test_one_host.py`.
-Eighteen failures require an ambient OpenOnion key despite HOME isolation; the
+Eighteen failures require an ambient provider API key despite HOME isolation; the
 SIGHUP host-stop case times out. This branch does not change those subsystems or
 weaken their tests. A passing whole-suite result is not claimed.
 
@@ -149,10 +149,10 @@ Deviations/limits:
 - Releases/tags are capped at 100, local history at 1,000 commits/14 days, PyPI
   responses at 4 MB, and repository sync at three due repos per round. Samples
   and absence from them do not prove a complete clean repository.
-- Branch evidence covers branch names actually printed in commit records; names
+- (Superseded by Review fixes, finding 2: links now need a printed SHA.) Branch evidence covers branch names actually printed in commit records; names
   seen only in requested commands do not qualify. Links establish cwd/time
   coincidence, not authorship. Remote-only library pages must declare PyPI.
-- No live GitHub account/PyPI smoke run was performed; acquisition was verified
+- (Superseded by Review fixes: a read-only live REST smoke run was done.) No live GitHub account/PyPI smoke run was performed; acquisition was verified
   with temporary gh shims, mocked HTTPS and real local fictional Git worktrees.
 - The wiki/docs-site can link the contract when the separate reader UI ships;
   neither nested site was changed or published here.

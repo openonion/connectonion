@@ -346,7 +346,9 @@ def test_joins_ignore_previews_side_branches_drafters_and_other_repos(tmp_path, 
                        run(12, 'Deploy preview', 'push', 'main', 'success', '2026-11-08T11:40:00Z'),
                        run(13, 'Release Drafter', 'push', 'main', 'failure', '2026-11-08T11:45:00Z'),
                        run(14, 'Prerelease checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:50:00Z'),
-                       run(15, 'Release checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:55:00Z')]
+                       run(15, 'Release checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:55:00Z'),
+                       run(16, 'Release', 'push', 'cedar-lights', 'failure', '2026-11-08T11:58:00Z')]
+    packet['tags'].append({'name': 'cedar-lights', 'commit': {'sha': 'f16'}})
     with open(os.environ['GH_FIXTURES'], 'w') as out:
         json.dump(packet, out)
     pages.sync_repository(tmp_path, REPO, now=NOW)
@@ -356,7 +358,8 @@ def test_joins_ignore_previews_side_branches_drafters_and_other_repos(tmp_path, 
     assert deploy['basis'] == 'Deploy · push · main · completed 2026-11-08T10:05:00Z'
     assert deploy['prs'] == [8, 10]
     assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
-    assert [row['run'] for row in joins['failed_release']['runs']] == [5]
+    assert [(row['run'], row['tags']) for row in joins['failed_release']['runs']] == [
+        (5, ['v1.2.0']), (16, ['cedar-lights'])]
 
 
 def test_shared_projection_names_no_local_paths(tmp_path, gh):

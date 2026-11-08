@@ -116,10 +116,10 @@ def repository_projection(root, repo, *, now=None):
     for run in runs:
         if run['conclusion'] != 'failure' or not _release_run(run, cache.get('default_branch'), tags):
             continue
-        tags = [tag['name'] for tag in cache['tags'] if tag.get('commit', {}).get('sha') == run['headSha']
-                or tag['name'] == run['branch']]
-        failed.append({'run': run['id'], 'tags': tags, 'tag_present': bool(tags),
-                       'pypi_present': any(tag.removeprefix('v') in versions for tag in tags)
+        matched = [tag['name'] for tag in cache['tags'] if tag.get('commit', {}).get('sha') == run['headSha']
+                   or tag['name'] == run['branch']]
+        failed.append({'run': run['id'], 'tags': matched, 'tag_present': bool(matched),
+                       'pypi_present': any(tag.removeprefix('v') in versions for tag in matched)
                        if cache.get('pypi') is not None else None})
     _repo_join(result, 'failed_release', ['actions/runs', 'tags', 'pypi'], runs=failed)
     external = []
