@@ -1334,8 +1334,8 @@
   :is(.timeline, .activity-list) .cite-full { display: inline; }
   :is(.timeline, .activity-list) .cite-short { display: none; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { border: 0; border-radius: 2px; padding: 0 2px; background: transparent; color: var(--ink-3); font: 400 11px/1 var(--ui); }
-  .missing .cmd, .missing.primary .cmd, .empty .cmd, .translation-note .cmd { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; min-width: 0; margin: 8px 0; }
-  .missing .cmd code, .missing.primary .cmd code, .empty .cmd code, .translation-note .cmd code { display: block; min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; font: 11px/1.5 var(--code); }
+  .missing .cmd, .missing.primary .cmd, .empty .cmd, .translation-note .cmd, .gx-filed .cmd { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; min-width: 0; margin: 8px 0; }
+  .missing .cmd code, .missing.primary .cmd code, .empty .cmd code, .translation-note .cmd code, .gx-filed .cmd code { display: block; min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; font: 11px/1.5 var(--code); }
   .cmd .btn-action { flex: 0 0 auto; min-height: 32px; background: transparent; border-color: transparent; }
   .task-band .thread.grouped { grid-template-columns: minmax(0, 1fr) auto; }
   .task-band .thread.grouped .when { order: 0; }
@@ -10108,6 +10108,7 @@ const GRAPH_UI_ZH = {
   "{n} topics": "{n} 个主题", "Subjects that tie your records together: a market, a course, a way of working.": "把记录串起来的主题：一门生意、一门课、一种做法。",
   "{n} records": "{n} 条记录", "No topics yet": "还没有主题",
   "Topics are filed when a subject recurs across your notes; none has yet.": "一个主题在笔记里反复出现后才会建页；现在还没有。",
+  "To file them from what you already have:": "从已有记录里建主题：",
   "See them in the graph →": "在图谱里看 →", "Topics here": "相关主题", "Not in the graph yet": "图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
 };
@@ -10506,10 +10507,11 @@ function topicList() {
   main.appendChild(el("div", { class: "gx gx-topics" }, [
     el("h1", { class: "gx-statement", text: items.length ? graphT("{n} topics", { n: items.length }) : graphT("No topics yet") }),
     el("p", { class: "gx-lede", text: graphT(items.length ? "Subjects that tie your records together: a market, a course, a way of working." : "Topics are filed when a subject recurs across your notes; none has yet.") }),
-    items.length ? el("a", { class: "gx-link", href: "#view=graph", text: graphT("See them in the graph →") }) : null,
-    el("ul", { class: "gx-rows" }, rows.map(({ r, n, last }) => el("li", {}, [el("a", { href: href(r) }, [graphGlyph("knowledge", 16, r.private),
+    items.length ? el("a", { class: "gx-link", href: "#view=graph", text: graphT("See them in the graph →") })
+      : el("div", { class: "gx-quiet-line gx-filed" }, [graphT("To file them from what you already have:"), commandChip(remCommand("backfill topics --propose"))]),
+    items.length ? el("ul", { class: "gx-rows" }, rows.map(({ r, n, last }) => el("li", {}, [el("a", { href: href(r) }, [graphGlyph("knowledge", 16, r.private),
       el("span", { class: "gx-row-body" }, [el("b", { text: topicName(r.title) }), el("small", { text: topicAliases(r).slice(1, 5).join(" · ") })]),
-      el("span", { class: "gx-row-meta", text: graphT("{n} records", { n }) + (last ? " · " + fmtDate(last) : "") })])])))]));
+      el("span", { class: "gx-row-meta", text: graphT("{n} records", { n }) + (last ? " · " + fmtDate(last) : "") })])]))) : null]));
 }
 function topicAliases(r) { return r.topic?.aliases?.length ? r.topic.aliases : [r.title]; }
 function topicKnown(r, name) {

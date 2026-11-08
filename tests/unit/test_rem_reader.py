@@ -3263,3 +3263,26 @@ def test_a_held_task_card_says_this_version_does_not_run_it_and_offers_the_promp
     assert result['card']['children'][0]['text'] == 'Recorded. For safety this version does not run it; open it in Codex'
     assert result['copied'] == ['Prepare the Fernhill onboarding notes.']
     assert 'Stop' not in json.dumps(result['card'])
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_the_empty_topic_list_names_the_command_that_files_topics(language):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
+                          for name in ['topicList', 'graphT', 'commandChip'])
+    zh = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(zh + '\n' + functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const el = (tag, attrs, children) => ({tag, ...attrs, children: (children || []).filter(c => c != null)});
+      const topicRecords = () => [], remCommand = args => 'co rem ' + args, copyToClipboard = () => {};
+      let view = null;
+      const main = {set textContent(_) {}, appendChild: node => { view = node; }};
+      const document = {getElementById: () => main};
+      topicList();
+      console.log(JSON.stringify(view));
+    ''')
+    text = json.dumps(result, ensure_ascii=False)
+    assert ('还没有主题' if language == 'zh' else 'No topics yet') in text
+    assert ('从已有记录里建主题：' if language == 'zh' else 'To file them from what you already have:') in text
+    assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
+    assert ('"复制"' if language == 'zh' else '"Copy"') in text

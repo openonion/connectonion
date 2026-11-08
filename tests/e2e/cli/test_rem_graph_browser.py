@@ -114,3 +114,30 @@ def test_the_topic_list_and_graph_follow_the_chinese_interface(page):
     page.goto(uri + "#view=graph")
     page.locator(".gx-title").wait_for()
     assert "4 条记录连在一起" in page.locator(".gx-title").inner_text()
+
+
+def test_with_no_topics_the_rail_leaves_them_out_and_the_page_names_the_command(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/quinn-alder.md", "# Quinn Alder\n## Insight\n- Quinn priced heat storage. [1]\n\n## Sources\n- [1] gmail:q1 — 2026-01-12 — Quinn\n")
+    path = tmp_path / "reader.html"
+    path.write_text(render(root, local=True), encoding="utf-8")
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        for width in (1440, 390):
+            page = browser.new_page(viewport={"width": width, "height": 900}, locale="en-US")
+            page.goto(path.as_uri())
+            page.locator("#nav a").first.wait_for(state="attached")  # behind a menu at 390
+            assert page.locator('#nav a[href="#c=knowledge"]').count() == 0
+            page.goto(path.as_uri() + "#c=knowledge")
+            page.locator(".gx-filed code").wait_for()
+            assert page.locator(".gx-filed code").inner_text().endswith(" backfill topics --propose")  # --root: not the default notebook
+            assert page.locator(".gx-topics .gx-rows").count() == 0  # no rule under an empty list
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.close()
+        browser.close()
