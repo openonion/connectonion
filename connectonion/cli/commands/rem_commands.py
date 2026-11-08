@@ -2269,7 +2269,7 @@ def make_rem_app(factory):
             _emit(ctx, str(error), ["doctor"], failed=True)
             return
         if dry_run and not ctx.obj.get("json"):
-            typer.echo("Channel: " + value["channel"])
+            typer.echo(value["plan"])
             if value["message"]:
                 typer.echo(value["message"])
         else:

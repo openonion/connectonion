@@ -2151,11 +2151,15 @@ when available. Otherwise usage remains unknown.
 
 ### One quiet morning message
 
-`co rem morning --dry-run` prints the channel and the exact short zh/en message,
-without a model call or sending anything. `co rem morning` sends once after
-06:00 in the notebook timezone; scheduled `co rem next` checks automatically.
-No work and no current one-click actions means no message. A checked local date
-never sends twice, including after a failed send; inspect `co rem doctor`.
+`co rem morning --dry-run` prints one line saying what a real run would do now
+(`would send now via telegram`, `already sent 06:02`, `not due until 06:00`,
+`channel none: nothing will be sent`, …) and then the exact short zh/en message,
+without a model call or sending anything. `co rem morning` sends once between
+06:00 and 11:00 in the notebook timezone; later checks record the date as missed
+and send nothing. Scheduled `co rem next` checks automatically. The note covers
+everything since the previous note, so nothing is reported twice or skipped.
+No new work and no new decisions means no message. A checked local date never
+sends twice, including after a failed send; inspect `co rem doctor`.
 
 Default channel is `none`. Run `co rem doctor` for existing configured senders
 and their next command. Doctor marks an enabled channel with an absent sender

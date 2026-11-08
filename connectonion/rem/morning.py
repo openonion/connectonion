@@ -1,8 +1,9 @@
 """One deterministic, quiet morning note, claimed before external delivery."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import os
+import re
 import sys
 
 from . import approvals, service
@@ -11,44 +12,66 @@ from .files import maintenance_lock, read_json, state_path, write_json
 
 
 CHANNELS = ('telegram', 'lark', 'whatsapp', 'email')  # Email is the last choice.
+# A note is due from 06:00 until 11:00 local. Later it is no longer a morning note: a
+# sleeping laptop or schedule.times' own "17:00" slot would otherwise say 「昨夜」 at dusk.
+OPENS, CLOSES = 6, 11
+KEEP_DAYS = 14
+# rem/problems.py verdict states whose explanation the owner can now read.
+EXPLAINED = ('explained', 'needs_owner', 'fix_proposed')
 
 
-def _window(config):
-    local = service.now().astimezone(service.notebook_zone(config))
-    return local, local.replace(hour=22, minute=0, second=0, microsecond=0) - timedelta(days=1)
+def _local(config):
+    return service.now().astimezone(service.notebook_zone(config))
+
+
+def _markers(root):
+    return read_json(state_path(root, 'morning.json'), {})
+
+
+def _previous(saved, day):
+    """The latest earlier claim. A missed date reported nothing, so it does not move the window."""
+    earlier = [saved[date] for date in sorted(saved) if date < day and saved[date].get('status') != 'missed']
+    return earlier[-1] if earlier else None
+
+
+def _start(local, previous):
+    # From the last note to now, so work after 06:00 and before the check is reported once.
+    if previous and previous.get('checked_at'):
+        return datetime.fromisoformat(previous['checked_at'])
+    return local.replace(hour=22, minute=0, second=0, microsecond=0) - timedelta(days=1)
 
 
 def _within(value, start, end):
     if not value:
         return False
     moment = datetime.fromisoformat(value.replace('Z', '+00:00'))
-    return moment.tzinfo is not None and start <= moment <= end
+    return moment.tzinfo is not None and start < moment <= end
 
 
-def counts(root, config):
-    local, start = _window(config)
-    end = local.replace(hour=6, minute=0, second=0, microsecond=0)
-    items = read_json(state_path(root, 'night.json'), {}).get('items', {}).values()
-    prepared = {row.get('draft_id') or str(index) for index, entry in enumerate(items)
-                if (row := entry.get('outcome', {})).get('kind') == 'prepared'
-                and _within(row.get('prepared_at'), start, end)}
-    # night.json is a current projection: sent replies may already have left it.
-    # Preserve their preparation count from the existing draft receipts.
+def counts(root, start, end):
+    night = read_json(state_path(root, 'night.json'), {}).get('items', {}).values()
+    receipts = {}
     for path in state_path(root, 'drafts').glob('*.json'):
         draft = read_json(path, {})
-        if draft.get('status') in ('prepared', 'held', 'sent') and _within(draft.get('prepared_at'), start, end):
-            prepared.add(draft.get('id') or path.stem)
+        receipts[draft.get('id') or path.stem] = draft
+    # night.json is a current projection and sent replies may have left it; the
+    # draft receipts keep them. A draft is "waiting" only while it is still prepared.
+    drafted = {row.get('draft_id') or str(index) for index, entry in enumerate(night)
+               if (row := entry.get('outcome', {})).get('kind') == 'prepared'
+               and _within(row.get('prepared_at'), start, end)}
+    drafted |= {id for id, draft in receipts.items() if draft.get('status') in ('prepared', 'held', 'sent')
+                and _within(draft.get('prepared_at'), start, end)}
     queue = read_json(state_path(root, 'approvals.json'), {}).values()
-    sent = sum(row.get('kind') == 'reply' and row.get('by') == 'rem' and row.get('status') == 'sent'
-               and _within(row.get('release_at'), start, end) for row in queue)
-    receipts = [read_json(path, {}) for path in state_path(root, 'tasks').glob('do-*/receipt.json')]
-    investigations = read_json(state_path(root, 'investigations/index.json'), {}).get('items', [])
-    return {'drafts': len(prepared), 'sent': sent,
-            'dispatched': sum(_within(row.get('started_at'), start, end) for row in receipts),
+    tasks = [read_json(path, {}) for path in state_path(root, 'tasks').glob('do-*/receipt.json')]
+    # rem/problems.py writes {problem key: receipt}; every save() bumps updated_at.
+    problems = read_json(state_path(root, 'investigations/index.json'), {}).values()
+    return {'sent': sum(row.get('kind') == 'reply' and row.get('by') == 'rem' and row.get('status') == 'sent'
+                        and _within(row.get('release_at'), start, end) for row in queue),
+            'drafted': sum(receipts.get(id, {}).get('status', 'prepared') == 'prepared' for id in drafted),
             'finished': sum(row.get('result') == 'completed' and _within(row.get('finished_at'), start, end)
-                            for row in receipts),
-            'investigations': sum(row.get('status') == 'explained' and _within(row.get('explained_at'), start, end)
-                                  for row in investigations)}
+                            for row in tasks),
+            'explained': sum(row.get('state') in EXPLAINED and _within(row.get('updated_at'), start, end)
+                             for row in problems)}
 
 
 def actionable(root):
@@ -68,31 +91,93 @@ def today_link(root):
     return 'co rem open'
 
 
-def _name(row):
-    # Titles are user-facing names; never substitute a record, ID, path or failure reason.
-    text = ' '.join(str(row.get('title', '')).split())
-    if not text or '/' in text or '\\' in text or ':' in text:
+def _plain(value, limit):
+    # Owner-facing words only: never an address, a record path or an ID.
+    text = ' '.join(str(value or '').split())
+    if '@' in text or '\\' in text or re.search(r'(^|\s)[~/]|\.md\b|\b[0-9a-f]{16,}\b', text):
         return ''
-    return text[:60]
+    return text if len(text) <= limit else text[:limit - 1] + '…'
+
+
+def _plural(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
+def _summary(c, zh):
+    if zh:
+        replies = [f"替你发出 {c['sent']} 封回复" if c['sent'] else '',
+                   (f"另拟好 {c['drafted']} 封待你看" if c['sent'] else f"拟好 {c['drafted']} 封回复待你看") if c['drafted'] else '']
+        work = [f"跑完 {c['finished']} 项任务" if c['finished'] else '', f"查清 {c['explained']} 个问题" if c['explained'] else '']
+        return '昨夜：' + '；'.join('，'.join(filter(None, group)) for group in (replies, work) if any(group)) + '。'
+    replies = [_plural(c['sent'], 'reply', 'replies') + ' sent for you' if c['sent'] else '',
+               (f"{c['drafted']} more" if c['sent'] else _plural(c['drafted'], 'reply', 'replies')) + ' drafted for you to check'
+               if c['drafted'] else '']
+    work = [_plural(c['finished'], 'task', 'tasks') + ' finished' if c['finished'] else '',
+            _plural(c['explained'], 'problem', 'problems') + ' explained' if c['explained'] else '']
+    return 'Overnight: ' + '; '.join(', '.join(filter(None, group)) for group in (replies, work) if any(group)) + '.'
+
+
+def _decision(row, zh):
+    """One clause from the row's own kind and words; the cost comes first."""
+    who, words = _plain(row.get('title'), 60), _plain(row.get('text') or row.get('subject'), 40)
+    if row.get('kind') == 'reply':
+        if zh:
+            return '以你的名义回' + (f' {who}' if who else '复') + (f'（{words}）' if words else '') + '——用我拟的稿？'
+        return 'Reply' + (f' to {who}' if who else '') + ' as you' + (f' ({words})' if words else '') + ' — send my draft?'
+    if row.get('kind') == 'task':
+        subject = who or words or ('一项任务' if zh else 'A task')
+        return f'{subject}——花一次 Codex 运行去做，还是先放着？' if zh else f'{subject} — spend one Codex run on it, or leave it?'
+    subject = who or words or ('一件事' if zh else 'One thread')
+    return f'{subject}——不用再回了，标为已处理？' if zh else f'{subject} — no reply needed; mark it done?'
+
+
+def compose(root, config, local, saved, link):
+    """Read-only: the exact note for `local`, given earlier markers; '' means stay quiet."""
+    zh = config['language'].lower().startswith('zh')
+    previous = _previous(saved, local.date().isoformat())
+    totals, pending = counts(root, _start(local, previous), local), actionable(root)
+    ids = sorted(row.get('id', '') for row in pending)
+    lines = [_summary(totals, zh)] if any(totals.values()) else []
+    if pending:
+        n = len(pending)
+        lines.append(f'{n} 件要你拍板：' if zh else f"{n} decision{'s' if n > 1 else ''}:")
+        lines += ['· ' + _decision(row, zh) for row in pending[:2]]
+        if n > 2:
+            lines.append(f'还有 {n - 2} 件在 Today' if zh else f'{n - 2} more in Today')
+    # Nothing new overnight and the same open decisions as last time: say nothing again.
+    repeat = not any(totals.values()) and previous is not None and previous.get('pending') == ids
+    if lines and not repeat:
+        lines.append(('打开 Today：' if zh else 'Open Today: ') + link)
+    return {'channel': config['notify']['channel'], 'message': '' if repeat else '\n'.join(lines),
+            'counts': totals, 'pending': ids}
 
 
 def preview(root):
     config = read_config(root)
-    totals, pending = counts(root, config), actionable(root)
-    zh = config['language'].lower().startswith('zh')
-    names = list(dict.fromkeys(name for row in pending if (name := _name(row))))[:2]
-    c = totals
-    nouns = {key: (single if c[key] == 1 else plural) for key, single, plural in (
-        ('drafts', 'draft', 'drafts'), ('sent', 'reply', 'replies'),
-        ('dispatched', 'task', 'tasks'), ('investigations', 'investigation', 'investigations'))}
-    first = (f"昨夜：备好 {c['drafts']} 封草稿，已发 {c['sent']} 封回复，派出 {c['dispatched']} 项任务、完成 {c['finished']} 项，讲清 {c['investigations']} 项调查。" if zh else
-             f"Overnight: {c['drafts']} {nouns['drafts']} prepared, {c['sent']} {nouns['sent']} sent, {c['dispatched']} {nouns['dispatched']} dispatched, {c['finished']} finished, {c['investigations']} {nouns['investigations']} explained.")
-    second = f"{len(pending)} 件等你点一下" if zh else f"{len(pending)} need one click"
-    if names:
-        second += '：' + '、'.join(names) if zh else ': ' + ', '.join(names)
-    message = '\n'.join([first, second, ('打开 Today：' if zh else 'Open Today: ') + today_link(root)])
-    return {'channel': config['notify']['channel'], 'message': message if any(totals.values()) or pending else '',
-            'counts': totals, 'pending': len(pending)}
+    return compose(root, config, _local(config), _markers(root), today_link(root))
+
+
+def _plan(local, entry, value):
+    """What a real run would do now, in one line, for --dry-run."""
+    if entry:
+        at = datetime.fromisoformat(entry['checked_at']).astimezone(local.tzinfo).strftime('%H:%M')
+        return f'already sent {at}' if entry['status'] == 'sent' else \
+            f"already checked {at} ({entry['status']}): nothing more today"
+    if value['channel'] == 'none':
+        return 'channel none: nothing will be sent'
+    if local.hour < OPENS:
+        return f'not due until {OPENS:02d}:00'
+    if local.hour >= CLOSES:
+        return f'outside the morning window ({OPENS:02d}:00–{CLOSES:02d}:00): nothing will be sent today'
+    return f"would send now via {value['channel']}" if value['message'] else 'quiet: nothing to send'
+
+
+def _record(root, day, entry):
+    """Write one date's marker and keep only the last KEEP_DAYS days."""
+    oldest = (date.fromisoformat(day) - timedelta(days=KEEP_DAYS)).isoformat()
+    saved = {key: value for key, value in _markers(root).items() if key >= oldest}
+    saved[day] = entry
+    write_json(state_path(root, 'morning.json'), saved)
 
 
 def send_message(channel, target, message):
@@ -118,30 +203,31 @@ def send_message(channel, target, message):
 
 
 def run(root, *, dry_run=False):
-    if dry_run:
-        return preview(root)
     config = read_config(root)
-    local, _ = _window(config)
-    if local.hour < 6:
+    local = _local(config)
+    day = local.date().isoformat()
+    if dry_run:
+        saved = _markers(root)
+        value = compose(root, config, local, saved, today_link(root))
+        return {**value, 'plan': _plan(local, saved.get(day), value)}
+    if local.hour < OPENS:
         return {'status': 'not_due'}
-    date = local.date().isoformat()
+    if day in (saved := _markers(root)):
+        return saved[day]
+    # host_online may wait 3s on the network: decide the link before taking the write lock.
+    link = today_link(root) if local.hour < CLOSES else ''
     with maintenance_lock(root):
-        saved = read_json(state_path(root, 'morning.json'), {})
-        if date in saved:
-            return saved[date]
-        try:
-            value = preview(root)
-        except Exception as error:
-            entry = {'status': 'failed', 'channel': config['notify']['channel'],
-                     'checked_at': service.now().isoformat(), 'error': type(error).__name__}
-            saved[date] = entry
-            write_json(state_path(root, 'morning.json'), saved)
-            return entry
-        status = 'sending' if value['message'] and value['channel'] != 'none' else 'disabled' if value['message'] else 'quiet'
-        entry = {'status': status, 'channel': value['channel'], 'checked_at': service.now().isoformat()}
-        saved[date] = entry
-        write_json(state_path(root, 'morning.json'), saved)
-    if status != 'sending':
+        saved = _markers(root)
+        if day in saved:
+            return saved[day]
+        entry = {'status': 'missed', 'channel': config['notify']['channel'], 'checked_at': service.now().isoformat()}
+        if local.hour < CLOSES:
+            # An error here claims nothing: scheduled_check reports it and the next tick retries.
+            value = compose(root, config, local, saved, link)
+            entry.update(status='sending' if value['message'] and value['channel'] != 'none'
+                         else 'disabled' if value['message'] else 'quiet', pending=value['pending'])
+        _record(root, day, entry)
+    if entry['status'] != 'sending':
         return entry
     try:
         send_message(value['channel'], config['notify']['target'], value['message'])
@@ -150,9 +236,7 @@ def run(root, *, dry_run=False):
         # Delivery can be ambiguous. Never retry; doctor carries the safe diagnosis.
         entry.update(status='failed', error=type(error).__name__)
     with maintenance_lock(root):
-        saved = read_json(state_path(root, 'morning.json'), {})
-        saved[date] = entry
-        write_json(state_path(root, 'morning.json'), saved)
+        _record(root, day, entry)
     return entry
 
 
@@ -186,11 +270,12 @@ def doctor(root):
     rows.append({'check': 'morning channel', 'ok': selected == 'none' or ready,
                  'detail': selected if selected == 'none' or ready else selected + '; setup incomplete',
                  'fix': sender.get('next', 'co rem morning --help')})
-    for date, entry in read_json(state_path(root, 'morning.json'), {}).items():
-        if entry['status'] in ('failed', 'sending'):
-            rows.append({'check': 'morning delivery', 'ok': False,
-                         'detail': f"{date}: {entry['status']}; no automatic retry",
-                         'fix': 'co rem morning --dry-run; co rem doctor'})
+    saved = _markers(root)
+    latest = max(saved, default=None)  # A later good morning supersedes an old failure.
+    if latest and saved[latest]['status'] in ('failed', 'sending'):
+        rows.append({'check': 'morning delivery', 'ok': False,
+                     'detail': f"{latest}: {saved[latest]['status']}; no automatic retry",
+                     'fix': 'co rem morning --dry-run; co rem doctor'})
     return rows
 
 

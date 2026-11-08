@@ -1238,14 +1238,24 @@ receipts and current one-click actions; never ask a model to compose it.
 Usage: co rem [--root DIR] [--json] morning [--dry-run]
 
 Options:
-  --dry-run     Print the channel and exact message; no send and no date marker.
+  --dry-run     Print what a real run would do now, then the exact message;
+                no send and no date marker. The first line is one of:
+                would send now via CHANNEL | already sent HH:MM |
+                not due until 06:00 | outside the morning window (06:00–11:00) |
+                channel none: nothing will be sent | quiet: nothing to send
   --help        Show this skill text and exit.
 
-No flag sends once on the first check at or after 06:00 in schedule.timezone.
-Scheduled next checks automatically before preparing the morning round. Quiet
-mornings send nothing and record the check. Default notify.channel is none.
+No flag sends once, on the first check between 06:00 and 11:00 in
+schedule.timezone. A check after 11:00 records the date as missed and sends
+nothing: an evening note saying "overnight" is wrong. Scheduled next checks
+automatically before preparing the morning round. The note covers everything
+since the last note (or 22:00 the evening before), so work done after 06:00 is
+reported the next morning, once. Quiet mornings send nothing and record the
+check, and so does a morning with nothing new and the same open decisions as
+last time. Default notify.channel is none.
 A date claimed before delivery is never resent, even after a failure or crash.
-Inspect failures in co rem doctor; there is no automatic retry loop.
+co rem doctor shows the latest delivery failure; there is no automatic retry.
+If the note cannot be prepared, nothing is claimed and the next check retries.
 
 Setup: co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram
 Choices, in order: telegram, lark, whatsapp, email. co rem doctor lists which

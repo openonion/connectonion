@@ -27,11 +27,6 @@ def pages() -> dict[str, str]:
 def page(name: str) -> str:
     """One page, spelled for the program that invoked it (a wrapper names itself)."""
     text = pages()[name]
-    if name == "co rem morning":
-        from ...rem.morning import sender_status
-        text += "\nSender setup on this machine:\n" + "\n".join(
-            f"  {item['channel']}: {'configured' if item['configured'] else 'not configured'}; next: {item['next']}"
-            for item in sender_status()) + "\n"
     from ...rem.migrate import program
     program = program()
     return text if program == "co rem" else text.replace("co rem", program)

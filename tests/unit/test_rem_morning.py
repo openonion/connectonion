@@ -1,13 +1,69 @@
 """Fictional overnight work; no real transport or model is used."""
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
 from unittest.mock import Mock
 
 import pytest
 from typer.testing import CliRunner
 
-from connectonion.rem import service
+from connectonion.rem import morning as _morning, service
 from connectonion.rem.config import prepare, set_config, read_config
 from connectonion.rem.files import read_json, state_path, write_json
+
+REAL_ACTIONABLE = _morning.actionable  # captured before any fixture replaces it
+
+# Decision rows as approvals.outcomes() shapes them; titles are notebook page titles,
+# written in the notebook's own language.
+ROWS = {'zh': [{'id': 'reply:mara', 'kind': 'reply', 'title': 'Mara Quill', 'text': 'Fernhill 试点何时开始'},
+               {'id': 'task:plan', 'kind': 'task', 'title': 'Fernhill 计划', 'text': '把试点计划写出来'}],
+        'en': [{'id': 'reply:mara', 'kind': 'reply', 'title': 'Mara Quill', 'text': 'when the Fernhill pilot starts'},
+               {'id': 'task:plan', 'kind': 'task', 'title': 'Fernhill plan', 'text': 'write up the pilot plan'}]}
+
+FULL = {'zh': '昨夜：替你发出 1 封回复，另拟好 1 封待你看；跑完 1 项任务，查清 1 个问题。\n'
+              '2 件要你拍板：\n'
+              '· 以你的名义回 Mara Quill（Fernhill 试点何时开始）——用我拟的稿？\n'
+              '· Fernhill 计划——花一次 Codex 运行去做，还是先放着？\n'
+              '打开 Today：co rem open',
+        'en': 'Overnight: 1 reply sent for you, 1 more drafted for you to check; 1 task finished, 1 problem explained.\n'
+              '2 decisions:\n'
+              '· Reply to Mara Quill as you (when the Fernhill pilot starts) — send my draft?\n'
+              '· Fernhill plan — spend one Codex run on it, or leave it?\n'
+              'Open Today: co rem open'}
+
+
+def at(monkeypatch, *args):
+    """Pin the clock; arguments are UTC (Sydney is UTC+11 in November)."""
+    monkeypatch.setattr(service, 'now', lambda: datetime(*args, tzinfo=timezone.utc))
+
+
+def investigations(*rows):
+    """The index exactly as rem/problems.py writes it (night-investigations 35b0a770b):
+    `update()` stores each receipt under its problem key; `reserve()` builds the receipt
+    from the detector's problem plus id/state/result/...; every `save()` sets `state`
+    and bumps `updated_at`. There is no `items` list and no `explained_at`."""
+    entries = {}
+    for key, state, updated_at in rows:
+        id = hashlib.sha256(key.encode()).hexdigest()[:16]
+        entries[key] = {
+            'key': key, 'detector': 'workflow_red', 'repo': 'fernhill/pilot', 'project': 'projects/pilot.md',
+            'symptom': 'CI is red on main', 'facts': [], 'evidence_revision': 'fictional-revision',
+            'priority': 50, 'waiting': [], 'aliases': [], 'workflow': 'ci', 'detected_at': '2026-11-07T20:00:00+11:00',
+            'oldest_at': '2026-11-07T19:00:00+11:00', 'default_branch': 'main', 'head_sha': '',
+            'local_checkout': None, 'clone_url': None,
+            'id': id, 'state': state, 'result': 'completed', 'attempts': 1, 'reason': '',
+            'opened_at': '2026-11-07T22:30:00+11:00', 'updated_at': updated_at,
+            'last_checked': '2026-11-07T22:30:00+11:00', 'resolved_by': None,
+            'receipt': f'/fictional/.state/investigations/{id}/receipt.json',
+            'started_at': '2026-11-07T23:00:00+11:00', 'finished_at': updated_at, 'exit_code': 0}
+    return entries
+
+
+@pytest.fixture(autouse=True)
+def _own_cwd(tmp_path, monkeypatch):
+    # project_root() falls back to the working directory, and the suite-wide stray-project
+    # guard rejects /private/tmp: these tests must not depend on where pytest started.
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.fixture
@@ -15,39 +71,224 @@ def morning_book(tmp_path, monkeypatch):
     from connectonion.rem import morning
     prepare(tmp_path)
     set_config(tmp_path, ['schedule.timezone', 'Australia/Sydney', 'notify.channel', 'telegram',
-                          'notify.target', 'fictional-owner'])
-    monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 7, 19, tzinfo=timezone.utc))
+                          'notify.target', 'fictional-owner', 'language', 'zh'])
+    at(monkeypatch, 2026, 11, 7, 19)  # 06:00 Sydney, 8 November
     monkeypatch.setattr(morning, 'today_link', lambda root: 'co rem open')
-    monkeypatch.setattr(morning, 'actionable', lambda root: [
-        {'title': 'Mara Quill', 'text': 'Review Fernhill pilot'},
-        {'title': 'Fernhill', 'text': 'Approve the plan'}])
+    monkeypatch.setattr(morning, 'actionable', lambda root: ROWS[read_config(root)['language']])
     write_json(state_path(tmp_path, 'night.json'), {'date': '2026-11-07', 'items': {
         'one': {'outcome': {'kind': 'prepared', 'draft_id': 'draft-one', 'prepared_at': '2026-11-07T23:30:00+11:00'}},
         'two': {'outcome': {'kind': 'prepared', 'draft_id': 'draft-one', 'prepared_at': '2026-11-07T23:30:00+11:00'}},
+        'sent': {'outcome': {'kind': 'prepared', 'draft_id': 'draft-sent', 'prepared_at': '2026-11-07T23:00:00+11:00'}},
         'old': {'outcome': {'kind': 'prepared', 'draft_id': 'old', 'prepared_at': '2026-11-06T23:30:00+11:00'}}}})
+    write_json(state_path(tmp_path, 'drafts/draft-sent.json'), {
+        'id': 'draft-sent', 'status': 'sent', 'prepared_at': '2026-11-07T23:00:00+11:00'})
     write_json(state_path(tmp_path, 'approvals.json'), {
         'one': {'kind': 'reply', 'by': 'rem', 'status': 'sent', 'release_at': '2026-11-08T02:00:00+11:00'},
         'two': {'kind': 'reply', 'by': 'owner', 'status': 'sent', 'release_at': '2026-11-08T02:00:00+11:00'},
         'hold': {'kind': 'reply', 'by': 'rem', 'status': 'held', 'release_at': '2026-11-08T06:05:00+11:00'}})
     write_json(state_path(tmp_path, 'tasks/do-fern/receipt.json'), {
         'started_at': '2026-11-08T01:00:00+11:00', 'finished_at': '2026-11-08T03:00:00+11:00', 'result': 'completed'})
-    write_json(state_path(tmp_path, 'investigations/index.json'), {'items': [
-        {'status': 'explained', 'explained_at': '2026-11-08T04:00:00+11:00'}]})
+    write_json(state_path(tmp_path, 'investigations/index.json'), investigations(
+        ('workflow_red:fernhill/pilot:ci', 'explained', '2026-11-08T04:00:00+11:00')))
     return tmp_path
 
 
 @pytest.mark.parametrize('language', ['zh', 'en'])
-def test_counts_and_plain_names(morning_book, language):
+def test_full_night_message_is_the_pm_text(morning_book, language):
     from connectonion.rem import morning
     set_config(morning_book, ['language', language])
     value = morning.preview(morning_book)
-    assert value['counts'] == {'drafts': 1, 'sent': 1, 'dispatched': 1, 'finished': 1, 'investigations': 1}
-    assert value['pending'] == 2
-    assert len(value['message'].splitlines()) <= 5
-    assert 'Mara Quill' in value['message'] and 'Fernhill' in value['message']
-    assert '2 件等你点一下' in value['message'] if language == 'zh' else '2 need one click' in value['message']
-    assert value['message'].endswith('co rem open')
+    assert value['message'] == FULL[language]
+    assert value['counts'] == {'sent': 1, 'drafted': 1, 'finished': 1, 'explained': 1}
     assert 'draft-one' not in value['message']
+
+
+def test_investigations_counted_from_the_writer_shape(morning_book):
+    from connectonion.rem import morning
+    write_json(state_path(morning_book, 'investigations/index.json'), investigations(
+        ('a', 'explained', '2026-11-08T04:00:00+11:00'),
+        ('b', 'needs_owner', '2026-11-08T01:00:00+11:00'),
+        ('c', 'fix_proposed', '2026-11-07T23:00:00+11:00'),
+        ('d', 'investigating', '2026-11-08T02:00:00+11:00'),
+        ('e', 'inconclusive', '2026-11-08T02:00:00+11:00'),
+        ('f', 'stale', '2026-11-08T02:00:00+11:00'),
+        ('g', 'explained', '2026-11-07T12:00:00+11:00')))
+    assert morning.preview(morning_book)['counts']['explained'] == 3
+
+
+def test_outside_the_morning_window_is_missed_and_silent(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    send = Mock()
+    monkeypatch.setattr(morning, 'send_message', send)
+    at(monkeypatch, 2026, 11, 8, 6)  # 17:00 Sydney: schedule.times' own second slot
+    assert morning.run(morning_book)['status'] == 'missed'
+    assert morning.run(morning_book)['status'] == 'missed'
+    assert read_json(state_path(morning_book, 'morning.json'), {})['2026-11-08']['status'] == 'missed'
+    at(monkeypatch, 2026, 11, 8, 10)  # 21:00
+    assert morning.run(morning_book)['status'] == 'missed'
+    send.assert_not_called()
+
+
+def test_window_runs_from_the_previous_check_to_now(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    write_json(state_path(morning_book, 'morning.json'), {
+        '2026-11-07': {'status': 'sent', 'channel': 'telegram', 'checked_at': '2026-11-07T06:30:00+11:00'}})
+    write_json(state_path(morning_book, 'tasks/do-day/receipt.json'), {
+        'finished_at': '2026-11-07T07:00:00+11:00', 'result': 'completed'})   # after yesterday's note
+    write_json(state_path(morning_book, 'tasks/do-early/receipt.json'), {
+        'finished_at': '2026-11-07T06:10:00+11:00', 'result': 'completed'})   # already reported
+    write_json(state_path(morning_book, 'tasks/do-late/receipt.json'), {
+        'finished_at': '2026-11-08T07:30:00+11:00', 'result': 'completed'})   # after 06:00, before this check
+    at(monkeypatch, 2026, 11, 7, 21)  # 08:00 Sydney
+    assert morning.preview(morning_book)['counts']['finished'] == 3
+
+
+def test_a_missed_day_does_not_move_the_window(morning_book):
+    from connectonion.rem import morning
+    write_json(state_path(morning_book, 'morning.json'), {
+        '2026-11-06': {'status': 'sent', 'channel': 'telegram', 'checked_at': '2026-11-06T06:30:00+11:00'},
+        '2026-11-07': {'status': 'missed', 'channel': 'telegram', 'checked_at': '2026-11-07T17:00:00+11:00'}})
+    write_json(state_path(morning_book, 'tasks/do-day/receipt.json'), {
+        'finished_at': '2026-11-07T12:00:00+11:00', 'result': 'completed'})
+    assert morning.preview(morning_book)['counts']['finished'] == 2
+
+
+def test_a_preview_error_claims_nothing_and_the_next_tick_retries(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    write_json(state_path(morning_book, 'investigations/index.json'), investigations(
+        ('a', 'explained', 'not-a-date')))
+    send = Mock()
+    monkeypatch.setattr(morning, 'send_message', send)
+    assert morning.scheduled_check(morning_book)['status'] == 'unavailable'
+    assert not state_path(morning_book, 'morning.json').exists()
+    write_json(state_path(morning_book, 'investigations/index.json'), {})
+    assert morning.scheduled_check(morning_book)['status'] == 'sent'
+    send.assert_called_once()
+
+
+def test_real_outcomes_lines_use_the_rows_words_never_an_address(morning_book, monkeypatch):
+    from connectonion.rem import approvals, drafts, morning, today
+    monkeypatch.setattr(morning, 'actionable', REAL_ACTIONABLE)
+    set_config(morning_book, ['language', 'en'])
+    thread = {'thread': 'fictional-thread-1', 'provider': 'outlook'}
+    monkeypatch.setattr(today, 'queue', lambda root: [
+        {'key': 'k1', 'keys': ['k1'], 'title': 'Mara Quill', 'closed': False, 'quiet': False, 'dir': 'mine',
+         'text': 'Mara asked', 'reply': {**thread, 'state': 'waiting'}}])
+    monkeypatch.setattr(drafts, 'listing', lambda root: [
+        {'id': 'a' * 32, 'version': 'v1', 'status': 'prepared', 'to': 'mara@fernhill.example', **thread,
+         'subject': 'Re: Fernhill pilot', 'body': 'Hi Mara, it starts Monday.', 'gist': 'when the Fernhill pilot starts'},
+        {'id': 'b' * 32, 'version': 'v1', 'status': 'prepared', 'to': 'ops@fernhill.example',
+         'thread': 'fictional-thread-2', 'provider': 'outlook', 'subject': 'Re: Fernhill pilot',
+         'body': 'Thanks, the dates are fixed.'}])
+    assert [row['title'] for row in approvals.outcomes(morning_book)] == ['Mara Quill', 'ops@fernhill.example']
+    lines = morning.preview(morning_book)['message'].splitlines()
+    assert lines[2] == '· Reply to Mara Quill as you (when the Fernhill pilot starts) — send my draft?'
+    assert lines[3] == '· Reply as you (Re: Fernhill pilot) — send my draft?'
+    assert '@' not in '\n'.join(lines)
+
+
+def test_zero_counts_and_empty_decisions_are_left_out(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    for name in ('night.json', 'approvals.json', 'investigations/index.json', 'drafts/draft-sent.json'):
+        state_path(morning_book, name).unlink()
+    monkeypatch.setattr(morning, 'actionable', lambda root: [])
+    assert morning.preview(morning_book)['message'] == '昨夜：跑完 1 项任务。\n打开 Today：co rem open'
+    set_config(morning_book, ['language', 'en'])
+    assert morning.preview(morning_book)['message'] == 'Overnight: 1 task finished.\nOpen Today: co rem open'
+
+
+def test_more_than_two_decisions_point_to_today(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    extra = [{'id': f'task:{n}', 'kind': 'task', 'title': f'Fernhill {n}', 'text': ''} for n in range(3)]
+    monkeypatch.setattr(morning, 'actionable', lambda root: ROWS['zh'] + extra)
+    lines = morning.preview(morning_book)['message'].splitlines()
+    assert lines[1] == '5 件要你拍板：' and lines[4] == '还有 3 件在 Today'
+    assert len(lines) == 6
+
+
+def test_dry_run_says_whether_it_would_really_send(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    assert morning.run(morning_book, dry_run=True)['plan'] == 'would send now via telegram'
+    at(monkeypatch, 2026, 11, 7, 18, 30)
+    assert morning.run(morning_book, dry_run=True)['plan'] == 'not due until 06:00'
+    at(monkeypatch, 2026, 11, 8, 1)
+    assert morning.run(morning_book, dry_run=True)['plan'] == \
+        'outside the morning window (06:00–11:00): nothing will be sent today'
+    at(monkeypatch, 2026, 11, 7, 19, 2)
+    monkeypatch.setattr(morning, 'send_message', Mock())
+    morning.run(morning_book)
+    assert morning.run(morning_book, dry_run=True)['plan'] == 'already sent 06:02'
+    set_config(morning_book, ['notify.channel', 'none'])
+    at(monkeypatch, 2026, 11, 8, 19)
+    assert morning.run(morning_book, dry_run=True)['plan'] == 'channel none: nothing will be sent'
+
+
+def test_dry_run_on_a_quiet_morning(tmp_path, monkeypatch):
+    from connectonion.rem import morning
+    prepare(tmp_path)
+    set_config(tmp_path, ['schedule.timezone', 'UTC', 'notify.channel', 'telegram', 'notify.target', 'fictional-owner'])
+    at(monkeypatch, 2026, 11, 8, 7)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [])
+    monkeypatch.setattr(morning, 'today_link', lambda root: 'co rem open')
+    value = morning.run(tmp_path, dry_run=True)
+    assert (value['plan'], value['message']) == ('quiet: nothing to send', '')
+
+
+def test_host_check_runs_before_the_write_lock(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    held = []
+
+    @contextmanager
+    def lock(root, *args, **kwargs):
+        held.append(True)
+        yield
+        held.pop()
+
+    def link(root):
+        assert not held, 'host_online must not run under the notebook write lock'
+        return 'co rem open'
+    monkeypatch.setattr(morning, 'maintenance_lock', lock)
+    monkeypatch.setattr(morning, 'today_link', link)
+    monkeypatch.setattr(morning, 'send_message', Mock())
+    assert morning.run(morning_book)['status'] == 'sent'
+
+
+def test_same_decisions_and_nothing_new_stays_quiet(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    send = Mock()
+    monkeypatch.setattr(morning, 'send_message', send)
+    morning.run(morning_book)
+    at(monkeypatch, 2026, 11, 8, 19)  # next morning, no new receipts, same two decisions
+    assert morning.preview(morning_book)['message'] == ''
+    assert morning.run(morning_book)['status'] == 'quiet'
+    monkeypatch.setattr(morning, 'actionable', lambda root: ROWS['zh'][:1])
+    at(monkeypatch, 2026, 11, 9, 19)  # the set changed: one was settled
+    assert morning.run(morning_book)['status'] == 'sent'
+    assert send.call_count == 2
+
+
+def test_doctor_reports_only_the_latest_and_the_file_is_pruned(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    monkeypatch.setattr(morning, 'sender_status', lambda: [
+        {'channel': 'telegram', 'configured': True, 'next': 'fictional'}])
+    old = {f'2026-10-{day:02d}': {'status': 'failed', 'channel': 'telegram', 'checked_at': f'2026-10-{day:02d}T06:00:00+11:00'}
+           for day in range(1, 31)}
+    write_json(state_path(morning_book, 'morning.json'), old)
+    delivery = [row for row in morning.doctor(morning_book) if row['check'] == 'morning delivery']
+    assert [row['detail'] for row in delivery] == ['2026-10-30: failed; no automatic retry']
+    monkeypatch.setattr(morning, 'send_message', Mock())
+    morning.run(morning_book)
+    saved = read_json(state_path(morning_book, 'morning.json'), {})
+    assert min(saved) == '2026-10-25' and max(saved) == '2026-11-08'
+    assert not [row for row in morning.doctor(morning_book) if row['check'] == 'morning delivery']
+
+
+def test_help_is_the_same_on_every_machine(monkeypatch):
+    from connectonion.rem import morning
+    from connectonion.cli.commands.rem_help import page
+    monkeypatch.setattr(morning, 'sender_status', Mock(side_effect=AssertionError('help read this machine')))
+    text = page('co rem morning')
+    assert 'on this machine' not in text and 'co rem doctor' in text
 
 
 def test_send_once_and_dry_run_does_not_claim(morning_book, monkeypatch):
@@ -76,6 +317,7 @@ def test_empty_morning_checked_without_send(tmp_path, monkeypatch):
     from connectonion.rem import morning
     prepare(tmp_path)
     set_config(tmp_path, ['schedule.timezone', 'UTC'])
+    at(monkeypatch, 2026, 11, 8, 7)
     monkeypatch.setattr(morning, 'actionable', lambda root: [])
     send = Mock()
     monkeypatch.setattr(morning, 'send_message', send)
@@ -87,18 +329,18 @@ def test_empty_morning_checked_without_send(tmp_path, monkeypatch):
 def test_before_six_waits_and_missing_investigations_are_zero(morning_book, monkeypatch):
     from connectonion.rem import morning
     state_path(morning_book, 'investigations/index.json').unlink()
-    assert morning.preview(morning_book)['counts']['investigations'] == 0
-    monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 7, 18, 59, tzinfo=timezone.utc))
+    assert morning.preview(morning_book)['counts']['explained'] == 0
+    at(monkeypatch, 2026, 11, 7, 18, 59)
     assert morning.run(morning_book)['status'] == 'not_due'
     assert not state_path(morning_book, 'morning.json').exists()
 
 
 def test_cli_preview_exact(morning_book):
-    from connectonion.rem import morning
     from connectonion.cli.main import app
     result = CliRunner().invoke(app, ['rem', '--root', str(morning_book), 'morning', '--dry-run'])
     assert result.exit_code == 0, result.output
-    assert result.stdout == 'Channel: telegram\n' + morning.preview(morning_book)['message'] + '\n'
+    assert result.stdout == 'would send now via telegram\n' + FULL['zh'] + '\n'
+    assert not state_path(morning_book, 'morning.json').exists()
 
 
 def test_channel_validation(tmp_path):
@@ -145,7 +387,9 @@ def test_new_local_date_gets_one_new_check(morning_book, monkeypatch):
     send = Mock()
     monkeypatch.setattr(morning, 'send_message', send)
     morning.run(morning_book)
-    monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 8, 19, tzinfo=timezone.utc))
+    write_json(state_path(morning_book, 'tasks/do-next/receipt.json'), {
+        'finished_at': '2026-11-09T03:00:00+11:00', 'result': 'completed'})
+    at(monkeypatch, 2026, 11, 8, 19)
     morning.run(morning_book)
     assert send.call_count == 2
     assert len(read_json(state_path(morning_book, 'morning.json'), {})) == 2
@@ -173,17 +417,6 @@ def test_live_today_link_only_for_served_default_book(tmp_path, monkeypatch):
     assert morning.today_link(root) == 'co rem open'
 
 
-def test_malformed_optional_index_records_failure_without_blocking(morning_book, monkeypatch):
-    from connectonion.rem import morning
-    write_json(state_path(morning_book, 'investigations/index.json'), {'items': [
-        {'status': 'explained', 'explained_at': 'not-a-date'}]})
-    send = Mock()
-    monkeypatch.setattr(morning, 'send_message', send)
-    assert morning.scheduled_check(morning_book)['status'] == 'failed'
-    assert morning.run(morning_book)['status'] == 'failed'
-    send.assert_not_called()
-
-
 def test_busy_notification_does_not_block_round(morning_book, monkeypatch):
     from connectonion.rem import morning, native
     from connectonion.rem.files import RemError
@@ -193,27 +426,22 @@ def test_busy_notification_does_not_block_round(morning_book, monkeypatch):
     assert native.next_task(morning_book, scheduled=True)['reason'] == 'round reached'
 
 
-def test_sent_draft_is_still_counted_as_prepared(morning_book):
+def test_a_sent_draft_is_counted_once_as_sent(morning_book):
     from connectonion.rem import morning
     write_json(state_path(morning_book, 'night.json'), {'items': {}})
     write_json(state_path(morning_book, 'drafts/fern.json'), {
-        'id': 'fern', 'status': 'sent', 'prepared_at': '2026-11-07T23:00:00+11:00'})
-    assert morning.preview(morning_book)['counts']['drafts'] == 1
+        'id': 'fern', 'status': 'prepared', 'prepared_at': '2026-11-07T23:00:00+11:00'})
+    counts = morning.preview(morning_book)['counts']
+    assert (counts['sent'], counts['drafted']) == (1, 1)
 
 
-def test_late_check_excludes_daytime_work(morning_book, monkeypatch):
+def test_english_plurals(morning_book):
     from connectonion.rem import morning
-    monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 8, 5, tzinfo=timezone.utc))
-    write_json(state_path(morning_book, 'investigations/index.json'), {'items': [
-        {'status': 'explained', 'explained_at': '2026-11-08T10:00:00+11:00'}]})
-    assert morning.preview(morning_book)['counts']['investigations'] == 0
-
-
-def test_english_singular_counts(morning_book):
-    from connectonion.rem import morning
+    set_config(morning_book, ['language', 'en'])
+    write_json(state_path(morning_book, 'tasks/do-two/receipt.json'), {
+        'finished_at': '2026-11-08T04:00:00+11:00', 'result': 'completed'})
     message = morning.preview(morning_book)['message']
-    assert '1 draft prepared' in message and '1 reply sent' in message
-    assert '1 task dispatched' in message and '1 investigation explained' in message
+    assert '2 tasks finished' in message and '1 problem explained' in message
 
 
 def test_doctor_flags_unconfigured_selected_sender(morning_book, monkeypatch):
