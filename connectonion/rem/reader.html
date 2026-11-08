@@ -6980,24 +6980,25 @@ function projectPairs(all) {
   return pairs;
 }
 
-// ---- REM's notes in the margin: rule-made only, at most five, one per project ----
+// ---- REM's notes in the margin: rule-made only, at most five, one per project. Order: overdue (fact),
+// the week's forecast (P大: "tell me which go cold next week"), a likely duplicate, thin coverage. ----
 function projectNotes(all, pairs) {
   const notes = new Map(), today = projectAsOfDay(REM.as_of), put = (r, note) => { if (notes.size < PD_NOTES && !notes.has(r.path)) notes.set(r.path, note); };
   for (const [r, late] of all.map(r => [r, projectLate(r)]).filter(([, late]) => late).sort((a, b) => b[1].days - a[1].days)) {
     const who = pdWho(late.who), values = { who, what: projectMarkWhat(late), date: pdDay(late.day), n: late.days };
     put(r, { kind: "fact", kicker: "Overdue", text: pdT(who ? "{who}: {what}. Due {date}, still open, {n} days late." : "{what}. Due {date}, still open, {n} days late.", values), red: true });
   }
+  const soon = all.map(r => [r, projectQuietOn(r)]).filter(([, day]) => day && day > today && pdBetween(today, day) <= 7).sort((a, b) => a[1].localeCompare(b[1]));
+  if (soon.length) put(soon[0][0], { kind: "pencil", kicker: "Forecast",
+    text: pdT("If no session comes, by the 30-day rule these turn quiet within a week: {list}.", { list: soon.map(([r, day]) => pdT("{name} ({date})", { name: r.title, date: pdDay(day) })).join(pdT(", ")) }) });
   for (const p of pairs.filter(p => p.kind === "sessions" && !p.inside))
     put(p.a, { kind: "inference", kicker: "Same?", text: pdT("{k} of its {n} sessions also appear in {other}. It may be the same project.", { k: p.k, n: p.n, other: p.b.title }) });
-  for (const p of pairs.filter(p => p.kind === "page"))
-    put(p.a, { kind: "inference", kicker: "Same?", text: pdT("Its page marks it as possibly the same project as {other}.", { other: p.b.title }) });
   for (const r of all) {
     const c = projectCoverage(r);
     if (c && c.of >= 20 && c.read / c.of < 0.2) put(r, { kind: "fact", kicker: "Read a corner", text: pdT("Of {of} inputs in the last {days} days, REM read {read}. Its picture of this project rests on a corner of them.", c) });
   }
-  const soon = all.map(r => [r, projectQuietOn(r)]).filter(([, day]) => day && day > today && pdBetween(today, day) <= 7).sort((a, b) => a[1].localeCompare(b[1]));
-  if (soon.length) put(soon[0][0], { kind: "pencil", kicker: "Forecast",
-    text: pdT("If no session comes, by the 30-day rule these turn quiet within a week: {list}.", { list: soon.map(([r, day]) => pdT("{name} ({date})", { name: r.title, date: pdDay(day) })).join(pdT(", ")) }) });
+  for (const p of pairs.filter(p => p.kind === "page"))
+    put(p.a, { kind: "inference", kicker: "Same?", text: pdT("Its page marks it as possibly the same project as {other}.", { other: p.b.title }) });
   for (const p of pairs.filter(p => p.kind === "sessions" && p.inside))
     put(p.a, { kind: "inference", kicker: "Part of?", text: pdT("{k} of its {n} sessions are also {other}'s. It may be part of {other}.", { k: p.k, n: p.n, other: p.b.title }) });
   return notes;
