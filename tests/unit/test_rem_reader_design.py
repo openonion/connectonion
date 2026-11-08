@@ -24,10 +24,12 @@ def _blocks(css: str) -> dict:
 
 
 def test_both_themes_define_every_colour_token():
-    blocks = _blocks(TEMPLATE.read_text(encoding="utf-8"))
-    faces = {"--display", "--text", "--ui", "--code", "--mono"}
-    colours = blocks["light"] - faces
-    assert len(colours) >= 20
+    css = TEMPLATE.read_text(encoding="utf-8")
+    blocks = _blocks(css)
+    light = re.search(r":root \{(.*?)\n  \}", css, re.S).group(1)
+    # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
+    colours = set(re.findall(r"(--[\w-]+): #[\da-f]{6};", light))
+    assert colours == {"--paper", "--ink", "--grey", "--rule", "--green", "--on-green", "--red", "--pencil"}
     assert blocks["dark-auto"] == colours
     assert blocks["dark-forced"] == colours
 
@@ -191,16 +193,16 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
         linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in rgb]
         return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
 
-    for surface in ['--paper', '--sheet', '--line-2']:
-        for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
+    # The Fuse sheet: one paper, and the hairline that still backs wells and tabs.
+    for surface in ['--paper', '--rule']:
+        for token, minimum in [('--grey', 4.5), ('--ink', 3)]:
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
 
-    assert colors['--act'] == ('#22d27a' if theme == 'light' else '#3be38f')
-    for surface, foreground in [('--act', '--act-ink'), ('--act-hover', '--act-ink'),
-                                ('--sheet', '--act-text'), ('--act-tint', '--ink')]:
+    assert colors['--green'] == ('#22d27a' if theme == 'light' else '#3be38f')
+    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink')]:
         a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
     button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
-    assert 'background: var(--act)' in button and 'color: var(--act-ink)' in button
-    assert '.btn-act:hover { background: var(--act-hover); }' in css
+    assert 'background: var(--green)' in button and 'color: var(--on-green)' in button
+    assert '.btn-act:hover { background: var(--green); }' in css

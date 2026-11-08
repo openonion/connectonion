@@ -821,14 +821,19 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   The rest is grouped by kind, people first, one snippet a page, never a
   local path.
 
-Design: cool blue-biased neutrals with one night blue for links and one lamp
-amber kept for what is owed; a dark palette of its own; Optima for titles,
-Charter for prose, the system face for chrome and the mono face for every
-date, count and id. Fonts are local faces, so the page makes no network
-request. Every view fits a 390 px phone without sideways scrolling, keyboard
-focus is visible, and the hypnogram line is visible immediately. Quotes use a
-warm tint in light mode and warm text with a faint underline in dark mode;
-search matches keep their distinct highlight. Motion respects `prefers-reduced-motion`.
+Design ("Fuse"): the whole reader is painted from one token sheet at the top of
+`reader.html`: one paper, one ink, one grey, one hairline; green only on the
+primary action (Send), red only for overdue and danger, and a dashed pencil for
+what REM inferred. Four type sizes (display, 24, 16, 12), two weights (400 and
+700), square corners and no shadows; rings that used to be shadows are hairline
+outlines, and keyboard focus is a 2 px ink outline that wins over them. Dark
+mode redefines the same colour names under `prefers-color-scheme` (unless the
+reader is set to Light) and under the Dark setting; `prefers-reduced-motion`
+sets the sheet's durations to zero. `tests/unit/test_rem_reader_style_sheet.py`
+fails on any size, weight, radius, shadow or colour written outside the sheet.
+One system face carries Latin and CJK and a mono face carries code; both are
+local, so the page makes no network request. Every view fits a 390 px phone
+without sideways scrolling.
 
 To see every view on an invented notebook, light and dark, desktop and phone:
 `python scripts/capture_rem_reader.py OUT_DIR` (the fixture is

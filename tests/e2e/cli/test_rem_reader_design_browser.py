@@ -518,7 +518,7 @@ def test_people_phone_cards_keep_contact_metadata_and_sorting(reader, width):
     assert meta.evaluate("e => getComputedStyle(e).marginTop") == '14px'
     assert row.locator('.c-email').evaluate(r'''e => {
       const label = getComputedStyle(e, '::before');
-      return !label.content.includes(':') && label.fontSize === '11px'
+      return !label.content.includes(':') && label.fontSize === '12px'
         && getComputedStyle(e.querySelector('.people-emails')).display === 'inline'
         && getComputedStyle(e.querySelector('.email-first')).display === 'inline';
     }''')
@@ -1337,8 +1337,8 @@ def test_every_view_fits_a_phone(reader, theme):
         page.wait_for_timeout(120)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
-        # The organisation redesign owns its green-black dark palette.
-        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md", "#c=projects") else "rgb(14, 17, 32)"
+        # One sheet: every view's dark paper is --paper (#0f110f); no page owns a palette.
+        dark_background = "rgb(15, 17, 15)"
         assert (background == dark_background) == (theme == "dark"), (view, background)
 
 
@@ -2910,7 +2910,7 @@ def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
     sources = page.locator('.project-purpose-cites')
     assert sources.locator('.unsure').count() == 1
     chip = sources.locator('a.cite').first
-    assert chip.evaluate('node => getComputedStyle(node).fontSize') == '11px'
+    assert chip.evaluate('node => getComputedStyle(node).fontSize') == '12px'
     assert chip.evaluate('node => getComputedStyle(node).fontVariantCaps') == 'normal'
     assert chip.bounding_box()['height'] < 30
 
@@ -3140,7 +3140,8 @@ def test_quotes_are_visually_distinct_from_search_marks(reader, theme):
     quote_background = quote.evaluate('node => getComputedStyle(node).backgroundColor')
     assert quote_background != mark.evaluate('node => getComputedStyle(node).backgroundColor')
     if theme == 'dark':
-        assert float(quote_background.removesuffix(')').split(',')[-1]) <= .08
+        # No tint of its own in dark: the quote sits on the paper and only its underline marks it.
+        assert quote_background == page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'underline'
 
 
@@ -3460,7 +3461,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert marker.get_attribute('title') == ('来源未确认' if language == 'zh' else 'Not confirmed by the sources')
     assert marker.evaluate(r'''node => node.nextElementSibling.matches('a.cite')''')
     assert marker.evaluate(r'''node => node.nextSibling.textContent === '\u200a' ''')
-    assert marker.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
+    assert marker.evaluate(r'''node => getComputedStyle(node).fontSize === '12px' ''')
     page.goto(uri + '#r=people%2Ftomas-reyes.md')
     assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label, .changed-value').count() == 0
     page.goto(uri + '#c=people')
@@ -3469,7 +3470,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert fresh.is_visible()
     assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
     assert fresh.get_attribute('title') == ('昨夜整理时更新' if language == 'zh' else "Updated in last night's pass")
-    assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
+    assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '12px' ''')
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
@@ -4162,7 +4163,7 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
       const css = getComputedStyle(button);
       // Today's secondary button: a 1px outline, no fill (no box on a box-free page).
       return css.borderTopStyle === 'solid' && css.borderTopWidth === '1px'
-        && parseFloat(css.borderTopLeftRadius) === 8 && css.backgroundColor === 'rgba(0, 0, 0, 0)';
+        && parseFloat(css.borderTopLeftRadius) === 0 && css.backgroundColor === 'rgba(0, 0, 0, 0)';
     }''')
     page.locator('.recall-toggle').click()
     assert page.locator('.recall-answer').is_visible()
@@ -4180,7 +4181,7 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     for summary in summaries.all():
         assert summary.evaluate(r'''summary => {
           const css = getComputedStyle(summary);
-          return css.display === 'list-item' && css.fontSize === '14px'
+          return css.display === 'list-item' && css.fontSize === '16px'
             && css.fontWeight === '400';
         }''')
         if width == 390:
@@ -4383,9 +4384,9 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
         for summary in summaries.all():
             assert summary.evaluate(r'''node => {
               const css = getComputedStyle(node), probe = document.createElement('span');
-              probe.style.color = 'var(--ink-2)'; node.appendChild(probe);
+              probe.style.color = 'var(--grey)'; node.appendChild(probe);
               const colour = getComputedStyle(probe).color; probe.remove();
-              return css.display === 'list-item' && css.fontWeight === '400' && css.fontSize === '14px' && css.color === colour;
+              return css.display === 'list-item' && css.fontWeight === '400' && css.fontSize === '16px' && css.color === colour;
             }''')
             if width == 390:
                 assert summary.bounding_box()['height'] >= 44
@@ -4580,11 +4581,11 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
             assert page.locator('.deep-note-limit').count() == 1
             page.locator('.deep-note > summary').click()
             assert page.locator('.deep-note-limit').is_visible()
-            assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '13px'
+            assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '12px'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     # Both compact quiet lines remain readable without adding a card border.
-    assert styles[0][1:] == ['14px', styles[0][2], '0px', '8px']
-    assert styles[1][1] == '14px' and styles[1][3] == '0px'
+    assert styles[0][1:] == ['16px', styles[0][2], '0px', '8px']
+    assert styles[1][1] == '16px' and styles[1][3] == '0px'
     page.goto(uri + '#r=people%2Fmia-chen.md')
     page.evaluate(r'''() => {
       const r = byPath('people/mia-chen.md');
@@ -5615,7 +5616,8 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert name.inner_text() == "Fernhill University"
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("52px" if width > 600 else "34px")
+    # The name collapsed onto --s-head (24px) at every width; build 3 decides whether it earns --s-display.
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
     owed = page.evaluate("orgOwed(byPath('orgs/fernhill-university.md')).length", isolated_context=False)
@@ -5706,7 +5708,7 @@ def test_org_clicking_a_team_turns_the_tree_and_opens_its_panel(org_reader):
     assert "Osprey squad" in panel.inner_text()
     assert "Ilse Marr" in panel.inner_text() and "Theo Brand" in panel.inner_text()
     assert "null" not in panel.inner_text() and "undefined" not in panel.inner_text()
-    assert panel.locator(".ov-btxt").evaluate("node => [getComputedStyle(node).fontSize, getComputedStyle(node).fontWeight]") == ["14px", "700"]
+    assert panel.locator(".ov-btxt").evaluate("node => [getComputedStyle(node).fontSize, getComputedStyle(node).fontWeight]") == ["16px", "700"]
     after = node.bounding_box()
     assert abs(after["x"] - before["x"]) + abs(after["y"] - before["y"]) > 20
     page.keyboard.press("Escape")
