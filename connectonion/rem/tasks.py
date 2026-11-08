@@ -11,10 +11,9 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager, suppress
-from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import codex_exec, service
+from . import codex_exec
 from .config import read_config
 from .files import RemError, read_json, state_path, write_json
 from .service import now
@@ -348,29 +347,12 @@ def gate(root, config, key):
 
 
 def _hold(root, config):
-    """Why REM starts no task now, or None: one at a time, a nightly cap, the week's floor."""
+    """Why REM starts no task now, or None. Only the Codex week's floor stops one (D-104): tasks
+    run side by side and a night has no count cap."""
     from . import quota
-    if any(_reconcile(path.parent).get('result') in ACTIVE for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json')):
-        return {'wait': 'later', 'reason': 'Another task is running; this one starts on a later tick tonight.'}
-    cap = config['limits']['tasks_per_night']
-    if _started_tonight(root, config) >= cap:
-        return {'wait': 'budget', 'reason': f'{cap} tasks already started tonight (limits.tasks_per_night).'}
-    if floor := quota.floor_block(quota.read(config), config['limits']):
+    if floor := quota.floor_block(quota.meter(root, config), config['limits']):
         return {'wait': 'budget', 'reason': floor[0].upper() + floor[1:] + '.'}
     return None
-
-
-def _night(moment, zone):
-    """The night a moment belongs to: noon to noon, so 22:00-06:00 is one night."""
-    return (moment.astimezone(zone) - timedelta(hours=12)).date()
-
-
-def _started_tonight(root, config):
-    zone = service.notebook_zone(config)
-    tonight = _night(service.now(), zone)
-    records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
-    return sum(1 for record in records if record.get('kind') == 'task' and record.get('dispatched_at')
-               and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
 
 
 def undo(root, task_id):

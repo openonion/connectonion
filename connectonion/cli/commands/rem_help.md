@@ -1161,8 +1161,8 @@ The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
 Morning approval starts tasks, and so does the night after its drafts
-(tasks.auto, default true; set it false to wait for approval). Either way one at a time, at most limits.tasks_per_night (3), none
-past the week's quota floor. The reader's Undo removes a task's work and the
+(tasks.auto, default true; set it false to wait for approval). Tasks run side
+by side with no nightly count; only the week's quota floor holds one back. The reader's Undo removes a task's work and the
 night never starts it again.
 Do not send anything to anyone; write the result and stop.
 

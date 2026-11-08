@@ -56,26 +56,7 @@ def accept(root, task):
 def test_native_limits_default_to_eight_pages_and_two_hundred_calls():
     limits = default_config()["limits"]
     assert limits["runner_calls_per_day"] == 200
-    assert limits["jobs_per_round"] == 8
     assert limits["quota_floor_percent"] == 90
-
-
-@pytest.mark.parametrize("first", [True, False])
-def test_native_jobs_per_round_is_configurable(notebook, monkeypatch, first):
-    rows = [{"path": f"people/person-{i}.md", "record": f"people/person-{i}.md", "mode": "update",
-             "last_activity": f"2026-10-{i + 1:02d}"}
-            for i in range(7)]
-    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: rows)
-    monkeypatch.setattr(daily, "_owner_due", lambda root: [])
-    monkeypatch.setattr("connectonion.rem.people_pages.correspondents_since", lambda *a, **kw: {"records": []})
-    monkeypatch.setattr("connectonion.rem.people_pages.queue", lambda *a, **kw: rows)
-    monkeypatch.setattr(project_pages, "queue", lambda *a, **kw: [])
-    config = read_config(notebook)
-    config["limits"]["jobs_per_round"] = 2
-    import yaml
-    (notebook / "config.yaml").write_text(yaml.safe_dump(config))
-    assert [row["record"] for row in native_round._jobs(notebook, first, [], {})] == [
-        "people/person-0.md", "people/person-1.md"]
 
 
 def test_native_offers_jobs_before_summaries(notebook, monkeypatch):
@@ -228,11 +209,15 @@ def test_native_carried_filter_preserves_new_sections_and_overlapping_claims(bef
     assert filtered.count('The owner approved launch.') == (1 if '## A' in before else 0)
 
 
-def test_project_draft_at_portion_cap_is_kept_for_resume(notebook):
+def test_project_draft_at_a_spent_portion_is_kept_while_translation_takes_its_turn(notebook, monkeypatch):
+    # rc62 stopped the turn here ("investigation portion cap reached"); D-104 hands the turn to
+    # translation and keeps the project draft for when investigation resumes.
+    monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stage': 'translate'})
+    monkeypatch.setattr(native_round, 'translation_share', lambda root: 4)
     cursor = save_round(notebook, [{'record': 'projects/fern.md', 'kind': 'project'}],
                         project_quote={'draft': 'Private draft'}, investigation_left=0)
     result = native_round.prepare_task(notebook, cursor, read_config(notebook), notebook)
-    assert result['stop'].startswith('investigation portion cap reached')
+    assert result == {'stage': 'translate'} and cursor['translation_left'] == 3
     assert cursor['job_index'] == 0 and not cursor.get('done')
     assert cursor['project_quote']['draft'] == 'Private draft'
 

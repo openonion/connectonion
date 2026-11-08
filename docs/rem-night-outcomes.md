@@ -1,10 +1,9 @@
 # Nightly outcomes for the morning confirmation
 
 The daily and native rounds cover every open, owner-owed item in the shared
-Today order, including items outside the first visible cards. The default
-`limits.drafts_per_night` is **30** model attempts per notebook day. Explicit
-configured caps remain in force across rounds. Owner verdicts and task prompts
-need no model calls. Every item left by a draft cap, daily cap, quota stop,
+Today order, including items outside the first visible cards. There is no
+nightly draft count (D-104, 2026-11-09). Owner verdicts and task prompts
+need no model calls. Every item left by a daily cap, quota stop,
 missing consent, provider failure or rejected draft has a named reason.
 
 REM retrieves missing cited originals through the existing Outlook/Gmail
@@ -26,12 +25,12 @@ stops the task, removes its folder, worktree and branch, and records
 With `tasks.auto: false` only morning approval starts them (the Host runs
 `co rem task run ID`). A task runs with full access, as the owner's own Codex
 runs do: it can read the web and use his accounts to do the job, and its prompt
-leaves pushing, merging, sending and posting to him. Either way a task passes
-one gate: one task at a time, at most `limits.tasks_per_night` (3) started per
-night, counted noon to noon, and none once the Codex week reaches
-`limits.quota_floor_percent`. A task that has to wait is written to
-`.state/tasks/waiting.json` and its Today card says "Queued: later tonight" or
-"Queued: budget used up" with the reason.
+leaves pushing, merging, sending and posting to him. Tasks run side by side
+with no nightly count (D-104); the one gate is the Codex week: none starts once
+it reaches `limits.quota_floor_percent`, read live or, when the meter cannot be
+read, from the last reading a run recorded this week. A task that has to wait
+is written to `.state/tasks/waiting.json` and its Today card says "Queued:
+budget used up" with the reason.
 `co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.

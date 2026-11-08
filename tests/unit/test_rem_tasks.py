@@ -233,40 +233,45 @@ def _clock(monkeypatch, text):
     monkeypatch.setattr(service, 'now', lambda: datetime.fromisoformat(text))
 
 
-def test_the_night_runs_one_task_at_a_time_and_queues_the_next_for_later(task_notebook, fake_codex, monkeypatch):
+# D-104: tasks run side by side and a night has no count cap; only the week floor holds one.
+def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
     monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
     _second_task(task_notebook)
-    config = read_config(task_notebook)
-    first = tasks.auto_dispatch(task_notebook, config)
+    started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     try:
-        assert len(first) == 1
-        [waiting] = _waiting(task_notebook).values()
-        assert waiting['wait'] == 'later' and 'running' in waiting['reason']
-        assert tasks.auto_dispatch(task_notebook, config) == []  # still running: nothing new
+        assert len(started) == 2 and len({row['id'] for row in started}) == 2
+        assert [_running(task_notebook, row['id']) for row in started] == ['running', 'running']
+        assert read_json(state_path(task_notebook, 'tasks/waiting.json'), {}) == {}
     finally:
-        tasks.stop(task_notebook, first[0]['id'])
-    second = tasks.auto_dispatch(task_notebook, config)
-    try:
-        assert len(second) == 1 and second[0]['id'] != first[0]['id'] and _waiting(task_notebook) == {}
-    finally:
-        tasks.stop(task_notebook, second[0]['id'])
+        for row in started:
+            tasks.stop(task_notebook, row['id'])
 
 
-def test_tasks_per_night_counts_rem_starts_from_noon_to_noon(task_notebook, fake_codex, monkeypatch):
-    from connectonion.rem import tasks
-    assert default_config()['limits']['tasks_per_night'] == 3
+def test_an_approved_task_starts_beside_a_running_one(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
     _second_task(task_notebook)
-    set_config(task_notebook, ['limits.tasks_per_night', '1'])
-    config = read_config(task_notebook)
-    _clock(monkeypatch, '2026-09-07T23:00:00+00:00')
-    _finished(task_notebook, tasks.auto_dispatch(task_notebook, config)[0]['id'])
-    _clock(monkeypatch, '2026-09-08T01:00:00+00:00')  # after midnight, still the same night
-    assert tasks.auto_dispatch(task_notebook, config) == []
-    [waiting] = _waiting(task_notebook).values()
-    assert waiting['wait'] == 'budget' and 'tasks_per_night' in waiting['reason']
-    _clock(monkeypatch, '2026-09-08T22:00:00+00:00')
-    assert len(tasks.auto_dispatch(task_notebook, config)) == 1
+    set_config(task_notebook, ['tasks.auto', 'false'])
+    first = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    tasks.start(task_notebook, first['id'])
+    try:
+        offered = next(item for item in approvals.outcomes(task_notebook) if item['kind'] == 'task')
+        approvals.approve(task_notebook, [offered['id']])
+        assert _running(task_notebook, first['id']) == 'running'
+        released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
+        assert [item['status'] for item in released] == ['dispatched']
+    finally:
+        tasks.stop(task_notebook, first['id'])
+
+
+def _running(root, task_id):
+    import time
+    from connectonion.rem import tasks
+    deadline = time.monotonic() + 15
+    while tasks.status(root, task_id)['result'] in ('queued', 'starting') and time.monotonic() < deadline:
+        time.sleep(.05)
+    return tasks.status(root, task_id)['result']
 
 
 def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatch):
@@ -280,25 +285,6 @@ def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatc
     set_config(task_notebook, ['tasks.auto', 'false'])
     tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     assert _waiting(task_notebook) == {}  # with auto off nothing will start it, so it is not "queued"
-
-
-def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_notebook, fake_codex, monkeypatch):
-    from connectonion.rem import approvals, tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
-    _second_task(task_notebook)
-    first = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
-    try:
-        offered = approvals.outcomes(task_notebook)[0]
-        approvals.approve(task_notebook, [offered['id']])
-        calls = []
-        assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == []
-        assert not calls and approvals.pending(task_notebook)[0]['status'] == 'queued'
-        [waiting] = _waiting(task_notebook).values()
-        assert waiting['wait'] == 'later' and waiting['by'] == 'owner'
-    finally:
-        tasks.stop(task_notebook, first['id'])
-    released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
-    assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
 
 
 def test_an_approved_task_starts_its_codex_run(task_notebook, fake_codex):

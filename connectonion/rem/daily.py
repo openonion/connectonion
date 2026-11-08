@@ -320,13 +320,12 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
     from .languages import owner_languages
     from .runner import ready
-    from .translate import attempts_today, backlog, cached, translate
+    from .translate import backlog, cached, translate
     from .translate import languages
     language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
     if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        remaining = config['limits']['translations_per_day'] - attempts_today(root)
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
@@ -334,7 +333,7 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining or attempts_today(root) >= config['limits']['translations_per_day'] or quota.floor_block(quota.read(config), config['limits']):
+            if quota.floor_block(quota.meter(root, config), config['limits']):
                 continue
             attempts += 1
             write_json(path, record)
@@ -610,7 +609,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if stop:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': stop, 'quota': meter, 'left': len(rows)}
-    chosen = rows[:max(0, min(config['limits']['jobs_per_round'], remaining))]
+    chosen = rows[:max(0, remaining)]
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}

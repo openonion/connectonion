@@ -66,8 +66,7 @@ def default_config() -> dict:
             # notebook (0.7-1.4M input tokens a call). A page per call costs about
             # 120k, so 6 left one batch a night against a backlog of hundreds of
             # sessions; 30 is less total spend than the old three batches.
-            # Native page rounds and their final audits share 200 calls/day;
-            # jobs_per_round bounds the pages offered before session summaries.
+            # Native page rounds and their final audits share 200 calls/day.
             # timeout_seconds is one model turn. Codex reads a large material file
             # piece by piece; at 600 two real turns timed out on 2026-09-23/24
             # (a 300k digest chunk, then a project's material).
@@ -75,10 +74,7 @@ def default_config() -> dict:
             # chunk is read through the same 600-second turn, and at 300k a Codex
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
-            "limits": {"runner_calls_per_day": 200, "jobs_per_round": 8,
-                       "translations_per_day": 100, "drafts_per_night": 30,
-                       # Owed-work tasks REM starts itself per night (noon to noon), one at a time.
-                       "tasks_per_night": 3, "items_per_batch": 20,
+            "limits": {"runner_calls_per_day": 200, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -166,16 +162,19 @@ def validate(config: dict) -> dict:
 # these is read as unset, unless the owner chose it with `config set`.
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.timeout_seconds": {600},
-              "limits.translations_per_day": {10},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},
               "limits.quota_floor_percent": {70},
-              "limits.drafts_per_night": {10},
               # init wrote the rc61 default into every config.yaml; it was never his choice.
               "tasks.auto": {False},
               "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
+# Count caps the owner retired on 2026-11-09 (D-104, "启动的时候，数量可以不用受限制"):
+# none of them stops night work any more. A saved value is dropped when read.
+RETIRED = ("tasks_per_night", "drafts_per_night", "jobs_per_round", "translations_per_day")
+RETIRED_NOTE = ("was retired (D-104): count caps no longer stop the night; only the Codex week floor "
+                "(limits.quota_floor_percent) does")
 
 
 def _drop_superseded(root: Path, config: dict) -> None:
@@ -203,7 +202,8 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # A limit added after this file was written takes its default; the file is
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
-        config["limits"] = {**default_config()["limits"], **config["limits"]}
+        saved = {key: value for key, value in config["limits"].items() if key not in RETIRED}
+        config["limits"] = {**default_config()["limits"], **saved}
     config.setdefault("notify", {"channel": "none", "target": ""})
     config.setdefault("tasks", {"auto": True})
     config.setdefault("language", "en")
@@ -290,6 +290,8 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
             raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+        if parts[0] == "limits" and parts[-1] in RETIRED:
+            raise RemError(f"{key} {RETIRED_NOTE}")
         if parts[-1] not in target:
             raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":

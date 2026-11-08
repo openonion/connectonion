@@ -9,7 +9,6 @@ again on the next request instead of being shown.
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
@@ -372,25 +371,18 @@ def languages(root):
 
 
 def coverage(root, *, next_run=None):
-    """Current coverage and the next queue, sharing one remaining daily budget."""
-    from .config import read_config
+    """Current coverage and what is queued: every missing page of a requested language (D-104)."""
     records, targets = Notebook(root).list(), languages(root)
     directory = state_path(root, "translations")
     saved = sorted(path.name for path in directory.iterdir()
                    if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
-    from .service import notebook_today, notebook_zone
-    config = read_config(root)
-    resets = next_run and datetime.fromisoformat(next_run).astimezone(notebook_zone(config)).date() > notebook_today(root)
-    remaining = max(0, config["limits"]["translations_per_day"] - (0 if resets else attempts_today(root)))
     report = {}
     for language in dict.fromkeys([*targets, *saved, "zh"]):
         if language.split("-")[0].lower() == "en":
             continue
         done = sum(cached(root, record, language) is not None for record in records)
-        queued = min(len(records) - done, remaining) if language in targets else 0
         report[language] = {"total": len(records), "translated": done,
-                            "requested": language in targets, "queued": queued}
-        remaining -= queued
+                            "requested": language in targets, "queued": len(records) - done if language in targets else 0}
     return report
 
 

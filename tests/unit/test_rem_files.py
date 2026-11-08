@@ -65,10 +65,9 @@ def test_an_old_default_schedule_and_draft_cap_take_the_new_night_defaults(tmp_p
     prepare(tmp_path)
     saved = yaml.safe_load((tmp_path / "config.yaml").read_text())
     saved["schedule"]["times"] = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
-    saved["limits"]["drafts_per_night"] = 10
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(saved))
     config = read_config(tmp_path)
-    assert config["schedule"]["times"] == NIGHT_TIMES and config["limits"]["drafts_per_night"] == 30
+    assert config["schedule"]["times"] == NIGHT_TIMES
     set_config(tmp_path, ["schedule.times", "03:00,04:00,06:00,17:00,18:00,19:00"])
     assert read_config(tmp_path)["schedule"]["times"] == ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"], \
         "times the owner set himself are kept"
