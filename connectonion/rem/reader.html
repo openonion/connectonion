@@ -4465,13 +4465,13 @@ function renderRail(active) {
     ["changes", "Memory changes", "#view=changes"]])
     nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
   nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   for (const c of memoryCategories()) {
     const n = !detailReady && c === "sessions" ? null : inCategory(c).length;
     if (n === 0 && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
   }
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
