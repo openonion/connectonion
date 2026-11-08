@@ -170,15 +170,18 @@ def _constants_under_the_real_home():
     count, found = _frozen_home_constants
     if count == len(sys.modules):
         return found
-    # Only ~/.co: CI checks the repository out under the runner's home, and
-    # rebasing the package's own paths (reader.html, useful_skills) broke 282 tests.
-    real_co = _REAL_CO
+    # Everything under the home except the checkout itself: CI checks the
+    # repository out under the runner's home, and rebasing the package's own
+    # paths (reader.html, useful_skills) broke 282 tests; a constant holding the
+    # home itself (fanout.HOME) must still be rebased.
+    real_home, checkout = _REAL_CO.parent, Path(__file__).resolve().parents[1]
     found = []
     for module_name, module in list(sys.modules.items()):
         if not module_name.startswith("connectonion") or module is None:
             continue
         for name, value in list(vars(module).items()):
-            if isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_co):
+            if (isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_home)
+                    and not value.is_relative_to(checkout)):
                 found.append((module, name, value))
     _frozen_home_constants = (len(sys.modules), found)
     return found
