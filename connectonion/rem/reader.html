@@ -1891,6 +1891,8 @@
   .ov-teams:has(.ov-child-units) { grid-template-columns: minmax(0, 1fr); }
 </style>
 <style id="today-style">
+  /* A link you tap is at least 44px tall (WCAG 2.5.5), however quiet it looks. */
+  .brief-more { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); text-underline-offset: 3px; }
   /* Today (Bauhaus lightness): 52 · 17 · 14 · 12, weights 400/700, one sans, red only for late,
      green only for the first card's action, rows on hairlines instead of boxes. */
   :root { --today-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif; --late: #c4362c; }
