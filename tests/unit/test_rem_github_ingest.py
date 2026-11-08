@@ -260,3 +260,13 @@ def test_successful_but_truncated_checks_cannot_establish_green_age(tmp_path, gh
     pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
     joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
     assert joins['green_unmerged_age']['prs'] == []
+
+
+def test_non_git_project_folder_does_not_discard_remote_evidence(tmp_path, gh):
+    folder = tmp_path / 'lanterns'
+    folder.mkdir()
+    cache = pages.sync_repository(tmp_path, REPO, repo_path=folder, now=NOW)
+    assert cache.get('error') is None
+    assert cache['issues'][0]['number'] == 7
+    assert cache['churn'] is None
+    assert cache['local_status'] == 'repository_mismatch'

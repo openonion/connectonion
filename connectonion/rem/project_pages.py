@@ -999,6 +999,8 @@ def _code_command(args, evidence, resource):
 
 def _code_matches(repo_path, repo, evidence):
     folder = str(Path(repo_path).resolve())
+    if not (Path(folder) / '.git').exists():
+        return False
     root = _code_command(['git', '-C', folder, 'rev-parse', '--show-toplevel'], evidence, 'local_identity').strip()
     if str(Path(root).resolve()) != folder:
         return False

@@ -354,3 +354,6 @@ unchanged. A rendered page has not been reviewed in this data-only worktree.
 PRs also expose `checksTruncated` from the context connection's pageInfo. A
 successful overall rollup proves status, but a truncated context sample cannot
 establish the latest green timestamp: such PRs are excluded from green-age joins.
+
+An existing ordinary directory in Paths is treated as a repository mismatch;
+its lack of Git metadata does not discard successfully acquired remote evidence.
