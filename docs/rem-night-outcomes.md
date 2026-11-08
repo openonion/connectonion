@@ -73,8 +73,9 @@ verdicts; resolving or returning a thread follows existing thread-state rules.
 `co rem status` and its JSON response use the same projection:
 
 ```text
-tonight: 17 items · 12 drafts · 2 already handled · 2 tasks · 1 could not be prepared
-  Fern Vale: You owe Fern the pilot review. [1] — Gmail read failed: TimeoutError
+Tonight          17 items · 12 drafts · 2 already handled · 2 tasks
+                 1 could not be prepared
+                 Fern Vale: You owe Fern the pilot review. [1] — Gmail read failed: TimeoutError
 ```
 
 A nonzero `no_reply` count is appended as `N no reply needed`. JSON

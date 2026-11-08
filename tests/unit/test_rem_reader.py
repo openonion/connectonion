@@ -2819,7 +2819,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
     ''')
     queued, missing, task = result
     assert queued['action']['children'][0]['text'] == ('现在起草' if language == 'zh' else 'Draft now')
-    assert ('今晚' if language == 'zh' else 'tonight') in queued['note']['text']
+    assert queued['note'] is None  # never "queued for tonight" beside a live Draft now
     assert 'Outlook' in missing['note']['text']
     assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing['note']['text']
     assert ('尚未归档' if language == 'zh' else 'not archived') in missing['note']['text']
@@ -3159,3 +3159,33 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
     person = {'path': 'people/ipek.md', 'title': 'İpek Vale', 'text': '# İpek Vale'}
     session = {'path': 'sessions/demo.md', 'text': '# Demo\n\n## What you typed\nAsk Ipek Vale for feedback.\n'}
     assert mentions([person], [session]) == {'people/ipek.md': ['sessions/demo.md']}
+
+
+def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
+    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now.
+    Person page: an open thread is never answered by a mailto "Re:", which starts a new thread."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['draftNote', 'personPrimary', 'mailtoLink', 'draftNowButton'])
+    result = _run_reader_js(functions + r'''
+      const REM = {live: true, status: {worker: {enabled: true}},
+        today_queue: [{key: 'avery', keys: ['avery'], reply: {state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'}}]};
+      const doneKey = () => 'avery', remCommand = args => 'co rem ' + args, firstName = r => 'Avery';
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children), insertAdjacentHTML() {}});
+      const href = r => '#r=' + r.path, setDone = () => {}, fmtDate = day => day;
+      const PEN_ICON = '', CHECK_ICON = '';
+      const threadDraft = () => null;
+      let contact = {address: 'avery@example.com', subject: 'Pilot', name: 'Avery'};
+      const threadContact = () => contact;
+      const entry = {r: {path: 'people/avery.md'}, t: {text: 'Reply to Avery.'}};
+      const liveNote = draftNote(null, entry), livePrimary = personPrimary(entry.r, entry);
+      REM.live = false;
+      const staticNote = draftNote(null, entry), staticPrimary = personPrimary(entry.r, entry);
+      contact = {address: 'avery@example.com', subject: '', name: 'Avery'};
+      console.log(JSON.stringify({liveNote, livePrimary, staticNote, staticPrimary, fresh: personPrimary(entry.r, entry)}));
+    ''')
+    assert result['liveNote'] is None
+    assert result['livePrimary']['class'] == 'draft-now'
+    assert 'co rem open' in json.dumps(result['staticNote'])
+    assert 'mailto:' not in json.dumps(result['staticPrimary'])
+    assert result['fresh']['href'] == 'mailto:avery@example.com'

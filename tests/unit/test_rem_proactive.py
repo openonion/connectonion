@@ -550,6 +550,23 @@ def test_rem_prepare_now_drafts_one_waiting_thread_on_the_owners_click(notebook,
         drafts.prepare_now(notebook, 'gmail', 'mail:gmail:no-such-thread')
 
 
+def test_rem_prepare_now_drafts_while_a_maintenance_round_holds_the_notebook(notebook, monkeypatch):
+    """The owner's click drafts at once; it never answers "busy, retry later" while REM runs."""
+    from concurrent.futures import ThreadPoolExecutor
+    from connectonion.rem import drafts, runner
+    from connectonion.rem.files import maintenance_lock
+    mail_thread(notebook, 'gmail')
+    row = drafts.queue(notebook)[0]
+
+    def fake_turn(workspace, prompt, config, stage, session=''):
+        (workspace / 'candidate.json').write_text(json.dumps({'body': 'Hi Mia, Tuesday works.', 'gist': '周二可以', 'why': '她在等回复', 'sources': ['gmail:one']}))
+        return {'outcome': 'natural'}
+    monkeypatch.setattr(runner, 'run_task', fake_turn)
+    with maintenance_lock(notebook), ThreadPoolExecutor(max_workers=1) as pool:
+        saved = pool.submit(drafts.prepare_now, notebook, row['provider'], row['thread']).result(timeout=10)
+    assert saved['status'] == 'prepared' and saved['body'] == 'Hi Mia, Tuesday works.'
+
+
 def test_rem_send_refuses_a_second_send_of_the_same_draft(notebook, monkeypatch):
     from connectonion.rem import drafts
     mail_thread(notebook, 'outlook')
@@ -1060,7 +1077,8 @@ def test_night_cap_names_every_leftover_and_status_counts(notebook, monkeypatch)
     assert all('cap' in row['reason'] for row in outcomes[2:])
     output = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'status'])
     assert output.exit_code == 0, output.output
-    assert 'tonight: 4 items · 2 drafts · 0 already handled · 0 tasks · 2 could not be prepared' in output.output
+    assert 'Tonight          4 items · 2 drafts · 0 already handled · 0 tasks' in output.output
+    assert '2 could not be prepared' in output.output
     assert all(row['text'] in output.output for row in outcomes[2:])
 
 

@@ -61,14 +61,14 @@ def _tonight(value):
     night = value.get('tonight')
     if night is None:
         return []
-    line = (f"tonight: {night['items']} items · {night['drafts']} drafts · "
-            f"{night['already_handled']} already handled · {night['tasks']} tasks · "
-            f"{night['could_not_prepare']} could not be prepared")
+    counts = f"{night['items']} items · {night['drafts']} drafts · {night['already_handled']} already handled · {night['tasks']} tasks"
+    rest = f"{night['could_not_prepare']} could not be prepared"
     if night['no_reply']:
-        line += f" · {night['no_reply']} no reply needed"
+        rest += f" · {night['no_reply']} no reply needed"
     mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto=false)'
-    return [highlight(line), highlight('tasks: ' + mode), *(highlight(f"  {row['title']}: {row['text']} — {row['reason']}")
-                              for row in night['unprepared']), '']
+    return [rem_look.section('Tonight', counts), rem_look.follow(highlight(rest), glyph=''),
+            rem_look.follow(highlight('tasks ' + mode), glyph=''),
+            *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
 
 
 def _waiting(root, found: dict) -> list[str]:

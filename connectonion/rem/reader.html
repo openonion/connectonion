@@ -2321,6 +2321,7 @@ const UI = {
     "Translation pending — queued for tonight": "翻译待处理，已排入今晚队列",
     "Prepared reply draft": "已准备回复草稿",
     "Reply draft queued for tonight": "回复草稿已排入今晚队列",
+    "To draft it now: ": "要现在起草：",
     "Open in {provider} drafts": "在 {provider} 草稿箱打开",
     "Continue in {provider} drafts": "前往 {provider} 草稿箱",
     "Discard": "丢弃",
@@ -4126,9 +4127,10 @@ function kindBadge(entry) {
   if (!kind) return el("span", {class: "kind-badge", text: t("Task")});
   return el("span", { class: "kind-badge" + (kind.mail ? " mail" : ""), text: kind.mail ? t("{channel} reply", { channel: kind.channel }) : kind.channel });
 }
+// A new message only.  A mailto with "Re: <subject>" is not a reply: the mail
+// app sends it without In-Reply-To, so it lands outside the thread.
 function mailtoLink(contact, cls, label) {
-  const subject = contact.subject ? (/^re:/i.test(contact.subject) ? contact.subject : "Re: " + contact.subject) : "";
-  return el("a", { class: cls, href: "mailto:" + contact.address + (subject ? "?subject=" + encodeURIComponent(subject) : ""), text: label });
+  return el("a", { class: cls, href: "mailto:" + contact.address, text: label });
 }
 function draftNowButton(entry, kind, contact) {
   const button = el("button", { type: "button", class: "btn-act", text: t("Draft now") });
@@ -4251,7 +4253,12 @@ function draftNote(draft, entry) {
         ? "The original is not archived from {channel}; its last read failed."
         : "The original is not archived from {channel}.", {channel})
       : reply.state === "waiting" ? t("Waiting for their reply; open the thread to follow up.")
+      : reply.state === "queued" && REM.live ? null
       : t(REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off");
+    if (!text) return null;
+    if (reply.state === "queued" && !REM.live) {
+      return el("p", {class: "quiet-line draft-reason"}, [text + " · " + t("To draft it now: "), el("code", {text: remCommand("open")})]);
+    }
     return el("p", {class: "quiet-line draft-reason", text});
   }
   if (!draft) return null;
@@ -5954,8 +5961,11 @@ function personPrimary(r, entry) {
     done.onclick = () => setDone(entry, true);
     return done;
   }
+  const reply = draft?.status !== "prepared" && REM.live
+    && (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
+  if (reply?.state === "queued") return draftNowButton(entry, {kind: reply.provider, thread: reply.thread}, null);
   const button = draft?.status === "prepared" ? el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("Review REM's draft") })
-    : contact ? mailtoLink(contact, "r4-primary", t("Write to {name}", { name: firstName(r) }))
+    : contact && !contact.subject ? mailtoLink(contact, "r4-primary", t("Write to {name}", { name: firstName(r) }))
     : el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("See what you owe") });
   button.insertAdjacentHTML("afterbegin", PEN_ICON);
   if (draft?.status === "prepared") button.onclick = event => { event.preventDefault(); openPersonDraft(draft, button); };

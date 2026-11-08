@@ -275,9 +275,9 @@ def promote(root, draft):
     write_json(path(root, draft['id']), {**draft, 'status': prepared_status(draft), 'prepared_at': now().isoformat()})
 
 
-def _current(root, draft_id):
+def _current(root, draft_id, refresh_index=True):
     saved = read_json(path(root, draft_id), {})
-    row = next((row for row in candidates(root) if row['id'] == draft_id), None)
+    row = next((row for row in candidates(root, refresh_index=refresh_index) if row['id'] == draft_id), None)
     if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved
@@ -327,26 +327,26 @@ def _write_now(root, row, channel):
     return read_json(path(root, row['id']), {})
 
 
+# The owner's clicks below run while a scheduled REM round may hold the
+# notebook lock for an hour.  They take no lock: they read the existing index
+# (never rebuild it) and write only their own draft file, atomically.
 def redraft(root, draft_id, channel):
     """Write the same reply for another channel: a chat message is not a mail body."""
-    from .files import maintenance_lock
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
-    with maintenance_lock(root):
-        _not_held(_current(root, draft_id))
-        row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
-        return _write_now(root, row, channel)
+    _not_held(_current(root, draft_id, refresh_index=False))
+    row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+    return _write_now(root, row, channel)
 
 
 def prepare_now(root, provider, thread):
-    """Draft one waiting reply on the owner's click instead of waiting for the night."""
-    from .files import maintenance_lock
-    with maintenance_lock(root):
-        row = next((row for row in candidates(root) if row['provider'] == provider and row['thread'] == thread), None)
-        if row is None:
-            raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
-        _not_held(read_json(path(root, row['id']), {}))
-        return _write_now(root, row, 'mail')
+    """Draft one waiting reply on the owner's click, now, instead of waiting for the night."""
+    row = next((row for row in candidates(root, refresh_index=False)
+                if row['provider'] == provider and row['thread'] == thread), None)
+    if row is None:
+        raise RemError('This thread cannot be drafted yet: its latest message is not archived, or the last word was yours')
+    _not_held(read_json(path(root, row['id']), {}))
+    return _write_now(root, row, 'mail')
 
 
 def _phone(person):

@@ -707,7 +707,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     return {"state": state, "tonight": night_summary(root),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
-            "models": f"Work: {config['model']} · standalone summaries: {config['models']['summary']}",
+            "models": f"work {config['model']} · summaries {config['models']['summary']}",
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "schedule_runner": worker_state(root).get("runner") or (
