@@ -33,6 +33,7 @@ def prepare(root, config, *, scheduled):
     tidy(root, lock_held=True)
     sources = service.subscriptions(root)
     collect_projects(root, sources, lock_held=True)
+    project_pages.sync_project_repositories(root, now=moment)
     refresh(root)
     from .topic_map import backfill_topics
     # co rem next never calls a model: the native round reuses this week's proposal only.
