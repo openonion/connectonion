@@ -2451,6 +2451,8 @@ const UI = {
     "Refresh task progress": "刷新任务进度",
     "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
+    "Queued: later tonight": "排队：今晚稍后",
+    "Queued: budget used up": "排队：预算用完",
     "Open the deliverable": "打开交付物",
     "Stop": "停止",
     "Could not do that. Try again.": "没能完成，请重试。",
@@ -5533,7 +5535,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5561,7 +5563,7 @@ function taskResult(entry) {
 }
 // Who started a task, its deliverable, and the owner's Stop and Undo (Undo removes the work).
 function taskControls(task) {
-  if (!task.result || task.result === "ready") return null;
+  if (!task.result || ["ready", "waiting"].includes(task.result)) return null;
   const live = REM.live && location.protocol !== "file:";
   const act = (action, label) => {
     const button = el("button", {type: "button", class: "btn-quiet", text: t(label)});

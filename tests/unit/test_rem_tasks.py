@@ -203,8 +203,73 @@ def test_night_dispatches_by_default_and_records_rem_as_the_one_who_started(task
     task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
     assert task['by'] == 'rem' and task['prepared_reply'].startswith('REM 已经做完：')
     # The next round finds the receipt: no second session, no second record.
-    assert tasks.auto_dispatch(task_notebook, config)[0]['finished_at'] == saved['finished_at']
+    assert tasks.auto_dispatch(task_notebook, config) == []
+    assert tasks.status(task_notebook, saved['id'])['finished_at'] == saved['finished_at']
     assert len(_approvals(task_notebook)) == 1 and approvals.outcomes(task_notebook) == []
+
+
+def _second_task(root):
+    book = Notebook(root)
+    book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
+        '- You owe Mara a pilot review.\n', '- You owe Mara a pilot review.\n- You owe Fern the onboarding notes.\n'))
+    night.prepare(root, read_config(root))
+    assert [row['kind'] for row in night.listing(root)] == ['task', 'task']
+
+
+def _waiting(root):
+    return {row['text']: row['task'] for row in night.listing(root) if row['task'].get('result') == 'waiting'}
+
+
+def _clock(monkeypatch, text):
+    from datetime import datetime
+    from connectonion.rem import service
+    monkeypatch.setattr(service, 'now', lambda: datetime.fromisoformat(text))
+
+
+def test_the_night_runs_one_task_at_a_time_and_queues_the_next_for_later(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import tasks
+    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    _second_task(task_notebook)
+    config = read_config(task_notebook)
+    first = tasks.auto_dispatch(task_notebook, config)
+    try:
+        assert len(first) == 1
+        [waiting] = _waiting(task_notebook).values()
+        assert waiting['wait'] == 'later' and 'running' in waiting['reason']
+        assert tasks.auto_dispatch(task_notebook, config) == []  # still running: nothing new
+    finally:
+        tasks.stop(task_notebook, first[0]['id'])
+    second = tasks.auto_dispatch(task_notebook, config)
+    try:
+        assert len(second) == 1 and second[0]['id'] != first[0]['id'] and _waiting(task_notebook) == {}
+    finally:
+        tasks.stop(task_notebook, second[0]['id'])
+
+
+def test_tasks_per_night_counts_rem_starts_from_noon_to_noon(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import tasks
+    assert default_config()['limits']['tasks_per_night'] == 3
+    _second_task(task_notebook)
+    set_config(task_notebook, ['limits.tasks_per_night', '1'])
+    config = read_config(task_notebook)
+    _clock(monkeypatch, '2026-09-07T23:00:00+00:00')
+    _finished(task_notebook, tasks.auto_dispatch(task_notebook, config)[0]['id'])
+    _clock(monkeypatch, '2026-09-08T01:00:00+00:00')  # after midnight, still the same night
+    assert tasks.auto_dispatch(task_notebook, config) == []
+    [waiting] = _waiting(task_notebook).values()
+    assert waiting['wait'] == 'budget' and 'tasks_per_night' in waiting['reason']
+    _clock(monkeypatch, '2026-09-08T22:00:00+00:00')
+    assert len(tasks.auto_dispatch(task_notebook, config)) == 1
+
+
+def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatch):
+    from connectonion.rem import quota, tasks
+    monkeypatch.setattr(tasks, 'start', lambda *a: pytest.fail('past the floor nothing starts'))
+    monkeypatch.setattr(quota, 'read', lambda config: {'used_percent': 93, 'window_minutes': 10080,
+                                                       'resets_at': 0, 'plan': 'pro'})
+    assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
+    [waiting] = _waiting(task_notebook).values()
+    assert waiting['wait'] == 'budget' and '93%' in waiting['reason']
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):

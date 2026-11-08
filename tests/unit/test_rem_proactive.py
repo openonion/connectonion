@@ -14,11 +14,8 @@ from connectonion.rem.files import Notebook, read_json, state_path, write_json
 
 @pytest.fixture
 def notebook(tmp_path, monkeypatch, rem_clock):
-    from connectonion.rem import tasks
     prepare(tmp_path)
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
-    # tasks.auto is on by default: the night reserves owed work, but no Codex worker starts here.
-    monkeypatch.setattr(tasks, 'start', lambda root, task_id: tasks.status(root, task_id))
     return tmp_path
 
 

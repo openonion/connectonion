@@ -45,6 +45,7 @@ def listing(root, *, rows=None):
     rows = _owed(today.queue(root) if rows is None else rows)
     saved = read_json(state_path(root, 'night.json'), {}).get('items', {})
     candidates = drafts.candidates(root, refresh_index=False)
+    waiting = read_json(state_path(root, 'tasks/waiting.json'), {})
     result = []
     for row in rows:
         entry = saved.get(row['key'], {})
@@ -56,7 +57,8 @@ def listing(root, *, rows=None):
         if outcome and outcome['kind'] == 'task':
             from .tasks import identity, receipt_for
             receipt = receipt_for(root, row['key'])
-            outcome = {**outcome, 'task': {**outcome['task'], 'id': identity(row['key']), **(receipt or {})}}
+            queued = {'result': 'waiting', **waiting[row['key']]} if row['key'] in waiting else {}
+            outcome = {**outcome, 'task': {**outcome['task'], 'id': identity(row['key']), **(receipt or queued)}}
         result.append(outcome or _base(row, 'could_not_prepare', reason='Not prepared yet.'))
     return result
 

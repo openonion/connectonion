@@ -1158,7 +1158,8 @@ repository on branch rem/task-ID when there is one, otherwise do-ID/work.
 The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-The night starts tasks after drafts (tasks.auto, default true); the reader's
+The night starts tasks after drafts (tasks.auto, default true), one at a time,
+at most limits.tasks_per_night (3), none past the week's quota floor; the reader's
 Undo removes a task's work and the night never starts it again.
 Do not send anything to anyone; write the result and stop.
 

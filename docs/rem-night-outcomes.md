@@ -18,8 +18,12 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-By default (`tasks.auto: true`) the night starts each task after drafting and
-records it in `.state/approvals.json` with `by: rem`, so Today says "REM started
+By default (`tasks.auto: true`) the night starts owed tasks after drafting, one
+at a time and at most `limits.tasks_per_night` (3) per night, counted noon to
+noon, and none once the Codex week reaches `limits.quota_floor_percent`. A task
+that has to wait is written to `.state/tasks/waiting.json` and its Today card
+says "Queued: later tonight" or "Queued: budget used up" with the reason. Each
+start is recorded in `.state/approvals.json` with `by: rem`, so Today says "REM started
 this" and offers Stop and Undo. Undo stops the task, removes its folder, worktree
 and branch, and records `cancelled`: the night never starts it again, while
 morning approval still can. With `tasks.auto: false` morning approval reserves a

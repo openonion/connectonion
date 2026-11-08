@@ -54,6 +54,16 @@ def _topic_proposal_is_offline(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _task_workers_never_start(request, monkeypatch):
+    """tasks.auto is on by default, so any night round with owed work would start a
+    detached Codex worker. Only test_rem_tasks, which brings a fake Codex, starts one."""
+    if request.module.__name__.endswith("test_rem_tasks"):
+        return
+    from connectonion.rem import tasks
+    monkeypatch.setattr(tasks, "start", lambda root, task_id: tasks.status(root, task_id))
+
+
+@pytest.fixture(autouse=True)
 def _codex_onboarding_is_offline(request, monkeypatch):
     """Unit tests never install a CLI or open the operator's OAuth browser.
 

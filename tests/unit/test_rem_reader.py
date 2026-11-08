@@ -3234,3 +3234,23 @@ def test_task_controls_say_rem_started_it_and_offer_stop_or_undo():
     assert texts(result['failed']) == ['Undo']
     assert result['ready'] is None
     assert texts(result['snapshot']) == ['REM started this']
+
+
+def test_a_queued_task_card_says_why_it_waits():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
+      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
+      const task = (wait, reason) => ({id: 'a', result: 'waiting', wait, reason});
+      const REM = {live: true, today_queue: [
+        {key: 'later', outcome: {kind: 'task', task: task('later', 'Another task is running; this one starts on a later tick tonight.')}},
+        {key: 'budget', outcome: {kind: 'task', task: task('budget', '3 tasks already started tonight (limits.tasks_per_night).')}}]};
+      console.log(JSON.stringify({later: taskResult({key: 'later'}), budget: taskResult({key: 'budget'})}));
+    ''')
+    for name, label in (('later', 'Queued: later tonight'), ('budget', 'Queued: budget used up')):
+        card = result[name]
+        assert card['children'][0]['text'] == label
+        assert card['children'][1]['text'].startswith(('Another task', '3 tasks'))
+        assert not any(child.get('class') == 'task-controls' for child in card['children'])

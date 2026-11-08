@@ -11,9 +11,10 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager, suppress
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import codex_exec
+from . import codex_exec, service
 from .config import read_config
 from .files import RemError, read_json, state_path, write_json
 from .service import now
@@ -293,20 +294,51 @@ def stop(root, task_id):
 
 
 def auto_dispatch(root, config):
-    """After the night's drafts, start each owed task; skip what the owner undid."""
+    """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
+    waiting_path = state_path(Path(root), 'tasks/waiting.json')
     if not config['tasks']['auto']:
+        write_json(waiting_path, {})
         return []
     from .approvals import started, withdrawn
     from .night import listing
-    launched = []
-    for row in listing(root):
-        if row['kind'] != 'task' or withdrawn(root, row['key']):
+    rows = [row for row in listing(root) if row['kind'] == 'task' and not withdrawn(root, row['key'])
+            and not receipt_for(root, row['key'])]
+    launched, waiting = [], {}
+    for row in rows:
+        if hold := _hold(root, config):
+            waiting[row['key']] = hold
             continue
         receipt = reserve(root, row, by='rem')
-        if receipt['result'] == 'queued' and receipt.get('by') == 'rem':
-            started(root, row, receipt)
+        started(root, row, receipt)
         launched.append(start(root, receipt['id']))
+    write_json(waiting_path, waiting)
     return launched
+
+
+def _hold(root, config):
+    """Why REM starts no task now, or None: one at a time, a nightly cap, the week's floor."""
+    from . import quota
+    if any(_reconcile(path.parent).get('result') in ACTIVE for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json')):
+        return {'wait': 'later', 'reason': 'Another task is running; this one starts on a later tick tonight.'}
+    cap = config['limits']['tasks_per_night']
+    if _started_tonight(root, config) >= cap:
+        return {'wait': 'budget', 'reason': f'{cap} tasks already started tonight (limits.tasks_per_night).'}
+    if floor := quota.floor_block(quota.read(config), config['limits']):
+        return {'wait': 'budget', 'reason': floor[0].upper() + floor[1:] + '.'}
+    return None
+
+
+def _night(moment, zone):
+    """The night a moment belongs to: noon to noon, so 22:00-06:00 is one night."""
+    return (moment.astimezone(zone) - timedelta(hours=12)).date()
+
+
+def _started_tonight(root, config):
+    zone = service.notebook_zone(config)
+    tonight = _night(service.now(), zone)
+    records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
+    return sum(1 for record in records if record.get('by') == 'rem' and record.get('kind') == 'task'
+               and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
 
 
 def undo(root, task_id):
