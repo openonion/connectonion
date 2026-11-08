@@ -1666,7 +1666,7 @@
     --r4-ink: #121a15; --r4-ink2: #4b554f; --r4-ink3: #69716c; --r4-ink4: #b4bab6;
     --r4-line: rgba(18,26,21,.08); --r4-line2: rgba(18,26,21,.14);
     --r4-fresh: #22d27a; --r4-fresh-h: #1bbf6c; --r4-on-fresh: #05301b; --r4-green: #0b7a42; --r4-tint: #e3faee;
-    --r4-dawn: #b5521f; --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late: #c4362c; --r4-late-ink: #b3261e;
+    --r4-dawn: #b5521f; --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late-bg: #f9e7e5; --r4-late: #c4362c; --r4-late-ink: #b3261e;
     --r4-shadow: 0 0 0 1px var(--r4-line), 0 1px 2px rgba(16,24,20,.04);
     --r4-shadow-up: 0 0 0 1px var(--r4-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
     font: 400 14px/20px var(--r4-font); color: var(--r4-ink); font-feature-settings: "tnum" 1; max-width: 1000px; margin: 0 auto;
@@ -1675,8 +1675,8 @@
     --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
     --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
     --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
-    --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-    --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
+    --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: #1b3426;
+    --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: #2f2b1b; --r4-late-bg: #33201e; --r4-late: #f0675c; --r4-late-ink: #f0675c;
     --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
   }
   @media (prefers-color-scheme: dark) {
@@ -1684,8 +1684,8 @@
       --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
       --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
       --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
-      --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-      --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
+      --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: #1b3426;
+      --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: #2f2b1b; --r4-late-bg: #33201e; --r4-late: #f0675c; --r4-late-ink: #f0675c;
       --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
     }
   }
@@ -1702,7 +1702,7 @@
   .r4 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   .r4 .chip { white-space: nowrap; flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font: 600 11.5px/20px var(--r4-font); letter-spacing: .01em; }
   .r4 .chip.lamp { color: var(--r4-lamp-ink); background: var(--r4-lamp-bg); }
-  .r4 .chip.late { color: var(--r4-late-ink); background: color-mix(in srgb, var(--r4-late) 10%, transparent); }
+  .r4 .chip.late { color: var(--r4-late-ink); background: var(--r4-late-bg); }
   .r4 .chip.ok { color: var(--r4-green); background: var(--r4-tint); }
   .r4 .chip.mute { color: var(--r4-ink2); background: var(--r4-sunk); }
   .r4 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
@@ -5626,9 +5626,10 @@ function personStats(r) {
 }
 function personOrg(r) {
   const company = String(facts(r).company || "");
-  const link = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
-  const org = link && byPath(link[1].replace(/^\.\.\//, ""));
-  const full = org ? org.title : plainLine(company).replace(/\s*\(from email domain\)$/i, "");
+  // The page's own words name the organisation (they follow the reading language); the link finds its page.
+  const link = /\[([^\]]+)\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
+  const org = link && byPath(link[2].replace(/^\.\.\//, ""));
+  const full = link ? plainLine(link[1]) : plainLine(company).replace(/\s*\(from email domain\)$/i, "");
   const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
   return knownValue(full) ? { org, name: acronym ? acronym[2] : full, full: acronym ? acronym[1] : "" } : null;
 }
