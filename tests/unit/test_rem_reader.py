@@ -3254,3 +3254,23 @@ def test_a_queued_task_card_says_why_it_waits():
         assert card['children'][0]['text'] == label
         assert card['children'][1]['text'].startswith(('Another task', '3 tasks'))
         assert not any(child.get('class') == 'task-controls' for child in card['children'])
+
+
+def test_a_held_task_card_says_this_version_does_not_run_it_and_offers_the_prompt():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
+      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copied = [];
+      const copyToClipboard = text => copied.push(text);
+      const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
+        {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
+      const card = taskResult({key: 'fern'});
+      const controls = card.children.find(child => child.class === 'task-controls');
+      controls.children.find(child => child.text === 'Copy the prompt').onclick();
+      console.log(JSON.stringify({card, copied}));
+    ''')
+    assert result['card']['children'][0]['text'] == 'Recorded. For safety this version does not run it; open it in Codex'
+    assert result['copied'] == ['Prepare the Fernhill onboarding notes.']
+    assert 'Stop' not in json.dumps(result['card'])

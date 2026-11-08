@@ -2452,6 +2452,8 @@ const UI = {
     "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
     "Queued: later tonight": "排队：今晚稍后",
+    "Recorded. For safety this version does not run it; open it in Codex": "REM 已记下这件事；为了安全，本版本暂不自动去做——在 Codex 里打开它",
+    "Copy the prompt": "复制提示词",
     "Queued: budget used up": "排队：预算用完",
     "Open the deliverable": "打开交付物",
     "Stop": "停止",
@@ -5535,7 +5537,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", held: "Recorded. For safety this version does not run it; open it in Codex", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5576,6 +5578,11 @@ function taskControls(task) {
     return button;
   };
   const file = task.result === "completed" && task.deliverable;
+  if (task.result === "held") {
+    const copy = el("button", {type: "button", class: "btn-quiet", text: t("Copy the prompt")});
+    copy.onclick = () => copyToClipboard(task.prompt);
+    return el("div", {class: "task-controls"}, [copy, live ? act("undo", "Undo") : null]);
+  }
   return el("div", {class: "task-controls"}, [
     task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
     file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,

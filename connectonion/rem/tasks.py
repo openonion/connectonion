@@ -21,6 +21,10 @@ from .service import now
 
 
 ACTIVE = ('starting', 'running')
+# rc62 safety hold; rc63 removes it. Codex runs git outside its sandbox in the task's folder, so
+# a task is recorded and its prompt offered, but no Codex run starts: approved, automatic or CLI.
+HOLD = True
+HELD = 'Recorded. For safety this version does not run it; open it in Codex'
 
 
 def identity(key):
@@ -123,6 +127,8 @@ def _prepared(root, task_id):
 
 def start(root, task_id):
     """Detach a worker, never a second worker for the same obligation."""
+    if HOLD:
+        raise RemError(HELD + '. co rem task status ID shows its prompt.')
     from .runner import child_env
     root = Path(root).resolve()
     folder = directory(root, task_id)
@@ -313,7 +319,7 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    if not config['tasks']['auto']:
+    if HOLD or not config['tasks']['auto']:
         _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn

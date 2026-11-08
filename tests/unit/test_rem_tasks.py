@@ -13,6 +13,8 @@ from connectonion.rem.files import RemError, Notebook, read_json, state_path, wr
 
 @pytest.fixture
 def task_notebook(tmp_path, monkeypatch, rem_clock):
+    from connectonion.rem import tasks
+    monkeypatch.setattr(tasks, 'HOLD', False)  # these tests exercise the run itself; one test holds
     root = tmp_path / 'rem'
     prepare(root)
     # tasks.auto is off by default until the inverted read boundary ships; these tests run it on.
@@ -338,6 +340,21 @@ def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_no
         tasks.stop(task_notebook, first['id'])
     released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
     assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
+
+
+def test_this_version_holds_approved_tasks_and_starts_no_codex_run(task_notebook, monkeypatch):
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setattr(tasks, 'HOLD', True)
+    monkeypatch.setattr(tasks.subprocess, 'Popen', lambda *a, **k: pytest.fail('no Codex run starts while held'))
+    offered = approvals.outcomes(task_notebook)[0]
+    assert approvals.approve(task_notebook, [offered['id']])['results'][0]['status'] == 'queued'
+    calls = []
+    assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == [] and not calls
+    task = night.listing(task_notebook)[0]['task']
+    assert task['result'] == 'held' and task['prompt']
+    with pytest.raises(RemError, match='open it in Codex'):
+        tasks.start(task_notebook, task['id'])
+    assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):

@@ -58,7 +58,10 @@ def listing(root, *, rows=None):
             from .tasks import identity, receipt_for
             receipt = receipt_for(root, row['key'])
             # A task not started yet, or approved and still queued, shows why it waits.
-            if row['key'] in waiting and (receipt or {}).get('result', 'queued') == 'queued':
+            from . import tasks
+            if tasks.HOLD and (receipt or {}).get('result') == 'queued':
+                receipt = {**receipt, 'result': 'held'}
+            elif row['key'] in waiting and (receipt or {}).get('result', 'queued') == 'queued':
                 receipt = {**(receipt or {}), 'result': 'waiting', **waiting[row['key']]}
             outcome = {**outcome, 'task': {**outcome['task'], 'id': identity(row['key']), **(receipt or {})}}
         result.append(outcome or _base(row, 'could_not_prepare', reason='Not prepared yet.'))

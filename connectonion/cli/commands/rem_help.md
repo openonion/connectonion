@@ -1141,6 +1141,8 @@ Back:     co rem projects --help
 
 ```
 Run work owed by the owner in one background Codex session. Nothing is sent.
+This version holds every task: run reports "Recorded. For safety this version
+does not run it; open it in Codex" and status ID shows the prompt to use.
 
 Usage: co rem [--root DIR] [--json] task COMMAND
 
