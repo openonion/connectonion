@@ -2351,9 +2351,9 @@
      Bauhaus lightness: ink geometry on paper, shape = kind, four type sizes, two weights, no boxes in boxes. */
   :root:has(#main > .gx:not(.gx-attach)) { --paper: #f6f6f3; }
   .gx {
-    --gx-bg: #f6f6f3; --gx-surface: #fff; --gx-ink: #121a15; --gx-ink2: #4b554f; --gx-ink3: #79827c; --gx-ink4: #b4bab6;
+    --gx-bg: #f6f6f3; --gx-surface: #fff; --gx-ink: #121a15; --gx-ink2: #4b554f; --gx-ink3: #646c66; --gx-ink4: #b4bab6;
     --gx-line: rgba(18,26,21,.1); --gx-rule: #121a15; --gx-hover: rgba(15,23,18,.045);
-    --gx-knowledge: #121a15; --gx-people: #4b554f; --gx-orgs: #121a15; --gx-projects: #121a15; --gx-notes: #79827c; --gx-sessions: #b4bab6;
+    --gx-knowledge: #121a15; --gx-people: #4b554f; --gx-orgs: #121a15; --gx-projects: #121a15; --gx-notes: #646c66; --gx-sessions: #b4bab6;
     --gx-edge: rgba(18,26,21,.16); --gx-topic-edge: rgba(18,26,21,.34);
     --gx-act: #22d27a; --gx-act-hover: #1bbf6c; --gx-act-ink: #05301b;
     --gx-lift: 0 0 0 1px var(--gx-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
@@ -2499,7 +2499,7 @@
   .gx-kv dd { margin: 0; color: var(--gx-ink); overflow-wrap: anywhere; }
 
   /* ---- the local graph: in a topic's rail, and above a person, organisation or project rail ---- */
-  .gx-attach { margin-bottom: 24px; }
+  .gx-attach { margin: 28px 0 0; }
   .gx .gx-local-svg { display: block; width: 100%; max-width: 260px; height: auto; overflow: visible; }
   .gx-attach.gx-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 40px; max-width: 1000px; margin: 40px 0; padding-top: 12px; border-top: 1.5px solid var(--gx-rule); }
   .gx-attach.gx-inline .gx-local { width: 260px; }
@@ -9906,9 +9906,9 @@ function graphRailAttach(main, r) {
   const topics = [...model.adj.get(r.path)].map(id => model.byId.get(id)).filter(n => n.k === "knowledge" && n.r && !privateTopicHidden(n.r));
   const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Topics here") + " " }),
     ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
-  // A person has a rail; a project or organisation page has none yet, so the block sits above the full note.
+  // A person's rail keeps who they are first; a project or organisation page has no rail yet, so the block sits above the full note.
   const rail = main.querySelector(".r4-rail"), deep = main.querySelector(":scope > .deep-note");
-  if (rail) rail.prepend(block);
+  if (rail) rail.append(block);
   else main.insertBefore(block, deep);
   block.classList.toggle("gx-inline", !rail);
 }
