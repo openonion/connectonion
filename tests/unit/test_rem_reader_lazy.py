@@ -125,12 +125,13 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
             for child in node.get('children', []):
                 yield from nodes(child)
     rendered = list(nodes(tree))
-    assert any(n['tag'] == 'h1' and 'overdue' in n.get('text', '') for n in rendered)
+    assert any(n['tag'] == 'h1' and n.get('text') == '1 person is waiting on you.' for n in rendered)
+    assert any(n['tag'] == 'b' and 'overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
     assert any(n.get('class') == 'words' and 'feedback' in n.get('text', '').lower() for n in nodes(card))
-    # An uncached cited message opens its recorded source, rather than inventing a reply.
-    assert any(n.get('text') == 'Open the recorded source' and '&h=src-1' in n.get('href', '') for n in nodes(card))
-    assert any(n.get('class') == 'fold' for n in nodes(card))
+    # REM cannot draft from an unarchived message yet, and a mail-app compose would start a new thread.
+    assert not any(n.get('href', '').startswith('mailto:') for n in nodes(card))
+    assert any(n.get('text') == 'Open Alice' for n in nodes(card))
 
 
 def test_reader_shell_defers_full_prose_translations_and_conversations(tmp_path, monkeypatch):

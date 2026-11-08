@@ -54,7 +54,7 @@ Use co rem init to rebuild; a terminal prints its summary, undo block and estima
 Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, translate, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
@@ -835,6 +835,7 @@ Everyday use needs none of them.
 
 Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
+  backfill      File topics REM already holds evidence about; subjects named by the summary model.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
   import        Write one page per Codex / Claude Code session you typed in. No model.
   stub          Create one empty page by hand, with every section marked Unknown.
@@ -899,15 +900,37 @@ Back:     co rem import --help
 
 ```
 List what a map would find, without writing pages. Useful to check a threshold
-before init. Reads mail headers and session metadata. No model.
+before init. Reads mail headers and session metadata; topics read existing
+extraction notes and cited pages. No model.
 
-Usage:    co rem scan [people|orgs|projects] [--days N] [--min-mails N]
+Usage:    co rem scan [people|orgs|projects|topics] [--days N] [--min-mails N]
                        [--min-people N] [--mine ADDRESS]...
 Example:  co rem scan people --days 30 --min-mails 5
           --min-mails   people: fewer messages than this is not listed (default 3)
           --min-people  orgs: a domain fewer people write from is not listed (default 2)
           --mine        an address that is yours, so it is not listed as someone else
 Next:     co rem init
+Back:     co rem advanced --help
+```
+
+## co rem backfill
+
+```
+File topics for subjects REM already holds evidence about. The summary model
+names subjects from page summaries at most once a week; code files a subject
+only when 3 independent sources over 14 days touch 2 records. Personal topics
+are marked before filing. Repeated runs reuse pages.
+
+Usage:    co rem backfill topics [--dry-run] [--propose]
+Example:  co rem backfill topics --propose --dry-run
+          --propose  ask the summary model for subject names (one call; reused for 7 days)
+          --dry-run  report candidates, counts, qualification and privacy; no notebook writes
+Effects:  Without --dry-run, files qualifying topic pages under the maintenance
+          lock and keeps this week's proposal. A name with no evidence is never
+          filed. The nightly round files from the saved proposal and never asks
+          the model itself. Reads at most
+          2,000 pages, 1,000 extracts and 5,000 archived messages.
+Next:     co rem investigate topics --list
 Back:     co rem advanced --help
 ```
 

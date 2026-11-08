@@ -46,6 +46,9 @@ def decide(root: Path, review_id: str, verdict: str, *, author: str, response: s
             raise RemError("A link requires yes or no")
         row.update(status={"yes": "accepted", "no": "rejected", "answer": "answered"}[verdict],
                    author=author, response=response, decided_at=datetime.now(timezone.utc).isoformat())
+        if row['kind'] == 'link' and row['subjects'][0].startswith('knowledge/'):
+            from .topic_map import apply_review
+            apply_review(Notebook(root), row, verdict)
         write_json(state_path(root, "reviews.json"), rows)
     return row
 

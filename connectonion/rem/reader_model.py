@@ -219,6 +219,11 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
+    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
+                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    for origin, rows in forward.items():
+        for target, relation in rows.items():
+            relation['private'] |= origin in private_topics or target in private_topics
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.
@@ -229,6 +234,47 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
     return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))
             for path, rows in found.items()}
+
+
+def graph_snapshot(records: list[dict], links: dict | None = None) -> dict:
+    """Explicit undirected links only; sessions fold into their linked project.
+
+    All other records remain in nodes, including isolates. Private nodes have no
+    title; callers exporting off-device must remove private records beforehand.
+    """
+    from collections import Counter
+    paths = {r['path']: r for r in records if r['path'] != 'skills/catalog/index.md'
+             and r['category'] not in ('logs', 'notes')}
+    links = relationships(records) if links is None else links
+    folded = {}
+    for path, row in paths.items():
+        if row['category'] == 'sessions':
+            projects = sorted(r['path'] for r in links.get(path, [])
+                              if r['kind'] in ('linked', 'linked from') and r['path'].startswith('projects/'))
+            if projects:
+                folded[path] = projects[0]
+    edges = {}
+    for origin in paths:
+        for rel in links.get(origin, []):
+            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths:
+                continue
+            a, b = sorted((folded.get(origin, origin), folded.get(rel['path'], rel['path'])))
+            if a != b:
+                kind = 'topic' if a.startswith('knowledge/') or b.startswith('knowledge/') else 'linked'
+                edges[a, b] = {'source': a, 'target': b, 'kind': kind}
+    degree = Counter(node for pair in edges for node in pair)
+    nodes = []
+    for path, row in paths.items():
+        if path in folded:
+            continue
+        private = bool(row.get('private') or PRIVATE.search(row['text'].split('\n', 1)[0]))
+        open_threads = re.search(r'^## Open threads\s*\n(.*?)(?=^## |\Z)', row['text'], re.M | re.S)
+        has_owed = bool(open_threads and re.search(r'\b(?:the user|user|you)\s+owes?\b|你欠|用户欠', open_threads[1], re.I))
+        nodes.append({'id': path, 'kind': row['category'], 'title': '' if private else row['title'],
+                      'degree': degree[path], 'has_owed': has_owed, 'private': private})
+    isolated = Counter(n['kind'] for n in nodes if not n['degree'])
+    return {'nodes': nodes, 'edges': list(edges.values()), 'folded_sessions': len(folded),
+            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)}}
 
 
 def _source_ids(records: list[dict]) -> set[str]:

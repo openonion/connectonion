@@ -21,6 +21,7 @@ def _run_reader_js(script):
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
@@ -364,6 +365,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+    privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
@@ -625,7 +627,7 @@ def test_unquoted_inline_html_never_parses_a_dom():
 def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["blockerTag", "threadAge", "dueLabel", "threadDate", "fmtDate", "age", "daysSince"])
+                          for name in ["blocksWork", "blockerTag", "threadAge", "dueLabel", "threadDate", "fmtDate", "age", "daysSince"])
     cases = [
         {"text": "Please review the draft.", "since": "2026-10-17"},
         {"text": "This blocks the launch.", "since": "2026-10-17"},
@@ -1455,7 +1457,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1494,11 +1496,11 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     assert 'Copy prompt' not in json.dumps(result)
 
 
-def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
+def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['queueCard', 'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
-                                       'threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton'])
+    functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['personCard', 'cardHead', 'cardItem', 'cardDraft', 'stepAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -1512,14 +1514,17 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
       const morningWords = () => ({words: 'Review the pilot.', context: ''});
       const contactFields = () => [], company = () => '', calendarDay = day => day;
       const href = r => '#r=' + r.path, threadWho = r => r.title, blockerTag = () => null, alsoOn = () => null;
+      const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, approvalTask = () => null, overdueDays = () => 0;
+      const firstName = r => r.title.split(' ')[0], threadAge = () => 'due today', CHECK_ICON = '', roleSummary = text => text;
       const entry = {r: {path: 'people/avery.md', title: 'Avery Lin'}, t: {dir: 'mine', text: 'Review the pilot.'}};
-      const prepared = queueCard(entry, 'due today');
+      const group = {r: entry.r, entries: [entry]};
+      const prepared = personCard(group, true);
       REM.drafts = [];
-      console.log(JSON.stringify({prepared, withoutDraft: queueCard(entry, 'due today')}));
+      console.log(JSON.stringify({prepared, withoutDraft: personCard(group, true)}));
     ''')
     card = result['prepared']
-    assert 'has-mail' in card['class'].split()
-    mail = card['children'][3]
+    assert card['data-step'] == 'send'
+    mail = card['children'][2]['children'][1]
     assert mail['class'] == 'mailcard'
     assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
@@ -1535,30 +1540,35 @@ def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
     assert actions['class'] == 'draft-now' and actions['children'][0]['text'] == 'Draft now'
+    assert actions['children'][0]['class'] == 'btn-act'
     assert 'mailto:' not in json.dumps(actions)
     assert 'Copy prompt' not in json.dumps(result)
 
 
-def test_brief_header_distinguishes_overdue_from_due_soon_and_translates_find():
+def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_find():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
-    function = re.search(r'function briefHeader\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + function + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, lastPass = () => null, firstBuild = () => false;
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
+    result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + functions + r'''
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, waitingMore = () => ({tag: 'p'});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
-      const entries = [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}},
-        {t: {due: '2026-10-20'}}, {t: {due: '2026-10-23'}}];
-      const header = briefHeader({mine: 4}, entries), noDeadline = briefHeader({mine: 1}, entries.slice(0, 1));
+      const groups = [{r: {title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
+        {r: {title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]}];
+      const header = briefHeader({mine: 4}, groups), noDeadline = briefHeader({mine: 1}, [{r: {title: 'Cy'}, entries: [{t: {since: '2026-10-20'}}]}]);
       const quiet = briefHeader({mine: 0}, []);
       uiLanguage = 'zh';
-      const zh = briefHeader({mine: 4}, entries);
+      const zh = briefHeader({mine: 4}, groups);
       console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
     })();''')
     assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
-    assert result['header']['children'][1]['text'] == '1 overdue · 2 due soon · 4 waiting on you'
-    assert result['noDeadline']['children'][1]['text'] == '1 waiting on you'
-    assert result['quiet']['children'][1]['text'] == 'A quiet morning'
-    assert result['zh']['children'][1]['text'] == '1 项已逾期 · 2 项即将到期 · 4 件等你处理'
+    assert result['header']['children'][1]['text'] == '2 people are waiting on you.'
+    lede = result['header']['children'][2]['children']
+    assert lede[0] == 'Most urgent: Ada, ' and lede[1] == {'tag': 'b', 'class': 'late', 'text': '2 days overdue', 'children': []}
+    assert result['noDeadline']['children'][1]['text'] == '1 person is waiting on you.'
+    assert result['noDeadline']['children'][2] is None
+    assert result['quiet']['children'][1]['text'] == 'Nobody is waiting on you today.'
+    assert result['zh']['children'][1]['text'] == '2 个人在等你。'
+    assert result['zh']['children'][2]['children'][1]['text'] == '逾期 2 天'
     assert result['find'] == '查找'
 
 
@@ -1567,7 +1577,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'briefHeader']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'briefHeader', 'urgentLede']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1576,7 +1586,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       let OWING = null;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
-      const lastPass = () => null, firstBuild = () => false;
+      const threadWho = r => r.title, waitingMore = () => null;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
       const lines = pairs.map((words, i) => '- You owe Mara a review of the ' + words
@@ -1589,10 +1599,10 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: briefHeader({mine: entries.length}, today).children[1].text}));
+        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1].text}));
     ''')
-    assert result == {'parsed': 7, 'merged': 7, 'today': 7,
-                      'headline': '1 overdue · 5 due soon · 7 waiting on you'}
+    # Seven asks from one person are one card: one person is waiting.
+    assert result == {'parsed': 7, 'merged': 7, 'today': 7, 'headline': '1 person is waiting on you.'}
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -1622,7 +1632,7 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayEntries', 'todayThread', 'threadAge', 'queueCard', 'taskResult', 'morningWords', 'withoutDateClutter'])
+                          for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'morningWords', 'withoutDateClutter'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
@@ -1640,21 +1650,22 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
       const contactFields = () => [], company = () => '', blockerTag = () => null;
       const threadDraft = () => null, draftNote = () => null;
-      const age = () => ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
       const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
       const dated = make('Review the pilot (2026-10-30) — due 2026-11-02, overdue; open as of 2026-10-30', '2026-11-02');
       console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
-        row: todayThread(entries[2]), quoted: todayThread(quoted), dated: todayThread(dated)}));
+        row: cardHead({r, entries: [entries[2]]}, 0), also: cardItem(entries[2], false), quoted: cardItem(quoted, false),
+        dated: cardItem(dated, false), datedHead: cardHead({r, entries: [dated]}, 0)}));
     ''')
     assert result['selected'] == ['overdue', 'today', 'three days', 'new']
-    assert result['row']['children'][1]['children'][1]['text'] == 'due 2026-11-02'  # [0] is the kind badge
-    assert result['row']['children'][2]['children'][1]['also'] == [{'path': 'orgs/northgate-university.md'}]
-    quoted = result['quoted']['children'][2]['children']
+    assert result['row']['children'][3]['text'] == 'due 2026-11-02'
+    assert result['also']['children'][2]['children'][1]['also'] == [{'path': 'orgs/northgate-university.md'}]
+    quoted = result['quoted']['children']
     assert 'Letter of Support draft' in quoted[0]['text']
     assert '“Please include the contribution details.”' in quoted[0]['text']
     assert quoted[0]['children'][0]['html'] == '[4]'
-    assert result['dated']['children'][2]['children'][0]['text'] == 'Review the pilot'
-    assert result['dated']['children'][1]['children'][1]['text'] == 'due 2026-11-02'
+    assert result['dated']['children'][0]['text'] == 'Review the pilot'
+    assert result['datedHead']['children'][3]['text'] == 'due 2026-11-02'
 
 
 def test_claim_values_use_only_current_cached_facts_for_chinese_after():
@@ -1863,7 +1874,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'personOrg', 'personProject',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'morningThread', 'queueCard', 'taskResult', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
@@ -1894,7 +1905,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
         basis: 'Role: Head of Partnerships', sources: []}, 'orgs/fernhill-labs.md'), 'orgs/fernhill-labs.md');
       console.log(JSON.stringify({english: english.role, role: f.role, location: f.location,
         paths: {facts: factList(r), subtitle: personSub(r), contact: contactStrip(r), table: role,
-          phone: peopleCardMeta(r, f), home: morningThread({r, t: {text: '', since: ''}, also: []}), relation}}));
+          phone: peopleCardMeta(r, f), home: cardHead({r, entries: [{t: {text: '', since: ''}}]}, 0), relation}}));
     ''')
     assert result['english'] == 'Head of Partnerships'
     assert result['role'] == '合作负责人'
@@ -2036,7 +2047,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine'])
+                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
     result = _run_reader_js(functions + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
@@ -2080,7 +2091,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
-        'briefHeader', 'morningBrief', 'recallPrompt', 'translationNotice'])
+        'passSummary', 'morningBrief', 'recallPrompt', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
@@ -2091,11 +2102,11 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
       const remCommand = args => 'co rem ' + args;
       REM.status = {state: 'Stopped — background maintenance is off'};
-      const first = firstBuild(), header = briefHeader({mine: 0}, []), brief = morningBrief(), recall = recallPrompt();
+      const first = firstBuild(), header = passSummary(), brief = morningBrief(), recall = recallPrompt();
       REM.status.state = 'Running in background (launchd)';
       const scheduled = morningBrief();
       uiLanguage = 'zh';
-      const zhHeader = briefHeader({mine: 0}, []);
+      const zhHeader = passSummary();
       const cached = REM.records.filter(r => r.translations?.zh).map(r => ({...r, translations: {...r.translations}}));
       for (const r of REM.records) delete r.translations;
       const notice = translationNotice();
@@ -2108,13 +2119,12 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
         returning, noPass: firstBuild()}));
     ''')
     assert result['first'] is True and result['returning'] is False and result['noPass'] is False
-    assert result['header']['children'][2]['children'][0].startswith('Built today: read ')
-    assert 'overnight' not in result['header']['children'][1]['text']
+    assert result['header']['children'][0].startswith('Built today: read ')
     assert result['brief']['children'][1]['text'] == 'Your notebook was just built. Overnight changes appear here after the next update.'
     assert result['brief']['children'][2]['children'] == [{'tag': 'p', 'text': 'Nightly updates are off.', 'children': []}]
     assert len(result['scheduled']['children']) == 2
     assert result['recall'] is None
-    assert result['zhHeader']['children'][2]['children'][0].startswith('今天建立：读取 ')
+    assert result['zhHeader']['children'][0].startswith('今天建立：读取 ')
     assert result['notice']['text'] == '打开页面时会翻译成中文。'
     assert result['enough'] is None
 
@@ -2167,7 +2177,7 @@ def test_schedule_reader_states_are_short_and_translated():
 def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'taskResult', 'threadRow', 'withoutDateClutter'])
+                          for name in ['threadWho', 'cardHead', 'threadRow', 'withoutDateClutter'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
@@ -2181,25 +2191,21 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
       const DIRECTION_LABEL = {mine: 'You owe'};
       const owner = {path: REM.owner, title: 'Theo Park'}, person = {path: 'people/mia-chen.md', title: 'Mia Chen'};
       const thread = {text: 'You owe a pilot review.', since: '2026-10-20', dir: 'mine'};
-      const renderRows = r => ({today: todayThread({r, t: thread}), waiting: morningThread({r, t: thread}),
-        open: threadRow(r, thread, true)});
+      const renderRows = r => ({today: cardHead({r, entries: [{r, t: thread}]}, 0), open: threadRow(r, thread, true)});
       const en = renderRows(owner), counterpart = renderRows(person);
       uiLanguage = 'zh';
       console.log(JSON.stringify({en, zh: renderRows(owner), counterpart}));
     ''')
-    for lang, who, avatar in [('en', 'Your page', 'You'), ('zh', '你的页面', '你')]:
+    for lang, who in [('en', 'Your page'), ('zh', '你的页面')]:
         rows = result[lang]
-        for surface in ['today', 'waiting']:
-            person = rows[surface]['children'][0]['children']
-            assert person[0]['text'] == avatar
-            assert person[1]['children'][0]['text'] == who
-            assert person[1]['children'][0]['href'] == '#r=people/theo-park.md'
-            assert person[1]['children'][1] is None
+        head = rows['today']['children']
+        assert head[1]['text'] == who
+        assert head[1]['href'] == '#r=people/theo-park.md'
+        assert head[2] is None
         assert rows['open']['children'][1]['children'][1]['children'][0]['text'] == who
-    for surface in ['today', 'waiting']:
-        person = result['counterpart'][surface]['children'][0]['children'][1]['children']
-        assert person[0]['text'] == 'Mia Chen'
-        assert person[1]['children'] == ['Northgate University', ' · ', 'Pilot lead']
+    head = result['counterpart']['today']['children']
+    assert head[1]['text'] == 'Mia Chen'
+    assert head[2]['children'] == ['Northgate University', ' · ', 'Pilot lead']
 
 
 @pytest.mark.parametrize('root,default,expected', [
@@ -2383,7 +2389,7 @@ def test_page_navigation_closes_the_conversation_dialog():
 
 def test_redundant_investigation_badge_is_omitted_and_owner_stays_out_of_people():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['listedRecords', 'inCategory'])
+                          for name in ['listedRecords', 'inCategory', 'privateTopicHidden'])
     pill = re.search(r'function statusPill\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(functions + '\n' + pill + r'''
       const REM = {owner: 'people/owner.md', records: [
@@ -2436,7 +2442,7 @@ def test_source_find_uses_the_panel_scroll_that_reserves_mail_header_space():
 
 def test_owner_stays_in_obligation_inputs_when_removed_from_people_rows():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['listedRecords', 'inCategory'])
+                          for name in ['listedRecords', 'inCategory', 'privateTopicHidden'])
     result = _run_reader_js(functions + r'''
       const REM = {owner: 'people/owner.md', records: [
         {path: 'people/owner.md', category: 'people'}, {path: 'people/nora.md', category: 'people'}]};
@@ -2695,9 +2701,10 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     page = TEMPLATE.read_text()
     ui = page[page.index('const UI = {'):page.index('function t(')].strip()
     ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    function = re.search(r'function briefHeader\(.*?\n\}', page, re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
     result = _run_reader_js(ui + function + r'''
       uiLanguage = ''' + json.dumps(language) + r''';
+      const waitingMore = () => null, threadWho = r => r.title;
       const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
       const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
@@ -2801,7 +2808,7 @@ def test_plain_words_preserves_document_dates_and_a_deadline_not_shown_in_meta()
 def test_undrafted_today_reason_and_action_follow_archived_reply_state(language):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['draftNote', 'primaryAction', 'draftNowButton'])
+                          for name in ['draftNote', 'primaryAction', 'threadUrl', 'draftNowButton'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
       const REM = {live: true, status: {worker: {enabled: true}, mailboxes: {outlook: 'last read failed 2026-11-07'}}, today_queue: []};
@@ -3189,3 +3196,19 @@ def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
     assert 'co rem open' in json.dumps(result['staticNote'])
     assert 'mailto:' not in json.dumps(result['staticPrimary'])
     assert result['fresh']['href'] == 'mailto:avery@example.com'
+
+
+def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
+    """A mail-app compose has no In-Reply-To; only a person with no mail thread at all gets one,
+    even when the thread's subject was never recorded."""
+    function = re.search(r'function cardStep\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const REM = {live: false}, threadDraft = () => null, approvalTask = () => null, looksDone = () => false;
+      let reply = {state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'}, kind = {mail: true};
+      const queuedReply = () => reply, threadKind = () => kind;
+      const threadContact = () => ({address: 'avery@example.com', subject: '', name: 'Avery'});
+      const unrecordedSubject = cardStep({});
+      reply = null; kind = null;
+      console.log(JSON.stringify({unrecordedSubject, noThread: cardStep({})}));
+    ''')
+    assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}

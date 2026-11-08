@@ -503,6 +503,20 @@ class Notebook:
                   f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
+    TOPIC_SECTIONS = ('What it is', 'Where you stand', 'People', 'Orgs', 'Projects',
+                      'Timeline', 'Open threads', 'Uncertainties', 'Sources')
+
+    def stub_topic(self, record: str, name: str, aliases=(), *, private=False) -> bool:
+        """A candidate's identity only; investigation owns its claims and links."""
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}" + (' [personal]' if private else ''), '',
+                 '- Also known as: ' + '; '.join(aliases), '']
+        for section in self.TOPIC_SECTIONS:
+            lines += [f'## {section}', '- Unknown — not investigated yet', '']
+        lines += [f'Investigation: mapped {_today(self.root)} · not investigated yet', '']
+        return self.write(record, '\n'.join(lines))
+
     # The first screen answers what, why, where it stands and what is next;
     # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
     PROJECT_SECTIONS = (

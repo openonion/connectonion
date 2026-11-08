@@ -530,6 +530,11 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         missing = cards.filter(has=page.locator('.today-who', has_text='Hazel'))
         queued = cards.filter(has=page.locator('.today-who', has_text='Nova'))
         answered = cards.filter(has=page.locator('.today-who', has_text='Avery'))
+
+        def open_card(card):
+            # A folded card opens on a tap; its action and draft are then in reach.
+            if 'open' not in card.get_attribute('class').split():
+                card.locator('.qage').click()
         assert letter.locator('.owner-slot').count() == 1
         assert ('需要你填' if language == 'zh' else 'Fill in') in letter.locator('.owner-slot').inner_text()
         assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
@@ -538,8 +543,8 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
         assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
         assert answered.locator('.kind-badge').inner_text() == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
-        assert answered.locator('.btn-act').inner_text() == ('标为完成' if language == 'zh' else 'Mark done')
-        assert answered.locator('a.btn-quiet').get_attribute('href').endswith('/answered')
+        assert answered.locator('.card-acts button').first.text_content() == ('标为完成' if language == 'zh' else 'Mark done')
+        assert answered.locator('.card-acts a.btn-quiet').get_attribute('href').endswith('/answered')
         answer_note = answered.locator('.draft-reason').inner_text()
         # The cleaned owner quote selects one sentence (or a future commitment)
         # rather than copying the full message. The source link above keeps it available.
@@ -547,8 +552,15 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert ('已回复' if language == 'zh' else 'replied') in answer_note
         assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
         assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
-        assert missing.locator('.btn-act').inner_text() == ('打开已记录的来源' if language == 'zh' else 'Open the recorded source')
-        assert ('今晚' if language == 'zh' else 'tonight') in queued.locator('.draft-reason').inner_text()
+        # REM cannot draft from an unarchived message: the next step is writing, never the mailbox.
+        assert missing.locator('.card-acts > :first-child').text_content() in (
+            ['回复 Hazel', '打开 Hazel'] if language == 'zh' else ['Reply to Hazel', 'Open Hazel'])
+        if live:  # Draft now drafts now: no "queued for tonight" beside it.
+            assert queued.locator('.draft-reason').count() == 0
+        else:
+            note = queued.locator('.draft-reason').inner_text()
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'open' in note
+        open_card(letter)
         if live:
             letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
             assert letter.locator('.mail-status').inner_text() == ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first')
@@ -575,6 +587,7 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             dialog.wait_for(state='detached')
             assert not dialog.count()
             assert page.evaluate('draftRequests[0].body', isolated_context=False) == 'The demo is ready for release.'
+            open_card(queued)
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
             assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
         assert not errors, errors

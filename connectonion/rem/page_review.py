@@ -46,6 +46,8 @@ def headings(record: str, owner: bool = False) -> tuple[str, ...]:
         return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
     if record.startswith('skills/catalog/'):
         return SKILL_CORE
+    if record.startswith('knowledge/'):
+        return Notebook.TOPIC_SECTIONS
     return ()
 
 
@@ -1382,6 +1384,12 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
+    if record.startswith('knowledge/'):
+        from .reader_model import PRIVATE, REFERENCE, _destination
+        if PRIVATE.search(original.split('\n', 1)[0]) and not PRIVATE.search(candidate.split('\n', 1)[0]):
+            errors.append('Preserve topic privacy on the title line')
+        if any(_destination(record, raw).startswith(('sessions/', 'skills/')) for _, raw in REFERENCE.findall(body)):
+            errors.append('Topic sessions and skills are counted, not linked')
     if record.startswith('skills/catalog/'):
         old_title = re.search(r'^# (.+)$', prose(original), re.M)
         new_title = re.search(r'^# (.+)$', body, re.M)
