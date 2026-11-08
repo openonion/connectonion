@@ -55,6 +55,18 @@ not investigate other sources or edit notebook pages.
 - **Opportunities**: worth exploring, not committed. **Works**: a reusable output
   and where it lives. **Notes**: reflections, open questions, other durable facts.
 
+## Topics
+
+Add short rows for named subjects (market, technology, course, place or matter):
+`- name | aliases separated by semicolons | concerned record path | speaker, YYYY-MM-DD, source id | one sentence`.
+Use an English alias for the slug when known. Keep each source separate, with its
+actual date and speaker; never count copied notes as new sources. Include the
+user's explicit "remember/learn X" words. Do not emit generic words, vendors,
+people, orgs, skills or another name for a project. A topic earns a page at three
+sources over fourteen days and two records, or an explicit user request; emit
+below-threshold evidence too. Mark health, family, personal money and legal
+subjects `[personal]` in the sentence. Never emit another person's health.
+
 ## What to drop
 
 - The assistant's routine work: tests and counts, lint, formatting, files edited,

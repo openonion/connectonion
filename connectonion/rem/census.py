@@ -25,7 +25,7 @@ from posixpath import normpath
 
 from .files import Notebook, read_json, state_path
 
-CATEGORIES = ("people", "projects", "orgs", "skills", "sessions")
+CATEGORIES = ("people", "projects", "orgs", "skills", "sessions", "knowledge")
 DAY = r"(\d{4}-\d{2}-\d{2})"
 # Dates that say when something happened, as each kind of page writes them.
 ACTIVITY = re.compile(

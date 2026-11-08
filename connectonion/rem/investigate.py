@@ -39,6 +39,7 @@ MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threadin
 def _fetch_slot(kind: str):
     return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
 DOMAIN_RESULTS = 10_000
+TOPIC_RESULTS = 500
 
 
 class NothingFound(RemError):
@@ -343,6 +344,10 @@ def page_handles(notebook: Notebook, record: str, handle=()) -> tuple[str, list[
 
     text = notebook.read(record)
     title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_aliases
+        aliases = topic_aliases(text)
+        return aliases[0], list(dict.fromkeys([*handle, *aliases]))
     if record.startswith("projects/"):
         # A project is read from where it lives. Only explicitly named handles
         # select its mail; its title alone matches unrelated notifications.
@@ -752,6 +757,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
                                    include_observed=True, left_out=archived_left_out)
+    elif archive_root is not None and record.startswith('knowledge/'):
+        from .mail_archive import topic_material
+        archived = topic_material(archive_root, handles)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # Count exclusions through the same date and subscription checks as kept mail.
     for (kind, native), when in archived_left_out.items() if archived else []:
@@ -860,7 +868,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         unavailable = None
         for begin, finish in intervals:
-            if domains and hasattr(client, "list_with"):
+            if record.startswith('knowledge/') and hasattr(client, 'list_search'):
+                terms = ['"' + handle.replace('"', '') + '"' for handle in handles]
+                rows = [row for term in terms for row in (_patient(client.list_search, term, TOPIC_RESULTS) or [])
+                        if start <= timestamp(str(row['date'])) < end]
+                searched += f"; searched mail text for {', '.join(terms)}; bounded to {TOPIC_RESULTS} results per alias"
+            elif domains and hasattr(client, "list_with"):
                 # One server query per domain rather than every header in the
                 # window. The server may match loosely; the handles still decide
                 # what is kept. A university's mail runs past list_with's
@@ -929,6 +942,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 for key in ("date", "from", "to", "cc", "subject")}}
                 head, _, rest = body.partition("--- Email Body ---")
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                if record.startswith('knowledge/') and not any(h in (body + ' ' + r.get('subject', '')).lower() for h in handles):
+                    continue
                 # Filter before creating evidence or reading attachments: unrelated owner mail stays private.
                 if mail_filter and not mail_filter(r, body):
                     continue
@@ -2263,6 +2278,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     mail_handles = own_domains if company else search_handles
     items, coverage = gather(subject, mail_handles, days=days, clients=clients, subscriptions=mail_subs,
                              sent_only=sent_only, record=record, **gather_options)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_material
+        items.extend(topic_material(notebook, record))
+        coverage.append('Topic aliases searched across authorized sources; candidate notes and pages are context, not primary proof')
     if company:
         projects = company_projects(notebook, record, subject, own_domains)
         own_items, own_coverage = company_material(notebook, company, projects, record=record, days=days, clients=clients,

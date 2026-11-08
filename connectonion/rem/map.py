@@ -1129,6 +1129,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
+    from .topic_map import map_topics
+    report['topics'], created_topics = map_topics(notebook)
+    report['created'] += created_topics
     # And tidied again after (#2018): the acceptance run's map made pages that
     # tidy, run only before it, never saw. Tidy reads this map's rows. The
     # owner's own addresses wait for the next run: this map has just asked
