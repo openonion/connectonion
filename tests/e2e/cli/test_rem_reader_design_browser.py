@@ -5625,3 +5625,17 @@ def test_person_owed_item_opens_its_cited_original_without_searching_full_memory
     cite.click()
     expect(page.locator('#evidence-panel')).to_be_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_page_open_items_are_a_record_without_green_or_self_links(reader, width):
+    """Owner, 2026-11-08: a project page is a record. Its open items carry no green
+    button, and never an "Open the page" button that points at the page you are on."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    items = page.locator("#open-threads li.thread")
+    assert items.count() >= 1
+    assert page.evaluate(GREEN) == 0
+    assert page.locator("#open-threads").get_by_text("Open the page", exact=True).count() == 0
+    assert items.first.get_by_role("button", name="Mark done", exact=True).count() == 1

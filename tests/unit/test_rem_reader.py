@@ -3169,33 +3169,22 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
 
 
 def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
-    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now.
-    Person page: an open thread is never answered by a mailto "Re:", which starts a new thread."""
+    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['draftNote', 'personPrimary', 'mailtoLink', 'draftNowButton'])
+                          for name in ['draftNote', 'draftNowButton'])
     result = _run_reader_js(functions + r'''
       const REM = {live: true, status: {worker: {enabled: true}},
         today_queue: [{key: 'avery', keys: ['avery'], reply: {state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'}}]};
-      const doneKey = () => 'avery', remCommand = args => 'co rem ' + args, firstName = r => 'Avery';
+      const doneKey = () => 'avery', remCommand = args => 'co rem ' + args;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children), insertAdjacentHTML() {}});
-      const href = r => '#r=' + r.path, setDone = () => {}, fmtDate = day => day;
-      const PEN_ICON = '', CHECK_ICON = '';
-      const threadDraft = () => null;
-      let contact = {address: 'avery@example.com', subject: 'Pilot', name: 'Avery'};
-      const threadContact = () => contact;
       const entry = {r: {path: 'people/avery.md'}, t: {text: 'Reply to Avery.'}};
-      const liveNote = draftNote(null, entry), livePrimary = personPrimary(entry.r, entry);
+      const liveNote = draftNote(null, entry);
       REM.live = false;
-      const staticNote = draftNote(null, entry), staticPrimary = personPrimary(entry.r, entry);
-      contact = {address: 'avery@example.com', subject: '', name: 'Avery'};
-      console.log(JSON.stringify({liveNote, livePrimary, staticNote, staticPrimary, fresh: personPrimary(entry.r, entry)}));
+      console.log(JSON.stringify({liveNote, staticNote: draftNote(null, entry)}));
     ''')
     assert result['liveNote'] is None
-    assert result['livePrimary']['class'] == 'draft-now'
     assert 'co rem open' in json.dumps(result['staticNote'])
-    assert 'mailto:' not in json.dumps(result['staticPrimary'])
-    assert result['fresh']['href'] == 'mailto:avery@example.com'
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():

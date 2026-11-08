@@ -4415,7 +4415,11 @@ function threadUrl(reply, kind) {
     : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(source) };
 }
 
-function threadActions(entry) {
+// On the record's own page the actions stay quiet: no green, no link back to the page itself.
+function quietOnly(node) {
+  return node && !node.matches(".btn-act") && !node.querySelector(".btn-act") ? node : null;
+}
+function threadActions(entry, onPage = false) {
   const undo = isDone(entry);
   const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
   done.onclick = () => setDone(entry, !undo);
@@ -4423,11 +4427,12 @@ function threadActions(entry) {
   const replied = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply?.state === "replied";
   if (!undo && replied && draft?.status !== "prepared" && draft?.status !== "no_reply") {
     const open = primaryAction(entry, false);
-    return el("div", {class: "thread-actions"}, [primaryAction(entry), open]);
+    return el("div", {class: "thread-actions"}, onPage ? [quietOnly(open), done] : [primaryAction(entry), open]);
   }
+  const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry);
   return el("div", { class: "thread-actions" }, [
     undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
-      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : draft?.status === "no_reply" ? null : primaryAction(entry),
+      + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : onPage ? quietOnly(primary) : primary,
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), done]);
 }
 // Full-screen writing: the letter on the left, editable; on the right what the
@@ -5311,7 +5316,7 @@ function threadRow(r, thread, withPage, also = [], grouped = false) {
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
-      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }), draftNote(threadDraft({ r, t: thread, also }))]),
+      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage), draftNote(threadDraft({ r, t: thread, also }))]),
     el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
