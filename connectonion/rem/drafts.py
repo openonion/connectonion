@@ -321,7 +321,8 @@ def _write_now(root, row, channel):
     """One drafting turn for one thread, the same path the night turn takes."""
     from . import runner
     from .config import read_config
-    config = read_config(root)
+    from .inquiry import stage_config
+    config = stage_config(root, read_config(root), 'reply-draft')
     state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
         task = prepare(root, {**row, 'channel': channel}, config, directory=Path(directory))

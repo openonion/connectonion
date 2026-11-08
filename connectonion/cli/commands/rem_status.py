@@ -35,7 +35,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
-        lines += [rem_look.section('Models', value['models'])]
+        lines += [rem_look.section('Models'), *(row for line in value['models'] for row in _level_rows(line))]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
     if value.get('last_turn'):
@@ -399,3 +399,11 @@ def _last_run(run, zone) -> str:
 
 def _compact(tokens) -> str:
     return style.count(rem_look.compact(tokens))
+
+
+def _level_rows(line: str) -> list[str]:
+    """"level 1 gpt-6-luna · sessions-summary, topic": the level in the margin,
+    its stages wrapped under the model so status stays 80 columns wide."""
+    import textwrap
+    first, *rest = textwrap.wrap(line[8:], 80 - rem_look.COLUMN, break_on_hyphens=False)
+    return [rem_look.row(line[:7], first), *(" " * rem_look.COLUMN + part for part in rest)]

@@ -197,7 +197,9 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
 
 
 def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .inquiry import stage_config
     from .service import now
+    config = stage_config(root, config, "translate")
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")

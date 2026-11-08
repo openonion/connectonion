@@ -23,8 +23,10 @@ TURN_SECONDS = 3 * 3600
 
 def read_config(root):
     # Import configuration only after the turn has a receipt and a deadline.
+    # One session does every task of the round, so it runs the native level.
     from .config import read_config as read
-    return read(root)
+    from .inquiry import stage_config
+    return stage_config(root, read(root), "native")
 
 
 def _codex_command() -> list[str]:

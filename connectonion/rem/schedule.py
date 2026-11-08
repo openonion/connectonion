@@ -482,7 +482,9 @@ def exec_round(root, *, scheduled=True):
     while task.get("outcome") == "task":
         if scheduled and CodexNative().recent_desktop_fire(root):
             return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-        result = runner.run_task(Path(task["material"]), task["instructions"], read_config(root), task["stage"])
+        from .inquiry import stage_config
+        config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
+        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
         task = native.submit(root, task["id"], usage=result.get("usage"))
         if task.get("outcome") == "refused":
             return task

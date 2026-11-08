@@ -721,9 +721,15 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     model                          gpt-6.1-sol (default): investigation, writing, audit and judgement
-          models.summary                 gpt-6-luna (Codex default): standalone coding-session summaries
-                                         existing other runners keep their working model until you choose one
+Keys:     models.level1                  gpt-6-luna (Codex default): sessions-summary, topic
+          models.level2                  gpt-6.1-terra: translate, extract, same-person, plan
+          models.level3                  gpt-6.1-sol: maintain, investigate, render, projects,
+                                         reply-draft, native (the scheduled session), init, abstract
+          models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
+                                         synthesize, task (owed work)
+                                         co rem status lists the stages on each level. A notebook on
+                                         another runner keeps its one model on every level;
+                                         the old names model (level3) and models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
@@ -741,12 +747,13 @@ Keys:     model                          gpt-6.1-sol (default): investigation, w
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
           limits.<name>                  the other limits co rem config shows
-          route.<stage>                  a model for one stage of planned investigation:
-                                         plan, extract, synthesize or render ("default" clears it)
-Example:  co rem config set model gpt-6.1-sol schedule.times "06:00,18:00"
+          route.<stage>                  pins one stage above to a model ("default" clears it);
+                                         a route on plan, extract, synthesize or render also
+                                         turns on three-call planned investigation
+Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
-          Measured when model or runner changes, never read off the name. Unchecked runs
+          Measured when level3's model or the runner changes, never read off the name. Unchecked runs
           as agent, and co rem config names the command that checks it.
 Subcommand: co rem config set --help
 Next:     co rem status
@@ -789,7 +796,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set model gpt-6.1-sol limits.runner_calls_per_day 4
+Example:  co rem config set models.level3 gpt-6.1-sol limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.
@@ -884,19 +891,19 @@ The import is deterministic and uses no model.
 Includes your typed messages and the final agent reply, with secret-shaped text removed.
 Automation, subagents and REM's own sessions stay out. Repeating the import updates
 changed sessions in place and skips unchanged files.
-With --summarise, models.summary adds a title, summary, tags, outcome,
+With --summarise, models.level1 adds a title, summary, tags, outcome,
 verified owner decisions and open follow-ups in batches. Init and daily rounds
 summarise up to 40 sessions when the runner is ready.
 
 Usage:    co rem import sessions [--days N] [--summarise] [--limit N] [--json]
 Example:  co rem import sessions --days 30 --summarise --json
           --days       read sessions active in the last N days (default 180)
-          --summarise  summarise new or changed sessions with models.summary
+          --summarise  summarise new or changed sessions with models.level1
           --limit      maximum sessions to summarise (default 40), newest first
           --json       print one {"ok", "data", "next"} result
 Effects:  Reads enabled local coding sources and writes sessions/ pages and private
           progress. This explicit command authorizes the import; automatic runs
-          read only sources you have approved. Standalone summaries use models.summary
+          read only sources you have approved. Standalone summaries use models.level1
           with the configured runner; failed batches are left for next time. Usage is in rem logs.
 Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
           With --summarise, a summary report (under "summary" in JSON).

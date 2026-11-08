@@ -186,10 +186,10 @@ def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp
     saved = yaml.safe_dump(old)
     (tmp_path / "config.yaml").write_text(saved)
     assert read_config(tmp_path)["model"] == "gpt-6.1-sol"
-    assert read_config(tmp_path)["models"] == {"summary": "gpt-6-luna"}
+    assert read_config(tmp_path)["models"]["level1"] == "gpt-6-luna"
     assert (tmp_path / "config.yaml").read_text() == saved
     set_config(tmp_path, ["model", "gpt-6-luna"])
-    assert read_config(tmp_path)["model"] == "gpt-6-luna"
+    assert read_config(tmp_path)["model"] == read_config(tmp_path)["models"]["level3"] == "gpt-6-luna"
 
 
 def test_summary_model_setting_is_validated_and_does_not_check_page_tier(tmp_path, monkeypatch):
@@ -201,8 +201,8 @@ def test_summary_model_setting_is_validated_and_does_not_check_page_tier(tmp_pat
     monkeypatch.setattr("connectonion.rem.tier.check_and_record", lambda *a: pytest.fail("page tier check"))
     result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "config", "set", "models.summary", "gpt-6-luna"])
     assert result.exit_code == 0, result.output
-    assert read_config(tmp_path)["models"]["summary"] == "gpt-6-luna"
-    with pytest.raises(RemError, match="summary"):
+    assert read_config(tmp_path)["models"]["level1"] == "gpt-6-luna"
+    with pytest.raises(RemError, match="level1 to models.level4"):
         set_config(tmp_path, ["models.summary", " "])
 
 
@@ -214,7 +214,9 @@ def test_config_and_status_show_model_roles(tmp_path):
     for command in ("config", "status"):
         result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), command])
         assert result.exit_code == 0, result.output
-        assert any("gpt-6.1-sol" in line and "gpt-6-luna" in line and "summar" in line.lower()
+        assert any("gpt-6-luna" in line and "sessions-summary" in line
+                   for line in result.output.splitlines()), result.output
+        assert any("gpt-6.1-sol" in line and "investigate" in line
                    for line in result.output.splitlines()), result.output
 
 
@@ -225,20 +227,22 @@ def test_summary_default_stays_compatible_with_claude_fallback(tmp_path, monkeyp
         ("Codex is not installed", "install codex") if config["runner"] == "codex" else ("", "")))
     root = tmp_path / "fresh"
     prepare(root)
-    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    assert set(read_config(root)["models"].values()) == {"claude-sonnet-5-5"}
     old = default_config()
     old.update(runner="claude-code", model="claude-sonnet-5-5")
     old.pop("models")
     (root / "config.yaml").write_text(yaml.safe_dump(old))
-    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    assert set(read_config(root)["models"].values()) == {"claude-sonnet-5-5"}
     set_config(root, ["models.summary", "default"])
-    assert read_config(root)["models"]["summary"] == "default"
+    assert read_config(root)["models"]["level1"] == "default"
 
 
-def test_runner_change_keeps_summary_compatible_unless_explicit(tmp_path):
-    from connectonion.rem.config import set_config
+def test_runner_change_resets_levels_it_was_not_told(tmp_path):
+    """A Claude model name cannot run on Codex: a runner change keeps only the
+    levels named in the same command."""
+    from connectonion.rem.config import LEVEL_MODELS, set_config
     settings = set_config(tmp_path, ["runner", "claude-code"])
-    assert settings["models"]["summary"] == settings["model"] == "default"
+    assert set(settings["models"].values()) == {"default"} and settings["model"] == "default"
     set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
-    settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6.1-sol"])
-    assert settings["models"]["summary"] == "claude-sonnet-5-5"
+    settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6-astra"])
+    assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra"}

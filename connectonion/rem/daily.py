@@ -267,8 +267,9 @@ def _prepare_reply(root, row, config, maintenance):
     state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
     try:
         with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+            from .inquiry import stage_config
             task = drafts.prepare(root, row, config, directory=Path(directory))
-            result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
+            result = runner.run_task(Path(directory), task['prompt'], stage_config(root, config, 'reply-draft'), 'reply-draft')
             plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
             drafts.promote(root, plan)
         record.update(outcome='completed', usage=result.get('usage'))
@@ -365,8 +366,8 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     """The first run of the day: unfinished pages, most recent activity first."""
     resting = _found_nothing_lately(root)
     pages = [page for page in unfinished_by_recency(root) if page['path'] not in resting]
-    from .inquiry import routing
-    required = 3 if routing(root) else 1
+    from .inquiry import inquiry_routed
+    required = 3 if inquiry_routed(root) else 1
     # Even a run that starts nothing is the day's first: it is recorded, so the
     # later runs know to follow new material instead.
     why = 'nothing_unfinished' if not pages else 'budget_exhausted' if remaining < required else stop
