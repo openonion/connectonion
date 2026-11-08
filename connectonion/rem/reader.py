@@ -9,9 +9,13 @@ import json
 import os
 import posixpath
 import re
+import subprocess
+import sys
 import tempfile
+import time
 import webbrowser
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -376,7 +380,10 @@ def _detail_data(full: dict, shell: dict) -> dict:
 def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     """`live`: served by the Host (rem_http.py), so the page may ask it to translate.
     `local`: read on this machine by its owner (see `snapshot`)."""
-    full = snapshot(root, local, today=live)
+    return _page(snapshot(root, local, today=live), live=live)
+
+
+def _page(full: dict, *, live: bool) -> str:
     shell = full if live else _today_data(full)
     data = _script_json({**shell, "live": live, "deferred_details": True,
                          "detail_url": "/rem/data.json" if live else ""})
@@ -396,26 +403,28 @@ def _script_json(data: dict) -> str:
     return data
 
 
-def reader_version(root: Path) -> tuple:
-    """Cheap metadata key for the live reader, including retained source edits.
+def reader_version(root: Path) -> list:
+    """Cheap key for the saved pages: a fixed handful of stat calls, never a listing.
 
-    Do not follow directory links or inspect bodies. SQLite's shared-memory
-    bookkeeping changes on reads; an empty WAL has no committed frames.
-    Committed data lives in the db and nonempty WAL.
+    REM's writes touch `.state/reader-changed` (files.atomic_write); the category
+    folders' times catch a page added, renamed or removed by hand; the database
+    and a nonempty WAL hold committed rows. A page edited in place by hand shows
+    after REM's next write. The template is part of the key, so a new install
+    re-renders.
     """
-    files = []
-    for directory, dirs, names in os.walk(root):
-        dirs[:] = sorted(name for name in dirs if name != ".git")
-        for name in sorted(names):
-            if name == "rem.db-shm":
-                continue
-            path = Path(directory) / name
-            stat = path.lstat()
-            if name == "rem.db-wal" and not stat.st_size:
-                continue
-            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
-    template = TEMPLATE.stat()
-    return (str(root.resolve()), str(TEMPLATE), template.st_mtime_ns, template.st_size, tuple(files))
+    from .files import CHANGED
+    state = root / ".state"
+    paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
+             state / "rem.db", state / "rem.db-wal", TEMPLATE]
+    key = [str(root.resolve()), str(TEMPLATE)]
+    for path in paths:
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            info = None
+        empty_wal = info is not None and path.name == "rem.db-wal" and not info.st_size
+        key.append(None if info is None or empty_wal else [info.st_mtime_ns, info.st_size])
+    return key
 
 
 def reader_path(root: Path) -> Path:
@@ -424,19 +433,17 @@ def reader_path(root: Path) -> Path:
     return Path(tempfile.gettempdir()) / f"co-rem-{digest}.html"
 
 
-def write_reader(root: Path) -> Path:
-    page = render(root, local=True)
-    path = reader_path(root)
+def _replace(path: Path, text: str) -> None:
     # The public name is predictable. Write a private random file, then replace
     # the directory entry atomically so a planted link can never be truncated.
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", prefix="co-rem-", suffix=".html",
+            mode="w", encoding="utf-8", prefix="co-rem-", suffix=path.suffix,
             dir=path.parent, delete=False,
         ) as output:
             temporary = Path(output.name)
-            output.write(page)
+            output.write(text)
         if path.is_symlink():
             raise OSError(f"refusing to replace a planted reader link: {path}")
         if os.name != "nt":
@@ -445,7 +452,145 @@ def write_reader(root: Path) -> Path:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def write_reader(root: Path) -> Path:
+    path = reader_path(root)
+    _replace(path, render(root, local=True))
     return path
+
+
+# ---- Saved pages: an open is a file read, the rebuild runs behind it (owner, 2026-11-09) ----
+# Rendering a 31,136-file notebook took 35 s for the live page and 73 s for its
+# details, and every open did it again. Two builds, each keyed by reader_version:
+# "live" is the Host's page; "full" is its details and the offline file page,
+# made from one snapshot. A build runs once at a time, in a detached process.
+BUILDS = {"live.html": "live", "data.json": "full", "file.html": "full"}
+# The live page asks for its details as soon as it loads, so it keeps both current.
+NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
+
+
+def _cache_dir() -> Path:
+    """One private folder per user in the temporary directory, never in the notebook."""
+    path = Path(tempfile.gettempdir()) / f"co-rem-cache-{os.getuid() if os.name != 'nt' else 'user'}"
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if (path.is_symlink() or not path.is_dir()
+            or os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+        raise OSError(f"refusing a reader cache folder another user could change: {path}")
+    return path
+
+
+def _cached(root: Path, name: str) -> Path:
+    digest = hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
+    return _cache_dir() / f"{digest}-{name}"
+
+
+def _read(path: Path):
+    if path.is_symlink():
+        raise OSError(f"refusing to read a planted reader link: {path}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+
+def saved(root: Path, build: str) -> dict:
+    """{version, as_of} of a build's saved pages; {} before the first."""
+    text = _read(_cached(root, build + ".json"))
+    return json.loads(text) if text else {}
+
+
+def _build(root: Path, build: str, version: list) -> None:
+    if build == "live":
+        shell = snapshot(root, local=True, today=True)
+        _replace(_cached(root, "live.html"), _page(shell, live=True))
+        as_of = shell["as_of"]
+    else:
+        full = snapshot(root, local=True)
+        _replace(_cached(root, "data.json"), json.dumps(full, ensure_ascii=False, default=str))
+        _replace(_cached(root, "file.html"), _page(full, live=False))
+        as_of = full["as_of"]
+    # Written last: pages newer than their key only cost one more rebuild.
+    _replace(_cached(root, build + ".json"), json.dumps({"version": version, "as_of": as_of}))
+
+
+@contextmanager
+def _building(root: Path, *, wait: bool):
+    """Yields whether this caller holds the one build lock (always True with wait)."""
+    from .files import _try_lock
+    fd = os.open(_cached(root, "build.lock"), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        while True:
+            try:
+                _try_lock(fd)
+                held = True
+                break
+            except BlockingIOError:
+                if not wait:
+                    held = False
+                    break
+                time.sleep(0.2)
+        yield held
+    finally:
+        os.close(fd)
+
+
+def refresh(root: Path, builds=("live", "full")) -> None:
+    """The background build: bring these saved pages, and any others already saved,
+    up to date, unless a build runs. A request that found this one busy did not
+    start another, so the notebook is checked again after each pass (three at most:
+    a night run writing all the while must not keep it rendering forever)."""
+    with _building(root, wait=False) as mine:
+        if not mine:
+            return
+        wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
+        for _ in range(3):
+            version = reader_version(root)
+            stale = [build for build in wanted if saved(root, build).get("version") != version]
+            if not stale:
+                return
+            for build in stale:
+                _build(root, build, version)
+
+
+def _spawn_refresh(root: Path, builds) -> None:
+    with _building(root, wait=False) as free:
+        if not free:
+            return
+    log = os.open(_cached(root, "build.log"), os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(log, "ab") as output:
+        subprocess.Popen([sys.executable, "-m", "connectonion.rem.reader", str(root), *builds],
+                         stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+
+
+def cached_page(root: Path, name: str) -> tuple[str, bool]:
+    """(the saved page, whether it is current). The first ever is built here, once;
+    a stale one is returned as it is and rebuilt in the background."""
+    version = reader_version(root)
+    path = _cached(root, name)
+    text = _read(path)
+    if text is None:
+        with _building(root, wait=True):
+            if (text := _read(path)) is None:
+                _build(root, BUILDS[name], version)
+                text = _read(path)
+    return text, BUILDS[name] not in _rebuild_stale(root, name, version)
+
+
+def latest(root: Path):
+    """When the live page was rendered (polled by the open page); starts a rebuild
+    when the notebook has changed since."""
+    _rebuild_stale(root, "live.html", reader_version(root))
+    return saved(root, "live").get("as_of")
+
+
+def _rebuild_stale(root: Path, name: str, version: list) -> list:
+    stale = [build for build in NEEDS[name] if saved(root, build).get("version") != version]
+    if stale:
+        _spawn_refresh(root, stale)
+    return stale
 
 
 def open_reader(root: Path, *, launch: bool = True) -> Path:
@@ -499,9 +644,14 @@ def host_online(address: str, timeout: float = 3.0) -> bool:
 
 
 def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
-    path = open_reader(root, launch=launch)
-    return {"page": str(path), "link": path.as_uri(), "launched": launch,
-            "note": "a snapshot of the notebook as it is now; co rem open again shows later changes", **notes}
+    """The saved offline page, at once; a newer one is built behind it when needed."""
+    _, current = cached_page(root, "file.html")
+    path = _cached(root, "file.html")
+    if launch:
+        webbrowser.open(path.as_uri())
+    note = ("the notebook as of its last render" if current else
+            "the notebook as of its last render; a newer page is being built, co rem open again in a minute shows it")
+    return {"page": str(path), "link": path.as_uri(), "launched": launch, "note": note, **notes}
 
 
 def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
@@ -510,7 +660,17 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import ensure_local
+    from .live_host import ensure_local, local_reader, start
+    if _read(_cached(root, "file.html")) is not None and not local_reader(address):
+        # No Host answers: the saved page now, co ai starting behind it. Waiting
+        # for it (up to 20 s) before the first paint was most of a cold open.
+        try:
+            start(address)
+        except (OSError, RemError) as error:
+            return open_snapshot(root, launch=launch, live=f"could not start co ai: {error}; run `co ai` to diagnose")
+        return open_snapshot(root, launch=launch, live=(
+            "co ai is starting; this is the page saved at the last render. "
+            "co rem open again in a moment opens the live reader, which can translate"))
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
@@ -549,3 +709,7 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         result["warning"] = ("O Chat does not serve this route yet (openonion/oo-chat#246); "
                              "until it is deployed the page opens as an empty chat")
     return result
+
+
+if __name__ == "__main__":  # the detached rebuild started by _spawn_refresh
+    refresh(Path(sys.argv[1]), sys.argv[2:])

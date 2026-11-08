@@ -208,52 +208,70 @@ def test_the_rem_path_is_reserved_from_publisher_routes():
     assert "/rem" in _RESERVED_PREFIXES
 
 
-def test_live_reader_reuses_render_until_notebook_or_template_changes(host, monkeypatch, tmp_path):
-    calls = []
+def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, cache, monkeypatch, tmp_path):
+    # Since 2026-11-09 a change is served as the last page at once and rebuilt
+    # behind it (reader.refresh is what the detached build runs). A page edited
+    # in place by hand is seen at REM's next write: the key lists no files.
+    from connectonion.rem.files import Notebook, state_path, write_json
+    builds, original = [], reader.snapshot
+
+    def counted(root, **options):
+        builds.append(options)
+        return original(root, **options)
+    monkeypatch.setattr(reader, 'snapshot', counted)
     template = tmp_path / 'reader-template.html'
-    template.write_text('Example template')
+    template.write_text('Example template /*__REM_DATA__*/null')
     monkeypatch.setattr(reader, 'TEMPLATE', template)
-    monkeypatch.setattr(reader, 'render', lambda root, **kw: calls.append((root, kw)) or f'build {len(calls)}')
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
-    assert get() == get() == 'build 1'
-    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nExample update.')
-    assert get() == 'build 2'
-    from connectonion.rem.files import state_path
-    state_path(host.root, 'map.json').write_text('{"owner": {}}')
-    assert get() == 'build 3'
-    extra = host.root / 'people/nora.md'
-    extra.write_text('# Nora')
-    assert get() == 'build 4'
-    extra.unlink()
-    assert get() == 'build 5'
-    template.write_text('Updated template')
-    assert get() == get() == 'build 6'
-    assert all(options == {'live': True, 'local': True} for _, options in calls)
+    page = get()
+    assert get() == page and builds == [{'local': True, 'today': True}]
+    reader.refresh(host.root)                       # the details the first request left behind it
+    assert builds[1:] == [{'local': True}]
+    changes = [
+        ('Alice Chen-Vale', lambda: Notebook(host.root).write('people/alice-chen.md', PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
+        ('Alice Chen-Vale', lambda: write_json(state_path(host.root, 'map.json'), {'owner': {}})),
+        ('Nora', lambda: (host.root / 'people/nora.md').write_text('# Nora')),          # added by hand
+        ('Alice Chen-Vale', lambda: (host.root / 'people/nora.md').unlink()),           # removed by hand
+        ('Updated template', lambda: template.write_text('Updated template /*__REM_DATA__*/null')),
+    ]
+    for shown, change in changes:
+        change()
+        cache.clear()
+        builds.clear()
+        assert get() == page and cache == [host.root] and builds == []   # the last page, a rebuild behind
+        reader.refresh(host.root)
+        assert builds == [{'local': True, 'today': True}, {'local': True}]
+        page = get()
+        assert shown in page and get() == page
+    assert 'Nora' not in page
     # Authentication still runs for every request, including a cache hit.
     assert call(host.routes, 'GET', '/rem')[0] == 401
 
 
-def test_live_reader_second_request_reuses_the_actual_snapshot(host, monkeypatch):
+def test_live_reader_second_request_reuses_the_actual_snapshot(host, cache, monkeypatch):
     from connectonion.rem.store import refresh
     refresh(host.root)
-    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    builds, original = [], reader.render
+    builds, original = [], reader.snapshot
 
     def counted(root, **options):
         builds.append(root)
         return original(root, **options)
 
-    monkeypatch.setattr(reader, 'render', counted)
+    monkeypatch.setattr(reader, 'snapshot', counted)
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     assert get() == get()
     assert builds == [host.root]
 
 
-def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, monkeypatch):
-    calls = []
+def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, cache, monkeypatch):
+    calls, original = [], reader.snapshot
+
     def detail(root, **options):
         calls.append((root, options))
-        return {'records': [{'text': 'Full fictional page'}], 'conversations': {'example': {}}}
+        data = original(root, **options)
+        if 'today' not in options:
+            data['conversations'] = {'example': {}}
+        return data
     monkeypatch.setattr(reader, 'snapshot', detail)
     assert call(host.routes, 'GET', '/rem/data.json')[0] == 401
     assert call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}',
@@ -261,10 +279,16 @@ def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, monkey
     get = lambda: call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}')
     status, headers, body = get()
     assert status == 200 and headers['content-type'].startswith('application/json')
-    assert json.loads(body)['records'][0]['text'] == 'Full fictional page'
+    data = json.loads(body)
+    assert data['conversations'] == {'example': {}} and 'Alice Chen' in json.dumps(data['records'])
     assert get()[2] == body and len(calls) == 1
     (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')
-    assert get()[0] == 200 and len(calls) == 2
+    from connectonion.rem.files import Notebook
+    Notebook(host.root).write('people/fern-holt.md', '# Fern Holt\n')
+    cache.clear()
+    assert get()[2] == body and cache == [host.root] and len(calls) == 1
+    reader.refresh(host.root, ['full'])
+    assert len(calls) == 2 and 'Changed.' in get()[2]
     assert all(options == {'local': True} for _, options in calls)
 
 
@@ -297,3 +321,81 @@ def test_task_stop_and_undo_go_through_the_owner_endpoint(host, monkeypatch):
     assert calls == [('stop', task_id), ('undo', task_id)]
     body = json.dumps({'id': task_id, 'action': 'push'}).encode()
     assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 400
+
+
+@pytest.fixture
+def cache(tmp_path, monkeypatch):
+    """The reader's saved pages land in this test's own temporary folder."""
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    spawned = []
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root), raising=False)
+    return spawned
+
+
+def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache):
+    from connectonion.rem.files import Notebook
+    cookie = f"co_rem={host.token}"
+    get = lambda: call(host.routes, "GET", "/rem", cookie=cookie)[2]
+    first = get()
+    assert "Alice Chen" in first
+    version = call(host.routes, "GET", "/rem/version", cookie=cookie)
+    assert version[0] == 200 and json.loads(version[2])["as_of"] in first
+    Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale\n")
+    cache.clear()
+    assert get() == first and cache == [host.root]   # instantly the last page, a rebuild behind it
+    reader.refresh(host.root)
+    fresh = get()
+    assert "Bruno Vale" in fresh
+    # The open page learns a newer render has landed from this tiny, owner-only answer.
+    assert json.loads(call(host.routes, "GET", "/rem/version", cookie=cookie)[2])["as_of"] in fresh
+    assert call(host.routes, "GET", "/rem/version")[0] == 401
+
+
+def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkeypatch):
+    import time
+    identity = host.routes["identity_dir"]
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
+    reader.open_snapshot(host.root, launch=False)                  # a page was saved before
+    live_host.write_json(identity / "rem-live-host.json", {
+        "address": "owner", "pid": 2 ** 22 + 7, "port": 9125, "command": "-m connectonion.cli.main ai"})
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)
+    monkeypatch.setattr(live_host, "ensure_online", lambda *a, **k: pytest.fail("waited for co ai to start"))
+    started_hosts = []
+
+    def spawn(directory):
+        started_hosts.append(directory)
+        return SimpleNamespace(pid=4242, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9126"])
+    monkeypatch.setattr(live_host, "_spawn", spawn)
+    started = time.monotonic()
+    result = reader.local_or_snapshot(host.root, "owner", launch=False)
+    assert time.monotonic() - started < 1.0
+    assert result["link"].startswith("file://") and "Alice Chen" in open(result["page"], encoding="utf-8").read()
+    assert started_hosts == [identity] and "co ai is starting" in result["live"]
+    assert live_host.read_json(identity / "rem-live-host.json", {})["pid"] == 4242
+
+
+def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cache, monkeypatch):
+    import glob
+    import os
+    import time
+    for folder in range(200):
+        directory = host.root / ".state" / "mail" / f"{folder:03}"
+        directory.mkdir(parents=True)
+        for item in range(100):
+            (directory / f"{item}.json").write_text("{}")
+    get = lambda: call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
+    first = get()[2]
+    reader.refresh(host.root)                      # the details it left to the background
+
+    def listed(*args, **kwargs):
+        raise AssertionError("an unchanged notebook was listed again")
+    for name in ("walk", "scandir", "listdir"):
+        monkeypatch.setattr(os, name, listed)
+    monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
+    cache.clear()
+    started = time.monotonic()
+    status, _, second = get()
+    assert time.monotonic() - started < 1.0
+    assert status == 200 and second == first and cache == []

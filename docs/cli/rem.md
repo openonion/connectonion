@@ -487,7 +487,8 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co rem open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
+| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. |
+| `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
@@ -654,9 +655,22 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 
-The local live reader reuses its rendered snapshot until notebook files change,
-including pages, retained sources, translations and state. Reload after an edit
-shows the updated notebook; repeated requests do not rebuild unchanged content.
+Opening is a file read. The reader keeps its last render outside the notebook,
+in a private per-user folder in the temporary directory (`co-rem-cache-<uid>`,
+mode 700, pages 600, a planted link refused), and serves it at once. Whether it
+is current is a handful of stat calls, never a listing of the notebook: every
+write REM makes touches `.state/reader-changed`; the category folders' times
+catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
+WAL hold committed rows; `reader.html` is part of the key, so an upgrade
+re-renders. When any of these changed, the last page is still served at once
+and one detached process (`python -m connectonion.rem.reader`, one at a time,
+log in the same folder) renders the new one. The open live page asks
+`/rem/version` every 30 seconds while visible and reloads onto the newer render
+when it lands, never while you are typing. The page footer says when it was
+rendered: **Updated** (更新于) and the time. A page edited in place by hand,
+outside REM, shows after REM's next write. Before this (1.9.3rc62) every open
+rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
+and the render 35 s, plus 73 s for the details.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
@@ -1215,7 +1229,7 @@ the run before and unfinished pages from the existing queues, up to
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
-The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
+The UI is a static snapshot of the notebook as of its last render (the footer's **Updated** time); run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
 

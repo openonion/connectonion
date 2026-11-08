@@ -70,13 +70,7 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             return None
         saved = read_json(state, {})
         if saved.get("address") != address or not _alive(saved):
-            process = _spawn(directory)
-            try:
-                write_json(state, {"address": address, "pid": process.pid, "port": _port(process.args),
-                                   "command": " ".join(process.args[1:])})
-            except (OSError, RemError):
-                _stop(process)
-                raise
+            process = _launch(directory, address)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
@@ -90,6 +84,31 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     if process is not None:
         _stop(process)
     return f"co ai did not become reachable within {timeout:g}s; see {log}. Retry with `co ai`"
+
+
+def _launch(directory: Path, address: str):
+    """Start co ai and remember it, so the next open reuses it; the caller holds the lock."""
+    process = _spawn(directory)
+    try:
+        write_json(directory / "rem-live-host.json", {"address": address, "pid": process.pid,
+                                                      "port": _port(process.args),
+                                                      "command": " ".join(process.args[1:])})
+    except (OSError, RemError):
+        _stop(process)
+        raise
+    return process
+
+
+def start(address: str) -> None:
+    """Start this identity's Host unless ours is alive, and return without waiting:
+    `co rem open` shows the saved page meanwhile."""
+    from ..cli.co_ai.main import _owner_invite_lock
+    from ..project import selected_identity_dir
+    directory = selected_identity_dir()
+    with _owner_invite_lock(directory):
+        saved = read_json(directory / "rem-live-host.json", {})
+        if saved.get("address") != address or not _alive(saved):
+            _launch(directory, address)
 
 
 # `co ai`'s own default port: a Host the owner started by hand is usually here.

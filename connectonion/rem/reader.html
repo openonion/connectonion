@@ -3409,7 +3409,7 @@ const UI = {
     "{n} matching sessions →": "查看全部 {n} 个匹配的会话 →",
     "{n} pages match — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
     "{n} page matches — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
-    "Snapshot": "快照",
+    "Updated": "更新于",
     "Next pass": "下次更新",
     "Rebuild snapshot": "重新生成快照",
     "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
@@ -5699,7 +5699,7 @@ function renderRail(active) {
   const settingsRecord = byPath(route().record);
   if (settingsRecord?.private_project) settings.appendChild(commandChip(investigateCommand(settingsRecord)));
   if (route().category === "people") settings.appendChild(commandChip(remCommand("list people --review")));
-  foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
+  foot.appendChild(el("div", { text: t("Updated") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
     : t(scheduleState(s) || "No pass scheduled");
@@ -11370,6 +11370,14 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   }
   reconcileThreads().then(() => render());
 });
+// The Host answers with the page it saved at once and renders a newer one behind
+// it; reload onto that when it lands, never under the owner's typing. A failed
+// poll (the Host restarting) just waits for the next one.
+if (REM?.live) setInterval(() => {
+  if (document.hidden || document.activeElement?.matches("input, textarea, select, [contenteditable]")) return;
+  fetch("/rem/version").then(response => response.ok ? response.json() : null)
+    .then(latest => { if (latest?.as_of && latest.as_of !== REM.as_of) location.reload(); }, () => {});
+}, 30000);
 </script>
 <script id="rem-detail" type="application/json">/*__REM_DETAIL__*/</script>
 </body>
