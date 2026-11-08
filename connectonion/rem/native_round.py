@@ -33,6 +33,7 @@ def prepare(root, config, *, scheduled):
     tidy(root, lock_held=True)
     sources = service.subscriptions(root)
     collect_projects(root, sources, lock_held=True)
+    project_pages.sync_project_repositories(root, now=moment)
     refresh(root)
     from .topic_map import backfill_topics
     # co rem next never calls a model: the native round reuses this week's proposal only.
@@ -49,7 +50,8 @@ def prepare(root, config, *, scheduled):
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
               "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
-              "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported}
+              "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
+              "mail_slot": slot.isoformat() if slot else None}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -58,6 +60,20 @@ def prepare(root, config, *, scheduled):
     cursor["run"] = record
     write_json(state_path(root, "round.json"), cursor)
     return cursor
+
+
+def read_new_mail(root, cursor, config, slot):
+    """A round can run all day; each scheduled slot reads the next mailbox into it.
+
+    Mail used to be read only when a round began, so a 14-hour round left every
+    mailbox unread since morning. The batch runs before the round's remaining jobs.
+    """
+    batch = service.prepare_sync(root, service._selected_sources(root, ""),
+                                 read_json(state_path(root, "progress.json"), {}), config)
+    batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
+    cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
+    if not batch["done"] and batch["digested"] is not None:
+        _digest(cursor, batch["digested"])
 
 
 def prepare_translation_round(root, config, *, scheduled):
@@ -92,9 +108,9 @@ def _jobs(root, first, logs, sources):
     rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
              for row in daily.unfinished_by_recency(root)
              if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
-    from .refusals import due_for_retry
-    retries = due_for_retry(root)
-    rows = [row for row in rows if row["record"] not in retries]
+    from .refusals import due_for_retry, parked_waiting
+    retries, parked = due_for_retry(root), parked_waiting(root)
+    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return (daily._owner_due(root) + rows)[:limit]
@@ -222,6 +238,8 @@ def finish(root, cursor):
 def _prepare_job(root, cursor, config, directory):
     job = cursor["jobs"][cursor["job_index"]]
     record, book = job["record"], Notebook(root)
+    from .native import progress_step
+    progress_step(f"preparing {record}", round=cursor["started_at"], job_index=cursor["job_index"], record=record)
     if job["kind"] == "retry":
         from .refusals import mark_retried
         mark_retried(root, record)
@@ -663,6 +681,9 @@ def advance(root, cursor, task, result):
     elif operation == "draft":
         row = task["task"]["row"]
         cursor.setdefault("draft_attempts", []).append([row["id"], row["version"]])
+        if not result.get("discarded"):
+            from .approvals import send_direct
+            send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
     elif operation == "translate":
         cursor["translations"].append(task["record"])
         cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])

@@ -1082,8 +1082,8 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 1
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
-        card = page.locator('.project-card').filter(has_text='Harbour')
-        assert card.locator('.project-card-what').inner_text() == 'Hidden labelled passage'
+        # The directory never quotes a page's purpose, so nothing private can leak into a row.
+        assert page.locator('#main').get_by_role('link', name='Harbour', exact=True).first.is_visible()
         assert 'hidden description' not in page.locator('#main').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
@@ -1338,7 +1338,7 @@ def test_every_view_fits_a_phone(reader, theme):
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
         # The organisation redesign owns its green-black dark palette.
-        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md") else "rgb(14, 17, 32)"
+        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md", "#c=projects") else "rgb(14, 17, 32)"
         assert (background == dark_background) == (theme == "dark"), (view, background)
 
 
@@ -1832,11 +1832,10 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()
-    # With nothing open Harbour is a card on the board, not the lifted busiest project.
-    page.evaluate(r"""() => { const r = byPath('projects/harbour.md');
-      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, ''); KNOWN.clear(); FACTS.clear(); }""", isolated_context=False)
-    page.goto(uri + '#c=projects')
-    assert page.locator('.project-card').filter(has_text='Harbour').locator('.project-card-when').inner_text() == 'Sep 16'
+    # The directory's list shows the same mapped date as its latest activity.
+    page.goto(uri + '#c=projects&v=list')
+    page.evaluate('() => { pdQuietOpen = true; KNOWN.clear(); FACTS.clear(); render(); }', isolated_context=False)
+    assert page.locator('.pd-lrow[data-path="projects/harbour.md"] .pd-when').inner_text().startswith('Sep 16')
 
 
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
@@ -2078,7 +2077,9 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    assert labels[-1] == 'Activity' and labels.index('All records') < labels.index('Activity')
+    # Owner, 2026-11-08: the catch-all goes last. 2026-11-09: Activity is REM's run log, at the foot.
+    assert labels[-1] == 'All records' and 'Activity' not in labels and 'Graph' not in labels
+    assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
     assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
@@ -3241,9 +3242,11 @@ def test_partial_project_status_explains_the_uninvestigated_sections(reader):
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     tooltip = 'Some sections are filled from sources; the rest are not investigated yet.'
-    card = page.locator('.project-card').filter(has_text='Harbour')
-    assert card.locator('.project-card-what').count() == 0  # no "What it is" yet, and no invented one
-    card.get_by_role('link', name='Harbour', exact=True).click()
+    page.goto(uri + '#c=projects&v=list')
+    page.evaluate('() => { pdQuietOpen = true; render(); }', isolated_context=False)
+    row = page.locator('.pd-lrow[data-path="projects/harbour.md"]')
+    assert row.locator('.pd-note').count() == 0  # REM wrote no line for it, and none is invented
+    row.get_by_role('link', name='Harbour', exact=True).click()
     assert page.locator('.eyebrow .pill.status').inner_text() == 'More to learn'
     assert page.locator('.eyebrow .pill.status').get_attribute('title') == tooltip
 
@@ -4157,9 +4160,9 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert source.get_attribute('href').endswith('h=src-2')
     assert page.locator('.recall-toggle').evaluate(r'''button => {
       const css = getComputedStyle(button);
+      // Today's secondary button: a 1px outline, no fill (no box on a box-free page).
       return css.borderTopStyle === 'solid' && css.borderTopWidth === '1px'
-        && parseFloat(css.borderTopLeftRadius) >= 6 && parseFloat(css.borderTopLeftRadius) <= 7
-        && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        && parseFloat(css.borderTopLeftRadius) === 8 && css.backgroundColor === 'rgba(0, 0, 0, 0)';
     }''')
     page.locator('.recall-toggle').click()
     assert page.locator('.recall-answer').is_visible()
@@ -4606,7 +4609,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     assert page.locator('.empty .lead').inner_text() == 'No match'
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
-    expect(page.locator('h1')).to_have_text('Explore memory')
+    expect(page.locator('#main h1')).to_have_text('All records')
     page.goto(uri + '#view=open')
     page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
     assert page.locator('.empty .lead').inner_text() == 'Nothing open'
@@ -4881,10 +4884,9 @@ def test_approve_all_sheet_slots_results_and_undo(reader, width, theme):
 def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
     page, uri = reader
     page.goto(uri)
-    assert page.locator('#approve-all').is_disabled()
-    assert page.locator('.approval-header code').count() == 1
-    assert 'co rem' in page.locator('.approval-header code').inner_text()
-    assert 'open' in page.locator('.approval-header code').inner_text()
+    # A snapshot never gains outcomes later: no empty "Approve all 0" and no command for nothing to approve.
+    assert page.locator('#approve-all').count() == 0
+    assert page.locator('.approval-header code').count() == 0
     assert page.locator('.qcard a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
 
 
@@ -4922,7 +4924,7 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         result = card.locator('.task-result')
         assert result.is_visible()
         assert 'Completed' in result.inner_text()
-        assert page.locator('#approve-all').inner_text() == 'Approve all 0'
+        assert page.locator('#approve-all').count() == 0  # nothing to approve in a snapshot
         assert receipt['deliverable'] in result.inner_text()
         assert result.locator('textarea').input_value() == f"REM 已经做完：Reviewed the Mara pilot. · 附：{receipt['deliverable']}"
         assert result.locator('textarea').get_attribute('readonly') is not None
@@ -5010,16 +5012,16 @@ def test_person_looks_done_row_closes_by_mail_or_stays_open(reader):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, width, theme):
+def test_people_are_a_record_list_with_search_few_tabs_and_one_quiet_today_link(reader, width, theme):
+    """People is a record, not a to-do list: no waiting headline, no green, one quiet link to Today."""
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#c=people")
     page.evaluate("theme => { setTheme(theme); setInterfaceLanguage('zh'); }", theme, isolated_context=False)
-    assert re.fullmatch(r"\d+ 人\s*·?\s*\d+ 人在等你", page.locator(".r4-people h1").inner_text().replace("\n", " "))
-    assert page.locator(".r4-focus").count() == 1
-    assert len(_green_primaries(page)) == 1
-    primary = page.locator(".r4-primary").bounding_box()
-    assert primary["y"] + primary["height"] <= 844
+    assert re.fullmatch(r"\d+ 人", page.locator(".r4-people h1").inner_text().strip())
+    today = page.locator(".r4-people .list-today")
+    assert re.fullmatch(r"今天里有 \d+ 人在等你 →", today.inner_text()) and today.get_attribute("href") == "#"
+    assert _green_primaries(page) == []
     assert page.locator(".r4-find").count() == 1
     assert page.locator(".r4-tabs button").count() <= 4
     groups = page.locator(".r4 .grp").all_inner_texts()
@@ -5037,46 +5039,6 @@ def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, widt
     assert page.locator("table.sheet").count() == 0
 
 
-@pytest.mark.parametrize('route', ['#c=people'])
-def test_prepared_person_draft_primary_reviews_static_live_and_private_drafts(reader, route):
-    page, uri = reader
-    page.goto(uri + route)
-    page.evaluate("""() => {
-      threadDraft = entry => ({
-        id: 'fictional-review', status: 'prepared', provider: 'outlook', channel: 'mail',
-        to: 'Mara <mara@example.org>', from: 'owner@example.org', subject: 'Fictional pilot review',
-        body: 'Fixture draft body, never sent.', private: false
-      });
-      REM.live = false; render();
-    }""", isolated_context=False)
-    primary = page.locator('.r4-primary')
-    assert primary.inner_text() == "Review REM's draft"
-    assert 'open-threads' in primary.get_attribute('href')
-    primary.click()
-    dialog = page.get_by_role('dialog', name='Reply draft', exact=True)
-    assert dialog.is_visible()
-    assert 'Fixture draft body, never sent.' in dialog.inner_text()
-    assert dialog.get_by_role('button', name='Send', exact=True).count() == 0
-    assert dialog.get_by_role('button', name='Open in the live reader', exact=True).is_visible()
-    assert page.evaluate('location.hash') == route
-    dialog.get_by_role('button', name='Close', exact=True).click()
-    dialog.wait_for(state='detached')
-    assert primary.evaluate('node => node === document.activeElement')
-    page.evaluate("""() => {
-      const original = threadDraft;
-      threadDraft = entry => { const draft = original(entry); return draft ? {...draft, private: true} : draft; };
-      REM.live = true; document.documentElement.classList.add('hide-private'); render();
-    }""", isolated_context=False)
-    page.locator('.r4-primary').click()
-    dialog = page.get_by_role('dialog', name='Reply draft', exact=True)
-    assert dialog.locator('.mailcard').is_hidden()
-    assert 'Fixture draft body, never sent.' not in dialog.inner_text()
-    page.evaluate("document.documentElement.classList.remove('hide-private')", isolated_context=False)
-    assert dialog.locator('.mailcard').is_visible()
-    assert dialog.get_by_role('button', name='Send', exact=True).is_visible()
-    dialog.get_by_role('button', name='Close', exact=True).click()
-    dialog.wait_for(state='detached')
-
 def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
@@ -5085,61 +5047,277 @@ def _visible_green_buttons(page):
     }).length""")
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
-@pytest.mark.parametrize("width", [1440, 390])
-def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader, width, theme):
-    from patchright.sync_api import expect
+# A notebook-sized set of invented projects (fixture date 2026-10-01), shaped like the snapshot's
+# project data: health, priority reasons, open items by kind, written dates, a parent suggestion,
+# a duplicate suggestion, coverage, cited Facts and session relations. Ported from the sprint-10
+# project views and extended with what the 墨与铅 directory draws (ticks, coverage, facts).
+PROJECT_SET = r"""() => {
+  const quiet = byPath('projects/lantern.md');
+  const owed = (who, text, extra = {}) => ({text, kind: 'owed', who, since: null, due: null, sources: [], promised: [], answer: null, ...extra});
+  const reason = (text, points) => ({text, points, source: 'fixture', cite: null, path: 'fixture', sources: []});
+  const link = path => ({path, kind: 'linked', basis: '', private: false, sources: ['1'], via: path});
+  const sessions = (slug, days) => days.map(day => ({path: 'sessions/' + day + '-' + slug + '.md', kind: 'linked from', basis: 'Project', private: false, sources: [], via: ''}));
+  const fact = value => [{value, qualifier: '', citations: ['1']}];
+  const text = (slug, title, f) => '# ' + title + '\n\n## What it is\n- ' + f.what + ' [1].\n'
+    + '\n## Open threads\n' + ((f.open || []).length ? f.open.map(item => '- ' + item.text).join('\n') : '- Nothing open.') + '\n'
+    + '\n## Paths\n- /work/' + slug + ' [1]\n- Last seen: ' + f.last_activity + '\n'
+    + '\n## Sources\n- [1] codex:' + slug + ' — project notes; observed ' + f.last_activity + '.\n'
+    + '\nInvestigation: mapped 2026-08-20 · investigated 2026-09-30 (codex)\n';
+  const project = (slug, title, f) => ({...quiet, path: 'projects/' + slug + '.md', title, written: true, relations: [], parent: null, same_as: [],
+    promised: [], written_deadlines: [], pinned: false, open: [], kind_counts: {owed: 0, waiting: 0, agent: 0, answerable: 0}, reasons: [],
+    facts: {Repository: fact(slug), Stack: [], Status: [], People: [], Organisation: [], Started: [], 'Last activity': fact(f.last_activity)},
+    project_coverage: null, updated: '2026-09-30T08:00:00+00:00', date_sources: {last_activity: {cite: '1'}},
+    ...f, text: text(slug, title, f)});
+  const feedback = {date: '2026-09-17', text: 'Feedback for Tomas', source: 'fixture', cite: null, path: 'fixture'};
+  const atlasDays = ['2026-09-08', '2026-09-12', '2026-09-16', '2026-09-22', '2026-09-26', '2026-09-30'];
+  REM.records.push(
+    project('fernhill-pilot', 'Fernhill pilot', {score: 22, priority: 1, health: 'at_risk', last_activity: '2026-09-28',
+      what: 'A paid pilot of the weekly brief for Fernhill Labs', relations: [link('orgs/fernhill-labs.md'), ...sessions('fernhill', ['2026-09-20', '2026-09-28'])],
+      facts: {Repository: fact('fernhill-pilot'), Stack: fact('Python'), Status: [], People: fact('Mara Ostrowski'), Organisation: [], Started: [], 'Last activity': fact('2026-09-28')},
+      project_coverage: {inputs_read: 2, inputs_available: 40, days: 30, scope: 'archived'},
+      open: [owed('people/mara-ostrowski.md', 'You owe Mara the weekly chart report [1].', {since: '2026-09-26'}),
+             owed('people/mara-ostrowski.md', 'You owe Fernhill the handover bundle [1].', {since: '2026-09-28'}),
+             {...owed(null, 'Ask Codex to rerun the import [1].'), kind: 'agent'}],
+      kind_counts: {owed: 2, waiting: 0, agent: 1, answerable: 0},
+      reasons: [reason('paying client: 5 × 1; You owe Mara the weekly chart report [1].', 5)]}),
+    project('capstone-review', 'Capstone review', {score: 14, priority: 2, health: 'off_track', last_activity: '2026-09-21',
+      what: 'Reviewing student capstone reports for the spring cohort', relations: sessions('capstone', ['2026-09-10', '2026-09-21']),
+      overdue_days: 14, project_coverage: {inputs_read: 5, inputs_available: 5, days: 30, scope: 'archived'},
+      open: [owed('people/tomas-reyes.md', 'You owe Tomas feedback by 2026-09-17 [1].', {since: '2026-09-10', due: '2026-09-17', promised: [feedback]}),
+             ...['Rowan', 'Juniper', 'Sasha'].map(name => owed(null, name + ' waits for feedback on the report [1].', {since: '2026-09-17'}))],
+      kind_counts: {owed: 4, waiting: 0, agent: 0, answerable: 0}, promised: [feedback],
+      reasons: [reason('Overdue promise to Tomás Reyes: 14 days late; You owe Tomas feedback by 2026-09-17 [1].', 0)]}),
+    project('grant', 'Grant application', {score: 8, priority: 3, health: 'at_risk', last_activity: '2026-09-15', what: 'A research grant with Fernhill Labs',
+      open: [owed(null, 'You owe Fern the budget line [1].', {since: '2026-09-15'})], kind_counts: {owed: 1, waiting: 0, agent: 0, answerable: 0},
+      written_deadlines: [{date: '2026-10-20', text: 'Letter of support due', source: 'fixture', cite: null, path: 'fixture'},
+                          {date: '2026-10-20', text: 'Budget table due', source: 'fixture', cite: null, path: 'fixture'}]}),
+    project('atlas', 'Atlas', {score: 6, priority: 3, health: 'on_track', last_activity: '2026-09-30', what: 'The shared mapping toolkit',
+      relations: sessions('atlas', atlasDays), project_coverage: {inputs_read: 6, inputs_available: 6, days: 30, scope: 'archived'},
+      open: [owed(null, 'You owe Fern a review of the tile format [1].', {since: '2026-09-29'})], kind_counts: {owed: 1, waiting: 0, agent: 0, answerable: 0}}),
+    // Shares every Atlas session: a computed "may be one project" pair, as well as a sub-project.
+    project('atlas-api', 'atlas-api', {score: 1, priority: 4, health: 'on_track', last_activity: '2026-09-29', what: 'The tile server behind Atlas',
+      relations: sessions('atlas', atlasDays),
+      parent: {path: 'projects/atlas.md', suggestion: true, reason: 'component repository', source: 'fixture', cite: null, via: 'projects/atlas-api.md'}}),
+    // A sub-project that is off track: it counts, it has a column and a date, though the list nests it.
+    project('atlas-docs', 'atlas-docs', {score: 0.5, priority: 4, health: 'off_track', last_activity: '2026-08-02', what: 'The Atlas handbook',
+      open: [owed(null, 'You owe Fern the install chapter by 2026-09-24 [1].', {since: '2026-09-01', due: '2026-09-24', needs_review: false})],
+      kind_counts: {owed: 1, waiting: 0, agent: 0, answerable: 0},
+      parent: {path: 'projects/atlas.md', suggestion: true, reason: 'component repository', source: 'fixture', cite: null, via: 'projects/atlas-docs.md'}}),
+    project('agent-only', 'Night jobs', {score: 0.5, priority: 4, health: 'on_track', last_activity: '2026-09-29', what: 'Scheduled clean-up jobs',
+      open: [{...owed(null, 'Ask Claude to tidy the logs [1].'), kind: 'agent'}], kind_counts: {owed: 0, waiting: 0, agent: 1, answerable: 0}}),
+    // A past date on something the owner waits for is drawn, but never as late.
+    project('waiting-room', 'Waiting room', {score: 0.25, priority: 4, health: 'on_track', last_activity: '2026-09-27', what: 'Renting a studio room',
+      open: [{...owed('people/quinn-alder.md', 'Waiting on Quinn for the contract [1].'), kind: 'waiting'}], kind_counts: {owed: 0, waiting: 1, agent: 0, answerable: 0},
+      promised: [{date: '2026-09-20', text: 'Contract from Quinn', source: 'fixture', cite: null, path: 'fixture'}]}),
+    // On track, but its last session was 29 days ago: the 30-day rule turns it quiet within the week.
+    project('tidewater', 'Tidewater', {score: 0, priority: 4, health: 'on_track', last_activity: '2026-09-02', what: 'A tide-table widget'}),
+    project('harbour-copy', 'harbour', {score: 0, priority: 0, health: 'quiet', last_activity: '2026-08-10', what: 'An older page for the shared-inbox tool',
+      same_as: [{path: 'projects/harbour.md', suggestion: true, reason: 'same title', source: 'fixture', cite: null, via: 'projects/harbour-copy.md'}]}),
+    project('workshop', 'Spring workshop', {score: 0, priority: 0, health: 'quiet', last_activity: '2026-07-18', what: 'A one-day workshop for founders',
+      reasons: [reason('Project explicitly marked completed', 0)]}),
+    ...['Moss archive', 'Tidepool', 'Lark notes', 'Juniper site', 'Hollow CLI', 'Birch dashboard', 'Quill export', 'Ember forms', 'Wren mail']
+      .map((title, i) => ({...quiet, path: 'projects/mapped-' + i + '.md', title, text: quiet.text.replace(/^# .*/, '# ' + title)})));
+  KNOWN.clear(); FACTS.clear(); render();
+}"""
 
+
+def _project_page(reader, view, width=1440, theme="light", extra=""):
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 900 if width == 1440 else 844})
-    page.goto(uri + "#c=projects")
-    page.evaluate("theme => setTheme(theme)", theme, isolated_context=False)
-    expect(page.locator("h1.page-state")).to_have_text(re.compile(r"^2 projects · 1 active this week$"))
-    hero = page.locator(".project-hero")
-    expect(hero.locator("h2")).to_have_text("Harbour")
-    expect(hero).to_contain_text("2 open items")
-    expect(hero.locator(".btn-act")).to_have_attribute("href", "#r=projects%2Fharbour.md&h=open-threads")
-    assert _visible_green_buttons(page) == 1
-    expect(page.locator(".project-lane")).to_have_count(3)
-    expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(0)  # lifted, not repeated
-    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: 6 days ago Waiting on Fernhill")
-    lantern = page.locator('.project-lane[data-lane="older"] .project-card').filter(has_text="Lantern")
-    expect(lantern.locator(".project-card-what")).to_have_text("Not investigated yet. REM only knows its folder and sessions.")
+    page.emulate_media(color_scheme=theme, reduced_motion="reduce")
+    page.goto(uri + "#c=projects&v=" + view + extra)
+    page.evaluate(PROJECT_SET, isolated_context=False)
+    return page
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("view", ["timeline", "list", "board"])
+def test_project_directory_opens_on_one_rem_sentence_with_no_green_and_no_overflow(reader, view, width, theme):
+    """墨与铅: one REM sentence in the reader's one sans, red only for the overdue promise, no green on the
+    directory (none of its record actions can write yet), and no sideways scroll on a phone."""
+    from patchright.sync_api import expect
+
+    page = _project_page(reader, view, width, theme)
+    expect(page.locator(".pd")).to_have_attribute("data-view", view)
+    total = page.evaluate("inCategory('projects').length", isolated_context=False)
+    expect(page.locator(".pd-count")).to_have_text(str(total))  # sub-projects count: the title agrees with the rail
+    expect(page.locator('#nav a[href="#c=projects"] .n')).to_have_text(str(total))
+    expect(page.locator(".pd-views [aria-current='page']")).to_have_text({"timeline": "Timeline", "list": "List", "board": "Board"}[view])
+    lede = page.locator(".pd-lede")
+    expect(lede).to_contain_text(f"{total} projects on record")
+    tomas = page.evaluate("byPath('people/tomas-reyes.md').title", isolated_context=False)
+    expect(lede.locator(".red")).to_have_text(f"On Capstone review, a promise to {tomas} is 14 days late.")
+    assert "Songti" not in lede.evaluate("node => getComputedStyle(node).fontFamily")  # one typeface across the reader
+    expect(page.locator(".pd-basis")).to_contain_text("made by rule")
+    assert _visible_green_buttons(page) == 0
+    # Nothing REM does not have is drawn: no families, no grouping or merge button, no per-project line.
+    assert page.locator(".pd").get_by_text(re.compile(r"Accept|Merge|采用|合并")).count() == 0
+    assert page.locator(".pd :is(button, a).btn-act").count() == 0
     assert "/home/user" not in page.locator("#main").inner_text()
-    if width == 1440:
-        expect(page.locator(".project-lane-tabs")).to_be_hidden()
-        assert len({round(lane.bounding_box()["y"]) for lane in page.locator(".project-lane").all()}) == 1
-        hero.locator(".btn-act").click()
-        expect(page.locator("#open-threads")).to_be_visible()
-    else:
-        expect(page.locator(".project-lane:visible")).to_have_count(1)
-        expect(lantern).to_be_visible()  # the lifted hero leaves Earlier as the first nonempty lane
-        page.locator(".project-lane-tabs").get_by_role("button", name="This week", exact=True).click()
-        expect(lantern).to_be_hidden()
-        page.locator(".project-lane-tabs").get_by_role("button", name="Earlier", exact=True).click()
-        expect(lantern).to_be_visible()
-        box = hero.locator(".btn-act").bounding_box()
-        assert box["y"] + box["height"] < 844 and box["height"] >= 46
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_projects_lane_shows_seven_cards_then_the_rest_on_request(reader):
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_timeline_draws_session_ticks_the_late_line_and_pencil_forecasts(reader, width):
     from patchright.sync_api import expect
 
+    page = _project_page(reader, "timeline", width)
+    row = lambda slug: page.locator(f'.pd-row[data-path="projects/{slug}.md"]')
+    expect(row("atlas").locator(".pd-tick")).to_have_count(6)  # one per session day, the last activity among them
+    expect(row("capstone-review").locator(".pd-late")).to_have_count(1)
+    expect(row("capstone-review").locator(".pd-late-n")).to_have_text("14 days late")
+    # Waiting on someone past their date is drawn as a past date, never as late.
+    expect(row("waiting-room").locator(".pd-late")).to_have_count(0)
+    # Pencil only right of today, only for on-track projects, and it names its rule.
+    expect(row("atlas").locator(".pd-pencil")).to_have_attribute("title", "Turns quiet on Oct 31 by the 30-day rule if no session comes")
+    expect(row("capstone-review").locator(".pd-pencil")).to_have_count(0)
+    assert page.evaluate("""() => [...document.querySelectorAll('.pd-pencil')].every(node =>
+      parseFloat(node.style.left) === parseFloat(node.parentNode.querySelector('.pd-now').style.left))""", isolated_context=False)
+    # A sub-project sits right under its project.
+    order = page.evaluate("[...document.querySelectorAll('.pd-row[data-path]')].map(n => n.dataset.path)", isolated_context=False)
+    assert order.index("projects/atlas-api.md") == order.index("projects/atlas.md") + 1
+    # REM's notes: rule-made, five at most; the overdue one is a fact in red, the duplicate a dashed inference.
+    notes = page.locator(".pd-note")
+    assert 1 <= notes.count() <= 5
+    expect(row("capstone-review").locator(".pd-kicker")).to_have_text("Overdue")
+    expect(row("capstone-review").locator(".pd-note")).to_contain_text("Feedback for Tomas. Due Sep 17, still open, 14 days late.")
+    expect(row("fernhill-pilot").locator(".pd-kicker")).to_have_text("Read a corner")
+    expect(row("tidewater").locator(".pd-note-pencil")).to_contain_text("Tidewater (Oct 3)")
+    assert row("atlas-api").locator(".pd-note-inference .pd-inf").count() == 1
+    # Quiet projects fold into one row that unfolds in place.
+    fold = page.locator(".pd-row.pd-fold")
+    expect(fold).to_contain_text(re.compile(r"\d+ quiet"))
+    assert row("workshop").count() == 0
+    fold.get_by_role("button", name="Show").click()
+    expect(row("workshop")).to_be_visible()
+    # REM's own row is the days it wrote pages.
+    assert page.locator(".pd-rem-row .pd-ring").count() >= 1
+    # Labels never sit on marks: the due label clears the strip, and a month label the today marker
+    # covers is hidden (the scrum master read "今天 1月" with 11月 clipped on a phone).
+    assert page.evaluate("""() => {
+      const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const row = document.querySelector('.pd-row[data-path="projects/capstone-review.md"]');
+      const label = row.querySelector('.pd-lbl.red').getBoundingClientRect();
+      const marks = [...row.querySelectorAll('.pd-tick, .pd-late')].map(n => n.getBoundingClientRect());
+      const today = document.querySelector('.pd-now-label').getBoundingClientRect();
+      const months = [...document.querySelectorAll('.pd-col-label')].filter(n => getComputedStyle(n).visibility !== 'hidden').map(n => n.getBoundingClientRect());
+      // Only the label the marker covers goes: every other month keeps its name.
+      const hidden = [...document.querySelectorAll('.pd-col-label')].filter(n => getComputedStyle(n).visibility === 'hidden').length;
+      return !marks.some(m => hit(label, m)) && !months.some(m => hit(today, m)) && hidden <= 1;
+    }""", isolated_context=False)
+    # Zoom rewrites the window and the sentence together.
+    page.locator(".pd-seg").get_by_role("link", name="Week").click()
+    expect(page.locator(".pd")).to_have_attribute("data-zoom", "week")
+    expect(page.locator(".pd-lede")).to_contain_text(re.compile(r"projects? moved this week"))
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_timeline_month_headers_are_never_cut(reader, width, language):
+    """At 1440 "Mostly ConnectOnion and browser · 106 session days" lost its last line to the
+    header's fixed height. Every month header shows all of its text, at both widths."""
+    page = _project_page(reader, "timeline", width)
+    page.evaluate("""language => {
+      if (language === 'zh') setInterfaceLanguage('zh');
+      byPath('projects/atlas.md').title = 'ConnectOnion platform and agents';
+      byPath('projects/atlas-api.md').title = 'browser automation (onionwright)';
+      render();
+    }""", language, isolated_context=False)
+    cut = page.evaluate("""() => [...document.querySelectorAll('.pd-col')].filter(col => getComputedStyle(col).display !== 'none')
+      .flatMap(col => [col, ...col.children]).filter(n => getComputedStyle(n).display !== 'none'
+        && (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1)).map(n => n.className + ' ' + [n.scrollWidth, n.clientWidth, n.scrollHeight, n.clientHeight] + ': ' + n.textContent)""",
+                        isolated_context=False)
+    assert cut == []
+    if width == 1440:  # the line is drawn there, so the check above is not vacuous
+        assert "ConnectOnion" in page.locator(".pd-col-line").first.inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_list_names_what_is_on_file_instead_of_unlabelled_squares(reader, width):
+    """P大 on the approved list mock: "那排小方块是啥？" Seven unlabelled squares made the reader
+    decode which fact was missing. The cell now names the gap in words, keeps the full list on hover,
+    and says when REM never investigated, which is why everything was empty."""
+    from patchright.sync_api import expect
+
+    page = _project_page(reader, "list", width)
+    page.locator(".pd-fold").get_by_role("button", name="Show").click()  # mapped pages are quiet, so they fold
+    row = lambda slug: page.locator(f'.pd-lrow[data-path="projects/{slug}.md"]')
+    fernhill = row("fernhill-pilot").locator(".pd-lknown span")
+    expect(fernhill).to_have_text("Missing: status, organisation, start")
+    expect(fernhill).to_have_attribute("title", "On file: repository, stack, people, last activity. Not on file: status, organisation, start.")
+    expect(row("atlas").locator(".pd-lknown span")).to_have_text("Only: repository, last activity")
+    expect(row("mapped-0").locator(".pd-lknown")).to_have_text("Not investigated")
+    assert page.locator(".pd-lknown i").count() == 0  # no squares left to decode
+    if width == 1440:
+        expect(page.locator(".pd-lhead")).to_contain_text("On file (7)")
+    # An agent instruction is not owed, and it says who has it in the owner's words.
+    expect(row("fernhill-pilot").locator(".pd-lopen")).to_have_text("You owe 2 · Handed to agents 1")
+    expect(row("capstone-review").locator(".pd-lopen .red")).to_have_text("You owe 4")
+    expect(row("fernhill-pilot").locator(".pd-lread .pd-partial")).to_have_text("2/40")
+    expect(row("grant").locator(".pd-lread")).to_have_text("No record")
+    expect(row("tidewater").locator(".pd-llast small")).to_have_text("No sessions")
+    expect(row("atlas-api")).to_have_class(re.compile(r"\bkid\b"))
+    expect(row("capstone-review").locator(".pd-lhealth")).to_contain_text("14 days late")
+    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
+    expect(fernhill).to_have_text("缺 状态、组织、开始")
+    expect(row("fernhill-pilot").locator(".pd-lopen")).to_have_text("你欠 2 · 交给智能体 1")
+    expect(page.locator(".pd-views a")).to_have_text(["时间线", "列表", "看板"])
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_board_axis_is_a_question_and_each_answer_is_computed(reader, width):
+    from patchright.sync_api import expect
+
+    page = _project_page(reader, "board", width)
+    cols = page.locator(".pd-colm h2 > span")
+    expect(cols).to_have_text(["Off track", "At risk", "On track", "Quiet"])
+    expect(page.locator(".pd-colm").first.locator(".pd-card")).to_have_count(2)  # atlas-docs, a sub-project, has its card
+    expect(page.locator(".pd-pencil-box")).to_contain_text("Tidewater")
+    expect(page.locator('.pd-card[data-path="projects/fernhill-pilot.md"]')).to_have_class(re.compile(r"\bweak\b"))  # read 2 of 40
+    page.locator(".pd-asks").get_by_role("link", name="Who waits on whom").click()
+    expect(page.locator(".pd-colm h2 > span")).to_have_text(["You owe others", "You wait on others", "Only with agents", "No open promise"])
+    quinn = page.evaluate("byPath('people/quinn-alder.md').title", isolated_context=False)
+    expect(page.locator('.pd-card[data-path="projects/waiting-room.md"] .pd-card-extra')).to_have_text("Waiting on: " + quinn)
+    page.locator(".pd-asks").get_by_role("link", name="What may be one project").click()
+    shared = page.locator(".pd-colm").nth(0).locator(".pd-pair")
+    expect(shared).to_have_count(1)
+    expect(shared).to_contain_text("6/6 sessions shared · may be one project")
+    expect(page.locator(".pd-colm").nth(1).locator(".pd-pair")).to_contain_text("harbour")
+    assert page.locator(".pd-pair .tag").count() == page.locator(".pd-pair").count()  # every pair is labelled an inference
+    page.locator(".pd-asks").get_by_role("link", name="What can be set down").click()
+    expect(page.locator(".pd-answer .pd-inf")).to_have_text("can be set down")
+    assert _visible_green_buttons(page) == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_project_rank_breaks_ties_by_a_casefolded_name(reader):
     page, uri = reader
     page.goto(uri + "#c=projects")
-    page.evaluate("""() => {
-      const harbour = byPath('projects/harbour.md');
-      for (let i = 0; i < 9; i++) REM.records.push({...harbour, path: 'projects/copy-' + i + '.md', title: 'Copy ' + i});
-      render();
-    }""", isolated_context=False)
-    week = page.locator('.project-lane[data-lane="week"]')
-    expect(week.locator(".project-card")).to_have_count(7)  # nine copies; Harbour itself is the lifted card
-    week.get_by_role("button", name=re.compile(r"^2 more projects")).click()
-    expect(week.locator(".project-card")).to_have_count(9)
-    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
-    expect(page.locator("h1.page-state")).to_have_text("11 个项目 · 10 个本周有动静")
-    expect(week.get_by_role("button", name=re.compile(r"^还有 2 个"))).to_be_visible()
+    order = page.evaluate("""() => [{title: 'beta'}, {title: 'Ａlpha'}, {title: 'Gamma'}]
+      .map(r => ({...r, score: 1, open: [], pinned: false})).sort(projectRank).map(r => r.title)""", isolated_context=False)
+    assert order == ['Ａlpha', 'beta', 'Gamma']  # full-width Ａ folds to a, as casefold plus NFKC would
+
+
+def test_project_marks_are_late_only_for_owed_due_and_keep_same_day_deadlines(reader):
+    page = _project_page(reader, "timeline")
+    marks = page.evaluate("""() => Object.fromEntries(['grant', 'waiting-room', 'capstone-review', 'atlas-docs']
+      .map(slug => [slug, projectMarks(byPath('projects/' + slug + '.md')).map(m => [m.day, m.text, m.state])]))""", isolated_context=False)
+    assert marks['waiting-room'] == [['2026-09-20', 'Contract from Quinn', 'past']]  # owed to you: drawn, never late
+    assert marks['grant'] == [['2026-10-20', 'Budget table due', 'next'], ['2026-10-20', 'Letter of support due', 'next']]
+    assert marks['capstone-review'] == [['2026-09-17', 'Feedback for Tomas', 'late']]  # the promise and its due item are one mark
+    [(day, what, state)] = marks['atlas-docs']  # a due item without a named promise is labelled by its own words
+    assert (day, state) == ('2026-09-24', 'late') and what.startswith('You owe Fern the install chapter')
+
+
+def test_project_dates_fall_back_to_the_clock_without_a_snapshot_date(reader):
+    page = _project_page(reader, "timeline")
+    state = page.evaluate("""() => { REM.as_of = undefined;
+      return projectMarks(byPath('projects/capstone-review.md')).map(m => m.state); }""", isolated_context=False)
+    assert state == ['late']  # today is the clock's day, never an empty string that makes every date "next"
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
@@ -5223,16 +5401,13 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_org_list_groups_organisations_under_one_green_next_step(reader, width, theme):
+def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", width, theme)
-    assert re.fullmatch(r"\d+ organisations\s*·?\s*1 waiting on you", page.locator(".ov-list h1").inner_text().replace("\n", " ").strip())
-    focal = page.locator(".ov-focal")
-    assert "Fernhill Labs" in focal.inner_text()
-    assert page.evaluate(GREEN) == 1
-    primary = focal.locator(".ov-primary")
-    assert "Mara" in primary.inner_text()
-    assert primary.bounding_box()["y"] + primary.bounding_box()["height"] <= (844 if width < 600 else 900)
+    assert re.fullmatch(r"\d+ organisations", page.locator(".ov-list h1").inner_text().strip())
+    assert page.locator(".ov-focal").count() == 0
+    assert page.evaluate(GREEN) == 0
+    assert page.locator(".ov-list .list-today").inner_text() == "1 organisation waiting in Today →"
     assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
     row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
@@ -5273,8 +5448,7 @@ def test_org_with_nothing_owed_has_no_green_button(reader, width):
     assert page.locator(".ov-today").count() == 0
     page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
     page.locator(".ov-list").wait_for()
-    assert page.locator(".ov-focal").count() == 0
-    assert "nothing waiting on you" in page.locator(".ov-list h1").inner_text()
+    assert page.locator(".ov-list .list-today").count() == 0
     assert page.evaluate(GREEN) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -5676,3 +5850,59 @@ def test_person_owed_item_opens_its_cited_original_without_searching_full_memory
     cite.click()
     expect(page.locator('#evidence-panel')).to_be_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_page_open_items_are_a_record_without_green_or_self_links(reader, width):
+    """Owner, 2026-11-08: a project page is a record. Its open items carry no green
+    button, and never an "Open the page" button that points at the page you are on."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    items = page.locator("#open-threads li.thread")
+    assert items.count() >= 1
+    assert page.evaluate(GREEN) == 0
+    assert page.locator("#open-threads").get_by_text("Open the page", exact=True).count() == 0
+    assert items.first.get_by_role("button", name="Mark done", exact=True).count() == 1
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person(reader, width):
+    """The name is not centred in an empty poster band, and a long role never wraps
+    onto a line of its own where it reads as the next person's role."""
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
+    page.evaluate("""() => { const p = REM.records.find(r => r.category === 'people');
+      p.text = p.text.replace(/^(- Role: ).*$/m, '$1Former sales and marketing intern for the pilot programme across three campuses'); render(); }""",
+      isolated_context=False)
+    assert page.locator(".ov-say h1").bounding_box()["y"] < 160
+    for item in page.locator(".ov-key li").all():
+        name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
+        assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
+        assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
+    """P大: "这替我干了什么？" — at 1440 the right half says what REM did, naming whom for;
+    on a phone the same block follows the queue. Duplicated outcomes count once."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#")
+    page.evaluate("""() => {
+      const people = REM.records.filter(r => r.category === 'people' && r.path !== REM.owner).slice(0, 2);
+      const o = (kind, r, n) => ({key: r.path + n, record: r.path, title: r.title, kind});
+      REM.night_outcomes = [o('prepared', people[0], 1), o('prepared', people[0], 1), o('prepared', people[1], 2), o('no_reply', people[1], 3)];
+      render();
+    }""", isolated_context=False)
+    done = page.locator(".night-done")
+    assert done.locator("h2").inner_text() == "What REM did overnight"
+    assert done.locator("li b").all_inner_texts() == ["Drafted replies for 2 people", "1 thing needs no reply"]
+    assert done.locator("li").first.locator("a").count() == 2
+    cards, aside = page.locator(".today-brief").bounding_box(), done.bounding_box()
+    if width == 1440:
+        assert aside["x"] >= cards["x"] + cards["width"], "beside the queue, in the right half"
+        assert aside["y"] < 400, "on the first screen"
+    else:
+        assert aside["y"] >= cards["y"] + cards["height"], "after the queue on a phone"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

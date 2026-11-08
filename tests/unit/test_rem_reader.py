@@ -165,7 +165,7 @@ def test_this_week_project_rows_strip_the_now_label():
         'const singular = () => "project", sectionHead = text => ({text});',
         'let r; const weekChanges = () => [{r, day: "2026-10-16"}];',
         'const rows = [], main = {appendChild: node => rows.push(node)};',
-        'const updatedMarker = () => null, firstBuild = () => false;',
+        'const updatedMarker = () => null, firstBuild = () => false, translationNotice = () => null;',
         'for (const [i, line] of ["Now: waiting on review", "**Now:** waiting on review"].entries()) {',
         'r = {path: `projects/pilot-${i}.md`, title: "Pilot", category: "projects",',
         'text: "# Pilot\\n\\n## Insight\\n- " + line};',
@@ -1499,7 +1499,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personCard', 'cardHead', 'cardItem', 'cardDraft', 'stepAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
+                          for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
                                        'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
@@ -3169,33 +3169,22 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
 
 
 def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
-    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now.
-    Person page: an open thread is never answered by a mailto "Re:", which starts a new thread."""
+    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['draftNote', 'personPrimary', 'mailtoLink', 'draftNowButton'])
+                          for name in ['draftNote', 'draftNowButton'])
     result = _run_reader_js(functions + r'''
       const REM = {live: true, status: {worker: {enabled: true}},
         today_queue: [{key: 'avery', keys: ['avery'], reply: {state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'}}]};
-      const doneKey = () => 'avery', remCommand = args => 'co rem ' + args, firstName = r => 'Avery';
+      const doneKey = () => 'avery', remCommand = args => 'co rem ' + args;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children), insertAdjacentHTML() {}});
-      const href = r => '#r=' + r.path, setDone = () => {}, fmtDate = day => day;
-      const PEN_ICON = '', CHECK_ICON = '';
-      const threadDraft = () => null;
-      let contact = {address: 'avery@example.com', subject: 'Pilot', name: 'Avery'};
-      const threadContact = () => contact;
       const entry = {r: {path: 'people/avery.md'}, t: {text: 'Reply to Avery.'}};
-      const liveNote = draftNote(null, entry), livePrimary = personPrimary(entry.r, entry);
+      const liveNote = draftNote(null, entry);
       REM.live = false;
-      const staticNote = draftNote(null, entry), staticPrimary = personPrimary(entry.r, entry);
-      contact = {address: 'avery@example.com', subject: '', name: 'Avery'};
-      console.log(JSON.stringify({liveNote, livePrimary, staticNote, staticPrimary, fresh: personPrimary(entry.r, entry)}));
+      console.log(JSON.stringify({liveNote, staticNote: draftNote(null, entry)}));
     ''')
     assert result['liveNote'] is None
-    assert result['livePrimary']['class'] == 'draft-now'
     assert 'co rem open' in json.dumps(result['staticNote'])
-    assert 'mailto:' not in json.dumps(result['staticPrimary'])
-    assert result['fresh']['href'] == 'mailto:avery@example.com'
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
@@ -3212,3 +3201,165 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
       console.log(JSON.stringify({unrecordedSubject, noThread: cardStep({})}));
     ''')
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
+
+def test_task_controls_say_rem_started_it_and_offer_stop_or_undo():
+    page = TEMPLATE.read_text()
+    function = re.search(r'function taskControls\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const REM = {live: true}, location = {protocol: 'http:'};
+      const running = taskControls({id: 'a', by: 'rem', result: 'running'});
+      const done = taskControls({id: 'a', by: 'rem', result: 'completed', deliverable: '/fern hill/result.md'});
+      const failed = taskControls({id: 'a', result: 'failed', reason: 'Codex CLI not found'});
+      const ready = taskControls({id: 'a', result: 'ready'});
+      REM.live = false;
+      const snapshot = taskControls({id: 'a', by: 'rem', result: 'running'});
+      console.log(JSON.stringify({running, done, failed, ready, snapshot}));
+    ''')
+    texts = lambda node: [child.get('text') for child in node['children']]
+    assert texts(result['running']) == ['REM started this', 'Stop', 'Undo']
+    assert texts(result['done']) == ['REM started this', 'Open the deliverable', 'Undo']
+    assert result['done']['children'][1]['href'] == 'file:///fern%20hill/result.md'
+    assert texts(result['failed']) == ['Undo']
+    assert result['ready'] is None
+    assert texts(result['snapshot']) == ['REM started this']
+
+
+def test_a_queued_task_card_says_why_it_waits():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
+      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
+      const task = (wait, reason) => ({id: 'a', result: 'waiting', wait, reason});
+      const REM = {live: true, today_queue: [
+        {key: 'later', outcome: {kind: 'task', task: task('later', 'Another task is running; this one starts on a later tick tonight.')}},
+        {key: 'budget', outcome: {kind: 'task', task: task('budget', '3 tasks already started tonight (limits.tasks_per_night).')}}]};
+      console.log(JSON.stringify({later: taskResult({key: 'later'}), budget: taskResult({key: 'budget'})}));
+    ''')
+    for name, label in (('later', 'Queued: later tonight'), ('budget', 'Queued: budget used up')):
+        card = result[name]
+        assert card['children'][0]['text'] == label
+        assert card['children'][1]['text'].startswith(('Another task', '3 tasks'))
+        assert not any(child.get('class') == 'task-controls' for child in card['children'])
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_a_held_task_card_says_it_is_recorded_and_offers_only_undo(language):
+    """D-60, 2026-11-07: never ask the owner to copy a prompt or a command."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js('UI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
+      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
+      const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
+        {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
+      const card = taskResult({key: 'fern'});
+      const controls = card.children.find(child => child.class === 'task-controls');
+      console.log(JSON.stringify({status: card.children[0].text, buttons: controls.children.map(child => child.text), card}));
+    ''')
+    if language == 'zh':
+        assert result['status'] == 'REM 已记下这件事；为了安全，本版本暂不自动去做'
+        assert result['buttons'] == ['撤销']
+    else:
+        assert result['status'] == 'Recorded. For safety this version does not run it yet'
+        assert result['buttons'] == ['Undo']
+    text = json.dumps(result['card'], ensure_ascii=False)
+    assert 'Codex' not in text and 'Prepare the Fernhill' not in text and 'Stop' not in text
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_the_empty_topic_list_names_the_command_that_files_topics(language):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
+                          for name in ['topicList', 'graphT', 'commandChip'])
+    zh = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(zh + '\n' + functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const el = (tag, attrs, children) => ({tag, ...attrs, children: (children || []).filter(c => c != null)});
+      const topicRecords = () => [], remCommand = args => 'co rem ' + args, copyToClipboard = () => {};
+      let view = null;
+      const main = {set textContent(_) {}, appendChild: node => { view = node; }};
+      const document = {getElementById: () => main};
+      topicList();
+      console.log(JSON.stringify(view));
+    ''')
+    text = json.dumps(result, ensure_ascii=False)
+    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
+    assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') in text
+    assert ('从已有记录里整理知识：' if language == 'zh' else 'To file them from what you already have:') in text
+    assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
+    assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
+    assert ('"复制"' if language == 'zh' else '"Copy"') in text
+
+
+def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_sessions():
+    """'0 had sessions this quarter, most often .' is a broken sentence."""
+    page = TEMPLATE.read_text()
+    names = ['projectLede', 'projectActive', 'projectTierCounts']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const pdT = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
+      const pdList = names => names.join(', '), pdIn = () => true, projectTicks = () => [], projectSessionDays = () => [];
+      const projectRank = () => 0, projectTier = () => 'quiet', projectLate = () => null, projectMarks = () => [];
+      const fmtTime = () => '', calendarDay = d => d, pdAt = () => 0, projectDot = () => null, projectStrip = () => null, REM = {as_of: '2026-11-09'};
+      const pdWho = () => '', pdDay = d => d, el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const all = [{title: 'Harbour'}, {title: 'Lantern'}];
+      let out;
+      try { out = projectLede(all, {zoom: 'quarter', today: '2026-11-09'}); } catch (error) { out = String(error); }
+      console.log(JSON.stringify(typeof out === 'string' ? out : JSON.stringify(out)));
+    ''')
+    assert 'most often .' not in result and 'most often ,' not in result
+    assert 'no project had sessions this quarter' in result
+
+
+def _reader_function(name):
+    return re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S)[0]
+
+
+@pytest.mark.parametrize('language, expected', [('en', 'Knowledge'), ('zh', '知识')])
+def test_the_knowledge_category_is_called_knowledge_not_topics(language, expected):
+    """Owner, 2026-11-09: "你怎么又新增加了一个 category 呢？" The category keeps its name."""
+    page = TEMPLATE.read_text()
+    labels = re.search(r'const CATEGORY_LABEL = \{.*?\n\};', page, re.S)[0]
+    graph = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
+    names = re.search(r'const GRAPH_NAME = \{.*?\};', page)[0]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    script = '\n'.join([labels, graph, names, _reader_function('label'), _reader_function('graphT'),
+                        'UI.zh = ' + ui + ';', 'uiLanguage = ' + json.dumps(language) + ';',
+                        "console.log(JSON.stringify({rail: label('knowledge'), legend: graphT(GRAPH_NAME.knowledge)}));"])
+    assert _run_reader_js(script) == {'rail': expected, 'legend': expected}
+
+
+def test_the_old_graph_address_lands_on_all_records():
+    result = _run_reader_js(_reader_function('route') + '\n' + _reader_function('railActive') + r'''
+      const ACTIVITY = new Set(['notes', 'logs']), location = {hash: '#view=graph&focus=knowledge%2Fheat.md'};
+      const graph = railActive();
+      location.hash = '#view=activity';
+      console.log(JSON.stringify({graph, activity: railActive()}));
+    ''')
+    assert result == {'graph': 'all', 'activity': 'activity'}
+
+
+WORKING_STORAGE = "{getItem: key => saved[key] ?? null, setItem: (key, value) => { saved[key] = value; }}"
+BLOCKED_STORAGE = "{getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }}"
+
+
+@pytest.mark.parametrize('storage', [WORKING_STORAGE, BLOCKED_STORAGE], ids=['working', 'blocked'])
+def test_all_records_remembers_graph_or_list_and_survives_blocked_storage(storage):
+    result = _run_reader_js('const saved = {}; const localStorage = ' + storage + "; let allRecordsChoice = '';\n"
+                            + _reader_function('allRecordsMode') + r'''
+      const first = allRecordsMode();
+      const chosen = allRecordsMode('list');
+      const kept = allRecordsMode();
+      allRecordsChoice = '';
+      console.log(JSON.stringify({first, chosen, kept, again: allRecordsMode(), saved}));
+    ''')
+    assert result['first'] == 'graph' and result['chosen'] == 'list' and result['kept'] == 'list'
+    if storage == WORKING_STORAGE:
+        assert result['again'] == 'list' and list(result['saved'].values()) == ['list']
+    else:  # this visit keeps the choice; nothing could be saved
+        assert result['again'] == 'graph' and result['saved'] == {}

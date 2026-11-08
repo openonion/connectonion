@@ -45,8 +45,14 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    return {"version": 1, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
-            "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
+    # tasks.auto: owed work starts after the night's drafts, sealed, with Undo. Off
+    # until the sealed run's reads are limited to an allow-list, not a deny-list.
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+            # Each slot is followed by 15-minute turns for up to three hours. The old six
+            # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
+            # number of slots, bounds what the night spends.
+            "schedule": {"times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00",
+                                   "17:00", "18:00", "19:00", "22:00", "23:00"],
                          "timezone": local_timezone(), "runner": "codex-exec"},
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
@@ -70,7 +76,9 @@ def default_config() -> dict:
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
             "limits": {"runner_calls_per_day": 200, "jobs_per_round": 8,
-                       "translations_per_day": 100, "drafts_per_night": 30, "items_per_batch": 20,
+                       "translations_per_day": 100, "drafts_per_night": 30,
+                       # Owed-work tasks REM starts itself per night (noon to noon), one at a time.
+                       "tasks_per_night": 3, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -109,6 +117,11 @@ def validate(config: dict) -> dict:
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
     if not isinstance(config["tasks"], dict) or set(config["tasks"]) != {"auto"} or type(config["tasks"]["auto"]) is not bool:
         raise RemError("tasks.auto must be true or false")
+    notify = config["notify"]
+    if (not isinstance(notify, dict) or set(notify) != {"channel", "target"}
+            or notify["channel"] not in ("none", "telegram", "lark", "whatsapp", "email")
+            or not isinstance(notify["target"], str)):
+        raise RemError("notify.channel must be none, telegram, lark, whatsapp or email; notify.target must be text")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != {"summary"}
             or not isinstance(models["summary"], str) or not models["summary"].strip()):
@@ -157,7 +170,9 @@ SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},
-              "limits.quota_floor_percent": {70}}
+              "limits.quota_floor_percent": {70},
+              "limits.drafts_per_night": {10},
+              "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
 
 
@@ -168,7 +183,8 @@ def _drop_superseded(root: Path, config: dict) -> None:
         section, _, name = key.rpartition(".")
         saved = config.get(section) if section else config
         current = defaults[section] if section else defaults
-        if key not in explicit and isinstance(saved, dict) and saved.get(name) in old:
+        value = saved.get(name) if isinstance(saved, dict) else None
+        if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
             saved[name] = current[name]
 
 
@@ -186,6 +202,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    config.setdefault("notify", {"channel": "none", "target": ""})
     config.setdefault("tasks", {"auto": False})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
@@ -265,7 +282,7 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks"):
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")

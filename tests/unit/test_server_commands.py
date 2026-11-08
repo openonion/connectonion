@@ -817,9 +817,10 @@ class TestTheKeyPairOnDiskAlwaysMatches:
         """Per-server since #427 step 4; the property is unchanged."""
         from connectonion.cli.commands import keys_commands as kc
 
-        monkeypatch.setattr(kc, "SSH_PRIVATE_KEY", tmp_path / "id_ed25519")
-        priv = tmp_path / "id_ed25519_prod"
-        pub = tmp_path / "id_ed25519_prod.pub"
+        monkeypatch.setattr(kc.Path, "home", staticmethod(lambda: tmp_path))
+        priv = kc.per_host_key_path("prod")
+        pub = priv.with_suffix(".pub")
+        priv.parent.mkdir(parents=True)
         priv.write_text("an older key from another phrase")
         pub.write_text("ssh-ed25519 STALE stale\n")
 

@@ -160,6 +160,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
     `say` gets one line per step. Run off a terminal, a sync printed nothing
     for 25 minutes and everything at the end (#2033)."""
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     if scheduled and maintain is None:
         from .service import run_scheduled
         return run_scheduled(root, lambda: run_daily(

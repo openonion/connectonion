@@ -1,6 +1,7 @@
 """One launchd fire, one locked Codex work session, with durable turn receipts."""
 import argparse
 import fcntl
+import json
 import os
 import re
 import shlex
@@ -44,13 +45,66 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=()) -> list[str]:
+# Where users and other runs keep files: none of it is readable by a sealed task.
+PRIVATE_ROOTS = ('/Users', '/Volumes', '/tmp', '/private/tmp', '/private/var/folders')
+
+
+def _sealed(codex, writable, readable) -> list[str]:
+    """An owed-work task's prompt comes from untrusted mail, so it gets no way to send anything
+    and little to read: Codex's own seatbelt runs a permission profile that reads the system
+    but no user or temp area except `readable` (the repository) and Codex's release, writes
+    only `writable` (the task folder, whose tmp/ is the run's TMPDIR), and has no network.
+    The owner's Codex config and execpolicy rules are not loaded, so none of their MCP
+    servers, plugins, connectors, hooks or allow-rules apply (those run outside the sandbox)."""
+    from .sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
+    home = Path(os.path.realpath(Path.home()))
+    release = Path(codex).parent.parent
+    # A more specific path wins: the task folder stays writable inside a denied /Users or /tmp.
+    access = {'/': 'read', **{root: 'none' for root in PRIVATE_ROOTS},
+              **{str(home / name): 'none' for name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES)},
+              **{os.path.realpath(path): 'read' for path in (release, *readable)},
+              **{os.path.realpath(path): 'write' for path in writable}}
+    table = '{' + ','.join(f'{json.dumps(path)}={json.dumps(mode)}' for path, mode in access.items()) + '}'
+    return ['--ignore-user-config', '--ignore-rules', '-c', 'web_search="disabled"', '-c', 'features.apps=false',
+            '-c', 'features.plugins=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false',
+            '-c', 'default_permissions="rem_task"', '-c', f'permissions.rem_task.filesystem={table}',
+            '-c', 'permissions.rem_task.network.enabled=false',
+            # connectonion's import loads keys.env into the environment; `env` must not show it.
+            '-c', 'shell_environment_policy.inherit="core"',
+            # Memories persist in ~/.codex; subagents were not shown to inherit the profile; skill
+            # text stays off the prompt. code_mode_host stays on: in codex 0.167 it is the only
+            # command executor (off, a real run said "the execution tool is disabled"); the shells
+            # it starts run inside the seatbelt.
+            '-c', 'features.code_mode=false',
+            '-c', 'features.memories=false', '-c', 'features.multi_agent=false',
+            '-c', 'features.multi_agent_v2=false', '-c', 'skills.include_instructions=false']
+
+
+SECRET_NAME = re.compile('KEY|TOKEN|SECRET|PASSWORD|API', re.I)
+
+
+def sealed_environment(environment) -> dict:
+    """What a sealed Codex itself starts with: no secrets. It signs in from CODEX_HOME's auth file."""
+    return {name: value for name, value in environment.items() if not SECRET_NAME.search(name)}
+
+
+def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(), sealed=False,
+                 reads=()) -> list[str]:
+    """sealed: an owed-work task; see `_sealed()`."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
-    command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
-               '-C', str(root), '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
-               '--add-dir', str(selected_env_file().parent), '--skip-git-repo-check',
+    # A -s flag would override the sealed permission profile (codex 0.167 measured it).
+    codex = _codex_command()
+    if sealed:
+        # Codex re-executes itself for its filesystem helper by the path it was started with:
+        # start it from its release folder, which the profile can read, not a ~/.local/bin link.
+        codex = [str(Path(codex[0]).resolve()), *codex[1:]]
+    access = _sealed(codex[0], (root, *add_dirs), reads) if sealed else [
+        '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
+        '--add-dir', str(selected_env_file().parent)]
+    command = [*codex, 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
+               '-C', str(root), *access, '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]

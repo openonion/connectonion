@@ -155,7 +155,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
             page.locator('details.deep-note > summary').click()
-            page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
+            # The local graph links Storage too; follow the link in the memory just opened.
+            page.locator("details.deep-note").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")

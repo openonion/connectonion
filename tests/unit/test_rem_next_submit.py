@@ -2414,7 +2414,8 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
     saved = native.pending(trial)[0]
     # Reproduce the on-disk rc59 digest, which included both language settings.
     previous = saved['task']['config']
-    controls = {'runner_calls_per_day', 'jobs_per_round', 'translations_per_day', 'drafts_per_night',
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {'runner_calls_per_day', 'jobs_per_round', 'translations_per_day', 'drafts_per_night', 'tasks_per_night',
                 'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
                 'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes'}
     material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
@@ -2429,6 +2430,20 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
     else:
         with pytest.raises(RemError, match='input changed'):
             native.submit(trial, task['id'])
+
+
+def test_a_page_task_saved_before_tasks_per_night_existed_still_submits(trial):
+    # rc61 hashed config.yaml before limits.tasks_per_night was a default. The nightly
+    # task cap governs future work, like drafts_per_night, so it is not material.
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    config = read_config(trial)
+    del config['limits']['tasks_per_night']
+    saved['inputs'][str(trial / 'config.yaml')] = native._config_hash(config)
+    write_json(Path(task['material']) / 'task.json', saved)
+    assert _submit(trial, task)['outcome'] == 'accepted'
 
 
 def test_rc59_translation_without_config_snapshot_submits_when_config_is_unchanged(trial, translation_round):
@@ -2452,7 +2467,8 @@ def test_pre_model_split_digest_accepts_model_controls(trial, languages, change)
     previous = saved["task"]["config"]
     previous["model"] = "gpt-6-luna"
     previous.pop("models", None)
-    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night",
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
@@ -2476,7 +2492,8 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
     task = native.next_task(trial)
     saved = native.pending(trial)[0]
     assert "config" not in saved["task"]
-    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night",
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
@@ -2495,3 +2512,32 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
 
 def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_path):
     assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False
+
+
+def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeypatch, translation_round):
+    """A round that runs all day must not stop reading mail: mail was read only when a round began,
+    so a 14-hour round left the mailboxes unread since morning."""
+    from connectonion.rem import native_round
+    cursor = translation_round
+    cursor.update(phase='daily-update', jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], job_index=0,
+                  current=None, investigation_left=3)
+    cursor['batch']['done'] = True
+    write_json(state_path(trial, 'round.json'), cursor)
+    reads = []
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(service.now())
+        return {'done': True, 'items': [], 'updated': progress, 'record': {'extracted': False}, 'kind': 'gmail',
+                'leads': [], 'digested': None}
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    def investigate(root, state, config, directory):
+        return {'stop': 'fixture: one investigation per call'}
+    monkeypatch.setattr(native_round, '_prepare_job', investigate)
+    native.next_task(trial, scheduled=True)
+    assert reads == [], 'the slot that started the round already read mail'
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'a new slot reads new mail into the running round'
+    assert read_json(state_path(trial, 'round.json'), {})['mail_slot'] == moment.isoformat()
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'the same slot does not read again'

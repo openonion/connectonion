@@ -1306,7 +1306,8 @@ def test_approve_release_uses_existing_send_path_once_and_checks_slots(notebook,
 
 
 def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, monkeypatch):
-    from connectonion.rem import approvals, today, threads
+    from connectonion.rem import approvals, tasks, today, threads
+    monkeypatch.setattr(tasks, 'HOLD', False)  # release semantics; the rc62 hold is tested in test_rem_tasks
     book = Notebook(notebook)
     book.write('people/fern.md', '# Fern Vale\n\n## Open threads\n- You owe Fern a review.\n- You owe Fern a date.\n')
     keys = ['people/fern.md\nYou owe Fern a review.', 'people/fern.md\nYou owe Fern a date.']
@@ -1325,11 +1326,13 @@ def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, 
     assert len(dispatched) == 1
 
 
-def test_approval_dispatch_does_not_lock_notebook(notebook):
+def test_approval_dispatch_does_not_lock_notebook(notebook, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    from connectonion.rem import approvals
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setattr(tasks, 'HOLD', False, raising=False)
     from connectonion.rem.files import maintenance_lock
-    item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'text': 'Review the pilot.'}
+    key = 'people/fern.md\nReview the pilot.'  # approved task records carry their obligation key
+    item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'key': key, 'keys': [key], 'text': 'Review the pilot.'}
     write_json(state_path(notebook, 'approvals.json'), {item['id']: item})
     def dispatch(task):
         def edit():
@@ -1442,3 +1445,34 @@ def test_outlook_scheduled_reply_receipt_keeps_normal_return_compatible():
     stamp = '2026-11-08T01:10:00+00:00'
     assert client.reply('one', 'Friday works.', stamp, return_receipt=True) == {'id': 'scheduled-fern', 'send_at': stamp}
     assert client.reply('one', 'Friday works.', stamp) == f'Reply scheduled for {stamp}'
+
+
+@pytest.mark.parametrize('direct_send, expected', [('partner', 'now'), ('close', 'now'), ('none', 'owner')])
+def test_the_people_page_tier_becomes_the_drafts_permission(notebook, direct_send, expected):
+    """Nothing wrote verdict.json, so no reply could ever go without the owner."""
+    from connectonion.rem import drafts
+    mail_thread(notebook)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md') + '\n## Facts\n- Email: fern@example.test\n- Direct send: ' + direct_send + '\n')
+    directory = notebook / 'tier'
+    directory.mkdir()
+    task = drafts.prepare(notebook, drafts.queue(notebook)[0], read_config(notebook), directory=directory)
+    assert task['verdict'] == {'kind': 'reply', 'send': expected}
+
+
+@pytest.mark.parametrize('send, body, held', [('now', '周二可以。', True), ('owner', '周二可以。', False),
+                                              ('now', '可以。【需要你：时间 — 11月10日】', False)])
+def test_a_send_now_reply_goes_out_through_the_ten_minute_hold_as_rems_decision(notebook, monkeypatch, send, body, held):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': body, 'sources': ['gmail:one'], 'send': send})
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: Mock())
+    result = approvals.send_direct(notebook, row['id'])
+    queue = read_json(state_path(notebook, 'approvals.json'), {})
+    if held:
+        item, = queue.values()
+        assert item['status'] == 'held' and item['by'] == 'rem' and item['draft_id'] == row['id']
+        assert result['release_at'] == item['release_at']
+    else:
+        assert result is None and queue == {}

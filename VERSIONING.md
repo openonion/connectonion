@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc61
+## Current Version: 1.9.3rc62
+
+REM reads new mail at every slot and covers the night; replies to people you trust can go through
+the 10-minute hold; Today becomes a front page of who waits and what REM did; projects get a
+timeline, list and board; a knowledge graph and topic pages; an opt-in morning message. Approved
+owed work is recorded but not run in this version. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc62.md).
+
+- 1.9.3rc62 (mail every slot, night schedule, direct send, Today front page, project views, graph, morning message).
+
+### Previous candidate: 1.9.3rc61
 
 Today becomes one card per person with one statement and one green action, a Cmd-K palette and
 J/K/E/R keys; organisation and person pages become records, with to-dos left to Today; topics are

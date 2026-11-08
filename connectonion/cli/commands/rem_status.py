@@ -50,7 +50,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
-    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root)]
+    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
@@ -123,6 +123,16 @@ def _last_runs(root) -> list[str]:
     if running:
         lines.append(rem_look.follow(style.muted(_running(running[0], zone)), glyph=""))
     return lines
+
+
+def _parked(root) -> list[str]:
+    """Pages a round set aside (refused again and again, or a hung preparation); retried on a later day."""
+    from ...rem.refusals import refused_pages
+    parked = [(record, entry["parked"]) for record, entry in refused_pages(root).items() if entry.get("parked")]
+    if not parked:
+        return []
+    lines = [rem_look.section("Parked", style.muted("retried on a later day"))]
+    return lines + [rem_look.follow(highlight(f"{record} · {why[:200]}"), glyph="") for record, why in parked]
 
 
 def _running(run: dict, zone) -> str:

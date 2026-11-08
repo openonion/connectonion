@@ -2148,3 +2148,30 @@ after midnight. Manual sync refuses to overlap pending native work.
 `co rem logs` includes native tasks. Supply measured token usage with
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
 when available. Otherwise usage remains unknown.
+
+### One quiet morning message
+
+`co rem morning --dry-run` prints one line saying what a real run would do now
+(`would send now via telegram`, `already sent 06:02`, `not due until 06:00`,
+`channel none: nothing will be sent`, …) and then the exact short zh/en message,
+without a model call or sending anything. `co rem morning` sends once between
+06:00 and 11:00 in the notebook timezone; later checks record the date as missed
+and send nothing. Scheduled `co rem next` checks automatically. The note covers
+everything since the previous note, so nothing is reported twice or skipped.
+No new work and no new decisions means no message. A checked local date never
+sends twice, including after a failed send; inspect `co rem doctor`.
+
+Default channel is `none`. Run `co rem doctor` for existing configured senders
+and their next command. Doctor marks an enabled channel with an absent sender
+or destination as incomplete setup. Choose your own destination explicitly:
+
+```sh
+co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram
+co rem morning --dry-run
+```
+
+Channels are telegram, lark, whatsapp, email, or none. REM reuses their existing
+send paths. Email is the last choice: a company mailbox is wrong for personal
+content. Nothing is sent to a guessed recipient. Open Today using the last line
+(the live reader when serving, otherwise `co rem open`). See
+[the morning data contract](../rem-night-outcomes.md#morning-message-sprint-11).
