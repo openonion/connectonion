@@ -434,7 +434,7 @@ def readable_material(items: list[dict]) -> str:
 # without `orgs`, so an org page was given every page shape plus the CLI
 # reference (63.7k characters instead of ~31k), and investigate sized its
 # material against that worst case on every page kind.
-PAGE_KINDS = {"people": "person", "projects": "project", "orgs": "org", "skills": "skill"}
+PAGE_KINDS = {"people": "person", "projects": "project", "orgs": "org", "skills": "skill", "knowledge": "topic"}
 
 
 def page_kind_of(record: str) -> str:

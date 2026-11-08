@@ -329,7 +329,7 @@ def _logged(root, record, phase, call, quiet=False):
 
 def _investigation_pages(notebook):
     return [path for path in notebook.list()
-            if path.startswith(("people/", "projects/", "orgs/", "skills/catalog/"))
+            if path.startswith(("people/", "projects/", "orgs/", "skills/catalog/", "knowledge/"))
             and path != "skills/catalog/index.md"]
 
 
@@ -357,6 +357,9 @@ def _resolve_page(notebook, selector, *, next_args=("list",)):
                       if line.startswith("# ")), "")
         person = people.get(path, {})
         names = [title, Path(path).stem, *person.get("emails", []), *person.get("aliases", [])]
+        if path.startswith('knowledge/'):
+            from ...rem.topic_map import topic_aliases
+            names += topic_aliases(text)
         if path.startswith("projects/"):
             from ...rem.investigate import project_paths
             names += [Path(folder).name for folder in project_paths(text)]
@@ -367,7 +370,7 @@ def _resolve_page(notebook, selector, *, next_args=("list",)):
     if matches:
         rows = [path + "  " + ", ".join(people.get(path, {}).get("emails", [])) for path in matches]
         raise RemError(f'More than one page matches "{selector}". Use an exact path:\n' + "\n".join(rows))
-    raise RemError(f'No page matches "{selector}" in people, projects, orgs or skills. '
+    raise RemError(f'No page matches "{selector}" in people, projects, orgs, skills or topics. '
                    f'Search names and paths with `co rem {shlex.join(next_args)}`.')
 
 
@@ -1564,7 +1567,8 @@ def make_rem_app(factory):
                 # People: the same queue `investigate people --list` prints and runs (#1974).
                 queue = ([row["record"] for row in people_queue(root)] if category == "people" else
                          [row["path"] for row in order(root, category) if not row["recent"]])
-                rows[category] = {"written": tally[category]["written"], "mapped": tally[category]["mapped"],
+                counted = tally[CATEGORIES[category].split('/')[0]]
+                rows[category] = {"written": counted["written"], "mapped": counted["mapped"],
                                   "to_refresh": sum(bool(found.get(record, {}).get("written")) for record in queue),
                                   "next": queue[:3]}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
@@ -2359,12 +2363,16 @@ def make_rem_app(factory):
         from ...rem.service import mail_client, subscriptions
 
         def run(root):
+            if what == 'topics':
+                from ...rem.topic_map import scan_topics
+                from ...rem.files import Notebook
+                return scan_topics(Notebook(root), backfill=True), ['investigate', 'topics', '--list']
             if what == "projects":
                 rows = scan_projects(subscriptions(root), days, root)
                 return rows, (["stub", "project", rows[0]["name"], "--path", rows[0]["path"]]
                               if rows else ["sources"])
             if what not in ("people", "orgs"):
-                raise RemError("scan takes people, orgs or projects")
+                raise RemError("scan takes people, orgs, projects or topics")
             clients = {k: mail_client(k) for k in ("outlook", "gmail")}
             rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
             if what == "orgs":
@@ -2375,6 +2383,20 @@ def make_rem_app(factory):
             return rows, (["stub", "person", rows[0]["name"] or rows[0]["address"],
                            "--email", rows[0]["address"], "--handle", rows[0]["address"]]
                           if rows else ["sources"])
+        _handle(ctx, run, ["status"])
+
+    @rem.command("backfill", cls=V("co rem backfill"))
+    def backfill(ctx: typer.Context,
+                 what: str = typer.Argument(...),
+                 dry_run: bool = typer.Option(False, "--dry-run"),
+                 propose: bool = typer.Option(False, "--propose")):
+        from ...rem.files import Notebook, RemError
+        from ...rem.topic_map import backfill_topics
+
+        def run(root):
+            if what != "topics":
+                raise RemError("backfill takes topics")
+            return backfill_topics(Notebook(root), dry_run=dry_run, propose=propose), ["investigate", "topics", "--list"]
         _handle(ctx, run, ["status"])
 
     @rem.command("map-skills", cls=V("co rem map-skills"))
@@ -2552,7 +2574,7 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
     order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs doctor history "
-             "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem
