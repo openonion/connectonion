@@ -1,4 +1,5 @@
 """Read-only project data projection shared by every REM snapshot view."""
+import re
 from datetime import datetime, timezone
 
 from .files import read_json, state_path
@@ -7,6 +8,7 @@ from .project_priority import apply_override, health, issue_deadlines, score_pro
 from .project_tree import identity, project_tree
 from .project_issues import retained_issues
 from .project_links import join_obligations
+from .project_pages import CODE_REPO_INVALID, code_cache_path, code_repo_valid, code_utc
 
 
 def enrich_records(root, records, contexts, *, today=None, local=False, states=None, issues=None, owner=None):
@@ -61,8 +63,6 @@ def _project(row, records, contexts, issues, today):
 
 def repository_projection(root, repo, *, now=None):
     """Cache-only repository contract; bounded observations are never a complete audit."""
-    import re
-    from .project_pages import CODE_REPO_INVALID, code_cache_path, code_repo_valid, code_utc
     if not code_repo_valid(repo):
         return {'repo': repo, 'status': 'invalid', 'reason': CODE_REPO_INVALID, 'joins': []}
     now = now or datetime.now(timezone.utc)
@@ -77,16 +77,18 @@ def repository_projection(root, repo, *, now=None):
     prs, runs = cache['prs'], cache['runs']
     issues = {row['number']: row for row in cache['issues'] if row['state'].upper() == 'OPEN'}
     merged = [pr for pr in prs if pr.get('mergedAt')]
-    deploys = [run for run in runs if run['conclusion'] == 'success'
-               and run.get('completedAt') and re.search(r'deploy', run['workflowName'], re.I)]
+    tags = {tag['name'] for tag in cache['tags']}
+    deploys = [run for run in runs if _production_deploy(run, cache.get('default_branch'), tags)]
     deploy = max(deploys, key=lambda run: datetime.fromisoformat(run['completedAt'].replace('Z', '+00:00')), default=None)
-    _repo_join(result, 'merges_after_green_deploy', ['prs', 'actions/runs'],
-               deploy=deploy, prs=[pr['number'] for pr in merged
-                                   if deploy and datetime.fromisoformat(pr['mergedAt'].replace('Z', '+00:00')) >
-                                   datetime.fromisoformat(deploy['completedAt'].replace('Z', '+00:00'))])
-    pairs = [{'pr': pr['number'], 'issue': int(number)} for pr in merged
-             for number in re.findall(r'\(#(\d+)\)', pr['title']) if int(number) in issues]
-    _repo_join(result, 'merged_title_open_issue', ['prs', 'issues'], pairs=pairs)
+    _repo_join(result, 'merges_after_green_deploy', ['prs', 'actions/runs'], deploy=deploy,
+               basis=' · '.join([deploy['workflowName'], deploy['event'], deploy['branch'],
+                                 'completed ' + deploy['completedAt']]) if deploy else None,
+               prs=[pr['number'] for pr in merged
+                    if deploy and datetime.fromisoformat(pr['mergedAt'].replace('Z', '+00:00')) >
+                    datetime.fromisoformat(deploy['completedAt'].replace('Z', '+00:00'))])
+    pairs = [{'pr': pr['number'], 'issue': number} for pr in merged
+             for number in pr.get('closingIssues', []) if number in issues]
+    _repo_join(result, 'merged_closes_open_issue', ['prs', 'issues'], pairs=pairs)
     zero = [n for n, issue in issues.items() if issue['commentCount'] == 0]
     _repo_join(result, 'zero_comment_issues', ['issues'], count=len(zero), issues=zero)
     green = []
@@ -106,7 +108,7 @@ def repository_projection(root, repo, *, now=None):
     failed = []
     versions = (cache.get('pypi') or {}).get('versions', [])
     for run in runs:
-        if not re.search(r'release', run['workflowName'], re.I) or run['conclusion'] != 'failure':
+        if run['conclusion'] != 'failure' or not _release_run(run, cache.get('default_branch'), tags):
             continue
         tags = [tag['name'] for tag in cache['tags'] if tag.get('commit', {}).get('sha') == run['headSha']
                 or tag['name'] == run['branch']]
@@ -125,6 +127,31 @@ def repository_projection(root, repo, *, now=None):
                 external.append({'pr': pr['number'], 'run': run['id'], 'association': pr['authorAssociation']})
     _repo_join(result, 'external_action_required', ['prs', 'actions/runs'], pairs=external)
     return result
+
+
+def _production_deploy(run, default_branch, tags):
+    """A green deploy of what shipped: a push to the default branch or a tag.
+
+    Any successful run named /deploy/ made a feature-branch dispatch or a
+    "Deploy preview" the latest deploy. An old cache without the default branch
+    proves no deploy.
+    """
+    name = run['workflowName']
+    return (run['conclusion'] == 'success' and bool(run.get('completedAt'))
+            and bool(re.search(r'\bdeploy', name, re.I)) and not re.search(r'preview|staging', name, re.I)
+            and (run['event'] in ('push', 'release') and run['branch'] in tags
+                 or run['event'] == 'push' and bool(default_branch) and run['branch'] == default_branch))
+
+
+def _release_run(run, default_branch, tags):
+    """A release workflow run for a tag, not "Release Drafter" or "prerelease checks"."""
+    name = run['workflowName']
+    if not re.search(r'\b(?:release|publish)\b', name, re.I) or re.search(r'draft', name, re.I):
+        return False
+    if run['event'] in ('release', 'workflow_dispatch'):
+        return True
+    return run['event'] == 'push' and run['branch'] != default_branch and (
+        run['branch'] in tags or bool(re.fullmatch(r'v?\d+(?:\.\d+)+\S*', run['branch'] or '')))
 
 
 def _repo_join(result, kind, resources, **values):

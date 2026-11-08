@@ -29,7 +29,8 @@ def gh(tmp_path, monkeypatch):
                     'user': {'login': 'mara-quill'}, 'comments': 0, 'updated_at': NOW.isoformat(), 'closed_at': None}],
         'pulls': [{'number': 8, 'title': 'Fix cedar (#7)', 'state': 'MERGED',
                    'headRefName': 'cedar', 'mergedAt': '2026-11-08T11:00:00Z',
-                   'authorAssociation': 'CONTRIBUTOR', 'statusCheckRollup': []}],
+                   'authorAssociation': 'CONTRIBUTOR', 'statusCheckRollup': [],
+                   'closingIssuesReferences': {'nodes': [{'number': 7, 'repository': {'nameWithOwner': 'fernhill/lanterns'}}]}}],
         'runs': [{'id': 4, 'name': 'Deploy', 'event': 'push', 'head_branch': 'main', 'conclusion': 'success',
                   'created_at': '2026-11-08T10:00:00Z', 'updated_at': '2026-11-08T10:05:00Z', 'head_sha': 'abc'},
                  {'id': 5, 'name': 'Release', 'event': 'push', 'head_branch': 'v1.2.0', 'conclusion': 'failure',
@@ -42,7 +43,8 @@ args = sys.argv[1:]
 with open(os.environ['GH_LOG'], 'a') as f: f.write(json.dumps(args) + '\\n')
 rows = json.load(open(os.environ['GH_FIXTURES']))
 if args[1] == 'graphql':
-    print(json.dumps({'data': {'repository': {'pullRequests': {'nodes': rows['pulls']}}}}))
+    print(json.dumps({'data': {'repository': {'defaultBranchRef': {'name': 'main'},
+                                              'pullRequests': {'nodes': rows['pulls']}}}}))
 else:
     endpoint = args[1]
     key = 'runs' if '/actions/runs' in endpoint else endpoint.split('?')[0].rsplit('/', 1)[-1]
@@ -100,7 +102,7 @@ def test_sync_cache_skip_etag_and_projection(tmp_path, gh, monkeypatch):
     projection = data.repository_projection(tmp_path, REPO, now=NOW)
     joins = {j['kind']: j for j in projection['joins']}
     assert joins['merges_after_green_deploy']['prs'] == [8]
-    assert joins['merged_title_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
+    assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
     assert joins['zero_comment_issues']['count'] == 1
     assert joins['failed_release']['runs'][0]['tag_present'] is True
     for join in joins.values():
@@ -316,3 +318,29 @@ def test_a_bad_repository_fact_is_skipped_not_fatal(tmp_path, gh):
     assert results[REPO]['issues'][0]['number'] == 7
     assert data.repository_projection(root, 'docs.site/guide') == {
         'repo': 'docs.site/guide', 'status': 'invalid', 'reason': 'not a canonical GitHub owner/repository', 'joins': []}
+
+
+def test_joins_ignore_previews_side_branches_drafters_and_other_repos(tmp_path, gh):
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['pulls'].append({'number': 10, 'title': 'Port the birch fix (#7)', 'state': 'MERGED',
+                            'headRefName': 'birch', 'mergedAt': '2026-11-08T11:10:00Z', 'statusCheckRollup': [],
+                            'closingIssuesReferences': {'nodes': [
+                                {'number': 7, 'repository': {'nameWithOwner': 'fernhill/birch'}}]}})
+    def run(id, name, event, branch, conclusion, at):
+        return {'id': id, 'name': name, 'event': event, 'head_branch': branch, 'conclusion': conclusion,
+                'created_at': at, 'updated_at': at, 'head_sha': 'f%d' % id}
+    packet['runs'] += [run(11, 'Deploy', 'workflow_dispatch', 'cedar', 'success', '2026-11-08T11:30:00Z'),
+                       run(12, 'Deploy preview', 'push', 'main', 'success', '2026-11-08T11:40:00Z'),
+                       run(13, 'Release Drafter', 'push', 'main', 'failure', '2026-11-08T11:45:00Z'),
+                       run(14, 'Prerelease checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:50:00Z'),
+                       run(15, 'Release checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:55:00Z')]
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    deploy = joins['merges_after_green_deploy']
+    assert deploy['deploy']['id'] == 4
+    assert deploy['basis'] == 'Deploy · push · main · completed 2026-11-08T10:05:00Z'
+    assert deploy['prs'] == [8, 10]
+    assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
+    assert [row['run'] for row in joins['failed_release']['runs']] == [5]

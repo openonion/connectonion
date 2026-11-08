@@ -873,9 +873,11 @@ BACKFILL_CODE_COMMITS = 1000
 CODE_SYNC_MINUTES = 30
 CODE_CHURN_DAYS = 14
 CODE_PR_QUERY = '''query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
+defaultBranchRef{name}
 pullRequests(first:100,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{
 number title state headRefName headRefOid additions deletions mergedAt createdAt updatedAt
 reviewDecision authorAssociation author{login}
+closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}}
 commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{
 ... on CheckRun{name conclusion startedAt completedAt}
 ... on StatusContext{context state createdAt}}}}}}}
@@ -973,8 +975,14 @@ def _code_prs(repo, evidence):
     if packet.get('errors'):
         raise ValueError('GitHub PR query failed: ' + json.dumps(packet['errors']))
     evidence.append({'command': ['gh', *args], 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': 'prs'})
-    rows = packet['data']['repository']['pullRequests']['nodes'][:BACKFILL_CODE_PRS]
+    repository = packet['data']['repository']
+    rows = repository['pullRequests']['nodes'][:BACKFILL_CODE_PRS]
     for row in rows:
+        # GitHub's own closing references, same repository only: a `(#N)` in a
+        # forward-ported title names an issue of the repository it came from.
+        closing = row.pop('closingIssuesReferences', None) or {}
+        row['closingIssues'] = [ref['number'] for ref in closing.get('nodes', [])
+                                if ref['repository']['nameWithOwner'].casefold() == repo.casefold()]
         commits = row.pop('commits', {}).get('nodes', [])
         if commits:
             rollup = commits[-1]['commit'].get('statusCheckRollup') or {}
@@ -982,7 +990,7 @@ def _code_prs(repo, evidence):
             row['checkRollupState'] = rollup.get('state')
             row['statusCheckRollup'] = rollup.get('contexts', {}).get('nodes', [])
         row.setdefault('statusCheckRollup', [])
-    return rows
+    return rows, (repository.get('defaultBranchRef') or {}).get('name')
 
 
 def _code_issue(row):
@@ -1121,7 +1129,7 @@ def sync_repository(root, repo, *, now=None, repo_path=None, package=None, sessi
     try:
         issues = _code_rest(repo, 'issues', BACKFILL_CODE_ISSUES, resources, evidence, now)
         cache['issues'] = [_code_issue(row) for row in issues if 'pull_request' not in row]
-        cache['prs'] = _code_prs(repo, evidence)
+        cache['prs'], cache['default_branch'] = _code_prs(repo, evidence)
         cache['runs'] = [_code_run(row) for row in _code_rest(repo, 'actions/runs', BACKFILL_CODE_RUNS, resources, evidence, now)]
         cache['releases'] = _code_rest(repo, 'releases', 100, resources, evidence, now)
         cache['tags'] = _code_rest(repo, 'tags', 100, resources, evidence, now)

@@ -271,7 +271,7 @@ packet exposes `schema_version`, `repo`, `status` (`cached` or `error`),
   the existing issue priority, health and deadline projection. Explicit `issues=`
   or legacy issue cache wins over this fallback.
 - `prs`: number, title, state, `headRefName`, `headRefOid`, additions, deletions,
-  `mergedAt`, `createdAt`, `updatedAt`, `reviewDecision`, `authorAssociation`,
+  `closingIssues` (same-repository closing issue numbers), `mergedAt`, `createdAt`, `updatedAt`, `reviewDecision`, `authorAssociation`,
   author login object, `checkRollupState`, and `statusCheckRollup` contexts.
   Check runs carry name/conclusion/startedAt/completedAt; legacy status contexts
   carry context/state/createdAt. The context array is a bounded sample.
@@ -322,17 +322,31 @@ convert for display using the notebook timezone.
 `verification: [{command: [argv...], ran_at: UTC, resource: ...}]`. These exact
 commands and execution times are the data for the page's 「核对」 line:
 
-- `merges_after_green_deploy`: latest successful workflow with “deploy” in its
-  name and known completion bound; PR numbers merged after that bound. Missing
-  deploy evidence leaves deploy=null and prs=[]. It does not prove deployment
-  contents or environment.
-- `failed_release`: failed workflows with “release” in the name, run ID, matching
-  tags (same SHA or exact branch/tag), tag_present, pypi_present. PyPI presence
-  compares tag without leading `v` to a published version; null means no PyPI
-  observation, false means absent from the supplied version list. Tag absence
-  is only absence from the bounded tag sample.
-- `merged_title_open_issue`: pairs of merged PR and currently open issue numbers
-  for the literal `(#N)` in PR title; no semantic closing inference.
+- `merges_after_green_deploy`: the latest successful production deploy and the
+  PR numbers merged after its completion bound. A production deploy is a workflow
+  named /\bdeploy/ (not "preview" or "staging") that ran on a `push` to the
+  repository's default branch (GraphQL `defaultBranchRef`, cached as
+  `default_branch`) or on a `push`/`release` of a sampled tag. A feature-branch
+  `workflow_dispatch` or a "Deploy preview" no longer counts. `basis` is the
+  string the 「核对」 line prints with the commands, e.g.
+  `Deploy · push · main · completed 2026-11-08T10:05:00Z`, so the reader sees which
+  event and branch the claim rests on. Missing deploy evidence (including an old
+  cache without `default_branch`) leaves deploy=null, basis=null and prs=[]. It
+  does not prove deployment contents or environment.
+- `failed_release`: failed runs of a workflow named /\b(release|publish)\b/ that
+  is not a drafter, triggered by `release` or `workflow_dispatch`, or by a `push`
+  of a tag (a sampled tag name, or a version-shaped ref that is not the default
+  branch). "Release Drafter" on main and "prerelease checks"/"Release checks" on
+  pull requests are excluded. Each entry has run ID, matching tags (same SHA or
+  exact branch/tag), tag_present, pypi_present. PyPI presence compares tag
+  without leading `v` to a published version; null means no PyPI observation,
+  false means absent from the supplied version list. Tag absence is only absence
+  from the bounded tag sample.
+- `merged_closes_open_issue` (formerly `merged_title_open_issue`; the UI must use
+  the new name): pairs of merged PR and still-open issue where the issue is one of
+  the PR's GraphQL `closingIssuesReferences` **in this repository** (first 10,
+  cached per PR as `closingIssues`). A literal `(#N)` in a title is no longer read:
+  forward-ported titles name issues of the repository they came from.
 - `green_unmerged_age`: open PR numbers, green_since (latest supplied check
   completion), age_hours, and as_of. Overall rollup SUCCESS and successful or
   neutral/skipped supplied checks are required; missing checks/times produce
