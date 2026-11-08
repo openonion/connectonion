@@ -5426,7 +5426,7 @@ function stepAction({ entry, step }, group, cls) {
   const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
     text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
   button.onclick = event => {
-    if (step === "send") return replyFrom(event.currentTarget.closest(".qcard"));
+    if (step === "send") return openDraft(event.currentTarget.closest(".qcard"));
     if (step === "approve") return openApprovalSheet([approvalTask(entry)]);
     closeEntries(event.currentTarget.closest(".qcard"), group.entries.filter(item => cardStep(item) === "done"));
   };
@@ -5477,6 +5477,10 @@ function personCard(group, focal) {
   card.reply = () => replyFrom(card);
   card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, .mailcard")) card.classList.toggle("open"); };
   return card;
+}
+function openDraft(card) {
+  card.classList.add("open");
+  card.querySelector(".qdraft .btn-act")?.focus();
 }
 // R: the writer when a draft is ready, REM drafting when it can, else your mail app's reply.
 function replyFrom(card) {

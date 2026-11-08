@@ -293,14 +293,14 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # One count everywhere: the heading says what "See all" and the sidebar say; the rows are the top three.
+    # The statement counts people; the link under it carries the one total the sidebar also shows.
     total = page.locator('.waiting-more a').inner_text().split()[0]
-    assert f'{total} waiting on you' in page.locator('.brief-header h1').inner_text()
-    assert page.locator('.waiting-ledger > li').count() == 3
-    assert page.locator('.waiting-ledger .waiting-person a').all_inner_texts() == ['Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.today-thread .today-who').all_inner_texts() == ['Inès Halvorsen']
-    assert page.locator('.today-thread .waiting-age b').inner_text() == '12 days · due Oct 3'
-    assert 'Data-sharing addendum' in page.locator('.waiting-ledger .waiting-ask .words').first.inner_text()
+    assert page.locator('#nav .n.waiting').inner_text() == total
+    whos = page.locator('.today-brief .today-who').all_inner_texts()
+    assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
+    assert page.locator('.brief-header h1').inner_text() == f'{len(whos)} people are waiting on you.'
+    assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
+    assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
     assert changes.count() == 1
     assert 'Head of Partnerships' in changes.inner_text()
@@ -1279,20 +1279,20 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     primary = page.locator('.morning-primary')
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
-    assert page.locator('.waiting-ledger').count() == bool(mine)
-    assert page.locator('.waiting-ledger li').count() == mine
+    assert page.locator('.qcard').count() == bool(mine)
     heading = page.locator('.brief-header h1').inner_text()
-    assert (f'{mine} waiting on you' in heading) == bool(mine)
+    assert heading == ('1 person is waiting on you.' if mine else 'Nobody is waiting on you today.')
     assert ' 0 ' not in primary.inner_text()
+    header = page.locator('.brief-header')
     if mine or theirs:
         parts = [f'{mine} waiting on you' if mine else '', f'{theirs} on others' if theirs else '']
-        assert primary.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
+        assert header.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
     else:
-        assert primary.locator('.waiting-more').count() == 0
-        assert primary.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
+        assert header.locator('.waiting-more').count() == 0
+        assert header.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if mine or theirs:
-        primary.locator('.waiting-more a').click()
+        header.locator('.waiting-more a').click()
     else:
         page.evaluate("location.hash = 'view=open'", isolated_context=False)
     page.get_by_role('heading', name='Open threads', exact=True).wait_for()
@@ -2003,7 +2003,7 @@ def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monk
     assert page.locator('.week-details summary').inner_text().startswith('Pages written in the first build (')
     page.locator('.week-details summary').click()
     assert page.locator('.week').get_by_role('link', name='Mara Ostrowski', exact=True).is_visible()
-    assert page.locator('.waiting-ledger > li').count() > 0
+    assert page.locator('.qcard').count() > 0
     assert 'No memory pages were written' not in brief.inner_text()
 
 
@@ -2374,9 +2374,9 @@ def test_shared_thread_appears_once_on_home_and_open_with_also_on(reader, tmp_pa
       }
       KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }""", isolated_context=False)
-    home = page.locator('.waiting-ledger > li, .today-thread').filter(has_text='Letter of Support draft')
+    home = page.locator('.qitem').filter(has_text='Letter of Support draft')
     assert home.count() == 1
-    assert home.locator('.waiting-person a, .today-who').inner_text() == 'Mara Ostrowski'
+    assert page.locator('.qcard').filter(has=home).locator('.today-who').inner_text() == 'Mara Ostrowski'
     assert home.locator('.also-on').inner_text() == 'Also on Tomás Reyes'
     also = home.locator('.also-on a')
     assert also.get_attribute('href') == '#r=people%2Ftomas-reyes.md'
@@ -3704,7 +3704,7 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => { setInterfaceLanguage('zh'); location.hash = 'c=people'; }''', isolated_context=False)
     assert '中文待办摘要' in page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski').inner_text()
     page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
-    assert '中文待办摘要' in page.locator('.waiting-ledger').inner_text()
+    assert '中文待办摘要' in page.locator('.today-brief').inner_text()
     page.locator('.week-details > summary').click()
     assert '中文人物摘要' in page.locator('.week').inner_text()
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
@@ -3746,12 +3746,12 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
       org.relations = [{path: r.path, via: r.path, kind: 'linked from', basis: 'Company: Fernhill Labs', sources: ['2']}];
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    waiting = page.locator('.waiting-ledger > li').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
-    assert '理学院教授' in waiting.locator('.waiting-person .meta').inner_text()
-    assert 'Fernhill Labs 科研团队' in waiting.locator('.waiting-person .meta').inner_text()
-    assert waiting.locator('.waiting-ask .words').inner_text() == '你需要签署试点协议；后续安排明天讨论4'
-    assert waiting.locator('.waiting-ask .words .cite').get_attribute('data-sources') == '4'
-    assert waiting.locator('.waiting-ask .context').count() == 0
+    waiting = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
+    assert '理学院教授' in waiting.locator('.qhead .meta').inner_text()
+    assert 'Fernhill Labs 科研团队' in waiting.locator('.qhead .meta').inner_text()
+    assert waiting.locator('.words').first.text_content() == '你需要签署试点协议；后续安排明天讨论4'
+    assert waiting.locator('.words .cite').first.get_attribute('data-sources') == '4'
+    assert waiting.locator('.context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     person_row = page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski')
     assert 'Fernhill Labs 科研团队' in person_row.locator('.org').text_content()
@@ -3957,12 +3957,12 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
         assert page.evaluate("document.documentElement.classList.contains('hide-private')")
-        assert '公开试点' in page.locator('.waiting-ledger').inner_text()
+        assert '公开试点' in page.locator('.today-brief').inner_text()
         no_private_words()
         # Missing translations have no note in either home row type.
         page.locator('.week-details > summary').click()
         no_private_words()
-        for selector in ('.waiting-ledger', '.week'):
+        for selector in ('.today-brief', '.week'):
             assert page.locator(selector).locator('.lang-status').count() == 0
             # Missing archived mail is useful context, not a translation badge.
             assert '尚无中文译文，显示原文' not in page.locator(selector).inner_text()
@@ -4030,28 +4030,30 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.night-strip').count() == 0
     assert page.locator('.overnight-change').count() == 3
     assert page.get_by_role('link', name='All 4 changes →').get_attribute('href') == '#view=changes'
-    assert page.locator('.today-thread').count() == 5
-    assert 'overdue · 2 days ago' in page.locator('.today-thread').first.inner_text()  # one date grammar: within a week, relative
-    # 108ac316 separates the overdue request from the five due today.
-    assert '1 overdue · 5 due soon' in page.locator('.brief-header h1').inner_text()
+    # Seven asks from one person are one card; the overdue one names the days late.
+    assert page.locator('.qcard').count() == 1
+    assert page.locator('.qcard .qitem').count() >= 5
+    assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
+    assert page.locator('.brief-header h1').inner_text() == '1 person is waiting on you.'
+    assert '2 days overdue' in page.locator('.brief-header .lede').inner_text()
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
-    assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
+    assert page.locator('.brief-header .waiting-more a').get_attribute('href') == '#view=open'
     # A static, undrafted mail card opens its recorded provider thread; it
     # cannot promise a live Draft now action. Local completion stays available.
-    assert page.locator('.today-thread .thread-actions a[target="_blank"]').count() == 5
-    assert page.locator('.today-thread').get_by_role('button', name='Mark done', exact=True).count() == 5
-    assert page.locator('.today-thread').get_by_role('button', name='Draft now', exact=True).count() == 0
+    assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
+    assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
+    assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
     assert page.locator('.category-cards').count() == 0
-    page.locator('.pass-summary a').click()
+    page.locator('#processing > summary').click()
     assert page.locator('.night-details').get_attribute('open') is not None
     assert page.locator('.night-details .night').is_visible()
     assert page.evaluate(r'''() => {
-      const keys = [...document.querySelectorAll('.today-thread .today-who')].map(a => a.textContent);
-      return document.documentElement.scrollWidth <= innerWidth && keys.length === 5;
+      const keys = [...document.querySelectorAll('.qcard .today-who')].map(a => a.textContent);
+      return document.documentElement.scrollWidth <= innerWidth && keys.length === 1;
     }''')
     page.locator('#q').fill('pilot renewal')
     page.locator('#q').press('Enter')
@@ -4085,7 +4087,7 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     row.get_by_role('button', name='Undo', exact=True).click()
     assert row.locator('.chip').inner_text() != 'Marked done'
     page.goto(uri)
-    assert 'Data-sharing addendum' in page.locator('.waiting-ledger').inner_text()
+    assert 'Data-sharing addendum' in page.locator('.today-brief').inner_text()
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before
 
 
@@ -4120,7 +4122,7 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    action = page.locator('.waiting-ledger .thread-actions .btn-act').first
+    action = page.locator('.qcard.open .card-acts .btn-act').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()
@@ -4240,7 +4242,7 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
     page.evaluate(r'''({theme, language}) => {
       setTheme(theme); setInterfaceLanguage(language);
     }''', {'theme': theme, 'language': language}, isolated_context=False)
-    waiting_colour = page.locator('.waiting-age b').first.evaluate(r'''node => getComputedStyle(node).color''')
+    waiting_colour = page.locator('.qage').first.evaluate(r'''node => getComputedStyle(node).color''')
     page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
     # Each open row: the chip sits at the right edge, level with the title.
     rows = page.locator('#open-threads .owe:visible')
@@ -4458,7 +4460,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       setInterfaceLanguage(language);
       copyToClipboard = command => { window.copiedCommand = command; };
     }''', language, isolated_context=False)
-    summary = page.locator('.pass-summary').inner_text()
+    summary = page.locator('#processing .pass-summary').text_content()
     assert summary.startswith('今天建立：读取 ' if language == 'zh' else 'Built today: read ')
     assert ('夜间变化' if language == 'zh' else 'change overnight') not in page.locator('h1').inner_text()
     assert page.locator('.recall').count() == 0
@@ -4477,7 +4479,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
         assert notice.locator('button, code').count() == 0
     else:
         assert notice.count() == 0
-    page.locator('.pass-summary a').click()
+    page.locator('#processing > summary').click()
     assert page.locator('.night-title').inner_text() == ('首次建立' if language == 'zh' else 'First build')
     assert ('昨夜' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
     page.goto(uri + '#view=changes')
@@ -4527,9 +4529,7 @@ def test_round10_owner_is_your_page_in_today_waiting_and_open_threads(reader, la
     }''', language, isolated_context=False)
     who = '你的页面' if language == 'zh' else 'Your page'
     assert page.locator('.today-who').first.inner_text() == who
-    assert page.locator('.waiting-person a').first.inner_text() == who
-    assert page.locator('.waiting-person .avatar').first.inner_text() == ('你' if language == 'zh' else 'You')
-    assert page.locator('.waiting-person .meta').count() == 0
+    assert page.locator('.qhead .meta').count() == 0
     assert page.locator('.today-who').first.get_attribute('href').endswith('people%2Favery-lin.md')
     page.goto(uri + '#view=open')
     assert all(text == who for text in page.locator('.thread .who a').all_inner_texts())
@@ -4659,7 +4659,7 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator('.deep-note .note > p').first.locator('a:not(.cite)').evaluate_all(r'nodes => nodes.length > 0 && nodes.every(n => getComputedStyle(n).textDecorationLine.includes("underline"))')
     page.goto(uri)
-    assert page.locator('.pass-summary a').evaluate(r'n => getComputedStyle(n).textDecorationLine.includes("underline")')
+    assert page.locator('.waiting-more a').evaluate(r'n => getComputedStyle(n).textDecorationLine.includes("underline")')
     page.evaluate(r'''() => document.activeElement.blur()''')
     page.keyboard.press('Control+Home')
     page.locator('.skip').focus()
@@ -4888,7 +4888,7 @@ def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
     assert page.locator('.approval-header code').count() == 1
     assert 'co rem' in page.locator('.approval-header code').inner_text()
     assert 'open' in page.locator('.approval-header code').inner_text()
-    assert page.locator('.today-thread a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
+    assert page.locator('.qcard a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
 
 
 @pytest.mark.parametrize('width', [1440, 390])
