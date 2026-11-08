@@ -70,10 +70,16 @@ backend URL resolution requests the `default_backend_url` fixture.
 
 ## CI
 
-`.github/workflows/tests.yml` runs `pytest -n auto` on Python 3.10 to 3.13
-with a 15 minute job timeout, measures coverage on 3.12 and fails below the
-floor set there (raise it as coverage rises, never lower it to pass), and
-runs the platform-specific browser and transport suites on Windows and macOS.
+`.github/workflows/tests.yml` runs `pytest -n auto` on Python 3.11 to 3.13,
+each as six parallel shards with a 15 minute timeout per shard.
+`scripts/ci_test_shard.py` splits the test files between shards, balanced by
+`tests/ci_durations.json`; a new file weighs the median until the weights are
+refreshed with `python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml`
+from a run's `junit-*` artifacts. The 3.12 shards trace coverage; the
+`coverage` job combines them and fails below the floor set there (raise it as
+coverage rises, never lower it to pass). `tests-passed` is green only when
+every shard and the coverage gate succeeded. The workflow also runs the
+platform-specific browser and transport suites on Windows and macOS.
 
 Background-task termination also reaps the owned shell process tree and joins
 its output reader. A termination confirmation must not leave a live reader or

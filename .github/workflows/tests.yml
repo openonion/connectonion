@@ -38,19 +38,25 @@ jobs:
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \
             --disable-pip --strict --progress-spinner off
 
+  # The offline suite is ~9 minutes of tests on a two-worker runner (over 15
+  # traced for coverage), so each Python runs it as six parallel shards.
+  # scripts/ci_test_shard.py splits by file, balanced by tests/ci_durations.json:
+  # a 50-line script instead of pytest-split, because that plugin splits single
+  # tests (breaking loadfile grouping) and still makes every shard collect the
+  # whole suite. Six because a shard's fixed cost (checkout, install) is about
+  # a minute, and the free plan runs 20 jobs at once: 18 shards already fill it.
   test:
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
-    # The offline suite can take several minutes on a two-worker runner. A job
-    # still running at fifteen is hung; the per-test timeout in pytest.ini has
-    # already named the culprit, and this is the backstop for a hang outside
-    # any test (collection, a fixture that never yields, an atexit hook).
-    # The 3.12 leg also traces coverage, about 60% slower: on 1.9.3rc62 it was
-    # cut off at 98% while the untraced legs finished in ten minutes.
-    timeout-minutes: ${{ matrix.python-version == '3.12' && 25 || 15 }}
+    # A shard still running at fifteen is hung; the per-test timeout in
+    # pytest.ini has already named the culprit, and this is the backstop for a
+    # hang outside any test (collection, a fixture that never yields, atexit).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+        shard: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Checkout
@@ -66,30 +72,98 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run all tests
+      - name: Run this shard's test files
         env:
           # This job runs only offline tests, and tests/conftest.py refuses any
           # connection that leaves the machine — so no production credential
           # belongs in this process. A fixed non-secret value keeps the auth
           # CLI on its authenticated code path (empty reads as "not logged in").
           OPENONION_API_KEY: test-key
-          # Coverage is measured on one interpreter: the report is the same on
-          # all four and tracing slows the run. The gate is a floor at today's
-          # number so a change cannot lower it unnoticed. Raise it as the
-          # number goes up; never lower it to make a PR pass.
-          COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=term-missing:skip-covered --cov-report=xml --cov-fail-under=78' || '' }}
+          # Coverage is traced on one interpreter: the report is the same on
+          # all of them and tracing slows the run. Each 3.12 shard writes its
+          # own data file; the coverage job combines them and gates the total.
+          COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+          COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
         run: |
-          pytest tests/ -n auto --dist loadfile --tb=short \
+          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} 6) \
+            -n auto --dist loadfile --tb=short \
             -m "not slow and not real_api and not network" \
+            -o junit_family=xunit1 --junitxml=junit.xml \
             $COVERAGE_ARGS
 
+      - name: Upload this shard's coverage data
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-data-${{ matrix.shard }}
+          path: .coverage.shard-${{ matrix.shard }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+      # Per-test times, for refreshing tests/ci_durations.json:
+      # python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml
+      - name: Upload this shard's test times
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: junit-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: junit.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Download every shard's coverage data
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+
+      # The gate is a floor at today's number so a change cannot lower it
+      # unnoticed. Raise it as the number goes up; never lower it to make a
+      # PR pass.
+      - name: Combine and gate coverage
+        run: |
+          python -m pip install "coverage>=7"
+          ls .coverage.shard-*
+          coverage combine .coverage.shard-*
+          coverage xml
+          coverage report --skip-covered --show-missing --fail-under=78
+
       - name: Upload the coverage report
-        if: matrix.python-version == '3.12' && always()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-xml
           path: coverage.xml
           if-no-files-found: ignore
+
+  # One stable check name for every shard and the coverage gate. A shard that
+  # failed, was cancelled or was skipped makes this red, never green.
+  tests-passed:
+    needs: [test, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every shard and the coverage gate to succeed
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          echo "test shards: $TEST_RESULT, coverage: $COVERAGE_RESULT"
+          [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ]
 
   cli-help-audit:
     runs-on: ubuntu-latest
