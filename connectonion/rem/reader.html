@@ -1757,8 +1757,8 @@
 
   /* ---- Projects directory (墨与铅 · Ink & Pencil): flat paper, hairlines, ink = cited fact, dashed pencil = inference ---- */
   :root:has(main > .pd) { --paper: #ffffff; --sheet: #ffffff; --line: #e7e9e7; }
-  :root[data-theme="dark"]:has(main > .pd) { --paper: #0e100f; --sheet: #151817; --line: #242927; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):has(main > .pd) { --paper: #0e100f; --sheet: #151817; --line: #242927; } }
+  :root[data-theme="dark"]:has(main > .pd) { --paper: #0e110f; --sheet: #151817; --line: #242927; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):has(main > .pd) { --paper: #0e110f; --sheet: #151817; --line: #242927; } }
   main:has(> .pd) { max-width: none; padding: 28px 40px 80px; }
   .pd {
     --bg: #ffffff; --surface: #f7f8f7; --wash: #fafbfa; --rule: #e7e9e7; --rule-2: #d4d8d5;
@@ -1768,8 +1768,8 @@
     --name: 210px; --note: 270px;
     color: var(--ink); font: 14px/1.55 var(--sans); font-variant-numeric: tabular-nums; max-width: 1480px;
   }
-  :root[data-theme="dark"] .pd { --bg: #0e100f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pd { --bg: #0e100f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; } }
+  :root[data-theme="dark"] .pd { --bg: #0e110f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pd { --bg: #0e110f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; } }
   .pd a { color: inherit; }
   .pd a, .pd p a { text-decoration: none; }
   .pd a:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -7143,6 +7143,10 @@ function projectFoldButton(n) {
   button.onclick = () => { pdQuietOpen = !pdQuietOpen; projectsView(); };
   return button;
 }
+// Folded rows stay reachable: each name is a link to its page.
+function projectFoldNames(rows) {
+  return el("small", { class: "pd-fold-names" }, rows.flatMap(([r], i) => [i ? " · " : "", el("a", { href: href(r), text: r.title })]));
+}
 function projectNameNode(r, host) {
   return el("span", { class: "pd-name-line" }, [projectDot(r),
     el("a", { href: href(r), class: projectTier(r) === "off_track" ? "red" : "", text: r.title, ...(host ? { title: pdT("Sub-project of {name}", { name: host.title }) } : {}) })]);
@@ -7218,7 +7222,7 @@ function projectTimeline(all, tree, win, notes) {
       const note = projectFoldNote(quiet, notes);
       body.push(el("div", { class: "pd-row pd-fold" }, [
         el("div", { class: "pd-name" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
-          el("small", { class: "pd-fold-names", text: quiet.map(([r]) => r.title).join(" · ") })]),
+          projectFoldNames(quiet)]),
         projectFoldStrip(quiet.map(([r]) => r), win), el("div", { class: "pd-note-cell" }, [note ? projectNoteNode(note) : null])]));
     }
     if (pdQuietOpen) body.push(el("div", { class: "pd-fold-end" }, [projectFoldButton(quiet.length)]));
@@ -7284,7 +7288,7 @@ function projectList(all, tree, win, notes) {
       const latest = quiet.map(([r]) => projectLast(r) && calendarDay(projectLast(r))).filter(Boolean).sort().at(-1), note = projectFoldNote(quiet, notes);
       body.push(el("div", { class: "pd-lrow pd-fold" }, [
         el("div", { class: "pd-lname" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
-          el("small", { class: "pd-fold-names", text: quiet.map(([r]) => r.title).join(" · ") }), note ? projectNoteNode(note, true) : null]),
+          projectFoldNames(quiet), note ? projectNoteNode(note, true) : null]),
         el("div", { class: "pd-lhealth mut", text: pdT("Quiet") }), el("div", { class: "pd-llast mut", text: latest ? pdT("latest {date}", { date: pdDay(latest) }) : "—" }),
         el("div", { class: "pd-lstrip" }, [projectFoldStrip(quiet.map(([r]) => r), win)]), el("div", { class: "pd-lopen" }), el("div", { class: "pd-lknown" }), el("div", { class: "pd-lread" })]));
     }

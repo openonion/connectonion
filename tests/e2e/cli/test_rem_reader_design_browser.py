@@ -1083,7 +1083,7 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
         # The directory never quotes a page's purpose, so nothing private can leak into a row.
-        assert page.locator('.pd-row[data-path="projects/harbour.md"]').is_visible()
+        assert page.locator('#main').get_by_role('link', name='Harbour', exact=True).first.is_visible()
         assert 'hidden description' not in page.locator('#main').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
@@ -1338,7 +1338,7 @@ def test_every_view_fits_a_phone(reader, theme):
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
         # The organisation redesign owns its green-black dark palette.
-        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md") else "rgb(14, 17, 32)"
+        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md", "#c=projects") else "rgb(14, 17, 32)"
         assert (background == dark_background) == (theme == "dark"), (view, background)
 
 
@@ -1834,6 +1834,7 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
     assert 'Last active' not in page.locator('.leadrow').inner_text()
     # The directory's list shows the same mapped date as its latest activity.
     page.goto(uri + '#c=projects&v=list')
+    page.evaluate('() => { pdQuietOpen = true; KNOWN.clear(); FACTS.clear(); render(); }', isolated_context=False)
     assert page.locator('.pd-lrow[data-path="projects/harbour.md"] .pd-when').inner_text().startswith('Sep 16')
 
 
@@ -3240,6 +3241,7 @@ def test_partial_project_status_explains_the_uninvestigated_sections(reader):
     }''', isolated_context=False)
     tooltip = 'Some sections are filled from sources; the rest are not investigated yet.'
     page.goto(uri + '#c=projects&v=list')
+    page.evaluate('() => { pdQuietOpen = true; render(); }', isolated_context=False)
     row = page.locator('.pd-lrow[data-path="projects/harbour.md"]')
     assert row.locator('.pd-note').count() == 0  # REM wrote no line for it, and none is invented
     row.get_by_role('link', name='Harbour', exact=True).click()
