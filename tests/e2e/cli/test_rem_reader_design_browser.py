@@ -202,7 +202,8 @@ def reader(tmp_path, monkeypatch):
     path.write_text(rem_reader.render(build(tmp_path / "rem", frozen), local=True), encoding="utf-8")
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        # English date literals in this fixture must not depend on Chrome's OS locale.
+        page = browser.new_page(viewport={"width": 1440, "height": 1000}, locale="en-US")
         from connectonion.rem.today import queue
         page.expose_function('projectToday', lambda payload: queue(Path(payload['root']), records=payload['records'],
                              contexts=payload['source_context'], states=payload.get('threads', {}),
@@ -323,6 +324,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     # The full ledger keeps both directions, yours first.
     page.locator('.waiting-more a').click()
     bands = page.locator(".task-band")
+    bands.first.wait_for()
     headings = bands.locator("h2 > span:first-child").all_inner_texts()
     order = ["Waiting on you", "Waiting on others", "Other open context"]
     assert headings[:2] == order[:2]
@@ -1224,7 +1226,8 @@ def test_written_pages_show_the_complete_source_action_on_phone(reader):
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
     page, _ = reader
-    page.evaluate("() => { const r = byPath('people/mara-ostrowski.md'); r.text = r.text.replace('## Open threads\\n', '## Open threads\\n- Completion evidence not recorded.\\n'); KNOWN.clear(); render(); }", isolated_context=False)
+    # Open threads now consumes the shared Python projection, just as Today does.
+    page.evaluate("async () => { const r = byPath('people/mara-ostrowski.md'); r.text = r.text.replace('## Open threads\\n', '## Open threads\\n- Completion evidence not recorded.\\n'); KNOWN.clear(); await refreshTodayQueue(); render(); }", isolated_context=False)
     page.locator('.waiting-more a').click()
     others = page.locator('.task-band', has=page.get_by_role('heading', name='Waiting on others'))
     plain = page.locator('.task-band', has=page.get_by_role('heading', name='Other open context'))
@@ -1634,6 +1637,7 @@ def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     page.get_by_role('button', name='Close source context').click()
     assert finding_source.evaluate('e => e === document.activeElement')
     page.get_by_role('link', name='View sources →').click()
+    page.locator('.deep-note .block-sources').wait_for(state='visible')
     assert page.locator('.deep-note .block-sources').is_visible()
     assert 'Use for a weekly brief.' in page.locator('.deep-note').inner_text()
     page.locator('.deep-note a.cite').first.click()
@@ -3994,7 +3998,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         no_private_words()
         for selector in ('.waiting-ledger', '.week'):
             assert page.locator(selector).locator('.lang-status').count() == 0
-            assert '原文' not in page.locator(selector).inner_text()
+            # Missing archived mail is useful context, not a translation badge.
+            assert '尚无中文译文，显示原文' not in page.locator(selector).inner_text()
         page.goto(html.as_uri() + '#view=open')
         page.locator('.task-band').first.wait_for()
         assert '公开试点' in page.locator('.task-band').first.inner_text()
@@ -4064,7 +4069,11 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
     assert page.locator('.today-brief').get_by_role('link', name='All open threads →').is_visible()
-    assert page.locator('.today-thread .btn-act').count() == 5
+    # A static, undrafted mail card opens its recorded provider thread; it
+    # cannot promise a live Draft now action. Local completion stays available.
+    assert page.locator('.today-thread .thread-actions a[target="_blank"]').count() == 5
+    assert page.locator('.today-thread').get_by_role('button', name='Mark done', exact=True).count() == 5
+    assert page.locator('.today-thread').get_by_role('button', name='Draft now', exact=True).count() == 0
     assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
@@ -4877,11 +4886,15 @@ def test_approve_all_sheet_slots_results_and_undo(reader, width, theme):
     slot.fill('Tuesday works.')
     sheet.get_by_role('button', name='Save reply', exact=True).click()
     assert sheet.locator('input[type=checkbox]:checked').count() == 4
+    shots = Path(os.environ.get('CO_REM_SHOTS', '/tmp/rem-rc60-approval-shots'))
+    shots.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(shots / f'approval-ready-{theme}-{width}.png'), full_page=True)
     sheet.locator('#approval-confirm').click()
     assert sheet.locator('.approval-result').all_inner_texts() == ['Held for 10 minutes'] * 4
     assert page.evaluate('window.approvalCalls[0].bodies["reply:slot"]', isolated_context=False) == 'Tuesday works.'
     assert sheet.evaluate('n => n.scrollWidth <= n.clientWidth')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.screenshot(path=str(shots / f'approval-held-{theme}-{width}.png'), full_page=True)
     sheet.get_by_role('button', name='Close', exact=True).click()
     page.locator('#approval-undo button').click()
     assert page.evaluate('window.approvalCalls[1].action', isolated_context=False) == 'undo'

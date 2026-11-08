@@ -541,7 +541,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert answered.locator('.btn-act').inner_text() == ('标为完成' if language == 'zh' else 'Mark done')
         assert answered.locator('a.btn-quiet').get_attribute('href').endswith('/answered')
         answer_note = answered.locator('.draft-reason').inner_text()
-        assert 'Friday works. I have sent a calendar invite.' in answer_note
+        # The cleaned owner quote selects one sentence (or a future commitment)
+        # rather than copying the full message. The source link above keeps it available.
+        assert '“Friday works.”' in answer_note
         assert ('已回复' if language == 'zh' else 'replied') in answer_note
         assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
         assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
@@ -569,6 +571,8 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first') in dialog.inner_text()
             dialog.get_by_role('textbox').fill('The demo is ready for release.')
             dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            # dialog.close() dispatches its removal through the close event.
+            dialog.wait_for(state='detached')
             assert not dialog.count()
             assert page.evaluate('draftRequests[0].body', isolated_context=False) == 'The demo is ready for release.'
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
