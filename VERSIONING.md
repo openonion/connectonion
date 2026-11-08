@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc62
+## Current Version: 1.9.3rc63
+
+1.9.3rc62 republished. rc62 was merged and tagged but never published: its release workflow's
+coverage leg (test 3.12) outran the 15-minute backstop at 98% with no failure, so publish was
+skipped. That leg now has 25 minutes. Everything in rc62 ships here. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc63.md).
+
+- 1.9.3rc63 (rc62 republished; coverage leg timeout).
+
+### Previous candidate: 1.9.3rc62 (tagged, never published)
 
 REM reads new mail at every slot and covers the night; replies to people you trust can go through
 the 10-minute hold; Today becomes a front page of who waits and what REM did; projects get a
