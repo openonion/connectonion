@@ -3374,6 +3374,8 @@ def _cached_reader(tmp_path, monkeypatch):
     (tmp_path / "tmp").mkdir()
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr(reader, "_now", lambda: _Clock.seconds, raising=False)
+    _Clock.seconds = 1_794_000_000.0
     return reader
 
 
@@ -3381,6 +3383,7 @@ class _Clock:
     """The render time the page shows, set by the test."""
     from datetime import datetime as real
     at = None
+    seconds = 0.0     # the reader's own clock (reader._now), for its intervals
 
     @classmethod
     def now(cls, tz=None):
@@ -3434,6 +3437,10 @@ def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(t
     Notebook(root).write("people/bruno.md", "# Bruno Example\n")
     spawned = []
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root), raising=False)
+    _Clock.seconds += 60
+    held = reader.open_snapshot(root, launch=False)
+    assert open(held["page"], encoding="utf-8").read() == first and spawned == []   # rendered a minute ago
+    _Clock.seconds += getattr(reader, "REBUILD_INTERVAL", 0)
     stale = reader.open_snapshot(root, launch=False)
     assert open(stale["page"], encoding="utf-8").read() == first      # the last page, at once
     assert spawned == [root]                                         # and one rebuild behind it
@@ -3481,8 +3488,9 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     Notebook(root).write("people/alice.md", "# Alice Example\n")
     reader.open_snapshot(root, launch=False)
     Notebook(root).write("people/bruno.md", "# Bruno Example\n")
-    stale = reader.open_snapshot(root, launch=False)
+    stale = reader.open_snapshot(root, launch=False)       # rendered just now: the rebuild waits
     assert "Bruno Example" not in open(stale["page"], encoding="utf-8").read()
+    reader.owner_changed(root)                             # unless the owner acted
     deadline = time.monotonic() + 90
     while reader.saved(root, "full").get("version") != reader.reader_version(root):
         assert time.monotonic() < deadline, open(reader._cached(root, "build.log")).read()
@@ -3490,8 +3498,9 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     assert "Bruno Example" in open(stale["page"], encoding="utf-8").read()
 
 
-def test_a_change_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path, monkeypatch):
-    """A request that finds a build running starts no second one, so the running one checks again."""
+def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path, monkeypatch):
+    """A request that finds a build running starts no second one, so the running one
+    checks again for the owner's own action; other writes wait for the interval."""
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"
     prepare(root)
@@ -3499,13 +3508,26 @@ def test_a_change_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path
     Notebook(root).write("people/alice.md", "# Alice Example\n")
     original, passes = reader._build, []
 
-    def build(root, which, version):
+    def build(root, which, *args):
         passes.append(which)
-        original(root, which, version)
+        original(root, which, *args)
         if len(passes) == 1:
             Notebook(root).write("people/bruno.md", "# Bruno Example\n")  # lands mid-build
     monkeypatch.setattr(reader, "_build", build)
     reader.refresh(root, ["full"])
+    assert passes == ["full"]                                   # a night write: next interval
+    Notebook(root).write("people/carla.md", "# Carla Example\n")
+    passes.clear()
+
+    def owner_build(root, which, *args):
+        passes.append(which)
+        original(root, which, *args)
+        if len(passes) == 1:
+            Notebook(root).write("people/dara.md", "# Dara Example\n")
+            reader.owner_changed(root)                          # the owner, mid-build
+    monkeypatch.setattr(reader, "_build", owner_build)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: None)
+    reader.refresh(root, ["full"])
     assert passes == ["full", "full"]
     assert reader.saved(root, "full")["version"] == reader.reader_version(root)
-    assert "Bruno Example" in open(reader._cached(root, "file.html"), encoding="utf-8").read()
+    assert "Dara Example" in open(reader._cached(root, "file.html"), encoding="utf-8").read()

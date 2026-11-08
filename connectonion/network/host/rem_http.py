@@ -155,6 +155,9 @@ async def _action(scope, receive, send, root, headers):
     except (RemError, ValueError) as error:
         await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
         return
+    from ...rem.reader import owner_changed
+    # The owner's own change shows now, not at the reader's next rebuild interval.
+    await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 

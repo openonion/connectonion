@@ -208,11 +208,12 @@ def test_the_rem_path_is_reserved_from_publisher_routes():
     assert "/rem" in _RESERVED_PREFIXES
 
 
-def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, cache, monkeypatch, tmp_path):
+def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, cache, clock, monkeypatch, tmp_path):
     # Since 2026-11-09 a change is served as the last page at once and rebuilt
-    # behind it (reader.refresh is what the detached build runs). A page edited
-    # in place by hand is seen at REM's next write: the key lists no files.
-    from connectonion.rem.files import Notebook, state_path, write_json
+    # behind it (reader.refresh is what the detached build runs), at most once
+    # per REBUILD_INTERVAL. An edit REM did not make, in place, is found by the
+    # background full check after FULL_CHECK_SECONDS; the open itself never walks.
+    from connectonion.rem.files import Notebook, state_path
     builds, original = [], reader.snapshot
 
     def counted(root, **options):
@@ -228,14 +229,16 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
     reader.refresh(host.root)                       # the details the first request left behind it
     assert builds[1:] == [{'local': True}]
     changes = [
-        ('Alice Chen-Vale', lambda: Notebook(host.root).write('people/alice-chen.md', PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
-        ('Alice Chen-Vale', lambda: write_json(state_path(host.root, 'map.json'), {'owner': {}})),
+        ('Alice Chen-Vale', lambda: (host.root / 'people/alice-chen.md').write_text(PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
+        ('Alice Chen-Vale', lambda: state_path(host.root, 'map.json').write_text('{"owner": {}}')),
         ('Nora', lambda: (host.root / 'people/nora.md').write_text('# Nora')),          # added by hand
         ('Alice Chen-Vale', lambda: (host.root / 'people/nora.md').unlink()),           # removed by hand
+        ('Alice Chen-Vale', lambda: Notebook(host.root).write('people/fern-holt.md', '# Fern Holt\n')),
         ('Updated template', lambda: template.write_text('Updated template /*__REM_DATA__*/null')),
     ]
     for shown, change in changes:
         change()
+        clock[0] += reader.REBUILD_INTERVAL + 1
         cache.clear()
         builds.clear()
         assert get() == page and cache == [host.root] and builds == []   # the last page, a rebuild behind
@@ -263,7 +266,7 @@ def test_live_reader_second_request_reuses_the_actual_snapshot(host, cache, monk
     assert builds == [host.root]
 
 
-def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, cache, monkeypatch):
+def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, cache, clock, monkeypatch):
     calls, original = [], reader.snapshot
 
     def detail(root, **options):
@@ -282,11 +285,11 @@ def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, cache,
     data = json.loads(body)
     assert data['conversations'] == {'example': {}} and 'Alice Chen' in json.dumps(data['records'])
     assert get()[2] == body and len(calls) == 1
-    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')
-    from connectonion.rem.files import Notebook
-    Notebook(host.root).write('people/fern-holt.md', '# Fern Holt\n')
+    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')   # in place, not by REM
     cache.clear()
-    assert get()[2] == body and cache == [host.root] and len(calls) == 1
+    assert get()[2] == body and cache == []          # the open never walks the notebook to see it
+    clock[0] += reader.FULL_CHECK_SECONDS + 1
+    assert get()[2] == body and cache == [host.root]  # the background full check is due
     reader.refresh(host.root, ['full'])
     assert len(calls) == 2 and 'Changed.' in get()[2]
     assert all(options == {'local': True} for _, options in calls)
@@ -324,7 +327,15 @@ def test_task_stop_and_undo_go_through_the_owner_endpoint(host, monkeypatch):
 
 
 @pytest.fixture
-def cache(tmp_path, monkeypatch):
+def clock(monkeypatch):
+    """The reader's own clock, moved by the test: [seconds since the epoch]."""
+    now = [1_794_000_000.0]
+    monkeypatch.setattr(reader, "_now", lambda: now[0], raising=False)
+    return now
+
+
+@pytest.fixture
+def cache(tmp_path, monkeypatch, clock):
     """The reader's saved pages land in this test's own temporary folder."""
     (tmp_path / "tmp").mkdir()
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
@@ -334,7 +345,7 @@ def cache(tmp_path, monkeypatch):
     return spawned
 
 
-def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache):
+def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache, clock):
     from connectonion.rem.files import Notebook
     cookie = f"co_rem={host.token}"
     get = lambda: call(host.routes, "GET", "/rem", cookie=cookie)[2]
@@ -342,9 +353,14 @@ def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache):
     assert "Alice Chen" in first
     version = call(host.routes, "GET", "/rem/version", cookie=cookie)
     assert version[0] == 200 and json.loads(version[2])["as_of"] in first
+    clock[0] += reader.REBUILD_INTERVAL
     Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale\n")
     cache.clear()
     assert get() == first and cache == [host.root]   # instantly the last page, a rebuild behind it
+    reader.refresh(host.root)
+    Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale, again\n")
+    cache.clear()
+    assert get() != first and cache == []            # rebuilt a moment ago: the next waits
     reader.refresh(host.root)
     fresh = get()
     assert "Bruno Vale" in fresh
@@ -399,3 +415,28 @@ def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cach
     status, _, second = get()
     assert time.monotonic() - started < 1.0
     assert status == 200 and second == first and cache == []
+
+
+def test_rebuilds_wait_out_the_interval_unless_the_owner_acted_in_the_reader(host, cache, clock):
+    """A night run keeps writing and a rebuild costs ~100 s of CPU on a real notebook."""
+    from connectonion.rem.files import Notebook
+    cookie = f"co_rem={host.token}"
+    get = lambda: call(host.routes, "GET", "/rem", cookie=cookie)[2]
+    get()
+    reader.refresh(host.root)
+    cache.clear()
+    for minute in range(1, reader.REBUILD_INTERVAL // 60):          # the night run, writing
+        clock[0] += 60
+        Notebook(host.root).write("people/nora-pike.md", f"# Nora Pike\n\nPass {minute}.\n")
+        get()
+        assert call(host.routes, "GET", "/rem/version", cookie=cookie)[0] == 200
+    assert cache == []                                              # nothing rebuilt yet
+    clock[0] += 61
+    get()
+    assert cache == [host.root]                                     # the interval is over
+    reader.refresh(host.root)
+    cache.clear()
+    clock[0] += 60
+    payload = json.dumps({"key": "people/alice-chen.md\nA promise", "state": "done"}).encode()
+    assert call(host.routes, "POST", "/rem/thread", cookie=cookie, body=payload)[0] == 200
+    assert cache == [host.root]                                     # the owner's own action: now

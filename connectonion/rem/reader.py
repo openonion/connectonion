@@ -408,9 +408,9 @@ def reader_version(root: Path) -> list:
 
     REM's writes touch `.state/reader-changed` (files.atomic_write); the category
     folders' times catch a page added, renamed or removed by hand; the database
-    and a nonempty WAL hold committed rows. A page edited in place by hand shows
-    after REM's next write. The template is part of the key, so a new install
-    re-renders.
+    and a nonempty WAL hold committed rows. A page edited in place by another
+    tool is found by the background full check (tree_version). The template is
+    part of the key, so a new install re-renders.
     """
     from .files import CHANGED
     state = root / ".state"
@@ -466,6 +466,12 @@ def write_reader(root: Path) -> Path:
 # "live" is the Host's page; "full" is its details and the offline file page,
 # made from one snapshot. A build runs once at a time, in a detached process.
 BUILDS = {"live.html": "live", "data.json": "full", "file.html": "full"}
+# A rebuild costs ~100 s of CPU on a real notebook under load, and a night run
+# keeps writing: at most one per interval, unless the owner acted in the reader.
+REBUILD_INTERVAL = 600
+# Edits made outside REM's writers are found by walking the notebook, off the
+# request path, once the saved page has gone this long without that check.
+FULL_CHECK_SECONDS = 600
 # The live page asks for its details as soon as it loads, so it keeps both current.
 NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
 
@@ -496,12 +502,34 @@ def _read(path: Path):
 
 
 def saved(root: Path, build: str) -> dict:
-    """{version, as_of} of a build's saved pages; {} before the first."""
+    """{version, tree, as_of, built_at, checked_at} of a build's saved pages; {} before the first."""
     text = _read(_cached(root, build + ".json"))
     return json.loads(text) if text else {}
 
 
-def _build(root: Path, build: str, version: list) -> None:
+def _now() -> float:
+    return time.time()
+
+
+def tree_version(root: Path) -> str:
+    """Every file's name, time and size: the full check, run only by the background
+    build. The night agent and skills can edit pages with their own tools, which
+    touch no marker; without this a page they changed would stay stale for good.
+    SQLite's shared memory changes on reads; an empty WAL has no committed frames."""
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            if name == "rem.db-shm":
+                continue
+            stat = (Path(directory) / name).lstat()
+            if name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str((Path(directory) / name).relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    return hashlib.sha256(json.dumps(files).encode()).hexdigest()
+
+
+def _build(root: Path, build: str, version: list, tree) -> None:
     if build == "live":
         shell = snapshot(root, local=True, today=True)
         _replace(_cached(root, "live.html"), _page(shell, live=True))
@@ -512,7 +540,22 @@ def _build(root: Path, build: str, version: list) -> None:
         _replace(_cached(root, "file.html"), _page(full, live=False))
         as_of = full["as_of"]
     # Written last: pages newer than their key only cost one more rebuild.
-    _replace(_cached(root, build + ".json"), json.dumps({"version": version, "as_of": as_of}))
+    _keep(root, build, {"version": version, "tree": tree, "as_of": as_of, "built_at": _now(), "checked_at": _now()})
+
+
+def _keep(root: Path, build: str, row: dict) -> None:
+    _replace(_cached(root, build + ".json"), json.dumps(row))
+
+
+def owner_changed(root: Path) -> None:
+    """The owner acted in the reader (sent, approved, edited): rebuild now, not at the
+    next interval. A build already running sees this and makes one more pass."""
+    _replace(_cached(root, "owner"), str(_now()))
+    _spawn_refresh(root, ("live", "full"))
+
+
+def _owner_since(root: Path, moment: float) -> bool:
+    return float(_read(_cached(root, "owner")) or 0) >= moment
 
 
 @contextmanager
@@ -538,20 +581,36 @@ def _building(root: Path, *, wait: bool):
 
 def refresh(root: Path, builds=("live", "full")) -> None:
     """The background build: bring these saved pages, and any others already saved,
-    up to date, unless a build runs. A request that found this one busy did not
-    start another, so the notebook is checked again after each pass (three at most:
-    a night run writing all the while must not keep it rendering forever)."""
+    up to date, unless a build runs. Past FULL_CHECK_SECONDS it walks the whole
+    notebook first, for edits no marker records. It passes again only for an owner
+    action made meanwhile: other writes wait for the next interval."""
     with _building(root, wait=False) as mine:
         if not mine:
             return
         wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
         for _ in range(3):
-            version = reader_version(root)
-            stale = [build for build in wanted if saved(root, build).get("version") != version]
+            started, version = _now(), reader_version(root)
+            rows = {build: saved(root, build) for build in wanted}
+            stale = [build for build in wanted if rows[build].get("version") != version]
+            tree = None
+            if any(started - rows[build].get("checked_at", 0) >= FULL_CHECK_SECONDS
+                   for build in wanted if build not in stale):
+                tree = tree_version(root)
+                for build in wanted:
+                    if build in stale:
+                        continue
+                    if rows[build].get("tree") != tree:
+                        stale.append(build)
+                    else:
+                        _keep(root, build, {**rows[build], "checked_at": started})
             if not stale:
                 return
-            for build in stale:
-                _build(root, build, version)
+            tree = tree or tree_version(root)
+            for build in wanted:
+                if build in stale:
+                    _build(root, build, version, tree)
+            if not _owner_since(root, started):
+                return
 
 
 def _spawn_refresh(root: Path, builds) -> None:
@@ -574,7 +633,8 @@ def cached_page(root: Path, name: str) -> tuple[str, bool]:
     if text is None:
         with _building(root, wait=True):
             if (text := _read(path)) is None:
-                _build(root, BUILDS[name], version)
+                # No tree on the request path: the first full check rebuilds it once.
+                _build(root, BUILDS[name], version, None)
                 text = _read(path)
     return text, BUILDS[name] not in _rebuild_stale(root, name, version)
 
@@ -587,10 +647,18 @@ def latest(root: Path):
 
 
 def _rebuild_stale(root: Path, name: str, version: list) -> list:
-    stale = [build for build in NEEDS[name] if saved(root, build).get("version") != version]
-    if stale:
-        _spawn_refresh(root, stale)
-    return stale
+    """The builds this page needs that are missing or behind the key; starts the
+    background build when one is missing, or when it is due (REBUILD_INTERVAL
+    since the last, or the full check)."""
+    rows = {build: saved(root, build) for build in ("live", "full")}
+    missing = [build for build in NEEDS[name] if not rows[build]]
+    changed = [build for build in NEEDS[name] if rows[build] and rows[build].get("version") != version]
+    unchecked = [build for build in NEEDS[name] if rows[build]
+                 and _now() - rows[build].get("checked_at", 0) >= FULL_CHECK_SECONDS]
+    last = max((row.get("built_at", 0) for row in rows.values() if row), default=0)
+    if missing or (changed or unchecked) and _now() - last >= REBUILD_INTERVAL:
+        _spawn_refresh(root, list(dict.fromkeys(missing + changed + unchecked)))
+    return missing + changed
 
 
 def open_reader(root: Path, *, launch: bool = True) -> Path:

@@ -664,11 +664,18 @@ catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
 WAL hold committed rows; `reader.html` is part of the key, so an upgrade
 re-renders. When any of these changed, the last page is still served at once
 and one detached process (`python -m connectonion.rem.reader`, one at a time,
-log in the same folder) renders the new one. The open live page asks
-`/rem/version` every 30 seconds while visible and reloads onto the newer render
-when it lands, never while you are typing. The page footer says when it was
-rendered: **Updated** (更新于) and the time. A page edited in place by hand,
-outside REM, shows after REM's next write. Before this (1.9.3rc62) every open
+log in the same folder) renders the new one. Rebuilds are at most one per
+10 minutes (`REBUILD_INTERVAL` in `reader.py`), because one costs about 100 s
+of CPU on a large notebook and a night run keeps writing; a change you make in
+the reader itself (send, approve, mark a thread, ask for a translation)
+rebuilds at once. Files edited by other tools, such as an agent editing a page
+in place, touch no marker: once the saved page is 10 minutes past its last
+full check (`FULL_CHECK_SECONDS`), the background build walks the whole
+notebook first and rebuilds if anything differs. The open itself never walks.
+The open live page asks `/rem/version` every 30 seconds while visible and
+reloads onto the newer render when it lands, never while you are typing. The
+page footer says when it was rendered: **Updated** (更新于) and the time.
+Before this (1.9.3rc62) every open
 rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
 and the render 35 s, plus 73 s for the details.
 
