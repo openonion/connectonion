@@ -1924,6 +1924,106 @@
   .ov-child-units .ov-team { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
   .ov-teams:has(.ov-child-units) { grid-template-columns: minmax(0, 1fr); }
 </style>
+<style id="today-style">
+  /* Today (Bauhaus lightness): 52 · 17 · 14 · 12, weights 400/700, one sans, red only for late,
+     green only for the first card's action, rows on hairlines instead of boxes. */
+  :root { --today-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif; --late: #c4362c; }
+  :root[data-theme="dark"] { --late: #f0675c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --late: #f0675c; } }
+  .brief-header, .today-brief { font-family: var(--today-font); max-width: 760px; }
+  .brief-header { margin-bottom: 32px; }
+  .brief-header .eyebrow { font: 400 12px/18px var(--today-font); color: var(--ink-3); margin: 0; }
+  .brief-header h1 { font: 700 52px/60px var(--today-font); letter-spacing: -.035em; margin: 8px 0 12px; animation: today-rise .6s cubic-bezier(.2, .7, .2, 1) both; }
+  .brief-header .lede { font: 400 17px/27px var(--today-font); color: var(--ink-2); margin: 0 0 4px; animation: today-rise .6s .06s cubic-bezier(.2, .7, .2, 1) both; }
+  .brief-header .late, .qage.late { color: var(--late); font-weight: 700; }
+  .brief-header .waiting-more { font: 400 14px/22px var(--today-font); margin: 0; }
+  .brief-header .waiting-more a { color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+  .brief-header .approval-header { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .brief-header #approve-all { min-height: 0; padding: 0; border: 0; background: none; color: var(--ink-2) !important; font: 400 14px/22px var(--today-font); text-decoration: underline !important; text-decoration-color: var(--line) !important; text-underline-offset: 4px; }
+  .brief-header #approve-all:disabled { color: var(--ink-3) !important; text-decoration: none !important; cursor: default; font-size: 12px; }
+  .brief-header .approval-header .quiet-line { margin: 0; font-size: 12px; }
+  .brief-header .approval-header code { font-size: 12px; }
+  .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
+  .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; cursor: pointer;
+    animation: today-rise .4s cubic-bezier(.2, .7, .2, 1) both; transition: transform .24s ease-out, opacity .24s ease-out; }
+  .today-brief .qcard:nth-child(2) { animation-delay: 18ms; } .today-brief .qcard:nth-child(3) { animation-delay: 36ms; }
+  .today-brief .qcard:nth-child(4) { animation-delay: 54ms; } .today-brief .qcard:nth-child(n+5) { animation-delay: 72ms; }
+  .today-brief .qcard.open { cursor: auto; }
+  .today-brief .qcard:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
+  .today-brief .qcard.leaving, .today-brief .qitem.leaving { transform: translateX(64px); opacity: 0; }
+  .qhead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .qmark { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); transform: translateY(-1px); }
+  .qmark.org { border-radius: 0; }
+  .today-brief .today-who { font: 700 14px/22px var(--today-font); color: var(--ink); text-decoration: none; white-space: nowrap; }
+  .qhead .meta { flex: 1; min-width: 0; font: 400 12px/18px var(--today-font); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qage { margin-left: auto; flex: none; font: 400 12px/18px var(--today-font); color: var(--ink-3); white-space: nowrap; }
+  .qitems { list-style: none; margin: 0; padding: 0 0 0 18px; }
+  .qitem { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 32px; column-gap: 8px; transition: transform .24s ease-out, opacity .24s ease-out; }
+  .qitem .words { grid-column: 1; margin: 4px 0 0; font: 400 14px/22px var(--today-font); color: var(--ink); }
+  .qcard:not(.open) .qitem .words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qcard:not(.open) .qitem .words sup, .qcard:not(.open) .qitem .words .cite { display: none; }
+  .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: 17px; line-height: 27px; }
+  .qitem .words .cite { font-size: 12px; }
+  .qdone { grid-column: 2; grid-row: 1; align-self: start; width: 32px; height: 32px; margin-top: 0; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-3); cursor: pointer; opacity: 0; transition: opacity .2s; }
+  .qdone svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .qdone:hover { color: var(--ink); background: var(--line-2); }
+  .qcard:hover .qdone, .qcard:focus-within .qdone, .qcard:focus .qdone, .qcard.open .qdone { opacity: 1; }
+  .qmore { grid-column: 1; display: none; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .qcard.open .qmore { display: block; }
+  .qmore > * { margin: 4px 0 0; font: inherit; color: inherit; }
+  .qcard .kind-badge { margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; }
+  .qcard .kind-badge.mail::before { content: none; }
+  .qcard .blocker-tag { margin-left: 6px; color: var(--late); font-weight: 700; }
+  .qdraft { display: none; margin: 12px 0 0 18px; }
+  .qcard.open .qdraft { display: block; }
+  .qdraft > .quiet-line { margin: 0 0 8px; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .card-acts { display: none; align-items: center; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 0 18px; }
+  .qcard.open .card-acts, .qcard:hover .card-acts, .qcard:focus-within .card-acts, .qcard:focus .card-acts { display: flex; animation: today-slide .2s ease-out both; }
+  .qcard.open .review-reply, .qcard.open .qdraft ~ .card-acts .review-reply { display: none; }
+  .card-acts .btn-act, .card-acts .btn-line { min-height: 40px; padding: 0 18px; border-radius: 8px; font: 700 14px var(--today-font); text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; }
+  .card-acts .btn-line { border: 1px solid var(--ink-3); background: none; color: var(--ink) !important; }
+  .card-acts .btn-line:hover { border-color: var(--ink); }
+  .card-acts .btn-quiet { min-height: 0; padding: 0; font: 400 14px/22px var(--today-font); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+  .card-acts .draft-now { display: inline-flex; align-items: center; gap: 12px; }
+  @keyframes today-rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes today-slide { from { opacity: 0; transform: translateX(12px); } }
+  @media (max-width: 720px) {
+    .brief-header h1 { font-size: 34px; line-height: 40px; }
+    .qhead .meta { display: none; }
+    .qdone { opacity: 1; width: 44px; height: 44px; }
+    .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
+    .qcard:hover:not(.open) .card-acts { display: none; }
+    .card-acts .btn-act, .card-acts .btn-line { min-height: 46px; flex: 1 1 100%; justify-content: center; }
+  }
+  /* The command palette and the shortcut sheet: one transient layer, a sheet on a phone. */
+  dialog.palette { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); margin: 12vh auto auto; padding: 0; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--sheet); color: var(--ink); font-family: var(--today-font); box-shadow: 0 24px 64px -16px rgba(0, 0, 0, .45); animation: today-rise .2s ease-out both; }
+  dialog.palette::backdrop { background: rgba(10, 12, 20, .35); }
+  .palette input { box-sizing: border-box; width: 100%; padding: 18px 20px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); font: 400 17px/27px var(--today-font); outline: none; }
+  .palette ul { list-style: none; margin: 0; padding: 6px; max-height: min(52vh, 480px); overflow: auto; }
+  .palette li[role="option"] { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 12px; border-radius: 8px; font: 400 14px/22px var(--today-font); cursor: pointer; }
+  .palette li[aria-selected="true"] { background: var(--line-2); }
+  .palette .pl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .palette .ph, .palette-empty, .palette-foot { flex: none; font: 400 12px/18px var(--today-font); color: var(--ink-3); }
+  .palette-empty { padding: 10px 12px; }
+  .palette-foot { margin: 0; padding: 10px 20px; border-top: 1px solid var(--line); }
+  .shortcuts { padding: 20px 24px !important; width: min(380px, calc(100vw - 32px)) !important; }
+  .shortcuts h2 { margin: 0 0 12px; font: 700 17px/27px var(--today-font); }
+  .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 12px; font: 400 14px/22px var(--today-font); }
+  .shortcuts dt, .shortcuts dd { margin: 0; }
+  .shortcuts kbd, .search .kbd { font: 400 12px/18px var(--today-font); }
+  .shortcuts kbd { padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; }
+  .search .kbd { cursor: pointer; pointer-events: auto; }
+  @media (max-width: 720px) {
+    dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: 16px 16px 0 0; max-height: 85vh; }
+    .palette ul { max-height: 60vh; }
+    .palette li[role="option"] { min-height: 44px; align-items: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .brief-header h1, .brief-header .lede, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
+    .today-brief .qcard, .qitem { transition: none; }
+  }
+</style>
 <style id="org-style">
   /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
   :root:has(#main > .ov) { --paper: #f6f6f3; }
@@ -2236,6 +2336,7 @@ const UI = {
     "The original is not archived from {channel}; its last read failed.": "{channel} 原文尚未归档；上次读取失败。",
     "You promised: “{promise}” ({since}) — this is a task, not a reply.": "你答应了：“{promise}”（{since}）——这是一件事，不是回信。",
     "You replied on {since}: “{promise}” — if this is handled, mark it done.": "你 {since} 已回复：“{promise}”——如果这件已经办了，标为完成。",
+    "You replied on {since}: “{promise}” — the promise is still open.": "你 {since} 回复过：“{promise}”——但这件事还没了结。",
     "message text unavailable": "消息正文未存档",
     "Fill the marked part first": "先填好标出的部分",
     "Fill in": "需要你填",
@@ -2303,7 +2404,31 @@ const UI = {
     "Copy import command": "复制导入命令",
     "Copy setup command": "复制初始化命令",
     "Copy update command": "复制更新命令",
-    "Built today: read {n} items · wrote {m} pages · ": "今天建立：读取 {n} 条内容 · 撰写 {m} 页 · ",
+    "Built today: read {n} items · wrote {m} pages": "今天建立：读取 {n} 条内容 · 撰写 {m} 页",
+    // Today (round 6) and the command palette
+    "1 person is waiting on you.": "1 个人在等你。",
+    "{n} people are waiting on you.": "{n} 个人在等你。",
+    "Nobody is waiting on you today.": "今天没有人在等你。",
+    "Most urgent: {name}, ": "最急的是 {name}，",
+    "Review the reply to {name}": "看给 {name} 的回信",
+    "Approve": "批准",
+    "Reply to {name}": "回复 {name}",
+    "Open {name}": "打开 {name}",
+    "One reply can answer both.": "一封回信可以同时答复这两件。",
+    "One reply can answer all {n}.": "一封回信可以答复这 {n} 件。",
+    "Draft a reply to {name}": "给 {name} 起草回信",
+    "Mark {name} done": "标记 {name} 完成",
+    "Open {page}": "打开{page}",
+    "Page": "页面",
+    "Recent": "最近",
+    "Nothing matches": "没有匹配项",
+    "Search or run a command": "搜索或执行命令",
+    "Search people, projects, pages — or type an action": "搜索人物、项目、页面，或输入一个动作",
+    "Command palette": "命令面板",
+    "↑↓ move · Enter open · Esc close": "↑↓ 选择 · 回车打开 · Esc 关闭",
+    "Keyboard shortcuts": "快捷键",
+    "Next or previous card": "下一张或上一张卡片",
+    "These shortcuts": "显示这张快捷键表",
     "Your notebook was just built. Overnight changes appear here after the next update.": "笔记本刚刚建立。下次更新后，这里会显示夜间变化。",
     "Nightly updates are off.": "夜间更新已关闭。",
     "No changes yet — this is the first build.": "暂无变化 — 这是首次建立。",
@@ -2441,7 +2566,7 @@ const UI = {
     "{n} overdue": "{n} 项已逾期",
     "A quiet morning": "一个安静的早晨",
     "details": "详情",
-    "Last night: read {n} items · rewrote {m} pages · ": "昨夜：读取 {n} 条内容 · 重写 {m} 页 · ",
+    "Last night: read {n} items · rewrote {m} pages": "昨夜：读取 {n} 条内容 · 重写 {m} 页",
     "Search people, projects, mail…": "搜索人物、项目、邮件…",
     "Who do I owe?": "我欠谁一个回复？",
     "What changed this week?": "本周有什么变化？",
@@ -4129,11 +4254,11 @@ function kindBadge(entry) {
 }
 // A new message only.  A mailto with "Re: <subject>" is not a reply: the mail
 // app sends it without In-Reply-To, so it lands outside the thread.
-function mailtoLink(contact, cls, label) {
-  return el("a", { class: cls, href: "mailto:" + contact.address, text: label });
+function mailtoLink(contact, cls, label, reply = false) {
+  return el("a", { class: cls, href: "mailto:" + contact.address, text: label, ...(reply ? { "data-reply": "" } : {}) });
 }
-function draftNowButton(entry, kind, contact) {
-  const button = el("button", { type: "button", class: "btn-act", text: t("Draft now") });
+function draftNowButton(entry, kind, contact, cls = "btn-act") {
+  const button = el("button", { type: "button", class: cls, text: t("Draft now"), "data-reply": "" });
   const status = el("span", { class: "quiet-line draft-status", role: "status" });
   const thread = kind.thread.split(":").slice(2).join(":") || kind.thread;
   button.onclick = async () => {
@@ -4163,15 +4288,17 @@ function primaryAction(entry, completion = true) {
     const number = /\[(W?\d+)\]/.exec(entry.t.originalText || entry.t.text)?.[1];
     return el("a", {class: "btn-act", href: href(r) + (number ? "&h=src-" + number : "&h=open-threads"), text: t("Open the recorded source")});
   }
-  if (reply?.provider || kind?.mail) {
-    const provider = reply?.provider || kind.kind, channel = provider === "outlook" ? "Outlook" : "Gmail";
-    const raw = reply?.thread || kind?.thread || "", thread = raw.split(":").slice(2).join(":") || raw;
-    const source = reply?.source?.replace(/^(gmail|outlook):/, "") || "";
-    const url = provider === "gmail" ? "https://mail.google.com/mail/u/0/#all/" + encodeURIComponent(thread || source)
-      : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(source);
-    return el("a", {class: "btn-quiet", href: url, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel})});
-  }
+  const url = threadUrl(reply, kind);
+  if (url) return el("a", {class: "btn-quiet", href: url.href, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel: url.channel})});
   return el("a", { class: "btn-act", href: href(r) + "&h=open-threads", text: t("Open the page") });
+}
+function threadUrl(reply, kind) {
+  if (!reply?.provider && !kind?.mail) return null;
+  const provider = reply?.provider || kind.kind, channel = provider === "outlook" ? "Outlook" : "Gmail";
+  const raw = reply?.thread || kind?.thread || "", thread = raw.split(":").slice(2).join(":") || raw;
+  const source = reply?.source?.replace(/^(gmail|outlook):/, "") || "";
+  return { channel, href: provider === "gmail" ? "https://mail.google.com/mail/u/0/#all/" + encodeURIComponent(thread || source)
+    : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(source) };
 }
 
 function threadActions(entry) {
@@ -4240,8 +4367,11 @@ function draftNote(draft, entry) {
   if (draft?.status === "no_reply") return el("p", { class: "quiet-line", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
   if (reply?.last_word_yours) {
     const values = {promise: unlabelled(reply.promise || t("message text unavailable")), since: fmtDate(reply.since)};
+    // A reply after the promise fell due does not settle it; do not invite "mark done".
+    const late = entry.t?.due && entry.t.due < calendarDay(REM.as_of);
     return el("p", {class: "quiet-line draft-reason", text: t(reply.state === "task"
       ? "You promised: “{promise}” ({since}) — this is a task, not a reply."
+      : late ? "You replied on {since}: “{promise}” — the promise is still open."
       : "You replied on {since}: “{promise}” — if this is handled, mark it done.", values)});
   }
   if ((!draft || draft.status === "pending") && reply) {
@@ -4267,14 +4397,14 @@ function draftNote(draft, entry) {
 }
 // A reply is shown as the mail it will become: who it goes to, the subject, the
 // words, and beside them the owner's-language reading. One button sends it.
-function replyDraftCard(draft) {
+function replyDraftCard(draft, onSent) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip") });
-  const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen") });
+  const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
   const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
     const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
@@ -4329,6 +4459,7 @@ function replyDraftCard(draft) {
     const next = action === "send" ? "sent" : "discarded";
     REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: next } : d);
     card.replaceChildren(el("p", { class: "mail-done", text: t(next === "sent" ? "Sent to {name}" : "Skipped", { name: who?.title || to.name }) }));
+    if (next === "sent") onSent?.();
   };
   const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); status.textContent = t("Could not update draft. Check the connection and try again."); });
   send.onclick = () => {
@@ -5282,35 +5413,115 @@ function taskResult(entry) {
   return result;
 }
 
-function queueCard(entry, dateText) {
-  const { r, t: thread, also } = entry;
-  const { words, context } = morningWords(thread.text, r, thread);
-  const role = contactFields(r).find(f => f.label === "Role")?.value;
-  const metaParts = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
-  const overdue = thread.due && thread.due < calendarDay(REM.as_of);
-  const initials = r.title.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join(""), draft = threadDraft(entry);
-  const fold = el("button", { type: "button", class: "fold", "aria-expanded": "true", text: t("Less") });
-  const card = el("li", { class: "qcard" + (overdue ? " overdue" : "") + (draft?.status === "prepared" ? " has-mail" : "") }, [
-    el("div", { class: "waiting-person" }, [el("span", { class: "avatar", text: r.path === REM.owner ? t("You") : initials }),
-      el("div", {}, [el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
-        metaParts.length ? el("span", { class: "meta" }, metaParts.flatMap((part, i) => i ? [" · ", part] : [part])) : null])]),
-    el("span", { class: "waiting-age" + (overdue ? " overdue" : "") }, [kindBadge(entry), el("b", { text: dateText }), blockerTag(thread)]),
-    el("div", { class: "waiting-ask" }, [el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, r.path) }) : null]), alsoOn(also)]),
-    draft?.status === "prepared" && !isDone(entry) ? replyDraftCard(draft) : threadActions(entry), draftNote(draft, entry), taskResult(entry), fold]);
-  fold.onclick = () => {
-    const open = card.classList.toggle("folded");
-    fold.textContent = t(open ? "More" : "Less");
-    fold.setAttribute("aria-expanded", String(!open));
+// ---- Today: one card per person ----------------------------------------------
+// Python ranks the rows (today.py); a person's later rows join the card of their
+// first one, so the order stays Python's and one reply can answer both.
+function personGroups(entries) {
+  const groups = new Map();
+  for (const entry of entries) {
+    if (!groups.has(entry.r.path)) groups.set(entry.r.path, { r: entry.r, entries: [] });
+    groups.get(entry.r.path).entries.push(entry);
+  }
+  return [...groups.values()];
+}
+function todayGroups(entries) {
+  const today = todayEntries(entries), shown = new Set(today.slice(0, 5).map(doneKey));
+  return personGroups([...today.slice(0, 5), ...morningEntries(entries.filter(entry => !shown.has(doneKey(entry))))]);
+}
+function entryKeys(entry) { return (entry.members || [entry]).map(doneKey); }
+// A yes/no the night prepared: an agent task waiting for the owner's approval.
+function approvalTask(entry) {
+  const keys = entryKeys(entry);
+  return (REM.approval_outcomes || []).find(item => item.kind === "task" && item.keys?.some(key => keys.includes(key)));
+}
+// The most likely next step: a ready reply, a reply REM can write now, a yes/no,
+// a reply to write; closing only what already looks handled. Never the mailbox.
+const STEPS = ["send", "draft", "approve", "write", "done", "open"];
+function cardStep(entry) {
+  const draft = threadDraft(entry), reply = queuedReply(entry);
+  if (draft?.status === "prepared") return "send";
+  if (REM.live && reply?.state === "queued" && reply.thread) return "draft";
+  if (REM.live && approvalTask(entry)) return "approve";
+  if (draft?.status === "no_reply" || looksDone(entry)) return "done";
+  // A mail-app compose cannot join an existing thread; only a person with no thread gets one.
+  if (threadContact(entry) && !threadContact(entry).subject) return "write";
+  return "open";
+}
+function groupStep(entries) {
+  return entries.map(entry => ({ entry, step: cardStep(entry) })).sort((a, b) => STEPS.indexOf(a.step) - STEPS.indexOf(b.step))[0];
+}
+function stepAction({ entry, step }, group, cls) {
+  const name = firstName(group.r);
+  if (step === "draft") {
+    const reply = queuedReply(entry);
+    return draftNowButton(entry, { kind: reply.provider, thread: reply.thread }, null, cls);
+  }
+  if (step === "write") return mailtoLink(threadContact(entry), cls, t("Reply to {name}", { name }), true);
+  if (step === "open") return el("a", { class: cls, href: href(group.r) + "&h=open-threads", text: t("Open {name}", { name }) });
+  const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
+    text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
+  button.onclick = event => {
+    if (step === "send") return replyFrom(event.currentTarget.closest(".qcard"));
+    if (step === "approve") return openApprovalSheet([approvalTask(entry)]);
+    closeEntries(event.currentTarget.closest(".qcard"), group.entries.filter(item => cardStep(item) === "done"));
   };
+  return button;
+}
+// A handled card slides right and fades, then the page re-renders with an Undo.
+function closeEntries(node, entries) {
+  if (!entries.length) return;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  node?.classList.add("leaving");
+  setTimeout(() => setDone(entries[0], true, "done", entries), still ? 0 : 240);
+}
+function cardHead(group, late) {
+  const { r, entries } = group;
+  const role = contactFields(r).find(f => f.label === "Role")?.value;
+  const meta = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
+  return el("div", { class: "qhead" }, [
+    el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
+    el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
+    meta.length ? el("span", { class: "meta" }, meta.flatMap((part, i) => i ? [" · ", part] : [part])) : null,
+    el("span", { class: "qage" + (late ? " late" : "") , text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t) })]);
+}
+function cardItem(entry, many) {
+  const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
+  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + " · E", "aria-label": t("Mark done"), html: CHECK_ICON });
+  done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
+  return el("li", { class: "qitem" }, [
+    el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+    el("div", { class: "qmore" }, [el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
+      alsoOn(entry.also), draftNote(threadDraft(entry), entry), taskResult(entry)])]);
+}
+function cardDraft(draft, group) {
+  const n = group.entries.length;
+  const sent = () => setDone(group.entries[0], true, "done", group.entries);
+  return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
+    replyDraftCard(draft, n > 1 ? sent : undefined)]);
+}
+// The first card is open and carries the page's one green action; the others
+// show who and what, and reveal their action on hover, focus or tap.
+function personCard(group, focal) {
+  const { r, entries } = group, next = groupStep(entries), late = overdueDays(entries[0].t);
+  const draft = next.step === "send" ? threadDraft(next.entry) : null;
+  const card = el("li", { class: "qcard" + (focal ? " open" : "") + (late ? " overdue" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
+    cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1))),
+    draft ? cardDraft(draft, group) : null,
+    el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), mailboxLink(next.entry)])]);
+  card.markDone = () => closeEntries(card, entries);
+  card.reply = () => replyFrom(card);
+  card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, .mailcard")) card.classList.toggle("open"); };
   return card;
 }
-// Like a feed: only the first card is open; the others keep their headline and their one action.
-function foldAfterFirst(lists) {
-  lists.flatMap(list => list ? [...list.children] : []).slice(1).forEach(card => card.querySelector(".fold")?.click());
+// R: the writer when a draft is ready, REM drafting when it can, else your mail app's reply.
+function replyFrom(card) {
+  card.classList.add("open");
+  card.querySelector('.qdraft [data-key="r"], .qdraft .btn-act, .card-acts [data-reply]')?.click();
 }
-function morningThread(entry) {
-  const { t: thread } = entry;
-  return queueCard(entry, threadAge(thread));
+function mailboxLink(entry) {
+  const reply = queuedReply(entry), kind = threadKind(entry);
+  const url = threadUrl(reply, kind);
+  return url ? el("a", { class: "btn-quiet", href: url.href, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", { channel: url.channel }) }) : null;
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
@@ -5409,25 +5620,10 @@ function todayEntries(entries, section = "today") {
     .filter((entry, i, rows) => entry && !isDone(entry) && rows.indexOf(entry) === i);
 }
 
-function todayThread(entry) {
-  const { t: thread } = entry;
-  const date = threadAge(thread);
-  const card = queueCard(entry, date);
-  card.classList.add("today-thread");
-  return card;
-}
-
-function todayBrief(entries, counts, waiting) {
-  const n = entries.length + waiting.length;
-  const section = el("section", { class: "today-brief" }, [sectionHead(n ? "Needs you" : "Today")]);
-  const due = entries.length ? el("ol", { class: "today-threads" }, entries.slice(0, 5).map(todayThread)) : null;
-  const ledger = waiting.length ? el("ol", { class: "waiting-ledger" }, waiting.map(morningThread)) : null;
-  for (const list of [due, ledger]) if (list) section.appendChild(list);
-  foldAfterFirst([due, ledger]);
-  if (!n) section.appendChild(el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") }));
-  if (entries.length > 5) section.appendChild(el("a", { class: "brief-more", href: "#view=open", text: t("All open threads →") }));
-  section.appendChild(waitingMore(counts));
-  return section;
+function todayCards(groups) {
+  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length
+    ? el("ol", { class: "today-threads" }, groups.map((group, i) => personCard(group, i === 0)))
+    : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
 }
 async function approvalRequest(payload) {
   const response = await fetch("/rem/approve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
@@ -5579,33 +5775,36 @@ function approvalUndoBar() {
   tick(); approvalTimer = setInterval(tick, 1000);
 }
 
-function briefHeader(counts, today) {
-  const pass = lastPass(), day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
-  const overdue = today.filter(entry => entry.t.due && entry.t.due < day).length;
-  const due = today.filter(entry => entry.t.due && entry.t.due >= day).length;
+// The page's one statement is a fact with a number: how many people wait on you.
+// The lede names the most overdue of them; red marks only the days late.
+function briefHeader(counts, groups) {
+  const day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
   const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
   const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
   const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
-  const parts = [!firstBuild() && pass?.claims.length ? t(pass.claims.length === 1 ? "{n} change overnight" : "{n} changes overnight", { n: pass.claims.length }) : "",
-    overdue ? t("{n} overdue", { n: overdue }) : "", due ? t("{n} due soon", { n: due }) : "", counts.mine ? t("{n} waiting on you", { n: counts.mine }) : ""].filter(Boolean);
+  const n = groups.length;
   const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
-    el("h1", { text: parts.join(" · ") || t("A quiet morning") })]);
+    el("h1", { text: n ? t(n === 1 ? "1 person is waiting on you." : "{n} people are waiting on you.", { n }) : t("Nobody is waiting on you today.") }),
+    urgentLede(groups, day), waitingMore(counts)]);
   if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: t(REM.status.schedule_failure.code === "blocked"
     ? "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start."
     : "Last scheduled turn did not finish: {evidence} · Retried automatically.", REM.status.schedule_failure) }));
-  if (pass) {
-    const details = el("a", { href: "#processing", text: t("details") });
-    details.onclick = event => {
-      event.preventDefault();
-      const processing = document.getElementById("processing");
-      processing.open = true;
-      processing.scrollIntoView({ block: "start" });
-      processing.querySelector("summary").focus();
-    };
-    header.appendChild(el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: read {n} items · wrote {m} pages · " : "Last night: read {n} items · rewrote {m} pages · ", { n: pass.items, m: pass.changed.length }), details]));
-  }
   return header;
+}
+function urgentLede(groups, day) {
+  const late = groups.flatMap(group => group.entries.filter(entry => entry.t.due && entry.t.due < day).map(entry => ({ r: group.r, due: entry.t.due })))
+    .sort((a, b) => a.due.localeCompare(b.due))[0];
+  if (!late) return null;
+  const days = Math.round((new Date(day + "T00:00:00Z") - new Date(late.due + "T00:00:00Z")) / 86400000);
+  return el("p", { class: "lede" }, [t("Most urgent: {name}, ", { name: threadWho(late.r) }),
+    el("b", { class: "late", text: t(days === 1 ? "1 day overdue" : "{n} days overdue", { n: days }) }), uiLanguage === "zh" ? "。" : "."]);
+}
+// Last night's numbers live with the processing details, not on the first screen.
+function passSummary() {
+  const pass = lastPass();
+  return pass ? el("p", { class: "pass-summary" }, [t(firstBuild() ? "Built today: read {n} items · wrote {m} pages" : "Last night: read {n} items · rewrote {m} pages",
+    { n: pass.items, m: pass.changed.length })]) : null;
 }
 function notebookLanguages() {
   const languages = REM.your_languages || [];
@@ -5641,15 +5840,13 @@ function translationNotice() {
 function overview() {
   const main = document.getElementById("main");
   main.textContent = "";
-  const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), today = todayEntries(entries);
-  const shownToday = new Set(today.slice(0, 5).map(doneKey));
-  const waiting = morningEntries(entries.filter(entry => !shownToday.has(doneKey(entry))));
-  const header = briefHeader(counts, today);
+  const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
+  const header = briefHeader(counts, groups);
   header.appendChild(approvalHeader());
   main.append(header);
   approvalUndoBar();
-  // One column, one order: what needs you, then what changed, then what is worth remembering.
-  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayBrief(today, counts, waiting), morningBrief()]);
+  // One column, one order: who needs you, then what changed, then what is worth remembering.
+  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayCards(groups), morningBrief()]);
   const recall = recallPrompt(), quiet = quietThreads(entries, counts.quiet, true), review = connectionReview();
   for (const block of [recall, review, quiet]) if (block) primary.appendChild(block);
   main.appendChild(el("div", { class: "morning-layout" }, [primary]));
@@ -5666,7 +5863,7 @@ function overview() {
           known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
   }
 
-  const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), nightBand()]);
+  const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
   if (recent.length && !week.length) main.appendChild(el("details", { class: "week-details recent-details" }, [
@@ -8839,6 +9036,158 @@ document.addEventListener("keydown", e => {
     e.preventDefault(); qInput.focus();
   }
 });
+// ---- Command palette (⌘K / Ctrl+K) and Today's keys ---------------------------
+// Search people, organisations, projects and pages, or run Today's actions.
+function subsequenceScore(word, text) {
+  let score = 0, at = -1, run = 0;
+  for (const ch of word) {
+    const found = text.indexOf(ch, at + 1);
+    if (found < 0) return -1;
+    run = found === at + 1 ? run + 1 : 0;
+    score += 1 + run * 2 + (found === 0 || /[\s\-_/·(]/.test(text[found - 1]) ? 3 : 0);
+    at = found;
+  }
+  return score;
+}
+// Every word must appear in order inside the text; the words themselves may come in any order.
+function fuzzyScore(query, text) {
+  const plain = value => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const words = plain(query).split(/\s+/).filter(Boolean), lower = plain(text);
+  if (!words.length) return 0;
+  let total = 0;
+  for (const word of words) {
+    const score = subsequenceScore(word, lower);
+    if (score < 0) return -1;
+    total += score + (lower.includes(word) ? word.length * 3 : 0);
+  }
+  return total - lower.length / 100;
+}
+let paletteRecent = [];
+readerStorage("co-rem-palette-recent").then(saved => { paletteRecent = saved ? JSON.parse(saved) : []; });
+function rememberPick(id) {
+  paletteRecent = [id, ...paletteRecent.filter(item => item !== id)].slice(0, 6);
+  readerStorage("co-rem-palette-recent", JSON.stringify(paletteRecent));
+}
+function todayActions() {
+  return todayGroups(threadEntries().filter(entry => !isDone(entry))).flatMap(({ r }) => {
+    const name = threadWho(r);
+    return [{ id: "reply:" + r.path, label: t("Draft a reply to {name}", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.reply()) },
+      { id: "done:" + r.path, label: t("Mark {name} done", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.markDone()) }];
+  });
+}
+function paletteItems() {
+  const go = link => () => { location.hash = link; };
+  const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"], ["Activity", "#view=activity"], ["All records", "#c=all"]]
+    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]))
+    .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
+  const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
+    .map(r => ({ id: "r:" + r.path, label: r.title, hint: singular(r.category), run: go(href(r)) }));
+  return [...todayActions(), ...pages, ...records];
+}
+function paletteResults(query, items) {
+  if (!query.trim()) {
+    const byId = new Map(items.map(item => [item.id, item]));
+    const recent = paletteRecent.map(id => byId.get(id)).filter(Boolean).map(item => ({ ...item, recent: true }));
+    return [...recent, ...items.filter(item => !paletteRecent.includes(item.id) && !item.id.startsWith("r:"))].slice(0, 12);
+  }
+  return items.map(item => ({ item, score: fuzzyScore(query, item.label) + (paletteRecent.includes(item.id) ? 2 : 0) }))
+    .filter(row => row.score >= 0).sort((a, b) => b.score - a.score).slice(0, 12).map(row => row.item);
+}
+function onTodayCard(path, act) {
+  const run = () => {
+    const card = [...document.querySelectorAll("#main .qcard")].find(node => node.dataset.path === path);
+    if (card) { focusCard(card); act(card); }
+  };
+  if (railActive() === "today") return run();
+  window.addEventListener("hashchange", run, { once: true });
+  location.hash = "";
+}
+function openPalette() {
+  if (document.getElementById("palette")) return;
+  const items = paletteItems(), before = document.activeElement;
+  const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-list", autocomplete: "off", spellcheck: "false",
+    "aria-label": t("Search or run a command"), placeholder: t("Search people, projects, pages — or type an action") });
+  const list = el("ul", { id: "palette-list", role: "listbox" });
+  const dialog = el("dialog", { id: "palette", class: "palette", "aria-label": t("Command palette") }, [input, list,
+    el("p", { class: "palette-foot", text: t("↑↓ move · Enter open · Esc close") })]);
+  let shown = [], active = 0;
+  const mark = () => {
+    [...list.children].forEach((node, i) => node.setAttribute("aria-selected", String(i === active)));
+    list.children[active]?.scrollIntoView({ block: "nearest" });
+    input.setAttribute("aria-activedescendant", shown.length ? "palette-" + active : "");
+  };
+  const pick = item => { rememberPick(item.id); dialog.close(); item.run(); };
+  const draw = () => {
+    shown = paletteResults(input.value, items);
+    list.replaceChildren(...shown.map((item, i) => {
+      const option = el("li", { role: "option", id: "palette-" + i }, [el("span", { class: "pl", text: item.label }), el("span", { class: "ph", text: item.recent ? t("Recent") : item.hint })]);
+      option.onclick = () => pick(item);
+      option.onmousemove = () => { if (active !== i) { active = i; mark(); } };
+      return option;
+    }));
+    if (!shown.length) list.appendChild(el("li", { class: "palette-empty", text: t("Nothing matches") }));
+    mark();
+  };
+  input.oninput = () => { active = 0; draw(); };
+  input.onkeydown = event => {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && shown.length) {
+      event.preventDefault();
+      active = (active + (event.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length;
+      mark();
+    }
+    if (event.key === "Enter" && shown[active]) { event.preventDefault(); pick(shown[active]); }
+  };
+  dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => { dialog.remove(); if (before?.isConnected) before.focus({ preventScroll: true }); });
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  draw();
+  input.focus();
+}
+const SHORTCUTS = [["J / K", "Next or previous card"], ["E", "Mark done"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
+function openShortcuts() {
+  const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
+  const dialog = el("dialog", { id: "shortcuts", class: "palette shortcuts", "aria-labelledby": "shortcuts-title" }, [
+    el("h2", { id: "shortcuts-title", text: t("Keyboard shortcuts") }),
+    el("dl", {}, SHORTCUTS.flatMap(([keys, what]) => [el("dt", {}, [el("kbd", { text: keys })]), el("dd", { text: t(what) })])), close]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+}
+function typingIn(target) {
+  return !!target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']");
+}
+function focusCard(card) {
+  card.focus({ preventScroll: true });
+  card.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+// J/K move, E closes the card (with the usual Undo), R replies. Only on Today, never while typing.
+function todayKey(key) {
+  const cards = [...document.querySelectorAll("#main .qcard")];
+  if (!cards.length) return false;
+  const at = cards.indexOf(document.activeElement?.closest(".qcard"));
+  if (key === "j" || key === "k") focusCard(cards[at < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, at + (key === "j" ? 1 : -1)))]);
+  else if (at < 0) focusCard(cards[0]);
+  else if (key === "r") cards[at].reply();
+  else {
+    cards[at].markDone();
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => { const left = [...document.querySelectorAll("#main .qcard")]; if (left.length) focusCard(left[Math.min(at, left.length - 1)]); }, still ? 20 : 280);
+  }
+  return true;
+}
+document.addEventListener("keydown", event => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") { event.preventDefault(); openPalette(); return; }
+  if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || typingIn(event.target) || document.querySelector("dialog[open]")) return;
+  if (event.key === "?") { event.preventDefault(); openShortcuts(); return; }
+  const key = event.key.toLowerCase();
+  if (railActive() === "today" && ["j", "k", "e", "r"].includes(key) && todayKey(key)) event.preventDefault();
+});
+if (!/Mac|iPhone|iPad/.test(navigator.platform || "")) SHORTCUTS[3][0] = "Ctrl K";
+document.querySelector(".search .kbd").textContent = SHORTCUTS[3][0];
+document.querySelector(".search .kbd").onclick = openPalette;
 // ---- Languages ---------------------------------------------------------------
 // A page read in another language. Translations are made by co ai on the Host
 // (rem/translate.py) and cached beside the notebook; the page as written stays

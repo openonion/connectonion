@@ -158,7 +158,7 @@ def reader_functions(*names):
 def test_replied_card_offers_completion_first_and_localized_explanation(language, status):
     page = TEMPLATE.read_text()
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(reader_functions('primaryAction', 'threadActions', 'threadDraft', 'draftNote') + '\nUI.zh = ' + ui
+    result = _run_reader_js(reader_functions('primaryAction', 'threadUrl', 'threadActions', 'threadDraft', 'draftNote') + '\nUI.zh = ' + ui
         + '; uiLanguage = ' + json.dumps(language) + '; const status = ' + json.dumps(status) + ';\n' + r'''
       const REM = {as_of:'2026-11-08', drafts:[], today_queue:[{key:'mara', reply:{state:'replied', last_word_yours:true,
         provider:'outlook', thread:'mail:outlook:meeting', source:'outlook:answer', since:'2026-10-28',
@@ -190,7 +190,7 @@ def test_replied_card_offers_completion_first_and_localized_explanation(language
 def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prepared):
     if prepared and not provider:
         provider, label = 'gmail', 'Gmail reply'
-    result = _run_reader_js(reader_functions('threadKind', 'kindBadge', 'queueCard', 'taskResult') + r'''
+    result = _run_reader_js(reader_functions('threadKind', 'kindBadge') + r'''
       const provider = PROVIDER, prepared = PREPARED;
       const entry = {r:{path:'people/fern.md', title:'Fern', category:'people'}, t:{text:provider ? 'You owe Fern feedback [1].' : 'You owe Fern feedback.'}};
       const draft = prepared ? {status:'prepared', provider, thread:'meeting'} : null;
@@ -202,7 +202,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
       const href = () => '#fern', blockerTag = () => null, alsoOn = () => null, isDone = () => false;
       const replyDraftCard = () => null, threadActions = () => null, draftNote = () => null;
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      console.log(JSON.stringify(queueCard(entry, '5 days').children[1].children[0]));
+      console.log(JSON.stringify(kindBadge(entry)));
     '''.replace('PROVIDER', json.dumps(provider)).replace('PREPARED', json.dumps(prepared)))
     assert result['text'] == label
 
@@ -210,27 +210,94 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('state', ['replied', 'task'])
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
-    functions = reader_functions('queueCard', 'taskResult', 'threadDraft', 'threadActions', 'primaryAction', 'draftNote')
+    steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
+    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'cardDraft', 'stepAction', 'cardStep', 'groupStep',
+                                               'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
       const draft = {status, provider:'outlook', thread:'feedback', body:'Here is my feedback on Demo A.', gist:'Fern needs no further reply.'};
-      const REM = {owner:'people/avery.md', drafts:[{status:'pending', provider:'outlook', thread:'original'},
+      const REM = {owner:'people/avery.md', as_of:'2026-11-08', drafts:[{status:'pending', provider:'outlook', thread:'original'},
         {status:'prepared', provider:'gmail', thread:'unrelated'}, draft],
         today_queue:[{key:'fern', reply:{state, last_word_yours:true, provider:'outlook',
           thread:'mail:outlook:original', promise:'I will send feedback.', since:'2026-10-28'}}]};
       const doneKey = () => 'fern', threadKind = () => ({kind:'outlook', mail:true});
+      const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, threadContact = () => null, approvalTask = () => null;
       const obligationEvidence = () => ({ids:new Set(['thread:outlook:original', 'thread:outlook:feedback'])});
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';
-      const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null;
+      const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0;
       const kindBadge = () => null, alsoOn = () => null, isDone = () => false, setDone = () => {}, fmtDate = day => day;
+      const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '';
       const replyDraftCard = draft => ({sendable:true, body:draft.body});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const card = queueCard(entry, '5 days');
-      console.log(JSON.stringify({action:card.children[3], note:card.children[4]}));
+      const card = personCard({r: entry.r, entries: [entry]}, true);
+      const item = card.children[1].children[0];
+      console.log(JSON.stringify({draft: card.children[2], note: item.children[2].children[2], acts: card.children[3]}));
     ''')
     if status == 'prepared':
-        assert result['action'] == {'sendable': True, 'body': 'Here is my feedback on Demo A.'}
+        assert result['draft']['children'][1] == {'sendable': True, 'body': 'Here is my feedback on Demo A.'}
         assert result['note'] is None
+        assert 'review-reply' in result['acts']['children'][0]['class']
     else:
+        assert result['draft'] is None
         assert result['note']['text'] == 'No reply needed: Fern needs no further reply.'
-        assert [node['text'] for node in result['action']['children'] if node] == ['Mark done']
+        assert result['acts']['children'][0]['text'] == 'Mark done'
+        assert result['acts']['children'][0]['class'] == 'btn-act'
+
+
+def test_today_groups_a_persons_rows_into_their_first_card_without_reranking():
+    """Two asks from the same person are one card, placed where Python ranked the first."""
+    result = _run_reader_js(reader_functions('personGroups') + r'''
+      const row = (path, n) => ({r: {path}, t: {text: 'ask ' + n}});
+      const groups = personGroups([row('people/ody.md', 1), row('people/jie.md', 2), row('people/ody.md', 3), row('orgs/rmit.md', 4)]);
+      console.log(JSON.stringify(groups.map(g => [g.r.path, g.entries.map(e => e.t.text)])));
+    ''')
+    assert result == [['people/ody.md', ['ask 1', 'ask 3']], ['people/jie.md', ['ask 2']], ['orgs/rmit.md', ['ask 4']]]
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_today_primary_is_the_most_likely_next_step_never_the_mailbox(live):
+    steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
+    result = _run_reader_js(steps_order + reader_functions('cardStep', 'groupStep', 'entryKeys', 'approvalTask') + r'''
+      const REM = {live: LIVE, approval_outcomes: [{kind: 'task', keys: ['task']}]};
+      const rows = {
+        draft: {draft: {status: 'prepared'}}, queued: {reply: {state: 'queued', thread: 'mail:gmail:x'}},
+        task: {reply: {state: 'task'}}, handled: {looks: true}, noReply: {draft: {status: 'no_reply'}},
+        overdueReplied: {reply: {state: 'replied'}, contact: true}, nothing: {}};
+      const entry = key => ({key, ...rows[key]});
+      const doneKey = entry => entry.key, threadDraft = entry => entry.draft, queuedReply = entry => entry.reply;
+      const looksDone = entry => !!entry.looks, threadContact = entry => entry.contact ? {address: 'a@example.test'} : null;
+      const steps = Object.fromEntries(Object.keys(rows).map(key => [key, cardStep(entry(key))]));
+      const mixed = groupStep([entry('handled'), entry('overdueReplied')]);
+      const tie = groupStep([entry('overdueReplied'), {...entry('overdueReplied'), key: 'second'}]);
+      console.log(JSON.stringify({steps, mixed: [mixed.step, mixed.entry.key], tie: tie.entry.key}));
+    '''.replace('LIVE', json.dumps(live)))
+    steps = result['steps']
+    assert steps['draft'] == 'send'
+    assert steps['queued'] == ('draft' if live else 'open')
+    assert steps['task'] == ('approve' if live else 'open')
+    assert steps['handled'] == 'done' and steps['noReply'] == 'done'
+    # A reply after the promise fell due does not settle it: write, not "mark done".
+    assert steps['overdueReplied'] == 'write'
+    assert steps['nothing'] == 'open'
+    assert result['mixed'] == ['write', 'overdueReplied']
+    assert result['tie'] == 'overdueReplied'
+
+
+def test_palette_fuzzy_match_ranks_word_starts_and_accepts_words_in_any_order():
+    result = _run_reader_js(reader_functions('subsequenceScore', 'fuzzyScore') + r'''
+      const score = (q, s) => fuzzyScore(q, s);
+      console.log(JSON.stringify({
+        miss: score('xyz', 'Alyssa Lubrano'), hit: score('alu', 'Alyssa Lubrano') >= 0,
+        start: score('al', 'Alyssa Lubrano') > score('al', 'Natalie Lin'),
+        order: score('起草 alyssa', '给 Alyssa 起草回信') >= 0, today: score('打开今天', '打开今天') > 0,
+        empty: score('', 'anything'), accent: score('ines', 'Inès Halvorsen') > 0, whole: score('mark mara done', 'Mark Mara Ostrowski done') > score('mark mara done', 'Mark Harbour done')}));
+    ''')
+    assert result == {'miss': -1, 'hit': True, 'start': True, 'order': True, 'today': True, 'empty': 0, 'accent': True, 'whole': True}
+
+
+def test_today_keys_never_fire_while_typing():
+    result = _run_reader_js(reader_functions('typingIn') + r'''
+      const target = tag => ({closest: selector => selector.split(',').some(s => s.trim().startsWith(tag)) ? {} : null});
+      console.log(JSON.stringify(['input', 'textarea', 'select', 'li', 'button'].map(tag => typingIn(target(tag)))));
+    ''')
+    assert result == [True, True, True, False, False]
