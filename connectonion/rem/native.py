@@ -48,14 +48,16 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def _config_hash(config, *, include_languages=False, include_models=False):
+def _config_hash(config, *, include_languages=False, include_models=False, include_notify=False):
     # Scheduling, concurrency and budgets govern future work. Prepared material
     # (including its language and local dates) is already saved. Reader translation
     # targets do not change page-task material. Keep evidence-sizing limits.
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    ignored = {"schedule", "effort"}
+    ignored = {"schedule", "effort", "notify"}
+    if include_notify:
+        ignored.remove("notify")
     if not include_languages:
         ignored.update(("language", "languages"))
     if not include_models:
@@ -71,8 +73,11 @@ def _input_hash(root, path):
 
 
 def _legacy_config_hashes(config):
-    return (_config_hash(config, include_models=True),
-            _config_hash(config, include_languages=True, include_models=True))
+    # Older digests included every non-control key. Accept snapshots both before
+    # and after notify existed, while keeping notification changes out of inputs.
+    return tuple(_config_hash(config, include_models=True, include_languages=languages,
+                              include_notify=notify)
+                 for languages in (False, True) for notify in (False, True))
 
 
 def _input_matches(root, task, path, digest):
@@ -176,6 +181,9 @@ def _stop(root, config, *, phase=None):
 
 def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,

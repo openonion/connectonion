@@ -117,3 +117,66 @@ offline snapshots need a new `co rem open` to obtain later receipts.
 This is execution evidence, not an independent judgement of work quality: the
 owner reviews the deliverable before sending or marking the obligation done.
 Tasks do not send messages, mark threads done, or make external commitments.
+
+## Morning message (sprint 11)
+
+The model-free morning note covers one window: from the previous note's
+`checked_at` (the latest earlier `morning.json` entry that is not `missed`), or
+22:00 the evening before when there is none, through the moment of this check.
+Work after 06:00 is therefore reported once, the next morning. The note is due
+06:00–11:00 in `schedule.timezone`; before that a check returns `not_due` and
+records nothing; after 11:00 it records `missed` and sends nothing. A missed
+date does not move the window, so its work appears in the next note.
+
+Sources and the exact fields read (start exclusive, end inclusive):
+
+| Count | Source | Fields |
+| --- | --- | --- |
+| sent for you | `approvals.json` values | `kind: reply`, `by: rem`, `status: sent`, `release_at` |
+| drafted, waiting | `night.json` `items.*.outcome` and `.state/drafts/*.json` | `kind: prepared`, `draft_id`/`id`, `prepared_at`; waiting only while the draft receipt's `status` is still `prepared` |
+| tasks finished | `tasks.py` `.state/tasks/do-*/receipt.json` | `result: completed`, `finished_at` |
+| problems explained | `.state/investigations/index.json` | see below |
+
+A reply REM sent is counted as sent, never also as drafted. Owner-approved sends
+are the owner's own act and are not reported back to him.
+
+Investigation contract, as `connectonion/rem/problems.py` writes it
+(night-investigations head `35b0a770b`): the index is one JSON object keyed by
+problem key, each value the full receipt — the detector's problem fields
+(`key`, `detector`, `repo`, `project`, `symptom`, `facts`, `evidence_revision`,
+`priority`, `oldest_at`, …) plus `id`, `state`, `result`, `attempts`, `reason`,
+`opened_at`, `updated_at`, `last_checked`, `resolved_by`, `receipt`, and once
+run `started_at`/`finished_at`. `update()` stores the receipt under its key and
+every `save()` sets `state` and bumps `updated_at`. There is no `items` list and
+no `explained_at`. The morning note counts a receipt whose `state` is
+`explained`, `needs_owner` or `fix_proposed` and whose `updated_at` falls in the
+window. `investigating`, `inconclusive`, `could_not_investigate`, `violation`,
+`resolved` and `stale` never count. Known edge: a later state change re-bumps
+`updated_at` (a closed draft PR turns `fix_proposed` into `needs_owner`), and
+that counts again on the morning after it. Missing file means zero.
+
+Decisions are the current unblocked `approvals.outcomes` rows, at most two
+lines, each one clause built from the row's `kind` and words: a reply names the
+page `title` and hands back the draft's `gist` (else its `subject`); a task
+names its page `title`. A title or phrase containing `@`, a path, a `.md`
+record or a long hex ID is dropped, never shown — a reply whose only title is
+the draft's `to` address is shown by its words alone. More than two ends with
+"N more in Today". Zero counts and an empty decision list are left out.
+
+The only new store is `.state/morning.json`, keyed by notebook-local ISO date
+and pruned to the last 14 days on every write. Each entry has `checked_at`,
+`channel`, `status` (`quiet`, `disabled`, `sending`, `sent`, `failed`, `missed`)
+and, except for `missed`, `pending`: the sorted outcome IDs offered that
+morning, used to stay quiet when nothing is new and the decisions are the same.
+Failures include only the exception class in `error`, never provider payloads.
+The maintenance lock serializes the claim before external IO; the Today link's
+host check runs before the lock is taken. A crash leaves `sending`; doctor
+reports the latest entry only when it is `failed` or `sending`, and nothing is
+ever resent. A disabled, quiet or missed date is also final. An error while
+preparing the note claims nothing and the next scheduled check retries it.
+Dry-run reads state without claiming a date and states what a real run would do.
+
+Notification settings are round controls, not task evidence. Native-task input
+checks accept legacy config digests with or without `notify`, including old
+model/language digest variants, while still rejecting changes to task content.
+Doctor reports incomplete setup when the selected sender or target is absent.

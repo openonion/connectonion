@@ -34,6 +34,7 @@ Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
   logs          What each run did, and what it cost.
+  morning       Preview or send one quiet morning note.
   doctor        Check that everything the notebook needs is installed.
   history       Check or archive old background investigation chats for this notebook.
 
@@ -729,6 +730,8 @@ Keys:     model                          gpt-6.1-sol (default): investigation, w
                                          sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
+          notify.channel                 none (default) | telegram | lark | whatsapp | email
+          notify.target                  your own chat ID or personal email address
           limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
@@ -1223,4 +1226,49 @@ Arguments:
 
 Example: co rem --root /tmp/mara-rem task stop ID
 Back: co rem task --help
+```
+
+
+## co rem morning
+
+```
+Preview or send the owner's one short morning message. Model-free: read overnight
+receipts and current one-click actions; never ask a model to compose it.
+
+Usage: co rem [--root DIR] [--json] morning [--dry-run]
+
+Options:
+  --dry-run     Print what a real run would do now, then the exact message;
+                no send and no date marker. The first line is one of:
+                would send now via CHANNEL | already sent HH:MM |
+                not due until 06:00 | outside the morning window (06:00–11:00) |
+                channel none: nothing will be sent | quiet: nothing to send
+  --help        Show this skill text and exit.
+
+No flag sends once, on the first check between 06:00 and 11:00 in
+schedule.timezone. A check after 11:00 records the date as missed and sends
+nothing: an evening note saying "overnight" is wrong. Scheduled next checks
+automatically before preparing the morning round. The note covers everything
+since the last note (or 22:00 the evening before), so work done after 06:00 is
+reported the next morning, once. Quiet mornings send nothing and record the
+check, and so does a morning with nothing new and the same open decisions as
+last time. Default notify.channel is none.
+A date claimed before delivery is never resent, even after a failure or crash.
+co rem doctor shows the latest delivery failure; there is no automatic retry.
+If the note cannot be prepared, nothing is claimed and the next check retries.
+
+Setup: co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram
+Choices, in order: telegram, lark, whatsapp, email. co rem doctor lists which
+existing senders are configured and their next command. Sender setup:
+  telegram: co telegram check
+  lark:     co lark check
+  whatsapp: co whatsapp check
+  email:    co auth login
+Email is the last choice. A company mailbox is wrong for personal content.
+Choose a personal destination explicitly; REM never guesses from recent chats.
+
+Example: co rem morning --dry-run
+         co rem --root /tmp/fern-rem morning
+Next: co rem open
+Back: co rem --help
 ```
