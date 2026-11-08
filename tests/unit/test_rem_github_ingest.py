@@ -78,9 +78,22 @@ else:
     ['api', 'repos/fernhill/lanterns/issues', '--input', 'payload.json'],
 ])
 def test_guard_refuses_non_reads(args, gh):
-    with pytest.raises(ValueError, match='read-only'):
+    with pytest.raises(pages.GitHubReadRefused, match='read-only'):
         pages.github_read(args)
     assert not gh.exists()
+
+
+def test_a_guard_refusal_is_a_bug_not_a_cache_error(tmp_path, gh, monkeypatch):
+    # Raising a cap past the guard's two pages is a programming error: it must
+    # fail loudly, not sit in repository.json looking like a network failure.
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['issues'] *= 250
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    monkeypatch.setattr(pages, 'BACKFILL_CODE_ISSUES', 300)
+    with pytest.raises(pages.GitHubReadRefused):
+        pages.sync_repository(tmp_path, REPO, now=NOW)
+    assert not pages.code_cache_path(tmp_path, REPO).exists()
 
 
 def test_sync_cache_skip_etag_and_projection(tmp_path, gh, monkeypatch):

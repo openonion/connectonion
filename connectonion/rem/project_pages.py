@@ -9,18 +9,23 @@ before it replaces the old one, with one optional quote edit after acceptance.
 
 from __future__ import annotations
 
+import copy
 import json
 import hashlib
 import re
 import subprocess
 import tempfile
 import time
+import tomllib
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
 from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
+from .project_tree import identity
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
 # Characters of messages one write carries. The owner's busiest folder held
@@ -906,6 +911,14 @@ def code_cache_path(root, repo):
     return state_path(root, 'code/' + repo.casefold().replace('/', '__') + '/repository.json')
 
 
+class GitHubReadRefused(RuntimeError):
+    """Our own argv broke the read-only allowlist: a bug, never a cache error.
+
+    Deliberately not a ValueError, which sync_repository records as a failed
+    read and retries in 30 minutes, forever.
+    """
+
+
 def github_read(args):
     """Closed allowlist: only this ingest's GET endpoints and fixed GraphQL query.
 
@@ -925,7 +938,7 @@ def github_read(args):
                  and (len(args) == 5 or (len(args) == 7 and args[5] == '-H'
                       and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
     if not valid:
-        raise ValueError('REM GitHub ingest is read-only; refused gh arguments')
+        raise GitHubReadRefused('REM GitHub ingest is read-only; refused gh arguments')
     run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
     # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
     # Treating that as failure kept the old ETag, so every later sync failed too.
@@ -1095,17 +1108,15 @@ def session_commit_links(sessions, commits, repo_paths):
 
 
 def _code_pypi(package, evidence):
-    from urllib.request import Request, urlopen
-    from urllib.error import HTTPError
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', package):
         raise ValueError('Invalid PyPI package name')
     url = 'https://pypi.org/pypi/' + package + '/json'
-    request = Request(url, headers={'Accept': 'application/json'})
+    request = urllib.request.Request(url, headers={'Accept': 'application/json'})
     try:
-        with urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=20) as response:
             packet = json.loads(response.read(4_000_001))
         result = {'package': package, 'versions': sorted(packet['releases']), 'found': True}
-    except HTTPError as error:
+    except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
         result = {'package': package, 'versions': [], 'found': False}
@@ -1113,15 +1124,19 @@ def _code_pypi(package, evidence):
     return result
 
 
+def _code_due(cache, now):
+    """Every repository waits CODE_SYNC_MINUTES after its last attempt, failed or not."""
+    last = cache.get('attempted_at') or cache.get('synced_at')
+    return not last or now - timestamp(last) >= timedelta(minutes=CODE_SYNC_MINUTES)
+
+
 def sync_repository(root, repo, *, now=None, repo_path=None, package=None, sessions=(), days=CODE_CHURN_DAYS):
     """Read one repo under the caller's maintenance lock; retain stale data on failure."""
-    import copy
     now = now or datetime.now(timezone.utc)
     now = timestamp(code_utc(now))
     path = code_cache_path(root, repo)
     previous = read_json(path, {})
-    last = previous.get('attempted_at') or previous.get('synced_at')
-    if last and now - timestamp(last) < timedelta(minutes=CODE_SYNC_MINUTES):
+    if not _code_due(previous, now):
         return previous
     cache = copy.deepcopy(previous)
     cache.update(repo=repo, attempted_at=code_utc(now), schema_version=1)
@@ -1151,7 +1166,6 @@ def sync_repository(root, repo, *, now=None, repo_path=None, package=None, sessi
 
 def _code_package(page, folder):
     """An explicit PyPI fact wins; otherwise use declared Python package metadata."""
-    import tomllib
     explicit = re.search(r'^\s*-?\s*PyPI:\s*`?(?:https://pypi.org/project/)?([\w.-]+)', page, re.M)
     if explicit:
         return explicit[1]
@@ -1163,7 +1177,6 @@ def _code_package(page, folder):
 
 def sync_project_repositories(root, *, now=None):
     """At most three due named repositories per round, oldest attempts first; no model."""
-    from .project_tree import identity
     from .investigate import project_paths
     notebook, repos = Notebook(root), {}
     for record in notebook.list('projects')[:2000]:
@@ -1182,8 +1195,7 @@ def sync_project_repositories(root, *, now=None):
     moment = now or datetime.now(timezone.utc)
     synced = 0
     for repo in ordered:
-        previous = read_json(code_cache_path(root, repo), {})
-        if previous.get('attempted_at') and moment - timestamp(previous['attempted_at']) < timedelta(minutes=CODE_SYNC_MINUTES):
+        if not _code_due(read_json(code_cache_path(root, repo), {}), moment):
             continue
         text = repos[repo]
         paths = project_paths(text)

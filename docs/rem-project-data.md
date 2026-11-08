@@ -251,7 +251,10 @@ GraphQL has no ETag and is read again. Each gh/git request has a 20-second timeo
 `github_read()` validates the **entire argv** against a closed allowlist of the
 above GET endpoints or the exact fixed GraphQL query and owner/name fields.
 Arbitrary queries, write methods, input files, alternate hosts and all other gh
-subcommands (including comment/edit/merge/rerun) raise before spawning gh.
+subcommands (including comment/edit/merge/rerun) raise `GitHubReadRefused`
+before spawning gh. It is a `RuntimeError`, not a `ValueError`, so a refusal is
+never stored as a cache error and retried: our own argv breaking the allowlist
+(say, a cap raised past the guard's two pages) is a bug and fails the round.
 
 Successful cache replacement is atomic. On failure the last successful packet
 and its `synced_at`/verification survive; `attempted_at`, `error`, and
