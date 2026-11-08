@@ -1808,7 +1808,9 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()
-    page.evaluate("FACTS.clear()", isolated_context=False)
+    # With nothing open Harbour is a card on the board, not the lifted busiest project.
+    page.evaluate(r"""() => { const r = byPath('projects/harbour.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, ''); KNOWN.clear(); FACTS.clear(); }""", isolated_context=False)
     page.goto(uri + '#c=projects')
     assert page.locator('.project-card').filter(has_text='Harbour').locator('.project-card-when').inner_text() == 'Sep 16'
 
@@ -4825,9 +4827,8 @@ def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader
     expect(hero.locator(".btn-act")).to_have_attribute("href", "#r=projects%2Fharbour.md&h=open-threads")
     assert _visible_green_buttons(page) == 1
     expect(page.locator(".project-lane")).to_have_count(3)
-    harbour = page.locator('.project-lane[data-lane="week"] .project-card').filter(has_text="Harbour")
-    expect(harbour.locator(".project-card-what")).to_have_text("A command-line tool that turns a team's shared inbox into a weekly brief, built for Fernhill's pilot.")
-    expect(harbour.locator(".project-open")).to_have_text("2 open items")
+    expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(0)  # lifted, not repeated
+    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: Decide whether long threads are cut or summarised")
     lantern = page.locator('.project-lane[data-lane="older"] .project-card').filter(has_text="Lantern")
     expect(lantern.locator(".project-card-what")).to_have_text("Not investigated yet. REM only knows its folder and sessions.")
     assert "/home/user" not in page.locator("#main").inner_text()
@@ -4841,7 +4842,6 @@ def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader
         expect(lantern).to_be_hidden()
         page.locator(".project-lane-tabs").get_by_role("button", name="Earlier", exact=True).click()
         expect(lantern).to_be_visible()
-        expect(harbour).to_be_hidden()
         box = hero.locator(".btn-act").bounding_box()
         assert box["y"] + box["height"] < 844 and box["height"] >= 46
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -4858,12 +4858,12 @@ def test_projects_lane_shows_seven_cards_then_the_rest_on_request(reader):
       render();
     }""", isolated_context=False)
     week = page.locator('.project-lane[data-lane="week"]')
-    expect(week.locator(".project-card")).to_have_count(7)
-    week.get_by_role("button", name=re.compile(r"^3 more projects")).click()
-    expect(week.locator(".project-card")).to_have_count(10)
+    expect(week.locator(".project-card")).to_have_count(7)  # nine copies; Harbour itself is the lifted card
+    week.get_by_role("button", name=re.compile(r"^2 more projects")).click()
+    expect(week.locator(".project-card")).to_have_count(9)
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(page.locator("h1.page-state")).to_have_text("11 个项目 · 10 个本周有动静")
-    expect(week.get_by_role("button", name=re.compile(r"^还有 3 个"))).to_be_visible()
+    expect(week.get_by_role("button", name=re.compile(r"^还有 2 个"))).to_be_visible()
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])

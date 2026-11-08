@@ -5462,7 +5462,9 @@ function firstClause(text) {
   const clause = plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim();
   const unquoted = clause.split(/[：:]?\s*[“"「]/)[0].trim();
   const short = unquoted.length >= 6 ? unquoted : clause;
-  return short.length > 40 ? short.slice(0, 39) + "…" : short;
+  if (short.length <= 40) return short;
+  const cut = short.slice(0, 39), space = cut.lastIndexOf(" ");
+  return (space > 24 ? cut.slice(0, space) : cut) + "…";
 }
 function projectHero(r, days) {
   const f = facts(r), open = f.open.length;
@@ -5497,8 +5499,9 @@ function projectLaneNode(lane, label, rows, days, shown, caption) {
 function pageStateSub(text) { return el("span", { class: "page-state-sub" }, [el("span", { class: "sep", text: " · " }), text]); }
 function projectsBoard() {
   const main = document.getElementById("main"), items = inCategory("projects").sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
-  const days = projectSessionDays(), lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => projectLane(r) === key), caption]);
-  const week = lanes[0][2].length, busiest = projectBusiest(items);
+  // The lifted project is not repeated in its lane.
+  const days = projectSessionDays(), busiest = projectBusiest(items), week = items.filter(r => projectLane(r) === "week").length;
+  const lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => r !== busiest && projectLane(r) === key), caption]);
   main.replaceChildren(el("div", { class: "projects-view" }, [
     el("p", { class: "page-kicker", text: label("projects") }),
     el("h1", { class: "page-state" }, [t("{n} projects", { n: items.length }), week ? pageStateSub(t("{n} active this week", { n: week })) : null]),
@@ -5731,7 +5734,8 @@ function sessionFrame(r) {
 function sessionPlace(r) {
   const project = byPath(r.session_project);
   if (project) return project.title;
-  const parts = (r.session_folder || "").split(/[\\/]/).filter(Boolean);
+  // Machine-named folders (hashes, run ids) say nothing; the readable parent names the work.
+  const parts = (r.session_folder || "").split(/[\\/]/).filter(part => part && !/^[0-9a-f-]{16,}$/i.test(part));
   if (!parts.length) return t("No project");
   return /^(?:Users|home)$/.test(parts[0]) && parts.length <= 2 ? t("Home folder") : parts.slice(-2).join("/");
 }
