@@ -211,7 +211,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'cardDraft', 'stepAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -301,3 +301,30 @@ def test_today_keys_never_fire_while_typing():
       console.log(JSON.stringify(['input', 'textarea', 'select', 'li', 'button'].map(tag => typingIn(target(tag)))));
     ''')
     assert result == [True, True, True, False, False]
+
+
+def test_today_card_speaks_chinese_where_rem_already_wrote_it():
+    """On 中文 the card's line is the draft's Chinese gist; English stays the original, private stays out."""
+    import json
+    import re
+    import shutil
+    import subprocess
+    from connectonion.rem.reader import TEMPLATE
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node runs the reader JavaScript")
+    page = TEMPLATE.read_text()
+    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0) for name in ["t", "ownerLine"])
+    ui = 'const UI = {en: {}, zh: {"REM drafted: ": "REM 已起草：", "No reply needed: ": "不用回："}};\n'
+    script = ui + "let uiLanguage = 'zh';\n" + functions + r"""
+      const prepared = {status: 'prepared', gist: '草稿回答了两个问题，未发送。'};
+      const out = {zh: ownerLine(prepared), noReply: ownerLine({status: 'no_reply', gist: '对方已确认，不用回。'}),
+        english: ownerLine({status: 'prepared', gist: 'Answers both questions.'}),
+        secret: ownerLine({...prepared, private: true}), pending: ownerLine({status: 'pending', gist: '还在写。'}), none: ownerLine(null)};
+      uiLanguage = 'en'; out.en = ownerLine(prepared);
+      console.log(JSON.stringify(out));
+    """
+    result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"zh": "REM 已起草：草稿回答了两个问题，未发送。", "noReply": "不用回：对方已确认，不用回。",
+                                         "english": None, "secret": None, "pending": None, "none": None, "en": None}

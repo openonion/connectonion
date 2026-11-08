@@ -2078,7 +2078,8 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    assert labels[-1] == 'Activity' and labels.index('All records') < labels.index('Activity')
+    # Owner, 2026-11-08: the catch-all goes last, after Activity.
+    assert labels[-1] == 'All records' and labels.index('Activity') < labels.index('All records')
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
     assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
@@ -4157,9 +4158,9 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert source.get_attribute('href').endswith('h=src-2')
     assert page.locator('.recall-toggle').evaluate(r'''button => {
       const css = getComputedStyle(button);
+      // Today's secondary button: a 1px outline, no fill (no box on a box-free page).
       return css.borderTopStyle === 'solid' && css.borderTopWidth === '1px'
-        && parseFloat(css.borderTopLeftRadius) >= 6 && parseFloat(css.borderTopLeftRadius) <= 7
-        && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        && parseFloat(css.borderTopLeftRadius) === 8 && css.backgroundColor === 'rgba(0, 0, 0, 0)';
     }''')
     page.locator('.recall-toggle').click()
     assert page.locator('.recall-answer').is_visible()
@@ -5009,16 +5010,16 @@ def test_person_looks_done_row_closes_by_mail_or_stays_open(reader):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, width, theme):
+def test_people_are_a_record_list_with_search_few_tabs_and_one_quiet_today_link(reader, width, theme):
+    """People is a record, not a to-do list: no waiting headline, no green, one quiet link to Today."""
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#c=people")
     page.evaluate("theme => { setTheme(theme); setInterfaceLanguage('zh'); }", theme, isolated_context=False)
-    assert re.fullmatch(r"\d+ 人\s*·?\s*\d+ 人在等你", page.locator(".r4-people h1").inner_text().replace("\n", " "))
-    assert page.locator(".r4-focus").count() == 1
-    assert len(_green_primaries(page)) == 1
-    primary = page.locator(".r4-primary").bounding_box()
-    assert primary["y"] + primary["height"] <= 844
+    assert re.fullmatch(r"\d+ 人", page.locator(".r4-people h1").inner_text().strip())
+    today = page.locator(".r4-people .list-today")
+    assert re.fullmatch(r"今天里有 \d+ 人在等你 →", today.inner_text()) and today.get_attribute("href") == "#"
+    assert _green_primaries(page) == []
     assert page.locator(".r4-find").count() == 1
     assert page.locator(".r4-tabs button").count() <= 4
     groups = page.locator(".r4 .grp").all_inner_texts()
@@ -5036,46 +5037,6 @@ def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, widt
     assert page.locator("table.sheet").count() == 0
 
 
-@pytest.mark.parametrize('route', ['#c=people'])
-def test_prepared_person_draft_primary_reviews_static_live_and_private_drafts(reader, route):
-    page, uri = reader
-    page.goto(uri + route)
-    page.evaluate("""() => {
-      threadDraft = entry => ({
-        id: 'fictional-review', status: 'prepared', provider: 'outlook', channel: 'mail',
-        to: 'Mara <mara@example.org>', from: 'owner@example.org', subject: 'Fictional pilot review',
-        body: 'Fixture draft body, never sent.', private: false
-      });
-      REM.live = false; render();
-    }""", isolated_context=False)
-    primary = page.locator('.r4-primary')
-    assert primary.inner_text() == "Review REM's draft"
-    assert 'open-threads' in primary.get_attribute('href')
-    primary.click()
-    dialog = page.get_by_role('dialog', name='Reply draft', exact=True)
-    assert dialog.is_visible()
-    assert 'Fixture draft body, never sent.' in dialog.inner_text()
-    assert dialog.get_by_role('button', name='Send', exact=True).count() == 0
-    assert dialog.get_by_role('button', name='Open in the live reader', exact=True).is_visible()
-    assert page.evaluate('location.hash') == route
-    dialog.get_by_role('button', name='Close', exact=True).click()
-    dialog.wait_for(state='detached')
-    assert primary.evaluate('node => node === document.activeElement')
-    page.evaluate("""() => {
-      const original = threadDraft;
-      threadDraft = entry => { const draft = original(entry); return draft ? {...draft, private: true} : draft; };
-      REM.live = true; document.documentElement.classList.add('hide-private'); render();
-    }""", isolated_context=False)
-    page.locator('.r4-primary').click()
-    dialog = page.get_by_role('dialog', name='Reply draft', exact=True)
-    assert dialog.locator('.mailcard').is_hidden()
-    assert 'Fixture draft body, never sent.' not in dialog.inner_text()
-    page.evaluate("document.documentElement.classList.remove('hide-private')", isolated_context=False)
-    assert dialog.locator('.mailcard').is_visible()
-    assert dialog.get_by_role('button', name='Send', exact=True).is_visible()
-    dialog.get_by_role('button', name='Close', exact=True).click()
-    dialog.wait_for(state='detached')
-
 def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
@@ -5086,7 +5047,7 @@ def _visible_green_buttons(page):
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("width", [1440, 390])
-def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader, width, theme):
+def test_projects_board_has_three_lanes_no_to_do_hero_and_one_lane_on_phone(reader, width, theme):
     from patchright.sync_api import expect
 
     page, uri = reader
@@ -5094,31 +5055,23 @@ def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader
     page.goto(uri + "#c=projects")
     page.evaluate("theme => setTheme(theme)", theme, isolated_context=False)
     expect(page.locator("h1.page-state")).to_have_text(re.compile(r"^2 projects · 1 active this week$"))
-    hero = page.locator(".project-hero")
-    expect(hero.locator("h2")).to_have_text("Harbour")
-    expect(hero).to_contain_text("2 open items")
-    expect(hero.locator(".btn-act")).to_have_attribute("href", "#r=projects%2Fharbour.md&h=open-threads")
-    assert _visible_green_buttons(page) == 1
+    # A project list is a record: no lifted "busiest" card, no green "go through them" button.
+    expect(page.locator(".project-hero")).to_have_count(0)
+    assert _visible_green_buttons(page) == 0
     expect(page.locator(".project-lane")).to_have_count(3)
-    expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(0)  # lifted, not repeated
-    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: 6 days ago Waiting on Fernhill")
+    expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(1)
     lantern = page.locator('.project-lane[data-lane="older"] .project-card').filter(has_text="Lantern")
     expect(lantern.locator(".project-card-what")).to_have_text("Not investigated yet. REM only knows its folder and sessions.")
     assert "/home/user" not in page.locator("#main").inner_text()
     if width == 1440:
         expect(page.locator(".project-lane-tabs")).to_be_hidden()
         assert len({round(lane.bounding_box()["y"]) for lane in page.locator(".project-lane").all()}) == 1
-        hero.locator(".btn-act").click()
-        expect(page.locator("#open-threads")).to_be_visible()
     else:
         expect(page.locator(".project-lane:visible")).to_have_count(1)
-        expect(lantern).to_be_visible()  # the lifted hero leaves Earlier as the first nonempty lane
-        page.locator(".project-lane-tabs").get_by_role("button", name="This week", exact=True).click()
+        expect(page.locator(".project-card:visible").filter(has_text="Harbour")).to_have_count(1)  # This week first
         expect(lantern).to_be_hidden()
         page.locator(".project-lane-tabs").get_by_role("button", name="Earlier", exact=True).click()
         expect(lantern).to_be_visible()
-        box = hero.locator(".btn-act").bounding_box()
-        assert box["y"] + box["height"] < 844 and box["height"] >= 46
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5133,12 +5086,12 @@ def test_projects_lane_shows_seven_cards_then_the_rest_on_request(reader):
       render();
     }""", isolated_context=False)
     week = page.locator('.project-lane[data-lane="week"]')
-    expect(week.locator(".project-card")).to_have_count(7)  # nine copies; Harbour itself is the lifted card
-    week.get_by_role("button", name=re.compile(r"^2 more projects")).click()
-    expect(week.locator(".project-card")).to_have_count(9)
+    expect(week.locator(".project-card")).to_have_count(7)  # Harbour and nine copies; no card is lifted out
+    week.get_by_role("button", name=re.compile(r"^3 more projects")).click()
+    expect(week.locator(".project-card")).to_have_count(10)
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(page.locator("h1.page-state")).to_have_text("11 个项目 · 10 个本周有动静")
-    expect(week.get_by_role("button", name=re.compile(r"^还有 2 个"))).to_be_visible()
+    expect(week.get_by_role("button", name=re.compile(r"^还有 3 个"))).to_be_visible()
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
@@ -5222,16 +5175,13 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_org_list_groups_organisations_under_one_green_next_step(reader, width, theme):
+def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", width, theme)
-    assert re.fullmatch(r"\d+ organisations\s*·?\s*1 waiting on you", page.locator(".ov-list h1").inner_text().replace("\n", " ").strip())
-    focal = page.locator(".ov-focal")
-    assert "Fernhill Labs" in focal.inner_text()
-    assert page.evaluate(GREEN) == 1
-    primary = focal.locator(".ov-primary")
-    assert "Mara" in primary.inner_text()
-    assert primary.bounding_box()["y"] + primary.bounding_box()["height"] <= (844 if width < 600 else 900)
+    assert re.fullmatch(r"\d+ organisations", page.locator(".ov-list h1").inner_text().strip())
+    assert page.locator(".ov-focal").count() == 0
+    assert page.evaluate(GREEN) == 0
+    assert page.locator(".ov-list .list-today").inner_text() == "1 organisation waiting in Today →"
     assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
     row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
@@ -5272,8 +5222,7 @@ def test_org_with_nothing_owed_has_no_green_button(reader, width):
     assert page.locator(".ov-today").count() == 0
     page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
     page.locator(".ov-list").wait_for()
-    assert page.locator(".ov-focal").count() == 0
-    assert "nothing waiting on you" in page.locator(".ov-list h1").inner_text()
+    assert page.locator(".ov-list .list-today").count() == 0
     assert page.evaluate(GREEN) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -5675,3 +5624,59 @@ def test_person_owed_item_opens_its_cited_original_without_searching_full_memory
     cite.click()
     expect(page.locator('#evidence-panel')).to_be_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_page_open_items_are_a_record_without_green_or_self_links(reader, width):
+    """Owner, 2026-11-08: a project page is a record. Its open items carry no green
+    button, and never an "Open the page" button that points at the page you are on."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    items = page.locator("#open-threads li.thread")
+    assert items.count() >= 1
+    assert page.evaluate(GREEN) == 0
+    assert page.locator("#open-threads").get_by_text("Open the page", exact=True).count() == 0
+    assert items.first.get_by_role("button", name="Mark done", exact=True).count() == 1
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person(reader, width):
+    """The name is not centred in an empty poster band, and a long role never wraps
+    onto a line of its own where it reads as the next person's role."""
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
+    page.evaluate("""() => { const p = REM.records.find(r => r.category === 'people');
+      p.text = p.text.replace(/^(- Role: ).*$/m, '$1Former sales and marketing intern for the pilot programme across three campuses'); render(); }""",
+      isolated_context=False)
+    assert page.locator(".ov-say h1").bounding_box()["y"] < 160
+    for item in page.locator(".ov-key li").all():
+        name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
+        assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
+        assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
+    """P大: "这替我干了什么？" — at 1440 the right half says what REM did, naming whom for;
+    on a phone the same block follows the queue. Duplicated outcomes count once."""
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(uri + "#")
+    page.evaluate("""() => {
+      const people = REM.records.filter(r => r.category === 'people' && r.path !== REM.owner).slice(0, 2);
+      const o = (kind, r, n) => ({key: r.path + n, record: r.path, title: r.title, kind});
+      REM.night_outcomes = [o('prepared', people[0], 1), o('prepared', people[0], 1), o('prepared', people[1], 2), o('no_reply', people[1], 3)];
+      render();
+    }""", isolated_context=False)
+    done = page.locator(".night-done")
+    assert done.locator("h2").inner_text() == "What REM did overnight"
+    assert done.locator("li b").all_inner_texts() == ["Drafted replies for 2 people", "1 thing needs no reply"]
+    assert done.locator("li").first.locator("a").count() == 2
+    cards, aside = page.locator(".today-brief").bounding_box(), done.bounding_box()
+    if width == 1440:
+        assert aside["x"] >= cards["x"] + cards["width"], "beside the queue, in the right half"
+        assert aside["y"] < 400, "on the first screen"
+    else:
+        assert aside["y"] >= cards["y"] + cards["height"], "after the queue on a phone"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

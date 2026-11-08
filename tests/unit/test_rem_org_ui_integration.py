@@ -20,33 +20,6 @@ def run_js(names, script):
     return json.loads(result.stdout)
 
 
-@pytest.mark.parametrize('state', ['replied', 'no_reply', 'waiting'])
-def test_org_primary_labels_the_action_it_performs(state):
-    result = run_js(['orgPrimary', 'orgThing'], r'''
-      const state = ''' + json.dumps(state) + r''';
-      const entry = {r: {}, t: {}};
-      const orgT = text => text, owedPerson = () => ({title: 'Mara'}), orgFirstName = () => 'Mara';
-      const orgName = () => 'Fernhill', threadDraft = () => state === 'no_reply' ? {status: state} : null;
-      let done = false;
-      const setDone = () => {done = true;};
-      const el = (tag, attrs) => ({...attrs, textContent: attrs.text, matches() {return true;}});
-      const primaryAction = () => {
-        const node = el('button', {text: state === 'replied' ? 'Mark done' : 'Open the page'});
-        if (state === 'replied') node.onclick = setDone;
-        return node;
-      };
-      const owedWords = () => ({title: 'Pilot review'}), threadKind = () => ({mail: true});
-      const node = orgPrimary(entry);
-      node.onclick?.();
-      console.log(JSON.stringify({text: node.textContent, done, className: node.className}));
-    ''')
-    assert result['className'] == 'ov-primary'
-    if state == 'waiting':
-        assert result['text'] == 'Reply to {name} · {thing}' and not result['done']
-    else:
-        assert result['text'] == 'Mark done' and result['done']
-
-
 def test_same_name_private_org_does_not_join_public_obligations_or_people():
     result = run_js(['orgRows'], r'''
       const publicOrg = {path: 'orgs/public.md', title: 'Fernhill', people: ['people/public.md']};
