@@ -1306,7 +1306,8 @@ def test_approve_release_uses_existing_send_path_once_and_checks_slots(notebook,
 
 
 def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, monkeypatch):
-    from connectonion.rem import approvals, today, threads
+    from connectonion.rem import approvals, today, threads, tasks
+    monkeypatch.setattr(tasks, 'HOLD', False)  # this version holds tasks; the dispatch-once path is what is tested
     book = Notebook(notebook)
     book.write('people/fern.md', '# Fern Vale\n\n## Open threads\n- You owe Fern a review.\n- You owe Fern a date.\n')
     keys = ['people/fern.md\nYou owe Fern a review.', 'people/fern.md\nYou owe Fern a date.']
