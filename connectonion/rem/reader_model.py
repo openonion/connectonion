@@ -236,11 +236,40 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
             for path, rows in found.items()}
 
 
-def graph_snapshot(records: list[dict], links: dict | None = None) -> dict:
+TOPIC_LINKED = ('people/', 'orgs/', 'projects/', 'decisions/', 'principles/', 'agenda/')
+
+
+def topic_mentions(row: dict, paths: set[str], owner: str) -> list[dict]:
+    """The newest cited sentence per record naming a topic, newest first.
+
+    Sessions and skills are counted, not linked; the owner's own page is not a
+    backlink, and a sentence labelled private never leaves its page.
+    """
+    found = {}
+    for e in sorted(row['evidence'], key=lambda e: e['date']):
+        path = e['record']
+        if path in paths and path != owner and path.startswith(TOPIC_LINKED) and not e.get('private'):
+            found[path] = {'path': path, 'sentence': _around(e['sentence'], row.get('aliases', [])), 'date': e['date'], 'source': e['source']}
+    return sorted(found.values(), key=lambda m: m['date'], reverse=True)
+
+
+def _around(text: str, aliases: list[str], limit: int = 220) -> str:
+    """A long sentence keeps the words naming the topic, starting on a whole word."""
+    lowered = text.casefold()
+    at = min((lowered.find(a.casefold()) for a in aliases if a.casefold() in lowered), default=0)
+    if len(text) <= limit or at < limit - 60:
+        return _clip(text, limit)
+    start = text.find(' ', max(0, at - 80)) + 1
+    return '…' + _clip(text[start:], limit - 1)
+
+
+def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None) -> dict:
     """Explicit undirected links only; sessions fold into their linked project.
 
-    All other records remain in nodes, including isolates. Private nodes have no
-    title; callers exporting off-device must remove private records beforehand.
+    `topics` maps a topic page to the records whose cited sentences name it
+    (`topic_mentions`); those become topic edges too. All other records remain
+    in nodes, including isolates. Private nodes have no title; callers exporting
+    off-device must remove private records beforehand.
     """
     from collections import Counter
     paths = {r['path']: r for r in records if r['path'] != 'skills/catalog/index.md'
@@ -262,6 +291,10 @@ def graph_snapshot(records: list[dict], links: dict | None = None) -> dict:
             if a != b:
                 kind = 'topic' if a.startswith('knowledge/') or b.startswith('knowledge/') else 'linked'
                 edges[a, b] = {'source': a, 'target': b, 'kind': kind}
+    for topic, targets in (topics or {}).items():
+        for target in targets:
+            if topic in paths and target in paths:
+                edges.setdefault(tuple(sorted((topic, target))), {'source': min(topic, target), 'target': max(topic, target), 'kind': 'topic'})
     degree = Counter(node for pair in edges for node in pair)
     nodes = []
     for path, row in paths.items():

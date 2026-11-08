@@ -20,6 +20,8 @@ from .service import run_logs, seen_outcome, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
+# The graph's layout and zoom, pinned and inlined so the page never fetches a script.
+D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
@@ -210,17 +212,20 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     links = {} if today else relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
-    from .reader_model import graph_snapshot
-    graph = {} if today else graph_snapshot(records, links)
-    from .topic_map import topic_aliases
-    topic_rows = read_json(state_path(root, 'map.json'), {}).get('topics', [])
+    from .reader_model import graph_snapshot, topic_mentions
+    from .topic_map import scan_topics, topic_aliases
+    # A topic stub has no links of its own yet; the cited sentences that name it are the links.
+    topic_rows = {} if today else {path: row for row in scan_topics(notebook) for path in row['existing']}
     for record in records:
         if record['category'] == 'knowledge':
-            candidate = next((r for r in topic_rows if r['record'] == record['path']), {})
+            candidate = topic_rows.get(record['path'], {'evidence': []})
             record['topic'] = {'aliases': topic_aliases(record['text']),
                                'sessions': candidate.get('sessions', 0), 'skills': candidate.get('skills', 0),
                                'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
-                               'doubtful': candidate.get('doubtful', [])}
+                               'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
+                               'mentions': topic_mentions(candidate, record_paths, owner)}
+    graph = {} if today else graph_snapshot(records, links, {r['path']: [m['path'] for m in r['topic']['mentions']]
+                                                             for r in records if 'topic' in r})
     # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
     context_records = [{**r, 'text': _today_text(r['text'])} for r in records
                        if r['category'] in ('people', 'orgs', 'projects')
@@ -324,7 +329,7 @@ def _today_data(data: dict) -> dict:
                        and not (r.get('needs_review') or r.get('service'))])
     ids.update(source for draft in data['drafts'] for source in draft.get('sources', []))
     shell = {key: value for key, value in data.items() if key not in
-             ('records', 'source_context', 'conversations', 'logs', 'contact_candidates', 'contact_coverage', 'reviews')}
+             ('records', 'source_context', 'conversations', 'logs', 'contact_candidates', 'contact_coverage', 'reviews', 'graph')}
     shell.update(records=records, source_context={key: value for key, value in data['source_context'].items() if key in ids})
     # The brief needs pass counts and changed-page ids, never run transcripts.
     shell['brief_logs'] = [{key: run[key] for key in ('started_at', 'finished_at', 'outcome', 'phase', 'items', 'changed', 'sources')
@@ -379,7 +384,8 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     template = TEMPLATE.read_text(encoding="utf-8")
     if PLACEHOLDER not in template:
         raise RuntimeError("reader.html has lost its data placeholder")
-    return template.replace(PLACEHOLDER, data, 1).replace('/*__REM_DETAIL__*/', detail, 1)
+    page = template.replace(PLACEHOLDER, data, 1).replace('/*__REM_DETAIL__*/', detail, 1)
+    return page.replace('/*__D3__*/', D3.read_text(encoding='utf-8'), 1)
 
 
 def _script_json(data: dict) -> str:
