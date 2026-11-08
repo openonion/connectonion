@@ -14,7 +14,8 @@ from pathlib import Path
 
 # Runs whose points count against the investigation budget. Maintenance is the
 # incremental daily pass and is bounded by the call cap instead.
-INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write")
+INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write",
+                        "same-person")
 DEPTH_PHASES = ("enrich", "muse")
 
 
@@ -75,17 +76,6 @@ def _token_points(usage, speed) -> float:
         return value if isinstance(value, (int, float)) else 0
     fresh = max(0, number("input_tokens") - number("cached_input_tokens")) + number("output_tokens")
     return fresh / TOKENS_PER_POINT[speed]
-
-
-def run_points(run: dict) -> float:
-    """What one run cost in points: the meter when it moved, its tokens when it did not.
-
-    Codex reports whole percents. Every run of the 1.9.0a7 acceptance pass read
-    29% before and after, so "after minus before" was 0 for each and the budget
-    never moved (#1990). A reading that moved is measured and wins. A reset
-    mid-run reads lower after than before; that run counts its tokens, never a refund.
-    """
-    return group_points([run])
 
 
 def group_points(runs: list[dict]) -> float:

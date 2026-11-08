@@ -20,12 +20,12 @@ Left out on purpose:
 """
 
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 
 from .files import Notebook, read_json, state_path
 from .map import needs_review
 
-CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/"}
+CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/", "topics": "knowledge/"}
 RECENT_DAYS = 7
 
 
@@ -51,6 +51,7 @@ def weights(state: dict, excluded: frozenset | set = frozenset()) -> dict:
     weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
     weight.update({row.get("record"): len([p for p in row.get("people") or [] if p not in excluded])
                    for row in state.get("orgs", [])})
+    weight.update({row.get('record'): row.get('source_count', 0) for row in state.get('topics', [])})
     return weight
 
 
@@ -141,7 +142,8 @@ def _stamped_from_nothing(page: str) -> bool:
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
-    today = today or datetime.now(timezone.utc).date()
+    from .service import notebook_today
+    today = today or notebook_today(root)
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     from .merge import resolve
@@ -191,7 +193,7 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
                    for domain in org_domains(notebook.read(record)))}
 
 
-ALL = ("people", "projects", "orgs", "skills")
+ALL = ("people", "projects", "orgs", "skills", "topics")
 
 
 def order_all(root) -> list[dict]:

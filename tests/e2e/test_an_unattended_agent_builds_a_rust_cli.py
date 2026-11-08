@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn greets_by_name() {
-        assert_eq!(greet("Aaron"), "Hello, Aaron!");
+        assert_eq!(greet("Ellis"), "Hello, Ellis!");
     }
 }
 """
@@ -116,7 +116,7 @@ STEPS = [
     ("write", {"path": "greeter/src/main.rs", "content": MAIN_RS}, "workspace_edit"),
     ("bash", {"command": "cd greeter && cargo build --quiet 2>&1 | tail -20", "description": "build", "timeout": 300}, "verification"),
     ("bash", {"command": "cd greeter && cargo test --quiet 2>&1 | tail -20", "description": "test", "timeout": 300}, "verification"),
-    ("bash", {"command": "cd greeter && ./target/debug/greeter --name Aaron | head -1", "description": "run it"}, "command"),
+    ("bash", {"command": "cd greeter && ./target/debug/greeter --name Ellis | head -1", "description": "run it"}, "command"),
     ("bash", {"command": "wc -l greeter/src/main.rs && ls greeter/target/debug | grep -c '^greeter$'", "description": "inspect"}, "read"),
 ]
 
@@ -154,7 +154,7 @@ def _scripted_model():
         R.tool_call_response(name, args, call_id=f"call_{i}")
         for i, (name, args, _) in enumerate(STEPS)
     ]
-    responses.append(R.text_response("Built greeter, its test passes, and it greets Aaron."))
+    responses.append(R.text_response("Built greeter, its test passes, and it greets Ellis."))
     return MockLLM(responses=responses, model="scripted-rust-builder")
 
 
@@ -172,7 +172,7 @@ def test_an_unattended_agent_builds_tests_and_runs_a_rust_cli(project, rust_tool
 
     result = agent.input(
         "Create a Rust CLI called greeter in ./greeter that takes --name and prints "
-        "'Hello, <name>!'. Add a unit test, build it, run the tests, run it for Aaron."
+        "'Hello, <name>!'. Add a unit test, build it, run the tests, run it for Ellis."
     )
 
     trace = agent.current_session["trace"]
@@ -195,9 +195,9 @@ def test_an_unattended_agent_builds_tests_and_runs_a_rust_cli(project, rust_tool
     # The toolchain did the real work.
     by_step = {i: r["result"] for i, r in enumerate(results)}
     assert "test result: ok. 1 passed" in by_step[4], by_step[4]
-    assert by_step[5].strip() == "Hello, Aaron!", by_step[5]
+    assert by_step[5].strip() == "Hello, Ellis!", by_step[5]
     assert (project / "greeter" / "target" / "debug" / "greeter").exists()
-    assert result == "Built greeter, its test passes, and it greets Aaron."
+    assert result == "Built greeter, its test passes, and it greets Ellis."
 
 
 def test_the_job_needs_no_grant_at_all(project, rust_toolchain_env):

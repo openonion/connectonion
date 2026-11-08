@@ -69,12 +69,101 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 401, "Open co rem with `co rem open` on this computer.")
         return
     if scope["method"] == "GET" and scope["path"] == "/rem":
-        from ...rem.reader import render
-        await _reply(send, 200, await asyncio.to_thread(render, root, live=True, local=True), "text/html")
+        from ...rem.reader import reader_version, render
+        # Per Host, after authentication. Concurrent reloads share one build.
+        cache = routes.setdefault("rem_reader_cache", {})
+        async with routes.setdefault("rem_reader_lock", asyncio.Lock()):
+            version = await asyncio.to_thread(reader_version, root)
+            if cache.get("version") != version:
+                page = await asyncio.to_thread(render, root, live=True, local=True)
+                cache.update(version=version, page=page)
+            page = cache["page"]
+        await _reply(send, 200, page, "text/html")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/data.json":
+        from ...rem.reader import reader_version, snapshot
+        cache = routes.setdefault("rem_detail_cache", {})
+        async with routes.setdefault("rem_detail_lock", asyncio.Lock()):
+            version = await asyncio.to_thread(reader_version, root)
+            if cache.get("version") != version:
+                data = await asyncio.to_thread(snapshot, root, local=True)
+                cache.update(version=version, data=json.dumps(data, ensure_ascii=False, default=str))
+            data = cache["data"]
+        await _reply(send, 200, data, "application/json")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
+    elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
+        from ...rem.threads import listing
+        await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task"):
+        await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _action(scope, receive, send, root, headers):
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve") else 4096) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    if not isinstance(body, dict):
+        await _reply(send, 400, json.dumps({"error": "JSON object required"}), "application/json")
+        return
+    from ...rem.files import RemError
+    from ...rem import drafts, threads, translate
+    if scope["path"] == "/rem/task":
+        from ...rem.tasks import status
+        if not isinstance(body.get("id"), str):
+            await _reply(send, 400, json.dumps({"error": "Expected task id"}), "application/json")
+            return
+        operation = lambda: status(root, body['id'])
+    elif scope["path"] == "/rem/approve":
+        from ...rem import approvals
+        if (body.get("action", "approve") not in ("approve", "undo")
+                or not isinstance(body.get("ids"), list) or len(body["ids"]) > 500
+                or any(not isinstance(key, str) for key in body["ids"])
+                or not isinstance(body.get("bodies", {}), dict)
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in body.get("bodies", {}).items())):
+            await _reply(send, 400, json.dumps({"error": "Expected selected ids and reply bodies"}), "application/json")
+            return
+        operation = lambda: (approvals.undo(root, body["ids"]) if body.get("action") == "undo"
+                             else approvals.approve(root, body["ids"], bodies=body.get("bodies")))
+    elif scope["path"] == "/rem/thread":
+        if (not isinstance(body.get("key"), str) or "\n" not in body["key"]
+                or body.get("state") not in ("done", "skipped", "open")
+                or not isinstance(body.get("device"), (str, type(None)))
+                or not isinstance(body.get("keys"), (list, type(None)))
+                or any(not isinstance(key, str) for key in body.get("keys") or [])
+                or not isinstance(body.get("versions"), (dict, type(None)))
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
+            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
+            return
+        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+    elif scope["path"] == "/rem/language":
+        from ...rem.config import request_language
+        operation = lambda: request_language(root, body.get("language"))
+    elif scope["path"] == "/rem/translation-request":
+        operation = lambda: translate.request(root, body.get("page"), body.get("language"))
+    elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
+        operation = lambda: drafts.prepare_now(root, body["provider"], body["thread"])
+    elif (body.get("action") in ("open", "discard", "send", "redraft") and isinstance(body.get("id"), str)
+          and isinstance(body.get("body"), (str, type(None))) and isinstance(body.get("channel"), (str, type(None)))):
+        operation = lambda: (drafts.send(root, body["id"], body.get("body")) if body["action"] == "send"
+                             else drafts.redraft(root, body["id"], body.get("channel") or "mail") if body["action"] == "redraft"
+                             else {"open": drafts.open_provider, "discard": drafts.discard}[body["action"]](root, body["id"]))
+    else:
+        await _reply(send, 400, json.dumps({"error": "Unknown draft action"}), "application/json")
+        return
+    # Provider/authentication errors must reach the card instead of leaving an empty tab.
+    try:
+        result = await asyncio.to_thread(operation)
+    except (RemError, ValueError) as error:
+        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        return
+    await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 
 async def _translate(scope, receive, send, root, headers):
@@ -111,3 +200,20 @@ def _progress(root, page: str, language: str) -> dict:
     if task.exception() is not None:
         return {"state": "failed", "error": str(task.exception())}
     return {"state": "ready", "text": task.result()}
+
+
+def approval_tick(root, create_agent, storage, result_ttl, extra_tick=None):
+    """Attach durable REM outbox delivery to the Host's existing minute clock."""
+    async def tick(at):
+        from ...rem.approvals import release
+        from ...rem.tasks import host_dispatch
+
+        def dispatch(item):
+            return host_dispatch(root, item)
+
+        if root is not None and root.is_dir():
+            await asyncio.to_thread(release, root, at=at, dispatch=dispatch)
+        if extra_tick is not None:
+            await extra_tick(at)
+
+    return tick

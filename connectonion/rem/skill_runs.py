@@ -171,7 +171,7 @@ def _drop_orphaned_sources(page: str, before: str) -> str:
     return head + marker + re.sub(r'(?m)^- \[(W?\d+)\] .*\n?', lambda m: '' if m[1] in orphaned else m[0], tail)
 
 
-def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> dict:
+def investigate_skill_runs(root: Path, record: str, directories: list[Path], *, lock_held=False) -> dict:
     """Write a linked evidence review without overwriting curated skill-page sections."""
     notebook = Notebook(root)
     name = skill_identity(notebook, record)
@@ -179,7 +179,8 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
     key = hashlib.sha256(record.encode()).hexdigest()[:12]
     report = f'logs/skill-runs-{key}.md'
     text = _report(name, result)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    from contextlib import nullcontext
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook.write(report, text)
         notebook.write(record, place_run_evidence(notebook.read(record), run_evidence_block(result, report)))
     return {**result, "record": record, "report": report,
@@ -192,8 +193,33 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
     from .investigate import record_result
     from .runner import run_stage
 
+    evidence_root = root / '.state' / 'evidence'
+    evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix='skill-', dir=evidence_root) as directory:
+        task = prepare(root, record, directories, directory=Path(directory))
+        notebook, items, evidence = Notebook(root), task["items"], task["evidence"]
+        references, record_items, samples = task["references"], task["skill_records"], task["samples"]
+        result = _ledgered(root, record, items, lambda: run_stage(notebook, items, task["config"], stage='investigate'))
+    if record in result.get('changed', []):
+        from .reader_model import _source_ids
+        retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
+    record_result(root, notebook, record, result.get('review_candidates', []), ['skill source', 'retained evals'],
+                  changed=record in result.get('changed', []), skill_records=record_items)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        page = notebook.read(record)
+        healed = place_run_evidence(page, run_evidence_block(evidence, evidence['report']))
+        if healed != page:
+            notebook.write(record, healed)
+    return {**result, 'record': record, 'report': evidence['report'], 'items': len(items),
+            'invocation_attempts': evidence['invocation_attempts'],
+            'session_turns_reviewable': len(samples['items']),
+            'session_invocations_indexed': samples['matched_invocations'],
+            'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
+
+
+def prepare(root, record, directories, *, directory, lock_held=False):
     notebook = Notebook(root)
-    evidence = investigate_skill_runs(root, record, directories)
+    evidence = investigate_skill_runs(root, record, directories, lock_held=lock_held)
     page = notebook.read(record)
     source = re.search(r'^- File: (.+)$', page, re.M)
     if source is None:
@@ -204,6 +230,7 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
     stamp = datetime.now(timezone.utc).isoformat()
     body = path.read_text(encoding='utf-8')
     source_id = 'skill-source:' + hashlib.sha256(body.encode()).hexdigest()[:16]
+    from .config import read_config
     from .page_review import normalize
     items = [
         {'role': 'page', 'record': record, 'source': 'investigation:page', 'timestamp': stamp,
@@ -230,27 +257,10 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
     if reference_coverage:
         items.append({'role': 'coverage', 'source': 'investigation:skill-reference-coverage',
                       'timestamp': stamp, 'text': reference_coverage})
-    evidence_root = root / '.state' / 'evidence'
-    evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with tempfile.TemporaryDirectory(prefix='skill-', dir=evidence_root) as directory:
-        if records:
-            items.append(_record_index(Path(directory), records, samples, stamp))
-        result = _ledgered(root, record, items, lambda: run_stage(notebook, items, config, stage='investigate'))
-    if record in result.get('changed', []):
-        from .reader_model import _source_ids
-        retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
-    record_result(root, notebook, record, result.get('review_candidates', []), ['skill source', 'retained evals'],
-                  changed=record in result.get('changed', []), skill_records=record_items)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        page = notebook.read(record)
-        healed = place_run_evidence(page, run_evidence_block(evidence, evidence['report']))
-        if healed != page:
-            notebook.write(record, healed)
-    return {**result, 'record': record, 'report': evidence['report'], 'items': len(items),
-            'invocation_attempts': evidence['invocation_attempts'],
-            'session_turns_reviewable': len(samples['items']),
-            'session_invocations_indexed': samples['matched_invocations'],
-            'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
+    if records:
+        items.append(_record_index(directory, records, samples, stamp))
+    return {"items": items, "evidence": evidence, "references": references, "skill_records": record_items,
+            "samples": samples, "config": config, "record": record, "source_path": str(path)}
 
 
 def _ledgered(root: Path, record: str, items: list[dict], turn) -> dict:

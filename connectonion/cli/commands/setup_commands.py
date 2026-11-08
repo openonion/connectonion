@@ -57,18 +57,44 @@ def _edit_profile(path: Path, name: Optional[str], bio: Optional[str]) -> None:
     console.print(f"[green]✓ Local profile: {path} (updated)[/green]")
 
 
+def _repair_profile(path: Path) -> bool:
+    """Fill missing local fields; never discard malformed personal metadata."""
+    from connectonion import address
+
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    skills = profile.get("skills", [])
+    if not isinstance(skills, list) or any(
+            not isinstance(skill, dict) or not isinstance(skill.get("name"), str)
+            or not skill["name"].strip() for skill in skills):
+        raise ValueError(f"{path}: skills must be a list of objects with a nonempty name; "
+                         "repair the file or run co setup --force to back it up and recreate it")
+    for field in ("address", "alias", "name", "bio", "version"):
+        if field in profile and not isinstance(profile[field], str):
+            raise ValueError(f"{path}: {field} must be text; repair the file before running setup again")
+    alias = profile.get("alias") or profile.get("name") or os.environ.get("USER", "agent")
+    defaults = {"address": address.load(global_config_dir())["address"], "alias": alias,
+                "name": alias, "bio": f"Agent for {alias}.", "skills": [], "version": "v0.1.0"}
+    missing = defaults.keys() - profile.keys()
+    if missing:
+        profile.update({key: defaults[key] for key in missing})
+        profile.pop("signature", None)
+        profile.pop("signer", None)
+        path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    return bool(missing)
+
+
 def _ensure_profile(name: Optional[str], bio: Optional[str], force: bool) -> None:
     from connectonion import address
 
     path = global_config_dir() / "agent.json"
     if path.exists() and not force:
+        repaired = _repair_profile(path)
         if name is not None or bio is not None:
             _edit_profile(path, name, bio)
         else:
-            profile = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(profile, dict):
-                raise ValueError(f"{path} must contain a JSON object")
-            console.print(f"[dim]✓ Local profile: {path} (kept)[/dim]")
+            console.print(f"[dim]✓ Local profile: {path} ({'repaired' if repaired else 'kept'})[/dim]")
         return
     if path.exists():
         backup = path.with_suffix(".json.bak")

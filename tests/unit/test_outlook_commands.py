@@ -43,7 +43,7 @@ from connectonion.cli.commands.outlook_commands import (
 CONNECTED_ENV = {
     "MICROSOFT_ACCESS_TOKEN": "test-token",
     "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-    "MICROSOFT_EMAIL": "aaron@example.com",
+    "MICROSOFT_EMAIL": "ellis@example.com",
 }
 
 CONNECTED_CONTACT_ENV = {
@@ -170,7 +170,7 @@ class TestResolveEmailId:
 
     def test_short_number_resolves_from_its_listing(self, tmp_path):
         from connectonion.cli.commands.gmail_listings import save_listing
-        token = save_listing(tmp_path / "outlook-listings", "aaron@example.com", "messages",
+        token = save_listing(tmp_path / "outlook-listings", "ellis@example.com", "messages",
                              ["msg-1", "msg-2"], provider="outlook")
 
         outlook = MagicMock()
@@ -317,7 +317,7 @@ class TestHandleOutlookSend:
 
         outlook.send.assert_called_once_with(
             "bob@example.com", "Hi", "Body from stdin\nline two\n",
-            cc=None, bcc=None, attachments=None, send_at=None,
+            cc=None, bcc=None, attachments=None, send_at=None, draft=False,
         )
         assert "Sent" in capsys.readouterr().out
 
@@ -360,7 +360,7 @@ class TestHandleOutlookReply:
         self._reply(outlook, monkeypatch, email_id="3", message="Sounds good")
 
         outlook.reply.assert_called_once_with(
-            "msg-cached-3", "Sounds good", attachments=None, send_at=None, cc=None, bcc=None, reply_all=False,
+            "msg-cached-3", "Sounds good", attachments=None, send_at=None, cc=None, bcc=None, reply_all=False, draft=False,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -378,7 +378,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Both attached",
-            attachments=[str(report), str(chart)], send_at=None, cc=None, bcc=None, reply_all=False,
+            attachments=[str(report), str(chart)], send_at=None, cc=None, bcc=None, reply_all=False, draft=False,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -395,7 +395,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Body from stdin\nline two\n",
-            attachments=[str(report)], send_at=None, cc=None, bcc=None, reply_all=False,
+            attachments=[str(report)], send_at=None, cc=None, bcc=None, reply_all=False, draft=False,
         )
 
     def test_scheduled_reply_keeps_its_attachment(self, tmp_path, monkeypatch, capsys):
@@ -408,7 +408,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Tomorrow",
-            attachments=[str(report)], send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False,
+            attachments=[str(report)], send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False, draft=False,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -469,7 +469,7 @@ class TestHandleOutlookReplyPositionalCompatibility:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "See you then",
-            attachments=None, send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False,
+            attachments=None, send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False, draft=False,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -491,7 +491,7 @@ class TestHandleOutlookReplyPositionalCompatibility:
         import inspect
 
         params = inspect.signature(handle_outlook_reply).parameters
-        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc", "listing", "reply_all"]
+        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc", "listing", "reply_all", "draft"]
         for name in ("attachments", "cc", "bcc", "listing", "reply_all"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
@@ -805,3 +805,73 @@ class TestReplyUsesTheListingYouSaw:
         handle_outlook_reply("AAMkAGI2NGVhZTVlLTI=", "yes")
 
         assert outlook.reply.call_args.args[0] == "AAMkAGI2NGVhZTVlLTI="
+
+
+class TestOutlookDraftCommands:
+    """--draft on send and reply, and co outlook drafts (#2729)."""
+
+    def test_send_draft_says_saved_not_sent(self, capsys):
+        outlook = MagicMock()
+        outlook.send.return_value = "Draft saved for bob@example.com, not sent. Open it in Outlook: https://x/1"
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_send(to="bob@example.com", subject="Hi", message="Body", draft=True)
+
+        assert outlook.send.call_args.kwargs["draft"] is True
+        output = capsys.readouterr().out
+        assert "Saved to Drafts" in output
+        assert "https://x/1" in output
+        assert "Sent to" not in output
+
+    def test_draft_with_at_is_refused_before_connecting(self, capsys):
+        with patch.object(outlook_commands, "_outlook") as connect:
+            with pytest.raises(typer.Exit):
+                handle_outlook_send(to="bob@example.com", subject="Hi", message="Body", at="+2h", draft=True)
+            with pytest.raises(typer.Exit):
+                handle_outlook_reply(email_id="3", message="Body", at="+2h", draft=True)
+        connect.assert_not_called()
+
+    def test_reply_draft_is_passed_through(self, monkeypatch, capsys):
+        outlook = MagicMock()
+        outlook.reply.return_value = "Reply draft saved, not sent. Open it in Outlook: https://x/2"
+        monkeypatch.setattr(outlook_commands, "_resolve_email_id",
+                            lambda _outlook, email_id, listing=None: "msg-3")
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_reply(email_id="3", message="Thanks", draft=True)
+
+        assert outlook.reply.call_args.kwargs["draft"] is True
+        output = capsys.readouterr().out
+        assert "Saved to Drafts" in output
+        assert "Replied" not in output
+
+    def test_drafts_piped_lists_each_with_its_link(self, capsys):
+        outlook = MagicMock()
+        outlook.get_drafts.return_value = [{"id": "d1", "subject": "Intro", "to": "bob@example.com",
+                                            "saved_at": "2026-11-03T01:00:00Z", "link": "https://x/1"}]
+        with patch.object(outlook_commands, "_outlook", return_value=outlook):
+            outlook_commands.handle_outlook_drafts()
+
+        output = capsys.readouterr().out
+        assert "Intro" in output and "https://x/1" in output
+
+    def test_send_draft_and_delete_draft_take_only_draft_numbers(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / "last.json")
+        outlook = MagicMock()
+        outlook.get_drafts.return_value = [{"id": "d1", "subject": "Intro", "to": "bob@example.com",
+                                            "saved_at": "2026-11-03T01:00:00Z", "link": "https://x/1"}]
+        outlook.send_draft.return_value = "Draft \"Intro\" scheduled for 2026-07-06T15:30:00Z to bob@example.com"
+        outlook.delete_draft.return_value = "Deleted draft \"Intro\" to bob@example.com"
+        with patch.object(outlook_commands, "_outlook", return_value=outlook):
+            outlook_commands.handle_outlook_drafts()
+            outlook_commands.handle_outlook_send_draft("1", at="2026-07-06T15:30:00Z")
+            outlook_commands.handle_outlook_delete_draft("1")
+        outlook.send_draft.assert_called_once_with("d1", send_at="2026-07-06T15:30:00Z")
+        outlook.delete_draft.assert_called_once_with("d1")
+
+        # After a scheduled listing, draft numbers resolve to nothing rather than that row.
+        outlook_commands._remember_listing("scheduled", [{"id": "sched-1"}])
+        with patch.object(outlook_commands, "_outlook", return_value=outlook):
+            with pytest.raises(typer.Exit):
+                outlook_commands.handle_outlook_delete_draft("1")
+        assert outlook.delete_draft.call_count == 1

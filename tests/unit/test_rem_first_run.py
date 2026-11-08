@@ -15,6 +15,7 @@ investigation. No network, no Codex.
 import io
 import re
 import json
+from types import SimpleNamespace
 
 import pytest
 from rich.text import Text
@@ -56,6 +57,8 @@ class Mail:
 def first_run(tmp_path, monkeypatch):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
+    # This fake first-run flow does not exercise host boot discovery.
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: None)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
@@ -67,8 +70,12 @@ def first_run(tmp_path, monkeypatch):
         return {"record": record, "changed": [record], "items": 3}
 
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
+    # Flow tests fake investigation, including the separate historical mail fetch.
+    monkeypatch.setattr("connectonion.rem.people_pages.backfill_person", lambda *a, **kw: 0)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs:
+                        SimpleNamespace(install=lambda root, config: {"scheduler": "fake"}))
     # Init also abstracts accepted pages; keep that model turn offline too.
     monkeypatch.setattr("connectonion.rem.runner.run_stage", lambda *args, **kwargs: {"changed": [], "usage": None})
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: True)
@@ -87,6 +94,97 @@ def first_run(tmp_path, monkeypatch):
 
 def owner_record(root):
     return json.loads((root / ".state/map.json").read_text())["owner"]["record"]
+
+
+def test_plan_with_zero_material_has_no_owner_cost():
+    from connectonion.rem.first_run import plan
+
+    total = plan([], owner=True, owner_material=0, people=0, projects=0, workers=16)
+    assert total["counts"]["owner"] == 0
+    assert total["pages"] == total["input_tokens"] == total["minutes"] == 0
+
+
+def test_owner_estimate_scales_with_mapped_material():
+    from connectonion.rem.first_run import plan
+
+    small = plan([], owner=True, owner_material=3, people=0, projects=0, workers=16)
+    large = plan([], owner=True, owner_material=300, people=0, projects=0, workers=16)
+    assert 0 < small["input_tokens"] < large["input_tokens"] < 13_000_000
+    assert 0 < small["minutes"] < large["minutes"] < 71
+
+
+def test_owner_material_uses_usable_sessions_instead_of_cached_rejected_files(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _owner_material
+    from connectonion.rem.map import MapReport
+
+    monkeypatch.setattr("connectonion.rem.service.subscriptions", lambda root: {
+        "codex": {"kind": "codex", "enabled": True, "consented": True}})
+    result = MapReport(source_inventory={"mail_observed": 2},
+                       sessions={"imported": 0, "updated": 0, "unchanged": 4})
+    result.sessions = SimpleNamespace(files={"codex": ["usable", "rejected", "temporary", "notebook"]}, imports={
+        "usable": ({"messages": ["A fictional request"], "cwd": "/fictional/harbour"}, ""),
+        "rejected": ({}, "program_prompt"),
+        "temporary": ({"messages": ["A probe"], "cwd": "/private/tmp/probe"}, ""),
+        "notebook": ({"messages": ["A probe"], "cwd": str(tmp_path)}, ""),
+    })
+    assert _owner_material(tmp_path, result) == 3
+    del result["sessions"]  # The estimate-only path has the same parsed material.
+    assert _owner_material(tmp_path, result) == 3
+
+
+@pytest.mark.parametrize("flags", [[], ["--estimate-only"], ["--json"], ["--estimate-only", "--json"]])
+def test_init_without_people_or_projects_exits_without_estimate_pause(first_run, monkeypatch, flags):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    skill = root.parent / "empty-skills" / "fictional-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("---\nname: fictional-skill\ndescription: A fictional skill.\n---\nRead files.\n")
+    pauses = []
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands.typer.confirm", lambda *a, **kw: pauses.append(a))
+    monkeypatch.setattr("connectonion.rem.service.ensure_consent", lambda *a, **kw: True)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    summaries = []
+    monkeypatch.setattr("connectonion.rem.sessions.summarise_sessions", lambda *a, **kw: summaries.append(a))
+
+    result = init("--no-start", *flags)
+
+    assert result.exit_code == 0, result.output
+    message = ("Nothing to write yet: connect a mailbox (co auth google|microsoft) or work in a project "
+               "with Codex. Background updates pick up new material.")
+    assert message in result.stdout
+    assert "Your page was not written: no mailbox gave an address of yours" in result.stdout
+    assert "Estimate:" not in result.output
+    assert not pauses and not calls and not summaries
+    if "--json" in flags:
+        data = json.loads(result.stdout)["data"]
+        assert data["first_run"]["pages"] == data["first_run"]["input_tokens"] == 0
+        assert data["first_run"]["skills"] == []
+
+
+def test_estimate_only_excludes_an_owner_without_mail_addresses(first_run, monkeypatch):
+    _, init, _ = first_run
+    monkeypatch.setattr(Mail, "my_addresses", lambda self: set())
+    result = init("--estimate-only", "--json")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["first_run"]["counts"]["owner"] == 0
+    assert "no mailbox gave an address of yours" in data["investigate_me"]["reason"]
+
+
+def test_empty_init_without_a_runner_still_explains_how_to_add_material(first_run, monkeypatch):
+    from connectonion.rem.files import Notebook
+
+    root, init, calls = first_run
+    Notebook(root).stub_person("people/corin-vale.md", "Corin Vale", ["corin@example.org"])
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex not installed", "install codex"))
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._first_people_rows",
+                        lambda *a, **kw: pytest.fail("An empty map must not queue old pages"))
+    result = init("--no-start")
+    assert result.exit_code == 0, result.output
+    assert "Nothing to write yet: connect a mailbox" in result.stdout
+    assert "no mailbox gave an address of yours" in result.stdout
+    assert "Estimate:" not in result.output and not calls
 
 
 def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatch):
@@ -242,7 +340,7 @@ def test_init_yes_records_existing_consent_before_mapping(first_run, monkeypatch
     assert mapped == [True]
 
 
-def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkeypatch):
+def test_interactive_init_proceeds_with_summary_and_undo_for_selected_mailboxes(first_run, monkeypatch):
     import sys
     from types import SimpleNamespace
     from connectonion.cli.commands import rem_commands
@@ -262,7 +360,8 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output
-    assert len(prompts) == 1
+    assert prompts == []
+    assert 'Undo REM setup:' in result.output
     assert len(summaries) == 1
     assert summaries[0]['sources']['gmail']['state'].startswith('will be read')
     assert installed == [root]
@@ -280,6 +379,40 @@ def test_mailboxes_init_read_are_subscribed_for_start(first_run):
     assert sources["gmail"]["consented"] is False  # start still asks
     assert sources["outlook"]["enabled"] is False  # never read, never subscribed
     assert consent_summary(root)["sources"]["gmail"]["state"].startswith("will be read")
+
+
+@pytest.mark.parametrize("selected", [("gmail",), ("outlook",), ("gmail", "outlook")])
+@pytest.mark.parametrize("background", [False, True])
+@pytest.mark.parametrize("investigate", [False, True])
+def test_init_mail_selection_limits_consent_and_subscription(first_run, monkeypatch, selected, background, investigate):
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    opened = []
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: opened.append(kind) or Mail())
+    flags = [flag for kind in selected for flag in ("--mail", kind)]
+    result = init("--yes", *([] if investigate else ["--no-investigate"]),
+                  *flags, *([] if background else ["--no-start"]))
+    assert result.exit_code == 0, result.output
+    assert set(opened) == set(selected)
+    sources = subscriptions(root)
+    for kind in ("gmail", "outlook"):
+        assert sources[kind]["enabled"] == (kind in selected)
+        assert sources[kind]["consented"] == (kind in selected)
+        if kind not in selected:
+            assert f"{kind}: connected; not selected (--mail)" in Text.from_ansi(result.output).plain
+    assert (root / ".state/worker.json").exists() == background
+
+
+def test_init_mail_selection_preserves_prior_mailbox_consent(first_run, monkeypatch):
+    from connectonion.rem.service import subscriptions
+    root, init, _ = first_run
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    assert init("--yes", "--no-investigate", "--no-start").exit_code == 0
+    before = subscriptions(root)["outlook"]
+    result = init("--yes", "--no-investigate", "--no-start", "--mail", "gmail")
+    assert result.exit_code == 0, result.output
+    assert subscriptions(root)["outlook"] == before
 
 
 # --------------------------------------------------------------- progress
@@ -352,7 +485,7 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
     assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
-    assert "codex" in text and "gpt-6-luna" in text
+    assert "codex" in text and "gpt-6.1-sol" in text
     assert "your own" in text and "Ctrl-C" in text
     assert text.rstrip().endswith(f"--root {root} open")
     assert f"--root {root} start" in text
@@ -400,17 +533,17 @@ def test_init_names_pages_that_are_probably_one_person_with_the_merge_that_joins
     from connectonion.rem.files import Notebook
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/zi.md", "子亚", ["zia@openonion.ai"], email="zia@openonion.ai")
-    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@openonion.ai"], email="zia@openonion.ai")
+    notebook.stub_person("people/zi.md", "子亚", ["zia@example.org"], email="zia@example.org")
+    notebook.stub_person("people/zia.md", "Zia Tanaka", ["zia@example.org"], email="zia@example.org")
     said = []
     result = _first_tidy(tmp_path, said.append)
     assert result["pairs"] == [{"kept": "people/zi.md", "other": "people/zia.md",
-                                "why": "both list zia@openonion.ai"}]
+                                "why": "both list zia@example.org"}]
 
     class Ctx:
         obj = {"root": tmp_path, "json": False}
     text = _init_done(Ctx(), {"tidy": result})
-    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@openonion.ai" in text
+    assert "Possibly one person (check, then merge): 子亚 and Zia Tanaka, both list zia@example.org" in text
     assert f"co rem --root {tmp_path} merge people/zi.md people/zia.md" in text
 
 
@@ -463,12 +596,12 @@ def test_json_with_investigate_runs_it_and_stays_machine_readable(first_run):
 
 def test_a_rerun_does_not_pay_for_a_page_already_written(first_run):
     root, init, calls = first_run
-    assert init("--no-investigate").exit_code == 0
+    assert init("--no-investigate", "--days", "5").exit_code == 0
     page = root / owner_record(root)
     lines = [("Investigation: investigated 2026-09-30" if line.startswith("Investigation:") else line)
              for line in page.read_text().splitlines()]
     page.write_text("\n".join(lines) + "\n")
-    result = init("--json")
+    result = init("--json", "--days", "5")
     assert result.exit_code == 0, result.output
     assert all(call["record"] != owner_record(root) for call in calls)
     assert "already" in json.loads(result.stdout)["data"]["investigate_me"]["reason"]
@@ -495,7 +628,7 @@ def test_a_failed_first_page_keeps_the_map_and_names_the_retry(first_run, monkey
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"].endswith("investigate me --days 5")
+    assert payload["next"] == f"co rem --root {root} investigate me --days 5"
     assert (root / "logs/people-map.md").is_file()
 
 
@@ -514,10 +647,10 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr(codex, "_base_command", lambda: None)
     problem, fix = rem_runner.ready(config)
-    assert "not installed" in problem and "npm install -g @openai/codex" in fix
+    assert "not installed" in problem and "https://chatgpt.com/codex/install.sh" in fix
     monkeypatch.setattr(codex, "_base_command", lambda: ["/bin/codex", "app-server"])
     problem, fix = rem_runner.ready(config)
-    assert "not signed in" in problem and fix == "codex login"
+    assert "not signed in" in problem and fix == "/bin/codex login"
     (tmp_path / "codex").mkdir()
     (tmp_path / "codex/auth.json").write_text("{}")
     assert rem_runner.ready(config) == ("", "")
@@ -626,7 +759,7 @@ def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects,
     assert result.exit_code == 1, result.output
     data = json.loads(result.stdout)
     assert data["data"]["background"]["started"] is False
-    assert data["next"].endswith("investigate projects/alpha.md --retry-refused")
+    assert data["next"] == f"co rem --root {root} investigate projects/alpha.md --retry-refused"
 
 
 def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_error(projects, monkeypatch):
@@ -648,13 +781,13 @@ def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_er
 
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
-    assert init("--no-investigate").exit_code == 0
-    data = json.loads(init("--json").stdout)["data"]
+    assert init("--no-investigate", "--days", "5").exit_code == 0
+    data = json.loads(init("--json", "--days", "5").stdout)["data"]
     assert data["project_pages"]["started"]
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: False)
-    assert init().exit_code == 0
+    assert init("--days", "5").exit_code == 0
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
-    missing = init("--investigate")
+    missing = init("--investigate", "--days", "5")
     assert Text.from_ansi(missing.output).plain.count("Codex is not signed in") == 1
     assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
@@ -781,7 +914,8 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     assert result.exit_code == 130
     assert "people/p2.md" not in people_written
     text = Text.from_ansi(result.output).plain
-    assert f"--root {root} investigate all" in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 
@@ -856,13 +990,13 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     total = fr.plan(runs, owner=False, people=0, projects=2, workers=1)
     assert total["input_tokens"] == 1_400_000 and total["minutes"] == 9
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
-    owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
+    owner_only = fr.plan(runs, owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
     assert owner_only["minutes"] == 71  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
-    mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1,
+    mixed = fr.announce(fr.plan(runs, owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=1, projects=1,
                                 workers=default_config()["limits"]["workers"]), "on your Codex plan")
     assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
 
@@ -876,7 +1010,7 @@ def test_a_fresh_notebook_estimate_matches_the_measured_first_run():
     throughput, not the worker count, sets the pace."""
     from connectonion.rem import first_run as fr
 
-    b1 = dict(owner=True, people=84, projects=20, orgs=27, skills=148)
+    b1 = dict(owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE, people=84, projects=20, orgs=27, skills=148)
     from connectonion.rem.config import default_config
     total = fr.plan([], **b1, workers=default_config()["limits"]["workers"])
     # Since 2026-10-20 the defaults never announce less than a measured run took:
@@ -891,7 +1025,8 @@ def test_the_estimate_matches_the_2026_10_20_release_check():
     three projects, two organisations and a skill; the run took 82 minutes of
     pages after an 11.5-minute quick page, and 102M input tokens."""
     from connectonion.rem import first_run as fr
-    total = fr.plan([], owner=True, people=10, projects=3, orgs=2, skills=1, workers=16)
+    total = fr.plan([], owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE,
+                    people=10, projects=3, orgs=2, skills=1, workers=16)
     assert 90 <= total["minutes"] <= 105
     assert 95_000_000 <= total["input_tokens"] <= 110_000_000
 
@@ -910,7 +1045,8 @@ def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
     assert result.exit_code == 130
     text = Text.from_ansi(result.output).plain
     assert "pages written before the stop" in text and "and kept." in text
-    assert f"Next: co rem --root {root} investigate all" in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 # ------------------------------------------- several pages at once (owner, 2026-10-01)
@@ -1045,7 +1181,7 @@ def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, mo
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"].endswith("investigate me")
+    assert payload["next"] == f"co rem --root {root} investigate me"
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
     assert "projects/alpha.md" in projects_written
 
@@ -1127,7 +1263,7 @@ def test_people_whose_backfill_found_older_mail_are_deepened_on_the_parts_before
         return future
 
     ran = []
-    monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows: [
+    monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows, **kwargs: [
         {"kind": "people", "record": row["record"], "mode": "full", "row": row, "run": lambda row=row: ran.append(row)}
         for row in rows])
     row = {"record": "people/a.md", "mode": "full", "days": 730}
@@ -1269,7 +1405,7 @@ def test_init_reports_why_translation_is_skipped(first_run, monkeypatch, flags, 
     monkeypatch.setattr('connectonion.rem.translate.translate_pages', lambda *args, **kw: pytest.fail('translation started'))
     if reason == 'Runner not ready':
         monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('runner unavailable', 'install runner'))
-    result = init('--json', '--languages', language, '--no-start', *flags)
+    result = init('--json', '--languages', language, '--no-start', '--days', '5', *flags)
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
     assert not data['translation']['started'] and reason in data['translation']['reason']
@@ -1336,7 +1472,8 @@ def test_init_english_only_language_tip_shows_only_the_current_form(first_run, l
 
 def test_translation_estimate_uses_completed_local_medians_and_separate_worker_lanes():
     from connectonion.rem import first_run as fr
-    counts = dict(owner=True, people=2, projects=1, orgs=1, skills=1, workers=2)
+    counts = dict(owner=True, owner_material=fr.OWNER_MATERIAL_BASELINE,
+                  people=2, projects=1, orgs=1, skills=1, workers=2)
     plain = fr.plan([], **counts)
     default = fr.plan([], **counts, translation='zh')
     assert default['translation']['pages'] == 6
@@ -1389,6 +1526,31 @@ def test_init_summary_reports_translated_pages_and_how_to_retry_failures():
     ctx = SimpleNamespace(obj={"json": False, "root": None, "default_root": True})
     report = {"started": True, "language": "zh", "pages": [{}, {}, {}], "translated": 1, "cached": 1, "failed": 1}
     line, = _translation_line(ctx, report)
-    assert line.startswith("Translated into zh: 2 of 3 pages. 1 failed; retry with ")
-    assert line.endswith("translate --all.")
+    assert line == "Translated into zh: 2 of 3 pages. 1 failed; queued for the next translation pass."
     assert _translation_line(ctx, {"started": False, "reason": "Skipped by --no-translate."}) == []
+
+
+@pytest.mark.parametrize("problem,fix", [
+    ("Codex is not installed", "npm install -g @openai/codex"),
+    ("Claude Code is not installed", "npm install -g @anthropic-ai/claude-code"),
+])
+@pytest.mark.parametrize("as_json", [False, True])
+def test_missing_runner_background_reason_names_install(first_run, monkeypatch, problem, fix, as_json):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (problem, fix))
+    result = init(*(["--json"] if as_json else []))
+    assert result.exit_code == 0, result.output
+    reason = json.loads(result.stdout)["data"]["background"]["reason"] if as_json else result.stdout.split("Background upkeep:")[-1]
+    assert problem in reason and fix in reason
+    assert "finish its pages" not in reason
+    assert calls == []
+
+
+def test_missing_runner_preserves_map_only_upkeep_path(first_run, monkeypatch):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (
+        "Codex is not installed", "npm install -g @openai/codex"))
+    result = init("--no-investigate", "--yes", "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["background"]["started"] is True
+    assert not calls

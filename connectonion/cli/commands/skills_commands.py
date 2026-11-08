@@ -476,7 +476,12 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
     if target.is_symlink():
         if target.resolve() == source.resolve() and not force:
             return "already linked"
-        if target.exists() and not force:
+        previous = target.resolve()
+        installed_bundle = (previous.name == source.name
+                            and previous.parent.name == "useful_skills"
+                            and previous.parent.parent.name == "connectonion"
+                            and bool({"site-packages", "dist-packages"} & set(previous.parts)))
+        if target.exists() and not force and not installed_bundle:
             return "exists, not ours — skipped"
         target.unlink()
     elif target.exists():
@@ -497,6 +502,22 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
 
     target.symlink_to(source, target_is_directory=True)
     return "linked"
+
+
+def link_missing() -> list[str]:
+    """Silently link missing bundled skills, leaving every existing path alone."""
+    skills = sorted(d for d in BUNDLED_SKILLS.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
+    linked = []
+    for _, root in link_targets():
+        if not root.parent.is_dir() or not writable(root):
+            continue
+        for skill in skills:
+            target = root / skill.name
+            if target.exists() or target.is_symlink():
+                continue
+            _link_one(skill, target, force=False)
+            linked.append(skill.name)
+    return linked
 
 
 def handle_skills_link(force: bool = False, brief: bool = False):

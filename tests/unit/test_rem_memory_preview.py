@@ -178,7 +178,7 @@ def test_daily_maintains_before_one_investigation(root, monkeypatch):
     assert calls == ['maintain', 'investigate', 'maintain']
 
 
-def test_scheduled_daily_waits_for_a_due_slot(root, monkeypatch):
+def test_scheduled_daily_waits_for_a_due_slot(root, monkeypatch, rem_clock):
     from connectonion.rem.daily import run_daily
     from connectonion.rem.config import prepare
     prepare(root)
@@ -350,7 +350,7 @@ def test_a_page_too_big_for_the_day_gives_way_to_the_next(root, monkeypatch):
         if record == 'people/big.md':
             raise RemError('Extraction exceeds remaining call budget; page preserved')
         return {'changed': [record], 'usage': {'input_tokens': 1}}
-    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category: (
+    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category, today=None: (
         [{'path': 'people/big.md', 'weight': 185, 'recent': False},
          {'path': 'people/small.md', 'weight': 3, 'recent': False}] if category == 'people' else []))
     result = run_daily(root, maintain=lambda root: {'outcome': 'no_change'}, investigate_one=investigate_one)

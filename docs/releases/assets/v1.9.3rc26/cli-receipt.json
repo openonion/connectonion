@@ -1,0 +1,23 @@
+{
+  "initialization": [
+    {
+      "phase": "before",
+      "checks": {
+        "current_bundled_link": false,
+        "profile_fields_ready": false,
+        "personal_metadata_kept": true
+      },
+      "fixture": "synthetic home/project; offline backend; existing old installed-package link"
+    },
+    {
+      "phase": "after",
+      "checks": {
+        "current_bundled_link": true,
+        "profile_fields_ready": true,
+        "personal_metadata_kept": true
+      },
+      "fixture": "synthetic home/project; offline backend; existing old installed-package link"
+    }
+  ],
+  "history": "actual candidate CLI output on normal profile; no native UI screenshot"
+}

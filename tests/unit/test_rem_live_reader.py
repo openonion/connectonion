@@ -206,3 +206,78 @@ def test_a_host_on_an_unknown_port_is_named_not_duplicated(tmp_path, monkeypatch
 def test_the_rem_path_is_reserved_from_publisher_routes():
     from connectonion.network.host.http_routes import _RESERVED_PREFIXES
     assert "/rem" in _RESERVED_PREFIXES
+
+
+def test_live_reader_reuses_render_until_notebook_or_template_changes(host, monkeypatch, tmp_path):
+    calls = []
+    template = tmp_path / 'reader-template.html'
+    template.write_text('Example template')
+    monkeypatch.setattr(reader, 'TEMPLATE', template)
+    monkeypatch.setattr(reader, 'render', lambda root, **kw: calls.append((root, kw)) or f'build {len(calls)}')
+    get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
+    assert get() == get() == 'build 1'
+    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nExample update.')
+    assert get() == 'build 2'
+    from connectonion.rem.files import state_path
+    state_path(host.root, 'map.json').write_text('{"owner": {}}')
+    assert get() == 'build 3'
+    extra = host.root / 'people/nora.md'
+    extra.write_text('# Nora')
+    assert get() == 'build 4'
+    extra.unlink()
+    assert get() == 'build 5'
+    template.write_text('Updated template')
+    assert get() == get() == 'build 6'
+    assert all(options == {'live': True, 'local': True} for _, options in calls)
+    # Authentication still runs for every request, including a cache hit.
+    assert call(host.routes, 'GET', '/rem')[0] == 401
+
+
+def test_live_reader_second_request_reuses_the_actual_snapshot(host, monkeypatch):
+    from connectonion.rem.store import refresh
+    refresh(host.root)
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    builds, original = [], reader.render
+
+    def counted(root, **options):
+        builds.append(root)
+        return original(root, **options)
+
+    monkeypatch.setattr(reader, 'render', counted)
+    get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
+    assert get() == get()
+    assert builds == [host.root]
+
+
+def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, monkeypatch):
+    calls = []
+    def detail(root, **options):
+        calls.append((root, options))
+        return {'records': [{'text': 'Full fictional page'}], 'conversations': {'example': {}}}
+    monkeypatch.setattr(reader, 'snapshot', detail)
+    assert call(host.routes, 'GET', '/rem/data.json')[0] == 401
+    assert call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}',
+                client='192.168.1.20')[0] == 404
+    get = lambda: call(host.routes, 'GET', '/rem/data.json', cookie=f'co_rem={host.token}')
+    status, headers, body = get()
+    assert status == 200 and headers['content-type'].startswith('application/json')
+    assert json.loads(body)['records'][0]['text'] == 'Full fictional page'
+    assert get()[2] == body and len(calls) == 1
+    (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')
+    assert get()[0] == 200 and len(calls) == 2
+    assert all(options == {'local': True} for _, options in calls)
+
+
+def test_task_refresh_is_owner_only_and_reads_the_receipt(host):
+    from connectonion.rem import tasks
+    from connectonion.rem.files import write_json
+    from pathlib import Path
+    receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
+        'keys': ['people/fern.md\nReview the pilot.'], 'record': 'people/fern.md',
+        'title': 'Fern Vale', 'text': 'Review the pilot.', 'task': {'prompt': 'Review it.'}})
+    write_json(Path(receipt['receipt']), {**receipt, 'result': 'failed', 'exit_code': 1})
+    body = json.dumps({'id': receipt['id']}).encode()
+    assert call(host.routes, 'POST', '/rem/task', body=body)[0] == 401
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 200 and json.loads(text)['result'] == 'failed'
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=b'{}')[0] == 400

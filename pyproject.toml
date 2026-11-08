@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.3rc25"
+version = "1.9.3rc61"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -75,7 +75,7 @@ dependencies = [
     # `--disable-blink-features=AutomationControlled`, and navigator.webdriver must be false.
     "patchright==1.61.2",
     "charset-normalizer>=3.0.0",
-    "pypdf>=6.21.2",
+    "pypdf>=6.21.4",
     "Pillow>=13.0.0",
     "python-pptx>=1.0.0",
     "python-docx>=1.1.0",
@@ -92,7 +92,7 @@ dependencies = [
     "httplib2>=0.32.0",
     "idna>=3.15",
     "protobuf>=6.33.5",
-    "pyasn1>=0.6.4",
+    "pyasn1>=0.6.5",
     "Pygments>=2.20.0",
     "soupsieve>=2.8.4",
     "urllib3>=2.8.0",

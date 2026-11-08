@@ -31,28 +31,17 @@ def _prepare_profile(runtime: Path) -> None:
         atomic_write(path, yaml.safe_dump(config, sort_keys=False))
 
 
-def _prepare_rem(root: Path) -> None:
-    from ..rem.config import prepare, default_config
-    from ..rem.files import atomic_write, maintenance_lock
-    with maintenance_lock(root):
-        fresh = not (root/'config.yaml').exists()
-        prepare(root)
-        if fresh:
-            # Keep the owner's Codex selection even when login is not ready;
-            # do not silently select another runner during device setup.
-            atomic_write(root/'config.yaml', yaml.safe_dump(default_config(), sort_keys=False))
-
-
 def _codex_readiness(environment: dict | None = None) -> dict:
     import os
-    import shutil
+    import shlex
     import subprocess
+    from ..codex_cli import INSTALL_COMMAND, resolve_codex
     if environment is None:
         environment = {key: os.environ[key] for key in ('PATH', 'HOME', 'TMPDIR', 'CODEX_HOME', 'CODEX_CMD', 'SYSTEMROOT') if key in os.environ}
-    command = environment.get('CODEX_CMD') or shutil.which('codex', path=environment.get('PATH', os.defpath))
+    command = environment.get('CODEX_CMD') or resolve_codex(path=environment.get('PATH', os.defpath))
     if not command:
         return {'codex_ready': False, 'codex_problem': 'Codex CLI is not installed',
-                'next_action': 'npm install -g @openai/codex'}
+                'next_action': INSTALL_COMMAND}
     try:
         result = subprocess.run([command, 'login', 'status'], env=environment,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -61,11 +50,11 @@ def _codex_readiness(environment: dict | None = None) -> dict:
     except (OSError, subprocess.TimeoutExpired):
         signed_in = False
     return {'codex_ready': signed_in, 'codex_problem': '' if signed_in else 'Codex login check did not pass',
-            'next_action': '' if signed_in else 'codex login'}
+            'next_action': '' if signed_in else shlex.join([command, 'login'])}
 
 
 def prepare_mac_host() -> dict:
-    """Prepare storage/profile and a persistent native Host; never scan sources."""
+    """Prepare a persistent native Host; global init owns the consent-aware REM step."""
     import sys
     if sys.platform != 'darwin':
         raise HostServiceError('Background Mac setup requires macOS. Next: co init')
@@ -75,10 +64,9 @@ def prepare_mac_host() -> dict:
     root = global_config_dir()
     runtime = root/'runtime'/'mac-host'
     _prepare_profile(runtime)
-    _prepare_rem(root/'rem')
     service = HostService(runtime, native_codex=True)
     state = service.start()
-    return {**state, 'profile': str(runtime), 'rem_prepared': True,
+    return {**state, 'profile': str(runtime), 'rem_prepared': (root/'rem'/'config.yaml').is_file(),
             **_codex_readiness(environment=service._definition()['EnvironmentVariables']), 'watch_connector_ready': False}
 
 

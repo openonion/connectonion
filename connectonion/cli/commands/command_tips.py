@@ -298,6 +298,9 @@ NEXT = {
     "co outlook search": HANDLER,
     "co outlook download": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook scheduled": HANDLER,
+    "co outlook drafts": HANDLER,
+    "co outlook send-draft": HANDLER,
+    "co outlook delete-draft": HANDLER,
     "co outlook cancel": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook contact add": HANDLER,  # 1.8.4 already emits a contextual next step
     "co outlook contact list": HANDLER,  # 1.8.4 already emits a contextual next step

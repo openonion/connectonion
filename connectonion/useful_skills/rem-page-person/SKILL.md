@@ -5,12 +5,9 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 # A person's page
 
-Read supplied page/material. Write, check, fix once, stop; use this format.
+Read the material; write, check, fix once, stop.
 
-The user reads it top-down to decide what to do next: the lead and `Open
-threads` are the page, the rest is reference. Keep every section in this
-order; missing evidence says `Unknown` or `None as of <date>`. Every factual
-sentence cites `[n]` into `Sources`. Placeholders are not evidence.
+Lead and `Open threads` guide the next action; the rest is reference. Keep this order. Missing evidence: `Unknown` or `None as of <date>`. Cite every fact `[n]` into `Sources`; placeholders prove nothing.
 
 ```markdown
 # <observed name>
@@ -22,6 +19,8 @@ sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
+- Unit: Unknown
+- Role in unit: Unknown
 - Location: Unknown
 - Time zone: Unknown
 - Links: Unknown
@@ -67,8 +66,7 @@ Rules:
   "they"; "he"/"she" only where their own words show it.
 - **`Facts` is data, written first.** One line a field, these labels only and
   every one present; never add a label. A missing value is exactly `Unknown`.
-  Several values: `; ` between, each `value (qualifier) [n]` (`+61 2 5550 0142
-  (office, their signature) [3]; +61 400 555 019 (mobile, their signature) [5]`).
+  Separate values with `; `, each `value (qualifier) [n]`, e.g. `+61 400 555 019 (mobile, their signature) [5]`.
   Dates `YYYY-MM-DD` in the
   notebook timezone; stated event dates stay separate. Every value is cited
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
@@ -84,9 +82,9 @@ Rules:
   (`2024-02 (internship began, per the user) [n]`). `Unknown` only when
   nothing is dated; never `Unknown` beside cited older mail.
 - **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`,
-  `Changed:`, `At stake:` or `Pattern:`**: a finding no single message shows:
+  `Changed:`, `At stake:`, `Pattern:` or `Inference:`**: a finding no single message shows:
   what moved, what is at risk, a pattern over time (reply speed, topics, who
-  chases whom). Each rests on two or more messages or dates; one message
+  chases whom). Each rests on two or more messages, dates or outside sources; one message
   retold is the lead's or `Open threads`' job. At most one `Now:`. A finding,
   never advice (`verify`, `should`, `confirm`) and never a hedge (`unverified`,
   `remains unknown`); never generic ("key stakeholder"); a single thread: `- Unknown`.
@@ -95,6 +93,7 @@ Rules:
   not email”) and lists no channel they did not offer or use.
 - **`Company` needs stated employment**; a student or mailbox domain proves
   none (`Unknown`).
+- `Unit`: repeat cited org-page links; `Role in unit`: the same link — role. Legacy `Team` means `Unit`; `Company` stays top-level. Domains place nobody; conflicting codes go to review questions.
 - **`Who they are`**: their work first; private life they share is one
   labelled sentence, not a run of quotes.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
@@ -140,5 +139,9 @@ Rules:
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
-`Investigation:` line unchanged.
+Keep headings, `Facts` labels and the runner's `Investigation:` line exact.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

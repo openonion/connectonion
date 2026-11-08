@@ -2,7 +2,10 @@
 
 import json
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from dotenv import dotenv_values
@@ -14,7 +17,14 @@ from connectonion.cli.main import app
 
 
 @pytest.fixture
-def onboarding(tmp_path, monkeypatch):
+def onboarding(tmp_path, monkeypatch, rem_clock):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import config, schedule
+
+    monkeypatch.setattr(config, "first_runner", lambda config: config)
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(
+        install=Mock(return_value={"scheduler": "fictional"})))
+    monkeypatch.setattr(rem_commands, "init_rem_flow", Mock(return_value={}))
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -36,11 +46,16 @@ ENTRY_POINTS = [
 ]
 
 
+@pytest.mark.parametrize("existing_identity", [False, True])
 @pytest.mark.parametrize("command", ENTRY_POINTS)
-def test_every_entry_point_completes_local_setup(onboarding, command):
+def test_every_entry_point_completes_local_setup(onboarding, command, existing_identity):
+    from connectonion import __version__
+    from connectonion.cli.commands.skills_commands import BUNDLED_SKILLS
+
     runner, _, root = onboarding
     # An identity alone must not short-circuit the rest of onboarding.
-    ensure_global_config()
+    if existing_identity:
+        ensure_global_config()
 
     result = runner.invoke(app, command)
 
@@ -49,8 +64,10 @@ def test_every_entry_point_completes_local_setup(onboarding, command):
     assert profile["address"] == dotenv_values(root / "keys.env")["AGENT_ADDRESS"]
     for folder, instructions in ((".codex", "AGENTS.md"), (".claude", "CLAUDE.md")):
         tool = Path.home() / folder
-        assert (tool / "skills" / "co-browser" / "SKILL.md").is_file()
-        assert agent_index.stamp(tool / instructions) is not None
+        for bundled in BUNDLED_SKILLS.iterdir():
+            if (bundled / "SKILL.md").is_file():
+                assert (tool / "skills" / bundled.name / "SKILL.md").read_bytes() == (bundled / "SKILL.md").read_bytes()
+        assert agent_index.stamp(tool / instructions) == __version__
 
 
 def test_setup_bootstraps_in_process_and_repairs_missing_env(onboarding, monkeypatch):
@@ -83,7 +100,13 @@ def test_profile_and_links_follow_the_current_home(onboarding, monkeypatch, comm
     assert result.exit_code == 0, result.output
     assert (selected / "keys" / "agent.key").is_file()
     assert (selected / "agent.json").is_file()
-    assert not default_root.exists()
+    if command == ["init", "--yes"] and sys.platform in ("darwin", "linux"):
+        assert set(default_root.iterdir()) == {default_root / "rem"}
+        assert (default_root / "rem/config.yaml").is_file()
+        consent = json.loads((default_root / "rem/.state/consent.json").read_text())
+        assert consent["granted_by"] == "init"
+    else:
+        assert not default_root.exists()
 
 
 def test_reinitialization_repairs_omissions_and_preserves_edits(onboarding):
@@ -102,6 +125,12 @@ def test_reinitialization_repairs_omissions_and_preserves_edits(onboarding):
         skill.unlink()
     skill.mkdir(parents=True, exist_ok=True)
     (skill / "SKILL.md").write_text("My own browser skill.\n")
+    missing = codex / "skills" / "co-linear"
+    if missing.is_symlink():
+        missing.unlink()
+    else:
+        import shutil
+        shutil.rmtree(missing)
 
     for _ in range(2):
         result = runner.invoke(app, ["init", "./", "--yes", "--force"])
@@ -114,6 +143,32 @@ def test_reinitialization_repairs_omissions_and_preserves_edits(onboarding):
     assert instructions.read_text().startswith("My own instructions.\n")
     assert instructions.read_text().count("<!-- co:begin ") == 1
     assert (codex / "skills" / "co-linear" / "SKILL.md").is_file()
+
+
+def test_incomplete_profile_is_repaired_without_losing_custom_fields(onboarding):
+    runner, _, root = onboarding
+    ensure_global_config()
+    profile = root / "agent.json"
+    profile.write_text('{"alias":"custom","extra":"keep"}')
+    result = runner.invoke(app, ["init", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "(repaired)" in result.output
+    saved = json.loads(profile.read_text())
+    assert saved["alias"] == saved["name"] == "custom"
+    assert saved["extra"] == "keep" and saved["skills"] == [] and saved["address"]
+
+
+@pytest.mark.parametrize("skills", [None, "bad", ["bad"], [{}], [{"name": ""}]])
+def test_malformed_skill_metadata_is_preserved_with_an_actionable_error(onboarding, skills):
+    runner, _, root = onboarding
+    ensure_global_config()
+    profile = root / "agent.json"
+    original = json.dumps({"alias": "custom", "skills": skills})
+    profile.write_text(original)
+    result = runner.invoke(app, ["setup", "--no-skills", "--name", "updated"])
+    assert result.exit_code != 0
+    assert "skills must be a list" in str(result.exception)
+    assert profile.read_text() == original
 
 
 @pytest.mark.parametrize("skip_import", [False, True])

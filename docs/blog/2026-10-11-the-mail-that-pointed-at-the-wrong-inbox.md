@@ -33,7 +33,7 @@ The mail says so too: save this whole email as `handoff.eml`, or paste it into
 ## Two things the first real test caught
 
 The unit tests passed on the first try. Then we ran the actual flow: send a
-handoff to `aaron.xie@mail.openonion.ai`, save it with
+handoff to `ellis.yew@example.org`, save it with
 `co email read 705 > handoff.eml.txt`, and open the file. It failed twice, in two
 different ways.
 

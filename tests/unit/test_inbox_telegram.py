@@ -54,7 +54,7 @@ def update(*, text="@OpsBot look at the deploy", chat_type="supergroup", entitie
         "message_id": message_id,
         "date": 1756808267,
         "chat": {"id": -100123, "type": chat_type},
-        "from": sender or {"id": 4242, "is_bot": False, "first_name": "Aaron", "last_name": "Xi"},
+        "from": sender or {"id": 4242, "is_bot": False, "first_name": "Ellis", "last_name": "Yew"},
         "text": text,
     }
     if entities is not None:
@@ -93,7 +93,7 @@ class TestAnUpdateBecomesAMessage:
         assert record["id"] == "-100123.55"
         assert record["chat"] == "-100123"
         assert record["sender"] == "4242"
-        assert record["sender_name"] == "Aaron Xi"
+        assert record["sender_name"] == "Ellis Yew"
         assert record["text"] == "@OpsBot look at the deploy"
         assert record["kind"] == "text"
         assert record["mentioned"] is True

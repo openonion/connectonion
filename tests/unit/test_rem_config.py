@@ -26,15 +26,15 @@ def test_a_value_the_owner_set_is_kept_even_if_it_was_once_a_default(tmp_path):
 def test_the_daily_cap_leaves_room_for_a_manual_sync_after_a_full_night(tmp_path):
     """The owner's notebook used 26 of 30 attempts by 06:00 and a manual sync takes
     about 9, so a run during the day hit the cap. The owner chose a higher cap
-    (#2032): 50, and a notebook still on the old 30 reads as 50."""
+    (Sprint 1): 200, and a notebook still on the old 30 reads as 200."""
     import yaml
     from connectonion.rem.config import default_config, prepare, read_config, set_config
-    assert default_config()["limits"]["runner_calls_per_day"] == 50
+    assert default_config()["limits"]["runner_calls_per_day"] == 200
     prepare(tmp_path)
     old = default_config()
     old["limits"]["runner_calls_per_day"] = 30
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(old))
-    assert read_config(tmp_path)["limits"]["runner_calls_per_day"] == 50
+    assert read_config(tmp_path)["limits"]["runner_calls_per_day"] == 200
     set_config(tmp_path, ["limits.runner_calls_per_day", "30"])
     assert read_config(tmp_path)["limits"]["runner_calls_per_day"] == 30
 
@@ -58,7 +58,7 @@ def test_a_new_notebook_runs_on_codex():
     Claude Code and announced ~460M input tokens on the user's Claude plan."""
     from connectonion.rem.config import default_config
     config = default_config()
-    assert (config["runner"], config["model"]) == ("codex", "gpt-6-luna")
+    assert (config["runner"], config["model"]) == ("codex", "gpt-6.1-sol")
 
 
 def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeypatch):
@@ -171,7 +171,74 @@ def test_daily_translations_limit_defaults_and_validates(tmp_path):
     old = default_config()
     del old['limits']['translations_per_day']
     (tmp_path / 'config.yaml').write_text(yaml.safe_dump(old))
-    assert read_config(tmp_path)['limits']['translations_per_day'] == 10
+    assert read_config(tmp_path)['limits']['translations_per_day'] == 100
     assert set_config(tmp_path, ['limits.translations_per_day', '3'])['limits']['translations_per_day'] == 3
     with pytest.raises(RemError, match='positive integers'):
         set_config(tmp_path, ['limits.translations_per_day', '0'])
+
+
+def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config, set_config
+    old = default_config()
+    old.pop("models", None)
+    old["model"] = "gpt-6-luna"
+    saved = yaml.safe_dump(old)
+    (tmp_path / "config.yaml").write_text(saved)
+    assert read_config(tmp_path)["model"] == "gpt-6.1-sol"
+    assert read_config(tmp_path)["models"] == {"summary": "gpt-6-luna"}
+    assert (tmp_path / "config.yaml").read_text() == saved
+    set_config(tmp_path, ["model", "gpt-6-luna"])
+    assert read_config(tmp_path)["model"] == "gpt-6-luna"
+
+
+def test_summary_model_setting_is_validated_and_does_not_check_page_tier(tmp_path, monkeypatch):
+    import pytest
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import read_config, set_config
+    from connectonion.rem.files import RemError
+    monkeypatch.setattr("connectonion.rem.tier.check_and_record", lambda *a: pytest.fail("page tier check"))
+    result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "config", "set", "models.summary", "gpt-6-luna"])
+    assert result.exit_code == 0, result.output
+    assert read_config(tmp_path)["models"]["summary"] == "gpt-6-luna"
+    with pytest.raises(RemError, match="summary"):
+        set_config(tmp_path, ["models.summary", " "])
+
+
+def test_config_and_status_show_model_roles(tmp_path):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem.config import set_config
+    set_config(tmp_path, ["schedule.timezone", "UTC"])
+    for command in ("config", "status"):
+        result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), command])
+        assert result.exit_code == 0, result.output
+        assert any("gpt-6.1-sol" in line and "gpt-6-luna" in line and "summar" in line.lower()
+                   for line in result.output.splitlines()), result.output
+
+
+def test_summary_default_stays_compatible_with_claude_fallback(tmp_path, monkeypatch):
+    import yaml
+    from connectonion.rem.config import default_config, prepare, read_config, set_config
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: (
+        ("Codex is not installed", "install codex") if config["runner"] == "codex" else ("", "")))
+    root = tmp_path / "fresh"
+    prepare(root)
+    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    old = default_config()
+    old.update(runner="claude-code", model="claude-sonnet-5-5")
+    old.pop("models")
+    (root / "config.yaml").write_text(yaml.safe_dump(old))
+    assert read_config(root)["models"]["summary"] == "claude-sonnet-5-5"
+    set_config(root, ["models.summary", "default"])
+    assert read_config(root)["models"]["summary"] == "default"
+
+
+def test_runner_change_keeps_summary_compatible_unless_explicit(tmp_path):
+    from connectonion.rem.config import set_config
+    settings = set_config(tmp_path, ["runner", "claude-code"])
+    assert settings["models"]["summary"] == settings["model"] == "default"
+    set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
+    settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6.1-sol"])
+    assert settings["models"]["summary"] == "claude-sonnet-5-5"

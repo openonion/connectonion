@@ -1,0 +1,2 @@
+version: v1.9.3rc28
+no_visual_change: "Backend and CLI-text repair candidate: REM source rotation continues past a failed source, deleted queued mail leaves the queue and is counted, Outlook reads use immutable ids, failure records keep only class and HTTP status, and a launchd wake job opens a closed Codex desktop at saved REM times. Only plain-text lines in co rem status and sync summaries change; reader HTML templates, CSS, navigation and source-popup structure are unchanged. Dependency bumps pyasn1 0.6.5 and pypdf 6.21.4."

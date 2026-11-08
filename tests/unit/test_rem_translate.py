@@ -57,6 +57,82 @@ def test_a_changed_page_makes_its_translation_stale_and_it_is_made_again(noteboo
     assert len(calls) == 2 and "CEO" in calls[1]["page"]
 
 
+@pytest.mark.parametrize('target,changed', [
+    ('gmail:abc', 'gmail:other'),
+    ('outlook:fixture-a', 'outlook:fixture-b'),
+    ('codex:session:4-abcd1234', 'codex:session:4-abcd5678'),
+    ('claude-code:session:4', 'claude-code:session:5'),
+    ('file:/fixture/notes.md@' + 'a' * 40, 'file:/fixture/notes.md@' + 'b' * 40),
+    ('file:/fixture/notes.md#sha256:' + 'a' * 64, 'file:/fixture/notes.md#sha256:' + 'b' * 64),
+    ('https://example.com/a?q=1#part', 'https://example.com/a?q=2#part'),
+    ('https://example.com/a#one', 'https://example.com/a#two'),
+])
+def test_cached_translation_cannot_rebind_a_citation(notebook, monkeypatch, target, changed):
+    from connectonion.rem.files import atomic_write
+    record = 'people/avery-lin.md'
+    original = PAGE.replace('gmail:abc', target)
+    (notebook / record).write_text(original)
+    translated = CHINESE.replace('gmail:abc', changed)
+    saved = f'<!-- co rem translation of {record} sha256:{tr.digest(original)} -->\n' + translated
+    path = tr.translation_path(notebook, record, 'zh')
+    atomic_write(path, saved)
+    monkeypatch.setattr('connectonion.rem.runner.run_task', lambda *a: pytest.fail('cache read ran a model'))
+    assert tr.cached(notebook, record, 'zh') is None
+    assert tr.cached_languages(notebook, record) == {}
+    assert path.read_bytes() == saved.encode() and (notebook / record).read_bytes() == original.encode()
+
+
+@pytest.mark.parametrize('change', ['swapped', 'missing', 'added', 'wrong_record'])
+def test_reader_omits_cached_translations_with_mismatched_sources(notebook, monkeypatch, change):
+    from connectonion.rem.files import atomic_write
+    from connectonion.rem.reader import snapshot
+    record = 'people/avery-lin.md'
+    original = PAGE.replace('founder [1]', 'founder [1] [3]') + '- [3] outlook:other — follow-up\n'
+    translated = original.replace('founder', '创始人')
+    header_record = record
+    if change == 'swapped':
+        translated = translated.replace('gmail:abc', 'outlook:other').replace('[3] outlook:other', '[3] gmail:abc')
+    elif change == 'missing':
+        translated = translated.replace('- [3] outlook:other — follow-up\n', '')
+    elif change == 'added':
+        translated += '- [3] gmail:other — duplicate\n'
+    else:
+        header_record = 'people/other.md'
+    (notebook / record).write_text(original)
+    saved = f'<!-- co rem translation of {header_record} sha256:{tr.digest(original)} -->\n' + translated
+    path = tr.translation_path(notebook, record, 'zh')
+    atomic_write(path, saved)
+    monkeypatch.setattr('connectonion.rem.runner.run_task', lambda *a: pytest.fail('snapshot ran a model'))
+    row = next(row for row in snapshot(notebook)['records'] if row['path'] == record)
+    assert row['translations'] == {}
+    assert row['text'] == original
+    assert path.read_bytes() == saved.encode() and (notebook / record).read_bytes() == original.encode()
+
+
+def test_explicit_translation_replaces_bad_cache_with_canonical_sources(notebook, monkeypatch):
+    from connectonion.rem.files import atomic_write
+    record = 'people/avery-lin.md'
+    path = tr.translation_path(notebook, record, 'zh')
+    atomic_write(path, f'<!-- co rem translation of {record} sha256:{tr.digest(PAGE)} -->\n'
+                 + CHINESE.replace('gmail:abc', 'gmail:wrong'))
+    calls = []
+    monkeypatch.setattr('connectonion.rem.runner.run_task', model(CHINESE, calls))
+    assert tr.translate(notebook, record, 'zh') == CHINESE
+    assert len(calls) == 1 and '## Sources' not in calls[0]['page']
+    assert tr.cached(notebook, record, 'zh') == CHINESE
+    assert (notebook / record).read_text() == PAGE
+
+
+@pytest.mark.parametrize('heading', ['## sources', '## Sources (earlier)', '## Sou<!-- -->rces'])
+def test_cached_translation_cannot_prepend_a_reader_sources_section(notebook, heading):
+    from connectonion.rem.files import atomic_write
+    record = 'people/avery-lin.md'
+    translated = CHINESE.replace('## Sources', heading + '\n- [1] gmail:wrong — wrong original\n\n## Sources')
+    atomic_write(tr.translation_path(notebook, record, 'zh'),
+                 f'<!-- co rem translation of {record} sha256:{tr.digest(PAGE)} -->\n' + translated)
+    assert tr.cached(notebook, record, 'zh') is None
+
+
 @pytest.mark.parametrize('old_version', [None, 1])
 def test_an_old_prompt_cache_is_stale_and_regenerated(notebook, monkeypatch, old_version):
     from connectonion.rem.files import atomic_write
@@ -519,13 +595,17 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
     assert len(calls) == attempts
 
 
-def test_daily_rechecks_runner_budget_after_a_translation_repair(notebook, monkeypatch):
+def test_daily_rechecks_translation_budget_after_a_repair(notebook, monkeypatch):
+    import os
     from connectonion.rem.config import read_config, set_config
     from connectonion.rem.daily import _translate_changed
-    records = ['people/avery-lin.md', 'people/mara-ostrowski.md']
-    for record in records:
+    records = ['people/avery-lin.md', 'people/mara-ostrowski.md', 'people/fern.md']
+    for index, record in enumerate(records):
         (notebook / record).write_text('# Avery Lin\n\nA draft [12].\n')
-    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '2', 'limits.runner_calls_per_day', '2'])
+        os.utime(notebook / record, (100 - index, 100 - index))
+    # Translations now have their own cap. Repairs spend that cap immediately,
+    # regardless of the smaller investigation allowance; newest pages go first.
+    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '3', 'limits.runner_calls_per_day', '1'])
     calls = []
 
     def run(workspace, *args):
@@ -537,9 +617,9 @@ def test_daily_rechecks_runner_budget_after_a_translation_repair(notebook, monke
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     maintenance = {}
     _translate_changed(notebook, read_config(notebook), maintenance, records, None, lambda text: None)
-    assert maintenance['translations']['pages'] == [{'page': records[0], 'outcome': 'translated'}]
-    assert len(calls) == 2
-    assert tr.cached(notebook, records[1], 'zh') is None
+    assert maintenance['translations']['pages'] == [{'page': record, 'outcome': 'translated'} for record in records[:2]]
+    assert len(calls) == tr.attempts_today(notebook) == 3
+    assert tr.cached(notebook, records[2], 'zh') is None
 
 
 def test_issue_numbers_at_line_start_are_prose_not_headings():

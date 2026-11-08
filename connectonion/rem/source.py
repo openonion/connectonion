@@ -96,6 +96,8 @@ class Batch:
     skipped: int = 0        # user-slot messages not read: the client's own machinery
     unrecognised: int = 0   # of those, ones whose shape we do not know -- the alarm
     changed_files: list[str] = field(default_factory=list)  # skipped, with their old checkpoints intact
+    missing_files: list[str] = field(default_factory=list)  # ephemeral sessions, counted in investigation coverage
+    dropped_missing: int = 0  # queued mail that the provider now reports as missing
 
     @property
     def unreadable(self) -> bool:
@@ -428,7 +430,13 @@ def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
 
 @contextmanager
 def _read_rollout(path: Path, old: dict, kind: str):
-    with path.open("rb") as source:
+    try:
+        handle = path.open("rb")
+    except FileNotFoundError:
+        # Codex may archive/remove a rollout after it was listed or statted.
+        yield None, {"missing": True}, 0, None
+        return
+    with handle as source:
         with _rollout(source, old, kind) as opened:
             yield opened
 
@@ -481,26 +489,36 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     kind = subscription.get("kind", "codex")
     if kind not in KINDS:
         raise RemError(f"No importer for source kind {kind!r}")
-    files = sorted(((path, path.stat()) for path in source_files(subscription)),
-                   key=lambda pair: pair[1].st_mtime_ns)
-    return _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout, _digest_to)
+    files, missing = [], []
+    root = Path(subscription["root"])
+    for path in source_files(subscription):
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            # An ephemeral rollout can disappear before its first read too.
+            missing.append(path.relative_to(root).as_posix())
+            continue
+        files.append((path, stat))
+    files.sort(key=lambda pair: pair[1].st_mtime_ns)
+    batch = _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout)
+    batch.missing_files = missing + batch.missing_files
+    return batch
 
 
 def collect_data(data: bytes, path: Path, stat, subscription: dict, progress: dict,
                  max_items: int = 4_000, max_chars: int = 20_000_000, *, unfamiliar=None) -> Batch:
     """The same checkpoints and batch limits, over one already-read transcript."""
     return _collect_files(subscription, progress, max_items, max_chars, [(path, stat)],
-                          lambda path, old, kind: _read_rollout_data(data, old, kind),
-                          lambda path, offset: hashlib.sha256(memoryview(data)[:offset]).hexdigest(), unfamiliar)
+                          lambda path, old, kind: _read_rollout_data(data, old, kind), unfamiliar=unfamiliar)
 
 
-def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, digest_to, unfamiliar=None):
+def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, unfamiliar=None):
     kind = subscription.get("kind", "codex")
     parse = KINDS[kind]["message"]
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
     skipped = unrecognised = 0
-    changed_files = []
+    changed_files, missing_files = [], []
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
     # lookback and walks forward is also the only way to exercise, in a test, what a
@@ -525,7 +543,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
             continue
         with read_rollout(path, old, kind) as (source, meta, offset, digest):
             if source is None:
-                changed_files.append(name)
+                (missing_files if meta.get("missing") else changed_files).append(name)
                 continue
             if meta.get("skip") or (subscription.get("project") and kind == "codex"
                                     and meta.get("cwd") != subscription["project"]):
@@ -574,7 +592,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                         held.append((item, size, offset))
                     else:
                         if len(result) >= max_items or used + size > max_chars:
-                            return Batch(result, updated, skipped, unrecognised, changed_files)
+                            return Batch(result, updated, skipped, unrecognised, changed_files, missing_files=missing_files)
                         result.append(item)
                         used += size
                 offset += len(line)
@@ -587,22 +605,23 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                     if len(result) >= max_items or used + size > max_chars:
                         # Stop before this message and leave the file's cursor on it, so
                         # the rest of the session is the next batch rather than lost.
-                        updated[name] = {**updated[name], "offset": at, "digest": digest_to(path, at)}
-                        return Batch(result, updated, skipped, unrecognised, changed_files)
+                        updated[name] = {**updated[name], "offset": at, "digest": _digest_to(source, at)}
+                        return Batch(result, updated, skipped, unrecognised, changed_files, missing_files=missing_files)
                     result.append(item)
                     used += size
-    return Batch(result, updated, skipped, unrecognised, changed_files)
+    return Batch(result, updated, skipped, unrecognised, changed_files, missing_files=missing_files)
 
 
-def _digest_to(path: Path, offset: int) -> str:
-    """The checkpoint hash of a file's first `offset` bytes, in chunks."""
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        left = offset
-        while left > 0:
-            chunk = source.read(min(1_000_000, left))
-            if not chunk:
-                break
-            digest.update(chunk)
-            left -= len(chunk)
+def _digest_to(source, offset: int) -> str:
+    """Hash the already-open rollout: it may have been unlinked since opening."""
+    position = source.tell()
+    source.seek(0)
+    digest, left = hashlib.sha256(), offset
+    while left > 0:
+        chunk = source.read(min(1_000_000, left))
+        if not chunk:
+            break
+        digest.update(chunk)
+        left -= len(chunk)
+    source.seek(position)
     return digest.hexdigest()

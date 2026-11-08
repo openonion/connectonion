@@ -33,12 +33,42 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     counts = notebook(root, found)
     lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
-             *_mailboxes(root), *_archive(value, spell), ""]
-    lines += [*_budget(root, value, verbose), *_last_runs(root)]
+             *_mailboxes(root, spell), *_archive(value, spell), ""]
+    if value.get('models'):
+        lines += [rem_look.section('Models', value['models'])]
+    if value.get('schedule_runner'):
+        lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
+    if value.get('last_turn'):
+        turn = value['last_turn']
+        exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
+        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        if turn.get('started_codex_after_s') is not None:
+            lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
+        if turn.get('reason'):
+            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
+            if turn['result'] == 'failed':
+                lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
+        if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
+            lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
+    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
+
+
+def _tonight(value):
+    night = value.get('tonight')
+    if night is None:
+        return []
+    counts = f"{night['items']} items · {night['drafts']} drafts · {night['already_handled']} already handled · {night['tasks']} tasks"
+    rest = f"{night['could_not_prepare']} could not be prepared"
+    if night['no_reply']:
+        rest += f" · {night['no_reply']} no reply needed"
+    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto=false)'
+    return [rem_look.section('Tonight', counts), rem_look.follow(highlight(rest), glyph=''),
+            rem_look.follow(highlight('tasks ' + mode), glyph=''),
+            *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
 
 
 def _waiting(root, found: dict) -> list[str]:
@@ -111,14 +141,18 @@ def status_next(value: dict) -> list:
     if not value.get("configured"):
         return ["init"]
     if str(value.get("state", "")).startswith("Background needs attention"):
+        if "run `co rem stop`" in value["state"]:
+            return ["stop"]
+        if "Codex missed the " in value["state"]:
+            return ["start"]
         return ["logs"] if value.get("next_run") else ["start"]
-    # The first thing under "To write next", when there is one (#2008): the
-    # dashboard said `investigate me` there and then "Next: co rem logs".
+    if str(value.get("state", "")).startswith(("Running", "Scheduled")):
+        return ["logs"]
     if value.get("root"):
         _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
         if arguments:
             return arguments
-    return ["logs"] if str(value.get("state", "")).startswith("Running") else ["start"]
+    return ["logs"] if str(value.get("state", "")).startswith(("Running", "Scheduled")) else ["start"]
 
 
 def notebook(root, found: dict | None = None) -> dict:
@@ -143,19 +177,23 @@ def _private_unwritten(root) -> int:
                for record in book.list("projects"))
 
 
-def next_to_write(root, counts: dict) -> tuple:
+def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
     """(what to write next, the arguments of the command that writes it), or ('', [])."""
     from ...rem.files import Notebook, read_json, state_path
     from ...rem.merge import mapped_only
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
     book = Notebook(root)
     if owner and book.path(owner).is_file() and mapped_only(book.read(owner)):
+        if scheduled:
+            return "your own page queued for tonight", []
         return "your own page", ["investigate", "me"]
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
+            if scheduled:
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
 
@@ -196,6 +234,10 @@ def _header(value: dict, program: str) -> list[str]:
     head = head[:1].lower() + head[1:]
     # A state that is not running already says nothing is scheduled.
     tail = " · no run scheduled" if not value.get("next_run") and head.startswith("running") else ""
+    worker = value.get("worker") or {}
+    if (worker.get("last_scheduled_outcome") == "budget_exhausted"
+            and str(worker.get("last_scheduled_slot", ""))[:10] == value.get("date")):
+        head += " · daily cap reached"
     lines = [style.heading(f"{program} status") + " · " + highlight(head + tail)]
     return lines + ["  " + highlight(part.strip()) for part in rest.split("; ") if part.strip()]
 
@@ -205,7 +247,9 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     where = str(value["root"]).replace(str(Path.home()), "~", 1)
     built = "  (not built yet)" if not value.get("configured") else ""
     lines = [rem_look.section("Notebook", style.path(where) + built)]
-    rows = [(label, counts[category]) for category, label in CATEGORIES]
+    coverage = value.get("people_coverage", {})
+    rows = [(label, {"written": coverage.get("covered", 0), "mapped": coverage.get("total", 0)}
+             if category == "people" else counts[category]) for category, label in CATEGORIES]
     wide = max(len(f"{row['mapped']:,}") for _, row in rows)
     for label, row in rows:
         done, total = row["written"], row["mapped"]
@@ -214,14 +258,36 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
                                   + _number(done).rjust(len(_number(done)) + wide - len(f"{done:,}"))
                                   + style.muted(" of ") + _number(total)
                                   + " " * (wide - len(f"{total:,}")) + "  " + style.muted(share.rjust(4))))
-    lines.append(rem_look.follow(style.muted(f"{rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
+    lines.append(rem_look.follow(style.muted(f"Other rows: {rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
                                  glyph=""))
+    lines.append(rem_look.row("People coverage", "pages for correspondents meeting the page rule in the archive"))
+    if coverage.get("missing"):
+        lines.append(rem_look.follow(style.muted(
+            f"{coverage['missing']} people you write to have no page yet"), glyph=""))
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
-    what, arguments = next_to_write(root, counts)
+    scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))
+    what, arguments = next_to_write(root, counts, scheduled=scheduled)
     if what:
         lines.append(rem_look.row("To write next", what))
-        lines.append(rem_look.follow(style.command(spell(arguments))))
+        if arguments:
+            lines.append(rem_look.follow(style.command(spell(arguments))))
+        if scheduled and not arguments:
+            lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
+    for language, coverage in value.get("translation_coverage", {}).items():
+        done, total = coverage["translated"], coverage["total"]
+        if not coverage.get("requested"):
+            outcome = "not requested"
+            from ...rem.config import read_config
+            requested = list(dict.fromkeys([*read_config(root)["languages"], language]))
+            command = ["config", "set", "languages", ",".join(requested)]
+        elif scheduled:
+            outcome, command = f"{coverage['queued']} queued for tonight", []
+        else:
+            outcome, command = "schedule off", ["start"]
+        lines.append(rem_look.row(language, f"{done} of {total} pages translated · {outcome}"))
+        if command:
+            lines.append(rem_look.follow(style.command(spell(command))))
     return lines
 
 
@@ -233,29 +299,35 @@ def _today(root, value: dict) -> list[str]:
     changed = len({page for record in recent for page in record.get("changed") or []})
     items = sum(record.get("items") or 0 for record in recent if isinstance(record.get("items"), int))
     runs = value.get("batches_today", 0)
+    warning = value.get('schedule_failure')
+    action = ('Resolve the blocker, then run co rem start.' if warning and warning['code'] == 'blocked'
+              else 'Retried automatically.')
+    failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
     if not runs:
-        return [rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
+        return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
     spent = ("tokens unknown" if usage.get("input_tokens") is None else
              f"{_compact(usage['input_tokens'])} tokens in · {_compact(usage.get('output_tokens') or 0)} out")
     missing = usage.get("runs_without_usage") or 0
     if missing and usage.get("input_tokens") is not None:
         spent += f" ({_plural(missing, 'run')} without usage)"
-    return [rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
+    return [*failure, rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
                              f"{_plural(runs, 'run')}"),
             rem_look.follow(spent, glyph="")]
 
 
-def _mailboxes(root) -> list[str]:
+def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:
     """One line a mailbox: ✓ read, ✗ not, and the command that fixes it on the line under."""
     from ...rem.service import MAIL_KINDS, mailbox_state, subscriptions
     sources, lines = subscriptions(root), [style.label("Mailboxes")]
     for kind in MAIL_KINDS:
-        state, fix = mailbox_state(kind, sources.get(kind, {}))
-        mark = style.ok(rem_look.FINE) if state == "read by the daily round" else style.warn(rem_look.BROKEN)
+        source = sources.get(kind, {})
+        state, fix = mailbox_state(kind, source, root=root)
+        mark = style.ok(rem_look.FINE) if not fix and not source.get("unsubscribed") else style.warn(rem_look.BROKEN)
         lines.append(rem_look.row(kind.title(), highlight(state), mark))
         if fix:
-            lines.append(rem_look.follow(style.command(fix)))
+            command = spell(["logs"]) if fix == "co rem logs" else fix
+            lines.append(rem_look.follow(style.command(command)))
     return lines
 
 
@@ -270,9 +342,12 @@ def _archive(value: dict, spell=lambda arguments: "co rem " + " ".join(arguments
     if not archive.get("stalled"):
         return [rem_look.row("Archive", saved + style.muted(" · saving"), style.muted(rem_look.RESUMES))]
     since = str(archive.get("updated", ""))[:16].replace("T", " ")
+    resume = ("queued to resume from saved bodies on the next scheduled run"
+              if value.get("next_run") and value.get("worker", {}).get("enabled")
+              else "background updates resume it from saved bodies when enabled")
     return [rem_look.row("Archive", saved + " · " + style.warn(f"stalled since {since}"), style.warn(rem_look.RESUMES)),
             rem_look.follow(style.muted("investigations ask the mail servers until it is done"), glyph=""),
-            rem_look.follow(style.command(spell(["sync"])) + style.muted(" resumes it from the saved bodies"))]
+            rem_look.follow(style.muted(resume), glyph="")]
 
 
 def _last_run(run, zone) -> str:
@@ -282,6 +357,8 @@ def _last_run(run, zone) -> str:
         return style.muted("none yet")
     what = " ".join(filter(None, [run.get("phase") or "sync", run.get("record")]))
     outcome = str(run.get("outcome", "unknown")).replace("_", " ")
+    if run.get("outcome") == "budget_exhausted":
+        outcome = "daily cap reached"
     started = datetime.fromisoformat(run["started_at"]).astimezone(zone).strftime("%Y-%m-%d %H:%M")
     detail = [highlight(started), _plural(len(run.get("changed") or []), "page") + " changed"]
     tokens = (run.get("usage") or {}).get("input_tokens")

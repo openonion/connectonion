@@ -45,7 +45,7 @@ co gmail search "from:alice@example.com is:unread"   # -n to widen
 co gmail sent -n 20
 ```
 
-`co outlook` takes the same shape, and adds `download`, `scheduled`, `cancel`, `contact`:
+`co outlook` takes the same shape, and adds `download`, `drafts`, `send-draft`, `delete-draft`, `scheduled`, `cancel`, `contact`:
 
 ```bash
 co outlook                   # bare command = inbox
@@ -174,6 +174,23 @@ co outlook reply 3 "On it" --listing <listing-id> --at +30m
 co outlook scheduled          # what is queued, numbered
 co outlook cancel 1           # pull one back before it goes
 ```
+
+When the user wants to finish an email themselves ("draft it, I'll send it"),
+save it to their Outlook Drafts instead of sending. `--draft` takes the same
+`--cc`, `--bcc` and `--attach`; a reply draft stays in its thread. It prints a
+link that opens the draft in Outlook. Nothing is sent, and `--draft` with `--at`
+is refused:
+
+```bash
+co outlook send bob@example.com "Intro" "Body for them to edit" --draft
+co outlook reply 3 "Draft reply" --listing <listing-id> --draft
+co outlook drafts             # unsent drafts, newest first, numbered, each with its link
+co outlook send-draft 1                # send it as it now reads in Outlook
+co outlook send-draft 1 --at +2h       # or schedule it; then it shows in co outlook scheduled
+co outlook delete-draft 2              # refuses anything that is not a draft
+```
+
+Send a draft only after the user has said to; they usually edit it first.
 
 Outlook can also save an email's attachments: `co outlook download 3 --listing <listing-id> --to ~/Downloads`.
 
@@ -309,7 +326,7 @@ co email inbox -n 20 -u
 co email inbox -n 1000 --offset 1000  # the next page of older mail
 co email read 41               # the id in the # column, not the row position
 co email send bob@example.com "Subject" "Body"
-co email send bob@example.com "Subject" "Body" --from aaron@openonion.ai
+co email send bob@example.com "Subject" "Body" --from ellis.work@example.org
 co email addresses             # every address this account owns; default marked
 co email sent -n 20 --to bob@example.com
 co email sent read 12
@@ -340,7 +357,7 @@ guarded failure: the server answers 403, nothing is sent, and the message ends w
 `See your addresses: co email addresses`. An account with no owned addresses gets an
 empty listing (exit `0`) and the pointer `co email name <name>` to claim one.
 
-Account admin: `co email name aaron` checks a custom address (`--buy` claims it,
+Account admin: `co email name ellis` checks a custom address (`--buy` claims it,
 from credits) and `co email upgrade plus|pro` raises the quota.
 
 ## Exit codes and what to do about them

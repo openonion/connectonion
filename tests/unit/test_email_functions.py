@@ -76,7 +76,7 @@ def test_send_email_success(mock_post):
     assert call_args[1]["headers"]["Idempotency-Key"] == "send-test-123"
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 @patch('requests.post')
 def test_send_email_not_activated(mock_post):
     """Test email sending when backend returns not activated error."""
@@ -111,7 +111,7 @@ def test_send_email_rejects_a_foreign_account_before_post(monkeypatch):
     foreign = "0x" + "2" * 64
     token = _token_for(foreign)
     monkeypatch.setenv("OPENONION_API_KEY", token)
-    monkeypatch.setenv("AGENT_EMAIL", "agent@mail.openonion.ai")
+    monkeypatch.setenv("AGENT_EMAIL", "agent@example.org")
     monkeypatch.setattr(
         credentials,
         "project_identity",
@@ -151,7 +151,7 @@ def test_send_email_uses_explicit_env_from_a_deep_subdirectory(
     home.mkdir()
     (project / ".env").write_text(
         "OPENONION_API_KEY=project-token\n"
-        "AGENT_EMAIL=project@mail.openonion.ai\n"
+        "AGENT_EMAIL=project@example.org\n"
     )
     monkeypatch.chdir(nested)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
@@ -177,7 +177,7 @@ def test_send_email_keeps_the_global_keys_fallback(mock_post, tmp_path, monkeypa
     (home / ".co").mkdir(parents=True)
     (home / ".co" / "keys.env").write_text(
         "OPENONION_API_KEY=global-token\n"
-        "AGENT_EMAIL=global@mail.openonion.ai\n"
+        "AGENT_EMAIL=global@example.org\n"
     )
     monkeypatch.chdir(project)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
@@ -202,12 +202,12 @@ def test_send_email_keeps_process_environment_precedence(
     home.mkdir()
     (project / ".env").write_text(
         "OPENONION_API_KEY=project-token\n"
-        "AGENT_EMAIL=project@mail.openonion.ai\n"
+        "AGENT_EMAIL=project@example.org\n"
     )
     monkeypatch.chdir(project)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setenv("OPENONION_API_KEY", "process-token")
-    monkeypatch.setenv("AGENT_EMAIL", "process@mail.openonion.ai")
+    monkeypatch.setenv("AGENT_EMAIL", "process@example.org")
     mock_post.return_value = MagicMock(
         status_code=200,
         json=lambda: {"message_id": "process-message"},
@@ -221,7 +221,7 @@ def test_send_email_keeps_process_environment_precedence(
     assert mock_post.call_args.kwargs["headers"]["Authorization"] == "Bearer process-token"
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 def test_invalid_email_address():
     """Test with invalid email address."""
     result = send_email("not-an-email", "Test", "Message")
@@ -229,7 +229,7 @@ def test_invalid_email_address():
     assert result["error"] == "Invalid email address: not-an-email"
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 @patch('requests.post')
 def test_send_email_rate_limit(mock_post):
     """Test rate limit handling."""
@@ -243,7 +243,7 @@ def test_send_email_rate_limit(mock_post):
     assert result["error"] == "Rate limit exceeded"
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 @patch('requests.post')
 def test_send_email_keeps_server_ids_on_a_stable_json_error(mock_post):
     mock_response = MagicMock()
@@ -270,7 +270,7 @@ def test_send_email_keeps_server_ids_on_a_stable_json_error(mock_post):
     }
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 @patch('requests.post')
 def test_send_email_preserves_a_non_retryable_backend_verdict(mock_post):
     mock_response = MagicMock()
@@ -297,7 +297,7 @@ def test_send_email_preserves_a_non_retryable_backend_verdict(mock_post):
     assert result["idempotency_key"] == "send-old"
 
 
-@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
+@patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@example.org'})
 @patch('requests.post', side_effect=requests.exceptions.Timeout)
 def test_send_email_timeout_returns_the_key_for_a_safe_retry(mock_post):
     result = send_email(

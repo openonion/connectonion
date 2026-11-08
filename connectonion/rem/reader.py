@@ -1,9 +1,7 @@
-"""Disposable HTML view of the notebook. Markdown stays the store; this is a snapshot.
+"""Disposable notebook reader: Today first, full records on demand.
 
-A page opened from file:// cannot read the Markdown next to it (browsers block
-fetch from file URLs), so the notebook is embedded into one self-contained HTML
-file at render time. The template is a plain client of that embedded object; a
-served site later would hand it the same object over HTTP instead.
+File snapshots carry inert JSON for offline navigation. The live shell defers
+that same full snapshot to an authenticated sibling endpoint.
 """
 
 import hashlib
@@ -17,7 +15,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import CATEGORIES, MAP_DAYS, Notebook, RemError
+from .files import CATEGORIES, MAP_DAYS, Notebook, RemError, read_json, state_path
 from .service import run_logs, seen_outcome, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
@@ -95,10 +93,10 @@ def index_rows(root: Path) -> dict:
     naming the command that rebuilds it.
     """
     try:
-        from . import store
+        from .store import people_table
     except ImportError:
         return {}
-    return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
+    return {row["record"]: row for row in people_table(root, include_unlisted=True) or []}
 
 
 def contact_candidates(root: Path) -> tuple[list[dict], dict]:
@@ -128,7 +126,7 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
-def snapshot(root: Path, local: bool = False) -> dict:
+def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook.
 
     `local`: this machine's own reader (the file snapshot, the loopback live
@@ -138,22 +136,32 @@ def snapshot(root: Path, local: bool = False) -> dict:
     from .project_pages import private
     from .reviews import listing
     from .sessions import mentions, reader_fields
+    from .reader_model import (session_detail, organisation_fields, organisation_members,
+                               organisation_obligations, PRIVATE)
     notebook = Notebook(root)
     records = []
-    for record in notebook.list():
+    paths = [path for category in CATEGORIES if category not in ('sessions', 'logs', 'notes')
+             for path in notebook.list(category)] if today else notebook.list()
+    for record in paths:
         text = notebook.read(record)
+        private_topic = record.startswith('knowledge/') and bool(PRIVATE.search(text.split('\n', 1)[0]))
+        if private_topic and not local:
+            continue
         updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
-                        "updated": updated.isoformat(timespec="seconds")})
+                        "updated": updated.isoformat(timespec="seconds"),
+                        **({'private': True} if private_topic else {})})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
     # What is counted, written, and when it was last active comes from one
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages, written
-    found = pages(root)
-    mail, index = mail_facts(root), index_rows(root)
+    found = pages(root, records=records)
+    mail, index = mail_facts(root), {} if today else index_rows(root)
+    record_paths = {record['path'] for record in records}
     for record in records:
+        record.update(organisation_fields(record, record_paths))
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
             domain = record["title"]
             name = _org_name(domain, record["text"]) or _org_company_name(record["path"], records)
@@ -169,13 +177,17 @@ def snapshot(root: Path, local: bool = False) -> dict:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
         if record["category"] in ("decisions", "principles"):
             record["written"] = written(record["text"])
-        if record["category"] == "projects":
+        if record["category"] == "projects" and not today:
             record["private_project"] = private(record["path"], record["text"])
             from .project_material import page_state
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
+            record.update(session_detail(record["text"], private=local))
     owner = owner_record(root)
+    organisation_members(records, owner)
+    from .org_hierarchy import structure, rollups
+    structure(records, owner)
     people = [record for record in records if record["category"] == "people" and record["path"] != owner]
     mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])
     for record in people:
@@ -193,14 +205,30 @@ def snapshot(root: Path, local: bool = False) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
-    from .reader_model import cited_context, cited_conversations, relationships
-    links = relationships(records)
+    from . import threads
+    from .reader_model import cited_context, cited_conversations, relationships, reply_drafts
+    links = {} if today else relationships(records)
     for record in records:
         record["relations"] = links.get(record["path"], [])
-    contexts = cited_context(root, records, private=local)
+    from .reader_model import graph_snapshot
+    graph = {} if today else graph_snapshot(records, links)
+    from .topic_map import topic_aliases
+    topic_rows = read_json(state_path(root, 'map.json'), {}).get('topics', [])
+    for record in records:
+        if record['category'] == 'knowledge':
+            candidate = next((r for r in topic_rows if r['record'] == record['path']), {})
+            record['topic'] = {'aliases': topic_aliases(record['text']),
+                               'sessions': candidate.get('sessions', 0), 'skills': candidate.get('skills', 0),
+                               'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
+                               'doubtful': candidate.get('doubtful', [])}
+    # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
+    context_records = [{**r, 'text': _today_text(r['text'])} for r in records
+                       if r['category'] in ('people', 'orgs', 'projects')
+                       and not (r.get('needs_review') or r.get('service'))] if today else records
+    contexts = cited_context(root, context_records, budget=3_000_000, private=local)
     from .project_material import stored
     for record in records:
-        if record["category"] != "projects":
+        if today or record["category"] != "projects":
             continue
         for message in stored(root, record["path"]):
             context = contexts.get(message["source"])
@@ -215,7 +243,8 @@ def snapshot(root: Path, local: bool = False) -> dict:
         record["written_in"] = language_of(record["text"])
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
-    candidates, contact_coverage = contact_candidates(root)
+    candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
+    current_status = status(root, include_coverage=False) if today else status(root)
     logs = run_logs(root)
     shown_logs = logs[:20]
     translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
@@ -226,19 +255,98 @@ def snapshot(root: Path, local: bool = False) -> dict:
     home = Path.home().resolve()
     display = ("~" if absolute == home else "~/" + absolute.relative_to(home).as_posix()
                if absolute.is_relative_to(home) else str(absolute))
-    return {"language": read_config(root, validated=False).get("language") or "en",
+    data = {"language": read_config(root, validated=False).get("language") or "en",
             "your_languages": languages["languages"],
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
-            "categories": list(CATEGORIES), "records": records,
+            "categories": list(CATEGORIES), "records": records, "graph": graph,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
-            "source_context": contexts, "conversations": cited_conversations(root, contexts, private=local),
+            "people_coverage": current_status.get("people_coverage"),
+            "drafts": reply_drafts(root, local=local, records=records),
+            "threads": threads.listing(root) if local else {},
+            "mail_versions": threads.observed_versions(root, records) if local else {},
+            "source_context": contexts, "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
-            "status": status(root), "subscriptions": subscriptions(root),
+            "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
-            "reviews": listing(root), "counts": counts(root, found),
+            "first_run_at": logs[-1].get("started_at") if logs else None,
+            "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
+            "counts": counts(root, found),
             "owner": owner}
+    from .project_data import enrich_records
+    data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
+    from .today import queue as today_queue
+    data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    from .night import listing as night_outcomes
+    data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
+    outcomes = {row['key']: row for row in data['night_outcomes']}
+    for row in data['today_queue']:
+        if row['key'] in outcomes:
+            row['outcome'] = outcomes[row['key']]
+    from . import approvals
+    data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
+    data['approval_pending'] = approvals.pending(root) if local else []
+    if not local:
+        data['status']['tonight'].pop('unprepared', None)
+        for row in data['today_queue']:
+            row.pop('reply', None)
+    organisation_obligations(records, data['today_queue'])
+    from .service import notebook_today
+    rollups(records, notebook_today(root))
+    return _today_data(data) if today else data
+
+
+def _today_text(text: str) -> str:
+    """Queue inputs only, retaining citation numbers in the original page's namespace."""
+    sections = re.split(r'(?=^## )', text, flags=re.M)
+    kept = [part for part in sections if re.match(r'## (Facts|Contact|Open threads|Insight)\s*\n', part, re.I)]
+    queue = ''.join(part for part in kept if re.match(r'## Open threads\s*\n', part, re.I))
+    cited = set(re.findall(r'\[(W?\d{1,3})\]', queue))
+    sources = next((part for part in sections if re.match(r'## Sources\s*\n', part, re.I)), '')
+    lines = [line for line in sources.splitlines() if
+             (match := re.match(r'\s*(?:[-*]\s+\[(W?\d{1,3})\]|(\d{1,3})\.)', line))
+             and (match[1] or match[2]) in cited]
+    stamp = re.search(r'^Investigation:[^\n]*', text, re.M)
+    return '\n\n'.join([text.split('\n', 1)[0], *kept,
+                          '## Sources\n' + '\n'.join(lines), stamp[0] if stamp else ''])
+
+
+def _today_data(data: dict) -> dict:
+    """Small, independently usable Today payload; the complete snapshot stays lazy."""
+    fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service',
+              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks')
+    records = [{**{key: r[key] for key in fields if key in r}, 'text': _today_text(r['text']),
+                'translations': {tag: _today_text(text) for tag, text in r.get('translations', {}).items()}}
+               for r in data['records'] if r['category'] not in ('sessions', 'logs', 'notes')]
+    from .reader_model import _source_ids
+    ids = _source_ids([r for r in records if r['category'] in ('people', 'orgs', 'projects')
+                       and not (r.get('needs_review') or r.get('service'))])
+    ids.update(source for draft in data['drafts'] for source in draft.get('sources', []))
+    shell = {key: value for key, value in data.items() if key not in
+             ('records', 'source_context', 'conversations', 'logs', 'contact_candidates', 'contact_coverage', 'reviews')}
+    shell.update(records=records, source_context={key: value for key, value in data['source_context'].items() if key in ids})
+    # The brief needs pass counts and changed-page ids, never run transcripts.
+    shell['brief_logs'] = [{key: run[key] for key in ('started_at', 'finished_at', 'outcome', 'phase', 'items', 'changed', 'sources')
+                           if key in run} for run in data['logs']]
+    for brief, run in zip(shell['brief_logs'], data['logs']):
+        brief['claim_changes'] = run.get('claim_changes', [])
+        brief['failure_reasons'] = _failure_reasons(str(run.get('error', '')))
+        if 'translat' in run.get('phase', ''):
+            brief['translation_failures'] = sum(page.get('outcome') == 'failed' for page in run.get('pages', []))
+    shell['reviews'] = data.get('reviews', [])
+    return shell
+
+
+def _failure_reasons(error: str) -> list[str]:
+    """Safe recovery hints for Today, without copying private runner output."""
+    patterns = (
+        (r'authenticate|authentication|\b40[13]\b|request not allowed',
+         'Model access was refused. Restore access before retrying.'),
+        (r'timeout|timed out', 'A request timed out.'),
+        (r'quota|usage limit|rate limit|\b429\b', 'A model usage limit was reached.'),
+    )
+    return [hint for pattern, hint in patterns if re.search(pattern, error, re.I)]
 
 
 def owner_record(root: Path) -> str:
@@ -248,17 +356,60 @@ def owner_record(root: Path) -> str:
     return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
+def _detail_data(full: dict, shell: dict) -> dict:
+    """Offline detail stores only what the shell does not already carry."""
+    detail = {key: value for key, value in full.items() if key not in shell or value != shell[key]}
+    queued = {record['path']: record for record in shell['records']}
+    detail['records'] = [{key: value for key, value in record.items()
+                          if key in ('path', 'text') or key not in queued.get(record['path'], {})
+                          or value != queued[record['path']][key]} for record in full['records']]
+    detail['source_context'] = {key: value for key, value in full['source_context'].items()
+                                if key not in shell['source_context']}
+    return detail
+
+
 def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     """`live`: served by the Host (rem_http.py), so the page may ask it to translate.
     `local`: read on this machine by its owner (see `snapshot`)."""
-    data = json.dumps({**snapshot(root, local), "live": live}, ensure_ascii=False, default=str)
-    # Inside a script block only "</script" and the U+2028/9 terminators can break
-    # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
-    data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    full = snapshot(root, local, today=live)
+    shell = full if live else _today_data(full)
+    data = _script_json({**shell, "live": live, "deferred_details": True,
+                         "detail_url": "/rem/data.json" if live else ""})
+    detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")
     if PLACEHOLDER not in template:
         raise RuntimeError("reader.html has lost its data placeholder")
-    return template.replace(PLACEHOLDER, data, 1)
+    return template.replace(PLACEHOLDER, data, 1).replace('/*__REM_DETAIL__*/', detail, 1)
+
+
+def _script_json(data: dict) -> str:
+    data = json.dumps(data, ensure_ascii=False, default=str)
+    # Inside a script block only "</script" and the U+2028/9 terminators can break
+    # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
+    data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    return data
+
+
+def reader_version(root: Path) -> tuple:
+    """Cheap metadata key for the live reader, including retained source edits.
+
+    Do not follow directory links or inspect bodies. SQLite's shared-memory
+    bookkeeping changes on reads; an empty WAL has no committed frames.
+    Committed data lives in the db and nonempty WAL.
+    """
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            if name == "rem.db-shm":
+                continue
+            path = Path(directory) / name
+            stat = path.lstat()
+            if name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    template = TEMPLATE.stat()
+    return (str(root.resolve()), str(TEMPLATE), template.st_mtime_ns, template.st_size, tuple(files))
 
 
 def reader_path(root: Path) -> Path:

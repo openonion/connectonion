@@ -28,7 +28,7 @@ change nothing until you add `--yes`.
    ```bash
    co linear check
    # ✓ Linear workspace Acme linear.app/acme
-   #   Acting as Aaron <aaron@example.com>
+   #   Acting as Ellis <ellis@example.com>
    # Next: co linear issues --mine
    ```
 
@@ -76,7 +76,7 @@ co linear check
 
 ```text
 2 open issues assigned to you
-ENG-2  In Progress  High         Aaron  2026-09-30  Login redirect loops
+ENG-2  In Progress  High         Ellis  2026-09-30  Login redirect loops
 ENG-1  Todo         No priority  -      2026-09-01  Old crash
 Next: co linear issue ENG-2
 ```

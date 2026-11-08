@@ -1,4 +1,4 @@
-"""Standard init prepares storage without mail mapping or a model request."""
+"""Mac Host setup leaves REM creation and consent to global initialization."""
 import yaml
 import sys
 
@@ -28,12 +28,14 @@ def test_bootstrap_reuses_profile_preserves_rem_and_reports_missing_connector(tm
     monkeypatch.setattr(mac_bootstrap, '_codex_readiness', lambda environment=None: {
         'codex_ready': False, 'codex_problem': 'Codex is not signed in', 'next_action': 'codex login'})
     result = mac_bootstrap.prepare_mac_host()
-    assert result['rem_prepared'] and result['running'] and not result['codex_ready']
+    assert not result['rem_prepared'] and result['running'] and not result['codex_ready']
+    assert not (root/'rem').exists()
     assert result['watch_connector_ready'] is False
     runtime = root/'runtime'/'mac-host'
     host = yaml.safe_load((runtime/'.co'/'host.yaml').read_text())
     assert host['trust'] == 'strict' and host['directory'] == 'unlisted' and host['listen'] == []
     assert host['port'] == 8123
+    config.prepare(root/'rem')
     rem = root/'rem'/'config.yaml'
     original = rem.read_bytes()
     assert yaml.safe_load(original)['runner'] == 'codex'

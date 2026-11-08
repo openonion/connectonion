@@ -225,13 +225,14 @@ def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
-    yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip project prompts; global setup always runs without questions"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
-    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and REM storage; no source scan'),
+    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and the same REM setup'),
+    no_rem: bool = typer.Option(False, '--no-rem', help='Skip REM setup during global initialization'),
 ):
-    """Initialize local identity, profile and coding-agent skills, or use co init ./ for a project. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Project init does this too. Re-run to repair omissions while keeping your edits."""
+    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup never asks questions: it grants local session and connected mailbox access, installs upkeep and builds the first REM notebook in the foreground. The cost estimate is informational; --yes and no terminal behave the same. Future connected mailboxes join automatically. Ends with undo commands and the notebook path. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -244,7 +245,13 @@ def init(
         if background and sys.platform != 'darwin':
             console.print('Background Mac setup requires macOS. Next: co init', markup=False)
             raise typer.Exit(2)
+        from .codex_setup import setup_codex
+        codex = setup_codex()
         handle_global_init(key=key)
+        console.print(codex["summary"], markup=False, soft_wrap=True)
+        console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
+        if not codex["ready"]:
+            console.print(f"Codex login pending. Run: {codex['next_action']}; then co rem start", markup=False, soft_wrap=True)
         if background:
             from .mac_bootstrap import prepare_mac_host
             from .host_service import HostServiceError
@@ -255,8 +262,19 @@ def init(
             except (HostServiceError, OSError) as error:
                 console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
                 raise typer.Exit(1) from None
-            if not result['codex_ready']:
-                console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
+        if not no_rem:
+            from .commands.rem_commands import init_global_rem
+            from ..rem.files import RemError
+            try:
+                init_global_rem(yes=yes, codex=codex)
+            except RemError as error:
+                # The one place co init calls REM outside _handle: say it in one line,
+                # not a traceback (#2758). Consent is recorded, so the retry is cheap.
+                console.print(f"{error}\nNext: co rem start", markup=False)
+                raise typer.Exit(1) from None
+        if background and not result['codex_ready']:
+            console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
+            if codex['ready']:
                 raise typer.Exit(1)
         return
     if background:
@@ -327,7 +345,11 @@ def host(
         raise typer.Exit(2)
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
-    raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
+    if os.name == "nt":  # Windows' exec spawns a new process and returns the prompt early
+        raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
+    # Become agent.py rather than its parent: a child outlived `kill <co host pid>`,
+    # SIGHUP and launchd's stop, kept the port, and the next `co host` failed.
+    os.execve(sys.executable, [sys.executable, "agent.py"], env)
 
 
 @app.command(epilog="Example:  co deploy  |  co deploy --to prod")
@@ -615,9 +637,15 @@ class _BrowserCommand(typer.core.TyperCommand):
     """
 
     def parse_args(self, ctx, args):
+        if _browser_verb(args) == "history" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_history import history_parser
+            from .style import console, markup
+            console().print(markup(history_parser().format_help()))
+            ctx.exit(0)
         if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_import import IMPORT_HELP
-            print(IMPORT_HELP)
+            from .style import console, markup
+            console().print(markup(IMPORT_HELP))
             ctx.exit(0)
         return super().parse_args(ctx, args)
 
@@ -645,7 +673,13 @@ def browser(
     give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
+    cookies · close. Local Chrome data: {history,import} — history lists visits;
+    import carries Chrome logins into this browser.
+    `co browser help` shows how to use each one."""
+    if args and args[0] == "history":
+        from .commands.browser_history import handle_browser_history
+        raise typer.Exit(handle_browser_history(args[1:]))
+
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
@@ -1898,16 +1932,16 @@ def email_setup(
 
 @email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="One of your own addresses, e.g. ellis@mail.openonion.ai"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy")
 def email_name(
-    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@mail.openonion.ai"),
+    name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
@@ -1941,7 +1975,7 @@ def email_unshare(
 def email_upgrade(
     tier: str = typer.Argument(..., help="Tier: plus or pro"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
-    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'aaron'"),
+    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'ellis'"),
     keep_address: bool = typer.Option(
         False,
         "--keep-address",
@@ -2860,7 +2894,8 @@ def outlook_contact_search(
 
 @outlook_app.command("send", rich_help_panel="Send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
                                     "cat body.txt | co outlook send a@b.com \"Report\" -  |  "
-                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h")
+                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h  |  "
+                                    "co outlook send a@b.com \"Intro\" \"Draft for you to edit\" --draft")
 def outlook_send(
     to: str = typer.Argument(..., help="Recipient email address (comma-separated for multiple)"),
     subject: str = typer.Argument(..., help="Subject line"),
@@ -2869,10 +2904,11 @@ def outlook_send(
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
+    draft: bool = typer.Option(False, "--draft", help="Save it to your Outlook Drafts instead of sending, to finish and send yourself; prints a link that opens it"),
 ):
-    """Send an email from your Outlook account, now or scheduled with --at. Sends as you."""
+    """Send an email from your Outlook account, now, scheduled with --at, or saved with --draft. Sends as you."""
     from .commands.outlook_commands import handle_outlook_send
-    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
+    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at, draft=draft)
 
 
 @outlook_app.command("inbox", rich_help_panel="Mail", epilog="Example:  co outlook inbox --unread -n 20")
@@ -2924,7 +2960,8 @@ def outlook_download(
                                      "cat notes.txt | co outlook reply <message-id> -  |  "
                                      "co outlook reply 3 \"Looping in Sam\" --listing <listing-id> --cc sam@example.com  |  "
                                      "co outlook reply <message-id> \"Thanks both\" --all  |  "
-                                     "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf")
+                                     "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf  |  "
+                                     "co outlook reply 3 \"Draft reply\" --listing <listing-id> --draft")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
@@ -2934,11 +2971,39 @@ def outlook_reply(
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
     reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
+    draft: bool = typer.Option(False, "--draft", help="Save the reply to your Outlook Drafts, in the same thread, instead of sending, to finish and send yourself; prints a link that opens it"),
 ):
-    """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
+    """Reply to an email (threaded), now, scheduled with --at, or saved with --draft. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
     handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing,
-                         reply_all=reply_all)
+                         reply_all=reply_all, draft=draft)
+
+
+@outlook_app.command("drafts", rich_help_panel="Drafts", epilog="Example:  co outlook drafts -n 10")
+def outlook_drafts(last: int = typer.Option(25, "--last", "-n", help="How many drafts to show")):
+    """List unsent drafts, newest first, numbered, each with a link that opens it in Outlook. Read-only."""
+    from .commands.outlook_commands import handle_outlook_drafts
+    handle_outlook_drafts(last=last)
+
+
+@outlook_app.command("send-draft", rich_help_panel="Drafts",
+                     epilog="Examples:  co outlook send-draft 1  |  co outlook send-draft 1 --at +2h")
+def outlook_send_draft(
+    number: str = typer.Argument(..., help="Draft # from 'co outlook drafts' (or a full message ID)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
+):
+    """Send a draft as it now reads in Outlook, or schedule it with --at. Sends as you."""
+    from .commands.outlook_commands import handle_outlook_send_draft
+    handle_outlook_send_draft(number, at=at)
+
+
+@outlook_app.command("delete-draft", rich_help_panel="Drafts", epilog="Example:  co outlook delete-draft 2")
+def outlook_delete_draft(
+    number: str = typer.Argument(..., help="Draft # from 'co outlook drafts' (or a full message ID)"),
+):
+    """Delete a draft. Deletes the numbered draft from Drafts; refuses any message that is not a draft."""
+    from .commands.outlook_commands import handle_outlook_delete_draft
+    handle_outlook_delete_draft(number)
 
 
 @outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")

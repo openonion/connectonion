@@ -57,9 +57,20 @@ def cached(root: Path, record: str, language: str) -> str | None:
         return None
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
-    if not match or match.group(2) != digest(Notebook(root).read(record)):
+    original = Notebook(root).read(record)
+    if not match or match.group(1) != record or match.group(2) != digest(original):
         return None
-    return saved[match.end():]
+    translation = saved[match.end():]
+    if _reader_sources(translation) != _reader_sources(original):
+        return None
+    return translation
+
+
+def _reader_sources(text: str) -> str:
+    # Match reader.html rawSection, including comments and nonstandard headings.
+    text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    match = re.search(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
+    return match.group(1).strip() if match else ""
 
 
 def cached_languages(root: Path, record: str) -> dict[str, str]:
@@ -172,7 +183,7 @@ def checked(original: str, translation: str) -> str:
     return translation
 
 
-def translate(root: Path, record: str, language: str) -> str:
+def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
     from .runner import ready
@@ -183,38 +194,64 @@ def translate(root: Path, record: str, language: str) -> str:
     problem, fix = ready(config)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and translate again")
-    return _run_translation(root, record, language, config, text)
+    return _run_translation(root, record, language, config, text, on_run=on_run)
 
 
-def _run_translation(root, record, language, config, text):
+def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .service import now
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
-    prose, sources, stamp = _page_parts(text)
-    (workspace / "page.md").write_text(prose, encoding="utf-8")
-    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
-    run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
+    task = prepare(root, record, language, directory=workspace, text=text)
+    prose = task["prose"]
+    run = {"id": "run_" + uuid4().hex, "started_at": now().isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "failed",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+    if on_run:
+        on_run(run["id"])
     started = monotonic()
     try:
-        task_prompt = prompt(language, quoted_passages(prose), terms, page_names(prose))
-        translation = _translate_prose(workspace, prose, task_prompt, config, run)
-        translation += ("\n" + sources if sources else "")
-        translation += (("" if sources else "\n") + stamp.group(0) + "\n" if stamp else "")
-        atomic_write(translation_path(root, record, language),
-                     f"<!-- co rem translation of {record} sha256:{digest(text)} -->\n" + translation)
+        translation = _translate_prose(workspace, prose, task["prompt"], config, run)
+        translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
     finally:
         error = sys.exc_info()[1]
         if error:
             run.update(error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
-        run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
+        run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
+
+
+def prepare(root, record, language, *, directory, text=None, native=False):
+    from .languages import owner_languages
+    text = Notebook(root).read(record) if text is None else text
+    prose, sources, stamp = _page_parts(text)
+    (directory / "page.md").write_text(prose, encoding="utf-8")
+    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose))
+    if native:
+        from .files import write_json
+        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose)}
+        write_json(directory / "translation-constraints.json", constraints, readable=True)
+        instruction = prompt(language).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
+    return {"root": str(root), "record": record, "language": language, "directory": str(directory),
+            "before": {record: text}, "prose": prose, "sources": sources, "stamp": stamp.group(0) if stamp else "",
+            "candidate": str(directory / "translation.md"),
+            "prompt": instruction}
+
+
+def check(task, output):
+    original = task["before"][task["record"]]
+    translation = checked(task["prose"], output["result"])
+    translation += ("\n" + task["sources"] if task["sources"] else "")
+    translation += (("" if task["sources"] else "\n") + task["stamp"] + "\n" if task["stamp"] else "")
+    atomic_write(translation_path(Path(task["root"]), task["record"], task["language"]),
+                 f"<!-- co rem translation of {task['record']} sha256:{digest(original)} -->\n" + translation)
+    return translation
 
 
 def _page_parts(text):
@@ -284,3 +321,85 @@ def written_pages(root: Path) -> list[str]:
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
             or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+
+
+def _waiting_pages(root):
+    """Pages behind the reader's active owner obligations, including their copies."""
+    from . import census, threads
+    from .files import read_json
+    from .service import notebook_today
+    book = Notebook(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    title = book.read(owner).splitlines()[0].lstrip("# ") if owner and book.exists(owner) else ""
+    first = (title.split() or [""])[0]
+    states, today = threads.listing(root), notebook_today(root)
+    return {row["path"] for row, text, _ in census._thread_items(book, census.pages(root), first)
+            if census.direction(text, first) == "mine" and not census._quiet(text, today)
+            and not threads.blocked(root, threads.done_key(row["path"], text), states=states)}
+
+
+def backlog(root, language, *, changed=()):
+    """Waiting-on-you pages first, then newest page edits; omit current translations.
+
+    Both scheduled paths use this order before applying the shared daily cap.
+    Explicit requests and this round's changes break equal modification times.
+    """
+    from .files import read_json
+    book = Notebook(root)
+    requested = read_json(state_path(root, "translation-requests.json"), {}).get(language, [])
+    requested = {record: position for position, record in enumerate(requested)}
+    waiting, changed = _waiting_pages(root), set(changed)
+    records = sorted(book.list(), key=lambda record: (
+        record not in waiting, -book.path(record).stat().st_mtime_ns,
+        record not in changed, requested.get(record, len(requested)), record))
+    return [record for record in records if cached(root, record, language) is None]
+
+
+def attempts_today(root):
+    from . import service
+    from .config import read_config
+    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(read_config(root)))
+    # Summary records describe the same work as their individual translate runs.
+    return sum(row.get('runner_attempts', 0) for row in runs
+               if row.get('phase') in ('daily-translation', 'translate'))
+
+
+def languages(root):
+    from .files import read_json
+    from .config import read_config
+    requested = read_json(state_path(root, 'translation-requests.json'), {})
+    return list(dict.fromkeys([*requested, *read_config(root)['languages']]))
+
+
+def coverage(root, *, next_run=None):
+    """Current coverage and the next queue, sharing one remaining daily budget."""
+    from .config import read_config
+    records, targets = Notebook(root).list(), languages(root)
+    directory = state_path(root, "translations")
+    saved = sorted(path.name for path in directory.iterdir()
+                   if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
+    from .service import notebook_today, notebook_zone
+    config = read_config(root)
+    resets = next_run and datetime.fromisoformat(next_run).astimezone(notebook_zone(config)).date() > notebook_today(root)
+    remaining = max(0, config["limits"]["translations_per_day"] - (0 if resets else attempts_today(root)))
+    report = {}
+    for language in dict.fromkeys([*targets, *saved, "zh"]):
+        if language.split("-")[0].lower() == "en":
+            continue
+        done = sum(cached(root, record, language) is not None for record in records)
+        queued = min(len(records) - done, remaining) if language in targets else 0
+        report[language] = {"total": len(records), "translated": done,
+                            "requested": language in targets, "queued": queued}
+        remaining -= queued
+    return report
+
+
+def request(root, record, language):
+    from .files import maintenance_lock, read_json
+    checked_language(language)
+    if record not in Notebook(root).list():
+        raise RemError('No such page')
+    with maintenance_lock(root):
+        pending = read_json(state_path(root, 'translation-requests.json'), {})
+        pending[language] = list(dict.fromkeys([record, *pending.get(language, [])]))
+        write_json(state_path(root, 'translation-requests.json'), pending)
