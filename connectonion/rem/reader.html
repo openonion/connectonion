@@ -145,6 +145,8 @@
   .private-hidden-notice, .private-history-notice { display: none; }
   :root.hide-private .private-entry { display: none; }
   :root.hide-private :is(.timeline, .activity-list):not(:has(> li:not(.private-entry))) + .private-history-notice { display: block; }
+  :root.hide-private .tl:not(:has(> li.tl-e:not(.private-entry))) { display: none; }
+  :root.hide-private .tl:not(:has(> li.tl-e:not(.private-entry))) + .private-history-notice { display: block; }
   .private-history-notice, :root.hide-private .person-insight dd.privacy-only { color: var(--ink-3); font: 12px/1.5 var(--ui); }
   :root.hide-private .person-insight dd.privacy-only .private-hidden-notice { margin: 0; }
   :root.hide-private .private-hidden-notice { display: block; }
@@ -1661,6 +1663,196 @@
   .approval-row textarea { box-sizing: border-box; width: 100%; min-height: 140px; padding: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; }
   .approval-undo { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); display: flex; align-items: center; gap: 16px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 20px #0002; z-index: 30; }
   @media (max-width: 600px) { #approval-sheet { padding: 16px; } #approval-sheet footer { bottom: -16px; } .approval-content .kind-badge { display: block; margin: 6px 0; } }
+  /* People and a person (round 4): one sans family, rows not tables, one green primary. */
+  .r4 {
+    --r4-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    --r4-surface: #fff; --r4-sunk: #efefeb; --r4-hover: rgba(15,23,18,.045);
+    --r4-ink: #121a15; --r4-ink2: #4b554f; --r4-ink3: #69716c; --r4-ink4: #b4bab6;
+    --r4-line: rgba(18,26,21,.08); --r4-line2: rgba(18,26,21,.14);
+    --r4-fresh: #22d27a; --r4-fresh-h: #1bbf6c; --r4-on-fresh: #05301b; --r4-green: #0b7a42; --r4-tint: #e3faee;
+    --r4-dawn: #b5521f; --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late-bg: #f9e7e5; --r4-late: #c4362c; --r4-late-ink: #b3261e;
+    --r4-shadow: 0 0 0 1px var(--r4-line), 0 1px 2px rgba(16,24,20,.04);
+    --r4-shadow-up: 0 0 0 1px var(--r4-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
+    font: 400 14px/20px var(--r4-font); color: var(--r4-ink); font-feature-settings: "tnum" 1; max-width: 1000px; margin: 0 auto;
+  }
+  :root[data-theme="dark"] .r4 {
+    --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
+    --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
+    --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
+    --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: #1b3426;
+    --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: #2f2b1b; --r4-late-bg: #33201e; --r4-late: #f0675c; --r4-late-ink: #f0675c;
+    --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .r4 {
+      --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
+      --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
+      --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
+      --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: #1b3426;
+      --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: #2f2b1b; --r4-late-bg: #33201e; --r4-late: #f0675c; --r4-late-ink: #f0675c;
+      --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
+    }
+  }
+  .r4 a { color: inherit; text-decoration: none; }
+  .r4 h1 { font: 650 28px/36px var(--r4-font); letter-spacing: -.022em; margin: 6px 0 0; color: var(--r4-ink); }
+  .r4 h1 .soft { color: var(--r4-ink3); font-weight: 500; }
+  .r4 h1 .soft::before { content: " · "; }
+  .r4 h2 { font: 600 13px/18px var(--r4-font); color: var(--r4-ink2); display: flex; align-items: center; gap: 8px; margin: 40px 0 12px; letter-spacing: 0; text-transform: none; border: 0; padding: 0; }
+  .r4 h2 .more { margin-left: auto; font-weight: 500; color: var(--r4-ink3); font-size: 12.5px; }
+  .r4 .eyebrow { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); letter-spacing: .01em; text-transform: none; margin: 0; }
+  .r4 .q { color: var(--r4-ink2); }
+  .r4 .q::before { content: "“"; } .r4 .q::after { content: "”"; }
+  .r4 sup.c { white-space: nowrap; font-size: 10.5px; color: var(--r4-ink3); margin-left: 3px; font-weight: 500; }
+  .r4 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .r4 .chip { white-space: nowrap; flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font: 600 11.5px/20px var(--r4-font); letter-spacing: .01em; }
+  .r4 .chip.lamp { color: var(--r4-lamp-ink); background: var(--r4-lamp-bg); }
+  .r4 .chip.late { color: var(--r4-late-ink); background: var(--r4-late-bg); }
+  .r4 .chip.ok { color: var(--r4-green); background: var(--r4-tint); }
+  .r4 .chip.mute { color: var(--r4-ink2); background: var(--r4-sunk); }
+  .r4 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+  .r4 .dot.lamp { background: var(--r4-lamp); }
+  .r4 .face { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 650 12px var(--r4-font); flex: none; color: #fff; letter-spacing: .02em; }
+  .r4 .face.lg { width: 56px; height: 56px; font-size: 19px; }
+  .r4-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: 7px; font: 550 13px var(--r4-font); white-space: nowrap; box-shadow: inset 0 0 0 1px var(--r4-line2); background: var(--r4-surface); color: var(--r4-ink); cursor: pointer; transition: background 120ms ease-out; }
+  .r4-btn:hover { background: var(--r4-sunk); }
+  .r4-btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .r4-btn.ghost { box-shadow: none; background: none; color: var(--r4-ink2); }
+  .r4-btn.ghost:hover { background: var(--r4-hover); }
+  .r4 .r4-primary { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 18px; border-radius: 10px; font: 650 14px var(--r4-font); white-space: nowrap; background: var(--r4-fresh); color: var(--r4-on-fresh); flex: none;
+    box-shadow: 0 1px 0 rgba(5,48,27,.12), 0 4px 14px -4px color-mix(in srgb, var(--r4-fresh) 70%, transparent); transition: background 120ms ease-out; }
+  .r4 .r4-primary:hover { background: var(--r4-fresh-h); }
+  .r4-card { background: var(--r4-surface); border-radius: 14px; box-shadow: var(--r4-shadow); }
+  /* The person page */
+  .r4-crumb { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); }
+  .r4-crumb a:hover { color: var(--r4-ink); }
+  .r4-crumb .updated-label { margin-left: 10px; color: var(--r4-dawn); }
+  .r4-crumb .fresh-dot { margin: 0 4px 0 0; color: var(--r4-dawn); }
+  .r4-headrow { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
+  .r4-headrow .body { flex: 1; min-width: 0; }
+  .r4-headrow h1 { margin: 0; }
+  .r4-sub { font-size: 14.5px; color: var(--r4-ink2); margin-top: 2px; }
+  .r4-sub a { color: var(--r4-ink); font-weight: 550; text-decoration: underline; text-decoration-color: var(--r4-line2); text-underline-offset: 3px; }
+  .r4-sub a.soft { color: var(--r4-ink2); font-weight: 450; }
+  .r4-grid { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 48px; margin-top: 8px; }
+  .r4-stats { display: flex; gap: 28px; margin-top: 22px; padding: 14px 0; box-shadow: inset 0 1px 0 var(--r4-line), inset 0 -1px 0 var(--r4-line); }
+  .r4-stats div { font: 500 12px/16px var(--r4-font); color: var(--r4-ink3); min-width: 0; }
+  .r4-stats b { display: block; font: 600 17px/23px var(--r4-font); color: var(--r4-ink); letter-spacing: -.01em; margin-bottom: 1px; white-space: nowrap; }
+  .owe { padding: 16px 18px; }
+  .owe + .owe { box-shadow: inset 0 1px 0 var(--r4-line); }
+  .owe-t { display: flex; align-items: flex-start; gap: 12px; font: 600 15px/22px var(--r4-font); }
+  .owe-t > span:first-child { flex: 1; min-width: 0; }
+  .owe-t .chip { margin-top: 1px; }
+  .owe.theirs .owe-t, .owe.closed .owe-t { font-weight: 500; color: var(--r4-ink2); }
+  .owe-s { font-size: 13.5px; color: var(--r4-ink2); margin-top: 4px; line-height: 21px; }
+  .owe-acts { display: flex; gap: 8px; margin-top: 10px; }
+  .owe-acts .ghost { margin-left: -10px; }
+  .owe-acts .r4-btn:not(.ghost) + .ghost { margin-left: 0; }
+  .r4 .empty-line { color: var(--r4-ink3); font: 14px/20px var(--r4-font); margin: 0; border: 0; }
+  .owe-more { display: block; width: 100%; border: 0; background: none; color: var(--r4-ink3); font: 13px var(--r4-font); text-align: center; cursor: pointer; padding: 12px; }
+  .tl { list-style: none; margin: 4px 0 0; padding: 0; }
+  .tl .later { display: none; }
+  .tl.all .later { display: grid; }
+  .tl.all .tl-m.later { display: block; }
+  .tl-m { font: 600 12px var(--r4-font); color: var(--r4-ink3); padding: 16px 0 6px 92px; }
+  .tl-m:first-child { padding-top: 4px; }
+  .tl-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: 14px; line-height: 21px; }
+  .tl-e .d { font-size: 12.5px; color: var(--r4-ink3); text-align: right; padding-right: 4px; }
+  .tl-e .w { display: grid; place-items: center; }
+  .tl-e .w i { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--r4-ink4); }
+  .tl-e .w i.me { background: var(--r4-ink3); box-shadow: none; }
+  .tl-e .x { color: var(--r4-ink2); }
+  .tl-more { margin: 8px 0 0 82px; }
+  .r4-rail h4 { font: 600 12px var(--r4-font); color: var(--r4-ink3); margin: 28px 0 10px; letter-spacing: 0; text-transform: none; }
+  .r4-rail h4:first-child { margin-top: 44px; }
+  .r4-kv { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 10px; font-size: 13px; margin: 0; }
+  .r4-kv dt { color: var(--r4-ink3); }
+  .r4-kv dd { margin: 0; overflow-wrap: anywhere; }
+  .r4-card.mini { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .r4-card.mini .sq { width: 28px; height: 28px; border-radius: 7px; background: var(--r4-sunk); color: var(--r4-ink2); box-shadow: inset 0 0 0 1px var(--r4-line); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+  .r4-card.mini b { font-weight: 600; }
+  .r4-card.mini small { display: block; color: var(--r4-ink3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+  .r4-unsure { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--r4-ink2); line-height: 20px; }
+  .r4-unsure li { padding-left: 14px; position: relative; margin-bottom: 6px; }
+  .r4-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--r4-ink4); font-weight: 700; }
+  .r4-src { margin-top: 24px; padding: 0; border: 0; background: none; font: 12.5px var(--r4-font); color: var(--r4-ink3); cursor: pointer; }
+  .r4-src:hover { color: var(--r4-ink); }
+  .r4-person + .deep-note, .r4-person ~ .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
+  /* The People list */
+  .r4-people { max-width: 720px; }
+  .r4-people.wide { max-width: none; }
+  .r4-focus { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--r4-surface); box-shadow: var(--r4-shadow-up); }
+  .r4-focus .body { flex: 1; min-width: 0; }
+  .r4-focus .k { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); display: flex; gap: 8px; align-items: center; }
+  .r4-focus .t { display: block; font: 650 17px/24px var(--r4-font); letter-spacing: -.01em; margin-top: 3px; }
+  .r4-focus .s { font-size: 13.5px; color: var(--r4-ink2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r4-bar { display: flex; align-items: center; gap: 8px; margin: 36px 0 12px; }
+  .r4-find { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--r4-surface); box-shadow: var(--r4-shadow); color: var(--r4-ink); font: 13.5px var(--r4-font); }
+  .r4-find::placeholder { color: var(--r4-ink3); }
+  .r4-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--r4-sunk); flex: none; }
+  .r4-tabs button { border: 0; background: none; font: 500 12.5px var(--r4-font); padding: 4px 10px; border-radius: 6px; color: var(--r4-ink2); cursor: pointer; white-space: nowrap; }
+  .r4-tabs button.on { background: var(--r4-surface); color: var(--r4-ink); box-shadow: var(--r4-shadow); }
+  .r4-tabs i { font-style: normal; color: inherit; margin-left: 4px; font-weight: 400; }
+  .r4 .grp { font: 600 12.5px var(--r4-font); color: var(--r4-ink3); padding: 20px 4px 8px; margin: 0; }
+  .r4 .rows { background: var(--r4-surface); border-radius: 14px; box-shadow: var(--r4-shadow); overflow: hidden; }
+  .r4 .row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 56px; width: 100%; transition: background 120ms ease-out; }
+  .r4 .row + .row { box-shadow: inset 0 1px 0 var(--r4-line); }
+  .r4 .row:hover { background: var(--r4-hover); }
+  .r4 .row .body { min-width: 0; flex: 1; }
+  .r4 .row .t { display: flex; align-items: baseline; gap: 8px; font: 500 14px/20px var(--r4-font); min-width: 0; }
+  .r4 .row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r4 .row .org { color: var(--r4-ink3); font-weight: 400; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r4 .row .s { font-size: 13px; color: var(--r4-ink3); line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r4 .row .end { display: flex; align-items: center; gap: 10px; flex: none; color: var(--r4-ink3); font-size: 12.5px; }
+  .r4 .row .when { width: 64px; text-align: right; }
+  .r4 .row.more { justify-content: center; color: var(--r4-ink3); font: 13px var(--r4-font); min-height: 44px; border: 0; background: none; cursor: pointer; }
+  .r4 .spark { display: flex; align-items: flex-end; gap: 2px; height: 18px; width: 62px; }
+  .r4 .spark i { flex: 1; background: var(--r4-ink4); border-radius: 1px; opacity: .55; }
+  .r4 .spark i.z { opacity: .18; }
+  .r4 .spark i.hot { background: var(--r4-ink2); opacity: .75; }
+  .r4-foot { padding: 16px 4px; font-size: 13px; color: var(--r4-ink3); }
+  .r4-foot p, .r4-foot .held-note { display: block; margin: 0 0 4px; font-size: 13px; color: var(--r4-ink3); }
+  .r4-foot .contact-directory { margin-top: 8px; }
+  .r4-bar .table-toggle { margin-left: auto; }
+  .r4-foot .contact-directory { margin: 0; padding: 0; border: 0; }
+  .r4-foot .contact-directory > summary { font: 500 13px/20px var(--r4-font); color: var(--r4-ink2); cursor: pointer; }
+  .r4 .said { font: inherit; color: var(--r4-ink2); background: none; padding: 0; border: 0; text-decoration: none; }
+  .owe-acts .r4-btn.ghost { color: var(--r4-ink3); font-weight: 500; }
+  /* A plain open row shows its one quiet action when you point at the row or tab to it (always shown on touch). */
+  @media (hover: hover) {
+    .owe { position: relative; }
+    .owe .owe-acts.quiet { position: absolute; right: 12px; bottom: 10px; margin: 0; opacity: 0; transition: opacity 120ms ease-out; }
+    .owe .owe-acts.quiet .r4-btn { margin: 0; background: var(--r4-surface); box-shadow: -12px 0 12px var(--r4-surface); }
+    .owe:hover .owe-acts.quiet, .owe:focus-within .owe-acts.quiet { opacity: 1; }
+  }
+  @media (max-width: 719px) {
+    .r4 h1 { font-size: 24px; line-height: 31px; }
+    .r4 h1 .soft { display: block; font-size: 16px; line-height: 22px; margin-top: 2px; }
+    .r4 h1 .soft::before { content: none; }
+    .r4 h2 { margin-top: 32px; }
+    .r4-headrow { flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .r4 .face.lg { width: 48px; height: 48px; font-size: 16px; }
+    .r4 .r4-primary { width: 100%; justify-content: center; height: 46px; order: 3; }
+    .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .r4-rail h4:first-child { margin-top: 32px; }
+    .r4-stats { gap: 18px; overflow: hidden; }
+    .r4-stats div:nth-child(4) { display: none; }
+    .tl-m { padding-left: 0; }
+    .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
+    .tl-more { margin-left: 0; }
+    .owe { padding: 14px; }
+    .r4-focus { flex-wrap: wrap; padding: 16px; margin-top: 20px; }
+    .r4-focus .face { display: none; }
+    .r4-focus .s { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .r4-bar { flex-wrap: wrap; margin-top: 28px; }
+    .r4-find { flex-basis: 100%; }
+    .r4-tabs button:nth-child(n+3) { display: none; }
+    .r4 .row { padding: 12px 14px; align-items: flex-start; }
+    .r4 .row .s { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .r4 .row .org, .r4 .spark { display: none; }
+    .r4 .row .end { padding-top: 2px; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .r4 .row .when { width: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .r4 * { transition: none !important; } }
 </style>
 </head>
 <body>
@@ -1700,6 +1892,50 @@ let morePeopleColumns = false;
 const UI = {
   en: {},
   zh: {
+    // People and a person (round 4)
+    "{n} days overdue": "逾期 {n} 天",
+    "1 day overdue": "逾期 1 天",
+    "Looks done": "看起来已办",
+    "open": "未结",
+    "You replied on {date}: ": "你{date}回复：",
+    "Close by this mail": "按这封邮件关闭",
+    "Not done yet": "还没办完",
+    "Personal item": "个人事项",
+    "{name} owes you: {what}": "{name} 欠你：{what}",
+    "Still open between you": "你们之间还没结的事",
+    "Review REM's draft": "看 REM 起草的回信",
+    "Write to {name}": "给 {name} 回信",
+    "See what you owe": "看你欠的事",
+    "{n} min": "{n} 分钟",
+    "{n} hours": "{n} 小时",
+    "you wrote last": "你最后发的信",
+    "{name} wrote last": "{name} 最后来信",
+    "mails this year": "封邮件往来 · 一年内",
+    "mails exchanged": "封邮件往来",
+    "first exchange": "第一次往来",
+    "your median reply": "你的回复中位数",
+    "Them": "对方",
+    "Exchanges": "往来",
+    "Newest first": "最新在前",
+    "Contact": "联系",
+    "Handle": "账号",
+    "REM is not sure": "REM 还不确定",
+    "{n} source": "{n} 个来源",
+    "{n} sources": "{n} 个来源",
+    "About this person": "关于这个人",
+    "{n} items": "{n} 件",
+    "Answer first": "最该先回的人",
+    "{name} is waiting on you": "{name} 在等你",
+    "Waiting on you · {n}": "在等你 · {n}",
+    "Recently in touch": "最近联系",
+    "Filter name, company, role": "筛选姓名、公司、角色",
+    "Table": "表格",
+    "Rows": "列表",
+    "People waiting": "在等你",
+    "{n} more items": "其余 {n} 件",
+    "{n} people waiting on you": "{n} 人在等你",
+    "Show all {n} people": "显示全部 {n} 人",
+    "Show all {n} entries": "显示全部 {n} 条",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
@@ -4039,18 +4275,6 @@ function relationshipCell(r, key) {
   return el("span", { class: "mono", title: t("Daily message rate: last 30 days vs prior 90 days") + ` · ${stats.messages_30d} / ${stats.messages_prior_90d}`,
     text: change == null ? t(stats.trend === "new" ? "↑ New contact" : "No recent mail") : (change > 0 ? "↑ " : change < 0 ? "↓ " : "→ ") + Math.abs(change) + "%" });
 }
-function relationshipHeader(r) {
-  const stats = r.index?.relationship;
-  if (!stats) return null;
-  const contact = stats.last_mail ? t("Past 52 weeks: {n} messages · last 4 weeks: {recent} · last: {last}", {
-    n: stats.weekly_messages.reduce((a, b) => a + b, 0),
-    recent: stats.weekly_messages.slice(-4).reduce((a, b) => a + b, 0), last: fmtDate(stats.last_mail)
-  }) : t("No indexed mail");
-  return el("div", { class: "relationship-stats", "aria-label": t("Mail relationship") },
-    [["contact", "Mail contact"], ["starts", "Who writes first"], ["replies", "Reply times"], ["trend", "Warming / cooling"]].map(([key, label]) =>
-      el("div", { class: key === "contact" ? "contact-summary" : "" }, [el("span", { class: "relationship-label", text: t(label) }),
-        key === "contact" ? el("span", { text: contact }) : relationshipCell(r, key)])));
-}
 function byPeopleActivity(a, b) {
   const x = a.index?.relationship, y = b.index?.relationship;
   if (x || y) return (y?.last_mail || "").localeCompare(x?.last_mail || "") || a.title.localeCompare(b.title);
@@ -5315,6 +5539,363 @@ function contactDirectory() {
   return details;
 }
 
+// ---------- People and a person: rows, one next step (round 4) ----------
+// The person page leads with what is owed and the one thing to do next; the
+// People list groups who is waiting on you above who you spoke to recently.
+const FACE_TONES = ["#7c8b6f", "#8a7a6b", "#6d7f94", "#94707f", "#6f8d88", "#8c8463", "#7d7398", "#5f8a72"];
+const PEN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+let notDoneKeys = new Set(), peopleTable = false;
+function face(name, size = "") {
+  const words = name.replace(/\(.*?\)/g, "").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  const first = words[0] || "?";
+  const initials = /\p{Script=Han}/u.test(first) ? first[0] : (words.length > 1 ? first[0] + words.at(-1)[0] : first.slice(0, 2)).toUpperCase();
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return el("span", { class: "face" + (size ? " " + size : ""), "aria-hidden": "true", style: "background:" + FACE_TONES[h % FACE_TONES.length], text: initials });
+}
+function firstName(r) { return r.title.replace(/\(.*?\)/g, "").trim().split(/\s+/)[0]; }
+function notDoneStorageKey() { return "co-rem-not-done:" + shortHash(REM.root || ""); }
+// "Not done yet" keeps the thread open and stops calling it handled, on this device.
+function keepOpen(entry) {
+  notDoneKeys.add(doneKey(entry));
+  readerStorage(notDoneStorageKey(), JSON.stringify([...notDoneKeys]));
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
+}
+function queuedReply(entry) { return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply; }
+function overdueDays(thread) { return thread.due && thread.due < calendarDay(REM.as_of) ? daysSince(thread.due) : 0; }
+// Your later mail looks like it settled the ask; an overdue promise is never settled by it.
+function looksDone(entry) {
+  return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
+}
+// The merged queue first; a thread on the page that the queue has not projected yet still shows.
+function personEntries(r) {
+  const entries = threadEntries().filter(entry => (entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) && entry.t.dir !== "third");
+  const listed = new Set(entries.flatMap(entry => (entry.members || [entry]).map(doneKey)));
+  const own = threads(r).items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
+  return [...entries, ...own];
+}
+function byUrgency(a, b) {
+  return (a.t.due || "9999").localeCompare(b.t.due || "9999") || (a.t.since || "").localeCompare(b.t.since || "");
+}
+function urgentEntry(entries) {
+  return entries.filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency)[0];
+}
+function owedState(entry) {
+  const state = threadStates[doneKey(entry)]?.state;
+  if (isDone(entry)) return { cls: state === "skipped" ? "mute" : "ok", text: t(state === "skipped" ? "Skipped" : "Marked done") };
+  const late = overdueDays(entry.t);
+  if (late) return { cls: "late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) };
+  if (looksDone(entry)) return { cls: "ok", text: t("Looks done") };
+  if (entry.t.due) return { cls: "lamp", text: dueLabel(entry.t) };
+  if (entry.t.quiet) return { cls: "mute", text: [age(entry.t.since), t("gone quiet")].filter(Boolean).join(", ") };
+  return { cls: "mute", text: age(entry.t.since) || t("open") };
+}
+// "You owe Alyssa feedback on the demo — “I'll watch…” (date) [18]" -> a title and its evidence.
+function owedParts(entry) {
+  const text = unlabelled(entry.t.text).replaceAll("**", "");
+  const quote = /“([^”]{4,})”|"([^"]{4,})"|「([^」]{4,})」/.exec(text);
+  const [head, ...rest] = text.split(/\s+[—–]\s+|\s*[“"「]/);
+  const clean = words => withoutDateClutter(plainLine(words), entry.t).replace(/[:：;,，\s]+$/, "");
+  return { head: capFirst(clean(head)), quote: quote ? (quote[1] || quote[2] || quote[3]).trim() : "", rest: quote ? "" : clean(rest.join(" — ")) };
+}
+function quoteSpan(words, day) {
+  return [el("span", { class: "q", text: words }), day ? el("sup", { class: "c", text: fmtDate(day) }) : null];
+}
+function owedEvidence(entry, parts) {
+  const reply = queuedReply(entry), draft = threadDraft(entry);
+  if (draft?.status === "no_reply") return el("div", { class: "owe-s", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
+  if (looksDone(entry) && reply.promise) return el("div", { class: "owe-s" }, [t("You replied on {date}: ", { date: fmtDate(reply.since) }), ...quoteSpan(reply.promise, reply.since)]);
+  if (parts.quote) return el("div", { class: "owe-s" }, quoteSpan(parts.quote, entry.t.since));
+  return parts.rest ? el("div", { class: "owe-s", text: parts.rest }) : null;
+}
+function owedActions(entry) {
+  if (isDone(entry)) {
+    const undo = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Undo") });
+    undo.onclick = () => setDone(entry, false);
+    return el("div", { class: "owe-acts" }, [undo]);
+  }
+  if (looksDone(entry)) {
+    const close = el("button", { type: "button", class: "r4-btn sm", html: CHECK_ICON }, [t("Close by this mail")]);
+    const open = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Not done yet") });
+    close.onclick = () => setDone(entry, true);
+    open.onclick = () => keepOpen(entry);
+    return el("div", { class: "owe-acts" }, [close, open]);
+  }
+  const done = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Mark done") });
+  done.onclick = () => setDone(entry, true);
+  return el("div", { class: "owe-acts quiet" }, [done]);
+}
+function owedRow(r, entry) {
+  const parts = owedParts(entry), state = owedState(entry), theirs = entry.t.dir === "theirs";
+  const named = parts.head.startsWith(firstName(r));
+  const title = !parts.head ? t("Personal item") : theirs && !named ? t("{name} owes you: {what}", { name: firstName(r), what: parts.head }) : parts.head;
+  return el("div", { class: "owe" + (theirs ? " theirs" : "") + (isDone(entry) ? " closed" : "") }, [
+    el("div", { class: "owe-t" }, [el("span", { text: title }), el("span", { class: "chip " + state.cls, text: state.text })]),
+    parts.head ? owedEvidence(entry, parts) : null, owedActions(entry)]);
+}
+function owedCard(r, entries) {
+  const order = entry => isDone(entry) ? 3 : entry.t.dir === "mine" ? (looksDone(entry) ? 1 : 0) : 2;
+  const rows = [...entries].sort((a, b) => order(a) - order(b) || byUrgency(a, b)).map(entry => owedRow(r, entry));
+  rows.slice(5).forEach(row => { row.hidden = true; });
+  const more = rows.length > 5 ? el("button", { type: "button", class: "owe owe-more", text: t("{n} more items", { n: rows.length - 5 }) }) : null;
+  if (more) more.onclick = () => { rows.forEach(row => { row.hidden = false; }); more.remove(); };
+  return el("section", { class: "r4-sec", id: "open-threads" }, [el("h2", { text: t("Still open between you") }),
+    rows.length ? el("div", { class: "r4-card owed" }, [...rows, more])
+      : emptyLine(threads(r))]);
+}
+function openPersonDraft(draft, trigger) {
+  const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
+  const dialog = el("dialog", { class: "person-draft-review", "aria-label": t("Reply draft"),
+    style: "box-sizing:border-box;width:min(880px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:16px;overflow:auto" }, [close, replyDraftCard(draft)]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("click", () => { if (draft.status === "skipped") dialog.close(); });
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    const target = trigger.isConnected ? trigger : document.querySelector("#done-notice button, .r4-primary, #q");
+    target?.focus({ preventScroll: true });
+  });
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  close.focus({ preventScroll: true });
+}
+function personPrimary(r, entry) {
+  if (!entry) return null;
+  const draft = threadDraft(entry), contact = threadContact(entry);
+  if (draft?.status === "no_reply") {
+    const done = el("button", { type: "button", class: "r4-primary", text: t("Mark done") });
+    done.insertAdjacentHTML("afterbegin", CHECK_ICON);
+    done.onclick = () => setDone(entry, true);
+    return done;
+  }
+  const button = draft?.status === "prepared" ? el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("Review REM's draft") })
+    : contact ? mailtoLink(contact, "r4-primary", t("Write to {name}", { name: firstName(r) }))
+    : el("a", { class: "r4-primary", href: href(r) + "&h=open-threads", text: t("See what you owe") });
+  button.insertAdjacentHTML("afterbegin", PEN_ICON);
+  if (draft?.status === "prepared") button.onclick = event => { event.preventDefault(); openPersonDraft(draft, button); };
+  return button;
+}
+function replyDuration(seconds) {
+  return seconds < 3600 ? t("{n} min", { n: Math.max(1, Math.round(seconds / 60)) })
+    : seconds < 48 * 3600 ? t("{n} hours", { n: Math.round(seconds / 3600) }) : t("{n} days", { n: Math.round(seconds / 86400) });
+}
+function personStats(r) {
+  const f = facts(r), rel = r.index?.relationship;
+  const year = rel?.last_mail ? rel.weekly_messages.reduce((a, b) => a + b, 0) : null;
+  const last = rel?.last_from_you === true ? t("you wrote last") : rel?.last_from_you === false ? t("{name} wrote last", { name: firstName(r) }) : t("Last contact");
+  const cells = [year ? [String(year), t("mails this year")] : f.mails ? [String(f.mails), t("mails exchanged")] : null,
+    f.first ? [fmtDate(f.first), t("first exchange")] : null,
+    rel?.reply_seconds_owner != null ? [replyDuration(rel.reply_seconds_owner), t("your median reply")] : null,
+    f.last ? [fmtDate(f.last), last] : null].filter(Boolean);
+  return cells.length ? el("div", { class: "r4-stats" }, cells.map(([value, label]) => el("div", {}, [el("b", { text: value }), label]))) : null;
+}
+function personOrg(r) {
+  const company = String(facts(r).company || "");
+  // The page's own words name the organisation (they follow the reading language); the link finds its page.
+  const link = /\[([^\]]+)\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
+  const org = link && byPath(link[2].replace(/^\.\.\//, ""));
+  const full = link ? plainLine(link[1]) : plainLine(company).replace(/\s*\(from email domain\)$/i, "");
+  const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
+  return knownValue(full) ? { org, name: acronym ? acronym[2] : full, full: acronym ? acronym[1] : "" } : null;
+}
+function personProject(r) {
+  const link = /\]\((?:\.\.\/)?(projects\/[^)]+\.md)\)/.exec(known(r).intro + "\n" + r.text);
+  return link && byPath(link[1]);
+}
+function personSub(r) {
+  const role = String(facts(r).role || ""), org = personOrg(r), project = personProject(r);
+  const parts = [knownValue(role) ? changedValue(el("span", {}, [roleSummary(role, r.path)]), r, "Role") : null,
+    project ? el("a", { class: "soft", href: href(project), text: project.title }) : null,
+    org ? changedValue(org.org ? el("a", { href: href(org.org), text: org.name }) : el("span", { text: org.name }), r, "Company") : null].filter(Boolean);
+  return parts.length ? privateFallback(el("div", { class: "r4-sub" }, parts.flatMap((part, i) => i ? [" · ", part] : [part]))) : null;
+}
+function personHead(r, entry) {
+  const org = personOrg(r);
+  return el("header", { class: "r4-head person-head" }, [
+    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true)]),
+    el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personPrimary(r, entry)])]);
+}
+function timelineRow(r, item) {
+  const text = withoutDateClutter(youify(item.text));
+  const content = historyRowContent(text, r.path);
+  if (!content) return null;
+  const yours = /^\s*(?:\*\*)?(?:the user|you|你)\b/i.test(unlabelled(item.text));
+  const day = item.day.length === 10 ? new Date(item.day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", day: "numeric" }) : "";
+  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d", text: day }),
+    el("span", { class: "w" }, [el("i", { class: yours ? "me" : "", title: t(yours ? "You" : "Them") })]), el("span", { class: "x" }, [content])]);
+}
+function personTimeline(r) {
+  const items = historyItems(section(r, "history")?.text || "").filter(item => item.day).sort((a, b) => b.day.localeCompare(a.day));
+  if (!items.length) return null;
+  const list = el("ol", { class: "tl" });
+  let month = "", shown = 0;
+  for (const item of items) {
+    const row = timelineRow(r, item);
+    if (!row) continue;
+    if (item.day.slice(0, 7) !== month) {
+      month = item.day.slice(0, 7);
+      list.appendChild(el("li", { class: "tl-m" + (shown >= 12 ? " later" : ""), text: new Date(month + "-01T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: uiLanguage === "zh" ? "numeric" : "long", ...(month.slice(0, 4) !== calendarDay(REM.as_of).slice(0, 4) ? { year: "numeric" } : {}) }) }));
+    }
+    if (shown++ >= 12) row.classList.add("later");
+    list.appendChild(row);
+  }
+  const more = shown > 12 ? el("button", { type: "button", class: "r4-btn sm ghost tl-more", text: t("Show all {n} entries", { n: shown }) }) : null;
+  if (more) more.onclick = () => { list.classList.add("all"); more.remove(); };
+  const notice = privateHistoryNotice([...list.querySelectorAll(".tl-e")]);
+  return el("section", { class: "r4-sec", id: "history-timeline" }, [el("h2", {}, [t("Exchanges"), el("span", { class: "more", text: t("Newest first") })]), list, notice, more]);
+}
+function railContact(r) {
+  const parsed = parseFacts(r), f = facts(r);
+  const values = label => (parsed.get(label) || []).map(item => item.value).filter(knownValue);
+  const mails = (f.email.match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
+  const handles = values("Handles").filter(value => !value.includes("@"));
+  const rows = [...mails.slice(0, 2).map(address => ["Email", el("a", { href: "mailto:" + address, text: address })]),
+    ...values("Phone").slice(0, 1).map(phone => ["Phone", el("span", { text: plainLine(phone) })]),
+    ...handles.slice(0, 1).map(handle => ["Handle", el("span", { text: plainLine(handle) })]),
+    knownValue(f.language) ? ["Language", el("span", { text: plainLine(f.language) })] : null,
+    knownValue(f.location) ? ["Location", el("span", { text: plainLine(f.location) })] : null].filter(Boolean);
+  return rows.length ? [el("h4", { text: t("Contact") }), privateFallback(el("dl", { class: "r4-kv" }, rows.flatMap(([label, value]) => [el("dt", { text: t(label) }), el("dd", {}, [value])])))] : [];
+}
+function railOrg(r) {
+  const found = personOrg(r);
+  if (!found) return [];
+  const what = found.full || found.org && (plainLine(String(facts(found.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") || plainLine(String(facts(found.org).what || "")));
+  const card = el(found.org ? "a" : "div", { class: "r4-card mini", ...(found.org ? { href: href(found.org) } : {}) }, [
+    el("span", { class: "sq", text: found.name.trim()[0].toUpperCase() }), el("div", {}, [el("b", { text: found.name }), what ? el("small", { text: what }) : null])]);
+  return [el("h4", { text: t("Organisation") }), card];
+}
+function railUnsure(r) {
+  // Only the bullets: a summary paragraph under them is not an open question.
+  const items = (section(r, "uncertainties")?.text || "").split("\n").filter(line => /^\s*[-*]\s/.test(line)).map(line => plainLine(line)).filter(Boolean).slice(0, 4);
+  return items.length ? [el("h4", { text: t("REM is not sure") }), el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item })))] : [];
+}
+function railSources(r) {
+  const n = sourceList(r).length;
+  if (!n) return [];
+  const button = el("button", { type: "button", class: "r4-src", text: t(n === 1 ? "{n} source" : "{n} sources", { n }) });
+  button.onclick = () => {
+    const deep = document.querySelector(".deep-note");
+    if (deep) { deep.open = true; deep.scrollIntoView({ block: "start" }); }
+  };
+  return [button];
+}
+// Sessions that name this person: five rows under the timeline, the rest one link away.
+function personSessions(r) {
+  const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
+  if (!sessions.length) return null;
+  return el("section", { class: "r4-sec person-sessions" }, [el("h2", { text: t("Mentioned in sessions") }),
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
+    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
+}
+function personPage(r) {
+  const entries = personEntries(r), urgent = urgentEntry(entries);
+  const rail = el("aside", { class: "r4-rail", "aria-label": t("About this person") }, [...railContact(r), ...railOrg(r), ...railUnsure(r), ...railSources(r)]);
+  return el("div", { class: "r4 r4-person" }, [personHead(r, urgent),
+    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personStats(r), owedCard(r, entries), personTimeline(r), personSessions(r)]), rail])]);
+}
+
+// People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
+function waitingOn(r) {
+  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency);
+}
+function peopleSpark(r) {
+  const weeks = r.index?.relationship?.weekly_messages;
+  if (!weeks) return null;
+  const recent = weeks.slice(-12), peak = Math.max(1, ...recent);
+  return el("span", { class: "spark", "aria-hidden": "true" }, recent.map((n, i) => el("i", { class: n ? (i >= 9 ? "hot" : "") : "z", style: "height:" + (n ? Math.max(3, Math.round(n / peak * 18)) : 2) + "px" })));
+}
+function peopleRowMeta(r, waiting) {
+  if (waiting.length) {
+    const parts = owedParts(waiting[0]);
+    return parts.head ? (parts.head.length < 48 && parts.quote ? "“" + parts.quote + "”" : parts.head) : null;
+  }
+  const f = facts(r), role = plainLine(String(f.role || "")).split(/;\s+/)[0], org = personOrg(r);
+  return [knownValue(role) ? role : "", org?.name || ""].filter(Boolean).join(" · ");
+}
+function peopleRow(r) {
+  const waiting = waitingOn(r), org = personOrg(r), meta = peopleRowMeta(r, waiting), late = Math.max(0, ...waiting.map(entry => overdueDays(entry.t)));
+  const chip = !waiting.length ? null : late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) })
+    : waiting.length > 1 ? el("span", { class: "chip lamp", text: t("{n} items", { n: waiting.length }) }) : el("span", { class: "dot lamp", title: t("Waiting on you") });
+  return el("a", { class: "row prow", href: href(r) }, [face(r.title), el("div", { class: "body" }, [
+    el("div", { class: "t" }, [el("span", { class: "nm", text: r.title }), waiting.length && org ? el("span", { class: "org", text: org.name }) : null]),
+    meta === null ? el("div", { class: "s lock", text: t("Personal item") }) : meta ? privateFallback(el("div", { class: "s", text: meta })) : null]),
+    el("div", { class: "end" }, [chip, peopleSpark(r), el("span", { class: "when", text: facts(r).last ? fmtDate(facts(r).last) : "—" })])]);
+}
+function peopleFocus(r) {
+  const entry = waitingOn(r)[0], late = overdueDays(entry.t), parts = owedParts(entry), org = personOrg(r);
+  const sub = [org?.name, parts.head].filter(Boolean).join(" · ");
+  return el("section", { class: "r4-focus" }, [face(r.title, "lg"), el("div", { class: "body" }, [
+    el("div", { class: "k" }, [late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) }) : el("span", { class: "chip lamp", text: age(entry.t.since) }), t("Answer first")]),
+    el("a", { class: "t", href: href(r), text: t("{name} is waiting on you", { name: r.title }) }), sub ? el("div", { class: "s", text: sub }) : null]), personPrimary(r, entry)]);
+}
+function peopleTabs(items, waiting) {
+  const orgs = new Map();
+  for (const r of items) { const org = personOrg(r)?.name; if (org) orgs.set(org, (orgs.get(org) || 0) + 1); }
+  const top = [...orgs].sort((a, b) => b[1] - a[1]).slice(0, 2).filter(([, n]) => n > 1);
+  return [["all", t("All"), items.length, () => true], ["waiting", t("People waiting"), waiting.length, r => waiting.includes(r)],
+    ...top.map(([name, n]) => ["org:" + name, name, n, r => personOrg(r)?.name === name])];
+}
+function peopleGroup(title, rows, lamp, more) {
+  return [el("h2", { class: "grp" }, [lamp ? el("span", { class: "dot lamp" }) : null, title]), el("div", { class: "rows" }, [...rows, more])];
+}
+function peopleRows(items, waiting, state) {
+  const needle = state.text.trim().toLowerCase();
+  const test = (peopleTabs(items, waiting).find(tab => tab[0] === state.tab) || [])[3] || (() => true);
+  const match = r => test(r) && (!needle || [r.title, plainLine(String(facts(r).company || "")), plainLine(String(facts(r).role || ""))].join(" ").toLowerCase().includes(needle));
+  const first = waiting.filter(match), rest = items.filter(r => !waiting.includes(r) && match(r)).sort(byPeopleActivity);
+  const limit = state.all || needle ? rest.length : 14;
+  const more = rest.length > limit ? el("button", { type: "button", class: "row more", text: t("Show all {n} people", { n: rest.length }) }) : null;
+  if (more) more.onclick = () => { state.all = true; state.draw(); };
+  if (!first.length && !rest.length) return [emptyState("No matching pages", "Clear filters →", "#c=people", () => { state.text = ""; state.tab = "all"; state.reset(); })];
+  return [...(first.length ? peopleGroup(t("Waiting on you · {n}", { n: first.length }), first.map(peopleRow), true) : []),
+    ...(rest.length ? peopleGroup(t("Recently in touch"), rest.slice(0, limit).map(peopleRow), false, more) : [])];
+}
+function peopleFoot() {
+  const directory = contactDirectory(), { held, service } = peopleExclusions(), missing = REM.people_coverage?.missing;
+  const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
+    held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
+    service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
+  return el("div", { class: "r4-foot" }, [...notes.map(note => el("p", { class: "held-note", text: note })), directory]);
+}
+function peopleList(items) {
+  const waiting = items.filter(r => waitingOn(r).length).sort((a, b) => byUrgency(waitingOn(a)[0], waitingOn(b)[0]));
+  const state = { text: "", tab: "all", all: false };
+  const find = el("input", { type: "search", class: "r4-find", placeholder: t("Filter name, company, role"), "aria-label": t("Filter {category}", { category: label("people").toLowerCase() }) });
+  const tabs = el("div", { class: "r4-tabs", role: "group", "aria-label": t("Show") });
+  const table = el("button", { type: "button", class: "r4-btn sm ghost table-toggle", "aria-pressed": "false", text: t("Table") });
+  const list = el("div", { class: "people-rows" });
+  state.draw = () => {
+    tabs.replaceChildren(...peopleTabs(items, waiting).map(([key, name, n]) => {
+      const b = el("button", { type: "button", class: state.tab === key ? "on" : "", "aria-pressed": String(state.tab === key) }, [name, el("i", { text: String(n) })]);
+      b.onclick = () => { state.tab = key; state.draw(); };
+      return b;
+    }));
+    list.replaceChildren(...peopleRows(items, waiting, state));
+  };
+  state.reset = () => { find.value = ""; state.draw(); find.focus(); };
+  find.oninput = () => { state.text = find.value; state.draw(); };
+  // Enter opens the first match: type a name, press Enter, you are on the page.
+  find.onkeydown = event => { if (event.key === "Enter") list.querySelector(".row.prow")?.click(); };
+  table.onclick = () => { peopleTable = true; readerStorage("co-rem-people-view", "table"); render(); };
+  state.draw();
+  return [waiting.length ? peopleFocus(waiting[0]) : null, el("div", { class: "r4-bar" }, [find, tabs, table]), list];
+}
+function peopleView(items) {
+  const main = document.getElementById("main");
+  const waiting = items.filter(r => waitingOn(r).length).length;
+  const head = [el("div", { class: "eyebrow", text: t("People") }), el("h1", {}, [t("{n} people", { n: items.length }),
+    waiting ? el("span", { class: "soft", text: t("{n} people waiting on you", { n: waiting }) }) : null])];
+  if (peopleTable) {
+    const rows = el("button", { type: "button", class: "r4-btn sm ghost table-toggle", "aria-pressed": "true", text: t("Rows") });
+    rows.onclick = () => { peopleTable = false; readerStorage("co-rem-people-view", "rows"); render(); };
+    main.appendChild(el("div", { class: "r4 r4-people wide" }, [...head, el("div", { class: "r4-bar" }, [rows]), sheet("people", items), peopleFoot()]));
+    return;
+  }
+  main.appendChild(el("div", { class: "r4 r4-people" }, [...head, ...peopleList(items), peopleFoot()]));
+}
+
 function ledeSeparator(text) {
   return /[？。！?.!]$/.test(text.trim()) ? " " : uiLanguage === "zh" ? " · " : ". ";
 }
@@ -5332,6 +5913,7 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
+  if (c === "people" && (items.length || (REM.contact_candidates || []).length)) { peopleView(items); return; }
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
   main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
@@ -5789,14 +6371,6 @@ function projectSessions(r) {
     el("a", { href: sessionHash({ project: r.path }), text: t("All {n} sessions", { n: sessions.length }) }),
     el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
       .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
-}
-function personSessions(r) {
-  const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
-  if (!sessions.length) return null;
-  return el("section", { class: "focus-section person-sessions" }, [el("h2", { text: t("Mentioned in sessions") }),
-    // Beside Recently, not under the full note: five rows, the rest one link away.
-    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
-    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
 }
 
 function sessionSection(r, name) {
@@ -6360,29 +6934,6 @@ function mappedProjectLine(r) {
   return t("Not written yet") + (sessions ? t(sessions === "1" ? ": {n} session" : ": {n} sessions", { n: sessions }) +
     (last ? t(", last on {day}", { day: fmtDate(last) }) : "") : "") + (uiLanguage === "zh" ? "。" : ".");
 }
-function personLead(r) {
-  const now = listItems(section(r, "insight")?.text || "").map(t => t.replace(/^\*\*([^*]+)\*\*/, "$1")).find(t => /^(?:Now|现在)[:：]/i.test(t));
-  const text = (known(r).intro || now?.replace(/^(?:Now|现在)[:：]\s*/i, "") || "").replace(/\s*\n\s*/g, " ");
-  // A quotation is one unit: Greta's lead ended at the "!" inside “That's great news, thank you! …”.
-  const passages = [];
-  const protectedText = privatePassages(text, passage => { passages.push(passage); return "\u0006" + (passages.length - 1) + "\u0006"; });
-  const sentences = protectedText.match(/(?:[^“「.!?。！？]|“[^”]*”|「[^」]*」)*?(?:[.!?](?:\s*[\[［]W?\d{1,3}[\]］])*(?=\s|$)|[。！？](?:\s*[\[［]W?\d{1,3}[\]］])*)|.+$/g) || [];
-  const citations = [];
-  const prose = sentences.slice(0, 2).join(" ").replace(/\[W?\d{1,3}\]/g, cite => { citations.push(cite); return "\u0007" + (citations.length - 1) + "\u0007"; });
-  const lead = withoutDateClutter(prose).replace(/\u0007(\d+)\u0007/g, (_, i) => citations[i]).replace(/\u0006(\d+)\u0006/g, (_, i) => passages[i]);
-  return privateFallback(el("p", { class: "person-lead", html: inline(lead, r.path) }));
-}
-function contactLine(r) {
-  const f = facts(r);
-  const fields = [["Role", f.role], ["Company", f.company]].filter(([, v]) => v && !/^Unknown\b/i.test(String(v)));
-  const meta = el("span", { class: "lead-meta" });
-  if (f.last) meta.appendChild(changedValue(el("span", { title: mappedContact(r) ? t("Last contact in map") : "", text: t("Last contact") + " " + threadDate(f.last) }), r, "Last contact"));
-  for (const [label, value] of fields) {
-    if (meta.childNodes.length) meta.append(" · ");
-    meta.appendChild(changedValue(label === "Role" ? el("span", {}, [roleSummary(String(value), r.path)]) : el("span", { html: inline(String(value), r.path) }), r, label));
-  }
-  return el("p", { class: "contact-line leadrow" }, [privateFallback(meta)]);
-}
 // Remove a structured label for display; direction still comes from threads().
 function threadWords(text, r) {
   const names = [r, ...inCategory("people")].filter(Boolean)
@@ -6390,48 +6941,6 @@ function threadWords(text, r) {
   const name = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   const words = text.replaceAll("**", "").replace(/^[^:;!?：；！？]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
   return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
-}
-function ledgerRow(r, thread) {
-  const origin = thread.record || r;
-  const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const text = withoutDateClutter(threadWords(thread.text, r), thread) + " " + cites;
-  const meta = thread.quiet ? [age(thread.since), t("gone quiet")].filter(Boolean).join(", ") : threadAge(thread);
-  return el("li", { class: "ledger-row" + (thread.quiet ? " quiet" : "") }, [
-    privateFallback(el("p", { html: inline(capFirst(text), origin.path) })),
-    el("span", { class: "ledger-meta" + (!thread.quiet && thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : ""), text: meta }),
-    !thread.quiet || isDone({ r: origin, t: thread }) ? threadActions({ r: origin, t: thread }) : null, draftNote(threadDraft({ r: origin, t: thread }))]);
-}
-function ledgerColumn(r, items, dir) {
-  if (!items.length) return null;
-  const first = r.title.trim().split(/\s+/)[0];
-  return el("section", { class: "ledger-column " + dir }, [
-    el("h3", {}, [el("span", { text: t(dir === "mine" ? "You owe {name}" : "{name} owes you", { name: first }) }), el("span", { class: "ledger-count", text: String(items.length) })]),
-    el("ul", { class: "ledger-rows" }, items.slice(0, 3).map(t => ledgerRow(r, t))),
-    items.length > 3 ? el("details", { class: "ledger-more" }, [el("summary", { text: t("{n} more", { n: items.length - 3 }) }),
-      el("ul", { class: "ledger-rows" }, items.slice(3).map(t => ledgerRow(r, t)))]) : null]);
-}
-function betweenYou(r) {
-  const parsed = threads(r);
-  const entries = parsed.items.length ? threadEntries().filter(entry => entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) : [];
-  const thread = { ...parsed, items: [...entries.map(entry => ({ ...entry.t, record: entry.r })), ...parsed.items.filter(t => t.dir === "third")] };
-  const mine = thread.items.filter(thread => thread.dir === "mine"), theirs = thread.items.filter(thread => thread.dir === "theirs");
-  const other = thread.items.filter(thread => !["mine", "theirs"].includes(thread.dir));
-  return el("section", { class: "between-you", id: "open-threads" }, [el("h2", { text: t("Between you") }),
-    !thread.items.length ? emptyLine(thread) : !mine.length && !theirs.length ? null : el("div", { class: "between-ledger" }, [ledgerColumn(r, mine, "mine"), ledgerColumn(r, theirs, "theirs")]),
-    other.length ? el("ul", { class: "threads" }, other.map(thread => threadRow(r, thread, false))) : null]);
-}
-function personInsight(r) {
-  const items = listItems(section(r, "insight")?.text || "").slice(0, 4);
-  if (!items.length) return null;
-  return el("section", { class: "person-insight", id: "insight" }, [el("h2", { text: t("Where it stands") }),
-    el("dl", {}, items.map(item => {
-      const match = /^([^:：]+)[:：]\s*(.*)$/.exec(item.replace(/^\*\*([^*]+)\*\*/, "$1")), label = match?.[1] || "Now";
-      return el("div", {}, [el("dt", { class: label === "At stake" ? "at-stake" : label === "Changed" ? "changed" : "", text: t(label) }),
-        privateFallback(el("dd", { html: inline(match ? match[2] : item, r.path) }))]);
-    }))]);
-}
-function personFocus(r) {
-  return el("section", { class: "person-focus", "aria-label": t("What is between you now") }, [betweenYou(r), personInsight(r), activityPanel(r, true), personSessions(r)]);
 }
 function localPath(value) {
   return String(value).split("/").map(part => '<span class="path-segment">' + esc(part) + "</span>").join("/<wbr>");
@@ -6447,7 +6956,6 @@ function projectLimit(r) {
   return el("p", { class: "deep-note-limit", text });
 }
 function recordFocus(r) {
-  if (r.category === "people" && r.path !== REM.owner) return personFocus(r);
   if (r.category === "sessions") return el("div");
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": t("At a glance") });
@@ -6721,17 +7229,19 @@ function record(path, heading) {
   const person = r.category === "people" && r.path !== REM.owner;
   const disclosed = person || ["projects", "orgs", "skills", "decisions"].includes(r.category);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
-  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
-  main.appendChild(recordEyebrow(r, person));
-  const head = el("header", { class: "page-head" + (person ? " person-head" : "") }, [el("h1", { text: r.title })]);
-  if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
-  if (person) head.append(personLead(r), contactLine(r)); else head.appendChild(leadRow(r));
-  if (person) head.appendChild(relationshipHeader(r) || document.createTextNode(""));
-  main.appendChild(head);
-  main.appendChild(recordFocus(r));
+  const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
+  if (person) main.appendChild(personPage(r));
+  else {
+    main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
+    main.appendChild(recordEyebrow(r, person));
+    if (r.category === "orgs" && r.domain) head.appendChild(el("p", { class: "section-sub", text: r.domain }));
+    head.appendChild(leadRow(r));
+    main.appendChild(head);
+    main.appendChild(recordFocus(r));
+  }
   const decisions = threadDecisionHistory(r);
   if (decisions) main.appendChild(decisions);
   if (r.category === "projects") {
@@ -6750,7 +7260,7 @@ function record(path, heading) {
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
     if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
-    if (person && ["open threads", "insight"].includes(s.title.toLowerCase())) continue;
+    if (person && s.title.toLowerCase() === "open threads") continue;
     if (["people", "projects", "orgs"].includes(r.category) && s.title.toLowerCase() === "open threads" && listItems(s.text).every(isCalm)) continue;
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
@@ -7557,9 +8067,12 @@ window.addEventListener("focus", () => reconcileThreads().then(render));
 window.addEventListener("online", () => reconcileThreads().then(render));
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
-Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey())]).then(async ([language, theme, privacy, columns, done, saved]) => {
+Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
+  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   morePeopleColumns = columns === "more";
+  peopleTable = peopleMode === "table";
+  notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   const fallback = saved ? JSON.parse(saved) : null;
   pendingThreads = fallback?.pending || Object.fromEntries((done ? JSON.parse(done) : []).map(key => [key, { state: "done" }]));
   threadStates = { ...(REM.live ? REM.threads : { ...REM.threads, ...fallback?.states }), ...pendingThreads };

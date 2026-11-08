@@ -163,3 +163,15 @@ def test_rem_relationship_cli_table_defaults_to_recent_mail(tmp_path):
     result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "--json", "list", "people", "--table"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["data"][0]["record"] == "people/person1.md"
+
+
+def test_rem_relationship_stats_say_who_wrote_last(tmp_path):
+    """The person page's latest-event cell says whose mail was last, not just when."""
+    from connectonion.rem.relationship_stats import metrics
+    def message(day, sender, recipients):
+        return [day, "one", sender, recipients, datetime.fromisoformat(day).timestamp()]
+    theirs = message("2026-11-01T00:00:00+00:00", "mara@example.test", [OWNER])
+    yours = message("2026-11-03T00:00:00+00:00", OWNER.upper(), ["mara@example.test"])
+    assert metrics([theirs, yours], {OWNER}, NOW)["last_from_you"] is True
+    assert metrics([theirs], {OWNER}, NOW)["last_from_you"] is False
+    assert metrics([], {OWNER}, NOW)["last_from_you"] is None

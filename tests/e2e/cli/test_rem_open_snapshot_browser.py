@@ -66,7 +66,7 @@ def test_default_open_page_loads_navigates_and_goes_back(tmp_path, monkeypatch):
             contents = page.locator(".brief-header h1")
             contents.wait_for()
             page.locator("a[href='#c=people']").first.click()
-            page.get_by_role("heading", name="People", exact=True).wait_for()
+            page.locator(".r4-people h1").wait_for()
             assert page.evaluate("location.hash") == "#c=people"
             assert "Alice" in page.locator("#main").inner_text()
             page.go_back()
@@ -113,7 +113,10 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             assert page.locator('.missing.primary button, .missing.primary code').count() == 0
 
             page.goto(link + "#c=people")
-            page.get_by_role("heading", name="People", exact=True).wait_for()
+            page.locator(".r4-people h1").wait_for()
+            rows = page.locator(".r4 .row.prow .nm").all_inner_texts()
+            assert rows.index("Known Person") < rows.index("Recent Person") < rows.index("Quiet Person")
+            page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the full sheet is one toggle away
             titles = page.locator(".sheet tbody .name a").all_inner_texts()
             assert titles.index("Known Person") < titles.index("Recent Person") < titles.index("Quiet Person")
             assert "Runs the Aurora pilot with us." in page.locator(".sheet").inner_text()

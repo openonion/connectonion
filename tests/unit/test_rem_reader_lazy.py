@@ -59,14 +59,14 @@ def test_offline_startup_finishes_details_without_navigation():
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
       let detailLoad = null, detailReady = false, morePeopleColumns,
-        pendingThreads, threadStates;
+        pendingThreads, threadStates, peopleMode, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       let PEOPLE_BY_ADDRESS = new Map();
       const location = {protocol: 'file:'};
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
-      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads';
+      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done';
       const reconcileThreads = () => Promise.resolve();
       const frames = [];
       function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}

@@ -62,6 +62,7 @@ def metrics(messages, owner, now, first_ids=None):
     return {"weekly_messages": weeks, "messages_30d": recent, "messages_prior_90d": prior,
             "change_percent": change, "trend": trend, "last_mail": last,
             "quiet": bool(messages) and end - messages[-1][4] > 90 * 86400,
+            "last_from_you": messages[-1][2].casefold() in owner if messages else None,
             **thread_stats(messages, owner, now, first_ids)}
 
 
