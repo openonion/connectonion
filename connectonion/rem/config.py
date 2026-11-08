@@ -44,7 +44,8 @@ def default_config() -> dict:
     # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
-    # menu; empty offers detected suggestions but requests no background work.
+    # menu and translated in the background. Empty means the languages he writes,
+    # detected from his own mail and sessions (D-103), not "translate nothing".
     # tasks.auto: owed work starts after the night's drafts, with full access and Undo
     # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
     return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],

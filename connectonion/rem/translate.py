@@ -364,10 +364,12 @@ def attempts_today(root):
 
 
 def languages(root):
+    """The languages pages are translated into: the reader's requests, then the configured
+    list, or when that is empty the languages the owner writes, detected (D-103)."""
     from .files import read_json
-    from .config import read_config
+    from .languages import owner_languages
     requested = read_json(state_path(root, 'translation-requests.json'), {})
-    return list(dict.fromkeys([*requested, *read_config(root)['languages']]))
+    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
 
 
 def coverage(root, *, next_run=None):
