@@ -9,8 +9,9 @@ from .reader_model import CITATION, REFERENCE, source_definitions
 KINDS = ('owed', 'waiting', 'agent', 'answerable')
 DAY = r'\d{4}-\d{2}-\d{2}'
 MONTH = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
-DATE_TEXT = rf'{DAY}|\d{{4}}年\d{{1,2}}月\d{{1,2}}日|{MONTH} \d{{1,2}}(?:,? \d{{4}})?|\d{{1,2}}月\d{{1,2}}日'
-PROMISE = re.compile(rf'\b(?:due(?: on| is)?|deadline(?: is)?|by(?: the)?|deliver(?:y)? on|promised for)\s*:?\s*({DATE_TEXT})|(?:截止|承诺|交付日期)[：\s]*({DATE_TEXT})', re.I)
+WEEKDAY = r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)'
+DATE_TEXT = rf'{DAY}|\d{{1,2}}-\d{{1,2}}|(?:{WEEKDAY}\s+)?\d{{1,2}} {MONTH}(?: \d{{4}})?|\d{{4}}年\d{{1,2}}月\d{{1,2}}日|{MONTH} \d{{1,2}}(?:,? \d{{4}})?|\d{{1,2}}月\d{{1,2}}日'
+PROMISE = re.compile(rf'\b(?:due(?: on| is)?|deadline(?: is| on| of)?|closes?|by(?: the)?|deliver(?:y)? on|promised for)\s*:?\s*({DATE_TEXT})|(?:截止|承诺|交付日期)[：\s]*({DATE_TEXT})', re.I)
 REQUEST = re.compile(r'\b(?:the user|user|you)\s+(?:asked|asks|requested|requests|instructed|wanted|proposed)\b|用户(?:要求|让|希望)|你(?:让|要求)', re.I)
 QUERY = re.compile(r'\b(?:how many|how much|what|which|when|where|whether|status|check|find out)\b|多少|进度|状态|是否|几点|哪里', re.I)
 
@@ -31,6 +32,8 @@ def source_map(record):
 
 
 def source_entries(record):
+    if '_source_entries' in record:
+        return record['_source_entries']
     return [(label, source.strip()) for label, value in source_map(record).items()
             for source in re.split(r';\s*(?=[a-z][\w-]*:)', value) if source.strip()]
 
@@ -54,7 +57,7 @@ def iso_day(raw):
     return None
 
 
-def explicit_day(raw):
+def explicit_day(raw, year=None):
     if iso_day(raw):
         return iso_day(raw)
     chinese = re.fullmatch(r'(\d{4})年(\d{1,2})月(\d{1,2})日', raw)
@@ -64,21 +67,43 @@ def explicit_day(raw):
     if english:
         month = [m.casefold() for m in calendar.month_name].index(english[1].casefold())
         return iso_day(f'{english[3]}-{month:02}-{int(english[2]):02}')
+    raw = re.sub(rf'^{WEEKDAY}\s+', '', raw, flags=re.I)
+    written = re.fullmatch(rf'(\d{{1,2}}) ({MONTH})(?: (\d{{4}}))?', raw, re.I)
+    if written and (written[3] or year):
+        month = [m.casefold() for m in calendar.month_name].index(written[2].casefold())
+        return iso_day(f'{written[3] or year}-{month:02}-{int(written[1]):02}')
+    short = re.fullmatch(r'(\d{1,2})-(\d{1,2})', raw)
+    if short and year:
+        return iso_day(f'{year}-{int(short[1]):02}-{int(short[2]):02}')
     return None
 
 
-def promises(text, source):
-    return [{'date': explicit_day(match[1] or match[2]), 'text': match[0], **source}
+def promises(text, source, year=None):
+    return [{'date': explicit_day(match[1] or match[2], year), 'text': match[0], **source}
             for match in PROMISE.finditer(text)]
 
 
-def mail_promises(text, obligation_text, source):
+def written_deadlines(record, contexts):
+    """Written page context, kept separate from an action's promised due date."""
+    found = []
+    for name, body in sections(record['text']).items():
+        if name not in ('facts', 'terms', 'at stake', 'where it stands'):
+            continue
+        for line in body.splitlines():
+            source = evidence(record, line, name)[0]
+            stamp = contexts.get(source['source'], {}).get('time', '')
+            found += promises(line, source, stamp[:4] if iso_day(stamp) else None)
+    return found
+
+
+def mail_promises(text, obligation_text, source, year=None):
     # Quoted history is not a new promise. Match the task in the same sentence.
     current = re.split(r'\n(?:On .+wrote:|-----Original Message-----|From:)', text, maxsplit=1)[0]
+    task = _task_terms(obligation_text)
     return [promise for line in current.splitlines() if not line.lstrip().startswith('>')
             for sentence in re.split(r'(?<=[.!?。])\s+', line)
-            if _task_terms(sentence) & _task_terms(obligation_text)
-            for promise in promises(sentence, source)]
+            for promise in promises(sentence, source, year)
+            if task & _task_terms(sentence)]
 
 
 def _task_terms(text):
@@ -90,18 +115,23 @@ def _task_terms(text):
     return _terms(text) - generic - names
 
 
-def linked_people(record, text, records):
+def linked_people(record, text, records, names=None):
     linked = [path for _, raw in REFERENCE.findall(text)
             if (path := posixpath.normpath(posixpath.join(posixpath.dirname(record['path']), raw))) in records
             and records[path]['category'] in ('people', 'orgs')]
+    names = names if names is not None else people_index(records)
+    prose = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    mentioned = [paths[0] for name, paths in names.items() if len(paths) == 1
+                 and name in prose.casefold() and re.search(r'(?<!\w)' + re.escape(name) + r'(?!\w)', prose, re.I)]
+    return list(dict.fromkeys(linked + mentioned))
+
+
+def people_index(records):
     names = {}
     for path, row in records.items():
         if row['category'] in ('people', 'orgs') and len(row['title']) >= 3:
             names.setdefault(row['title'].casefold(), []).append(path)
-    prose = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    mentioned = [paths[0] for name, paths in names.items() if len(paths) == 1
-                 and re.search(r'(?<!\w)' + re.escape(name) + r'(?!\w)', prose, re.I)]
-    return list(dict.fromkeys(linked + mentioned))
+    return names
 
 
 def classify(record, text, sources, people, owner_name='', names=()):
@@ -115,6 +145,8 @@ def classify(record, text, sources, people, owner_name='', names=()):
     if agent_to or (request and not addressed and (session or re.search(r'asked\s*:', text, re.I))):
         return 'agent', 'owner instruction to a coding session or named agent', False
     debt = direction(text, owner_name)
+    if re.search(r'\b(?:asked|asks|requested|requests)\s+(?:the user|you)\s*:', text, re.I):
+        debt = 'mine'
     if re.search(r'我(?:在)?等|欠我|等对方', text):
         debt = 'theirs'
     if re.search(r'我欠|等我|等你|你欠', text):
@@ -176,14 +208,16 @@ def find_answer(record, text, contexts):
     return None
 
 
-def obligation(record, text, records, contexts, owner_name=''):
+def obligation(record, text, records, contexts, owner_name='', names=None):
     sources = evidence(record, text)
-    people = linked_people(record, text, records)
+    people = linked_people(record, text, records, names)
     kind, rule, review = classify(record, text, sources, people, owner_name, [records[p]['title'] for p in people])
-    promised = promises(text, sources[0])
+    stamp = next((contexts.get(s['source'], {}).get('time', '') for s in sources if contexts.get(s['source'], {}).get('time')), '')
+    year = stamp[:4] if iso_day(stamp) else None
+    promised = promises(text, sources[0], year)
     for source in sources:
         if source['source'].startswith(('gmail:', 'outlook:')):
-            promised += mail_promises(contexts.get(source['source'], {}).get('excerpt', ''), text, source)
+            promised += mail_promises(contexts.get(source['source'], {}).get('excerpt', ''), text, source, contexts.get(source['source'], {}).get('time', '')[:4] or None)
     due = next((p['date'] for p in promised if p['date']), None)
     since_match = re.search(rf'\b(?:since|requested(?: on)?|asked(?: on)?)\s*:?\s*({DAY})', text, re.I)
     leading = re.match(rf'({DAY})\b', text)
@@ -198,9 +232,9 @@ def obligation(record, text, records, contexts, owner_name=''):
             'promised': promised, 'answer': answer}
 
 
-def open_items(record, records, contexts, owner_name='', states=None):
+def open_items(record, records, contexts, owner_name='', states=None, names=None):
     from .threads import blocked, done_key
-    return [obligation(record, text, records, contexts, owner_name) for text in threads(record['text'])
+    return [obligation(record, text, records, contexts, owner_name, names) for text in threads(record['text'])
             if not blocked(None, done_key(record['path'], text), states=states or {})]
 
 

@@ -6,6 +6,8 @@ from .project_obligations import evidence, iso_day, sections
 
 
 def reason(text, points, source):
+    text = ' '.join(text.split())
+    text = text if len(text) <= 180 else text[:176].rsplit(' ', 1)[0] + '…'
     return {'text': text, 'points': points, **source, 'sources': [source]}
 
 
@@ -36,8 +38,14 @@ def waiter_weight(item, records):
 
 def debt_reasons(items, records, today):
     found = []
+    agent_added = False
     for item in items:
-        if item['kind'] == 'answerable':
+        if item['kind'] == 'answerable' or item.get('project_match', {}).get('needs_review'):
+            continue
+        if item['kind'] == 'agent':
+            if not agent_added:
+                found.append(reason('Open agent instructions (bounded contribution)', .5, item['sources'][0]))
+                agent_added = True
             continue
         weight, label = waiter_weight(item, records)
         factor = time_factor(item, today)
@@ -64,11 +72,9 @@ def money_reasons(record, contexts):
     candidates = [(line, evidence(record, line, name)[0]) for name in ('facts', 'at stake')
                   for line in parts.get(name, '').splitlines()]
     for item in record['open']:
-        if item['kind'] == 'answerable':
+        if item['kind'] == 'answerable' or item.get('project_match', {}).get('needs_review'):
             continue
         candidates.append((item['text'], item['sources'][0]))
-        candidates += [(contexts.get(s['source'], {}).get('excerpt', ''), s) for s in item['sources']
-                       if s['source'].startswith(('gmail:', 'outlook:'))]
     found = []
     for text, source in candidates:
         if not re.search(r'unpaid|unissued|outstanding invoice|invoice (?:due|owed)|payment due|contract delivery payment|paid subscription|paying client|待开发票|未收|未开|付费订阅', text, re.I):
@@ -112,7 +118,9 @@ def priority(score):
 
 def score_project(record, records, contexts, issues, today):
     reasons = debt_reasons(record['open'], records, today)
-    reasons += deadline_reason(record['promised'], today) + money_reasons(record, contexts)
+    confirmed = [p for item in record['open'] if item['kind'] != 'answerable' and not item.get('project_match', {}).get('needs_review')
+                 for p in item['promised']] + issue_deadlines(issues, record)
+    reasons += deadline_reason(confirmed, today) + money_reasons(record, contexts)
     reasons += issue_reasons(issues, record, today)
     last = record['last_activity']
     if last and 0 <= (today - date.fromisoformat(last)).days <= 7:
@@ -125,7 +133,7 @@ def score_project(record, records, contexts, issues, today):
 
 
 def health(record, today, issues=()):
-    open_items = [item for item in record['open'] if item['kind'] != 'answerable']
+    open_items = [item for item in record['open'] if item['kind'] != 'answerable' and not item.get('project_match', {}).get('needs_review')]
     active_promises = [p for item in open_items for p in item['promised']] + issue_deadlines(issues, record)
     overdue = next((p for p in active_promises if p['date'] and p['date'] < today.isoformat()), None)
     if overdue:
@@ -135,6 +143,11 @@ def health(record, today, issues=()):
     if near:
         return 'at_risk', {'text': f'An open obligation or milestone is due within seven days ({near["date"]}).',
                           **{key: near[key] for key in ('source', 'cite', 'path')}}
+    stale = next((item for item in open_items if item['kind'] == 'owed' and (
+        (item['since'] and (today - date.fromisoformat(item['since'])).days > 14)
+        or re.search(r'overdue|blocking|blocked|逾期|受阻', item['text'], re.I))), None)
+    if stale:
+        return 'at_risk', {'text': 'An unresolved human obligation is stale or explicitly overdue/blocked.', **stale['sources'][0]}
     risks = [r for r in issue_reasons(issues, record, today) if r['points'] == 1]
     if risks:
         return 'at_risk', {'text': 'A recently updated open GitHub bug or high-priority issue needs attention.',
@@ -142,10 +155,6 @@ def health(record, today, issues=()):
     blocker = recorded_blocker(record)
     if blocker:
         return 'at_risk', blocker
-    for item in open_items:
-        stale = item['kind'] == 'owed' and item['since'] and (today - date.fromisoformat(item['since'])).days > 14
-        if stale:
-            return 'at_risk', {'text': 'A human has waited over fourteen days on an open obligation.', **item['sources'][0]}
     last = record['last_activity']
     if not last or (today - date.fromisoformat(last)).days > 30:
         return 'quiet', {'text': 'No dated activity in the last thirty days is recorded; completion is not inferred.',

@@ -317,3 +317,164 @@ def test_mapped_last_seen_is_real_activity_but_investigation_is_not(tmp_path):
     result = enrich(tmp_path, [row])
     assert result['last_activity'] == '2026-08-02'
     assert result['date_sources']['last_activity']['source'] == row['path'] + '#paths'
+
+
+def test_human_debt_joins_explicit_project_with_evidence(tmp_path):
+    project = page()
+    person = page('people/fern.md', 'Fern', facts='- Project: [Harbour](../projects/harbour.md)',
+                  opened='- You owe the demo feedback by 2026-10-30. [1]', sources='- [1] gmail:demo')
+    enrich(tmp_path, [project, person])
+    assert project['kind_counts']['owed'] == 1
+    assert project['open'][0]['joined_from'] == person['path']
+    assert project['open'][0]['project_match']['source'].startswith(person['path'])
+    assert project['health'] == 'off_track'
+
+
+def test_org_alias_and_thread_joins_and_unmatched_candidates(tmp_path):
+    project = page(facts='- Organisation: [Cedar](../orgs/cedar.md)\n- Also known as: Cedar Kit [1]', sources='- [1] gmail:project')
+    org = page('orgs/cedar.md', 'Cedar')
+    fern = page('people/fern.md', 'Fern', facts='- Company: [Cedar](../orgs/cedar.md)', opened='- You owe an invoice. [1]')
+    rain = page('people/rain.md', 'Rain', opened='- You owe Cedar Kit a review. [1]\n- You owe a contract. [2]', sources='- [2] gmail:person')
+    unmatched = page('people/ash.md', 'Ash', facts='- Role: Product owner, Capstone team PINE', opened='- You owe the demo feedback. [1]')
+    rows = [project, org, fern, rain, unmatched]
+    enrich(tmp_path, rows, {'gmail:project': {'thread': 't'}, 'gmail:person': {'thread': 't'}})
+    assert project['kind_counts']['owed'] == 3
+    assert unmatched['inferred_projects'][0]['evidence']
+    assert 'PINE' in unmatched['inferred_projects'][0]['title']
+    assert len(rows) == 5 and not list(tmp_path.iterdir())
+
+
+def test_one_overdue_human_outranks_thirty_agent_instructions(tmp_path):
+    busy = page(opened='\n'.join(f'- The user asked Codex to implement feature {i}. [1]' for i in range(30)))
+    debt = page('projects/pine.md', 'Pine', opened='- You owe Fern a report by 2026-10-30. [1]')
+    enrich(tmp_path, [busy, debt])
+    assert debt['score'] > busy['score']
+    assert busy['score'] <= 1
+
+
+def test_stale_human_debt_is_at_risk_despite_recent_agent_activity(tmp_path):
+    row = page(facts='- Last activity: 2026-11-07 [1]', opened='- You owe Fern feedback since 2026-10-01. [1]')
+    assert enrich(tmp_path, [row])['health'] == 'at_risk'
+
+
+def test_written_deadlines_resolve_year_only_from_source_date(tmp_path):
+    row = page(opened='- You owe Fern the report by Friday 30 October; the application closes 11-25. [1]', sources='- [1] gmail:one')
+    result = enrich(tmp_path, [row], {'gmail:one': {'time': '2026-10-23'}})
+    assert [p['date'] for p in result['promised']] == ['2026-10-30', '2026-11-25']
+    assert all(p['source'] == 'gmail:one' for p in result['promised'])
+
+
+def test_names_are_indexed_once_per_snapshot(tmp_path, monkeypatch):
+    from connectonion.rem import project_obligations
+    rows = [page(f'people/person-{i}.md', f'Person {i}', opened='- You owe a report. [1]') for i in range(40)]
+    original = project_obligations.re.search
+    count = 0
+    def search(pattern, text, *args, **kwargs):
+        nonlocal count
+        count += str(pattern).startswith('(?<!\\w)')
+        return original(pattern, text, *args, **kwargs)
+    monkeypatch.setattr(project_obligations.re, 'search', search)
+    enrich(tmp_path, rows)
+    assert count < 100
+
+
+def test_human_request_with_colon_is_a_confirmed_debt(tmp_path):
+    person = page('people/fern.md', 'Fern Vale', opened='- Fern asked the user: choose a meeting time. [1]')
+    result = enrich(tmp_path, [person])
+    assert result['open'][0]['kind'] == 'owed'
+    assert result['open'][0]['needs_review'] is False
+
+
+def test_mail_deadline_source_year_is_local_to_each_citation(tmp_path):
+    row = page(opened='- You owe the cedar report. [1][2]', sources='- [1] gmail:old\n- [2] gmail:new')
+    result = enrich(tmp_path, [row], {'gmail:old': {'time': '2025-11-01'}, 'gmail:new': {
+        'time': '2026-11-01', 'excerpt': 'The cedar report is due 11-25.'}})
+    assert result['promised'][0]['date'] == '2026-11-25'
+
+
+def test_shared_org_portfolio_does_not_multiply_a_debt(tmp_path):
+    first = page(facts='- Organisation: [Cedar](../orgs/cedar.md)')
+    second = page('projects/pine.md', 'Pine', facts='- Organisation: [Cedar](../orgs/cedar.md)')
+    person = page('people/fern.md', 'Fern', facts='- Company: [Cedar](../orgs/cedar.md)', opened='- You owe a report. [1]')
+    enrich(tmp_path, [first, second, person])
+    assert first['kind_counts']['owed'] == second['kind_counts']['owed'] == 0
+    assert person['inferred_projects'][0]['evidence']
+
+
+def test_generic_project_name_is_not_a_task_noun(tmp_path):
+    project = page(title='review')
+    person = page('people/fern.md', 'Fern', opened='- You owe Fern a review of the demo. [1]')
+    enrich(tmp_path, [project, person])
+    assert project['kind_counts']['owed'] == 0
+    assert person['inferred_projects']
+
+
+def test_unrelated_project_link_in_person_history_does_not_claim_all_debts(tmp_path):
+    project = page()
+    person = page('people/fern.md', 'Fern', opened='- You owe a panel question list by 2026-10-30. [1]')
+    person['text'] += '\n## History\n- Previously used [Harbour](../projects/harbour.md) for a separate demo. [2]\n'
+    enrich(tmp_path, [project, person])
+    assert project['kind_counts']['owed'] == 0
+    assert person['inferred_projects'][0]['priority'] > 0
+    assert person['inferred_projects'][0]['health'] == 'off_track'
+
+
+def test_repository_name_spacing_and_acronym_can_identify_the_project(tmp_path):
+    project = page(title='cx-pine')
+    person = page('people/fern.md', 'Fern', opened='- You owe PINE demo feedback. [1]')
+    enrich(tmp_path, [project, person])
+    assert project['kind_counts']['owed'] == 1
+
+
+def test_mail_task_terms_are_not_reparsed_for_sentences_without_deadlines(monkeypatch):
+    from connectonion.rem import project_obligations as obligations
+    original = obligations._task_terms
+    calls = []
+    def terms(text):
+        calls.append(text)
+        return original(text)
+    monkeypatch.setattr(obligations, '_task_terms', terms)
+    source = {'source': 'gmail:one', 'cite': '1', 'path': 'people/fern.md'}
+    text = '\n'.join(['The cedar report is being discussed.'] * 100 + ['Please send the cedar report by 2026-11-20.'])
+    assert obligations.mail_promises(text, 'You owe the cedar report.', source)[0]['date'] == '2026-11-20'
+    assert len(calls) <= 2
+
+
+def test_tentative_org_match_does_not_add_deadline_pressure(tmp_path):
+    project = page(facts='- Organisation: [Cedar](../orgs/cedar.md)')
+    person = page('people/fern.md', 'Fern', facts='- Company: [Cedar](../orgs/cedar.md)',
+                  opened='- You owe the report by 2026-11-12. [1]')
+    enrich(tmp_path, [project, person])
+    assert project['score'] == 0
+    assert person['inferred_projects'][0]['score'] > 0
+
+
+def test_written_context_deadline_keeps_its_source_and_is_not_an_action_due_date(tmp_path):
+    person = page('orgs/cedar.md', 'Cedar', opened='- You owe the signed support letter. [1]', sources='- [1] gmail:one')
+    person['text'] += '\n## Terms\n- The submission deadline of 25 November 2026 is final. [1]\n'
+    enrich(tmp_path, [person])
+    assert person['written_deadlines'][0]['date'] == '2026-11-25'
+    assert person['written_deadlines'][0]['source'] == 'gmail:one'
+    assert person['open'][0]['due'] is None
+
+
+def test_answerable_item_does_not_keep_deadline_pressure():
+    from connectonion.rem.project_priority import score_project
+    row = page()
+    promise = {'date': '2026-11-12', 'source': 'gmail:one', 'cite': '1', 'path': row['path']}
+    row.update(open=[{'kind': 'answerable', 'promised': [promise]}], promised=[promise], last_activity=None)
+    assert score_project(row, {}, {}, [], TODAY)['score'] == 0
+
+
+def test_priority_reasons_are_short_single_line_with_full_obligation_retained(tmp_path):
+    text = 'You owe Fern the report. ' + 'The evidence describes the outstanding report in detail. ' * 12
+    result = enrich(tmp_path, [page(opened='- ' + text)])
+    assert len(result['reasons'][0]['text']) <= 180
+    assert '\n' not in result['reasons'][0]['text']
+    assert result['open'][0]['text'] == text
+
+
+def test_mail_business_bio_does_not_create_payment_pressure(tmp_path):
+    row = page(opened='- You owe Fern a support letter. [1]', sources='- [1] gmail:one')
+    contexts = {'gmail:one': {'excerpt': 'Our systems serve paying clients. We propose AUD 250000 research funding.'}}
+    assert enrich(tmp_path, [row], contexts)['score'] == .5

@@ -253,7 +253,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "reviews": listing(root), "counts": counts(root, found),
             "owner": owner}
     from .project_data import enrich_records
-    enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
+    data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
     from .today import queue as today_queue
     data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
     from .night import listing as night_outcomes

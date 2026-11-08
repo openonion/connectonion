@@ -3091,3 +3091,57 @@ def test_approval_request_freezes_all_controls_until_response():
 })();
 ''')
     assert result == {'frozen': True, 'restored': True}
+
+
+def test_session_mentions_skip_regex_scans_for_absent_names(monkeypatch):
+    """Large sessions with no candidate name should require no name regex search."""
+    from connectonion.rem import sessions
+    person = {'path': 'people/fern.md', 'title': 'Fern Vale', 'text': '# Fern Vale'}
+    session = {'path': 'sessions/demo.md', 'text': '# Demo\n\n## What you typed\n' + 'cedar implementation details ' * 2000}
+    original = sessions.re.search
+    compile_original = sessions.re.compile
+    scans = []
+    class Pattern:
+        def __init__(self, compiled):
+            self.compiled = compiled
+        def search(self, text):
+            scans.append(text)
+            return self.compiled.search(text)
+    def compile_pattern(pattern, *args, **kwargs):
+        compiled = compile_original(pattern, *args, **kwargs)
+        return Pattern(compiled) if "Fern" in str(pattern) else compiled
+    def search(pattern, text, *args, **kwargs):
+        if 'Fern' in str(pattern):
+            scans.append(pattern)
+        return original(pattern, text, *args, **kwargs)
+    monkeypatch.setattr(sessions.re, 'search', search)
+    monkeypatch.setattr(sessions.re, 'compile', compile_pattern)
+    assert sessions.mentions([person], [session]) == {}
+    assert scans == []
+
+
+def test_observed_versions_uses_supplied_records_and_one_metadata_read(tmp_path):
+    import hashlib
+    import sqlite3
+    from connectonion.rem.threads import observed_versions
+    state = tmp_path / '.state'
+    state.mkdir()
+    db = sqlite3.connect(state / 'rem.db')
+    db.execute('create table messages (id text, time text, thread text, source text, body_path text)')
+    db.executemany('insert into messages values (?,?,?,?,?)', [
+        ('gmail:first', '2026-11-01', 't', 'gmail', None),
+        ('gmail:last', '2026-11-07', 't', 'gmail', None),
+        ('gmail:empty', '', 'u', 'gmail', None),
+        ('gmail:null', None, 'u', 'gmail', None)])
+    db.commit()
+    db.close()
+    digest = hashlib.sha256(b'first').hexdigest()[:12]
+    rows = [{'path': 'people/fern.md', 'text': f'# Fern\n\n## Sources\n- [1] gmail:{digest}\n- [2] gmail:empty\n'}]
+    assert observed_versions(tmp_path, rows) == {'t': 'gmail:last', 'u': 'gmail:empty'}
+
+
+def test_session_mentions_prefilter_preserves_unicode_case_matching():
+    from connectonion.rem.sessions import mentions
+    person = {'path': 'people/ipek.md', 'title': 'İpek Vale', 'text': '# İpek Vale'}
+    session = {'path': 'sessions/demo.md', 'text': '# Demo\n\n## What you typed\nAsk Ipek Vale for feedback.\n'}
+    assert mentions([person], [session]) == {'people/ipek.md': ['sessions/demo.md']}

@@ -1,4 +1,5 @@
 """Owner thread decisions shared by the reader and both night-run paths."""
+import hashlib
 import platform
 import re
 import sqlite3
@@ -35,9 +36,29 @@ def _mail_versions(root, key):
 
 
 def observed_versions(root, records):
-    """Latest versions of all cited mail, including threads ineligible for drafting."""
-    return {thread: row['id'] for record in records
-            for thread, row in _mail_versions(root, record['path'] + '\n' + record['text']).items()}
+    """Latest cited versions from one read-only metadata scan, without rereading pages."""
+    from .census import _thread_sources
+    file = state_path(root, 'rem.db')
+    if not file.is_file():
+        return {}
+    with closing(sqlite3.connect(file.absolute().as_uri() + '?mode=ro', uri=True)) as db:
+        db.row_factory = sqlite3.Row
+        rows = [dict(row) for row in db.execute('select id, time, thread, source, body_path from messages')]
+    by_id = {row['id']: row for row in rows}
+    aliases, latest = {}, {}
+    for row in rows:
+        thread = row['thread']
+        if thread not in latest or (row['time'] is not None, row['time'] or '', row['id']) > (latest[thread]['time'] is not None, latest[thread]['time'] or '', latest[thread]['id']):
+            latest[thread] = row
+        if row['source'] in ('gmail', 'outlook'):
+            digest = hashlib.sha256(row['id'].removeprefix(row['source'] + ':').encode()).hexdigest()[:12]
+            body = row['body_path']
+            if body is None or body.endswith('.json') and any(body.startswith(f'mail/{folder}/{row["source"]}/{digest}') for folder in ('messages', 'observed')):
+                aliases.setdefault(row['source'] + ':' + digest, []).append(row)
+    sources = {source for record in records for source in _thread_sources(record['text']).values()}
+    resolved = [by_id.get(source) or (aliases[source][0] if len(aliases.get(source, [])) == 1 else None)
+                for source in sources]
+    return {row['thread']: latest[row['thread']]['id'] for row in resolved if row and row['thread'] is not None}
 
 
 def listing(root):

@@ -496,14 +496,17 @@ def _name_pattern(name: str) -> str:
 def mentions(people: list[dict], sessions: list[dict]) -> dict[str, list[str]]:
     ordered = sorted(sessions, key=lambda row: row["path"])
     ordered.sort(key=lambda row: (row.get("session_date", ""), row.get("session_time", "")), reverse=True)
-    typed = [(row["path"], _section(row["text"], "What you typed")) for row in ordered]
+    typed = [(row["path"], text, text.casefold()) for row in ordered
+             for text in [_section(row["text"], "What you typed")]]
     found = {}
     for person in people:
         if person.get("needs_review"):
             continue
-        patterns = [_name_pattern(name) for name in _names(person)]
-        pattern = "|".join(filter(None, patterns))
-        matches = [path for path, text in typed if pattern and re.search(pattern, text)]
+        patterns = [(name.casefold(), re.compile(pattern)) for name in _names(person)
+                    if (pattern := _name_pattern(name))]
+        matches = [path for path, text, folded in typed if any(
+            (name in folded or 'ı' in folded or 'i\u0307' in folded or 'ı' in name or 'i\u0307' in name) and pattern.search(text)
+            for name, pattern in patterns)]
         if matches:
             found[person["path"]] = matches
     return found

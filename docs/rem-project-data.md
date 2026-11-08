@@ -44,12 +44,32 @@ initialization or automatic merge happens while building a snapshot.
 
 The example illustrates field types, not a complete score calculation. All dates
 are ISO calendar days or `null`. `promised` retains yearless or invalid written
-dates as `{date: null, text: ..., source, cite, path}` rather than inventing a year.
+dates as `{date: null, text: ..., source, cite, path}`. Day-month and month-day forms use a year only when a cited source has a dated timestamp; they never use the runtime year.
 `reasons` contains at most three entries, ordered by contribution; `score` includes
 all components, so these three entries need not sum to the total. Every reason
 has a source, including a page-section anchor when no numbered citation exists.
 `cite` is local to `path`; never resolve a bare citation number across pages.
 `open` and `kind_counts` also appear on person and organisation records.
+
+People/org obligations join projects by task links/names, cited sources or provider-scoped
+conversation IDs, declared counterparty Facts Project(s) links, then a unique shared
+organisation. Joined items retain `joined_from` and `project_match` evidence; ordinary
+lowercase nouns require project/repository wording or code quoting. Ambiguous organisation
+portfolios do not multiply a debt across projects. Organisation-only joins carry
+`project_match.needs_review: true`; they do not affect scores/health and remain
+review candidates. Project counts include these suggestions, so they must not be
+reported as confirmed ownership. `inferred_projects` on the snapshot
+(and counterparty record) contains unmatched confirmed owed items with `title`, `record`,
+`text`, `kind`, `evidence`, `promised`, `suggestion` and `needs_review`; these are review
+candidates, not created notebook pages or guaranteed distinct projects. Candidates
+carry the same score, priority, reasons, health and date fields, plus tentative
+`project_candidates` paths. Candidate counts can overlap tentative project joins.
+`written_deadlines` preserves explicit dated context from Facts/Terms/At stake/Where
+it stands, separately from an open action's `due` and `promised` fields. The current
+reader UI does not yet render these enrichment fields.
+
+Source entries, counterparty names and project aliases are indexed once per snapshot;
+enrichment reads no archive and stores no cache in the notebook.
 
 ## Obligation classification, in order
 
@@ -89,9 +109,9 @@ The brief specifies the score formula, but not band boundaries. This implementat
 uses `score >= 20 → 1`, `>= 10 → 2`, `>= 5 → 3`, positive `< 5 → 4`, zero → 0.
 
 - Debt: highest **three** weighted open obligations, following the PM brief's
-  inclusion of agent tasks and incoming debts in the same capped component.
+  inclusion of human obligations and incoming debts in the same capped component.
   Paying client = 5, partner/investor/event organiser = 3, student/capstone = 2,
-  agent = 1, waiting = 0.5. An unclassified human waiter gets 1 with that exact
+  waiting = 0.5. All agent instructions together contribute at most 0.5, without an age multiplier. An unclassified human waiter gets 1 with that exact
   label. Roles must occur in the obligation or linked counterparty Facts; role
   evidence is included in the reason's `sources`. Answerable items contribute 0.
 - Time multiplier: overdue = `min(5, 3 + 0.5 * floor(days_overdue / 7))`;
@@ -102,7 +122,9 @@ uses `score >= 20 → 1`, `>= 10 → 2`, `>= 5 → 3`, positive `< 5 → 4`, zer
 - Money: explicit unpaid/unissued invoice, outstanding contractual payment or paid
   subscription +4; explicitly AUD/A$ amount above 10,000 +6, counted once. No
   currency conversion or assumed meaning of a bare `$`. Closed obligations do
-  not re-enter through raw Open threads.
+  not re-enter through raw Open threads. Unscoped mail excerpts do not create
+  financial pressure: a company biography describing paying clients is not an
+  outstanding payment in this project.
 - Issues: each open `priority:high` or `bug` updated within thirty days adds 1,
   capped at 4; a doubly labelled issue counts once. Unlabelled issues add 0.1,
   capped at 1. Other labels, missing update dates, closed or stale issues add 0.
