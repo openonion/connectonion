@@ -5584,7 +5584,7 @@ function cardStep(entry) {
   if (REM.live && approvalTask(entry)) return "approve";
   if (draft?.status === "no_reply" || looksDone(entry)) return "done";
   // A snapshot cannot draft: an unanswered mail thread opens the live reader, never a dead end.
-  if (!REM.live && (reply?.provider || threadKind(entry)?.mail) && !["replied", "task"].includes(reply?.state)) return "live";
+  if (!REM.live && (reply?.provider || threadKind(entry)?.mail) && !["replied", "task", "unarchived"].includes(reply?.state)) return "live";
   // A mail-app compose cannot join an existing thread; only a person with no thread gets one.
   if (threadContact(entry) && !queuedReply(entry)?.provider && !threadKind(entry)?.mail) return "write";
   return "open";
