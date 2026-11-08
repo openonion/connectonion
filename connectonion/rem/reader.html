@@ -13,8 +13,8 @@
   the owner reviews it. Every page opens on what is still open.
   - Palette: paper and ink, dawn indigo for changes, lamp amber for what
     waits on you, and a yellow mark shared by a claim and its source span.
-  - Type: Optima for display only (titles, the night's sentence), Charter for
-    page prose, Avenir for chrome, and mono only for commands and paths.
+  - Type: one system sans (SF / PingFang) for titles, prose and chrome, and
+    mono only for commands and paths.
   - Fonts are local faces on purpose: a page of someone's private notes must
     not phone a font host on open.
 -->
@@ -39,9 +39,9 @@
     --well: var(--line-2); --blue: var(--dawn); --blue-soft: var(--dawn-soft); --blue-line: var(--dawn-line);
     --waiting: var(--lamp); --wait: var(--lamp); --night-line: var(--night-2); --night-lamp: #f2b65e; --mark-ink: var(--ink);
     --shadow: 0 10px 30px -18px rgba(21, 26, 51, .35);
-    --display: Optima, "Optima Nova", Candara, "Segoe UI Variable Display", sans-serif;
-    --text: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Songti SC", serif;
-    --ui: "Avenir Next", Avenir, system-ui, -apple-system, "PingFang SC", sans-serif;
+    /* One typeface across the reader (owner review 2026-11-08: serif list pages read as a different product). */
+    --display: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    --text: var(--display); --ui: var(--display);
     --code: ui-monospace, "SF Mono", Menlo, monospace;
     --mono: var(--code);
   }
