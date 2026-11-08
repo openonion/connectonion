@@ -46,13 +46,21 @@ if args[1] == 'graphql':
 else:
     endpoint = args[1]
     key = 'runs' if '/actions/runs' in endpoint else endpoint.split('?')[0].rsplit('/', 1)[-1]
+    # Real gh 2.97 (checked read-only against cli/cli): the status line ends in
+    # LF, headers in CRLF; a 304 prints its headers, then exits 1 with
+    # "gh: HTTP 304" on stderr.
+    if os.environ.get('GH_STATUS') == '404':
+        sys.stdout.write('HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}')
+        sys.stderr.write('gh: Not Found (HTTP 404)\\n')
+        sys.exit(1)
     if 'If-None-Match:' in ' '.join(args):
-        print('HTTP/2.0 304 Not Modified\\n\\n')
-    else:
-        page = 2 if '&page=2' in endpoint else 1
-        value = rows[key][(page-1)*100:page*100]
-        if key == 'runs': value = {'workflow_runs': value}
-        print('HTTP/2.0 200 OK\\nETag: "cedar"\\n\\n' + json.dumps(value))
+        sys.stdout.write('HTTP/2.0 304 Not Modified\\nEtag: "cedar"\\r\\n\\r\\n')
+        sys.stderr.write('gh: HTTP 304\\n')
+        sys.exit(1)
+    page = 2 if '&page=2' in endpoint else 1
+    value = rows[key][(page-1)*100:page*100]
+    if key == 'runs': value = {'workflow_runs': value}
+    sys.stdout.write('HTTP/2.0 200 OK\\nEtag: "cedar"\\r\\n\\r\\n' + json.dumps(value))
 ''')
     executable.chmod(0o755)
     monkeypatch.setenv('PATH', str(folder) + os.pathsep + os.environ['PATH'])
@@ -84,6 +92,9 @@ def test_sync_cache_skip_etag_and_projection(tmp_path, gh, monkeypatch):
     assert gh.read_text().splitlines() == commands
     cache = pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=31))
     assert 'If-None-Match:' in gh.read_text()
+    assert cache['error'] is None
+    assert cache['synced_at'] == '2026-11-08T12:31:00Z'
+    assert {v.get('status') for v in cache['verification'] if v['resource'] != 'prs'} == {304}
     assert cache['issues'][0]['number'] == 7
     monkeypatch.setattr(pages.subprocess, 'run', lambda *a, **k: pytest.fail('projection ran a command'))
     projection = data.repository_projection(tmp_path, REPO, now=NOW)
@@ -110,6 +121,14 @@ def test_session_commit_links_require_exact_cwd_time_and_printed_branch(tmp_path
     assert pages.session_commit_links([session], [{**commit, 'time': '2026-11-08T12:00:01Z'}], [str(repo)]) == []
     assert pages.session_commit_links([{**session, 'started': '2026-11-08T13:00:00Z'}], [commit], [str(repo)]) == []
     assert pages.session_commit_links([{**session, 'ended': ''}], [commit], [str(repo)]) == []
+
+
+def test_only_a_304_exit_is_accepted(tmp_path, gh, monkeypatch):
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    monkeypatch.setenv('GH_STATUS', '404')
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=31))
+    assert 'returned non-zero exit status 1' in cache['error']
+    assert cache['synced_at'] == '2026-11-08T12:00:00Z'
 
 
 def test_caps_stop_before_exhausting_repository(tmp_path, gh):

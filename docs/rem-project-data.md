@@ -238,6 +238,10 @@ GitHub reads use the owner's `gh` executable and its normal authentication:
 There is no automatic pagination. The REST resources retain ETags and response
 bodies in the same `repository.json`; subsequent due syncs send `If-None-Match`.
 A 304 reuses the corresponding body, with the revalidation command/time recorded.
+`gh api --include` exits 1 on a 304 (stderr `gh: HTTP 304`, gh 2.97.0, checked
+read-only against a public repository), so `github_read()` reads the status from
+the included headers and accepts a non-zero exit only when that status is 304;
+every other non-zero exit is a failed sync.
 GraphQL has no ETag and is read again. Each gh/git request has a 20-second timeout.
 `github_read()` validates the **entire argv** against a closed allowlist of the
 above GET endpoints or the exact fixed GraphQL query and owner/name fields.

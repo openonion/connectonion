@@ -916,7 +916,12 @@ def github_read(args):
                       and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
     if not valid:
         raise ValueError('REM GitHub ingest is read-only; refused gh arguments')
-    return subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20, check=True).stdout
+    run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
+    # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
+    # Treating that as failure kept the old ETag, so every later sync failed too.
+    if run.returncode and not ('--include' in args and re.match(r'HTTP/\S+ 304\b', run.stdout)):
+        raise subprocess.CalledProcessError(run.returncode, ['gh', *args], run.stdout, run.stderr)
+    return run.stdout
 
 
 def _code_rest(repo, resource, cap, resources, evidence, now):
