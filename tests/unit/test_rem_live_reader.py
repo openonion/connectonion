@@ -297,3 +297,18 @@ def test_task_stop_and_undo_go_through_the_owner_endpoint(host, monkeypatch):
     assert calls == [('stop', task_id), ('undo', task_id)]
     body = json.dumps({'id': task_id, 'action': 'push'}).encode()
     assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 400
+
+
+def test_a_hand_to_codex_or_claude_button_dispatches_any_pending_item(host, monkeypatch):
+    from connectonion.rem import tasks
+    calls = []
+    monkeypatch.setattr(tasks, 'dispatch', lambda root, key, agent='codex': calls.append((key, agent)) or {'agent': agent, 'result': 'starting'})
+    key = 'people/fern.md\nReview the pilot.'
+    for agent in ('codex', 'claude'):
+        body = json.dumps({'key': key, 'action': 'run', 'agent': agent}).encode()
+        assert call(host.routes, 'POST', '/rem/task', body=body)[0] == 401
+        status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+        assert status == 200 and json.loads(text) == {'agent': agent, 'result': 'starting'}
+    assert calls == [(key, 'codex'), (key, 'claude')]
+    for bad in ({'key': key, 'action': 'run', 'agent': 'gemini'}, {'action': 'run', 'agent': 'claude'}):
+        assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=json.dumps(bad).encode())[0] == 400

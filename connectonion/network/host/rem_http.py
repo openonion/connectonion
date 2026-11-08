@@ -117,10 +117,17 @@ async def _action(scope, receive, send, root, headers):
     if scope["path"] == "/rem/task":
         from ...rem import tasks
         action = body.get("action", "status")
-        if not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
+        if action == "run":
+            # 交给 Codex / 交给 Claude on any pending item: {"key": obligation key, "agent": "codex"|"claude"}.
+            if not isinstance(body.get("key"), str) or body.get("agent", "codex") not in tasks.AGENTS:
+                await _reply(send, 400, json.dumps({"error": "Expected the item key and agent codex or claude"}), "application/json")
+                return
+            operation = lambda: tasks.dispatch(root, body["key"], agent=body.get("agent", "codex"))
+        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
             await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop or undo"}), "application/json")
             return
-        operation = lambda: getattr(tasks, action)(root, body['id'])
+        else:
+            operation = lambda: getattr(tasks, action)(root, body['id'])
     elif scope["path"] == "/rem/approve":
         from ...rem import approvals
         if (body.get("action", "approve") not in ("approve", "undo")

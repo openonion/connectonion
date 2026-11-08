@@ -1184,10 +1184,12 @@ Back: co rem --help
 ```
 Start one prepared obligation in background Codex; return its receipt immediately.
 
-Usage: co rem [--root DIR] [--json] task run ID
+Usage: co rem [--root DIR] [--json] task run ID [--agent codex|claude]
 
 Arguments:
   ID            Task ID printed by co rem task status.
+Options:
+  --agent       codex or claude (claude -p): who runs a task that has not started.
 
 Uses the configured work model with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there

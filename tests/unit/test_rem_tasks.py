@@ -53,6 +53,26 @@ sys.exit(int(os.environ.get('TASK_FAKE_EXIT', '0')))
     return path
 
 
+@pytest.fixture
+def fake_claude(tmp_path, monkeypatch):
+    """`claude -p` as Claude Code runs it: prompt in, one JSON result on stdout."""
+    path = tmp_path / 'claude-fake'
+    path.write_text('''#!/usr/bin/env python3
+import json, os, pathlib, re, sys
+args = sys.argv[1:]
+prompt = args[args.index('-p') + 1]
+deliverable = pathlib.Path(re.search(r'Deliverable: (\\S+)', prompt).group(1))
+(deliverable.parent / 'argv.json').write_text(json.dumps(args))
+(deliverable.parent / 'cwd.txt').write_text(os.getcwd())
+pathlib.Path('claude-was-here.md').write_text('Mara pilot notes')
+deliverable.write_text('# Mara pilot review\\nReady for owner review.\\n')
+print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'Reviewed the Mara pilot with Claude.'}))
+''')
+    path.chmod(0o700)
+    monkeypatch.setenv('CLAUDE_CMD', str(path))
+    return path
+
+
 def test_native_cleanup_keeps_obligation_work_even_when_old(tmp_path):
     directory = tmp_path / 'do-mara'
     directory.mkdir()
@@ -494,6 +514,45 @@ def test_host_dispatch_runs_public_cli_with_receipt_id(task_notebook, fake_codex
         return subprocess.CompletedProcess(command, 0, '{}', '')
     monkeypatch.setattr(tasks.subprocess, 'run', launch)
     result = tasks.host_dispatch(task_notebook, item)
-    assert calls[0][-3:] == ['task', 'run', item['receipt_id']]
+    assert calls[0][-5:] == ['task', 'run', item['receipt_id'], '--agent', 'codex']
     assert '--root' in calls[0] and str(task_notebook) in calls[0]
     assert result['id'] == item['receipt_id']
+
+
+def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(task_notebook, fake_claude):
+    # The owner's 交给 Claude: one code path, the agent as data (D-100: full access).
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0], agent='claude')
+    assert receipt['agent'] == 'claude'
+    tasks.execute(task_notebook, receipt['id'])
+    saved = tasks.status(task_notebook, receipt['id'])
+    folder = Path(saved['receipt']).parent
+    argv = read_json(folder / 'argv.json', [])
+    assert saved['result'] == 'completed' and saved['agent'] == 'claude'
+    assert '--dangerously-skip-permissions' in argv and argv[argv.index('--add-dir') + 1] == str(folder)
+    assert (folder / 'cwd.txt').read_text() == str(folder / 'work') == saved['cwd']
+    assert 'Done means:' in argv[argv.index('-p') + 1] and 'Never push' in argv[argv.index('-p') + 1]
+    assert saved['prepared_reply'] == f"REM 已经做完：Reviewed the Mara pilot with Claude. · 附：{saved['deliverable']}"
+
+
+def test_dispatch_starts_any_pending_item_with_the_chosen_agent(task_notebook, fake_claude):
+    from connectonion.rem import tasks
+    row = night.listing(task_notebook)[0]
+    started = tasks.dispatch(task_notebook, row['keys'][0], agent='claude')
+    assert started['agent'] == 'claude' and started['by'] == 'owner'
+    assert _finished(task_notebook, started['id'])['result'] == 'completed'
+    with pytest.raises(RemError, match='codex or claude'):
+        tasks.dispatch(task_notebook, row['keys'][0], agent='gemini')
+    with pytest.raises(RemError, match='No pending item'):
+        tasks.dispatch(task_notebook, 'people/nobody.md\nNothing.', agent='codex')
+
+
+def test_a_queued_task_takes_the_agent_the_owner_picks_and_the_host_passes_it(task_notebook, monkeypatch):
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    assert receipt['agent'] == 'codex'
+    seen = []
+    monkeypatch.setattr(tasks.subprocess, 'run', lambda command, **kw: seen.append(command) or
+                        type('Done', (), {'returncode': 0})())
+    tasks.host_dispatch(task_notebook, {'receipt_id': receipt['id'], 'agent': 'claude'})
+    assert seen[0][-3:] == [receipt['id'], '--agent', 'claude']
