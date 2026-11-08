@@ -5709,9 +5709,8 @@ function cardItem(entry, many, seen = new Set()) {
   return el("li", { class: "qitem" }, [
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [own ? el("p", { class: "qorig", lang: "en", text: words }) : null,
-      el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
-      alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry)])]);
+    el("div", { class: "qmore" }, [el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
+      alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry), own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
 }
 function cardDraft(draft, group) {
   const n = group.entries.length;

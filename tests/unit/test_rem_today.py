@@ -211,7 +211,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'cardDraft', 'stepAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
