@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from connectonion.rem import project_material, project_pages
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.files import Notebook, RemError
 from connectonion.rem.project_material import extract, mark_written, page_state, stored
 from connectonion.rem.project_pages import PROMPT_CHARS, queue, write_page, write_pages
@@ -352,7 +352,7 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     extract(world.root, world.subs)
     source = stored(world.root, "projects/tide.md")[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source))
-    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
+    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default", "models": dict.fromkeys(LEVEL_MODELS, "default")}, run=run)
     page = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)

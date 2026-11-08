@@ -16,7 +16,7 @@ from uuid import uuid4
 import yaml
 
 from . import quota, runner, service
-from .config import read_config
+from .config import read_config, saved as saved_config
 from .daily import record_cap_stop
 from ..environment import selected_command
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
@@ -99,7 +99,8 @@ def _input_matches(root, task, path, digest):
     # A saved stage config must reproduce the old digest. Never guess missing inputs.
     previous = task["task"].get("config")
     return (previous is not None
-            and digest in (hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest(),
+            and digest in (*(hashlib.sha256(yaml.safe_dump(form, sort_keys=False).encode()).hexdigest()
+                             for form in (previous, saved_config(previous))),  # Since 1.9.3 `model` is not saved.
                            *_legacy_config_hashes(previous))
             and _config_hash(previous) == _input_hash(root, path))
 

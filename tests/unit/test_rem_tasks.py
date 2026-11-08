@@ -83,7 +83,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert saved['result'] == expected and saved['exit_code'] == exit_code
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
     argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
-    assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
+    assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['models']['level4']
     assert 'default_permissions="rem_task"' in argv and '--add-dir' in argv
     assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
     assert 'do not send anything to anyone; write the result and stop' in argv[-1]

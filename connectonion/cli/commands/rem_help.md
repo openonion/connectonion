@@ -724,7 +724,7 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
                                          reply-draft, native (the scheduled session), init, abstract
           models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
                                          synthesize, task (owed work)
-                                         co rem status lists each level's stages. A notebook on
+                                         co rem status lists the stages on each level. A notebook on
                                          another runner keeps its one model on every level;
                                          the old names model (level3) and models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai

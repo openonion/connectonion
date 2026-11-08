@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
@@ -592,7 +592,7 @@ def test_investigation_does_not_claim_another_concurrent_page_change(notebook, m
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
     config = default_config()
-    config.update(runner=harness, model="default")
+    config.update(runner=harness, model="default", models=dict.fromkeys(LEVEL_MODELS, "default"))
     item = {"role": "page", "record": "notes/old.md", "text": "x" * 300000}
     result = run_stage(notebook, [item], config, stage=stage)
     argv, options = delegate[0]
