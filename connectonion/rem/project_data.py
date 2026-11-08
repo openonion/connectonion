@@ -77,10 +77,11 @@ def repository_projection(root, repo, *, now=None):
     merged = [pr for pr in prs if pr.get('mergedAt')]
     deploys = [run for run in runs if run['conclusion'] == 'success'
                and run.get('completedAt') and re.search(r'deploy', run['workflowName'], re.I)]
-    deploy = max(deploys, key=lambda run: run['completedAt'], default=None)
+    deploy = max(deploys, key=lambda run: datetime.fromisoformat(run['completedAt'].replace('Z', '+00:00')), default=None)
     _repo_join(result, 'merges_after_green_deploy', ['prs', 'actions/runs'],
                deploy=deploy, prs=[pr['number'] for pr in merged
-                                   if deploy and code_utc(pr['mergedAt']) > deploy['completedAt']])
+                                   if deploy and datetime.fromisoformat(pr['mergedAt'].replace('Z', '+00:00')) >
+                                   datetime.fromisoformat(deploy['completedAt'].replace('Z', '+00:00'))])
     pairs = [{'pr': pr['number'], 'issue': int(number)} for pr in merged
              for number in re.findall(r'\(#(\d+)\)', pr['title']) if int(number) in issues]
     _repo_join(result, 'merged_title_open_issue', ['prs', 'issues'], pairs=pairs)
@@ -89,7 +90,7 @@ def repository_projection(root, repo, *, now=None):
     green = []
     for pr in prs:
         checks = pr.get('statusCheckRollup') or []
-        if pr['state'] != 'OPEN' or pr.get('checkRollupState') != 'SUCCESS' or not checks or not all(
+        if pr['state'] != 'OPEN' or pr.get('checksTruncated') or pr.get('checkRollupState') != 'SUCCESS' or not checks or not all(
                 (check.get('conclusion') or check.get('state')) in ('SUCCESS', 'NEUTRAL', 'SKIPPED') for check in checks):
             continue
         completed = [check.get('completedAt') or check.get('createdAt') for check in checks]

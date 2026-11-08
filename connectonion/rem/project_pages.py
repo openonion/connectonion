@@ -876,7 +876,7 @@ CODE_PR_QUERY = '''query($owner:String!,$name:String!){repository(owner:$owner,n
 pullRequests(first:100,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{
 number title state headRefName headRefOid additions deletions mergedAt createdAt updatedAt
 reviewDecision authorAssociation author{login}
-commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){nodes{
+commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{
 ... on CheckRun{name conclusion startedAt completedAt}
 ... on StatusContext{context state createdAt}}}}}}}
 }}}}'''
@@ -965,6 +965,7 @@ def _code_prs(repo, evidence):
         commits = row.pop('commits', {}).get('nodes', [])
         if commits:
             rollup = commits[-1]['commit'].get('statusCheckRollup') or {}
+            row['checksTruncated'] = rollup.get('contexts', {}).get('pageInfo', {}).get('hasNextPage', False)
             row['checkRollupState'] = rollup.get('state')
             row['statusCheckRollup'] = rollup.get('contexts', {}).get('nodes', [])
         row.setdefault('statusCheckRollup', [])

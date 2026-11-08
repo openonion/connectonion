@@ -350,3 +350,7 @@ A fictional projection fragment (the packet also contains the arrays above):
 
 This is the projection contract for the separate UI branch; `reader.html` is
 unchanged. A rendered page has not been reviewed in this data-only worktree.
+
+PRs also expose `checksTruncated` from the context connection's pageInfo. A
+successful overall rollup proves status, but a truncated context sample cannot
+establish the latest green timestamp: such PRs are excluded from green-age joins.

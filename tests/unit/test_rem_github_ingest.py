@@ -250,3 +250,13 @@ def test_package_selection_prefers_explicit_fact(tmp_path):
     (tmp_path / 'pyproject.toml').write_text('[project]\nname = "lanterns"\n')
     assert pages._code_package('', tmp_path) == 'lanterns'
     assert pages._code_package('- PyPI: https://pypi.org/project/cedar-lights/', tmp_path) == 'cedar-lights'
+
+
+def test_successful_but_truncated_checks_cannot_establish_green_age(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    cache['prs'] = [{'number': 9, 'title': 'Cedar review', 'state': 'OPEN',
+                     'checkRollupState': 'SUCCESS', 'checksTruncated': True, 'statusCheckRollup': [
+                         {'conclusion': 'SUCCESS', 'completedAt': '2026-11-08T10:00:00Z'}]}]
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    assert joins['green_unmerged_age']['prs'] == []
