@@ -450,3 +450,14 @@ def test_doctor_flags_unconfigured_selected_sender(morning_book, monkeypatch):
         {'channel': 'telegram', 'configured': False, 'next': 'co telegram check'}])
     rows = morning.doctor(morning_book)
     assert any(not row['ok'] and 'telegram' in row['detail'] for row in rows)
+
+
+@pytest.mark.parametrize('language,line', [('en', 'Replied for you: Mara Quill'), ('zh', '替你回了：Mara Quill')])
+def test_the_morning_note_names_who_rem_replied_to(morning_book, language, line):
+    from connectonion.rem import morning
+    set_config(morning_book, ['language', language])
+    queue = read_json(state_path(morning_book, 'approvals.json'), {})
+    queue['one']['title'] = 'Mara Quill'
+    write_json(state_path(morning_book, 'approvals.json'), queue)
+    assert line in morning.preview(morning_book)['message'].splitlines()
+    assert [row['title'] for row in morning.sent_by_rem(morning_book)] == ['Mara Quill']

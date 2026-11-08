@@ -42,6 +42,8 @@ def prepare(root, config, *, scheduled):
     batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
     from .people_basics import refresh as refresh_basics
     basics_changed = refresh_basics(root)
+    from .direct_send import refresh as set_direct_send
+    basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
     today, recent = service.runs_today(logs, service.notebook_zone(config))

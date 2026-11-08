@@ -17,7 +17,7 @@ You are writing a reply the owner will approve with one click, or rewrite by han
 - `channel`: `mail`, `lark` or `whatsapp`.
 - `person.how_the_user_writes_to_them` and `person.open_threads`: the owner's own habits with this person and what is still open between them.
 - `owner_samples`: up to three of the owner's recent messages to this address, verbatim. They are the voice sample; copy their openings, closings, length and pronouns before you consult the table below.
-- `person.direct_send`: `partner`, `close` or `none`, set by the owner on the People page.
+- `person.direct_send`: `partner`, `close` or `none`, from the Facts line `- Direct send:`. REM sets it from the relationship (a co-founder is `partner`; a close collaborator, or someone the owner writes to informally and often, is `close`); a line without "set by REM" is the owner's own.
 - `verdict.json` beside this file, when present: what is owed (`deliverable` / `reply` / `no_reply`) and whether the reply may go without the owner. Do not re-decide it; if the material contradicts it, say so in `why` and still obey it.
 
 Read it all. If the person's page is named under `person.page`, open it with `co rem show PAGE` for anything the excerpt lacks. Do not read anything marked `[personal]` or `[sensitive]` beyond what the thread itself contains.

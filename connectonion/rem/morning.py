@@ -74,6 +74,15 @@ def counts(root, start, end):
                              for row in problems)}
 
 
+def sent_by_rem(root, start=None, end=None):
+    """Who REM replied to on its own (direct send), in send order, for Today and the morning note."""
+    queue = read_json(state_path(root, 'approvals.json'), {}).values()
+    rows = [row for row in queue if row.get('kind') == 'reply' and row.get('by') == 'rem'
+            and row.get('status') == 'sent' and (start is None or _within(row.get('release_at'), start, end))]
+    return [{'title': row.get('title', ''), 'text': row.get('text', ''), 'sent_at': row.get('release_at')}
+            for row in sorted(rows, key=lambda row: row.get('release_at') or '')]
+
+
 def actionable(root):
     """Only current, unblocked owner actions; held replies need no click."""
     return [row for row in approvals.outcomes(root) if not row.get('blocked')]
@@ -138,6 +147,9 @@ def compose(root, config, local, saved, link):
     totals, pending = counts(root, _start(local, previous), local), actionable(root)
     ids = sorted(row.get('id', '') for row in pending)
     lines = [_summary(totals, zh)] if any(totals.values()) else []
+    names = list(dict.fromkeys(filter(None, (_plain(row['title'], 60) for row in sent_by_rem(root, _start(local, previous), local)))))
+    if names:
+        lines.append(('替你回了：' if zh else 'Replied for you: ') + ('、' if zh else ', ').join(names))
     if pending:
         n = len(pending)
         lines.append(f'{n} 件要你拍板：' if zh else f"{n} decision{'s' if n > 1 else ''}:")
