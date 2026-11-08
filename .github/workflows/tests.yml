@@ -44,7 +44,9 @@ jobs:
     # still running at fifteen is hung; the per-test timeout in pytest.ini has
     # already named the culprit, and this is the backstop for a hang outside
     # any test (collection, a fixture that never yields, an atexit hook).
-    timeout-minutes: 15
+    # The 3.12 leg also traces coverage, about 60% slower: on 1.9.3rc62 it was
+    # cut off at 98% while the untraced legs finished in ten minutes.
+    timeout-minutes: ${{ matrix.python-version == '3.12' && 25 || 15 }}
     strategy:
       fail-fast: false
       matrix:
