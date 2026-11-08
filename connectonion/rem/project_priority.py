@@ -116,6 +116,22 @@ def priority(score):
     return 0 if score <= 0 else 1 if score >= 20 else 2 if score >= 10 else 3 if score >= 5 else 4
 
 
+def overdue_promise(items, today):
+    """Return the oldest explicit due date on a confirmed open owner promise."""
+    return min((item for item in items if item['kind'] == 'owed'
+                and not item.get('needs_review') and not item.get('project_match', {}).get('needs_review')
+                and iso_day(item.get('due')) and item['due'] < today.isoformat()),
+               key=lambda item: item['due'], default=None)
+
+
+def rank_key(row):
+    """Pins, overdue tier, existing score, lateness, distinct waiters, name."""
+    days = row['overdue_days']
+    people = {item['who'] for item in row['open'] if item['kind'] == 'owed' and item.get('who')
+              and not item.get('needs_review') and not item.get('project_match', {}).get('needs_review')}
+    return (not row['pinned'], days <= 0, -row['score'], -days, -len(people), row['title'].casefold())
+
+
 def score_project(record, records, contexts, issues, today):
     reasons = debt_reasons(record['open'], records, today)
     confirmed = [p for item in record['open'] if item['kind'] != 'answerable' and not item.get('project_match', {}).get('needs_review')
@@ -129,7 +145,15 @@ def score_project(record, records, contexts, issues, today):
     if status:
         reasons = [reason('Project explicitly marked completed', 0, evidence(record, status[0], 'facts')[0])]
     score = round(sum(row['points'] for row in reasons), 2)
-    return {'score': score, 'priority': priority(score), 'reasons': sorted(reasons, key=lambda row: -row['points'])[:3], 'pinned': False}
+    reasons = sorted(reasons, key=lambda row: -row['points'])[:3]
+    overdue = overdue_promise(record['open'], today)
+    days = (today - date.fromisoformat(overdue['due'])).days if overdue else 0
+    if overdue:
+        who = records.get(overdue['who'], {}).get('title') or 'Unidentified counterparty'
+        source = next((p for p in overdue['promised'] if p['date'] == overdue['due']), overdue['sources'][0])
+        reasons = [reason(f'Overdue promise to {who}: {days} days late; {overdue["text"]}', 0,
+                          {key: source[key] for key in ('source', 'cite', 'path')}), *reasons[:2]]
+    return {'score': score, 'priority': priority(score), 'overdue_days': days, 'reasons': reasons, 'pinned': False}
 
 
 def health(record, today, issues=()):
@@ -179,7 +203,9 @@ def apply_override(record, override, today):
     snooze = iso_day(override.get('snooze_until'))
     record['pinned'] = bool(override.get('pin'))
     if snooze and today.isoformat() < snooze:
-        record.update(score=0, priority=0, pinned=False, reasons=[reason(f'Owner snoozed until {snooze} (set {override.get("at", "date unrecorded")})', 0, source)])
+        record.update(score=0, priority=0, overdue_days=0, pinned=False, reasons=[reason(f'Owner snoozed until {snooze} (set {override.get("at", "date unrecorded")})', 0, source)])
     elif record['pinned']:
         record['priority'] = 1
-        record['reasons'] = [reason(f'Owner manually pinned (set {override.get("at", "date unrecorded")}); sort pinned projects first', 0, source), *record['reasons'][:2]]
+        record['reasons'].insert(1 if record['overdue_days'] else 0, reason(
+            f'Owner manually pinned (set {override.get("at", "date unrecorded")}); sort pinned projects first', 0, source))
+        record['reasons'] = record['reasons'][:3]

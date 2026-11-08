@@ -12,6 +12,7 @@ initialization or automatic merge happens while building a snapshot.
   "title": "Harbour",
   "priority": 2,
   "score": 12.5,
+  "overdue_days": 0,
   "reasons": [
     {"text": "paying client: 5 × 1.5; ...", "points": 7.5,
      "source": "gmail:request", "cite": "1", "path": "projects/harbour.md",
@@ -45,7 +46,9 @@ initialization or automatic merge happens while building a snapshot.
 The example illustrates field types, not a complete score calculation. All dates
 are ISO calendar days or `null`. `promised` retains yearless or invalid written
 dates as `{date: null, text: ..., source, cite, path}`. Day-month and month-day forms use a year only when a cited source has a dated timestamp; they never use the runtime year.
-`reasons` contains at most three entries, ordered by contribution; `score` includes
+`reasons` contains at most three entries, ordered by contribution except that an
+overdue promise is always first (including on pinned rows), naming the counterparty
+and days late with deadline evidence. This explanation adds no score points. `score` includes
 all components, so these three entries need not sum to the total. Every reason
 has a source, including a page-section anchor when no numbered citation exists.
 `cite` is local to `path`; never resolve a bare citation number across pages.
@@ -131,9 +134,21 @@ uses `score >= 20 → 1`, `>= 10 → 2`, `>= 5 → 3`, positive `< 5 → 4`, zer
 - Momentum: dated project activity within seven days adds 1, at most once.
 - Explicit completed Status sets the score to zero. Manual overrides apply last.
 
-Sort by `pinned` descending, then score descending; do not sort priority ascending
-without treating zero as “none”. This layer does not deduplicate debts between
-suggested duplicate pages or roll child scores into parents.
+`overdue_days` is the maximum days past an explicit `due` date among confirmed
+open `owed` items, or 0 when none is late. Items marked `needs_review` or
+`project_match.needs_review`, answerable items, incoming `waiting` debts, agent
+tasks and GitHub milestones cannot create this tier. Age without a due date
+does not qualify. Existing score weights remain unchanged.
+
+Use `project_priority.rank_key(row)`: pinned first, then rows with
+`overdue_days > 0`, then score descending, overdue_days descending, distinct
+confirmed `owed` counterparties (`who`) descending, and title case-insensitively
+ascending. Repeated items for the same counterparty count once; unidentified
+counterparties do not count. The projection sorts inferred candidates by this
+key and exposes the fields on existing project records for reader sorting;
+it preserves the input record order. Do not sort priority ascending without
+treating zero as “none”. This layer does not deduplicate debts between suggested
+duplicate pages or roll child scores into parents.
 
 ## Manual state
 
@@ -149,7 +164,7 @@ Local snapshots read `<notebook>/.state/project-overrides.json`:
 }
 ```
 
-An active snooze wins over pin, sets score/priority to 0 and `pinned: false`.
+An active snooze wins over pin, sets score/priority/overdue_days to 0 and `pinned: false`.
 It expires on the stated day. Pin sets priority 1 and `pinned: true`, retaining
 computed score. Both add an explicit owner-decision reason with a state-file
 source. Shared snapshots do not disclose or apply private overrides/completion

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from .files import read_json, state_path
 from .project_obligations import KINDS, open_items, people_index, project_dates, source_entries, written_deadlines
-from .project_priority import apply_override, health, issue_deadlines, score_project
+from .project_priority import apply_override, health, issue_deadlines, rank_key, score_project
 from .project_tree import identity, project_tree
 from .project_issues import retained_issues
 from .project_links import join_obligations
@@ -33,7 +33,7 @@ def enrich_records(root, records, contexts, *, today=None, local=False, states=N
     for candidate in candidates:
         candidate['kind_counts'] = {kind: int(candidate['kind'] == kind) for kind in KINDS}
         _project(candidate, by_path, contexts, issues, today)
-    candidates.sort(key=lambda row: -row['score'])
+    candidates.sort(key=rank_key)
     project_tree(records)
     for row in records:
         row.pop('_source_entries', None)
