@@ -1813,7 +1813,9 @@
   .owe-acts .r4-btn.ghost { color: var(--r4-ink3); font-weight: 500; }
   /* A plain open row shows its one quiet action when you point at the row or tab to it (always shown on touch). */
   @media (hover: hover) {
-    .owe .owe-acts.quiet { opacity: 0; transition: opacity 120ms ease-out; }
+    .owe { position: relative; }
+    .owe .owe-acts.quiet { position: absolute; right: 12px; bottom: 10px; margin: 0; opacity: 0; transition: opacity 120ms ease-out; }
+    .owe .owe-acts.quiet .r4-btn { margin: 0; background: var(--r4-surface); box-shadow: -12px 0 12px var(--r4-surface); }
     .owe:hover .owe-acts.quiet, .owe:focus-within .owe-acts.quiet { opacity: 1; }
   }
   @media (max-width: 719px) {
@@ -1915,7 +1917,6 @@ const UI = {
     "{n} source": "{n} 个来源",
     "{n} sources": "{n} 个来源",
     "About this person": "关于这个人",
-    "Overdue": "逾期",
     "{n} items": "{n} 件",
     "Answer first": "最该先回的人",
     "{name} is waiting on you": "{name} 在等你",
@@ -5732,8 +5733,8 @@ function peopleRowMeta(r, waiting) {
   return [knownValue(role) ? role : "", org?.name || ""].filter(Boolean).join(" · ");
 }
 function peopleRow(r) {
-  const waiting = waitingOn(r), org = personOrg(r), meta = peopleRowMeta(r, waiting), late = waiting.some(entry => overdueDays(entry.t));
-  const chip = !waiting.length ? null : late ? el("span", { class: "chip late", text: t("Overdue") })
+  const waiting = waitingOn(r), org = personOrg(r), meta = peopleRowMeta(r, waiting), late = Math.max(0, ...waiting.map(entry => overdueDays(entry.t)));
+  const chip = !waiting.length ? null : late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) })
     : waiting.length > 1 ? el("span", { class: "chip lamp", text: t("{n} items", { n: waiting.length }) }) : el("span", { class: "dot lamp", title: t("Waiting on you") });
   return el("a", { class: "row prow", href: href(r) }, [face(r.title), el("div", { class: "body" }, [
     el("div", { class: "t" }, [el("span", { class: "nm", text: r.title }), waiting.length && org ? el("span", { class: "org", text: org.name }) : null]),
