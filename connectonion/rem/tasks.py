@@ -110,7 +110,8 @@ def _prompt(receipt):
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
             'End with a one-line summary of the work. '
-            'Never push, merge, send mail or post; commands have no network. '
+            'Never push, merge, send mail or post. Commands have no network and cannot read credentials; '
+            'if the work needs the web or an account, say so as a missing input. '
             'do not send anything to anyone; write the result and stop')
 
 

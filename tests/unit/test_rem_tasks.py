@@ -75,8 +75,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
     argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
     assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
-    assert argv[argv.index('-s') + 1] == 'workspace-write'
-    assert 'sandbox_workspace_write.network_access=false' in argv and '--add-dir' in argv
+    assert 'default_permissions="rem_task"' in argv and '--add-dir' in argv
     assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
     assert 'do not send anything to anyone; write the result and stop' in argv[-1]
     assert saved['deliverable'] in argv[-1]
@@ -135,8 +134,10 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     # The owner's checkout keeps its branch and has no new files.
     assert _git(repo, 'branch', '--show-current') == 'main' and _git(repo, 'status', '--porcelain') == ''
     # No network for its commands: nothing can be pushed, mailed or posted.
-    assert 'sandbox_workspace_write.network_access=false' in argv
     assert not any('network_access=true' in arg for arg in argv)
+    # A -s flag overrides the permission profile: measured with codex 0.167, a run with
+    # -s workspace-write read the canary credentials and reached the network.
+    assert '-s' not in argv and '--sandbox' not in argv
     # Codex's own web search could carry what it read to a live URL; it is off too.
     assert 'web_search="disabled"' in argv
     # MCP servers, plugins and app connectors run outside the sandbox with network
@@ -144,6 +145,16 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     assert '--ignore-user-config' in argv
     assert {'features.apps=false', 'features.plugins=false', 'features.browser_use=false',
             'features.computer_use=false'} <= set(argv)
+    assert not any(arg.startswith('mcp_servers.') and 'enabled=true' in arg for arg in argv)
+    # Codex's seatbelt reads the disk except the owner's credentials; the task folder stays
+    # writable inside a denied ~/.co.
+    from connectonion.rem.sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
+    assert 'default_permissions="rem_task"' in argv and 'permissions.rem_task.network.enabled=false' in argv
+    table = next(arg for arg in argv if arg.startswith('permissions.rem_task.filesystem='))
+    home = os.path.realpath(Path.home())
+    for name in ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', '.netrc', '.git-credentials'):
+        assert name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES) and f'"{home}/{name}"="none"' in table
+    assert f'"{os.path.realpath(folder)}"="write"' in table and f'"{os.path.realpath(work)}"="write"' in table
     assert str(repo) in argv[-1] and 'Never push' in argv[-1]
     assert saved['result'] == 'completed'
 

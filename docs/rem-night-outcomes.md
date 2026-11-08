@@ -91,15 +91,20 @@ text that might contain credentials or private URLs.
 
 Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
 `co rem task stop ID` to stop it. Each ID gets one Codex session with the
-configured work model, sealed: `workspace-write` with
-`sandbox_workspace_write.network_access=false`, `web_search="disabled"`,
-`--ignore-user-config` (none of the owner's MCP servers, plugins, app connectors
-or hooks, which run outside the sandbox) and no credential directory, so its commands can read anything but write only in
-`.state/tasks/do-ID/` and cannot push, merge into the owner's checkout, send
-mail or post. The prompt comes from mail, which is untrusted: a task can read a
-file such as `keys.env` but has no way to send it anywhere. The cost: a task
-cannot browse, search the web, install packages or call any API; it works from
-what is already on disk. When the
+configured work model, sealed. The prompt comes from mail, which is untrusted,
+so Codex runs its own seatbelt with a permission profile (`default_permissions =
+"rem_task"`, no `-s` flag: with codex 0.167 a `-s workspace-write` run ignored
+the profile, read canary credentials and reached the network). The profile reads
+the disk except the owner's credential paths (`sandbox_profile.CREDENTIAL_DIRS`
+and `CREDENTIAL_FILES`: `~/.co`, `~/.ssh`, `~/.config/gh`, `~/.aws`, `~/.gnupg`,
+`.netrc`, `.git-credentials` and more), writes only the task folder, its work
+directory and temp, and has no network. `--ignore-user-config` with apps,
+plugins, browser use and computer use off means none of the owner's MCP servers,
+connectors or hooks start (they run outside the sandbox); web search is off.
+So a task cannot push, merge into the owner's checkout, send mail or post, and
+cannot read keys. The cost: it cannot browse, search the web, install packages,
+call any API, or read notebook pages (they live under `~/.co`); it works from
+its prompt and what else is on disk, and names anything missing. When the
 obligation's project page (or an explicit project link on its page) names one
 existing directory inside a git repository, REM creates a worktree of it at
 `.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,

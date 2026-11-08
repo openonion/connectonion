@@ -1,6 +1,7 @@
 """One launchd fire, one locked Codex work session, with durable turn receipts."""
 import argparse
 import fcntl
+import json
 import os
 import re
 import shlex
@@ -44,23 +45,36 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-SEALED = ['--ignore-user-config', '-c', 'web_search="disabled"', '-c', 'features.apps=false',
-          '-c', 'features.plugins=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false']
+def _sealed(writable) -> list[str]:
+    """An owed-work task's prompt comes from untrusted mail, so it gets no way to send anything
+    and cannot read credentials: Codex's own seatbelt runs a permission profile that reads the
+    disk except the owner's credential paths, writes only `writable` and temp, and has no
+    network. The owner's Codex config is not loaded, so none of their MCP servers, plugins,
+    app connectors or hooks start (those run outside the sandbox); web search is off too."""
+    from .sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
+    home = Path(os.path.realpath(Path.home()))
+    # A more specific path wins: the task folder stays writable inside a denied ~/.co.
+    access = {'/': 'read', ':tmpdir': 'write', ':slash_tmp': 'write',
+              **{str(home / name): 'none' for name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES)},
+              **{os.path.realpath(path): 'write' for path in writable}}
+    table = '{' + ','.join(f'{json.dumps(path)}={json.dumps(mode)}' for path, mode in access.items()) + '}'
+    return ['--ignore-user-config', '-c', 'web_search="disabled"', '-c', 'features.apps=false',
+            '-c', 'features.plugins=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false',
+            '-c', 'default_permissions="rem_task"', '-c', f'permissions.rem_task.filesystem={table}',
+            '-c', 'permissions.rem_task.network.enabled=false']
 
 
 def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(), sealed=False) -> list[str]:
-    """sealed: an owed-work task's prompt comes from untrusted mail and it can still read
-    files such as keys.env, so it gets no way to send anything anywhere: no network for its
-    commands, no web search, and none of the owner's MCP servers, plugins or app connectors
-    (they run outside the sandbox). Its credential directory is not writable either."""
+    """sealed: an owed-work task; see `_sealed()`."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
-    access = SEALED if sealed else ['--add-dir', str(selected_env_file().parent)]
+    # A -s flag would override the sealed permission profile (codex 0.167 measured it).
+    access = _sealed((root, *add_dirs)) if sealed else [
+        '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
+        '--add-dir', str(selected_env_file().parent)]
     command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
-               '-C', str(root), '-s', 'workspace-write',
-               '-c', f'sandbox_workspace_write.network_access={"false" if sealed else "true"}',
-               *access, '--skip-git-repo-check',
+               '-C', str(root), *access, '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
