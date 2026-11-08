@@ -7,6 +7,7 @@ The audit's own tests (test_rem_project_claim_review.py) exercise the real one.
 """
 
 import json
+import sys
 
 import pytest
 
@@ -55,9 +56,9 @@ def _topic_proposal_is_offline(request, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _task_workers_never_start(request, monkeypatch):
-    """tasks.auto is on by default, so any night round with owed work would start a
-    detached Codex worker. Only test_rem_tasks, which brings a fake Codex, starts one."""
-    if request.module.__name__.endswith("test_rem_tasks"):
+    """No unit test starts a detached Codex worker; only test_rem_tasks, which brings a
+    fake Codex, does. REM's task runner is POSIX-only (fcntl), so Windows has nothing to stub."""
+    if request.module.__name__.endswith("test_rem_tasks") or sys.platform == "win32":
         return
     from connectonion.rem import tasks
     monkeypatch.setattr(tasks, "start", lambda root, task_id: tasks.status(root, task_id))
