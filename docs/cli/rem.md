@@ -823,16 +823,23 @@ languages still take precedence. Page prose stays as written. On phones, a compa
 
 Design ("Fuse"): the whole reader is painted from one token sheet at the top of
 `reader.html`: one paper, one ink, one grey, one hairline; green only on the
-primary action (Send), red only for overdue and danger, and a dashed pencil for
-what REM inferred. Four type sizes (display, 24, 16, 12), two weights (400 and
-700), square corners and no shadows; rings that used to be shadows are hairline
-outlines, and keyboard focus is a 2 px ink outline that wins over them. Dark
-mode redefines the same colour names under `prefers-color-scheme` (unless the
-reader is set to Light) and under the Dark setting; `prefers-reduced-motion`
-sets the sheet's durations to zero. `tests/unit/test_rem_reader_style_sheet.py`
-fails on any size, weight, radius, shadow or colour written outside the sheet.
-One system face carries Latin and CJK and a mono face carries code; both are
-local, so the page makes no network request. Every view fits a 390 px phone
+primary action, which turns over on hover (green label on dark green); red only
+for overdue and danger; and pencil, always dashed, for what REM inferred. Pencil
+never colours text: an inferred word is grey with a dashed pencil underline.
+Four type sizes: display (min(112px, 22vw)) is kept for the one thing a page is
+about, Today's count or an entity's name, then 24, 16 and 12; two weights (400
+and 700); square corners and no shadows. Rings that used to be shadows are
+hairline outlines, and keyboard focus is a 2 px ink outline that wins over them,
+except on `#main` and the Today cards, which are focused by script. Durations
+and easing are tokens, so `prefers-reduced-motion` stops every transition. The
+graph tells kinds apart by shape (a session is a bar, a person a dot); a private
+record is its outline with a slash. Dark mode redefines the same colour names
+under `prefers-color-scheme` (unless the reader is set to Light) and under the
+Dark setting. `tests/unit/test_rem_reader_style_sheet.py` scans the whole page
+(styles, attributes, script) and fails on any size, weight, radius, shadow,
+colour or duration written outside the sheet, and on any sheet token nothing
+uses. One system face carries Latin and CJK and a mono face carries code; both
+are local, so the page makes no network request. Every view fits a 390 px phone
 without sideways scrolling.
 
 To see every view on an invented notebook, light and dark, desktop and phone:

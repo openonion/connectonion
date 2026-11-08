@@ -5616,8 +5616,8 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert name.inner_text() == "Fernhill University"
-    # The name collapsed onto --s-head (24px) at every width; build 3 decides whether it earns --s-display.
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
+    # The organisation's name is what the page is about: --s-display, min(112px, 22vw).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == f"{min(112, .22 * width):g}px"
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
     owed = page.evaluate("orgOwed(byPath('orgs/fernhill-university.md')).length", isolated_context=False)
@@ -5908,3 +5908,34 @@ def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
     else:
         assert aside["y"] >= cards["y"] + cards["height"], "after the queue on a phone"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_focus_ring_shows_on_controls_but_not_on_main_or_the_today_card(reader):
+    """Hairline outlines replaced rings; the focus ring must beat them without framing #main or a Today card."""
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('.r4-btn').first.wait_for()
+    page.keyboard.press('Tab')  # keyboard modality, so programmatic focus below counts as :focus-visible
+    outline = "node => { node.focus(); const s = getComputedStyle(node); return [node.matches(':focus-visible'), s.outlineStyle, s.outlineWidth]; }"
+    assert page.locator('.r4-btn').first.evaluate(outline) == [True, 'solid', '2px']
+    # The skip link and every nav click move focus to #main (tabindex=-1): no frame around the page.
+    assert page.locator('#main').evaluate(outline)[1] == 'none'
+    page.goto(uri)
+    page.keyboard.press('Tab')
+    card = page.locator('.today-brief .qcard').first
+    assert card.evaluate(outline)[1] == 'none'  # the card shows focus with its background, as its own rule says
+
+
+def test_graph_kinds_differ_by_shape_and_private_records_carry_a_slash(reader):
+    """Grey and pencil were the only difference between people and sessions; pencil means inference."""
+    page, uri = reader
+    page.goto(uri + '#view=graph')
+    page.locator('.gx-map').wait_for()
+    assert page.evaluate("Object.values(GRAPH_TONE).includes('--pencil')", isolated_context=False) is False
+    outlines = page.evaluate("['people', 'sessions', 'orgs', 'projects', 'notes'].map(k => graphOutline(k, 0, 0, 5))", isolated_context=False)
+    assert len(set(outlines)) == 5
+    marks = page.evaluate("""() => [false, true].map(p => {
+      const g = graphSvgMark('people', 7, 7, 5, p);
+      return [g.querySelectorAll('path').length + (g.tagName === 'path' ? 1 : 0), g.getAttribute('fill') || g.firstChild.getAttribute('fill')];
+    })""", isolated_context=False)
+    assert marks[0] == [1, 'var(--grey)'] and marks[1][0] == 2 and marks[1][1] != 'var(--grey)'

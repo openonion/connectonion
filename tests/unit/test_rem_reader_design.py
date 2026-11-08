@@ -200,9 +200,39 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
 
     assert colors['--green'] == ('#22d27a' if theme == 'light' else '#3be38f')
-    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink')]:
+    # Red is text (overdue, danger), so it must read on the paper it sits on in both themes.
+    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink'), ('--paper', '--red')]:
         a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
+    # Pencil is REM's inference drawn as a dashed mark; at under 4.5:1 it never colours text.
+    assert not re.search(r'(?<![\w-])color:\s*var\(--pencil\)', css)
     button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
     assert 'background: var(--green)' in button and 'color: var(--on-green)' in button
-    assert '.btn-act:hover { background: var(--green); }' in css
+    # Hover must change something: the primary key turns over, its label green on the dark green.
+    for selector in ['.btn-act:hover', '.projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover', '.gx-open:hover']:
+        hover = _rule(css, selector)
+        assert hover and 'background: var(--on-green)' in hover and 'color: var(--green)' in hover, selector
+    a, b = sorted([luminance(colors['--green']), luminance(colors['--on-green'])])
+    assert (b + .05) / (a + .05) >= 4.5, (theme, 'hovered primary label')
+
+
+def _rule(css, selector):
+    """The body of the rule whose selector list is exactly `selector` (first match)."""
+    match = re.search(r'(?:^|[}\n])\s*' + re.escape(selector) + r'\s*\{([^}]*)\}', css)
+    return match.group(1) if match else None
+
+
+def test_overdue_is_red_and_waiting_and_changed_keep_a_mark_of_their_own():
+    """Collapsing amber and indigo onto ink left overdue, waiting and changed looking like nothing."""
+    css = TEMPLATE.read_text(encoding="utf-8")
+    for selector in ['.overdue, .thread .when.overdue', '.next-exchanges .when.overdue', '.r4 .chip.late',
+                     '.ov-chip.late', '.brief-header .late, .qage.late']:
+        assert 'color: var(--red)' in (_rule(css, selector) or ''), selector
+    # An overdue chip is red on paper with a red edge, never a grey box.
+    late = _rule(css, '.r4 .chip.late')
+    assert 'var(--rule)' not in late and 'outline: var(--hair) solid var(--red)' in late
+    waiting, open_ = _rule(css, 'nav a .n.waiting'), _rule(css, 'nav a .n.open')
+    assert waiting and waiting.strip() != (open_ or '').strip()
+    changed, dt = _rule(css, '.person-insight dt.changed'), _rule(css, '.person-insight dt')
+    assert changed and 'color' not in changed and changed.strip() != dt.strip()
+    assert _rule(css, '.person-insight dt.at-stake') is None
