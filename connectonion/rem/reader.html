@@ -2322,12 +2322,11 @@
   .list-today { flex: none; font: 400 14px/22px var(--today-font); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
   .list-today:hover { color: var(--ink); text-decoration-color: currentColor; }
   /* Organisation page: the name starts at the top of the first screen, not centred in an empty band. */
-  .ov-say { align-self: start; padding-top: 56px; }
+  @media (min-width: 720px) { .ov-say { align-self: start; padding-top: 56px; } }
   /* Each person's role sits under that person's name, never wrapped onto a line that reads as the next person's. */
   .ov-key li { display: block; }
   .ov-key li + li { margin-top: 10px; }
   .ov-key li .ov-meta { display: block; margin: 0; font-size: 12px; line-height: 18px; }
-  @media (max-width: 720px) { .ov-say { padding-top: 16px; } }
   /* Person page: what is still open is a list on hairlines, not a card of cards. */
   .r4-card.owed { background: none; box-shadow: none; border-radius: 0; border-top: 1.5px solid var(--ink); }
   .r4-card.owed .owe { padding: 14px 0; }
@@ -2362,7 +2361,7 @@
   .morning-aside .recall-toggle:hover { border-color: var(--ink); }
   .morning-aside .recall-answer p { font: 400 14px/22px var(--today-font); }
   .morning-aside .connection-review { padding: 0; border: 0; background: none; border-radius: 0; }
-  .morning-layout > .gone-quiet, #main > .week-details, #main > .night-details, #main > .maint, #main > .translation-note { max-width: 760px; font-family: var(--today-font); }
+  .morning-layout > .gone-quiet, #main > .week-details, #main > .maint, #main > .translation-note { max-width: 760px; font-family: var(--today-font); }
   .morning-layout > .gone-quiet, #main > .week-details, #main > .night-details { margin-top: 0; padding: 0; border-top: 1px solid var(--line); }
   .morning-layout > .gone-quiet { margin-top: 48px; }
   :is(.gone-quiet, .week-details, .night-details) > summary { padding: 12px 0; color: var(--ink-2); cursor: pointer; }

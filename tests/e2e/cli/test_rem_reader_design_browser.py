@@ -5087,12 +5087,12 @@ def test_projects_lane_shows_seven_cards_then_the_rest_on_request(reader):
       render();
     }""", isolated_context=False)
     week = page.locator('.project-lane[data-lane="week"]')
-    expect(week.locator(".project-card")).to_have_count(7)  # nine copies; Harbour itself is the lifted card
-    week.get_by_role("button", name=re.compile(r"^2 more projects")).click()
-    expect(week.locator(".project-card")).to_have_count(9)
+    expect(week.locator(".project-card")).to_have_count(7)  # Harbour and nine copies; no card is lifted out
+    week.get_by_role("button", name=re.compile(r"^3 more projects")).click()
+    expect(week.locator(".project-card")).to_have_count(10)
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(page.locator("h1.page-state")).to_have_text("11 个项目 · 10 个本周有动静")
-    expect(week.get_by_role("button", name=re.compile(r"^还有 2 个"))).to_be_visible()
+    expect(week.get_by_role("button", name=re.compile(r"^还有 3 个"))).to_be_visible()
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
