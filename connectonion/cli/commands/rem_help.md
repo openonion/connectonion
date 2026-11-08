@@ -927,8 +927,8 @@ Example:  co rem backfill topics --propose --dry-run
           --dry-run  report candidates, counts, qualification and privacy; no notebook writes
 Effects:  Without --dry-run, files qualifying topic pages under the maintenance
           lock and keeps this week's proposal. A name with no evidence is never
-          filed. The nightly round files from this week's proposal; a non-native
-          round also asks for it. Reads at most
+          filed. The nightly round files from the saved proposal and never asks
+          the model itself. Reads at most
           2,000 pages, 1,000 extracts and 5,000 archived messages.
 Next:     co rem investigate topics --list
 Back:     co rem advanced --help

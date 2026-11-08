@@ -129,8 +129,9 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
     assert any(n['tag'] == 'b' and 'overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
     assert any(n.get('class') == 'words' and 'feedback' in n.get('text', '').lower() for n in nodes(card))
-    # REM cannot draft from an unarchived message; the next step is writing to her, not opening a mailbox.
-    assert any(n.get('text') == 'Reply to Alice' and n.get('href', '').startswith('mailto:alice@example.test') for n in nodes(card))
+    # REM cannot draft from an unarchived message yet, and a mail-app compose would start a new thread.
+    assert not any(n.get('href', '').startswith('mailto:') for n in nodes(card))
+    assert any(n.get('text') == 'Open Alice' for n in nodes(card))
 
 
 def test_reader_shell_defers_full_prose_translations_and_conversations(tmp_path, monkeypatch):
