@@ -518,11 +518,12 @@ def test_person_owed_card_says_nothing_is_open_or_lists_mine_before_theirs():
     result = _run_reader_js(functions + r"""
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const isDone = () => false, looksDone = entry => entry.t.done, owedRow = (r, entry) => entry.t.name;
+      const threads = () => ({calm: ""}), emptyLine = () => ({tag: "p", class: "empty-line", text: "Nothing open."});
       const entries = [{t: {dir: "theirs", name: "export"}}, {t: {dir: "mine", name: "replied", done: true}},
         {t: {dir: "mine", name: "late", due: "2026-10-01"}}, {t: {dir: "mine", name: "plan", since: "2026-09-01"}}];
-      console.log(JSON.stringify([owedCard({}, []), owedCard({}, entries).children[1].children]));
+      console.log(JSON.stringify([owedCard({}, []), owedCard({}, entries).children[1].children.filter(Boolean)]));
     """)
-    assert result[0]["children"][1] == {"tag": "p", "class": "r4-empty", "text": "Nothing open between you.", "children": []}
+    assert result[0]["children"][1] == {"tag": "p", "class": "empty-line", "text": "Nothing open."}
     assert result[1] == ["late", "plan", "replied", "export"]
 
 

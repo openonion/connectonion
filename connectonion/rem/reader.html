@@ -145,6 +145,8 @@
   .private-hidden-notice, .private-history-notice { display: none; }
   :root.hide-private .private-entry { display: none; }
   :root.hide-private :is(.timeline, .activity-list):not(:has(> li:not(.private-entry))) + .private-history-notice { display: block; }
+  :root.hide-private .tl:not(:has(> li.tl-e:not(.private-entry))) { display: none; }
+  :root.hide-private .tl:not(:has(> li.tl-e:not(.private-entry))) + .private-history-notice { display: block; }
   .private-history-notice, :root.hide-private .person-insight dd.privacy-only { color: var(--ink-3); font: 12px/1.5 var(--ui); }
   :root.hide-private .person-insight dd.privacy-only .private-hidden-notice { margin: 0; }
   :root.hide-private .private-hidden-notice { display: block; }
@@ -1661,29 +1663,29 @@
   .r4 {
     --r4-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
     --r4-surface: #fff; --r4-sunk: #efefeb; --r4-hover: rgba(15,23,18,.045);
-    --r4-ink: #121a15; --r4-ink2: #4b554f; --r4-ink3: #868f89; --r4-ink4: #b4bab6;
+    --r4-ink: #121a15; --r4-ink2: #4b554f; --r4-ink3: #69716c; --r4-ink4: #b4bab6;
     --r4-line: rgba(18,26,21,.08); --r4-line2: rgba(18,26,21,.14);
     --r4-fresh: #22d27a; --r4-fresh-h: #1bbf6c; --r4-on-fresh: #05301b; --r4-green: #0b7a42; --r4-tint: #e3faee;
-    --r4-lamp: #c98a06; --r4-lamp-bg: #fdf3dc; --r4-late: #c4362c;
+    --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late: #c4362c; --r4-late-ink: #b3261e;
     --r4-shadow: 0 0 0 1px var(--r4-line), 0 1px 2px rgba(16,24,20,.04);
     --r4-shadow-up: 0 0 0 1px var(--r4-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
     font: 400 14px/20px var(--r4-font); color: var(--r4-ink); font-feature-settings: "tnum" 1; max-width: 1000px; margin: 0 auto;
   }
   :root[data-theme="dark"] .r4 {
     --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
-    --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #727b75; --r4-ink4: #4b524d;
+    --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
     --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
     --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-    --r4-lamp: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c;
+    --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
     --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .r4 {
       --r4-surface: #161a17; --r4-sunk: #1c211d; --r4-hover: rgba(255,255,255,.05);
-      --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #727b75; --r4-ink4: #4b524d;
+      --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
       --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
       --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-      --r4-lamp: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c;
+      --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
       --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
     }
   }
@@ -1699,10 +1701,10 @@
   .r4 sup.c { white-space: nowrap; font-size: 10.5px; color: var(--r4-ink3); margin-left: 3px; font-weight: 500; }
   .r4 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   .r4 .chip { white-space: nowrap; flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font: 600 11.5px/20px var(--r4-font); letter-spacing: .01em; }
-  .r4 .chip.lamp { color: var(--r4-lamp); background: var(--r4-lamp-bg); }
-  .r4 .chip.late { color: var(--r4-late); background: color-mix(in srgb, var(--r4-late) 10%, transparent); }
+  .r4 .chip.lamp { color: var(--r4-lamp-ink); background: var(--r4-lamp-bg); }
+  .r4 .chip.late { color: var(--r4-late-ink); background: color-mix(in srgb, var(--r4-late) 10%, transparent); }
   .r4 .chip.ok { color: var(--r4-green); background: var(--r4-tint); }
-  .r4 .chip.mute { color: var(--r4-ink3); background: var(--r4-sunk); }
+  .r4 .chip.mute { color: var(--r4-ink2); background: var(--r4-sunk); }
   .r4 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
   .r4 .dot.lamp { background: var(--r4-lamp); }
   .r4 .face { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 650 12px var(--r4-font); flex: none; color: #fff; letter-spacing: .02em; }
@@ -1739,7 +1741,8 @@
   .owe-acts { display: flex; gap: 8px; margin-top: 10px; }
   .owe-acts .ghost { margin-left: -10px; }
   .owe-acts .r4-btn:not(.ghost) + .ghost { margin-left: 0; }
-  .r4-empty { color: var(--r4-ink3); font-size: 14px; margin: 0; }
+  .r4 .empty-line { color: var(--r4-ink3); font: 14px/20px var(--r4-font); margin: 0; border: 0; }
+  .owe-more { display: block; width: 100%; border: 0; background: none; color: var(--r4-ink3); font: 13px var(--r4-font); text-align: center; cursor: pointer; padding: 12px; }
   .tl { list-style: none; margin: 4px 0 0; padding: 0; }
   .tl .later { display: none; }
   .tl.all .later { display: grid; }
@@ -1780,9 +1783,9 @@
   .r4-find { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--r4-surface); box-shadow: var(--r4-shadow); color: var(--r4-ink); font: 13.5px var(--r4-font); }
   .r4-find::placeholder { color: var(--r4-ink3); }
   .r4-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--r4-sunk); flex: none; }
-  .r4-tabs button { border: 0; background: none; font: 500 12.5px var(--r4-font); padding: 4px 10px; border-radius: 6px; color: var(--r4-ink3); cursor: pointer; white-space: nowrap; }
+  .r4-tabs button { border: 0; background: none; font: 500 12.5px var(--r4-font); padding: 4px 10px; border-radius: 6px; color: var(--r4-ink2); cursor: pointer; white-space: nowrap; }
   .r4-tabs button.on { background: var(--r4-surface); color: var(--r4-ink); box-shadow: var(--r4-shadow); }
-  .r4-tabs i { font-style: normal; color: var(--r4-ink3); margin-left: 4px; }
+  .r4-tabs i { font-style: normal; color: inherit; margin-left: 4px; font-weight: 400; }
   .r4 .grp { font: 600 12.5px var(--r4-font); color: var(--r4-ink3); padding: 20px 4px 8px; margin: 0; }
   .r4 .rows { background: var(--r4-surface); border-radius: 14px; box-shadow: var(--r4-shadow); overflow: hidden; }
   .r4 .row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 56px; width: 100%; transition: background 120ms ease-out; }
@@ -1801,13 +1804,18 @@
   .r4 .spark i.z { opacity: .18; }
   .r4 .spark i.hot { background: var(--r4-ink2); opacity: .75; }
   .r4-foot { padding: 16px 4px; font-size: 13px; color: var(--r4-ink3); }
-  .r4-foot p { margin: 0 0 4px; }
+  .r4-foot p, .r4-foot .held-note { display: block; margin: 0 0 4px; font-size: 13px; color: var(--r4-ink3); }
   .r4-foot .contact-directory { margin-top: 8px; }
   .r4-bar .table-toggle { margin-left: auto; }
   .r4-foot .contact-directory { margin: 0; padding: 0; border: 0; }
   .r4-foot .contact-directory > summary { font: 500 13px/20px var(--r4-font); color: var(--r4-ink2); cursor: pointer; }
   .r4 .said { font: inherit; color: var(--r4-ink2); background: none; padding: 0; border: 0; text-decoration: none; }
   .owe-acts .r4-btn.ghost { color: var(--r4-ink3); font-weight: 500; }
+  /* A plain open row shows its one quiet action when you point at the row or tab to it (always shown on touch). */
+  @media (hover: hover) {
+    .owe .owe-acts.quiet { opacity: 0; transition: opacity 120ms ease-out; }
+    .owe:hover .owe-acts.quiet, .owe:focus-within .owe-acts.quiet { opacity: 1; }
+  }
   @media (max-width: 719px) {
     .r4 h1 { font-size: 24px; line-height: 31px; }
     .r4 h1 .soft { display: block; font-size: 16px; line-height: 22px; margin-top: 2px; }
@@ -1878,6 +1886,7 @@ const UI = {
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
+    "1 day overdue": "逾期 1 天",
     "Looks done": "看起来已办",
     "open": "未结",
     "You replied on {date}: ": "你 {date} 回复 ",
@@ -1886,7 +1895,6 @@ const UI = {
     "Personal item": "个人事项",
     "{name} owes you: {what}": "{name} 欠你：{what}",
     "Still open between you": "你们之间还没结的事",
-    "Nothing open between you.": "你们之间现在没有未结的事。",
     "Review REM's draft": "看 REM 起草的回信",
     "Write to {name}": "给 {name} 回信",
     "See what you owe": "看你欠的事",
@@ -1917,6 +1925,7 @@ const UI = {
     "Table": "表格",
     "Rows": "列表",
     "People waiting": "在等你",
+    "{n} more items": "其余 {n} 件",
     "{n} people waiting on you": "{n} 人在等你",
     "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
@@ -5526,8 +5535,10 @@ function owedState(entry) {
   const state = threadStates[doneKey(entry)]?.state;
   if (isDone(entry)) return { cls: state === "skipped" ? "mute" : "ok", text: t(state === "skipped" ? "Skipped" : "Marked done") };
   const late = overdueDays(entry.t);
-  if (late) return { cls: "late", text: t("{n} days overdue", { n: late }) };
+  if (late) return { cls: "late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) };
   if (looksDone(entry)) return { cls: "ok", text: t("Looks done") };
+  if (entry.t.due) return { cls: "lamp", text: dueLabel(entry.t) };
+  if (entry.t.quiet) return { cls: "mute", text: [age(entry.t.since), t("gone quiet")].filter(Boolean).join(", ") };
   return { cls: "mute", text: age(entry.t.since) || t("open") };
 }
 // "You owe Alyssa feedback on the demo — “I'll watch…” (date) [18]" -> a title and its evidence.
@@ -5563,7 +5574,7 @@ function owedActions(entry) {
   }
   const done = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Mark done") });
   done.onclick = () => setDone(entry, true);
-  return el("div", { class: "owe-acts" }, [done]);
+  return el("div", { class: "owe-acts quiet" }, [done]);
 }
 function owedRow(r, entry) {
   const parts = owedParts(entry), state = owedState(entry), theirs = entry.t.dir === "theirs";
@@ -5575,10 +5586,13 @@ function owedRow(r, entry) {
 }
 function owedCard(r, entries) {
   const order = entry => isDone(entry) ? 3 : entry.t.dir === "mine" ? (looksDone(entry) ? 1 : 0) : 2;
-  const rows = [...entries].sort((a, b) => order(a) - order(b) || byUrgency(a, b));
+  const rows = [...entries].sort((a, b) => order(a) - order(b) || byUrgency(a, b)).map(entry => owedRow(r, entry));
+  rows.slice(5).forEach(row => { row.hidden = true; });
+  const more = rows.length > 5 ? el("button", { type: "button", class: "owe owe-more", text: t("{n} more items", { n: rows.length - 5 }) }) : null;
+  if (more) more.onclick = () => { rows.forEach(row => { row.hidden = false; }); more.remove(); };
   return el("section", { class: "r4-sec", id: "open-threads" }, [el("h2", { text: t("Still open between you") }),
-    rows.length ? el("div", { class: "r4-card owed" }, rows.map(entry => owedRow(r, entry)))
-      : el("p", { class: "r4-empty", text: t("Nothing open between you.") })]);
+    rows.length ? el("div", { class: "r4-card owed" }, [...rows, more])
+      : emptyLine(threads(r))]);
 }
 function personPrimary(r, entry) {
   if (!entry) return null;
@@ -5654,7 +5668,8 @@ function personTimeline(r) {
   }
   const more = shown > 12 ? el("button", { type: "button", class: "r4-btn sm ghost tl-more", text: t("Show all {n} entries", { n: shown }) }) : null;
   if (more) more.onclick = () => { list.classList.add("all"); more.remove(); };
-  return el("section", { class: "r4-sec", id: "history-timeline" }, [el("h2", {}, [t("Exchanges"), el("span", { class: "more", text: t("Newest first") })]), list, more]);
+  const notice = privateHistoryNotice([...list.querySelectorAll(".tl-e")]);
+  return el("section", { class: "r4-sec", id: "history-timeline" }, [el("h2", {}, [t("Exchanges"), el("span", { class: "more", text: t("Newest first") })]), list, notice, more]);
 }
 function railContact(r) {
   const parsed = parseFacts(r), f = facts(r);
@@ -5677,7 +5692,8 @@ function railOrg(r) {
   return [el("h4", { text: t("Organisation") }), card];
 }
 function railUnsure(r) {
-  const items = listItems(section(r, "uncertainties")?.text || "").map(item => plainLine(item.split("\n")[0])).filter(Boolean).slice(0, 4);
+  // Only the bullets: a summary paragraph under them is not an open question.
+  const items = (section(r, "uncertainties")?.text || "").split("\n").filter(line => /^\s*[-*]\s/.test(line)).map(line => plainLine(line)).filter(Boolean).slice(0, 4);
   return items.length ? [el("h4", { text: t("REM is not sure") }), el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item })))] : [];
 }
 function railSources(r) {
@@ -5728,7 +5744,7 @@ function peopleFocus(r) {
   const entry = waitingOn(r)[0], late = overdueDays(entry.t), parts = owedParts(entry), org = personOrg(r);
   const sub = [org?.name, parts.head].filter(Boolean).join(" · ");
   return el("section", { class: "r4-focus" }, [face(r.title, "lg"), el("div", { class: "body" }, [
-    el("div", { class: "k" }, [late ? el("span", { class: "chip late", text: t("{n} days overdue", { n: late }) }) : el("span", { class: "chip lamp", text: age(entry.t.since) }), t("Answer first")]),
+    el("div", { class: "k" }, [late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) }) : el("span", { class: "chip lamp", text: age(entry.t.since) }), t("Answer first")]),
     el("a", { class: "t", href: href(r), text: t("{name} is waiting on you", { name: r.title }) }), sub ? el("div", { class: "s", text: sub }) : null]), personPrimary(r, entry)]);
 }
 function peopleTabs(items, waiting) {
@@ -5758,7 +5774,7 @@ function peopleFoot() {
   const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
     held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
     service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [...notes.map(note => el("p", { text: note })), directory]);
+  return el("div", { class: "r4-foot" }, [...notes.map(note => el("p", { class: "held-note", text: note })), directory]);
 }
 function peopleList(items) {
   const waiting = items.filter(r => waitingOn(r).length).sort((a, b) => byUrgency(waitingOn(a)[0], waitingOn(b)[0]));
@@ -5777,6 +5793,8 @@ function peopleList(items) {
   };
   state.reset = () => { find.value = ""; state.draw(); find.focus(); };
   find.oninput = () => { state.text = find.value; state.draw(); };
+  // Enter opens the first match: type a name, press Enter, you are on the page.
+  find.onkeydown = event => { if (event.key === "Enter") list.querySelector(".row.prow")?.click(); };
   table.onclick = () => { peopleTable = true; readerStorage("co-rem-people-view", "table"); render(); };
   state.draw();
   return [waiting.length ? peopleFocus(waiting[0]) : null, el("div", { class: "r4-bar" }, [find, tabs, table]), list];
@@ -7159,7 +7177,7 @@ function record(path, heading) {
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
     if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
-    if (person && ["open threads", "insight"].includes(s.title.toLowerCase())) continue;
+    if (person && s.title.toLowerCase() === "open threads") continue;
     if (["people", "projects", "orgs"].includes(r.category) && s.title.toLowerCase() === "open threads" && listItems(s.text).every(isCalm)) continue;
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
