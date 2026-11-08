@@ -643,7 +643,8 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
         day = timestamp(last["at"]).astimezone(zone).date()
         reason = _safe_read_error(kind, last["error"], code=last.get("code", ""),
                                   next_command=last.get("next_command", "")).removeprefix(f"{kind.title()} read failed")
-        return f"last read failed {day}{reason}", ""
+        good = f"; last good read {age(now() - timestamp(last['ok_at']))} ago" if last.get("ok_at") else ""
+        return f"last read failed {day}{reason}{good}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
@@ -655,7 +656,50 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     if missing:
         day = timestamp(last["at"]).astimezone(zone).date()
         return "", f"last read {day}: {missing}"
+    if last and now() - timestamp(last["at"]) > timedelta(days=1):
+        return f"last read {age(now() - timestamp(last['at']))} ago", ""
     return "", ""
+
+
+def _nights(root: Path) -> list[dict]:
+    from .night_stats import recent
+    return recent(root)
+
+
+def age(span: timedelta) -> str:
+    """34 hours, 2 days: hours under two days, days after."""
+    hours = int(span.total_seconds() // 3600)
+    if hours < 48:
+        return f"{hours} hour" + ("" if hours == 1 else "s")
+    return f"{hours // 24} days"
+
+
+# A slot's follow-up turns run for three hours (codex_exec.TURN_SECONDS); a round no
+# later slot has moved is stuck, not working.
+ROUND_WINDOW = timedelta(hours=3)
+
+
+def round_state(root: Path, config: dict) -> dict | None:
+    """The open native round: working, or stuck past its slot window with the reason; None when none is open."""
+    cursor = read_json(state_path(root, "round.json"), {})
+    if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
+        return None
+    # Progress is the round's own slots and the newest model run since: a round that runs
+    # all day across slots is working while its tasks keep landing.
+    newest = next(iter(run_logs(root)), {}).get("started_at")
+    touched = max(filter(None, (cursor.get("slot"), cursor.get("mail_slot"), cursor.get("portion_slot"),
+                                cursor.get("started_at"), newest)), key=lambda value: timestamp(value))
+    latest = latest_slot(config, now())
+    turn = read_json(state_path(root, "last-turn.json"), {})
+    if (latest is None or turn.get("result") == "running" or timestamp(touched) + ROUND_WINDOW > now()
+            or latest <= timestamp(touched)):
+        return {"state": "working", "since": cursor.get("started_at")}
+    reason = turn.get("reason") or (f"last turn {turn['result']}" if turn.get("result") else "no turn has run since")
+    if cursor.get("pending"):
+        task = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {})
+        refusal = (task.get("last_result") or {}).get("reason")
+        reason = f"task {cursor['pending']} refused: {refusal}" if refusal else reason
+    return {"state": "stuck", "since": touched, "reason": " ".join(str(reason).split())[:240]}
 
 
 def schedule_failure(root: Path) -> dict | None:
@@ -714,6 +758,8 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                 "codex-app" if worker_state(root).get("scheduler") == "codex-native"
                 else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
             "last_turn": read_json(state_path(root, "last-turn.json"), None),
+            "round": round_state(root, config),
+            "nights": _nights(root),
             **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
@@ -1392,7 +1438,11 @@ def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missi
     safe = _safe_read_error(name, error, code=failure.get("code", ""), next_command=failure.get("next_command", "")) if error else ""
     credential = re.match(re.escape(f"{name.title()} read failed: ") + r"\[([a-z_]+)\]", safe)
     fields = _credential_failure(name, credential[1], next_command=failure.get("next_command", "")) if credential else {}
+    previous = reads.get(name) or {}
+    # The last read that worked, kept through failures so status can say how old it is.
+    good = now().isoformat() if not safe else previous.get("ok_at") or (previous.get("at") if previous and not previous.get("error") else None)
     reads[name] = {"at": now().isoformat(), "error": safe, "dropped_missing": dropped_missing,
+                   **({"ok_at": good} if good else {}),
                    **{key: fields[key] for key in ("code", "next_command") if key in fields}}
     write_json(state_path(root, "source_reads.json"), reads)
 

@@ -180,7 +180,9 @@ def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
+        from .night_stats import record as record_nights
         morning_message(root)
+        record_nights(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,

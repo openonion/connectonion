@@ -587,10 +587,13 @@ Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
-          translation coverage and tonight's queue within the daily limit, or
-          "not requested" with co rem config set languages zh;
-          each mailbox with the command that fixes it; the week's budget; the
-          last run that finished, and one running now.
+          translation coverage and what is queued;
+          each mailbox with the command that fixes it, and how long ago it was
+          last read once that is over a day; a round no later slot has moved,
+          as stuck with its reason; each night measured (turns, tasks accepted,
+          parked and failed, drafts, mail read, minutes busy, minutes idle
+          22:00-07:00), also kept in .state/night-stats.jsonl; the week's
+          budget; the last run that finished, and one running now.
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
