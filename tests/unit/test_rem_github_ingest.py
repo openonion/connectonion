@@ -344,3 +344,21 @@ def test_joins_ignore_previews_side_branches_drafters_and_other_repos(tmp_path, 
     assert deploy['prs'] == [8, 10]
     assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
     assert [row['run'] for row in joins['failed_release']['runs']] == [5]
+
+
+def test_shared_projection_names_no_local_paths(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    local = ['git', '-C', '/home/mara-quill/work/lanterns', 'log', '--all']
+    cache['verification'].append({'command': local, 'ran_at': '2026-11-08T12:00:00Z', 'resource': 'churn'})
+    cache['failed_verification'] = [{'command': local, 'ran_at': '2026-11-08T12:00:00Z', 'resource': 'local_identity'}]
+    cache['churn'] = {'areas': {}, 'session_links': [{'cwd': '/home/mara-quill/work/lanterns'}]}
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    def project(local):
+        row = {'path': 'projects/lanterns.md', 'category': 'projects', 'title': 'Lanterns',
+               'text': '# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n'}
+        data.enrich_records(tmp_path, [row], {}, today=NOW.date(), local=local)
+        return json.dumps(row['repository'])
+    assert '/home/mara-quill' in project(True)
+    shared = project(False)
+    assert '/home/mara-quill' not in shared
+    assert '["git", "-C", "<local repository>", "log", "--all"]' in shared

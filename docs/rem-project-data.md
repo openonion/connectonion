@@ -315,7 +315,10 @@ recorded end is the last reply, not the last tool output. Subdirectories, siblin
 repositories, a missing start, requested-but-unprinted branches and text
 similarity never qualify. A link carries the printed branch. It is evidence the
 session's own tool output showed the commit being made, not proof of authorship.
-Shared projections omit churn.session_links. All stored times are UTC; views
+Shared projections (`local=False`) omit churn.session_links and replace every
+absolute path a recorded command named (`git -C /home/…`) with
+`<local repository>` wherever it appears, including `verification`,
+`failed_verification`, join verification and error text. All stored times are UTC; views
 convert for display using the notebook timezone.
 
 `joins` is computed without a model, each with kind, bounded=true and

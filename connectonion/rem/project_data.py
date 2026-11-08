@@ -1,4 +1,5 @@
 """Read-only project data projection shared by every REM snapshot view."""
+import json
 import re
 from datetime import datetime, timezone
 
@@ -9,6 +10,8 @@ from .project_tree import identity, project_tree
 from .project_issues import retained_issues
 from .project_links import join_obligations
 from .project_pages import CODE_REPO_INVALID, code_cache_path, code_repo_valid, code_utc
+
+LOCAL_PATH = '<local repository>'
 
 
 def enrich_records(root, records, contexts, *, today=None, local=False, states=None, issues=None, owner=None):
@@ -33,8 +36,8 @@ def enrich_records(root, records, contexts, *, today=None, local=False, states=N
             repo = identity(row)['repo']
             if repo:
                 row['repository'] = repository_projection(root, repo)
-                if not local and row['repository'].get('churn'):
-                    row['repository']['churn'].pop('session_links', None)
+                if not local:
+                    row['repository'] = _shared_repository(row['repository'])
                 if repo not in issues and row['repository'].get('synced_at'):
                     issues = {**issues, repo: row['repository']['issues']}
             _project(row, by_path, contexts, issues, today)
@@ -127,6 +130,22 @@ def repository_projection(root, repo, *, now=None):
                 external.append({'pr': pr['number'], 'run': run['id'], 'association': pr['authorAssociation']})
     _repo_join(result, 'external_action_required', ['prs', 'actions/runs'], pairs=external)
     return result
+
+
+def _shared_repository(projection):
+    """A shared view carries no session links and no folder on the owner's disk.
+
+    Every absolute path a recorded command named (`git -C /home/…`) is replaced
+    wherever it appears, including an error message that quotes the command.
+    """
+    if projection.get('churn'):
+        projection = {**projection, 'churn': {k: v for k, v in projection['churn'].items() if k != 'session_links'}}
+    paths = {arg for row in projection.get('verification', []) + projection.get('failed_verification', [])
+             for arg in row['command'] if arg.startswith('/')}
+    text = json.dumps(projection)
+    for path in sorted(paths, key=len, reverse=True):
+        text = text.replace(json.dumps(path)[1:-1], LOCAL_PATH)
+    return json.loads(text)
 
 
 def _production_deploy(run, default_branch, tags):
