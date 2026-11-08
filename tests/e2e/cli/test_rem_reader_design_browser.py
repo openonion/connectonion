@@ -4515,7 +4515,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
     page, uri = reader
-    for category in ('people', 'orgs', 'projects', 'skills'):
+    for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
         page.locator('.sheet-find').fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'

@@ -1636,6 +1636,7 @@
   .project-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
   .project-lane-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 12px 4px; font: 600 13px/18px var(--r4font); color: var(--ink); border: 0; padding: 0; }
   .project-lane-head .n { color: var(--ink-3); font-weight: 400; }
+  .project-lane-caption { margin-left: auto; color: var(--ink-3); font-weight: 400; font-size: 12px; }
   .project-lane-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .project-card { position: relative; border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); transition: box-shadow .2s ease-out; }
   .project-card:hover { box-shadow: var(--lift); }
@@ -1666,7 +1667,7 @@
   .session-stopped-full { color: var(--ink); font-weight: 600; font-size: 14px; text-decoration: none; }
   .session-controls { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; }
   #session-search { flex: 1; min-width: 0; height: 38px; padding: 0 14px 0 36px; border: 0; border-radius: 10px; background: var(--sheet) no-repeat 13px 50% / 15px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23868f89' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); box-shadow: var(--ring); color: var(--ink); font: 14px var(--r4font); }
-  #session-search:focus { outline: none; box-shadow: 0 0 0 1px var(--ink-3); }
+  #session-search:focus { outline: none; box-shadow: 0 0 0 1px var(--ink-4), 0 0 0 4px var(--line); }
   .session-tabs { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: 10px; background: var(--sunk); }
   .session-tabs button { min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--ink-3); font: 500 13px var(--r4font); cursor: pointer; white-space: nowrap; }
   .session-tabs button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--ring); }
@@ -2653,6 +2654,9 @@ const UI = {
     "Undated": "无日期",
     "Yesterday": "昨天",
     "Earlier": "更早",
+    "Moved in the last 7 days": "7 天内有动静",
+    "Slowed down": "放慢了",
+    "Quiet, or no date": "安静或没有日期",
     "When": "时间",
     "{n} projects": "{n} 个项目",
     "{n} active this week": "{n} 个本周有动静",
@@ -5407,7 +5411,8 @@ function category(c) {
 }
 
 // ---------- projects: a board by recency, the busiest one lifted (art direction r4) ----------
-const PROJECT_LANES = [["week", "This week", 7], ["month", "This month", 30], ["older", "Earlier", Infinity]];
+const PROJECT_LANES = [["week", "This week", 7, "Moved in the last 7 days"], ["month", "This month", 30, "Slowed down"],
+  ["older", "Earlier", Infinity, "Quiet, or no date"]];
 function projectLast(r) { return facts(r).last || r.last_activity || ""; }
 function projectLane(r) {
   const days = projectLast(r) ? daysSince(projectLast(r)) : null;
@@ -5453,7 +5458,12 @@ function projectWeeks(days) {
     weeks.map(n => el("span", { style: "height:" + (n ? Math.max(18, Math.round(100 * n / peak)) : 7) + "%", class: n ? "" : "none" })));
 }
 // The hero line is a glance: each part is cut at its first clause.
-function firstClause(text) { return plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim(); }
+function firstClause(text) {
+  const clause = plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim();
+  const unquoted = clause.split(/[：:]?\s*[“"「]/)[0].trim();
+  const short = unquoted.length >= 6 ? unquoted : clause;
+  return short.length > 40 ? short.slice(0, 39) + "…" : short;
+}
 function projectHero(r, days) {
   const f = facts(r), open = f.open.length;
   const standing = [...(section(r, "where it stands")?.text || "").matchAll(/^\s*-\s+(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]).sort().at(-1);
@@ -5470,24 +5480,25 @@ function projectHero(r, days) {
     projectWeeks(days),
     el("a", { class: "btn-act project-hero-go", href: href(r) + "&h=open-threads", text: t("Go through them one by one") })]);
 }
-function projectBusiest(items, days) {
-  const score = r => [projectRecent(days.get(r.path) || [], 7), facts(r).open.length];
-  return items.filter(r => facts(r).open.length && !r.private_project)
-    .sort((a, b) => { const [x, y] = [score(a), score(b)]; return y[0] - x[0] || y[1] - x[1]; })[0];
+// Busiest = the most open items among projects that moved this week; else the most open items anywhere.
+function projectBusiest(items) {
+  const open = items.filter(r => facts(r).open.length && !r.private_project).sort((a, b) => facts(b).open.length - facts(a).open.length);
+  return open.find(r => projectLane(r) === "week") || open[0];
 }
-function projectLaneNode(lane, label, rows, days, shown) {
+function projectLaneNode(lane, label, rows, days, shown, caption) {
   const list = el("ul", { class: "project-lane-cards" }, rows.slice(0, 7).map(r => projectCard(r, days.get(r.path) || [])));
   const more = rows.length > 7 ? sessionButton(t("{n} more projects", { n: rows.length - 7 }), () => {
     list.append(...rows.slice(7).map(r => projectCard(r, days.get(r.path) || []))); more.remove(); }, { class: "project-lane-more" }) : null;
   return el("section", { class: "project-lane", "data-lane": lane, "aria-label": t(label), ...(shown ? {} : { "data-hidden": "" }) }, [
-    el("h2", { class: "project-lane-head" }, [el("span", { text: t(label) }), el("span", { class: "n", text: String(rows.length) })]), list, more]);
+    el("h2", { class: "project-lane-head" }, [el("span", { text: t(label) }), el("span", { class: "n", text: String(rows.length) }),
+      el("span", { class: "project-lane-caption", text: t(caption) })]), list, more]);
 }
 // The second half of a page title: same line on desktop, its own line on phone.
 function pageStateSub(text) { return el("span", { class: "page-state-sub" }, [el("span", { class: "sep", text: " · " }), text]); }
 function projectsBoard() {
   const main = document.getElementById("main"), items = inCategory("projects").sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
-  const days = projectSessionDays(), lanes = PROJECT_LANES.map(([key, label]) => [key, label, items.filter(r => projectLane(r) === key)]);
-  const week = lanes[0][2].length, busiest = projectBusiest(items, days);
+  const days = projectSessionDays(), lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => projectLane(r) === key), caption]);
+  const week = lanes[0][2].length, busiest = projectBusiest(items);
   main.replaceChildren(el("div", { class: "projects-view" }, [
     el("p", { class: "page-kicker", text: label("projects") }),
     el("h1", { class: "page-state" }, [t("{n} projects", { n: items.length }), week ? pageStateSub(t("{n} active this week", { n: week })) : null]),
@@ -5497,7 +5508,7 @@ function projectsBoard() {
 // Phone shows one lane at a time; the segmented control picks it.
 function projectBoardLanes(lanes, days) {
   const first = lanes.find(([, , rows]) => rows.length)?.[0] || "week";
-  const board = el("div", { class: "project-board" }, lanes.map(([key, label, rows]) => projectLaneNode(key, label, rows, days, key === first)));
+  const board = el("div", { class: "project-board" }, lanes.map(([key, label, rows, caption]) => projectLaneNode(key, label, rows, days, key === first, caption)));
   const tabs = el("div", { class: "project-lane-tabs", role: "group", "aria-label": t("When") }, lanes.map(([key, label]) =>
     sessionButton(label, () => {
       for (const lane of board.children) lane.toggleAttribute("data-hidden", lane.dataset.lane !== key);
