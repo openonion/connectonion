@@ -1000,7 +1000,7 @@ def test_code_evidence_excludes_sessions_that_change_cwd(notebook):
     assert evidence["cwd"] == ""
 
 
-def test_code_evidence_keeps_printed_branches_only(notebook):
+def test_code_evidence_keeps_printed_commits_only(notebook):
     root, _, _ = notebook
     transcript(notebook, cwd="/work/lanterns", rows=[codex("Inspect cedar"),
         {"type": "response_item", "timestamp": STAMP, "payload": {
@@ -1013,5 +1013,24 @@ def test_code_evidence_keeps_printed_branches_only(notebook):
     assert import_sessions(root, now=NOW)["imported"] == 1
     index = read_json(state_path(root, "sessions.json"), {})
     evidence, = [row["code_evidence"] for row in index["files"].values()]
-    assert evidence["printed_branches"] == ["printed-cedar"]
+    assert evidence["printed_commits"] == [{"sha": "abcdef1", "branch": "printed-cedar"}]
     assert evidence["started"].endswith("+00:00")
+
+
+def test_code_evidence_backfills_recent_sessions_without_a_full_reimport(notebook):
+    root, _, _ = notebook
+    old = transcript(notebook, session="1111-cedar001")
+    recent = transcript(notebook, session="2222-cedar002")
+    os.utime(old, (NOW.timestamp() - 30 * 86400,) * 2)
+    os.utime(recent, (NOW.timestamp() - 86400,) * 2)
+    assert import_sessions(root, now=NOW)["imported"] == 2
+    index = read_json(state_path(root, "sessions.json"), {})
+    for entry in index["files"].values():
+        entry.pop("code_evidence")  # an index written by rc61, before code evidence existed
+    index["settings"]["format"] = 4
+    write_json(state_path(root, "sessions.json"), index)
+    counts = import_sessions(root, now=NOW)
+    assert (counts["updated"], counts["unchanged"]) == (1, 1)
+    files = read_json(state_path(root, "sessions.json"), {})["files"]
+    assert "code_evidence" in files[str(recent)]
+    assert "code_evidence" not in files[str(old)]

@@ -108,19 +108,23 @@ def test_sync_cache_skip_etag_and_projection(tmp_path, gh, monkeypatch):
         assert all(v['command'] and v['ran_at'].endswith('Z') for v in join['verification'])
 
 
-def test_session_commit_links_require_exact_cwd_time_and_printed_branch(tmp_path):
+def test_session_links_need_exact_cwd_and_a_printed_sha(tmp_path):
     repo = tmp_path / 'lanterns'
     repo.mkdir()
-    commit = {'sha': 'abc', 'time': '2026-11-08T12:00:00Z'}
+    commit = {'sha': 'abcdef1234567890', 'time': '2026-11-08T12:00:00Z'}
     session = {'id': 'cedar-session', 'cwd': str(repo), 'started': '2026-11-08T09:00:00Z',
-               'ended': '2026-11-08T10:00:00Z', 'printed_branches': ['cedar']}
+               'ended': '2026-11-08T10:00:00Z', 'printed_commits': [{'sha': 'abcdef1', 'branch': 'cedar'}]}
     result = pages.session_commit_links([session], [commit], [str(repo)])
-    assert result[0]['sha'] == 'abc'
-    assert result[0]['branches'] == ['cedar']
+    assert result == [{'session': 'cedar-session', 'sha': commit['sha'], 'branch': 'cedar', 'cwd': str(repo),
+                       'started': '2026-11-08T09:00:00Z', 'ended': '2026-11-08T10:00:00Z'}]
+    # A printed SHA is the evidence, so a commit after the last reply still links;
+    # an unprinted commit inside the session's own window does not.
+    assert pages.session_commit_links([session], [{**commit, 'time': '2026-11-08T23:00:00Z'}], [str(repo)])
+    assert pages.session_commit_links([session], [{**commit, 'sha': 'fedcba9876543210'}], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'printed_commits': []}], [commit], [str(repo)]) == []
     assert pages.session_commit_links([{**session, 'cwd': str(repo / 'src')}], [commit], [str(repo)]) == []
-    assert pages.session_commit_links([session], [{**commit, 'time': '2026-11-08T12:00:01Z'}], [str(repo)]) == []
     assert pages.session_commit_links([{**session, 'started': '2026-11-08T13:00:00Z'}], [commit], [str(repo)]) == []
-    assert pages.session_commit_links([{**session, 'ended': ''}], [commit], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'started': ''}], [commit], [str(repo)]) == []
 
 
 def test_only_a_304_exit_is_accepted(tmp_path, gh, monkeypatch):
@@ -159,11 +163,12 @@ def test_failed_sync_preserves_success_and_reports_error(tmp_path, gh):
     assert data.repository_projection(tmp_path, REPO)['status'] == 'error'
 
 
-def test_local_churn_and_registered_worktree_links(tmp_path):
+def test_worktree_session_links_only_the_commit_it_printed(tmp_path):
     import subprocess
     repo = tmp_path / 'lanterns'
-    def git(*args):
-        return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True, text=True).stdout
+    def git(*args, cwd=repo, at='2026-11-08T11:00:00Z'):
+        env = {**os.environ, 'GIT_AUTHOR_DATE': at, 'GIT_COMMITTER_DATE': at}
+        return subprocess.run(['git', '-C', str(cwd), *args], env=env, check=True, capture_output=True, text=True).stdout
     repo.mkdir()
     git('init', '-b', 'cedar')
     git('config', 'user.name', 'Mara Quill')
@@ -171,17 +176,24 @@ def test_local_churn_and_registered_worktree_links(tmp_path):
     (repo / 'src').mkdir()
     (repo / 'src/light.py').write_text('light = True\n')
     git('add', '.')
-    env = {**os.environ, 'GIT_AUTHOR_DATE': '2026-11-08T11:00:00Z', 'GIT_COMMITTER_DATE': '2026-11-08T11:00:00Z'}
-    subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'Add a cedar light.'], env=env, check=True, capture_output=True)
+    git('commit', '-m', 'Add a cedar light.')
     worktree = tmp_path / 'cedar-worktree'
     git('worktree', 'add', '-b', 'cedar-review', str(worktree))
+    # The main checkout commits on cedar while the worktree session is open:
+    # same repository, same window, but the session never printed it.
+    (repo / 'src/light.py').write_text('light = False\n')
+    git('commit', '-am', 'Dim the cedar light.', at='2026-11-08T10:30:00Z')
+    (worktree / 'README').write_text('Cedar\n')
+    git('add', '.', cwd=worktree)
+    git('commit', '-m', 'Describe the cedar review.', cwd=worktree, at='2026-11-08T10:40:00Z')
+    printed = git('rev-parse', '--short=7', 'HEAD', cwd=worktree).strip()
     evidence = []
     session = {'id': 'cedar', 'cwd': str(worktree), 'started': '2026-11-08T10:00:00Z',
-               'ended': '2026-11-08T11:00:00Z', 'printed_branches': ['cedar-review']}
+               'ended': '2026-11-08T11:00:00Z', 'printed_commits': [{'sha': printed, 'branch': 'cedar-review'}]}
     churn = pages._code_local(repo, NOW, 14, [session], evidence)
-    assert churn['areas']['src'] == {'additions': 1, 'deletions': 0, 'files': 1, 'commits': 1}
+    assert churn['areas']['src'] == {'additions': 2, 'deletions': 1, 'files': 2, 'commits': 2}
     assert churn['since'] == '2026-10-25T12:00:00Z'
-    assert churn['session_links'][0]['branches'] == ['cedar-review']
+    assert [(link['sha'][:7], link['branch']) for link in churn['session_links']] == [(printed, 'cedar-review')]
     assert len(evidence) == 2
 
 

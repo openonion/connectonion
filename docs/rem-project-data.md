@@ -292,15 +292,24 @@ packet exposes `schema_version`, `repo`, `status` (`cached` or `error`),
   count as files with zero text-line changes. No claim about runtime follows.
 
 The existing `.state/sessions.json` file entries retain `code_evidence`, populated
-by consented import: exact cwd, start/end UTC instants, session ID and branches
-printed in commit output. Mixed-cwd sessions are excluded. Existing session
-imports are refreshed once through the session format version. Cache links are
-computed only when cwd resolves **exactly** to the repository root or a path in
-`git worktree list --porcelain`, and commit time is within
-`[session start, session end + 2 hours]`. Subdirectories, sibling repositories,
-missing times and invalid intervals do not qualify. Branch names are copied
-verbatim from printed commit records, never inferred from requests or text
-similarity. A link is temporal/path evidence, not proof of commit authorship.
+by consented import: exact cwd, start/end UTC instants, session ID and
+`printed_commits` — the `[branch sha]` records git printed in that session's own
+tool output. Mixed-cwd sessions are excluded. The session format version is not
+bumped: an index written before code evidence existed is backfilled only for
+transcripts modified within the 14-day churn window, so upgrading does not
+re-import 180 days of sessions.
+
+A session links to a commit only when **all** of these hold: the session printed
+that commit's SHA verbatim (an abbreviated SHA of 7+ hex characters is a prefix
+of the full one); the session cwd resolves **exactly** to the repository root or
+a path in `git worktree list --porcelain`; and the commit time is not before the
+session start. A time window alone is not evidence: it linked a worktree session
+to commits the main checkout made meanwhile. There is no end bound or grace: the
+printed SHA already shows the session saw the commit's creation, and the
+recorded end is the last reply, not the last tool output. Subdirectories, sibling
+repositories, a missing start, requested-but-unprinted branches and text
+similarity never qualify. A link carries the printed branch. It is evidence the
+session's own tool output showed the commit being made, not proof of authorship.
 Shared projections omit churn.session_links. All stored times are UTC; views
 convert for display using the notebook timezone.
 

@@ -18,6 +18,7 @@ from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
 from .scan import WORKTREE_FOLDER, main_checkout, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
+from .project_pages import CODE_CHURN_DAYS
 from .page_review import _plain, _quoted_in
 
 AGENTS = {"codex": "Codex", "claude-code": "Claude Code"}
@@ -513,12 +514,16 @@ def mentions(people: list[dict], sessions: list[dict]) -> dict[str, list[str]]:
     return found
 
 
-def _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions=None):
+def _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions=None, evidence_since=None):
     stat = sessions.stats[str(path)] if sessions is not None else path.stat()
-    if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
+    modified = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
+    if modified < since:
         return "outside_window"
     old = progress["files"].get(str(path), {})
-    if ((old.get("size"), old.get("mtime_ns")) == (stat.st_size, stat.st_mtime_ns)
+    # An rc61 index has no code_evidence. Re-read only files the churn window can
+    # still use; bumping the format re-imported all 180 days on upgrade.
+    backfill = old.get("record") and "code_evidence" not in old and evidence_since and modified >= evidence_since
+    if ((old.get("size"), old.get("mtime_ns")) == (stat.st_size, stat.st_mtime_ns) and not backfill
             and (not old.get("record") or notebook.path(old["record"]).is_file())):
         counts["unchanged"] += 1
         return ""
@@ -543,13 +548,14 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts, s
     retain_cited_sessions(notebook.root, session["messages"], {m["source"] for m in session["messages"]}, replace=True)
     progress["files"][str(path)] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
                                      "record": record, "session": key, "since": since.isoformat()}
-    # This stays in the existing session index. Branches come only from printed
-    # commit records; requested branch commands are not evidence of output.
+    # This stays in the existing session index. Only commit records the session
+    # printed (`[branch sha] subject`) count: a requested branch or a commit seen
+    # in `git log` is not evidence that this session made it.
     progress["files"][str(path)]["code_evidence"] = {
         "id": key, "cwd": session["cwd"] if len(session.get("code_cwds", {session["cwd"]}) - {""}) == 1 else "",
         "started": source.timestamp(session["messages"][0]["timestamp"]).astimezone(timezone.utc).isoformat(),
         "ended": source.timestamp(session["ended"]).astimezone(timezone.utc).isoformat() if session.get("ended") else "",
-        "printed_branches": list(dict.fromkeys(c["branch"] for c in session["artifacts"]["commits"]))}
+        "printed_commits": [{"sha": c["sha"].lower(), "branch": c["branch"]} for c in session["artifacts"]["commits"]]}
     progress["sessions"][key] = record
     counts["updated" if updated else "imported"] += 1
     return ""
@@ -568,7 +574,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     skipped = Counter()
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
-        settings = {"days": days, "timezone": str(zone), "format": 5}
+        settings = {"days": days, "timezone": str(zone), "format": 4}
         if progress.get("settings") != settings:
             progress["files"] = {}
         progress["settings"] = settings
@@ -585,7 +591,8 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
                 relative = path.relative_to(directory)
                 if any((directory / parent).is_symlink() for parent in (relative, *relative.parents)) or not path.is_file():
                     continue
-                why = _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions)
+                why = _import_file(path, kind, since, notebook, folders, zone, progress, counts, sessions,
+                                   evidence_since=now - timedelta(days=CODE_CHURN_DAYS))
                 if why:
                     skipped[why] += 1
         write_json(state_path(root, "sessions.json"), progress)

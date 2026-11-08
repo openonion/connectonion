@@ -1051,22 +1051,30 @@ def _code_local(repo_path, now, days, sessions, evidence):
 
 
 def session_commit_links(sessions, commits, repo_paths):
+    """A session links to a commit only when it printed that commit's SHA.
+
+    A time window alone linked a worktree session to whatever the main checkout
+    committed meanwhile. The printed `[branch sha]` record is the evidence; the
+    cwd must still be the repository or one of its worktrees, and the commit may
+    not predate the session. No end bound: the SHA already proves the session saw
+    its creation, and `ended` is the last reply, not the last tool output.
+    """
     paths = {str(Path(path).resolve()) for path in repo_paths}
     links = []
     for session in sessions:
         cwd = session.get('cwd')
         if not cwd or not Path(cwd).is_absolute() or str(Path(cwd).resolve()) not in paths:
             continue
-        if not session.get('started') or not session.get('ended'):
+        if not session.get('started'):
             continue
-        start, end = timestamp(code_utc(session['started'])), timestamp(code_utc(session['ended']))
-        if end < start:
-            continue
+        start = timestamp(code_utc(session['started']))
+        printed = [row for row in session.get('printed_commits', []) if re.fullmatch(r'[0-9a-f]{7,40}', row['sha'])]
         for commit in commits:
-            if start <= timestamp(commit['time']) <= end + timedelta(hours=2):
-                links.append({'session': session['id'], 'sha': commit['sha'], 'cwd': cwd,
-                              'started': code_utc(start), 'ended': code_utc(end),
-                              'branches': session.get('printed_branches', [])})
+            match = next((row for row in printed if commit['sha'].startswith(row['sha'])), None)
+            if match and timestamp(commit['time']) >= start:
+                links.append({'session': session['id'], 'sha': commit['sha'], 'branch': match['branch'], 'cwd': cwd,
+                              'started': code_utc(start),
+                              'ended': code_utc(session['ended']) if session.get('ended') else None})
     return links
 
 
