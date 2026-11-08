@@ -230,6 +230,13 @@ def _next_round(root, cursor, *, scheduled, notices):
     config = read_config(root)
     if scheduled and (not cursor or cursor.get("done")) and native_round.scheduled_slot(root, config) is None:
         return {"outcome": "done", "reason": "not due", "notices": notices}
+    # A round still working through its jobs reads each new slot's mail; one in its
+    # translation tail is about to finish, and the next round reads mail anyway.
+    if (cursor and scheduled and not cursor.get("done") and cursor.get("phase") != "daily-translation"
+            and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])):
+        slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
+        if slot and slot.isoformat() > (cursor.get("mail_slot") or cursor.get("slot") or ""):
+            native_round.read_new_mail(root, cursor, config, slot)
     if cursor and scheduled and cursor.get("investigation_left") == 0:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
         if slot and slot.isoformat() != cursor.get("portion_slot", cursor.get("slot")):

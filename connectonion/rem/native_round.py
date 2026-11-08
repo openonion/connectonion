@@ -49,7 +49,8 @@ def prepare(root, config, *, scheduled):
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
               "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
-              "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported}
+              "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
+              "mail_slot": slot.isoformat() if slot else None}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -58,6 +59,20 @@ def prepare(root, config, *, scheduled):
     cursor["run"] = record
     write_json(state_path(root, "round.json"), cursor)
     return cursor
+
+
+def read_new_mail(root, cursor, config, slot):
+    """A round can run all day; each scheduled slot reads the next mailbox into it.
+
+    Mail used to be read only when a round began, so a 14-hour round left every
+    mailbox unread since morning. The batch runs before the round's remaining jobs.
+    """
+    batch = service.prepare_sync(root, service._selected_sources(root, ""),
+                                 read_json(state_path(root, "progress.json"), {}), config)
+    batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
+    cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
+    if not batch["done"] and batch["digested"] is not None:
+        _digest(cursor, batch["digested"])
 
 
 def prepare_translation_round(root, config, *, scheduled):

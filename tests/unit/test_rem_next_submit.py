@@ -2495,3 +2495,32 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
 
 def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_path):
     assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False
+
+
+def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeypatch, translation_round):
+    """A round that runs all day must not stop reading mail: mail was read only when a round began,
+    so a 14-hour round left the mailboxes unread since morning."""
+    from connectonion.rem import native_round
+    cursor = translation_round
+    cursor.update(phase='daily-update', jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], job_index=0,
+                  current=None, investigation_left=3)
+    cursor['batch']['done'] = True
+    write_json(state_path(trial, 'round.json'), cursor)
+    reads = []
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(service.now())
+        return {'done': True, 'items': [], 'updated': progress, 'record': {'extracted': False}, 'kind': 'gmail',
+                'leads': [], 'digested': None}
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    def investigate(root, state, config, directory):
+        return {'stop': 'fixture: one investigation per call'}
+    monkeypatch.setattr(native_round, '_prepare_job', investigate)
+    native.next_task(trial, scheduled=True)
+    assert reads == [], 'the slot that started the round already read mail'
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'a new slot reads new mail into the running round'
+    assert read_json(state_path(trial, 'round.json'), {})['mail_slot'] == moment.isoformat()
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'the same slot does not read again'
