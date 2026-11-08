@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc59
+## Current Version: 1.9.3rc60
+
+The night round gives every owed item an outcome; Approve all with a 10-minute hold; owed work
+dispatched to Codex with receipts; People, Organisations, Projects and Sessions redesigned; REM on
+the top model with summaries on the small one; scheduled Outlook token provenance fixed. Stable
+remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc60.md).
+
+- 1.9.3rc60 (night outcomes, approve all, task dispatch, page redesigns).
+
+### Previous candidate: 1.9.3rc59
 
 Hotfix on 1.9.3rc58: the claim audit demanded a checkpoint for a citation whose original is not in
 the archive, so one page task retried every 15 minutes without end; such citations are now named as
