@@ -1637,11 +1637,13 @@
   .project-lane-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 12px 4px; font: 600 13px/18px var(--r4font); color: var(--ink); border: 0; padding: 0; }
   .project-lane-head .n { color: var(--ink-3); font-weight: 400; }
   .project-lane-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .project-card { border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); transition: box-shadow .2s ease-out; }
+  .project-card { position: relative; border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); transition: box-shadow .2s ease-out; }
   .project-card:hover { box-shadow: var(--lift); }
   .project-card-link { display: grid; gap: 4px; padding: 14px 16px; color: inherit; text-decoration: none !important; }
   .project-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-  .project-card-name { min-width: 0; font-weight: 600; font-size: 14.5px; line-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-card-name::after { content: ""; position: absolute; inset: 0; border-radius: 14px; }
+  .project-twin { position: relative; z-index: 1; }
+  .project-card-name { text-decoration: none !important; min-width: 0; font-weight: 600; font-size: 14.5px; line-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .project-card-when { flex: none; color: var(--ink-3); font-size: 12px; }
   .project-card-what { color: var(--ink-2); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .project-card-what.unknown { color: var(--ink-3); }
@@ -5433,10 +5435,11 @@ function projectTwin(r) {
 function projectCard(r, days) {
   const open = facts(r).open.length, recent = projectRecent(days), studied = known(r).status !== "Mapped", blurb = studied ? projectBlurb(r) : "";
   return el("li", { class: "project-card" }, [
-    el("a", { class: "project-card-link", href: href(r) }, [
-      el("span", { class: "project-card-head" }, [el("span", { class: "project-card-name", text: r.title }), el("span", { class: "project-card-when", text: fmtDate(projectLast(r)) })]),
-      blurb ? el("span", { class: "project-card-what", text: blurb })
-        : el("span", { class: "project-card-what unknown", text: t("Not investigated yet. REM only knows its folder and sessions.") }),
+    el("div", { class: "project-card-link" }, [
+      el("span", { class: "project-card-head" }, [el("a", { class: "project-card-name", href: href(r), text: r.title }), el("span", { class: "project-card-when", text: fmtDate(projectLast(r)) })]),
+      !studied ? el("span", { class: "project-card-what unknown", text: t("Not investigated yet. REM only knows its folder and sessions.") })
+        : blurb ? el("span", { class: "project-card-what", text: blurb })
+        : hasPrivacy(section(r, "what it is")?.text || "") ? el("span", { class: "project-card-what unknown", text: t("Hidden labelled passage") }) : null,
       open || recent ? el("span", { class: "project-card-foot" }, [open ? projectOpenLine(open) : el("span"),
         recent ? el("span", { text: t(recent === 1 ? "{n} session · 30 days" : "{n} sessions · 30 days", { n: recent }) }) : null]) : null]),
     projectTwin(r)]);
@@ -5457,7 +5460,8 @@ function projectHero(r, days) {
   const shipped = newestStanding(r) ? [standing ? fmtDate(standing) : "", firstClause(newestStanding(r))].filter(Boolean).join(" ") : "";
   const latest = [...f.open].sort((a, b) => (b.since || "").localeCompare(a.since || ""))[0];
   const newest = [latest.since ? fmtDate(latest.since) : "", firstClause(latest.text)].filter(Boolean).join(" ");
-  const line = [shipped, t("{n} sessions in 30 days", { n: projectRecent(days) }), t("Newest: {what}", { what: newest })].filter(Boolean).join(" · ");
+  const recent = projectRecent(days);
+  const line = [shipped, recent ? t("{n} sessions in 30 days", { n: recent }) : "", t("Newest: {what}", { what: newest })].filter(Boolean).join(" · ");
   return el("section", { class: "project-hero", "aria-label": t("Busiest this week") }, [
     el("div", { class: "project-hero-text" }, [
       el("p", { class: "project-hero-kicker" }, [el("span", { class: "chip lamp", text: t(open === 1 ? "{n} open item" : "{n} open items", { n: open }) }), t("Busiest this week")]),
@@ -5720,7 +5724,11 @@ function sessionPlace(r) {
   if (!parts.length) return t("No project");
   return /^(?:Users|home)$/.test(parts[0]) && parts.length <= 2 ? t("Home folder") : parts.slice(-2).join("/");
 }
-function sessionFollowUps(r) { return listItems(sessionSection(r, "Follow-ups")).map(item => plainLine(item)).filter(Boolean); }
+const SESSION_FOLLOW_UPS = new Map();
+function sessionFollowUps(r) {
+  if (!SESSION_FOLLOW_UPS.has(r.path)) SESSION_FOLLOW_UPS.set(r.path, listItems(sessionSection(r, "Follow-ups")).map(item => plainLine(item)).filter(Boolean));
+  return SESSION_FOLLOW_UPS.get(r.path);
+}
 const SESSION_STATE_MARK = { done: "✓", partial: "◐", abandoned: "–" };
 function sessionStateMark(r) {
   const outcome = r.session_summary ? r.session_outcome : "";
@@ -5729,7 +5737,7 @@ function sessionStateMark(r) {
 function sessionRow(group, terms) {
   const r = group[0], state = route(), text = sessionText(r), todo = sessionFollowUps(r).length;
   const pending = !r.session_summary;
-  const title = pending ? t("Still being summarised") + " · " + sessionPreview(r.session_started_with || text.you || text.title) : sessionPreview(text.title);
+  const title = (pending ? t("Still being summarised") + " · " : "") + sessionPreview(text.title);
   const meta = [sessionPlace(r), t(r.session_turns === 1 ? "{n} turn" : "{n} turns", { n: r.session_turns || 0 }),
     group.length > 1 ? t("{n} sessions", { n: group.length }) : "", todo ? t(todo === 1 ? "{n} to-do" : "{n} to-dos", { n: todo }) : ""].filter(Boolean).join(" · ");
   const excerpt = terms.length ? sessionExcerpt(r, terms) : null;
@@ -5764,8 +5772,9 @@ function sessionDayRows(records, terms) {
 }
 function sessionDayTitle(day) {
   if (!day) return t("Undated");
-  const weekday = new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", weekday: "short" });
-  const name = daysSince(day) === 0 ? t("Today") : daysSince(day) === 1 ? t("Yesterday") : new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short", day: "numeric" });
+  const date = new Date(day + "T00:00:00Z"), format = options => new Intl.DateTimeFormat(uiLocale(), { timeZone: "UTC", ...options }).format(date);
+  const name = daysSince(day) === 0 ? t("Today") : daysSince(day) === 1 ? t("Yesterday") : format({ month: "short", day: "numeric" });
+  const weekday = format({ weekday: "short" });
   return [el("span", { text: name }), el("span", { class: "session-weekday", text: weekday })];
 }
 const SESSION_PAGE = 60;
