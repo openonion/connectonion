@@ -2478,7 +2478,7 @@ const UI = {
     "message text unavailable": "消息正文未存档",
     "Fill the marked part first": "先填好标出的部分",
     "Fill in": "需要你填",
-    "Open in the live reader": "在实时阅读器里打开",
+    "Open in the live reader": "在实时阅读器里打开", "Draft in the live reader": "在实时阅读器里起草",
     "date not agreed": "日期未约定",
     "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start.": "上次定时任务未完成：{evidence} · 处理阻塞后运行 co rem start。",
     "Last scheduled turn did not finish: {evidence} · Retried automatically.": "上次定时任务未完成：{evidence} · 已自动重试。",
@@ -5576,15 +5576,17 @@ function approvalTask(entry) {
 }
 // The most likely next step: a ready reply, a reply REM can write now, a yes/no,
 // a reply to write; closing only what already looks handled. Never the mailbox.
-const STEPS = ["send", "draft", "approve", "write", "done", "open"];
+const STEPS = ["send", "draft", "live", "approve", "write", "done", "open"];
 function cardStep(entry) {
   const draft = threadDraft(entry), reply = queuedReply(entry);
   if (draft?.status === "prepared") return "send";
-  if (REM.live && reply?.state === "queued" && reply.thread) return "draft";
+  if (reply?.state === "queued" && reply.thread) return REM.live ? "draft" : "live";
   if (REM.live && approvalTask(entry)) return "approve";
   if (draft?.status === "no_reply" || looksDone(entry)) return "done";
+  // A snapshot cannot draft: an unanswered mail thread opens the live reader, never a dead end.
+  if (!REM.live && (reply?.provider || threadKind(entry)?.mail) && !["replied", "task"].includes(reply?.state)) return "live";
   // A mail-app compose cannot join an existing thread; only a person with no thread gets one.
-  if (threadContact(entry) && !threadContact(entry).subject) return "write";
+  if (threadContact(entry) && !queuedReply(entry)?.provider && !threadKind(entry)?.mail) return "write";
   return "open";
 }
 function groupStep(entries) {
@@ -5596,7 +5598,8 @@ function stepAction({ entry, step }, group, cls) {
     const reply = queuedReply(entry);
     return draftNowButton(entry, { kind: reply.provider, thread: reply.thread }, null, cls);
   }
-  if (step === "write") return mailtoLink(threadContact(entry), cls, t("Reply to {name}", { name }), true);
+  if (step === "write") return mailtoLink(threadContact(entry), cls, t("Write to {name}", { name }), true);
+  if (step === "live") return liveReaderAction(cls);
   if (step === "open") return el("a", { class: cls, href: href(group.r) + "&h=open-threads", text: t("Open {name}", { name }) });
   const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
     text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
@@ -5606,6 +5609,14 @@ function stepAction({ entry, step }, group, cls) {
     closeEntries(event.currentTarget.closest(".qcard"), group.entries.filter(item => cardStep(item) === "done"));
   };
   return button;
+}
+// A snapshot cannot draft; the live reader can, with one command.
+function liveReaderAction(cls) {
+  const open = el("button", { type: "button", class: cls, text: t("Draft in the live reader") });
+  const command = commandChip(remCommand("open"));
+  command.hidden = true;
+  open.onclick = () => { command.hidden = false; };
+  return el("span", { class: "live-action" }, [open, command]);
 }
 // A handled card slides right and fades, then the page re-renders with an Undo.
 function closeEntries(node, entries) {
@@ -5787,6 +5798,7 @@ function approvalProblems() {
 }
 function approvalHeader() {
   const items = REM.approval_outcomes || [];
+  if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
   const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t("Approve all {n}", {n: items.length})});
   button.disabled = !REM.live || !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
@@ -6719,7 +6731,7 @@ const ORG_UI_ZH = {
   "Most urgent organisation": "最该先处理的组织",
   "{org} has {n} waiting on you; most urgent: {who}, {thing}": "{org} 有 {n} 件在等你，最急的是 {who}：{thing}",
   "{org} is waiting on one thing: {who}, {thing}": "{org} 有 1 件在等你：{who}，{thing}",
-  "{n} people you know": "{n} 位你认识的人",
+  "{n} people you know": "{n} 位你认识的人", "1 person you know": "1 位你认识的人",
   "Filter organisations, people, domains": "筛选组织、人名、域名",
   "All": "全部", "Waiting on you": "在等你", "Recently in touch": "最近有往来", "Quiet": "安静",
   "overdue first": "逾期的在前", "within 45 days": "45 天内", "no contact for over 45 days": "45 天以上没有往来",
@@ -7093,7 +7105,7 @@ function orgStage(v) {
 function orgFacts(v) {
   const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day, last = known(v.r).last || v.events.at(-1)?.day;
   const parts = [v.r.domain ? el("span", { class: "ov-domain", text: v.r.domain }) : null,
-    v.people.length ? orgT("{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
+    v.people.length ? orgT(v.people.length === 1 ? "1 person you know" : "{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
     first ? orgT("In touch since {date}", { date: fmtDate(first) }) : null, last ? orgT("Last contact {date}", { date: fmtDate(last) }) : null].filter(Boolean);
   const keep = part => typeof part === "string" ? el("span", { class: "ov-nb", text: part }) : part;
   return parts.length ? el("p", { class: "ov-facts" }, parts.flatMap((part, i) => i ? [" · ", keep(part)] : [keep(part)])) : null;

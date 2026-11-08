@@ -3199,15 +3199,16 @@ def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
-    """A mail-app compose has no In-Reply-To; only a person with no thread gets one."""
+    """A mail-app compose has no In-Reply-To; only a person with no mail thread at all gets one,
+    even when the thread's subject was never recorded."""
     function = re.search(r'function cardStep\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(function + r'''
-      const REM = {live: false}, threadDraft = () => null, queuedReply = () => ({state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'});
-      const approvalTask = () => null, looksDone = () => false;
-      let contact = {address: 'avery@example.com', subject: 'Pilot', name: 'Avery'};
-      const threadContact = () => contact;
-      const thread = cardStep({});
-      contact = {address: 'avery@example.com', subject: '', name: 'Avery'};
-      console.log(JSON.stringify({thread, fresh: cardStep({})}));
+      const REM = {live: false}, threadDraft = () => null, approvalTask = () => null, looksDone = () => false;
+      let reply = {state: 'queued', provider: 'outlook', thread: 'mail:outlook:pilot'}, kind = {mail: true};
+      const queuedReply = () => reply, threadKind = () => kind;
+      const threadContact = () => ({address: 'avery@example.com', subject: '', name: 'Avery'});
+      const unrecordedSubject = cardStep({});
+      reply = null; kind = null;
+      console.log(JSON.stringify({unrecordedSubject, noThread: cardStep({})}));
     ''')
-    assert result == {'thread': 'open', 'fresh': 'write'}
+    assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}

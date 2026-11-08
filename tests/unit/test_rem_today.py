@@ -265,7 +265,7 @@ def test_today_primary_is_the_most_likely_next_step_never_the_mailbox(live):
         overdueReplied: {reply: {state: 'replied'}, contact: true}, nothing: {}};
       const entry = key => ({key, ...rows[key]});
       const doneKey = entry => entry.key, threadDraft = entry => entry.draft, queuedReply = entry => entry.reply;
-      const looksDone = entry => !!entry.looks, threadContact = entry => entry.contact ? {address: 'a@example.test'} : null;
+      const looksDone = entry => !!entry.looks, threadContact = entry => entry.contact ? {address: 'a@example.test'} : null, threadKind = () => null;
       const steps = Object.fromEntries(Object.keys(rows).map(key => [key, cardStep(entry(key))]));
       const mixed = groupStep([entry('handled'), entry('overdueReplied')]);
       const tie = groupStep([entry('overdueReplied'), {...entry('overdueReplied'), key: 'second'}]);
@@ -273,7 +273,7 @@ def test_today_primary_is_the_most_likely_next_step_never_the_mailbox(live):
     '''.replace('LIVE', json.dumps(live)))
     steps = result['steps']
     assert steps['draft'] == 'send'
-    assert steps['queued'] == ('draft' if live else 'open')
+    assert steps['queued'] == ('draft' if live else 'live')  # a snapshot names the live reader, never a dead end
     assert steps['task'] == ('approve' if live else 'open')
     assert steps['handled'] == 'done' and steps['noReply'] == 'done'
     # A reply after the promise fell due does not settle it: write, not "mark done".
