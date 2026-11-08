@@ -62,7 +62,9 @@ def _project(row, records, contexts, issues, today):
 def repository_projection(root, repo, *, now=None):
     """Cache-only repository contract; bounded observations are never a complete audit."""
     import re
-    from .project_pages import code_cache_path, code_utc
+    from .project_pages import CODE_REPO_INVALID, code_cache_path, code_repo_valid, code_utc
+    if not code_repo_valid(repo):
+        return {'repo': repo, 'status': 'invalid', 'reason': CODE_REPO_INVALID, 'joins': []}
     now = now or datetime.now(timezone.utc)
     cache = read_json(code_cache_path(root, repo), {})
     if not cache:

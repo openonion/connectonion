@@ -223,6 +223,11 @@ most 2,000 project pages and syncs at most three due repositories, oldest attemp
 first. Private project pages are excluded. `sync_repository()` is also callable
 explicitly under that lock. The canonical Facts `Repository: owner/repo` (or GitHub
 URL) identifies the repository. No additional database or service account exists.
+A Facts value that is not a canonical GitHub `owner/repo` (for example
+`docs.site/guide`: GitHub owners have no dots) is skipped when collecting, with
+`{"status":"skipped","reason":"not a canonical GitHub owner/repository"}` in the
+round's result; its projection is `status: "invalid"` with the same reason. One
+bad line no longer fails the whole round or the reader projection.
 
 Each repository waits 30 minutes after its last attempt (including failure).
 GitHub reads use the owner's `gh` executable and its normal authentication:

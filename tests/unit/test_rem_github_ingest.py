@@ -301,3 +301,18 @@ def test_non_git_project_folder_does_not_discard_remote_evidence(tmp_path, gh):
     assert cache['issues'][0]['number'] == 7
     assert cache['churn'] is None
     assert cache['local_status'] == 'repository_mismatch'
+
+
+def test_a_bad_repository_fact_is_skipped_not_fatal(tmp_path, gh):
+    from connectonion.rem.config import prepare
+    root = tmp_path / 'notebook'
+    prepare(root)
+    (root / 'projects').mkdir(exist_ok=True)
+    (root / 'projects/guide.md').write_text('# Guide\n\n## Facts\n- Repository: docs.site/guide\n')
+    (root / 'projects/lanterns.md').write_text('# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n')
+    results = pages.sync_project_repositories(root, now=NOW)
+    assert results['docs.site/guide'] == {'repo': 'docs.site/guide', 'status': 'skipped',
+                                          'reason': 'not a canonical GitHub owner/repository'}
+    assert results[REPO]['issues'][0]['number'] == 7
+    assert data.repository_projection(root, 'docs.site/guide') == {
+        'repo': 'docs.site/guide', 'status': 'invalid', 'reason': 'not a canonical GitHub owner/repository', 'joins': []}

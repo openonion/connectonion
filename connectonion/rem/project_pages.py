@@ -890,8 +890,16 @@ def code_utc(value) -> str:
     return at.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
+CODE_REPO_INVALID = 'not a canonical GitHub owner/repository'
+
+
+def code_repo_valid(repo):
+    """GitHub owners have no dots; a Facts line like `docs.site/guide` is not a repository."""
+    return bool(re.fullmatch(r'[\w-]+/[\w.-]+', repo)) and repo.split('/')[1] not in ('.', '..')
+
+
 def code_cache_path(root, repo):
-    if not re.fullmatch(r'[\w-]+/[\w.-]+', repo) or repo.split('/')[1] in ('.', '..'):
+    if not code_repo_valid(repo):
         raise ValueError('Expected a canonical owner/repository')
     return state_path(root, 'code/' + repo.casefold().replace('/', '__') + '/repository.json')
 
@@ -1157,11 +1165,14 @@ def sync_project_repositories(root, *, now=None):
         repo = identity({'text': text, 'title': record})['repo']
         if repo and repo not in repos:
             repos[repo] = text
+    results = {repo: {'repo': repo, 'status': 'skipped', 'reason': CODE_REPO_INVALID}
+               for repo in repos if not code_repo_valid(repo)}
+    repos = {repo: text for repo, text in repos.items() if repo not in results}
     ordered = sorted(repos, key=lambda repo: read_json(code_cache_path(root, repo), {}).get('attempted_at', ''))
     sessions = [row['code_evidence'] for row in read_json(state_path(root, 'sessions.json'), {}).get('files', {}).values()
                 if row.get('code_evidence')]
     moment = now or datetime.now(timezone.utc)
-    results = {}
+    synced = 0
     for repo in ordered:
         previous = read_json(code_cache_path(root, repo), {})
         if previous.get('attempted_at') and moment - timestamp(previous['attempted_at']) < timedelta(minutes=CODE_SYNC_MINUTES):
@@ -1171,6 +1182,7 @@ def sync_project_repositories(root, *, now=None):
         folder = next((p for p in paths if Path(p).is_dir()), None)
         results[repo] = sync_repository(root, repo, now=moment, repo_path=folder,
                                        package=_code_package(text, None), sessions=sessions)
-        if len(results) >= BACKFILL_CODE_REPOS:
+        synced += 1
+        if synced >= BACKFILL_CODE_REPOS:
             break
     return results
