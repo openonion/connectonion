@@ -9447,6 +9447,7 @@ function graphView() {
     el("div", { class: "gx-tip", hidden: "" })]), graphLegend(model), graphZoom(), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
+  graphListen();
   graphBind(box);
   graphResize();
   graphFit();
@@ -9728,12 +9729,17 @@ function graphPanelFocus(n) {
       n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, depth]),
     el("div", { class: "gx-panel-body" }, lists)];
 }
-addEventListener("resize", () => { if (document.querySelector(".gx-map")) { graphResize(); graphFit(); graphDraw(); } });
-addEventListener("keydown", event => {
-  if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
-    event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();
-  }
-}, true);
+// Listeners are added the first time the map opens, so loading the reader registers nothing for it.
+function graphListen() {
+  if (graphState.listening) return;
+  graphState.listening = true;
+  addEventListener("resize", () => { if (document.querySelector(".gx-map")) { graphResize(); graphFit(); graphDraw(); } });
+  addEventListener("keydown", event => {
+    if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+      event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();
+    }
+  }, true);
+}
 
 // ---------- topics: the list, and a topic page as a record ----------
 function topicRecords() { return inCategory("knowledge"); }
