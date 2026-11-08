@@ -2077,8 +2077,9 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    # Owner, 2026-11-08: the catch-all goes last, after Activity.
-    assert labels[-1] == 'All records' and labels.index('Activity') < labels.index('All records')
+    # Owner, 2026-11-08: the catch-all goes last. 2026-11-09: Activity is REM's run log, at the foot.
+    assert labels[-1] == 'All records' and 'Activity' not in labels and 'Graph' not in labels
+    assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
     assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
@@ -4608,7 +4609,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     assert page.locator('.empty .lead').inner_text() == 'No match'
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
-    expect(page.locator('h1')).to_have_text('Explore memory')
+    expect(page.locator('#main h1')).to_have_text('All records')
     page.goto(uri + '#view=open')
     page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
     assert page.locator('.empty .lead').inner_text() == 'Nothing open'

@@ -3245,24 +3245,30 @@ def test_a_queued_task_card_says_why_it_waits():
         assert not any(child.get('class') == 'task-controls' for child in card['children'])
 
 
-def test_a_held_task_card_says_this_version_does_not_run_it_and_offers_the_prompt():
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_a_held_task_card_says_it_is_recorded_and_offers_only_undo(language):
+    """D-60, 2026-11-07: never ask the owner to copy a prompt or a command."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
-    result = _run_reader_js(functions + r'''
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js('UI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
-      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copied = [];
-      const copyToClipboard = text => copied.push(text);
+      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
       const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
         {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
       const card = taskResult({key: 'fern'});
       const controls = card.children.find(child => child.class === 'task-controls');
-      controls.children.find(child => child.text === 'Copy the prompt').onclick();
-      console.log(JSON.stringify({card, copied}));
+      console.log(JSON.stringify({status: card.children[0].text, buttons: controls.children.map(child => child.text), card}));
     ''')
-    assert result['card']['children'][0]['text'] == 'Recorded. For safety this version does not run it; open it in Codex'
-    assert result['copied'] == ['Prepare the Fernhill onboarding notes.']
-    assert 'Stop' not in json.dumps(result['card'])
+    if language == 'zh':
+        assert result['status'] == 'REM 已记下这件事；为了安全，本版本暂不自动去做'
+        assert result['buttons'] == ['撤销']
+    else:
+        assert result['status'] == 'Recorded. For safety this version does not run it yet'
+        assert result['buttons'] == ['Undo']
+    text = json.dumps(result['card'], ensure_ascii=False)
+    assert 'Codex' not in text and 'Prepare the Fernhill' not in text and 'Stop' not in text
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -3282,8 +3288,10 @@ def test_the_empty_topic_list_names_the_command_that_files_topics(language):
       console.log(JSON.stringify(view));
     ''')
     text = json.dumps(result, ensure_ascii=False)
-    assert ('还没有主题' if language == 'zh' else 'No topics yet') in text
-    assert ('从已有记录里建主题：' if language == 'zh' else 'To file them from what you already have:') in text
+    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
+    assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') in text
+    assert ('从已有记录里整理知识：' if language == 'zh' else 'To file them from what you already have:') in text
+    assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
     assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
     assert ('"复制"' if language == 'zh' else '"Copy"') in text
 
@@ -3306,3 +3314,52 @@ def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_session
     ''')
     assert 'most often .' not in result and 'most often ,' not in result
     assert 'no project had sessions this quarter' in result
+
+
+def _reader_function(name):
+    return re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S)[0]
+
+
+@pytest.mark.parametrize('language, expected', [('en', 'Knowledge'), ('zh', '知识')])
+def test_the_knowledge_category_is_called_knowledge_not_topics(language, expected):
+    """Owner, 2026-11-09: "你怎么又新增加了一个 category 呢？" The category keeps its name."""
+    page = TEMPLATE.read_text()
+    labels = re.search(r'const CATEGORY_LABEL = \{.*?\n\};', page, re.S)[0]
+    graph = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
+    names = re.search(r'const GRAPH_NAME = \{.*?\};', page)[0]
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    script = '\n'.join([labels, graph, names, _reader_function('label'), _reader_function('graphT'),
+                        'UI.zh = ' + ui + ';', 'uiLanguage = ' + json.dumps(language) + ';',
+                        "console.log(JSON.stringify({rail: label('knowledge'), legend: graphT(GRAPH_NAME.knowledge)}));"])
+    assert _run_reader_js(script) == {'rail': expected, 'legend': expected}
+
+
+def test_the_old_graph_address_lands_on_all_records():
+    result = _run_reader_js(_reader_function('route') + '\n' + _reader_function('railActive') + r'''
+      const ACTIVITY = new Set(['notes', 'logs']), location = {hash: '#view=graph&focus=knowledge%2Fheat.md'};
+      const graph = railActive();
+      location.hash = '#view=activity';
+      console.log(JSON.stringify({graph, activity: railActive()}));
+    ''')
+    assert result == {'graph': 'all', 'activity': 'activity'}
+
+
+WORKING_STORAGE = "{getItem: key => saved[key] ?? null, setItem: (key, value) => { saved[key] = value; }}"
+BLOCKED_STORAGE = "{getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }}"
+
+
+@pytest.mark.parametrize('storage', [WORKING_STORAGE, BLOCKED_STORAGE], ids=['working', 'blocked'])
+def test_all_records_remembers_graph_or_list_and_survives_blocked_storage(storage):
+    result = _run_reader_js('const saved = {}; const localStorage = ' + storage + "; let allRecordsChoice = '';\n"
+                            + _reader_function('allRecordsMode') + r'''
+      const first = allRecordsMode();
+      const chosen = allRecordsMode('list');
+      const kept = allRecordsMode();
+      allRecordsChoice = '';
+      console.log(JSON.stringify({first, chosen, kept, again: allRecordsMode(), saved}));
+    ''')
+    assert result['first'] == 'graph' and result['chosen'] == 'list' and result['kept'] == 'list'
+    if storage == WORKING_STORAGE:
+        assert result['again'] == 'list' and list(result['saved'].values()) == ['list']
+    else:  # this visit keeps the choice; nothing could be saved
+        assert result['again'] == 'graph' and result['saved'] == {}

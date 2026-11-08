@@ -1426,6 +1426,10 @@
   }
   .reader-switches { display: flex; flex-wrap: wrap; gap: 6px; }
   .reader-switches .theme-btn { padding-inline: 6px; }
+  .rem-activity { display: inline-block; margin-top: 28px; font: 13px var(--ui); color: var(--ink-3); }
+  .rem-activity:hover { color: var(--ink); }
+  .all-switch { margin: 0 0 22px; }
+  .all-switch .theme-btn { min-height: 32px; padding-inline: 12px; }
   :lang(zh) .rail .label { letter-spacing: 0; }
 
   .brief-header { margin-bottom: 26px; }
@@ -2584,6 +2588,9 @@
   .gx-head { position: absolute; z-index: 2; left: 40px; top: 32px; right: 436px; pointer-events: none; }
   .gx-head > * { pointer-events: auto; }
   .gx-title { font: 700 52px/60px var(--gx-font); letter-spacing: -.035em; width: fit-content; }
+  .gx-head .all-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; width: fit-content; }
+  .gx-head .all-head h1 { margin: 0; font: 600 15px/24px var(--gx-font); letter-spacing: 0; color: var(--gx-ink2); }
+  .gx-head .all-switch { margin: 0; }
   .gx-soft { display: block; font: 400 17px/27px var(--gx-font); letter-spacing: 0; color: var(--gx-ink3); margin-top: 2px; }
   .gx-bar { display: flex; align-items: flex-end; gap: 32px; margin-top: 18px; flex-wrap: wrap; width: fit-content; }
   .gx-find { position: relative; width: 320px; }
@@ -2834,8 +2841,7 @@ const UI = {
     "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
     "Queued: later tonight": "排队：今晚稍后",
-    "Recorded. For safety this version does not run it; open it in Codex": "REM 已记下这件事；为了安全，本版本暂不自动去做——在 Codex 里打开它",
-    "Copy the prompt": "复制提示词",
+    "Recorded. For safety this version does not run it yet": "REM 已记下这件事；为了安全，本版本暂不自动去做",
     "Queued: budget used up": "排队：预算用完",
     "Open the deliverable": "打开交付物",
     "Stop": "停止",
@@ -3133,6 +3139,10 @@ const UI = {
     "Memory changes": "记忆变化",
     "Explore memory": "探索记忆",
     "All records": "全部记录",
+    "REM activity →": "REM 的运行记录 →",
+    "Graph": "图谱",
+    "List": "列表",
+    "Show all records as": "全部记录显示为",
     "People": "人物",
     "Organisations": "组织",
     "Projects": "项目",
@@ -3857,7 +3867,7 @@ function el(tag, attrs, children) {
   return node;
 }
 const CATEGORY_LABEL = {
-  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Topics",
+  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
   agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
@@ -5624,7 +5634,7 @@ function route() {
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
   const kind = r && r.split("/")[0];
-  return reviews ? "reviews" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
+  return reviews ? "reviews" : view === "graph" ? "all" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
 }
 function scheduleState(s) {
   const state = s.state || "";
@@ -5653,8 +5663,6 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
   }
-  nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
-  if (detailReady ? REM.graph?.nodes?.length : true) nav.appendChild(el("a", { href: "#view=graph", class: active === "graph" ? "active" : "" }, [el("span", { text: graphT("Graph") })]));
   nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
@@ -5948,7 +5956,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", held: "Recorded. For safety this version does not run it; open it in Codex", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", held: "Recorded. For safety this version does not run it yet", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5989,11 +5997,7 @@ function taskControls(task) {
     return button;
   };
   const file = task.result === "completed" && task.deliverable;
-  if (task.result === "held") {
-    const copy = el("button", {type: "button", class: "btn-quiet", text: t("Copy the prompt")});
-    copy.onclick = () => copyToClipboard(task.prompt);
-    return el("div", {class: "task-controls"}, [copy, live ? act("undo", "Undo") : null]);
-  }
+  if (task.result === "held") return el("div", {class: "task-controls"}, [live ? act("undo", "Undo") : null]);
   return el("div", {class: "task-controls"}, [
     task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
     file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,
@@ -6159,6 +6163,8 @@ function taskView(kind) {
     else main.appendChild(emptyState(firstBuild() ? "No changes yet — this is the first build." : "No verified claim change in this pass"));
     if (!firstBuild() && pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
       el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
+    // REM's own run history stays out of the sidebar (D-03); this is its only door.
+    main.appendChild(el("a", { class: "rem-activity", href: "#view=activity", text: t("REM activity →") }));
     return;
   }
   main.appendChild(el("h1", { text: t("Open threads") }));
@@ -6999,13 +7005,14 @@ function category(c) {
   if (c === "people" && (items.length || (REM.contact_candidates || []).length)) { peopleView(items); return; }
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
-  main.appendChild(el("h1", { text: c === "all" ? t("Explore memory") : label(c) }));
+  main.appendChild(el("h1", { text: c === "all" ? t("All records") : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
   const hasCoverage = c === "people" && REM.people_coverage?.total;
   main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other || hasCoverage ? ledeSeparator(t(lede)) : ""),
     items.length || other || hasCoverage ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
       + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
+  if (c === "all" && graphModel().linked.length) main.appendChild(allRecordsSwitch("list"));
   if (c === "people" && REM.people_coverage?.missing) main.appendChild(el("p", { class: "directory-note",
     text: t("{n} people you write to have no page yet", { n: REM.people_coverage.missing }) }));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
@@ -10096,21 +10103,21 @@ function loadDetails() {
 // One layout over every real link, kept still so the owner learns where things sit; a search
 // or a click turns it into the neighbourhood of one record (art direction, knowledge round 1).
 const GRAPH_UI_ZH = {
-  "Graph": "图谱", "Topics": "主题", "People": "人物", "Organisations": "组织", "Projects": "项目",
+  "Graph": "图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
   "{n} records linked together": "{n} 条记录连在一起", "{n} not linked yet": "{n} 条还没连上",
-  "Search people, organisations, topics": "搜索人、组织、主题，看它连着谁", "Clear focus": "清除聚焦",
+  "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
   "Shape = kind": "形状 = 类型", "size = links": "大小 = 连接数", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
   "{n} records link to nothing yet": "另有 {n} 条还没连上任何记录", "Whole map": "整张图",
   "Click a point to see what it connects": "点一个点，看它连着谁",
-  "Topics are the thread between people, organisations and projects. Start with one.": "主题是把人、组织和项目串起来的那根线。从一个主题开始最快。",
-  "Most connected": "连接最多", "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open topic page": "打开主题页",
+  "Knowledge is the thread between people, organisations and projects. Start with one entry.": "知识是把人、组织和项目串起来的那根线。从一条知识开始最快。",
+  "Most connected": "连接最多", "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
   "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
   "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
-  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Topic": "主题", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
+  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Knowledge entry": "知识", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
   "Last mentioned": "最近提到", "First mentioned": "首次提到", "Aliases": "别名", "About": "关于",
   "Local graph": "局部图谱", "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
-  "Related topics": "相关主题", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
+  "Related knowledge": "相关知识", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
   "Linked here": "链接到这里", "Where you stand": "你现在在哪", "Timeline": "时间线", "Open threads": "还没结的线",
   "Maybe related": "可能也相关", "Only the words match; REM did not count these as links.": "只是字面相同，REM 没把它们算成链接。",
   "Confirm in Questions & connections →": "去「问题与连接」里确认 →",
@@ -10120,11 +10127,11 @@ const GRAPH_UI_ZH = {
   "REM has not written this page yet · named in {n} records since {date}": "REM 还没写这一页 · 从 {date} 起在 {n} 条记录里出现",
   "REM has not written this page yet": "REM 还没写这一页",
   "{n} mentions, from {first} to {last}": "{n} 次提到，从 {first} 到 {last}",
-  "{n} topics": "{n} 个主题", "Subjects that tie your records together: a market, a course, a way of working.": "把记录串起来的主题：一门生意、一门课、一种做法。",
-  "{n} records": "{n} 条记录", "No topics yet": "还没有主题",
-  "Topics are filed when a subject recurs across your notes; none has yet.": "一个主题在笔记里反复出现后才会建页；现在还没有。",
-  "To file them from what you already have:": "从已有记录里建主题：",
-  "See them in the graph →": "在图谱里看 →", "Topics here": "相关主题", "Not in the graph yet": "图谱里还没有它",
+  "{n} knowledge entries": "{n} 条知识", "1 knowledge entry": "1 条知识", "Subjects that tie your records together: a market, a course, a way of working.": "把记录串起来的知识：一门生意、一门课、一种做法。",
+  "{n} records": "{n} 条记录", "No knowledge yet": "还没有知识条目",
+  "A knowledge entry is filed when a subject recurs across your notes; none has yet.": "一个话题在笔记里反复出现后才会建成知识页；现在还没有。",
+  "To file them from what you already have:": "从已有记录里整理知识：",
+  "See them in the graph →": "在图谱里看 →", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
 };
 function graphT(key, values = {}) {
@@ -10132,9 +10139,9 @@ function graphT(key, values = {}) {
   return (words || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
-const GRAPH_NAME = { knowledge: "Topics", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
-const GRAPH_ONE = { knowledge: "Topic", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
-const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Topics"]];
+const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
+const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
+const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"]];
 function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
 function graphPhone() { return innerWidth < 720; }
 function graphCss(name) { return getComputedStyle(document.querySelector(".gx") || document.documentElement).getPropertyValue(name).trim(); }
@@ -10202,6 +10209,29 @@ function graphAlpha(n) {
   if (!focus || n.id === focus || near1.has(n.id)) return 1;
   return near2.has(n.id) ? .5 : .07;
 }
+// All records is the overall two-way graph by default; a viewer can switch it to the list (owner, 2026-11-08).
+let allRecordsChoice = "";
+function allRecordsMode(choice) {
+  if (choice) allRecordsChoice = choice;
+  try {
+    if (choice) localStorage.setItem("rem.allRecords", choice);
+    else allRecordsChoice ||= localStorage.getItem("rem.allRecords") || "";
+  } catch { /* storage blocked: the choice holds for this visit */ }
+  return allRecordsChoice === "list" ? "list" : "graph";
+}
+function allRecords(graphAsked) {
+  if ((graphAsked || allRecordsMode() === "graph") && graphModel().linked.length) graphView();
+  else category("all");
+}
+function allRecordsSwitch(mode) {
+  const group = el("div", { class: "all-switch theme-switch", role: "group", "aria-label": t("Show all records as") });
+  for (const [key, name] of [["graph", "Graph"], ["list", "List"]]) {
+    const button = el("button", { type: "button", class: "theme-btn" + (mode === key ? " active" : ""), "aria-pressed": String(mode === key), text: t(name) });
+    button.onclick = () => { allRecordsMode(key); if (location.hash === "#c=all") render(); else location.hash = "#c=all"; };
+    group.appendChild(button);
+  }
+  return group;
+}
 function graphView() {
   const main = document.getElementById("main");
   main.textContent = "";
@@ -10227,11 +10257,12 @@ function graphFirst() {
   return (topics[0] || [...GRAPH.linked].sort((a, b) => graphDegree(b) - graphDegree(a))[0])?.id || "";
 }
 function graphHead(model) {
-  const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, topics"), "aria-label": graphT("Search people, organisations, topics"), autocomplete: "off" });
+  const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, knowledge"), "aria-label": graphT("Search people, organisations, knowledge"), autocomplete: "off" });
   const tabs = el("div", { class: "gx-tabs", role: "tablist" }, GRAPH_TABS.map(([key, name]) =>
     el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
   return el("header", { class: "gx-head" }, [
-    el("h1", { class: "gx-title" }, [graphT("{n} records linked together", { n: model.linked.length }),
+    el("div", { class: "all-head" }, [el("h1", { text: t("All records") }), allRecordsSwitch("graph")]),
+    el("p", { class: "gx-title" }, [graphT("{n} records linked together", { n: model.linked.length }),
       el("span", { class: "gx-soft", text: graphT("{n} not linked yet", { n: model.isolated.length }) })]),
     el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
       el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]);
@@ -10463,9 +10494,9 @@ function graphPanelGuide() {
   const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
   const count = n => graphT("{n} links", { n: graphDegree(n) });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
-      topics.length ? el("p", { text: graphT("Topics are the thread between people, organisations and projects. Start with one.") }) : null]),
+      topics.length ? el("p", { text: graphT("Knowledge is the thread between people, organisations and projects. Start with one entry.") }) : null]),
     el("div", { class: "gx-panel-body" }, [
-      ...(topics.length ? [el("h3", { text: graphT("Topics") }), ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : "")))] : []),
+      ...(topics.length ? [el("h3", { text: graphT("Knowledge") }), ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : "")))] : []),
       el("h3", { text: graphT("Most connected") }), ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
 }
 function graphGroups(ids) {
@@ -10475,7 +10506,7 @@ function graphGroups(ids) {
   return [...groups].filter(([, list]) => list.length);
 }
 function graphOpenLabel(n) {
-  return graphT({ knowledge: "Open topic page", people: "Open person page", orgs: "Open organisation page", projects: "Open project page" }[n.k] || "Open page");
+  return graphT({ knowledge: "Open knowledge page", people: "Open person page", orgs: "Open organisation page", projects: "Open project page" }[n.k] || "Open page");
 }
 function graphPanelFocus(n) {
   const groups = graphGroups(graphState.near1), phone = graphPhone();
@@ -10520,8 +10551,8 @@ function topicList() {
   main.textContent = "";
   const rows = items.map(r => ({ r, n: topicLinked(r).length, last: r.topic?.last || "" })).sort((a, b) => b.n - a.n || b.last.localeCompare(a.last));
   main.appendChild(el("div", { class: "gx gx-topics" }, [
-    el("h1", { class: "gx-statement", text: items.length ? graphT("{n} topics", { n: items.length }) : graphT("No topics yet") }),
-    el("p", { class: "gx-lede", text: graphT(items.length ? "Subjects that tie your records together: a market, a course, a way of working." : "Topics are filed when a subject recurs across your notes; none has yet.") }),
+    el("h1", { class: "gx-statement", text: items.length ? graphT(items.length === 1 ? "1 knowledge entry" : "{n} knowledge entries", { n: items.length }) : graphT("No knowledge yet") }),
+    el("p", { class: "gx-lede", text: graphT(items.length ? "Subjects that tie your records together: a market, a course, a way of working." : "A knowledge entry is filed when a subject recurs across your notes; none has yet.") }),
     items.length ? el("a", { class: "gx-link", href: "#view=graph", text: graphT("See them in the graph →") })
       : el("div", { class: "gx-quiet-line gx-filed" }, [graphT("To file them from what you already have:"), commandChip(remCommand("backfill topics --propose"))]),
     items.length ? el("ul", { class: "gx-rows" }, rows.map(({ r, n, last }) => el("li", {}, [el("a", { href: href(r) }, [graphGlyph("knowledge", 16, r.private),
@@ -10580,7 +10611,7 @@ function topicHead(r) {
   const stats = [[count("people"), "people"], [count("orgs"), "orgs"], [count("projects"), "projects"], [topic.sessions || 0, "sessions mention it"]]
     .map(([n, name]) => el("div", {}, [el("b", { text: String(n) }), el("span", { text: graphT(name) })]));
   if (topic.last) stats.push(el("div", {}, [el("b", { text: fmtDate(topic.last) }), el("span", { text: graphT("Last mentioned") })]));
-  return el("header", { class: "gx-topic-head" }, [el("a", { class: "gx-crumb", href: "#c=knowledge", text: graphT("Topics") }),
+  return el("header", { class: "gx-topic-head" }, [el("a", { class: "gx-crumb", href: "#c=knowledge", text: graphT("Knowledge") }),
     el("div", { class: "gx-topic-name" }, [graphGlyph("knowledge", 40, r.private), el("h1", { class: "gx-statement", text: topicName(r.title) })]),
     el("p", { class: "gx-lede", text: sub }), el("div", { class: "gx-stats" }, stats)]);
 }
@@ -10618,7 +10649,7 @@ function topicRelated(r) {
   const mine = new Set(topicLinked(r).map(n => n.id));
   const others = topicRecords().filter(other => other.path !== r.path).map(other => ({ other, shared: topicLinked(other).filter(n => mine.has(n.id)).length }))
     .filter(({ shared }) => shared).sort((a, b) => b.shared - a.shared).slice(0, 3);
-  return others.length ? [el("h4", { text: graphT("Related topics") }), el("ul", { class: "gx-rail-list" }, others.map(({ other, shared }) =>
+  return others.length ? [el("h4", { text: graphT("Related knowledge") }), el("ul", { class: "gx-rail-list" }, others.map(({ other, shared }) =>
     el("li", {}, [el("a", { href: href(other) }, [graphGlyph("knowledge", 12, other.private), topicName(other.title)]), el("small", { text: graphT("{n} shared records", { n: shared }) })])))] : [];
 }
 function topicAbout(r) {
@@ -10673,7 +10704,7 @@ function graphRailAttach(main, r) {
   const model = graphModel();
   if (!model.adj.has(r.path)) return;
   const topics = [...model.adj.get(r.path)].map(id => model.byId.get(id)).filter(n => n.k === "knowledge" && n.r && !privateTopicHidden(n.r));
-  const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Topics here") + " " }),
+  const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Knowledge here") + " " }),
     ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
   // A person's rail keeps who they are first; a project or organisation page has no rail yet, so the block sits above the full note.
   const rail = main.querySelector(".r4-rail"), deep = main.querySelector(":scope > .deep-note");
@@ -10720,11 +10751,11 @@ function render() {
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
-  else if (view === "graph") graphView();
+  else if (view === "graph" || c === "all") allRecords(view === "graph");
   else if (c) category(c);
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
-    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" ? graphT("Graph") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
+    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? t("All records") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
   const viewKey = r || (c === "people" ? c + (peopleTable ? ":table" : ":rows") : c) || view || (reviews ? "reviews" : query ? "search" : "today");
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
@@ -11140,7 +11171,7 @@ function todayActions() {
 }
 function paletteItems() {
   const go = link => () => { location.hash = link; };
-  const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"], ["Activity", "#view=activity"], ["All records", "#c=all"]]
+  const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"], ["All records", "#c=all"]]
     .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]))
     .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
   const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
