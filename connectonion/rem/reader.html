@@ -7046,6 +7046,7 @@ const PD_ZH = {
   "No project moved this week.": "这周没有项目有动静。",
   "{n} projects moved in the last 30 days; {risk} at risk, {off} off track.": "近 30 天 {n} 个项目有动静，{risk} 个有风险、{off} 个偏离。",
   "{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.": "这一季记下 {total} 个项目，{n} 个有会话，最常出现的是 {names}；{quiet} 个已经安静。",
+  "{total} projects on record; no project had sessions this quarter. {quiet} have gone quiet.": "这一季记下 {total} 个项目，没有项目有会话；{quiet} 个已经安静。",
   "{total} projects on record; the earliest, {first}, started {date}. Today {ok} are on track and {quiet} are quiet.": "记下的 {total} 个项目里，最早的 {first} 起于 {date}。今天 {ok} 个正常、{quiet} 个安静。",
   "{total} projects on record. Today {ok} are on track and {quiet} are quiet.": "记下 {total} 个项目。今天 {ok} 个正常、{quiet} 个安静。",
   "On {project}, a promise to {who} is {n} days late.": "{project} 上欠 {who} 的一件事已经晚了 {n} 天。",
@@ -7315,8 +7316,10 @@ function projectLede(all, win) {
   if (win.zoom === "week") line = !active.length ? pdT("No project moved this week.")
     : pdT(active.length === 1 ? "1 project moved this week: {names}." : "{n} projects moved this week: {names}.", { n: active.length, names: pdList(names) });
   else if (win.zoom === "month") line = pdT("{n} projects moved in the last 30 days; {risk} at risk, {off} off track.", { n: active.length, risk: counts.risk, off: counts.off });
-  else if (win.zoom === "quarter") line = pdT("{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.",
-    { total: all.length, n: active.length, names: pdList(names), quiet: counts.quiet });
+  else if (win.zoom === "quarter") line = !active.length
+    ? pdT("{total} projects on record; no project had sessions this quarter. {quiet} have gone quiet.", { total: all.length, quiet: counts.quiet })
+    : pdT("{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.",
+      { total: all.length, n: active.length, names: pdList(names), quiet: counts.quiet });
   else {
     const first = all.filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.started || "")).sort((a, b) => a.started.localeCompare(b.started))[0];
     line = first ? pdT("{total} projects on record; the earliest, {first}, started {date}. Today {ok} are on track and {quiet} are quiet.",

@@ -3286,3 +3286,23 @@ def test_the_empty_topic_list_names_the_command_that_files_topics(language):
     assert ('从已有记录里建主题：' if language == 'zh' else 'To file them from what you already have:') in text
     assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
     assert ('"复制"' if language == 'zh' else '"Copy"') in text
+
+
+def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_sessions():
+    """'0 had sessions this quarter, most often .' is a broken sentence."""
+    page = TEMPLATE.read_text()
+    names = ['projectLede', 'projectActive', 'projectTierCounts']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    result = _run_reader_js(functions + r'''
+      const pdT = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
+      const pdList = names => names.join(', '), pdIn = () => true, projectTicks = () => [], projectSessionDays = () => [];
+      const projectRank = () => 0, projectTier = () => 'quiet', projectLate = () => null, projectMarks = () => [];
+      const fmtTime = () => '', calendarDay = d => d, pdAt = () => 0, projectDot = () => null, projectStrip = () => null, REM = {as_of: '2026-11-09'};
+      const pdWho = () => '', pdDay = d => d, el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const all = [{title: 'Harbour'}, {title: 'Lantern'}];
+      let out;
+      try { out = projectLede(all, {zoom: 'quarter', today: '2026-11-09'}); } catch (error) { out = String(error); }
+      console.log(JSON.stringify(typeof out === 'string' ? out : JSON.stringify(out)));
+    ''')
+    assert 'most often .' not in result and 'most often ,' not in result
+    assert 'no project had sessions this quarter' in result
