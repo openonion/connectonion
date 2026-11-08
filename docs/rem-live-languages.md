@@ -160,8 +160,10 @@ page tasks, including tasks saved by rc59; their supplied material stays fixed.
 
 Both scheduled translation paths use the same order: pages with active threads
 waiting on you first, then the most recently modified pages. Done, skipped and
-quiet threads receive no priority. Current translations are skipped, and all
-languages share `limits.translations_per_day` (default 100). Requests and changes
+quiet threads receive no priority. Current translations are skipped. There is no
+daily translation count (D-104): after every 8 investigation turns the night
+gives translation a share sized from what is waiting (a fiftieth of the pages,
+at least 4), and only the weekly quota floor stops it. Requests and changes
 from the current round break ties between pages with identical modification times.
 
 `co rem status` shows, for example:

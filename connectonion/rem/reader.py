@@ -12,7 +12,7 @@ import re
 import tempfile
 import webbrowser
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import CATEGORIES, MAP_DAYS, Notebook, RemError, read_json, state_path
@@ -292,6 +292,10 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from . import approvals
     data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
     data['approval_pending'] = approvals.pending(root) if local else []
+    from . import service as clock
+    from .morning import sent_by_rem
+    moment = clock.now()
+    data['sent_by_rem'] = sent_by_rem(root, moment - timedelta(days=1), moment) if local else []
     if not local:
         data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:

@@ -73,7 +73,6 @@ def test_rem_translation_backlog_orders_recent_edits_across_categories(notebook)
     write_json(state_path(notebook, 'map.json'), {'owner': {'record': 'people/me.md'}})
     rows = translate.backlog(notebook, 'zh', changed=['projects/pilot.md'])
     assert rows == ['people/me.md', 'people/fern.md', 'projects/pilot.md', 'sessions/old.md']
-    assert read_config(notebook)['limits']['translations_per_day'] == 100
 
 
 def test_rem_translation_has_budget_independent_of_investigation(notebook, monkeypatch):
@@ -113,7 +112,6 @@ def test_rem_drafts_one_per_owner_thread_and_regenerates_for_new_mail(notebook):
     mail_thread(notebook, latest='two')
     assert drafts.queue(notebook)[0]['in_reply_to'] == 'two'
     assert not drafts.listing(notebook), 'stale drafts must never be actionable'
-    assert read_config(notebook)['limits']['drafts_per_night'] == 30
 
 
 @pytest.mark.parametrize('provider', ['gmail', 'outlook'])
@@ -175,21 +173,6 @@ def test_rem_native_round_prepares_and_accepts_reply_without_sending(notebook, m
     Path(task['candidate']).write_text(json.dumps({'body': 'I can review the pilot today.', 'sources': ['gmail:one']}))
     assert native.submit(notebook, task['id'])['outcome'] == 'accepted'
     assert len(drafts.listing(notebook)) == 1
-
-
-def test_rem_native_round_caps_reply_drafts_across_rounds(notebook, monkeypatch):
-    from connectonion.rem import drafts
-    mail_thread(notebook)
-    set_config(notebook, ['limits.drafts_per_night', '10'])
-    write_json(state_path(notebook, 'runs/run_drafts.json'), {'phase': 'reply-draft', 'runner_attempts': 10, 'started_at': service.now().isoformat()})
-    monkeypatch.setattr(drafts, 'prepare', lambda *a, **k: pytest.fail('Draft budget was exceeded'))
-    cursor = {'phase': 'daily-update', 'batch': {'done': True}, 'current': None,
-              'jobs': [], 'job_index': 0, 'summaries': [], 'same_new_left': 0,
-              'same_left': 0, 'slot': None, 'changed': [], 'translations': []}
-    monkeypatch.setattr(native_round, 'finish', lambda *a: None)
-    directory = notebook / 'task'
-    directory.mkdir()
-    assert native_round.prepare_task(notebook, cursor, read_config(notebook), directory) is None
 
 
 def test_rem_reader_drafts_are_local_only(notebook):
@@ -807,7 +790,6 @@ def test_nights_three_drafts_cover_the_first_three_today_cards(notebook, monkeyp
     monkeypatch.setattr(service, 'mail_available', lambda kind: False)
     from datetime import datetime, timezone
     monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
-    set_config(notebook, ['limits.drafts_per_night', '3'])
     book = Notebook(notebook)
     write_json(state_path(notebook, 'map.json'), {'owner': {'record': 'people/me.md', 'addresses': ['owner@example.test']}})
     for index in range(12):
@@ -818,7 +800,7 @@ def test_nights_three_drafts_cover_the_first_three_today_cards(notebook, monkeyp
                        'to': ['owner@example.test'], 'subject': 'Review', 'thread': f'review-{index}',
                        'date': f'2026-11-{index + 1:02}T01:00:00+00:00'}, 'Please review.', fetched_at=service.now().isoformat())
     refresh(notebook)
-    cap = read_config(notebook)['limits']['drafts_per_night']
+    cap = 3
     rows = drafts.queue(notebook)[:cap]
     assert [row['thread'] for row in rows] == [f'mail:gmail:review-{i}' for i in range(3)]
     for row in rows:
@@ -1063,25 +1045,6 @@ def test_night_owner_verdict_task_prompt_and_private_snapshot(notebook, monkeypa
     assert not any(row['kind'] == 'already_handled' for row in snapshot(notebook, local=True)['night_outcomes'])
 
 
-def test_night_cap_names_every_leftover_and_status_counts(notebook, monkeypatch):
-    from typer.testing import CliRunner
-    from connectonion.cli.main import app
-    from connectonion.rem.reader import snapshot
-    for number in range(4):
-        night_item(notebook, number)
-    set_config(notebook, ['limits.drafts_per_night', '2'])
-    fake_night_writer(monkeypatch)
-    daily._draft_replies(notebook, read_config(notebook), {})
-    outcomes = snapshot(notebook, local=True)['night_outcomes']
-    assert [row['kind'] for row in outcomes] == ['prepared', 'prepared', 'could_not_prepare', 'could_not_prepare']
-    assert all('cap' in row['reason'] for row in outcomes[2:])
-    output = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'status'])
-    assert output.exit_code == 0, output.output
-    assert 'Tonight          4 items · 2 drafts · 0 already handled · 0 tasks' in output.output
-    assert '2 could not be prepared' in output.output
-    assert all(row['text'] in output.output for row in outcomes[2:])
-
-
 @pytest.mark.parametrize('provider', ['gmail', 'outlook'])
 def test_night_hash_citation_fetches_latest_native_id(notebook, monkeypatch, provider):
     import hashlib
@@ -1307,7 +1270,6 @@ def test_approve_release_uses_existing_send_path_once_and_checks_slots(notebook,
 
 def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, monkeypatch):
     from connectonion.rem import approvals, tasks, today, threads
-    monkeypatch.setattr(tasks, 'HOLD', False)  # release semantics; the rc62 hold is tested in test_rem_tasks
     book = Notebook(notebook)
     book.write('people/fern.md', '# Fern Vale\n\n## Open threads\n- You owe Fern a review.\n- You owe Fern a date.\n')
     keys = ['people/fern.md\nYou owe Fern a review.', 'people/fern.md\nYou owe Fern a date.']
@@ -1329,7 +1291,6 @@ def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, 
 def test_approval_dispatch_does_not_lock_notebook(notebook, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from connectonion.rem import approvals, tasks
-    monkeypatch.setattr(tasks, 'HOLD', False, raising=False)
     from connectonion.rem.files import maintenance_lock
     key = 'people/fern.md\nReview the pilot.'  # approved task records carry their obligation key
     item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'key': key, 'keys': [key], 'text': 'Review the pilot.'}

@@ -175,7 +175,11 @@ def translation_root(tmp_path, monkeypatch):
     monkeypatch.setattr(daily, 'subscriptions', lambda root: {})
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
     monkeypatch.setattr(daily.quota, 'read', lambda config, request=None: {'unknown': 'no meter'})
-    set_config(root, ['languages', 'en,zh,ja', 'limits.translations_per_day', '2'])
+    set_config(root, ['languages', 'en,zh,ja'])
+    # D-104 retired the daily translation count; two pages waiting keep each run to two translations.
+    from connectonion.rem import translate
+    waiting = translate.backlog
+    monkeypatch.setattr(translate, 'backlog', lambda root, language, changed=(): waiting(root, language, changed=changed)[:2])
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', ''))
     monkeypatch.setattr('connectonion.rem.sessions.summarise_sessions', lambda *a, **kw: {})
     monkeypatch.setattr('connectonion.rem.sessions.summarise_line', lambda result: '')
@@ -184,7 +188,7 @@ def translation_root(tmp_path, monkeypatch):
     return root
 
 
-def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failures(translation_root, monkeypatch):
+def test_daily_translates_changed_pages_and_reports_failures(translation_root, monkeypatch):
     from connectonion.rem.files import RemError
     root = translation_root
     pages = ['skills/catalog/weekly-brief.md', 'projects/harbour.md', 'orgs/fernhill-labs.md']
@@ -207,8 +211,6 @@ def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failu
     assert any('Translation failed' in message for message in messages)
     log = next(log for log in daily.run_logs(root) if log['phase'] == 'daily-translation')
     assert log['outcome'] == 'partial' and log['pages'] == report['pages']
-    daily.run_daily(root, maintain=maintain, translate_one=translator)
-    assert len(calls) == 2  # Another scheduled slot shares today's allowance.
 
 
 def test_daily_translates_investigation_changes_after_refresh(translation_root, monkeypatch):
@@ -440,6 +442,8 @@ def test_translation_usage_excludes_overlapping_manual_run(translation_root, mon
     root = translation_root
     page = "projects/harbour.md"
     calls = []
+    # One page waiting: the run translates it once, beside the standalone translation.
+    monkeypatch.setattr("connectonion.rem.translate.backlog", lambda root, language, changed=(): [page])
 
     def run(workspace, prompt, config, stage):
         calls.append(workspace)

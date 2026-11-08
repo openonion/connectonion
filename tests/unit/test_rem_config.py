@@ -169,12 +169,12 @@ def test_daily_translations_limit_defaults_and_validates(tmp_path):
     from connectonion.rem.config import default_config, read_config, set_config
     from connectonion.rem.files import RemError
     old = default_config()
-    del old['limits']['translations_per_day']
+    del old['limits']['depth_slot_minutes']
     (tmp_path / 'config.yaml').write_text(yaml.safe_dump(old))
-    assert read_config(tmp_path)['limits']['translations_per_day'] == 100
-    assert set_config(tmp_path, ['limits.translations_per_day', '3'])['limits']['translations_per_day'] == 3
+    assert read_config(tmp_path)['limits']['depth_slot_minutes'] == 60
+    assert set_config(tmp_path, ['limits.depth_slot_minutes', '3'])['limits']['depth_slot_minutes'] == 3
     with pytest.raises(RemError, match='positive integers'):
-        set_config(tmp_path, ['limits.translations_per_day', '0'])
+        set_config(tmp_path, ['limits.depth_slot_minutes', '0'])
 
 
 def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp_path):

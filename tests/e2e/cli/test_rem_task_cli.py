@@ -7,23 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from connectonion.rem import tasks as rem_tasks
 from tests.unit.test_rem_tasks import task_notebook, fake_codex  # noqa: F401
 
-HELD = rem_tasks.HOLD  # read before task_notebook lifts it in this process; the CLI child keeps it
 
-
-def test_task_run_says_this_version_holds_the_task(task_notebook):
-    command = [sys.executable, '-m', 'connectonion.cli.main', 'rem', '--root', str(task_notebook), '--json', 'task']
-    from connectonion.rem.runner import child_env
-    task_id = json.loads(subprocess.run([*command, 'status'], capture_output=True, text=True, env=child_env(), timeout=20).stdout)['data'][0]['id']
-    run = subprocess.run([*command, 'run', task_id], capture_output=True, text=True, env=child_env(), timeout=20)
-    if not HELD:
-        pytest.skip('this version runs tasks; test_task_run_status_stop_cli covers it')
-    assert run.returncode == 1 and 'this version does not run it' in json.loads(run.stdout)['data']
-
-
-@pytest.mark.skipif(HELD, reason='this version holds every task (tasks.HOLD); a CLI subprocess cannot lift it')
 def test_task_run_status_stop_cli(task_notebook, fake_codex, monkeypatch):
     monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
     from connectonion.rem import tasks

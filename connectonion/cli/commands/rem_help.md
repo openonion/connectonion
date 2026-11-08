@@ -587,10 +587,13 @@ Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
-          translation coverage and tonight's queue within the daily limit, or
-          "not requested" with co rem config set languages zh;
-          each mailbox with the command that fixes it; the week's budget; the
-          last run that finished, and one running now.
+          translation coverage and what is queued;
+          each mailbox with the command that fixes it, and how long ago it was
+          last read once that is over a day; a round no later slot has moved,
+          as stuck with its reason; each night measured (turns, tasks accepted,
+          parked and failed, drafts, mail read, minutes busy, minutes idle
+          22:00-07:00), also kept in .state/night-stats.jsonl; the week's
+          budget; the last run that finished, and one running now.
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
@@ -728,7 +731,9 @@ Keys:     model                          gpt-6.1-sol (default): investigation, w
           languages                      zh,en: the languages you read, first in the reader's
                                          "Read in" menu; unset, the ones detected from your own
                                          sent mail and typed sessions (shown under "your languages")
-          schedule.times                 "03:00,17:00"
+          schedule.times                 "03:00,17:00": set here, these win over any profile
+          schedule.profile               default | dense (a slot every 30 minutes, 22:00-07:00);
+                                         compare nights with co rem status
           schedule.timezone              Australia/Sydney
           notify.channel                 none (default) | telegram | lark | whatsapp | email
           notify.target                  your own chat ID or personal email address
@@ -746,8 +751,8 @@ Tier:     agent    the model drives tools: it reads the material and writes the 
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
-Tasks:    tasks.auto is false by default: morning approval starts work.
-          co rem config set tasks.auto true also starts it after nightly drafts.
+Tasks:    tasks.auto is true by default: the night starts owed work after its drafts.
+          co rem config set tasks.auto false leaves it for morning approval.
 ```
 
 ## co rem logs
@@ -1144,8 +1149,6 @@ Back:     co rem projects --help
 
 ```
 Run work owed by the owner in one background Codex session. Nothing is sent.
-This version holds every task: run reports "Recorded. For safety this version
-does not run it; open it in Codex" and status ID shows the prompt to use.
 
 Usage: co rem [--root DIR] [--json] task COMMAND
 
@@ -1154,18 +1157,17 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model, sealed: a Codex permission profile with no
-network that cannot read the owner's credential paths (~/.co, ~/.ssh, gh, aws,
-gpg, .netrc ...), and none of the owner's Codex config, MCP servers, plugins or
-connectors. It cannot push, send, post, browse or install packages. It
-writes only in .state/tasks/do-ID/: a git worktree of the project page's
-repository on branch rem/task-ID when there is one, otherwise do-ID/work.
+Uses the configured work model with full access, as your own Codex runs do:
+the web, your accounts and your Codex config. The prompt keeps pushing, merging,
+sending and posting for your click. It works in .state/tasks/do-ID/: a git
+worktree of the project page's repository on branch rem/task-ID when there is
+one, otherwise do-ID/work.
 The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Morning approval starts tasks; with tasks.auto true (default false) the night
-also does. Either way one at a time, at most limits.tasks_per_night (3), none
-past the week's quota floor. The reader's Undo removes a task's work and the
+Morning approval starts tasks, and so does the night after its drafts
+(tasks.auto, default true; set it false to wait for approval). Tasks run side
+by side with no nightly count; only the week's quota floor holds one back. The reader's Undo removes a task's work and the
 night never starts it again.
 Do not send anything to anyone; write the result and stop.
 
@@ -1182,19 +1184,20 @@ Back: co rem --help
 ```
 Start one prepared obligation in background Codex; return its receipt immediately.
 
-Usage: co rem [--root DIR] [--json] task run ID
+Usage: co rem [--root DIR] [--json] task run ID [--agent codex|claude]
 
 Arguments:
   ID            Task ID printed by co rem task status.
+Options:
+  --agent       codex or claude (claude -p): who runs a task that has not started.
 
-Uses the configured work model, sealed: no network, no reads of the owner's
-credential paths, none of the owner's MCP servers or connectors. Work happens in
+Uses the configured work model with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there
 is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
 .state/tasks/do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Night tasks wait for morning approval unless tasks.auto is true (default false).
+The night starts tasks itself unless tasks.auto is false (default true).
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem --root /tmp/mara-rem task run ID

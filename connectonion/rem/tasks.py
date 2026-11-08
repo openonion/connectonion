@@ -3,28 +3,27 @@
 import argparse
 import fcntl
 import hashlib
+import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
 import sys
 import time
 from contextlib import contextmanager, suppress
-from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import codex_exec, service
+from . import codex_exec
 from .config import read_config
 from .files import RemError, read_json, state_path, write_json
 from .service import now
 
 
 ACTIVE = ('starting', 'running')
-# rc62 safety hold; rc63 removes it. Codex runs git outside its sandbox in the task's folder, so
-# a task is recorded and its prompt offered, but no Codex run starts: approved, automatic or CLI.
-HOLD = True
-HELD = 'Recorded. For safety this version does not run it; open it in Codex'
+# Who does the work: the owner's 交给 Codex / 交给 Claude. One runner, the agent as data.
+AGENTS = ('codex', 'claude')
 
 
 def identity(key):
@@ -46,14 +45,21 @@ def _lock(folder, name='control.lock'):
         yield
 
 
-def reserve(root, outcome, by='owner'):
+def _agent(agent):
+    if agent not in AGENTS:
+        raise RemError('agent must be codex or claude')
+    return agent
+
+
+def reserve(root, outcome, by='owner', agent='codex'):
     """Queue without a model call. Host and night share this idempotent claim."""
+    _agent(agent)
     task_id = identity(outcome.get('key') or outcome['keys'][0])
     folder = directory(root, task_id)
     with _lock(folder):
         if saved := read_json(folder / 'receipt.json', {}):
             return saved
-        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by,
+        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by, 'agent': agent,
                    'key': outcome.get('key') or outcome['keys'][0], 'keys': outcome['keys'],
                    'record': outcome.get('record', ''), 'title': outcome['title'], 'text': outcome['text'],
                    'prompt': outcome.get('task', {}).get('prompt') or f"Prepare the work owed: {outcome['text']}",
@@ -115,8 +121,7 @@ def _prompt(receipt):
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
             'End with a one-line summary of the work. '
-            'Never push, merge, send mail or post. Commands have no network and cannot read credentials; '
-            'if the work needs the web or an account, say so as a missing input. '
+            'Never push, merge, send mail or post: those stay the owner\'s click. '
             'do not send anything to anyone; write the result and stop')
 
 
@@ -125,10 +130,9 @@ def _prepared(root, task_id):
     return next((row for row in listing(root) if row['kind'] == 'task' and identity(row['key']) == task_id), None)
 
 
-def start(root, task_id):
-    """Detach a worker, never a second worker for the same obligation."""
-    if HOLD:
-        raise RemError(HELD + '. co rem task status ID shows its prompt.')
+def start(root, task_id, agent=None):
+    """Detach a worker, never a second worker for the same obligation. `agent` changes who
+    runs a task that has not started yet; None keeps the receipt's."""
     from .runner import child_env
     root = Path(root).resolve()
     folder = directory(root, task_id)
@@ -142,6 +146,7 @@ def start(root, task_id):
         receipt = read_json(folder / 'receipt.json', {})
         if receipt['result'] != 'queued':
             return _project(receipt)
+        receipt['agent'] = _agent(agent or receipt.get('agent', 'codex'))
         command = [sys.executable, '-m', 'connectonion.rem.tasks', '--root', str(root), '--id', task_id]
         with (folder / 'worker.log').open('ab') as output:
             process = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
@@ -155,10 +160,10 @@ def _interrupted(signum, frame):
     raise InterruptedError('Task stopped by the owner')
 
 
-def _run(command, log, timeout, receipt):
-    with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
+def _run(command, log, timeout, receipt, cwd):
+    with log.open('w') as output, subprocess.Popen(command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output,
                                                   stderr=subprocess.STDOUT, start_new_session=True,
-                                                  env={**codex_exec.sealed_environment(os.environ),
+                                                  env={**os.environ,
                                                        'TMPDIR': str(Path(receipt['receipt']).parent / 'tmp')}) as process:
         receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
         write_json(Path(receipt['receipt']), receipt)
@@ -196,11 +201,11 @@ def _execute(root, folder, receipt, timeout):
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)
-        reads = [receipt[name] for name in ('repository', 'project') if receipt.get(name)]
-        command = codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True, reads=reads)
+        command = _command(receipt.get('agent', 'codex'), work, folder, config, receipt)
         write_json(folder / 'receipt.json', receipt)
-        code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt)
+        code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt, work)
+        if receipt.get('agent') == 'claude':
+            _claude_last_message(Path(receipt['log']), Path(receipt['last_message']))
         deliverable = Path(receipt['deliverable'])
         present = deliverable.is_file() and not deliverable.is_symlink() and bool(deliverable.read_text().strip())
         result = 'completed' if code == 0 and present else 'timed-out' if code == 124 else 'failed'
@@ -217,6 +222,26 @@ def _execute(root, folder, receipt, timeout):
         receipt.update(result=result, exit_code=code, finished_at=now().isoformat())
         write_json(folder / 'receipt.json', receipt)
     return _project(receipt)
+
+
+def _command(agent, work, folder, config, receipt):
+    """The agent's own non-interactive run, with full access (D-100), in the task's workspace."""
+    if agent == 'codex':
+        return codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
+                                       prompt=_prompt(receipt), add_dirs=(folder,), full_access=True)
+    claude = shlex.split(os.environ.get('CLAUDE_CMD', '')) or [shutil.which('claude')]
+    if not claude[0]:
+        raise RemError('Claude Code CLI not found; install it or set CLAUDE_CMD')
+    return [*claude, '-p', _prompt(receipt), '--dangerously-skip-permissions', '--output-format', 'json',
+            '--add-dir', str(folder)]
+
+
+def _claude_last_message(log, last):
+    """claude -p --output-format json prints one result object; its text is the run's last message."""
+    results = [json.loads(line) for line in log.read_text().splitlines() if line.startswith('{"type": "result"')
+               or line.startswith('{"type":"result"')]
+    if results and isinstance(results[-1].get('result'), str):
+        last.write_text(results[-1]['result'])
 
 
 def _neuter(work, gitdir):
@@ -319,7 +344,7 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    if HOLD or not config['tasks']['auto']:
+    if not config['tasks']['auto']:
         _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn
@@ -356,29 +381,12 @@ def gate(root, config, key):
 
 
 def _hold(root, config):
-    """Why REM starts no task now, or None: one at a time, a nightly cap, the week's floor."""
+    """Why REM starts no task now, or None. Only the Codex week's floor stops one (D-104): tasks
+    run side by side and a night has no count cap."""
     from . import quota
-    if any(_reconcile(path.parent).get('result') in ACTIVE for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json')):
-        return {'wait': 'later', 'reason': 'Another task is running; this one starts on a later tick tonight.'}
-    cap = config['limits']['tasks_per_night']
-    if _started_tonight(root, config) >= cap:
-        return {'wait': 'budget', 'reason': f'{cap} tasks already started tonight (limits.tasks_per_night).'}
-    if floor := quota.floor_block(quota.read(config), config['limits']):
+    if floor := quota.floor_block(quota.meter(root, config), config['limits']):
         return {'wait': 'budget', 'reason': floor[0].upper() + floor[1:] + '.'}
     return None
-
-
-def _night(moment, zone):
-    """The night a moment belongs to: noon to noon, so 22:00-06:00 is one night."""
-    return (moment.astimezone(zone) - timedelta(hours=12)).date()
-
-
-def _started_tonight(root, config):
-    zone = service.notebook_zone(config)
-    tonight = _night(service.now(), zone)
-    records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
-    return sum(1 for record in records if record.get('kind') == 'task' and record.get('dispatched_at')
-               and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
 
 
 def undo(root, task_id):
@@ -399,11 +407,21 @@ def undo(root, task_id):
     return record
 
 
-def host_dispatch(root, item):
+def dispatch(root, key, agent='codex'):
+    """The owner's 交给 Codex / 交给 Claude on any pending item: reserve its work and start it now."""
+    from .night import listing
+    _agent(agent)
+    row = next((row for row in listing(root) if key in row['keys']), None)
+    if row is None:
+        raise RemError('No pending item has this key; reload Today')
+    return start(root, reserve(root, row, agent=agent)['id'], agent)
+
+
+def host_dispatch(root, item, agent='codex'):
     """The Host runs the public deterministic CLI, never an extra agent turn."""
     from .runner import child_env
     command = [sys.executable, '-m', 'connectonion.cli.main', 'rem', '--root', str(root),
-               '--json', 'task', 'run', item['receipt_id']]
+               '--json', 'task', 'run', item['receipt_id'], '--agent', _agent(item.get('agent', agent))]
     try:
         result = subprocess.run(command, env=child_env(), capture_output=True, text=True, timeout=30)
     except (subprocess.TimeoutExpired, OSError) as error:

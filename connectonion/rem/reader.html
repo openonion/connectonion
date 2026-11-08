@@ -2841,7 +2841,6 @@ const UI = {
     "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
     "Queued: later tonight": "排队：今晚稍后",
-    "Recorded. For safety this version does not run it yet": "REM 已记下这件事；为了安全，本版本暂不自动去做",
     "Queued: budget used up": "排队：预算用完",
     "Open the deliverable": "打开交付物",
     "Stop": "停止",
@@ -2975,7 +2974,7 @@ const UI = {
     "Find": "查找",
     "Overnight": "昨夜",
     "REM drafted: ": "REM 已起草：",
-    "What REM did overnight": "昨夜 REM 替你做了", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
+    "What REM did overnight": "昨夜 REM 替你做了", "Replied to 1 person for you": "替你回了 1 个人", "Replied to {n} people for you": "替你回了 {n} 个人", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
     "Prepared 1 task": "准备好 1 件任务", "Prepared {n} tasks": "准备好 {n} 件任务", "1 thing needs no reply": "1 件不用回", "{n} things need no reply": "{n} 件不用回",
     "1 thing was already handled": "1 件已经办完", "{n} things were already handled": "{n} 件已经办完",
     "Could not draft for 1 person": "有 1 个人没能起草", "Could not draft for {n} people": "有 {n} 个人没能起草",
@@ -5869,6 +5868,10 @@ function nightDone() {
     const n = kind === "prepared" || kind === "could_not_prepare" ? records.length : outcomes.filter(o => o.kind === kind).length;
     return n ? el("li", { "data-kind": kind }, [el("b", { text: t(n === 1 ? one : many, { n }) }), nightNames(records)]) : null;
   }).filter(Boolean);
+  // Replies REM sent itself after the 10-minute hold (direct send), named first.
+  const sent = [...new Set((REM.sent_by_rem || []).map(row => row.title).filter(Boolean))];
+  if (sent.length) rows.unshift(el("li", { "data-kind": "sent" }, [el("b", { text: t(sent.length === 1 ? "Replied to 1 person for you" : "Replied to {n} people for you", { n: sent.length }) }),
+    el("span", { class: "who", text: sent.join(uiLanguage === "zh" ? "、" : ", ") })]));
   if (!rows.length) return null;
   return el("section", { class: "night-done", "aria-label": t("What REM did overnight") }, [el("h2", { text: t("What REM did overnight") }), el("ul", {}, rows)]);
 }
@@ -5956,7 +5959,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", held: "Recorded. For safety this version does not run it yet", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5997,7 +6000,6 @@ function taskControls(task) {
     return button;
   };
   const file = task.result === "completed" && task.deliverable;
-  if (task.result === "held") return el("div", {class: "task-controls"}, [live ? act("undo", "Undo") : null]);
   return el("div", {class: "task-controls"}, [
     task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
     file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,

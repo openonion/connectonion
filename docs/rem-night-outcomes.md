@@ -1,10 +1,9 @@
 # Nightly outcomes for the morning confirmation
 
 The daily and native rounds cover every open, owner-owed item in the shared
-Today order, including items outside the first visible cards. The default
-`limits.drafts_per_night` is **30** model attempts per notebook day. Explicit
-configured caps remain in force across rounds. Owner verdicts and task prompts
-need no model calls. Every item left by a draft cap, daily cap, quota stop,
+Today order, including items outside the first visible cards. There is no
+nightly draft count (D-104, 2026-11-09). Owner verdicts and task prompts
+need no model calls. Every item left by a daily cap, quota stop,
 missing consent, provider failure or rejected draft has a named reason.
 
 REM retrieves missing cited originals through the existing Outlook/Gmail
@@ -18,25 +17,20 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-**This version holds every task** (`tasks.HOLD`, removed in rc63): Codex runs
-git outside its sandbox in the task's folder, so approval records the task and
-its Today card says "Recorded. For safety this version does not run it; open it
-in Codex" with the prepared prompt to copy, but no Codex run starts, whether
-approved, automatic or `co rem task run`. What follows describes the run once
-the hold is lifted.
-
-By default (`tasks.auto: false`) morning approval reserves a receipt and the
-Host starts `co rem task run ID`. With `tasks.auto: true` the night also starts
-owed tasks after drafting and records each in `.state/approvals.json` with
-`by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo stops
-the task, removes its folder, worktree and branch, and records `cancelled`: the
-night never starts it again, while morning approval still can. It stays off by
-default until the sealed run reads only an allow-list (today it denies a list of
-credential paths). Either way a task passes one gate: one task at a time, at
-most `limits.tasks_per_night` (3) started per night, counted noon to noon, and
-none once the Codex week reaches `limits.quota_floor_percent`. A task that has
-to wait is written to `.state/tasks/waiting.json` and its Today card says
-"Queued: later tonight" or "Queued: budget used up" with the reason.
+By default (`tasks.auto: true`, owner decision D-100, 2026-11-09) the night
+starts owed tasks after drafting and records each in `.state/approvals.json`
+with `by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo
+stops the task, removes its folder, worktree and branch, and records
+`cancelled`: the night never starts it again, while morning approval still can.
+With `tasks.auto: false` only morning approval starts them (the Host runs
+`co rem task run ID`). A task runs with full access, as the owner's own Codex
+runs do: it can read the web and use his accounts to do the job, and its prompt
+leaves pushing, merging, sending and posting to him. Tasks run side by side
+with no nightly count (D-104); the one gate is the Codex week: none starts once
+it reaches `limits.quota_floor_percent`, read live or, when the meter cannot be
+read, from the last reading a run recorded this week. A task that has to wait
+is written to `.state/tasks/waiting.json` and its Today card says "Queued:
+budget used up" with the reason.
 `co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.

@@ -11,7 +11,7 @@ from connectonion.rem.files import Notebook, state_path, write_json
 @pytest.fixture
 def nightly(tmp_path, monkeypatch, rem_clock):
     prepare(tmp_path)
-    set_config(tmp_path, ['languages', 'zh', 'limits.translations_per_day', '4'])
+    set_config(tmp_path, ['languages', 'zh'])
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', ''))
     monkeypatch.setattr('connectonion.rem.quota.read', lambda config: {'unknown': 'fixture'})
     day = service.notebook_today(tmp_path).isoformat()
@@ -45,7 +45,7 @@ def test_nightly_backlog_prioritizes_waiting_pages_then_latest_changes(nightly):
 
 
 @pytest.mark.parametrize('path', ['daily', 'native'])
-def test_scheduled_paths_follow_priority_with_remaining_daily_cap(nightly, path):
+def test_scheduled_paths_follow_priority_with_no_daily_cap(nightly, path):
     write_json(state_path(nightly, 'runs/run_used.json'), {
         'id': 'run_used', 'phase': 'translate', 'started_at': service.now().isoformat(), 'runner_attempts': 1,
     })
@@ -70,9 +70,9 @@ def test_scheduled_paths_follow_priority_with_remaining_daily_cap(nightly, path)
                 'id': f'run_translation_{index}', 'phase': 'translate',
                 'started_at': service.now().isoformat(), 'runner_attempts': 1,
             })
+    # D-104: a translation made earlier today no longer uses up an allowance.
     assert set(selected[:2]) == {'people/mara.md', 'orgs/fern.md'}
-    assert selected[2:] == ['people/quiet.md']
-    assert translate.attempts_today(nightly) == 4
+    assert selected[2:4] == ['people/quiet.md', 'people/done.md']
 
 
 @pytest.mark.parametrize('requested,scheduled', [(True, True), (False, True), (True, False)])
@@ -96,7 +96,7 @@ def test_status_names_tonights_queue_or_the_command_to_request_it(nightly, reque
         assert 'not requested' in text and 'co rem config set languages zh' in text
         assert 'queued for tonight' not in text
     elif scheduled:
-        assert '1 of 6 pages translated · 3 queued for tonight' in text
+        assert '1 of 6 pages translated · 5 queued for tonight' in text
     else:
         assert 'schedule off' in text and 'co rem start' in text
         assert 'queued for tonight' not in text
@@ -110,32 +110,19 @@ def test_status_shows_unrequested_zh_even_without_a_cache(tmp_path):
     }
 
 
-def test_status_allocates_one_remaining_budget_across_languages(nightly):
+def test_status_queues_every_missing_page_of_each_language(nightly):
     set_config(nightly, ['languages', 'zh,ja'])
     report = translate.coverage(nightly)
-    assert report['zh']['queued'] == 4 and report['ja']['queued'] == 0
+    assert report['zh']['queued'] == 6 and report['ja']['queued'] == 6
     assert report['zh']['requested'] and report['ja']['requested']
 
 
-@pytest.mark.parametrize('next_day', [False, True])
-def test_status_forecasts_the_budget_on_the_next_run_day(nightly, monkeypatch, next_day):
-    from datetime import datetime, timedelta, timezone
-    moment = datetime(2026, 11, 8, 22, tzinfo=timezone.utc)
-    monkeypatch.setattr(service, 'now', lambda: moment)
-    set_config(nightly, ['schedule.timezone', 'UTC'])
-    slot = moment + timedelta(hours=5 if next_day else 1)
-    monkeypatch.setattr(service, '_state_line', lambda *args: ('running', slot.isoformat()))
-    write_json(state_path(nightly, 'runs/run_full.json'), {
-        'id': 'run_full', 'phase': 'translate', 'started_at': moment.isoformat(), 'runner_attempts': 4,
-    })
-    assert service.status(nightly)['translation_coverage']['zh']['queued'] == (4 if next_day else 0)
-
-
-def test_detected_language_is_a_menu_suggestion_not_translation_consent(tmp_path):
+def test_a_detected_language_is_translated_into_when_none_is_set(tmp_path):
+    # D-103 reverses rc62: an empty languages setting means the languages the owner writes.
     prepare(tmp_path)
     write_json(state_path(tmp_path, 'map.json'), {'owner': {'languages': {'languages': ['zh']}}})
-    assert translate.languages(tmp_path) == []
-    assert translate.coverage(tmp_path)['zh']['requested'] is False
+    assert translate.languages(tmp_path) == ['zh']
+    assert translate.coverage(tmp_path)['zh']['requested'] is True
 
 
 def test_status_request_command_keeps_other_requested_languages(nightly):

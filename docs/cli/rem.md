@@ -531,9 +531,8 @@ Native scheduled rounds investigate pages before summarising sessions, with at
 most five summaries per round. Unwritten people, projects and other mapped
 pages stay in the scheduled queues until processed; your own page refresh is
 queued each day. Status and the reader show queued progress instead of asking
-you to copy a REM command for that work. Set `limits.jobs_per_round` (default 8 pages) and
-`limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
-`co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
+you to copy a REM command for that work. A round takes every queued page; `limits.runner_calls_per_day` (default 200)
+is set in `config.yaml` or with `co rem config set limits.runner_calls_per_day 200`.
 The weekly quota safety floor remains 90% by default.
 
 Intermediate native investigation rounds keep private candidates. One final
@@ -692,8 +691,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
   notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
-  waiting on you, up to `limits.drafts_per_night` (default **30**) per notebook day,
-  with every capped or failed item named in status. Missing originals are fetched
+  waiting on you, with no nightly count (D-104), and every failed item named in status. Missing originals are fetched
   from already-consented mailboxes. Owner-last answers and promised work receive
   [morning outcomes](../rem-night-outcomes.md). Drafts use the `rem-reply-draft` skill: it reads who you both are (your page, their page,
   the relationship, how they write), decides on each ask in the latest message, and
@@ -1210,8 +1208,8 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before and unfinished pages from the existing queues, up to
-`limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
+the run before and unfinished pages from the existing queues, all of them in
+the round. Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
@@ -1961,10 +1959,10 @@ as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 Every daily run works through all missing or stale translations. Opened pages
 requesting a translation and pages changed this round come first, then your own
 page, people by recent activity, organisations/projects, decisions/agenda, and
-sessions last. Current caches spend no budget. `limits.translations_per_day`
-defaults to **100**, independently of investigation's daily call budget; the
-weekly quota floor still stops translation. Follow-up slots keep the translation
-pass moving, including when an investigation is waiting on its next portion.
+sessions last. Current caches spend no budget. There is no daily translation count (D-104):
+after every 8 investigation turns translation gets a share sized from its
+backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
+on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
 The reader marks an untranslated page **Translation pending** while showing the

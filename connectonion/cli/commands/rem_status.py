@@ -50,11 +50,31 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
-    lines += [*_tonight(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
+    lines += [*_round(value), *_tonight(value), *_nights(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
     if verbose:
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
+
+
+def _round(value):
+    """A round no later slot has moved says so, with why (D-104: status tells the truth)."""
+    found = value.get('round')
+    if not found or found['state'] != 'stuck':
+        return []
+    return [rem_look.section('Round', style.warn(f"stuck since {found['since'][:16].replace('T', ' ')}")),
+            rem_look.follow(highlight(found['reason']), glyph=''), '']
+
+
+def _nights(value):
+    """Per night, measured: what the schedule bought (D-104); schedules are compared on these."""
+    lines = []
+    for row in value.get('nights') or []:
+        lines.append(rem_look.section('Night ' + row['night'][5:], (
+            f"{row['turns']} turns · {row['tasks_accepted']} accepted · {row['tasks_parked']} parked · "
+            f"{row['tasks_failed']} failed · {row['drafts']} drafts · {row['mail_read']} mail · "
+            f"{row['minutes_busy']} min busy · {row['minutes_idle']} min idle 22–07 · {row['profile']}")))
+    return [*lines, ''] if lines else []
 
 
 def _tonight(value):
@@ -65,7 +85,7 @@ def _tonight(value):
     rest = f"{night['could_not_prepare']} could not be prepared"
     if night['no_reply']:
         rest += f" · {night['no_reply']} no reply needed"
-    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto=false)'
+    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto false)'
     return [rem_look.section('Tonight', counts), rem_look.follow(highlight(rest), glyph=''),
             rem_look.follow(highlight('tasks ' + mode), glyph=''),
             *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']

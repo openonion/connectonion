@@ -86,7 +86,7 @@ def test_rem_thread_endpoint_rejects_invalid_actions(host):
 
 def test_interface_language_persists_owner_consent_once_without_replacing_settings(host):
     from connectonion.rem.config import read_config, set_config
-    set_config(host.root, ['languages', 'ja', 'limits.translations_per_day', '7'])
+    set_config(host.root, ['languages', 'ja', 'limits.workers', '7'])
     endpoint, payload = '/rem/language', b'{"language":"zh"}'
     assert call(host.routes, 'POST', endpoint, body=payload)[0] == 401
     assert read_config(host.root)['languages'] == ['ja']
@@ -97,7 +97,7 @@ def test_interface_language_persists_owner_consent_once_without_replacing_settin
     assert (host.root / 'config.yaml').read_bytes() == saved
     config = read_config(host.root)
     assert config['languages'] == ['ja', 'zh'] and config['language'] == 'en'
-    assert config['limits']['translations_per_day'] == 7
+    assert config['limits']['workers'] == 7
     assert 'languages' in read_json(state_path(host.root, 'config-explicit.json'), [])
 
 

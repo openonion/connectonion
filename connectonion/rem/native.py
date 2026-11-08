@@ -181,12 +181,9 @@ def _display(root, task):
 
 
 def _stop(root, config, *, phase=None):
-    from .translate import attempts_today
-    logs, meter = service.run_logs(root), quota.read(config)
+    logs, meter = service.run_logs(root), quota.meter(root, config)
     if phase == "daily-translation":
         reason = quota.floor_block(meter, config["limits"])
-        if not reason and attempts_today(root) >= config["limits"]["translations_per_day"]:
-            reason = "daily translation cap reached"
     else:
         reason = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
         if not reason and service.daily_cap(root)["remaining"] <= 0:
@@ -269,7 +266,9 @@ def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
+        from .night_stats import record as record_nights
         morning_message(root)
+        record_nights(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     progress_step("waiting for the maintenance lock")
@@ -341,16 +340,11 @@ def _next_round(root, cursor, *, scheduled, notices):
             progress_step(f"reading new mail for the {slot:%H:%M} slot", round=cursor["started_at"],
                           mail_slot=slot.isoformat())
             native_round.read_new_mail(root, cursor, config, slot)
-    if cursor and scheduled and cursor.get("investigation_left") == 0:
-        slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
-        if slot and slot.isoformat() != cursor.get("portion_slot", cursor.get("slot")):
-            cursor["investigation_left"] = min(service.daily_cap(root)["remaining"], 8)
-            cursor["portion_slot"] = slot.isoformat()
     reason, meter = _stop(root, config)
     if reason:
         from . import night
         night.prepare(root, config, stop=reason)
-    translation_only = bool(reason) or (cursor.get("investigation_left") == 0 and bool(cursor.get("current") or cursor.get("project_quote")))
+    translation_only = bool(reason)
     if translation_only:
         translation_reason, meter = _stop(root, config, phase="daily-translation")
         if translation_reason:
@@ -360,7 +354,7 @@ def _next_round(root, cursor, *, scheduled, notices):
             if cursor and not cursor.get("done") and cursor.get("phase") == "daily-translation":
                 native_round.finish(root, cursor)
                 return {"outcome": "done", "reason": "round done", "notices": notices}
-            return {"outcome": "done", "reason": reason or "investigation portion cap reached", "notices": notices}
+            return {"outcome": "done", "reason": reason, "notices": notices}
     if not cursor or cursor.get("done"):
         progress_step("starting a new round")
         cursor = (native_round.prepare_translation_round(root, config, scheduled=scheduled) if translation_only

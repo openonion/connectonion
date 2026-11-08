@@ -145,7 +145,7 @@ def _page_excerpt(root, record, sections, limit=1800):
         if match:
             found[title.lower().replace(' ', '_')] = match.group(1).strip()[:limit]
             if title == 'Facts':
-                permission = re.search(r'^- Direct send: (partner|close|none)[ \t]*$', match.group(1), re.M)
+                permission = re.search(r'^- Direct send: (partner|close|none)\b', match.group(1), re.M)
                 found['direct_send'] = permission.group(1) if permission else 'none'
     return found
 

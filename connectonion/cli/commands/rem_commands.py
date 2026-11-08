@@ -2112,9 +2112,10 @@ def make_rem_app(factory):
     rem.add_typer(task_app, name="task")
 
     @task_app.command("run", cls=V("co rem task run"))
-    def task_run(ctx: typer.Context, task_id: str = typer.Argument(...)):
+    def task_run(ctx: typer.Context, task_id: str = typer.Argument(...),
+                 agent: Optional[str] = typer.Option(None, "--agent", help="codex or claude; default: the receipt's")):
         from ...rem.tasks import start
-        _handle(ctx, lambda root: (start(root, task_id), ["task", "status", task_id]), ["task", "status"])
+        _handle(ctx, lambda root: (start(root, task_id, agent), ["task", "status", task_id]), ["task", "status"])
 
     @task_app.command("status", cls=V("co rem task status"))
     def task_status(ctx: typer.Context, task_id: Optional[str] = typer.Argument(None)):

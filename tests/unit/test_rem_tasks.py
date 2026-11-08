@@ -13,12 +13,9 @@ from connectonion.rem.files import RemError, Notebook, read_json, state_path, wr
 
 @pytest.fixture
 def task_notebook(tmp_path, monkeypatch, rem_clock):
-    from connectonion.rem import tasks
-    monkeypatch.setattr(tasks, 'HOLD', False)  # these tests exercise the run itself; one test holds
     root = tmp_path / 'rem'
     prepare(root)
-    # tasks.auto is off by default until the inverted read boundary ships; these tests run it on.
-    set_config(root, ["runner", "codex", "model", default_config()["model"], "tasks.auto", "true"])
+    set_config(root, ["runner", "codex", "model", default_config()["model"]])
     book = Notebook(root)
     book.stub_project('projects/pilot.md', 'Mara pilot', [])
     book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
@@ -56,6 +53,26 @@ sys.exit(int(os.environ.get('TASK_FAKE_EXIT', '0')))
     return path
 
 
+@pytest.fixture
+def fake_claude(tmp_path, monkeypatch):
+    """`claude -p` as Claude Code runs it: prompt in, one JSON result on stdout."""
+    path = tmp_path / 'claude-fake'
+    path.write_text('''#!/usr/bin/env python3
+import json, os, pathlib, re, sys
+args = sys.argv[1:]
+prompt = args[args.index('-p') + 1]
+deliverable = pathlib.Path(re.search(r'Deliverable: (\\S+)', prompt).group(1))
+(deliverable.parent / 'argv.json').write_text(json.dumps(args))
+(deliverable.parent / 'cwd.txt').write_text(os.getcwd())
+pathlib.Path('claude-was-here.md').write_text('Mara pilot notes')
+deliverable.write_text('# Mara pilot review\\nReady for owner review.\\n')
+print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'Reviewed the Mara pilot with Claude.'}))
+''')
+    path.chmod(0o700)
+    monkeypatch.setenv('CLAUDE_CMD', str(path))
+    return path
+
+
 def test_native_cleanup_keeps_obligation_work_even_when_old(tmp_path):
     directory = tmp_path / 'do-mara'
     directory.mkdir()
@@ -84,7 +101,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
     argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
     assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
-    assert 'default_permissions="rem_task"' in argv and '--add-dir' in argv
+    assert argv[argv.index('-s') + 1] == 'danger-full-access' and '--add-dir' in argv
     assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
     assert 'do not send anything to anyone; write the result and stop' in argv[-1]
     assert saved['deliverable'] in argv[-1]
@@ -126,13 +143,11 @@ def _writable(argv):
     return [argv[index + 1] for index, arg in enumerate(argv) if arg == '--add-dir']
 
 
-def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
-    import re
+def test_task_runs_with_full_access_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
+    # D-100: owed work runs as the owner's own Codex runs do, with full access. It needs the
+    # web and his accounts (gh, co) to do the job, so nothing is sealed and no variable is stripped.
     from connectonion.rem import tasks
-    # connectonion's import loads keys.env into os.environ; none of it may reach the task.
-    monkeypatch.setenv('CANARY_API_KEY', 'fern-canary')
-    monkeypatch.setenv('FERNHILL_TOKEN', 'fern-canary')
-    monkeypatch.setenv('MARA_PASSWORD', 'fern-canary')
+    monkeypatch.setenv('FERNHILL_TOKEN', 'fern-token')
     repo = _repository(tmp_path / 'pilot-repository')
     _link_project(task_notebook, repo)
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
@@ -141,55 +156,19 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     folder = Path(saved['receipt']).parent
     argv = read_json(folder / 'argv.json', [])
     work = folder / 'work'
-    # Codex writes only in a worktree on its own branch, plus its task folder.
     assert argv[argv.index('-C') + 1] == str(work) == saved['cwd'] and _writable(argv) == [str(folder)]
+    assert argv[argv.index('-s') + 1] == 'danger-full-access'
+    assert not any('rem_task' in arg or 'network.enabled=false' in arg for arg in argv)
+    assert '--ignore-user-config' not in argv and 'web_search="disabled"' not in argv
+    assert 'FERNHILL_TOKEN' in read_json(folder / 'env.json', [])
+    assert (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
+    # Its own branch: the owner's checkout keeps its branch and has no new files.
     assert _git(work, 'branch', '--show-current') == saved['branch'] == f"rem/task-{receipt['id']}"
     assert (work / 'codex-was-here.md').is_file() and saved['project'] == str(repo)
-    # The owner's checkout keeps its branch and has no new files.
     assert _git(repo, 'branch', '--show-current') == 'main' and _git(repo, 'status', '--porcelain') == ''
-    # No network for its commands: nothing can be pushed, mailed or posted.
-    assert not any('network_access=true' in arg for arg in argv)
-    # A -s flag overrides the permission profile: measured with codex 0.167, a run with
-    # -s workspace-write read the canary credentials and reached the network.
-    assert '-s' not in argv and '--sandbox' not in argv
-    # Codex's own web search could carry what it read to a live URL; it is off too.
-    assert 'web_search="disabled"' in argv
-    # MCP servers, plugins and app connectors run outside the sandbox with network
-    # (a GitHub connector can open an issue): the owner's Codex config is not loaded.
-    assert '--ignore-user-config' in argv
-    assert {'features.apps=false', 'features.plugins=false', 'features.browser_use=false',
-            'features.computer_use=false'} <= set(argv)
-    assert not any(arg.startswith('mcp_servers.') and 'enabled=true' in arg for arg in argv)
-    # Codex's seatbelt reads the disk except the owner's credentials; the task folder stays
-    # writable inside a denied ~/.co.
-    from connectonion.rem.sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
-    assert 'default_permissions="rem_task"' in argv and 'permissions.rem_task.network.enabled=false' in argv
-    # The shell tool gets only Codex's core variables, and Codex itself gets no secrets.
-    assert 'shell_environment_policy.inherit="core"' in argv
-    # Codex's command executor (code mode) runs outside the seatbelt; memories persist across runs,
-    # subagents were not shown to inherit the profile, and skill text stays away from the model.
-    assert 'features.code_mode_host=false' not in argv  # codex 0.167 runs no command without it
-    # The owner's execpolicy rules can run a matching command outside the sandbox.
-    assert '--ignore-rules' in argv
-    assert {'features.code_mode=false', 'features.memories=false',
-            'features.multi_agent=false', 'features.multi_agent_v2=false',
-            'skills.include_instructions=false'} <= set(argv)
-    names = read_json(folder / 'env.json', [])
-    assert 'PATH' in names and 'HOME' in names
-    assert not [name for name in names if re.search('KEY|TOKEN|SECRET|PASSWORD|API', name, re.I)], names
-    table = next(arg for arg in argv if arg.startswith('permissions.rem_task.filesystem='))
-    # Outside the task folder, work dir, repository and Codex's release the disk's user areas are unreadable.
-    for root in ('/Users', '/Volumes', '/tmp', '/private/tmp', '/private/var/folders'):
-        assert f'"{root}"="none"' in table
-    assert ':tmpdir' not in table and ':slash_tmp' not in table
-    assert f'"{os.path.realpath(repo)}"="read"' in table
-    assert table.count('="write"') == 2  # the task folder and its work dir: nothing under the repo's .git
-    assert read_json(folder / 'env.json', []) and (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
-    home = os.path.realpath(Path.home())
-    for name in ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', '.netrc', '.git-credentials'):
-        assert name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES) and f'"{home}/{name}"="none"' in table
-    assert f'"{os.path.realpath(folder)}"="write"' in table and f'"{os.path.realpath(work)}"="write"' in table
+    # Pushing, merging and sending stay the owner's one irreversible click.
     assert str(repo) in argv[-1] and 'Never push' in argv[-1]
+    assert 'no network' not in argv[-1] and 'cannot read credentials' not in argv[-1]
     assert saved['result'] == 'completed'
 
 
@@ -274,40 +253,45 @@ def _clock(monkeypatch, text):
     monkeypatch.setattr(service, 'now', lambda: datetime.fromisoformat(text))
 
 
-def test_the_night_runs_one_task_at_a_time_and_queues_the_next_for_later(task_notebook, fake_codex, monkeypatch):
+# D-104: tasks run side by side and a night has no count cap; only the week floor holds one.
+def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
     monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
     _second_task(task_notebook)
-    config = read_config(task_notebook)
-    first = tasks.auto_dispatch(task_notebook, config)
+    started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     try:
-        assert len(first) == 1
-        [waiting] = _waiting(task_notebook).values()
-        assert waiting['wait'] == 'later' and 'running' in waiting['reason']
-        assert tasks.auto_dispatch(task_notebook, config) == []  # still running: nothing new
+        assert len(started) == 2 and len({row['id'] for row in started}) == 2
+        assert [_running(task_notebook, row['id']) for row in started] == ['running', 'running']
+        assert read_json(state_path(task_notebook, 'tasks/waiting.json'), {}) == {}
     finally:
-        tasks.stop(task_notebook, first[0]['id'])
-    second = tasks.auto_dispatch(task_notebook, config)
-    try:
-        assert len(second) == 1 and second[0]['id'] != first[0]['id'] and _waiting(task_notebook) == {}
-    finally:
-        tasks.stop(task_notebook, second[0]['id'])
+        for row in started:
+            tasks.stop(task_notebook, row['id'])
 
 
-def test_tasks_per_night_counts_rem_starts_from_noon_to_noon(task_notebook, fake_codex, monkeypatch):
-    from connectonion.rem import tasks
-    assert default_config()['limits']['tasks_per_night'] == 3
+def test_an_approved_task_starts_beside_a_running_one(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
     _second_task(task_notebook)
-    set_config(task_notebook, ['limits.tasks_per_night', '1'])
-    config = read_config(task_notebook)
-    _clock(monkeypatch, '2026-09-07T23:00:00+00:00')
-    _finished(task_notebook, tasks.auto_dispatch(task_notebook, config)[0]['id'])
-    _clock(monkeypatch, '2026-09-08T01:00:00+00:00')  # after midnight, still the same night
-    assert tasks.auto_dispatch(task_notebook, config) == []
-    [waiting] = _waiting(task_notebook).values()
-    assert waiting['wait'] == 'budget' and 'tasks_per_night' in waiting['reason']
-    _clock(monkeypatch, '2026-09-08T22:00:00+00:00')
-    assert len(tasks.auto_dispatch(task_notebook, config)) == 1
+    set_config(task_notebook, ['tasks.auto', 'false'])
+    first = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    tasks.start(task_notebook, first['id'])
+    try:
+        offered = next(item for item in approvals.outcomes(task_notebook) if item['kind'] == 'task')
+        approvals.approve(task_notebook, [offered['id']])
+        assert _running(task_notebook, first['id']) == 'running'
+        released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
+        assert [item['status'] for item in released] == ['dispatched']
+    finally:
+        tasks.stop(task_notebook, first['id'])
+
+
+def _running(root, task_id):
+    import time
+    from connectonion.rem import tasks
+    deadline = time.monotonic() + 15
+    while tasks.status(root, task_id)['result'] in ('queued', 'starting') and time.monotonic() < deadline:
+        time.sleep(.05)
+    return tasks.status(root, task_id)['result']
 
 
 def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatch):
@@ -323,38 +307,17 @@ def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatc
     assert _waiting(task_notebook) == {}  # with auto off nothing will start it, so it is not "queued"
 
 
-def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_notebook, fake_codex, monkeypatch):
+def test_an_approved_task_starts_its_codex_run(task_notebook, fake_codex):
+    # rc62 held every task ("this version does not run it"); D-100 lifts the hold.
     from connectonion.rem import approvals, tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
-    _second_task(task_notebook)
-    first = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
-    try:
-        offered = approvals.outcomes(task_notebook)[0]
-        approvals.approve(task_notebook, [offered['id']])
-        calls = []
-        assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == []
-        assert not calls and approvals.pending(task_notebook)[0]['status'] == 'queued'
-        [waiting] = _waiting(task_notebook).values()
-        assert waiting['wait'] == 'later' and waiting['by'] == 'owner'
-    finally:
-        tasks.stop(task_notebook, first['id'])
-    released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
-    assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
-
-
-def test_this_version_holds_approved_tasks_and_starts_no_codex_run(task_notebook, monkeypatch):
-    from connectonion.rem import approvals, tasks
-    monkeypatch.setattr(tasks, 'HOLD', True)
-    monkeypatch.setattr(tasks.subprocess, 'Popen', lambda *a, **k: pytest.fail('no Codex run starts while held'))
     offered = approvals.outcomes(task_notebook)[0]
     assert approvals.approve(task_notebook, [offered['id']])['results'][0]['status'] == 'queued'
-    calls = []
-    assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == [] and not calls
+    released = approvals.release(task_notebook, dispatch=lambda item: tasks.start(task_notebook, item['receipt_id']))
+    assert released[0]['status'] == 'dispatched'
     task = night.listing(task_notebook)[0]['task']
-    assert task['result'] == 'held' and task['prompt']
-    with pytest.raises(RemError, match='open it in Codex'):
-        tasks.start(task_notebook, task['id'])
-    assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
+    assert task['result'] != 'held'
+    assert _finished(task_notebook, task['id'])['result'] == 'completed'
+    assert not hasattr(tasks, 'HOLD') and not hasattr(tasks, 'HELD')
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):
@@ -388,21 +351,25 @@ def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch)
     assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived undo'
 
 
-def test_auto_is_off_by_default_and_the_owner_can_turn_it_on(task_notebook, monkeypatch):
+def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monkeypatch):
     from connectonion.rem import tasks, service
+    from connectonion.rem.config import EXPLICIT
     launched = []
     monkeypatch.setattr(tasks, 'start', lambda root, identity: launched.append(identity) or {'id': identity})
-    set_config(task_notebook, ['tasks.auto', 'false'])
+    assert default_config()['tasks']['auto'] is True
+    config_path = task_notebook / 'config.yaml'
+    # init wrote the old default, auto: false, into config.yaml; that is not the owner's choice.
+    config_path.write_text(config_path.read_text().replace('tasks:\n  auto: true\n', 'tasks:\n  auto: false\n'))
+    assert 'auto: false' in config_path.read_text() and read_config(task_notebook)['tasks']['auto'] is True
+    config_path.write_text(config_path.read_text().replace('tasks:\n  auto: false\n', ''))
+    assert read_config(task_notebook)['tasks']['auto'] is True  # an older notebook without the key
+    tasks.auto_dispatch(task_notebook, read_config(task_notebook))
+    assert launched and service.status(task_notebook)['tasks']['auto'] is True
+    launched.clear()
+    set_config(task_notebook, ['tasks.auto', 'false'])  # the owner's own choice wins
+    assert 'tasks.auto' in read_json(state_path(task_notebook, EXPLICIT), [])
     assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
     assert not launched and service.status(task_notebook)['tasks']['auto'] is False
-    (task_notebook / 'config.yaml').write_text((task_notebook / 'config.yaml').read_text().replace(
-        'tasks:\n  auto: false\n', ''))
-    assert default_config()['tasks']['auto'] is False
-    assert read_config(task_notebook)['tasks']['auto'] is False  # an older notebook without the key
-    set_config(task_notebook, ['tasks.auto', 'true'])
-    tasks.auto_dispatch(task_notebook, read_config(task_notebook))
-    assert launched
-    assert service.status(task_notebook)['tasks']['auto'] is True
     with pytest.raises(RemError, match='tasks.auto'):
         set_config(task_notebook, ['tasks.auto', 'yes'])
 
@@ -547,6 +514,45 @@ def test_host_dispatch_runs_public_cli_with_receipt_id(task_notebook, fake_codex
         return subprocess.CompletedProcess(command, 0, '{}', '')
     monkeypatch.setattr(tasks.subprocess, 'run', launch)
     result = tasks.host_dispatch(task_notebook, item)
-    assert calls[0][-3:] == ['task', 'run', item['receipt_id']]
+    assert calls[0][-5:] == ['task', 'run', item['receipt_id'], '--agent', 'codex']
     assert '--root' in calls[0] and str(task_notebook) in calls[0]
     assert result['id'] == item['receipt_id']
+
+
+def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(task_notebook, fake_claude):
+    # The owner's 交给 Claude: one code path, the agent as data (D-100: full access).
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0], agent='claude')
+    assert receipt['agent'] == 'claude'
+    tasks.execute(task_notebook, receipt['id'])
+    saved = tasks.status(task_notebook, receipt['id'])
+    folder = Path(saved['receipt']).parent
+    argv = read_json(folder / 'argv.json', [])
+    assert saved['result'] == 'completed' and saved['agent'] == 'claude'
+    assert '--dangerously-skip-permissions' in argv and argv[argv.index('--add-dir') + 1] == str(folder)
+    assert (folder / 'cwd.txt').read_text() == str(folder / 'work') == saved['cwd']
+    assert 'Done means:' in argv[argv.index('-p') + 1] and 'Never push' in argv[argv.index('-p') + 1]
+    assert saved['prepared_reply'] == f"REM 已经做完：Reviewed the Mara pilot with Claude. · 附：{saved['deliverable']}"
+
+
+def test_dispatch_starts_any_pending_item_with_the_chosen_agent(task_notebook, fake_claude):
+    from connectonion.rem import tasks
+    row = night.listing(task_notebook)[0]
+    started = tasks.dispatch(task_notebook, row['keys'][0], agent='claude')
+    assert started['agent'] == 'claude' and started['by'] == 'owner'
+    assert _finished(task_notebook, started['id'])['result'] == 'completed'
+    with pytest.raises(RemError, match='codex or claude'):
+        tasks.dispatch(task_notebook, row['keys'][0], agent='gemini')
+    with pytest.raises(RemError, match='No pending item'):
+        tasks.dispatch(task_notebook, 'people/nobody.md\nNothing.', agent='codex')
+
+
+def test_a_queued_task_takes_the_agent_the_owner_picks_and_the_host_passes_it(task_notebook, monkeypatch):
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    assert receipt['agent'] == 'codex'
+    seen = []
+    monkeypatch.setattr(tasks.subprocess, 'run', lambda command, **kw: seen.append(command) or
+                        type('Done', (), {'returncode': 0})())
+    tasks.host_dispatch(task_notebook, {'receipt_id': receipt['id'], 'agent': 'claude'})
+    assert seen[0][-3:] == [receipt['id'], '--agent', 'claude']

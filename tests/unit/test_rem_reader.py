@@ -3245,30 +3245,11 @@ def test_a_queued_task_card_says_why_it_waits():
         assert not any(child.get('class') == 'task-controls' for child in card['children'])
 
 
-@pytest.mark.parametrize('language', ['en', 'zh'])
-def test_a_held_task_card_says_it_is_recorded_and_offers_only_undo(language):
-    """D-60, 2026-11-07: never ask the owner to copy a prompt or a command."""
+def test_no_task_card_says_this_version_does_not_run_it():
+    # D-100: tasks run. The rc62 "held" state, its copy and its Copy-the-prompt button are gone.
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
-    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js('UI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + functions + r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
-        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
-      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
-      const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
-        {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
-      const card = taskResult({key: 'fern'});
-      const controls = card.children.find(child => child.class === 'task-controls');
-      console.log(JSON.stringify({status: card.children[0].text, buttons: controls.children.map(child => child.text), card}));
-    ''')
-    if language == 'zh':
-        assert result['status'] == 'REM 已记下这件事；为了安全，本版本暂不自动去做'
-        assert result['buttons'] == ['撤销']
-    else:
-        assert result['status'] == 'Recorded. For safety this version does not run it yet'
-        assert result['buttons'] == ['Undo']
-    text = json.dumps(result['card'], ensure_ascii=False)
-    assert 'Codex' not in text and 'Prepare the Fernhill' not in text and 'Stop' not in text
+    assert 'this version does not run it' not in page and '本版本暂不自动去做' not in page
+    assert 'task.result === "held"' not in page
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
