@@ -393,3 +393,17 @@ def test_a_synced_cache_outranks_the_undated_legacy_issue_file(tmp_path, gh):
     assert project() == 'at_risk'
     # An in-memory fetch the caller just made is fresher than any cache.
     assert project(issues={REPO: []}) != 'at_risk'
+
+
+def test_a_round_stops_starting_repositories_after_its_time_budget(tmp_path, gh):
+    from connectonion.rem.config import prepare
+    root = tmp_path / 'notebook'
+    prepare(root)
+    (root / 'projects').mkdir(exist_ok=True)
+    for name in ('lanterns', 'birch', 'cedar'):
+        (root / f'projects/{name}.md').write_text(f'# {name}\n\n## Facts\n- Repository: fernhill/{name}\n')
+    # Round start, before the first repository, then before the second: the
+    # first repository "took" the whole budget.
+    clock = iter([0, 0, pages.CODE_ROUND_SECONDS, 2 * pages.CODE_ROUND_SECONDS])
+    results = pages.sync_project_repositories(root, now=NOW, clock=lambda: next(clock))
+    assert len([row for row in results.values() if row.get('synced_at')]) == 1

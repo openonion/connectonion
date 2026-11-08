@@ -876,6 +876,7 @@ BACKFILL_CODE_PRS = 100
 BACKFILL_CODE_RUNS = 200
 BACKFILL_CODE_COMMITS = 1000
 CODE_SYNC_MINUTES = 30
+CODE_ROUND_SECONDS = 90
 CODE_CHURN_DAYS = 14
 CODE_PR_QUERY = '''query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
 defaultBranchRef{name}
@@ -1175,9 +1176,15 @@ def _code_package(page, folder):
     return None
 
 
-def sync_project_repositories(root, *, now=None):
-    """At most three due named repositories per round, oldest attempts first; no model."""
-    from .investigate import project_paths
+def sync_project_repositories(root, *, now=None, clock=time.monotonic):
+    """At most three due named repositories per round, oldest attempts first; no model.
+
+    The round holds the maintenance lock, and one repository is ~7 gh calls of up
+    to 20 s each. No new repository starts once CODE_ROUND_SECONDS have passed;
+    the rest stay due and go first next round (oldest attempt first).
+    """
+    from .investigate import project_paths  # investigate imports this module
+    started = clock()
     notebook, repos = Notebook(root), {}
     for record in notebook.list('projects')[:2000]:
         text = notebook.read(record)
@@ -1197,6 +1204,8 @@ def sync_project_repositories(root, *, now=None):
     for repo in ordered:
         if not _code_due(read_json(code_cache_path(root, repo), {}), moment):
             continue
+        if clock() - started >= CODE_ROUND_SECONDS:
+            break
         text = repos[repo]
         paths = project_paths(text)
         folder = next((p for p in paths if Path(p).is_dir()), None)

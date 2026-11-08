@@ -230,6 +230,17 @@ round's result; its projection is `status: "invalid"` with the same reason. One
 bad line no longer fails the whole round or the reader projection.
 
 Each repository waits 30 minutes after its last attempt (including failure).
+The round holds the maintenance lock while it reads, so it also has a time
+budget: no new repository starts after 90 seconds (`CODE_ROUND_SECONDS`). One
+repository is 7 gh calls (2 issues, 1 GraphQL, 2 runs, 1 releases, 1 tags) and
+3 local git calls, each with a 20-second timeout, so the worst case is the
+budget plus one repository's timeouts (about 90 s + 200 s), not three. Measured
+(2026-11-08): the six REST reads of a large public repository took 9.4 s cold and
+0.5 s when all six revalidated as 304; one round of three repositories on
+realistic-size fictional data (200 issues, 100 PRs with 25 checks, 200 runs,
+300 local commits, 500 session entries) spent 1.2 s locally. A notebook naming
+34 repositories therefore needs 12 rounds before every repository has been read
+once; later reads are mostly 304s.
 GitHub reads use the owner's `gh` executable and its normal authentication:
 
 - Issues: two GET pages of 100, all states, newest updated first; the GitHub REST
