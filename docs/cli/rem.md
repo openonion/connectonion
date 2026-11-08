@@ -830,17 +830,22 @@ Four type sizes: display (min(112px, 22vw)) is kept for the one thing a page is
 about, Today's count or an entity's name, then 24, 16 and 12; two weights (400
 and 700); square corners and no shadows. Rings that used to be shadows are
 hairline outlines, and keyboard focus is a 2 px ink outline that wins over them,
-except on `#main` and the Today cards, which are focused by script. Durations
-and easing are tokens, so `prefers-reduced-motion` stops every transition. The
+except on `#main` and the Today cards, which are focused by script. Every CSS
+transition and animation takes its duration, delay and easing from the sheet, so
+`prefers-reduced-motion` zeroes all of them; the graph's zoom and the reader's
+smooth scrolling are script-driven and check reduced motion themselves. The
 graph tells kinds apart by shape (a session is a bar, a person a dot); a private
 record is its outline with a slash. Dark mode redefines the same colour names
 under `prefers-color-scheme` (unless the reader is set to Light) and under the
 Dark setting. `tests/unit/test_rem_reader_style_sheet.py` scans the whole page
-(styles, attributes, script) and fails on any size, weight, radius, shadow,
-colour or duration written outside the sheet, and on any sheet token nothing
-uses. One system face carries Latin and CJK and a mono face carries code; both
-are local, so the page makes no network request. Every view fits a 390 px phone
-without sideways scrolling.
+(styles, style and SVG attributes, url() data, the script's style writes and the
+strings it builds) and fails when a font size, weight, radius, shadow, colour,
+transition or animation timing is written outside the sheet, when a layout
+custom property holds anything but a length or a number, and when a sheet token
+is unused. A value that only exists at run time, such as a colour held in a
+script variable, is outside what it can see. One system face carries Latin and
+CJK and a mono face carries code; both are local, so the page makes no network
+request. Every view fits a 390 px phone without sideways scrolling.
 
 To see every view on an invented notebook, light and dark, desktop and phone:
 `python scripts/capture_rem_reader.py OUT_DIR` (the fixture is

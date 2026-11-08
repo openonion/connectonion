@@ -201,7 +201,9 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
 
     assert colors['--green'] == ('#22d27a' if theme == 'light' else '#3be38f')
     # Red is text (overdue, danger), so it must read on the paper it sits on in both themes.
-    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink'), ('--paper', '--red')]:
+    # A focused Today card sits on --rule with its overdue age in red on top, so red must read there too.
+    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink'), ('--paper', '--red'),
+                                ('--rule', '--red')]:
         a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
     # Pencil is REM's inference drawn as a dashed mark; at under 4.5:1 it never colours text.

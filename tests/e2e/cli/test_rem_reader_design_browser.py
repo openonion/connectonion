@@ -5939,3 +5939,7 @@ def test_graph_kinds_differ_by_shape_and_private_records_carry_a_slash(reader):
       return [g.querySelectorAll('path').length + (g.tagName === 'path' ? 1 : 0), g.getAttribute('fill') || g.firstChild.getAttribute('fill')];
     })""", isolated_context=False)
     assert marks[0] == [1, 'var(--grey)'] and marks[1][0] == 2 and marks[1][1] != 'var(--grey)'
+    # Private knowledge keeps its centre dot, so it is not a private person; a private session stays big enough to read.
+    assert page.evaluate("graphSvgMark('knowledge', 7, 7, 5, true).querySelectorAll('circle').length", isolated_context=False) == 1
+    assert page.evaluate("graphSvgMark('people', 7, 7, 5, true).querySelectorAll('circle').length", isolated_context=False) == 0
+    assert page.evaluate("graphSvgMark('sessions', 7, 7, 1.5, true).querySelector('path').getAttribute('d') === graphOutline('sessions', 7, 7, GRAPH_PRIVATE_MIN)", isolated_context=False)

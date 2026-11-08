@@ -36,7 +36,7 @@
     --rule: #e4e6e3; /* hairlines only; derived from ink on paper */
     --green: #22d27a; /* Fresh: the one primary action per screen */
     --on-green: #05301b;
-    --red: #de311b; /* danger / overdue only: the burnt part of a fuse; art direction had #e2321b (4.46:1), darkened to 4.6:1 */
+    --red: #c02a17; /* danger / overdue only: the burnt part of a fuse; art direction had #e2321b, darkened to 4.5:1 on --rule (a focused Today card) */
     --pencil: #9da29d; /* REM's inference: dashed, never solid */
 
     /* type: 4 sizes, 2 weights, one family (CJK + Latin) */
@@ -197,7 +197,7 @@
   .pill.warn { background: var(--rule); color: var(--grey); }
 
   /* ---- the night: the home's one loud thing ---- */
-  .night { position: relative; border-radius: var(--radius); background: var(--ink); color: var(--paper); overflow: hidden; margin: -32px -40px 32px; padding: 24px 40px; box-shadow: none; }
+  .night { position: relative; border-radius: var(--radius); background: var(--ink); color: var(--paper); overflow: hidden; margin: -32px -40px 32px; padding: 24px 40px; }
   .night > * { position: relative; }
   .night .kicker { letter-spacing: 0; text-transform: none; color: var(--grey); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font: var(--w-regular) var(--s-body)/1.5 var(--font); }
   .night .kicker svg { width: 14px; height: 14px; color: var(--paper); }
@@ -213,14 +213,14 @@
   .hypno .trace { fill: none; stroke-dashoffset: 0; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke: var(--pencil); stroke-width: 1.6; stroke-linecap: round; }
   .hypno .area { fill: var(--pencil); opacity: 0.13; }
   .hypno .day { position: absolute; top: 88px; padding-left: 4px; color: var(--grey); white-space: nowrap; font: var(--s-meta) var(--font); }
-  .hypno .dot { position: absolute; border-radius: var(--round); background: var(--paper); box-shadow: none; width: 6px; height: 6px; margin: -3px 0 0 -3px; }
-  .hypno .dot.woke { background: var(--grey); box-shadow: none; }
+  .hypno .dot { position: absolute; border-radius: var(--round); background: var(--paper); width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+  .hypno .dot.woke { background: var(--grey); }
   .night .legend { font: var(--s-meta) var(--font); color: var(--grey); display: flex; gap: 16px; flex-wrap: wrap; }
   .night .legend i { display: inline-block; width: 7px; height: 7px; border-radius: var(--round); margin-right: 6px; vertical-align: 0; }
   .night .changes { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grey); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
   .night .changes .page-names { min-width: 0; flex: 1; line-height: 1.8; }
   .night .changes .k { font: var(--s-meta) var(--font); color: var(--grey); margin-right: 4px; letter-spacing: 0; }
-  .night .changes a { color: var(--paper); font-size: var(--s-meta); border-radius: var(--radius); box-shadow: none; background: transparent; padding: 2px 0; text-decoration: none; }
+  .night .changes a { color: var(--paper); font-size: var(--s-meta); border-radius: var(--radius); background: transparent; padding: 2px 0; text-decoration: none; }
   .night .changes a:hover { text-decoration: underline; }
   .night code { font: var(--s-meta) var(--font); color: var(--paper); background: var(--grey); padding: 2px 7px; border-radius: var(--radius); }
   .night p { margin: 0; color: var(--grey); font-size: var(--s-body); }
@@ -754,9 +754,9 @@
   /* ---- under the title: what is open, how long, when you last spoke ---- */
   .leadrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 16px 0 0; }
   .leadrow:empty { display: none; }
-  .lead-open { display: inline-flex; align-items: baseline; gap: 9px; max-width: 100%; color: var(--ink); text-decoration: none !important; background: transparent; box-shadow: none; border-radius: var(--radius); padding: 8px 0; border-bottom: 1px solid var(--rule); }
-  .lead-open.theirs { background: transparent; box-shadow: none; }
-  .lead-open.plain { background: transparent; box-shadow: none; }
+  .lead-open { display: inline-flex; align-items: baseline; gap: 9px; max-width: 100%; color: var(--ink); text-decoration: none !important; background: transparent; border-radius: var(--radius); padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  .lead-open.theirs { background: transparent; }
+  .lead-open.plain { background: transparent; }
   .lead-open .txt { font: var(--s-body) var(--font); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
   .lead-open .age { font-size: var(--s-meta); color: var(--ink); font-weight: var(--w-bold); white-space: nowrap; }
   .lead-open.theirs .age, .lead-open.theirs .dir { color: var(--grey); }
@@ -795,7 +795,7 @@
   .insight .badge { letter-spacing: 0; text-transform: none; border-radius: var(--radius); background: transparent; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.5 var(--font); text-align: left; }
   .insight .ins-at-stake .badge { background: transparent; color: var(--grey); }
   .insight .ins-changed .badge { background: transparent; color: var(--ink); }
-  .insight .ins-pattern .badge { background: transparent; color: var(--grey); box-shadow: none; }
+  .insight .ins-pattern .badge { background: transparent; color: var(--grey); }
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: var(--s-meta); color: var(--grey); }
@@ -813,8 +813,8 @@
   .cite.run { padding: 3px 6px; }
 
   /* ---- the fact card: what you came for, at a glance (#2068) ---- */
-  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0; overflow: hidden; margin: 18px 0 26px; max-width: 980px; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; box-shadow: none; }
-  .fact { padding: 11px 14px 12px; min-width: 0; background: transparent; box-shadow: none; border-bottom: 1px solid var(--rule); }
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0; overflow: hidden; margin: 18px 0 26px; max-width: 980px; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; }
+  .fact { padding: 11px 14px 12px; min-width: 0; background: transparent; border-bottom: 1px solid var(--rule); }
   .fact .k { font: var(--w-bold) var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); margin-bottom: 4px; }
   .fact .v { font-size: var(--s-body); color: var(--ink); overflow-wrap: anywhere; line-height: 1.4; }
   .fact .v.mono { font-size: var(--s-meta); }
@@ -1200,7 +1200,7 @@
     .record-focus.skills .skill-finding-cites + .focus-source { margin-top: 4px; }
   }
   @media (prefers-reduced-motion: no-preference) {
-    a, button, nav a, .cite, .thread { transition: color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out), border-color var(--t-press) var(--ease-out), box-shadow var(--t-press) var(--ease-out); }
+    a, button, nav a, .cite, .thread { transition: color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out), border-color var(--t-press) var(--ease-out); }
   }
   /* Languages: read a page in another language (languageBar below). */
   .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: var(--s-meta) var(--font); color: var(--grey); }
@@ -1407,7 +1407,7 @@
     .people-sheet::after, .people-sheet .sheet thead, .more-columns { display: none; }
     .people-sheet .sheet, .people-sheet .sheet tbody { display: block; min-width: 0; }
     .people-sheet .sheet tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; border-top: 1px solid var(--rule); }
-    .people-sheet .sheet td { position: static; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; box-shadow: none; background: transparent; font-size: var(--s-meta); }
+    .people-sheet .sheet td { position: static; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; background: transparent; font-size: var(--s-meta); }
     .people-sheet .sheet td.name { width: auto; min-width: 0; max-width: none; grid-row: 1; }
     .people-sheet .sheet .nm a { font-weight: var(--w-bold); font-size: var(--s-body); }
     .people-sheet .sheet .sum { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1475,7 +1475,7 @@
   :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { display: list-item; cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-body)/1.5 var(--font); padding: 8px 0; }
   @media (min-width: 900px) {
     .people-sheet .sheet td { padding-block: 8px; border-bottom-color: var(--rule); }
-    .people-sheet .sheet .name { box-shadow: none; border-right: 0; }
+    .people-sheet .sheet .name { border-right: 0; }
     .people-sheet .name-cell .sum { color: var(--grey); font-size: var(--s-meta); }
     .people-sheet .open-cell { flex-wrap: nowrap; gap: 7px; }
     .people-sheet .open-cell .dir { background: none; padding: 0; font-size: var(--s-meta); flex: none; }
@@ -1623,7 +1623,7 @@
   .r4-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius); font: var(--w-bold) var(--s-meta) var(--font); white-space: nowrap; outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); background: var(--paper); color: var(--ink); cursor: pointer; transition: background var(--t-press) var(--ease-out); }
   .r4-btn:hover { background: var(--rule); }
   .r4-btn.sm { height: 28px; padding: 0 10px; font-size: var(--s-meta); }
-  .r4-btn.ghost { box-shadow: none; outline-color: transparent; background: none; color: var(--grey); }
+  .r4-btn.ghost { outline-color: transparent; background: none; color: var(--grey); }
   .r4-btn.ghost:hover { background: var(--rule); }
   .r4 .r4-today { flex: none; align-self: center; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
   .r4-card { background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); }
@@ -1664,7 +1664,7 @@
   .tl-e .d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
   .tl-e .w { display: grid; place-items: center; }
   .tl-e .w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
-  .tl-e .w i.me { background: var(--grey); box-shadow: none; outline: 0; }
+  .tl-e .w i.me { background: var(--grey); outline: 0; }
   .tl-e .x { color: var(--grey); }
   .tl-more { margin: 8px 0 0 82px; }
   .r4-rail h4 { font: var(--w-bold) var(--s-meta) var(--font); color: var(--grey); margin: 28px 0 10px; letter-spacing: 0; text-transform: none; }
@@ -2026,10 +2026,10 @@
   .brief-header .approval-header .quiet-line { margin: 0; font-size: var(--s-meta); }
   .brief-header .approval-header code { font-size: var(--s-meta); }
   .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
-  .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; box-shadow: none; cursor: pointer;
+  .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; cursor: pointer;
     animation: today-rise var(--t-state) var(--ease-out) both; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
-  .today-brief .qcard:nth-child(2) { animation-delay: 18ms; } .today-brief .qcard:nth-child(3) { animation-delay: 36ms; }
-  .today-brief .qcard:nth-child(4) { animation-delay: 54ms; } .today-brief .qcard:nth-child(n+5) { animation-delay: 72ms; }
+  .today-brief .qcard:nth-child(2) { animation-delay: calc(var(--t-stagger) * 0.3); } .today-brief .qcard:nth-child(3) { animation-delay: calc(var(--t-stagger) * 0.6); }
+  .today-brief .qcard:nth-child(4) { animation-delay: calc(var(--t-stagger) * 0.9); } .today-brief .qcard:nth-child(n+5) { animation-delay: calc(var(--t-stagger) * 1.2); }
   .today-brief .qcard.open { cursor: auto; }
   .today-brief .qcard:focus-visible { outline: 0; background: var(--rule); }
   .today-brief .qcard.leaving, .today-brief .qitem.leaving { transform: translateX(64px); opacity: 0; }
@@ -2138,7 +2138,7 @@
   .ov-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: var(--radius); font-family: inherit; font-size: var(--s-meta); font-weight: var(--w-bold); white-space: nowrap; border: 0; outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); background: var(--paper); color: var(--ink); cursor: pointer; transition: background var(--t-press) var(--ease-out); }
   .ov-btn:hover { background: var(--rule); }
   .ov-btn.sm { height: 28px; padding: 0 10px; font-size: var(--s-meta); }
-  .ov-btn.ghost { box-shadow: none; outline-color: transparent; background: none; color: var(--grey); }
+  .ov-btn.ghost { outline-color: transparent; background: none; color: var(--grey); }
   .ov-card, .ov-rows { background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; }
   .ov-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 56px; box-sizing: border-box; }
   .ov-row + .ov-row, .ov-rows > .ov-more, .ov-card > .ov-more { border-top: var(--hair) solid var(--rule); }
@@ -2162,7 +2162,7 @@
   .ov-fs { font-size: var(--s-meta); color: var(--grey); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ov-bar { display: flex; align-items: center; gap: 8px; margin: 36px 0 4px; }
   .ov-findbox { flex: 1; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: var(--radius); background: var(--paper); outline: var(--hair) solid var(--rule); color: var(--grey); }
-  .ov-find { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-family: inherit; font-size: var(--s-meta); padding: 0; box-shadow: none; }
+  .ov-find { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-family: inherit; font-size: var(--s-meta); padding: 0; }
   .ov-tabs { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius); background: var(--rule); }
   .ov-tabs button { border: 0; background: none; font-family: inherit; font-size: var(--s-meta); font-weight: var(--w-regular); padding: 4px 10px; border-radius: var(--radius); color: var(--grey); cursor: pointer; white-space: nowrap; }
   .ov-tabs button[aria-pressed="true"] { background: var(--paper); color: var(--ink); outline: var(--hair) solid var(--rule); }
@@ -2205,7 +2205,7 @@
   .ov-d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
   .ov-w { display: grid; place-items: center; }
   .ov-w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
-  .ov-w i.me { background: var(--grey); box-shadow: none; outline: 0; }
+  .ov-w i.me { background: var(--grey); outline: 0; }
   .ov-x { color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .ov-x b { color: var(--ink); font-weight: var(--w-bold); }
   .ov-section > .ov-btn.ghost { margin: 8px 0 0 88px; }
@@ -2266,7 +2266,7 @@
   .ov-r6 .ov-red, .ov-r6 .red { color: var(--red); }
   .ov-r6 .ov-lnk { font-size: var(--s-body); color: var(--grey); border-bottom: 1px solid var(--rule); padding-bottom: 1px; cursor: pointer; white-space: nowrap; }
   .ov-r6 .ov-lnk:hover { color: var(--ink); border-color: var(--ink); }
-  .ov-r6 .ov-btxt { font-family: inherit; font-size: var(--s-body); line-height: 22px; font-weight: var(--w-bold); color: var(--ink); border: 0; border-bottom: 1.5px solid var(--ink); background: none; padding: 0; cursor: pointer; white-space: nowrap; border-radius: var(--radius); height: auto; box-shadow: none; }
+  .ov-r6 .ov-btxt { font-family: inherit; font-size: var(--s-body); line-height: 22px; font-weight: var(--w-bold); color: var(--ink); border: 0; border-bottom: 1.5px solid var(--ink); background: none; padding: 0; cursor: pointer; white-space: nowrap; border-radius: var(--radius); height: auto; }
   .ov-r6 sup { font-size: var(--s-meta); color: var(--grey); vertical-align: 5px; line-height: 0; margin-left: 2px; font-weight: var(--w-regular); cursor: help; }
   /* the stage: the first screen is a poster */
   .ov-stage { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; grid-template-rows: auto 1fr auto; min-height: calc(100vh - 64px); }
@@ -2359,7 +2359,7 @@
   .ov-cl .ov-ct { font-weight: var(--w-bold); } .ov-cl .ov-meta { grid-column: 1; }
   .ov-sq { display: flex; gap: 3px; grid-row: 1 / 3; grid-column: 2; align-self: center; }
   .ov-sq i { width: 9px; height: 9px; outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
-  .ov-sq i.f { box-shadow: none; outline: 0; background: var(--ink); }
+  .ov-sq i.f { outline: 0; background: var(--ink); }
   /* the recent timeline restyled: dates in a column, hairlines, no dots of colour */
   .ov-r6 .ov-section { margin-top: 88px; min-width: 0; }
   .ov.ov-r6 .ov-section > h2 { display: flex; align-items: baseline; gap: 12px; margin: 0; padding-bottom: 14px; border-bottom: 1.5px solid var(--ink); font-size: var(--s-body); line-height: 24px; color: var(--ink); }
@@ -2381,11 +2381,11 @@
   /* motion: every movement explains something; reduced motion keeps this still end state */
   @media (prefers-reduced-motion: no-preference) {
     .ov-say > * { animation: ov-rise var(--t-draw) var(--ease-out) backwards; }
-    .ov-say > :nth-child(2) { animation-delay: .06s; } .ov-say > :nth-child(3) { animation-delay: .14s; }
-    .ov-say > :nth-child(4) { animation-delay: .2s; } .ov-say > :nth-child(5) { animation-delay: .3s; } .ov-say > :nth-child(6) { animation-delay: .36s; }
-    .ov-xsvg:not(.ov-still) .ov-link, .ov-tsvg:not(.ov-still) .ov-axis { stroke-dasharray: 1; animation: ov-draw var(--t-draw) var(--ease-out) backwards var(--d, .2s); }
-    .ov-xsvg:not(.ov-still) .ov-shape, .ov-xsvg:not(.ov-still) .ov-pd { animation: ov-land var(--t-draw) var(--ease-out) backwards var(--d, 0s); }
-    .ov-xsvg:not(.ov-still) text, .ov-tsvg:not(.ov-still) .ov-tlab { animation: ov-fade var(--t-state) var(--ease-out) backwards var(--d, 1.2s); }
+    .ov-say > :nth-child(2) { animation-delay: calc(var(--t-stagger) * 1); } .ov-say > :nth-child(3) { animation-delay: calc(var(--t-stagger) * 2.3); }
+    .ov-say > :nth-child(4) { animation-delay: calc(var(--t-stagger) * 3.3); } .ov-say > :nth-child(5) { animation-delay: calc(var(--t-stagger) * 5); } .ov-say > :nth-child(6) { animation-delay: calc(var(--t-stagger) * 6); }
+    .ov-xsvg:not(.ov-still) .ov-link, .ov-tsvg:not(.ov-still) .ov-axis { stroke-dasharray: 1; animation: ov-draw var(--t-draw) var(--ease-out) backwards calc(var(--d, 3) * var(--t-stagger)); }
+    .ov-xsvg:not(.ov-still) .ov-shape, .ov-xsvg:not(.ov-still) .ov-pd { animation: ov-land var(--t-draw) var(--ease-out) backwards calc(var(--d, 0) * var(--t-stagger)); }
+    .ov-xsvg:not(.ov-still) text, .ov-tsvg:not(.ov-still) .ov-tlab { animation: ov-fade var(--t-state) var(--ease-out) backwards calc(var(--d, 20) * var(--t-stagger)); }
     .ov-tsvg:not(.ov-still) .ov-now { animation: ov-slide var(--t-draw) var(--ease-out) var(--t-draw) backwards; }
   }
   @media (prefers-reduced-motion: reduce) { .ov-r6 *, .ov-r6 *::before { transition-duration: 0s !important; } }
@@ -2436,7 +2436,7 @@
   .ov-key li + li { margin-top: 10px; }
   .ov-key li .ov-meta { display: block; margin: 0; font-size: var(--s-meta); line-height: 18px; }
   /* Person page: what is still open is a list on hairlines, not a card of cards. */
-  .r4-card.owed { background: none; box-shadow: none; outline: 0; border-radius: var(--radius); border-top: 1.5px solid var(--ink); }
+  .r4-card.owed { background: none; outline: 0; border-radius: var(--radius); border-top: 1.5px solid var(--ink); }
   .r4-card.owed .owe { padding: 14px 0; }
   .r4-card.owed .owe-t { font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--ink); }
   .r4-card.owed .owe.theirs .owe-t, .r4-card.owed .owe.closed .owe-t { color: var(--grey); }
@@ -7697,7 +7697,7 @@ const ORG_KINDS = { university: "University", investor: "Investor", client_partn
   community: "Community and events", own_company: "Your company", personal: "Personal" };
 const ORG_RECENT_DAYS = 45;
 const ORG_ICONS = {
-  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  lock: '<rect x="4" y="11" width="16" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   chev: '<path d="m9 6 6 6-6 6"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
@@ -8025,7 +8025,7 @@ function orgDraw(v, svg) {
   svg.append(svgEl("defs", {}, [svgEl("pattern", { id: "ov-hatch", width: 4.5, height: 4.5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
     [svgEl("rect", { class: "ov-hatch-bg", width: 4.5, height: 4.5 }), svgEl("line", { class: "ov-hatch-line", x1: 0, y1: 0, x2: 0, y2: 4.5 })])]));
   const all = orgPlace(v);
-  for (const d of all.filter(d => d.depth)) { d.link = svgEl("path", { class: "ov-link" + (d.depth === 1 ? " b" : ""), pathLength: 1, style: `--d:${0.15 + d.depth * 0.18}s` }); svg.append(d.link); }
+  for (const d of all.filter(d => d.depth)) { d.link = svgEl("path", { class: "ov-link" + (d.depth === 1 ? " b" : ""), pathLength: 1, style: `--d:${2.5 + d.depth * 3}` }); svg.append(d.link); }
   v.dots = svgEl("g", { class: "ov-dots" });
   svg.append(v.dots);
   for (const d of all) { d.el = orgMark(d, v); svg.append(d.el); }
@@ -8065,15 +8065,15 @@ function orgPeopleDots(d) {
   const n = Math.min(8, d.people.length), r = ORG_RING[d.depth] + orgSize(d) + 9, step = d.depth === 1 ? 0.05 : 0.07;
   return Array.from({ length: n }, (_, i) => {
     const a = d.turn + (i - (n - 1) / 2) * step;
-    return svgEl("circle", { class: "ov-pd", r: 2.6, cx: ORG_CX + r * Math.sin(a), cy: ORG_CY - r * Math.cos(a), style: `--d:${0.9 + i * 0.04}s` });
+    return svgEl("circle", { class: "ov-pd", r: 2.6, cx: ORG_CX + r * Math.sin(a), cy: ORG_CY - r * Math.cos(a), style: `--d:${15 + i * 0.7}` });
   });
 }
 function orgMark(d, v) {
   const shape = orgShape(d), size = orgSize(d), recent = d.depth > 0 && orgRecent(d);
   const g = svgEl("g", { class: "ov-node", "data-depth": d.depth, "data-shape": shape, "data-temp": orgTemp(d), "data-recent": recent ? "1" : "0",
     ...(d.depth ? { tabindex: 0, role: "button", "aria-label": d.name + " · " + orgT("{n} people you know", { n: d.all.length }) } : {}) });
-  const kind = "ov-shape t-" + orgTemp(d), dl = `--d:${0.35 + d.depth * 0.2}s`;
-  if (shape === "root") g.append(svgEl("circle", { class: "ov-shape", r: 22, style: "--d:0s" }), svgEl("text", { class: "ov-root-l", y: 1 }, [[...d.name][0].toUpperCase()]));
+  const kind = "ov-shape t-" + orgTemp(d), dl = `--d:${5.8 + d.depth * 3.3}`;
+  if (shape === "root") g.append(svgEl("circle", { class: "ov-shape", r: 22, style: "--d:0" }), svgEl("text", { class: "ov-root-l", y: 1 }, [[...d.name][0].toUpperCase()]));
   else if (shape === "square") g.append(svgEl("rect", { class: kind, x: -size, y: -size, width: 2 * size, height: 2 * size, style: dl }));
   else g.append(svgEl("circle", { class: kind, r: size, style: dl }));
   if (recent) g.append(svgEl("circle", { class: "ov-recent", r: size + 3.5 }));
@@ -8096,7 +8096,7 @@ function orgLabelPlan(v, all) {
     const spot = orgLabelSpots(d, fs).find(spot => ![...placed, own].some(b => spot.x0 < b.x1 && spot.x1 > b.x0 && spot.y0 < b.y1 && spot.y1 > b.y0));
     if (!spot) continue;
     placed.push(spot);
-    plan.set(d, svgEl("text", { class: "ov-label", x: spot.x, y: spot.y, "text-anchor": spot.anchor, style: `font-size:${fs}px;--d:${0.7 + d.depth * 0.15}s` }, [spot.text]));
+    plan.set(d, svgEl("text", { class: "ov-label", x: spot.x, y: spot.y, "text-anchor": spot.anchor, style: `font-size:${fs}px;--d:${11.7 + d.depth * 2.5}` }, [spot.text]));
     if (d.depth === 2) ring++;
   }
   return plan;
@@ -10078,6 +10078,8 @@ function graphOutline(k, x, y, r) {
   if (k === "sessions") return `M${x - r * 1.2} ${y - r * .4}h${2.4 * r}v${.8 * r}h${-2.4 * r}Z`;  // a session is a stretch of time
   return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
 }
+// A private mark is an outline, which vanishes at a session's small radius; below this it is drawn larger.
+const GRAPH_PRIVATE_MIN = 4;
 function graphSlash(x, y, r) { return `M${x - r * 1.1} ${y + r * 1.1}L${x + r * 1.1} ${y - r * 1.1}`; }
 
 // ---------- the model: nodes, edges, adjacency and one settled layout ----------
@@ -10233,10 +10235,12 @@ function graphResize() {
   graphState.W = rect.width; graphState.H = rect.height;
 }
 function graphMark(ctx, n, x, y, r, colours) {
+  if (n.private) r = Math.max(r, GRAPH_PRIVATE_MIN);
   const colour = colours[n.k], shape = new Path2D(graphOutline(n.k, x, y, r));
   if (n.private) {
     ctx.fillStyle = colours.bg; ctx.fill(shape); ctx.lineWidth = 1.4; ctx.strokeStyle = colour; ctx.stroke(shape);
     ctx.stroke(new Path2D(graphSlash(x, y, r)));
+    if (n.k === "knowledge") { ctx.beginPath(); ctx.arc(x, y, r * .38, 0, 2 * Math.PI); ctx.fillStyle = colour; ctx.fill(); }
   } else if (n.k === "knowledge") {
     ctx.fillStyle = colours.bg; ctx.fill(shape); ctx.lineWidth = Math.max(2, r * .26); ctx.strokeStyle = colour; ctx.stroke(shape);
     ctx.beginPath(); ctx.arc(x, y, r * .38, 0, 2 * Math.PI); ctx.fillStyle = colour; ctx.fill();
@@ -10245,9 +10249,11 @@ function graphMark(ctx, n, x, y, r, colours) {
 }
 // The same mark as SVG for the legend, the lists and the local graph.
 function graphSvgMark(k, x, y, r, privateNode, ground = "var(--paper)") {
+  if (privateNode) r = Math.max(r, GRAPH_PRIVATE_MIN);
   const tone = `var(${GRAPH_TONE[k]})`, d = graphOutline(k, x, y, r);
   if (privateNode) return svgEl("g", {}, [svgEl("path", { d, fill: ground, stroke: tone, "stroke-width": 1.4 }),
-    svgEl("path", { d: graphSlash(x, y, r), stroke: tone, "stroke-width": 1.4 })]);
+    svgEl("path", { d: graphSlash(x, y, r), stroke: tone, "stroke-width": 1.4 }),
+    k === "knowledge" ? svgEl("circle", { cx: x, cy: y, r: r * .4, fill: tone }) : null]);
   if (k === "knowledge") return svgEl("g", {}, [svgEl("path", { d, fill: ground, stroke: tone, "stroke-width": 2 }), svgEl("circle", { cx: x, cy: y, r: r * .4, fill: tone })]);
   if (k === "projects") return svgEl("path", { d, fill: ground, stroke: tone, "stroke-width": 1.5 });
   return svgEl("path", { d, fill: tone });
