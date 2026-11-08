@@ -2366,7 +2366,7 @@ def make_rem_app(factory):
             if what == 'topics':
                 from ...rem.topic_map import scan_topics
                 from ...rem.files import Notebook
-                return scan_topics(Notebook(root)), ['investigate', 'topics', '--list']
+                return scan_topics(Notebook(root), backfill=True), ['investigate', 'topics', '--list']
             if what == "projects":
                 rows = scan_projects(subscriptions(root), days, root)
                 return rows, (["stub", "project", rows[0]["name"], "--path", rows[0]["path"]]
@@ -2383,6 +2383,20 @@ def make_rem_app(factory):
             return rows, (["stub", "person", rows[0]["name"] or rows[0]["address"],
                            "--email", rows[0]["address"], "--handle", rows[0]["address"]]
                           if rows else ["sources"])
+        _handle(ctx, run, ["status"])
+
+    @rem.command("backfill", cls=V("co rem backfill"))
+    def backfill(ctx: typer.Context,
+                 what: str = typer.Argument(...),
+                 dry_run: bool = typer.Option(False, "--dry-run"),
+                 propose: bool = typer.Option(False, "--propose")):
+        from ...rem.files import Notebook, RemError
+        from ...rem.topic_map import backfill_topics
+
+        def run(root):
+            if what != "topics":
+                raise RemError("backfill takes topics")
+            return backfill_topics(Notebook(root), dry_run=dry_run, propose=propose), ["investigate", "topics", "--list"]
         _handle(ctx, run, ["status"])
 
     @rem.command("map-skills", cls=V("co rem map-skills"))

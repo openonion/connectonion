@@ -912,6 +912,26 @@ Next:     co rem init
 Back:     co rem advanced --help
 ```
 
+## co rem backfill
+
+```
+Discover topics from existing pages, session summaries and archived mail. No
+network calls by default. Evidence must span 3 independent sources, 14 days and
+2 records. Personal topics are marked before filing. Repeated runs reuse pages.
+
+Usage:    co rem backfill topics [--dry-run] [--propose]
+Example:  co rem backfill topics --dry-run --json
+          --dry-run  report candidates, counts, qualification and privacy; no notebook writes
+          --propose  one models.summary call proposes names; code verifies evidence
+          --json     print one {"ok", "data", "next"} result
+Effects:  Without --dry-run, files qualifying topic frames under the maintenance
+          lock. Alias matches alone never become graph links. The nightly map
+          runs the same discovery. Reads at most 2,000 pages, 1,000 extracts and
+          5,000 archived messages; reports limits when reached.
+Next:     co rem investigate topics --list
+Back:     co rem advanced --help
+```
+
 ## co rem map-skills
 
 ```

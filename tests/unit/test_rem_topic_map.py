@@ -326,3 +326,97 @@ def test_session_and_skill_mentions_are_counted_without_becoming_evidence_links(
     row, = scan_topics(notebook)
     assert row['source_count'] == 3 and len(row['records']) == 2
     assert row['sessions'] == 1 and row['skills'] == 1
+
+
+def historical_pages(notebook, name='Thermal storage'):
+    notebook.write('people/mara.md', f'# Mara\n## History\n- We discussed {name}. [1][2]\n## Sources\n- [1] gmail:a — 2026-01-01\n- [2] gmail:b — 2026-01-08\n')
+    notebook.write('projects/cove.md', f'# Cove\n## What it is\n- We discussed {name}. [1]\n## Sources\n- [1] gmail:c — 2026-01-15\n')
+
+
+def test_backfill_discovers_plain_historical_text_without_topics_or_bold(tmp_path):
+    from connectonion.rem.topic_map import backfill_topics
+    notebook = Notebook(tmp_path)
+    historical_pages(notebook)
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    report = backfill_topics(notebook, dry_run=True)
+    row = next(r for r in report['candidates'] if r['name'] == 'Thermal storage')
+    assert row['qualified'] and row['source_count'] == 3 and row['span_days'] == 14
+    assert row['records'] == ['people/mara.md', 'projects/cove.md']
+    assert report['created'] == [] and report['coverage']['pages'] == 2
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+
+
+def test_backfill_verifies_archived_mail_and_summary_sources_without_inventing_page_dates(tmp_path):
+    import json
+    from connectonion.rem.topic_map import backfill_topics
+    from connectonion.rem.mail_archive import message_path
+    notebook = Notebook(tmp_path)
+    for record in ('people/mara.md', 'projects/cove.md'):
+        notebook.write(record, '# ' + Path(record).stem.title() + '\nThermal storage is relevant.\n## Sources\n- [1] gmail:a — 2026-01-01\n')
+    for i, day in enumerate(('2026-01-01', '2026-01-08')):
+        path = message_path(tmp_path, 'gmail', chr(97 + i))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({'provider': 'gmail', 'id': chr(97+i), 'date': day,
+                                   'subject': 'Thermal storage', 'body': 'We discussed Thermal storage.'}))
+    notebook.write('sessions/one.md', '# Heat planning\n## Summary\nThermal storage is relevant.\n## Sources\n- [1] codex:s1 — 2026-01-15\n')
+    row = next(r for r in backfill_topics(notebook, dry_run=True)['candidates'] if r['name'] == 'Thermal storage')
+    assert row['qualified'] and row['source_count'] == 3
+    assert {e['source'] for e in row['evidence']} == {'gmail:a', 'gmail:b', 'codex:s1'}
+    assert row['sessions'] == 1
+
+
+def test_backfill_is_idempotent_and_private_before_filing(tmp_path):
+    from connectonion.rem.topic_map import backfill_topics
+    notebook = Notebook(tmp_path)
+    historical_pages(notebook, 'Visa appeal')
+    first = backfill_topics(notebook)
+    record = next(r['record'] for r in first['candidates'] if r['name'] == 'Visa appeal')
+    assert '[personal]' in notebook.read(record).splitlines()[0]
+    original = notebook.read(record)
+    assert backfill_topics(notebook)['created'] == []
+    assert notebook.read(record) == original
+    assert '(../people/' not in original
+
+
+def test_backfill_rejects_echoes_one_record_and_undated_mentions(tmp_path):
+    from connectonion.rem.topic_map import backfill_topics
+    notebook = Notebook(tmp_path)
+    historical_pages(notebook)
+    notebook.write('projects/cove.md', notebook.read('projects/cove.md').replace('gmail:c', 'gmail:a').replace('2026-01-15', '2026-01-01'))
+    assert not any(r['qualified'] for r in backfill_topics(notebook, dry_run=True)['candidates'])
+    notebook.write('projects/cove.md', '# Cove\nThermal storage.\n')
+    assert not any(r['qualified'] for r in backfill_topics(notebook, dry_run=True)['candidates'])
+
+
+def test_backfill_bounds_are_reported(tmp_path, monkeypatch):
+    from connectonion.rem import topic_map
+    notebook = Notebook(tmp_path)
+    historical_pages(notebook)
+    monkeypatch.setattr(topic_map, 'BACKFILL_PAGES', 1)
+    report = topic_map.backfill_topics(notebook, dry_run=True)
+    assert report['coverage']['pages'] == 1 and report['coverage']['truncated']
+    assert not any(r['qualified'] for r in report['candidates'])
+
+
+def test_optional_backfill_proposal_uses_summary_model_once_and_cannot_file_a_hallucination(tmp_path, monkeypatch):
+    import json
+    from connectonion.rem.config import default_config
+    from connectonion.rem.files import atomic_write
+    import yaml
+    from connectonion.rem.topic_map import backfill_topics
+    notebook = Notebook(tmp_path)
+    historical_pages(notebook)
+    settings = default_config()
+    settings['models']['summary'] = 'fictional-summary'
+    atomic_write(tmp_path / 'config.yaml', yaml.safe_dump(settings))
+    calls = []
+    def propose(directory, prompt, config, stage):
+        calls.append(config['model'])
+        assert len(prompt) <= 24_000 and stage == 'abstract'
+        return {'result': json.dumps({'topics': ['Thermal storage', 'Imaginary orbit']}), 'usage': {}}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', propose)
+    report = backfill_topics(notebook, dry_run=True, propose=True)
+    assert calls == ['fictional-summary']
+    assert not any(r['name'] == 'Imaginary orbit' for r in report['candidates'])
+    assert next(r for r in report['candidates'] if r['name'] == 'Thermal storage')['qualified']
+    assert not notebook.list('knowledge')
