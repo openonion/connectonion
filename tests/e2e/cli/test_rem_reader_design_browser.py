@@ -1080,12 +1080,9 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 1
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
-        row = page.locator('tr', has=page.get_by_role('link', name='Harbour'))
-        cell = row.locator('td').nth(1)
-        assert cell.inner_text() == 'Hidden labelled passage'
-        assert cell.locator('.clamp').get_attribute('title') == ''
-        if width == 375:
-            assert row.locator('.mobile-status-label').count() == 0
+        card = page.locator('.project-card').filter(has_text='Harbour')
+        assert card.locator('.project-card-what').inner_text() == 'Hidden labelled passage'
+        assert 'hidden description' not in page.locator('#main').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
         page.evaluate('togglePrivate()', isolated_context=False)
@@ -1831,8 +1828,11 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()
+    # With nothing open Harbour is a card on the board, not the lifted busiest project.
+    page.evaluate(r"""() => { const r = byPath('projects/harbour.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, ''); KNOWN.clear(); FACTS.clear(); }""", isolated_context=False)
     page.goto(uri + '#c=projects')
-    assert 'Last mapped session' in page.locator('.sheet thead').inner_text()
+    assert page.locator('.project-card').filter(has_text='Harbour').locator('.project-card-when').inner_text() == 'Sep 16'
 
 
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
@@ -2482,8 +2482,8 @@ def test_sessions_search_keeps_focus_and_bookmarks_full_reply(session_reader, wi
     page.goto(uri + "#c=sessions")
     box = page.get_by_role("searchbox", name="Search sessions")
     assert box.evaluate("node => node === document.activeElement") == (width == 1400)
-    expect(page.locator("h1")).to_have_text("Agent sessions")
-    expect(page.locator(".session-result-line")).to_have_text("6 sessions")
+    expect(page.locator("h1")).to_have_text("6 sessions · What you worked on with your coding agents")
+    expect(page.locator(".session-result-line")).to_have_count(0)
     assert "Imported" not in page.locator("#main").inner_text()
     box.press_sequentially("cloud sql", delay=150)
     expect(page).to_have_url(re.compile(r"find=cloud(?:%20|\+)sql$"))
@@ -2498,7 +2498,7 @@ def test_sessions_search_keeps_focus_and_bookmarks_full_reply(session_reader, wi
     expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
     box.fill("仓库")
     expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
-    expect(page.locator(".session-title")).to_have_text("检查仓库")
+    expect(page.locator(".session-title")).to_have_text("Still being summarised · 检查仓库")
     box.fill("整理 文件")
     expect(page.locator(".session-speaker")).to_have_text("You: ")
     assert page.locator(".session-excerpt mark").all_text_contents() == ["整理", "文件"]
@@ -2506,102 +2506,45 @@ def test_sessions_search_keeps_focus_and_bookmarks_full_reply(session_reader, wi
     expect(page.locator(".session-title")).to_have_text("Release the reader")
     expect(page.locator(".session-excerpt")).to_contain_text("Shipped a searchable reader with stable focus.")
     box.fill("late needle")
-    expect(page.locator(".session-title")).to_have_text("Check the deployment")
+    expect(page.locator(".session-title")).to_have_text("Still being summarised · Check the deployment")
     expect(page.locator(".session-speaker")).to_have_text("Agent: ")
     box.fill("metadata-only-secret")
     expect(page.locator(".empty .lead")).to_have_text("No session matches")
     expect(page.locator(".empty p")).to_contain_text("metadata-only-secret")
     page.get_by_role("button", name="Clear", exact=True).click()
     expect(box).to_have_value("")
-    expect(page.locator(".session-result-line")).to_have_text("6 sessions")
+    expect(page.locator(".session-result-line")).to_have_count(0)
+    expect(page.locator(".session-row")).to_have_count(6)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_sessions_topics_summaries_outcomes_and_person(session_reader):
+def test_sessions_link_filters_person_topic_project_and_dates_stay_honoured(session_reader):
+    """Topic chips and date pickers left the list (one search, four tabs); links into it still filter."""
     from patchright.sync_api import expect
 
     page, uri = session_reader
-    topics = page.locator(".session-topics")
-    expect(topics.get_by_role("button", name="reader 2", exact=True)).to_be_visible()
-    expect(topics).to_contain_text("Not summarised 4")
-    expect(page.locator(".session-excerpt").filter(has_text="Shipped a searchable reader")).to_be_visible()
-    assert "Ship the new list" not in page.locator("#session-results").inner_text()
-    topic = topics.get_by_role("button", name="reader 2", exact=True)
-    topic.focus()
-    topic.press("Enter")
-    assert topic.evaluate("node => node === document.activeElement")
-    assert "tag=reader" in page.url
-    expect(page.locator(".session-result-line")).to_contain_text("2 of 6 sessions")
-    expect(topics.get_by_role("button", name="reader 2", exact=True)).to_have_attribute("aria-pressed", "true")
-    topics.get_by_role("button", name="Done 1", exact=True).click()
-    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
-    assert "outcome=done" in page.url
-    expect(page.locator(".session-outcome")).to_have_text("Done")
-    expect(page.locator(".session-tags a")).to_have_text(["reader", "search"])
-    page.get_by_role("button", name="Clear", exact=True).click()
-    page.locator(".session-tags a").filter(has_text="search").click()
-    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
-    assert "tag=search" in page.url
+    assert page.locator(".session-topics, .session-filter-panel, .session-tags").count() == 0
+    expect(page.locator(".session-excerpt")).to_have_count(0)
     page.goto(uri + "#c=sessions&person=people%2Favery.md")
     expect(page.locator(".session-result-line")).to_contain_text("2 of 6 sessions")
     page.get_by_role("button", name="Mentioning Avery ×").click()
-    expect(page.locator(".session-result-line")).to_have_text("6 sessions")
+    expect(page.locator(".session-result-line")).to_have_count(0)
     assert "person=" not in page.url
-
-
-@pytest.mark.parametrize("width", [1400, 375])
-def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
-    from patchright.sync_api import expect
-
-    page, uri = session_reader
-    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 812})
-    page.goto("about:blank")
-    page.goto(uri + "#c=sessions")
-    panel = page.locator(".session-filter-panel")
-    toggle = page.get_by_role("button", name="Filter", exact=True)
-    if width == 375:
-        expect(panel).not_to_be_visible()
-        expect(page.get_by_role("searchbox", name="Search sessions")).to_be_visible()
-        expect(page.locator(".session-result-line")).to_be_visible()
-        toggle.click()
-        expect(panel).to_be_visible()
-    project = page.get_by_label("Project", exact=True)
-    assert project.locator("option").all_text_contents() == ["All projects", "Alpha · 3", "Beta · 2", "No project · 1"]
-    project.select_option("projects/alpha.md")
-    page.get_by_role("group", name="Agent", exact=True).get_by_role("button", name="Codex", exact=True).click()
+    page.goto(uri + "#c=sessions&tag=search")
+    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
+    page.goto(uri + "#c=sessions&project=projects%2Falpha.md&agent=codex")
     expect(page.locator(".session-result-line")).to_contain_text("2 of 6 sessions")
-    expect(page.locator(".session-topics")).to_contain_text("reader 1")
-    if width == 375:
-        expect(page.get_by_role("button", name="Filter · 2", exact=True)).to_be_visible()
-    page.get_by_role("button", name="By project", exact=True).click()
-    expect(page.locator(".session-group > summary")).to_have_text(["Alpha2"])
-    expect(page.locator(".session-meta").first).to_contain_text("Today 09:12")
-    page.get_by_role("button", name="Clear", exact=True).click()
-    expect(page.locator(".session-group > summary")).to_have_text(["Alpha3", "Beta2", "No project1"])
-    assert "by=project" in page.url
-    page.get_by_role("group", name="Time", exact=True).get_by_role("button", name="Today", exact=True).click()
-    expect(page.locator(".session-result-line")).to_contain_text("2 of 6 sessions")
-    assert "when=today" in page.url
-    page.get_by_role("button", name="This week", exact=True).click()
+    expect(page.locator(".session-tabs").get_by_role("button", name="Codex", exact=True)).to_have_attribute("aria-pressed", "true")
+    page.goto(uri + "#c=sessions&when=week")
     expect(page.locator(".session-result-line")).to_contain_text("4 of 6 sessions")
-    page.get_by_role("button", name="This month", exact=True).click()
-    expect(page.locator(".session-result-line")).to_contain_text("5 of 6 sessions")
-    page.locator(".session-dates summary").click()
-    page.locator('input[aria-label="From"]').fill("2026-10-11")
-    page.locator('input[aria-label="To"]').fill("2026-10-12")
+    page.goto(uri + "#c=sessions&from=2026-10-11&to=2026-10-12")
     expect(page.locator(".session-result-line")).to_contain_text("2 of 6 sessions")
-    assert "when=" not in page.url
-    page.get_by_role("button", name="By day", exact=True).click()
-    expect(page.locator(".session-day .session-count")).to_have_text(["1", "1"])
+    expect(page.locator(".session-day")).to_have_count(2)
     page.goto(uri + "#c=sessions&project=none")
     expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
-    expect(page.locator(".session-meta")).to_contain_text("scratch · Codex · 09:12 · 1 turn")
-    assert page.locator('.session-meta span[title="/work/scratch"]').count() == 1
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    if width == 375:
-        page.get_by_role("button", name="Filter · 1").click()
-        for node in page.locator(".sessions-view button:visible, .sessions-view input:visible, .sessions-view select:visible, .sessions-view summary:visible").all():
-            assert node.bounding_box()["height"] >= 40
+    expect(page.locator(".session-meta")).to_have_text("work/scratch · 1 turn")
+    page.get_by_role("button", name="Clear", exact=True).click()
+    expect(page.locator(".session-row")).to_have_count(6)
 
 
 def test_sessions_typing_renders_three_hundred_rows_under_fifty_ms(session_reader):
@@ -2610,7 +2553,7 @@ def test_sessions_typing_renders_three_hundred_rows_under_fifty_ms(session_reade
     page, _ = session_reader
     page.evaluate("""() => {
       const originals = REM.records.filter(r => r.category === 'sessions');
-      for (let i = 0; i < 294; i++) REM.records.push({...originals[i % 6], path: 'sessions/copy-' + i + '.md'});
+      for (let i = 0; i < 294; i++) REM.records.push({...originals[i % 6], path: 'sessions/copy-' + i + '.md', session_title: originals[i % 6].session_title + ' ' + i});
       render();
       window.sessionDurations = [];
       const replace = history.replaceState.bind(history);
@@ -2622,7 +2565,7 @@ def test_sessions_typing_renders_three_hundred_rows_under_fifty_ms(session_reade
         }
       }).observe(document.getElementById('session-results'), {childList: true});
     }""", isolated_context=False)
-    expect(page.locator(".session-row")).to_have_count(300)
+    expect(page.locator(".session-row")).to_have_count(60)  # a page of rows; the rest one click away
     page.get_by_role("searchbox", name="Search sessions").press_sequentially("cloud sql", delay=160)
     expect(page).to_have_url(re.compile(r"find=cloud(?:%20|\+)sql$"))
     expect(page.locator(".session-result-line")).to_contain_text("50 of 300 sessions")
@@ -2632,38 +2575,19 @@ def test_sessions_typing_renders_three_hundred_rows_under_fifty_ms(session_reade
     assert max(durations[1:]) < 50 and durations[0] < 200, durations
 
 
-def test_sessions_more_topics_and_unstructured_notebooks(session_reader):
+def test_sessions_unstructured_notebooks_say_they_are_still_being_summarised(session_reader):
     from patchright.sync_api import expect
 
     page, _ = session_reader
-    page.evaluate("""() => {
-      REM.records.find(r => r.path === 'sessions/release.md').session_tags =
-        Array.from({length: 20}, (_, i) => 'topic-' + String(i).padStart(2, '0'));
-      render();
-    }""", isolated_context=False)
-    buttons = page.locator(".session-topic-buttons button:visible")
-    expect(buttons).to_have_count(16)
-    page.get_by_text("More topics", exact=True).click()
-    expect(buttons).to_have_count(22)
-    topic = page.get_by_role("button", name="topic-19 1", exact=True)
-    topic.focus()
-    topic.press("Enter")
-    expect(topic).to_have_attribute("aria-pressed", "true")
-    assert topic.evaluate("node => node === document.activeElement")
-    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
-    # A full hash render reveals an active topic beyond the initial sixteen.
-    page.evaluate("render()", isolated_context=False)
-    expect(topic).to_be_visible()
-    expect(topic).to_have_attribute("aria-pressed", "true")
-    page.get_by_role("button", name="Clear", exact=True).click()
     page.evaluate("""() => {
       for (const r of REM.records.filter(r => r.category === 'sessions')) {
         r.session_summary = ''; r.session_tags = []; r.session_outcome = '';
       }
       render();
     }""", isolated_context=False)
-    expect(page.locator(".session-topics")).not_to_be_visible()
-    expect(page.locator(".session-row")).to_have_count(6)
+    expect(page.locator(".session-row.pending")).to_have_count(6)
+    expect(page.locator(".session-title").first).to_contain_text("Still being summarised · ")
+    expect(page.locator(".session-stopped")).to_have_count(0)
     expect(page.get_by_role("searchbox", name="Search sessions")).to_be_visible()
 
 
@@ -2800,35 +2724,17 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
 
 
 @pytest.mark.parametrize("width", [1400, 390])
-def test_sessions_real_data_list_order_artifact_search_and_topic_limits(session_reader, width):
+def test_sessions_real_data_list_order_and_artifact_search(session_reader, width):
     from patchright.sync_api import expect
 
     page, uri = session_reader
     page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 844})
     page.goto(uri + "#c=sessions")
-    page.evaluate("""() => {
-      REM.records.find(r => r.path === 'sessions/release.md').session_tags =
-        Array.from({length: 20}, (_, i) => 'topic-' + i);
-      render();
-    }""", isolated_context=False)
     search = page.get_by_role("searchbox", name="Search sessions")
-    expect(page.locator("#main > .lede")).to_have_text("What you worked on with your coding agents")
     assert page.locator("h1").bounding_box()["y"] < search.bounding_box()["y"]
-    assert search.bounding_box()["y"] < page.locator(".session-topics").bounding_box()["y"]
-    assert search.bounding_box()["y"] + search.bounding_box()["height"] < (900 if width == 1400 else 844)
-    expect(page.locator(".session-topic-buttons button:visible")).to_have_count(16 if width == 1400 else 6)
-    if width == 1400:
-        controls = page.locator(".session-filter-panel > .session-filter")
-        bottoms = [node.bounding_box()["y"] + node.bounding_box()["height"] for node in controls.all()]
-        assert max(bottoms) - min(bottoms) <= 1
-        assert len({round(node.bounding_box()["y"]) for node in controls.all()}) == 1
-    if width == 390:
-        expect(page.locator(".session-outcomes")).not_to_be_visible()
-        page.get_by_role("button", name="Filter", exact=True).click()
-        expect(page.locator(".session-filter-panel .session-outcomes")).to_be_visible()
+    assert page.locator(".session-tabs").bounding_box()["y"] >= search.bounding_box()["y"]
     search.fill("no-such-session")
     expect(page.locator(".empty .lead")).to_have_text("No session matches")
-    expect(page.locator(".session-topics")).not_to_be_visible()
     for query in ("gcloud sql", "abc123def", "reader-structure", "github.com/openonion/connectonion/pull/123"):
         search.fill(query)
         expect(page.locator(".session-title")).to_have_text("Release the reader")
@@ -3314,10 +3220,9 @@ def test_partial_project_status_explains_the_uninvestigated_sections(reader):
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     tooltip = 'Some sections are filled from sources; the rest are not investigated yet.'
-    row = page.locator('.sheet tbody tr').filter(has_text='Harbour')
-    assert row.locator('.pill.status').inner_text() == 'More to learn'
-    assert row.locator('.pill.status').get_attribute('title') == tooltip
-    row.get_by_role('link', name='Harbour', exact=True).click()
+    card = page.locator('.project-card').filter(has_text='Harbour')
+    assert card.locator('.project-card-what').count() == 0  # no "What it is" yet, and no invented one
+    card.get_by_role('link', name='Harbour', exact=True).click()
     assert page.locator('.eyebrow .pill.status').inner_text() == 'More to learn'
     assert page.locator('.eyebrow .pill.status').get_attribute('title') == tooltip
 
@@ -4639,7 +4544,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
     page, uri = reader
-    for category in ('people', 'orgs', 'projects', 'skills'):
+    for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
         page.locator('.sheet-find, .r4-find').first.fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'
@@ -5107,3 +5012,144 @@ def test_prepared_person_draft_primary_reviews_static_live_and_private_drafts(re
     assert dialog.get_by_role('button', name='Send', exact=True).is_visible()
     dialog.get_by_role('button', name='Close', exact=True).click()
     dialog.wait_for(state='detached')
+
+def _visible_green_buttons(page):
+    page.wait_for_timeout(300)  # let the theme's colour transition settle
+    return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
+      const style = getComputedStyle(node), box = node.getBoundingClientRect();
+      return box.width && box.height && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(style.backgroundColor);
+    }).length""")
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [1440, 390])
+def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader, width, theme):
+    from patchright.sync_api import expect
+
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1440 else 844})
+    page.goto(uri + "#c=projects")
+    page.evaluate("theme => setTheme(theme)", theme, isolated_context=False)
+    expect(page.locator("h1.page-state")).to_have_text(re.compile(r"^2 projects · 1 active this week$"))
+    hero = page.locator(".project-hero")
+    expect(hero.locator("h2")).to_have_text("Harbour")
+    expect(hero).to_contain_text("2 open items")
+    expect(hero.locator(".btn-act")).to_have_attribute("href", "#r=projects%2Fharbour.md&h=open-threads")
+    assert _visible_green_buttons(page) == 1
+    expect(page.locator(".project-lane")).to_have_count(3)
+    expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(0)  # lifted, not repeated
+    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: Decide whether long threads are cut or summarised")
+    lantern = page.locator('.project-lane[data-lane="older"] .project-card').filter(has_text="Lantern")
+    expect(lantern.locator(".project-card-what")).to_have_text("Not investigated yet. REM only knows its folder and sessions.")
+    assert "/home/user" not in page.locator("#main").inner_text()
+    if width == 1440:
+        expect(page.locator(".project-lane-tabs")).to_be_hidden()
+        assert len({round(lane.bounding_box()["y"]) for lane in page.locator(".project-lane").all()}) == 1
+        hero.locator(".btn-act").click()
+        expect(page.locator("#open-threads")).to_be_visible()
+    else:
+        expect(page.locator(".project-lane:visible")).to_have_count(1)
+        expect(lantern).to_be_hidden()
+        page.locator(".project-lane-tabs").get_by_role("button", name="Earlier", exact=True).click()
+        expect(lantern).to_be_visible()
+        box = hero.locator(".btn-act").bounding_box()
+        assert box["y"] + box["height"] < 844 and box["height"] >= 46
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_projects_lane_shows_seven_cards_then_the_rest_on_request(reader):
+    from patchright.sync_api import expect
+
+    page, uri = reader
+    page.goto(uri + "#c=projects")
+    page.evaluate("""() => {
+      const harbour = byPath('projects/harbour.md');
+      for (let i = 0; i < 9; i++) REM.records.push({...harbour, path: 'projects/copy-' + i + '.md', title: 'Copy ' + i});
+      render();
+    }""", isolated_context=False)
+    week = page.locator('.project-lane[data-lane="week"]')
+    expect(week.locator(".project-card")).to_have_count(7)  # nine copies; Harbour itself is the lifted card
+    week.get_by_role("button", name=re.compile(r"^2 more projects")).click()
+    expect(week.locator(".project-card")).to_have_count(9)
+    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
+    expect(page.locator("h1.page-state")).to_have_text("11 个项目 · 10 个本周有动静")
+    expect(week.get_by_role("button", name=re.compile(r"^还有 2 个"))).to_be_visible()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [1400, 390])
+def test_sessions_group_by_day_merge_repeats_curtain_private_work_and_lead_with_resume(session_reader, width, theme):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 844})
+    page.evaluate("""theme => {
+      setTheme(theme);
+      const release = REM.records.find(r => r.path === 'sessions/release.md');
+      REM.records.push({...release, path: 'sessions/release-again.md'});
+      byPath('projects/beta.md').private_project = true;
+      REM.records.find(r => r.path === 'sessions/release.md').session_outcome = 'partial';
+      render();
+    }""", theme, isolated_context=False)
+    expect(page.locator("h1.page-state")).to_have_text(re.compile(r"^7 sessions"))
+    resume = page.locator(".session-stopped")
+    expect(resume.locator("h2")).to_have_text("Release the reader")
+    expect(resume.locator(".session-stopped-todos li")).to_have_text(["Ask Avery to check the reader."])
+    expect(resume.locator(".btn-act")).to_have_text("Continue in Codex")
+    expect(resume.locator(".btn-act")).to_have_attribute("href", "#r=sessions%2Frelease.md&h=session-continue")
+    assert _visible_green_buttons(page) == 1
+    expect(page.locator(".session-tabs button")).to_have_count(4)
+    expect(page.locator(".session-day").first).to_have_text("TodayFri")
+    merged = page.locator(".session-row").filter(has_text="Release the reader")
+    expect(merged).to_have_count(1)
+    expect(merged.locator(".session-meta")).to_have_text("Alpha · 12 turns · 2 sessions · 1 to-do")
+    curtains = page.locator(".session-curtain")
+    expect(curtains).to_have_count(2)
+    assert "Plan source citations" not in page.locator("#main").inner_text()
+    assert "Review older notes" not in page.locator("#main").inner_text()
+    assert "/work/" not in page.locator("#main").inner_text()
+    curtains.first.get_by_role("button", name="Show", exact=True).click()
+    expect(page.locator(".session-row").filter(has_text="Plan source citations")).to_have_count(1)
+    if width == 390:
+        box = resume.locator(".btn-act").bounding_box()
+        assert box["y"] + box["height"] < 844
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_sessions_tabs_choose_unfinished_or_one_agent(session_reader):
+    from patchright.sync_api import expect
+
+    page, uri = session_reader
+    tabs = page.locator(".session-tabs")
+    expect(tabs.locator("button")).to_have_text(["All", "Unfinished 1", "Codex", "Claude Code"])
+    tabs.get_by_role("button", name="Unfinished 1").click()
+    assert "outcome=partial" in page.url
+    expect(page.locator(".session-result-line")).to_contain_text("1 of 6 sessions")
+    tabs.get_by_role("button", name="Codex", exact=True).click()
+    assert "agent=codex" in page.url and "outcome=" not in page.url
+    expect(page.locator(".session-result-line")).to_contain_text("3 of 6 sessions")
+    expect(tabs.get_by_role("button", name="Codex", exact=True)).to_have_attribute("aria-pressed", "true")
+    tabs.get_by_role("button", name="All", exact=True).click()
+    expect(page.locator(".session-result-line")).to_have_count(0)
+    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
+    expect(tabs.locator("button")).to_have_text(["全部", "没做完 1", "Codex", "Claude Code"])
+    expect(page.locator("h1.page-state")).to_have_text("6 个会话 · 和编程 agent 一起做的事")
+
+
+@pytest.mark.parametrize("width", [1400, 375])
+def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
+    """The simplified list keeps bookmarked project/date filters and day groups."""
+    from patchright.sync_api import expect
+    page, uri = session_reader
+    page.set_viewport_size({"width": width, "height": 900 if width == 1400 else 812})
+    page.goto(uri + "#c=sessions&project=projects%2Falpha.md&agent=codex")
+    expect(page.locator(".session-row")).to_have_count(2)
+    expect(page.locator(".session-tabs").get_by_role("button", name="Codex", exact=True)).to_have_attribute("aria-pressed", "true")
+    page.goto(uri + "#c=sessions&when=month")
+    expect(page.locator(".session-result-line")).to_contain_text("5 of 6 sessions")
+    page.goto(uri + "#c=sessions&from=2026-10-11&to=2026-10-12")
+    expect(page.locator(".session-row")).to_have_count(2)
+    expect(page.locator(".session-day")).to_have_count(2)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    for node in page.locator(".sessions-view button:visible, .sessions-view input:visible").all():
+        assert node.bounding_box()["height"] >= 40

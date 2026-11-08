@@ -38,3 +38,14 @@ and privacy cases and active/old/no-index metric cases were restored in
 `test_rem_person_integration.py` against current rendered paths. The existing
 no-reply reason coverage remains, and a new primary-action regression prevents
 asking for another reply where the draft explicitly says none is needed.
+
+2. `sprint9/projects-sessions` (`43d132e7`): reader CSS append conflict
+   retained both scoped style blocks; browser append conflict retained rc60
+   task-card cases, People/person additions and every Projects/Sessions case.
+   Branch versions of Sessions selectors follow the day-grouped list and four
+   tabs; obsolete picker/topic-chip assertions become bookmarked-filter
+   assertions. Retained a separate desktop/phone calendar/project/day-group
+   case, including month filtering and touch target/overflow checks.
+
+People/person final complete unit run: `18530 passed, 19 skipped, 2944 warnings in 148.90s (0:02:28)`.
+The additional Skip-dialog lifecycle repair passed the focused 19-case run.
