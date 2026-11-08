@@ -52,7 +52,7 @@ def _config_hash(config, *, include_languages=False, include_models=False, inclu
     # Scheduling, concurrency and budgets govern future work. Prepared material
     # (including its language and local dates) is already saved. Reader translation
     # targets do not change page-task material. Keep evidence-sizing limits.
-    run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "timeout_seconds", "workers",
+    run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     ignored = {"schedule", "effort", "notify"}
