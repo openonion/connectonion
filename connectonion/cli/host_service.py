@@ -284,3 +284,35 @@ class HostService:
             self.plist.unlink(missing_ok=True)
             self.baseline.unlink(missing_ok=True)
             return self.status()
+
+
+def identity_dir(project: Path) -> Path:
+    """Where the key this project serves under lives: its own .co, else ~/.co. Never mints one."""
+    from .. import address
+    from ..environment import global_config_dir
+    own = project/'.co'
+    return own if address.load(own) else global_config_dir()
+
+
+def serving(project: Path) -> dict | None:
+    """The Host serving this project's address on this computer, wherever it was started."""
+    from ..network.host.server import running_host
+    return running_host(identity_dir(project))
+
+
+def stop_serving(project: Path, *, wait: float = 10) -> dict | None:
+    """Stop that Host. A launchd job is stopped as a job, or KeepAlive restarts it."""
+    import signal
+    record = serving(project)
+    if record is None:
+        return None
+    if record.get('service'):
+        HostService(Path(record['project'])).stop()
+    else:
+        os.kill(record['pid'], signal.SIGTERM)
+    deadline = time.monotonic() + wait
+    while serving(project) is not None:
+        if time.monotonic() >= deadline:
+            raise HostServiceError(f"Host pid {record['pid']} did not stop within {wait:.0f}s. Next: kill {record['pid']}")
+        time.sleep(.2)
+    return record

@@ -467,6 +467,21 @@ def _show_deployments(deployments):
     console.print(table)
 
 
+def _show_local_host() -> None:
+    """The one Host serving this address here: co ai, a project's co host or the background service."""
+    from ..host_service import serving
+    record = serving(Path.cwd())
+    console.print("\n" + style.heading("Host on this computer"))
+    if record is None:
+        console.print("  none: calls, chat replies, schedules and handoff answers wait until one runs")
+        console.print(style.muted("  start one: ") + style.command("co ai") + style.muted(" or ") + style.command("co host"))
+        return
+    kind = "background service" if record.get("service") else f"pid {record.get('pid')}"
+    console.print(f"  {escape(str(record.get('name')))} in {escape(str(record.get('project')))}, "
+                  f"http://localhost:{record.get('port')} ({kind})")
+    console.print(style.muted("  stop it: ") + style.command("co host --stop"))
+
+
 def handle_status(reveal: bool = False):
     """Check canonical account status after redacted local diagnostics.
 
@@ -486,6 +501,7 @@ def handle_status(reveal: bool = False):
     - Warnings if balance is low
     """
     _show_credentials(reveal=reveal)
+    _show_local_host()
 
     # Load API key
     api_key = load_api_key()
