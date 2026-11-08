@@ -137,6 +137,13 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     # No network for its commands: nothing can be pushed, mailed or posted.
     assert 'sandbox_workspace_write.network_access=false' in argv
     assert not any('network_access=true' in arg for arg in argv)
+    # Codex's own web search could carry what it read to a live URL; it is off too.
+    assert 'web_search="disabled"' in argv
+    # MCP servers, plugins and app connectors run outside the sandbox with network
+    # (a GitHub connector can open an issue): the owner's Codex config is not loaded.
+    assert '--ignore-user-config' in argv
+    assert {'features.apps=false', 'features.plugins=false', 'features.browser_use=false',
+            'features.computer_use=false'} <= set(argv)
     assert str(repo) in argv[-1] and 'Never push' in argv[-1]
     assert saved['result'] == 'completed'
 

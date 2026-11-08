@@ -44,17 +44,23 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
+SEALED = ['--ignore-user-config', '-c', 'web_search="disabled"', '-c', 'features.apps=false',
+          '-c', 'features.plugins=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false']
+
+
 def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(), sealed=False) -> list[str]:
-    """sealed: the commands Codex runs get no network and no credential directory, so an
-    owed-work task can read anything but cannot push, send or post."""
+    """sealed: an owed-work task's prompt comes from untrusted mail and it can still read
+    files such as keys.env, so it gets no way to send anything anywhere: no network for its
+    commands, no web search, and none of the owner's MCP servers, plugins or app connectors
+    (they run outside the sandbox). Its credential directory is not writable either."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
-    credentials = [] if sealed else ['--add-dir', str(selected_env_file().parent)]
+    access = SEALED if sealed else ['--add-dir', str(selected_env_file().parent)]
     command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
                '-C', str(root), '-s', 'workspace-write',
                '-c', f'sandbox_workspace_write.network_access={"false" if sealed else "true"}',
-               *credentials, '--skip-git-repo-check',
+               *access, '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]

@@ -92,9 +92,14 @@ text that might contain credentials or private URLs.
 Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
 `co rem task stop ID` to stop it. Each ID gets one Codex session with the
 configured work model, sealed: `workspace-write` with
-`sandbox_workspace_write.network_access=false` and no credential directory, so
-its commands can read anything but write only in `.state/tasks/do-ID/` and
-cannot push, merge into the owner's checkout, send mail or post. When the
+`sandbox_workspace_write.network_access=false`, `web_search="disabled"`,
+`--ignore-user-config` (none of the owner's MCP servers, plugins, app connectors
+or hooks, which run outside the sandbox) and no credential directory, so its commands can read anything but write only in
+`.state/tasks/do-ID/` and cannot push, merge into the owner's checkout, send
+mail or post. The prompt comes from mail, which is untrusted: a task can read a
+file such as `keys.env` but has no way to send it anywhere. The cost: a task
+cannot browse, search the web, install packages or call any API; it works from
+what is already on disk. When the
 obligation's project page (or an explicit project link on its page) names one
 existing directory inside a git repository, REM creates a worktree of it at
 `.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,

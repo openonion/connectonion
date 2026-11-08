@@ -1149,8 +1149,10 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model, sealed: workspace-write without network or the
-credential directory, so it reads anything but cannot push, send or post. It
+Uses the configured work model, sealed: workspace-write without network, web
+search, the owner's Codex config (MCP servers, plugins, connectors) or the
+credential directory, so it reads anything but cannot push, send,
+post, browse or install packages. It
 writes only in .state/tasks/do-ID/: a git worktree of the project page's
 repository on branch rem/task-ID when there is one, otherwise do-ID/work.
 The prompt defines done and names do-ID/result.md as the reviewable deliverable.
