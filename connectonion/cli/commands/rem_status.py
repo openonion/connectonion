@@ -35,7 +35,8 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
-        lines += [rem_look.section('Models', value['models'])]
+        # "level 1 gpt-6-luna · sessions-summary, topic": the level in the margin.
+        lines += [rem_look.section('Models'), *(rem_look.row(line[:7], line[8:]) for line in value['models'])]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
     if value.get('last_turn'):

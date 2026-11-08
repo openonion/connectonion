@@ -227,8 +227,10 @@ class CodexNative:
                 # only ran a command and waited. Codex's default matches the child runner.
                 "reasoning_effort": config.get("effort", "medium"), "auto_archive": True, "cwds": [str(root)],
                 "created_at": previous.get("created_at", stamp), "updated_at": stamp}
-        if config.get("model") and config["model"] != "default":
-            data["model"] = config["model"]
+        from .inquiry import stage_config
+        model = stage_config(root, config, "native")["model"]
+        if model != "default":
+            data["model"] = model
         return data
 
     def _write(self, root: Path, data: dict) -> None:

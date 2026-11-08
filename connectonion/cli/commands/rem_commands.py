@@ -2185,7 +2185,7 @@ def make_rem_app(factory):
 
     @config_app.callback(invoke_without_command=True)
     def inspect_config(ctx: typer.Context):
-        from ...rem.config import read_config
+        from ...rem.config import describe_levels, read_config
         from ...rem.inquiry import routing
         from ...rem.tier import describe
 
@@ -2201,7 +2201,7 @@ def make_rem_app(factory):
                                  + " (one or two model calls)")
             from ...rem.languages import owner_languages
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
-                     "models": f"work {config['model']} · summaries {config['models']['summary']}",
+                     "models": describe_levels(config),
                      "config": config, "tier": tier, "routes": routing(root),
                      "your languages": owner_languages(root)}, ["status"])
         if ctx.invoked_subcommand is None:
@@ -2212,7 +2212,7 @@ def make_rem_app(factory):
                       no_check: bool = typer.Option(False, "--no-check")):
         from ...rem.config import read_config, set_config
         from ...rem.files import RemError
-        from ...rem.inquiry import STAGES, clear_route, routing, set_route
+        from ...rem.inquiry import ROUTABLE, clear_route, routing, set_route
         from ...rem.tier import check_and_record
 
         def operation(root):
@@ -2222,8 +2222,8 @@ def make_rem_app(factory):
             routes = [(key.split(".", 1)[1], value) for key, value in pairs if key.startswith("route.")]
             rest = [part for key, value in pairs if not key.startswith("route.") for part in (key, value)]
             for stage, _ in routes:
-                if stage not in STAGES:
-                    raise RemError(f"route.{stage}: the stages are {', '.join(STAGES)}")
+                if stage not in ROUTABLE:
+                    raise RemError(f"route.{stage}: the stages are {', '.join(ROUTABLE)}")
             config = set_config(root, rest) if rest else read_config(root)
             for stage, model in routes:
                 if model == "default":
@@ -2232,7 +2232,7 @@ def make_rem_app(factory):
                     set_route(root, stage, config["runner"], model)
             value = {"config": config, "routes": routing(root)}
             # The tier is measured when the model changes, never read off its name (#1847).
-            if {"model", "runner"} & set(values[::2]) and not no_check:
+            if {"model", "models.level3", "runner"} & set(values[::2]) and not no_check:
                 if not ctx.obj["json"]:
                     rem_look.line(f"Checking {config['model']} on a fixture page (one or two model calls)...",
                                err=True)

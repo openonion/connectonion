@@ -24,7 +24,7 @@ from httpx import RequestError
 
 from ..provider_credentials import ProviderCredentialError
 
-from .config import prepare, read_config, validate
+from .config import describe_levels, prepare, read_config, validate
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
 from .mail_archive import archive_state, resume_stalled
@@ -707,7 +707,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     return {"state": state, "tonight": night_summary(root),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
-            "models": f"work {config['model']} · summaries {config['models']['summary']}",
+            "models": describe_levels(config),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "schedule_runner": worker_state(root).get("runner") or (

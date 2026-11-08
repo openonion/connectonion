@@ -657,7 +657,7 @@ def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
 @pytest.mark.parametrize("key,value", [
     ("language", "zh"), ("languages", "zh,en"),
     ("model", "gpt-6-astra"), ("speed", "standard"), ("effort", "high"),
-    ("models.summary", "gpt-6.1-sol"),
+    ("models.summary", "gpt-6.1-sol"), ("models.level2", "gpt-6.1-sol"), ("models.level4", "gpt-6.1-sol"),
     ("schedule.times", "09:00,21:00"), ("schedule.timezone", "Pacific/Honolulu"),
     ("limits.runner_calls_per_day", "100"), ("limits.translations_per_day", "20"),
     ("limits.timeout_seconds", "1800"), ("limits.workers", "8"),

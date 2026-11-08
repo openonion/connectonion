@@ -147,8 +147,10 @@ def _verdict(result: dict) -> dict:
 def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None,
           uninvestigated: bool | None = None) -> list[dict]:
     """Ask about up to `limit` pairs; fold the ones answered yes. Returns one row per pair asked."""
+    from .inquiry import stage_config
     from .runner import RunFailed, run_claim_task
     run = run or run_claim_task
+    config = stage_config(root, config, "same-person")
     rows = []
     for _ in range(limit):
         # Found again after every answer: a fold removes a page that later pairs named.

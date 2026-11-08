@@ -268,7 +268,7 @@ def _prepare_job(root, cursor, config, directory):
     task_inputs = state.get("input_paths", [])
     from . import inquiry
     inquiry_phase = state.get("inquiry", "plan")
-    if inquiry.routing(root) and inquiry_phase != "render":
+    if inquiry.inquiry_routed(root) and inquiry_phase != "render":
         task = inquiry.prepare(root, directory, items, config, inquiry_phase, plan_path=state.get("plan_path"), native=True)
         task["before"] = {record: book.read(record)}
         return _task("inquiry", task, cursor, stage=inquiry_phase, record=record,

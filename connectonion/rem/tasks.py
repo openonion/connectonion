@@ -192,7 +192,8 @@ def execute(root, task_id, *, timeout=None):
 def _execute(root, folder, receipt, timeout):
     code, result = None, 'failed'
     try:
-        config = read_config(root)
+        from .inquiry import stage_config
+        config = stage_config(root, read_config(root), 'task')
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)

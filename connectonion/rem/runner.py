@@ -808,7 +808,9 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
         stage_progress("insight critic")
     result["critic_usage_pending"] = True
     approved = result.get("insights_approved", [])
-    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task,
+    from .inquiry import stage_config
+    decision = judge(notebook, record, original, candidate, items, stage_config(notebook.root, config, "insight-critic"),
+                     directory, run_claim_task,
                      approved=approved)
     result["critic_usage_pending"] = False
     result["usage"] = _add_usage(result.get("usage"), decision["usage"])
@@ -1120,7 +1122,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The child runner keeps its read-only audit and retained source behavior.
             with _promotion_lock(notebook.root, candidate, usage, lock_held):
                 retain_cited_originals(notebook, text, items)
-            report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
+            from .inquiry import stage_config
+            report, audit_usage = review_claims(notebook, text, stage_config(notebook.root, claim_config, "claim-audit"),
+                                                directory, run_claim_task,
                                                 record=record, items=items, carried=carried)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
@@ -1678,7 +1682,9 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
                search=None, turns=(), stage_progress=None):
     from .config import read_config
+    from .inquiry import stage_config
     from .service import notebook_zone
+    config = stage_config(notebook.root, config, stage)
     task = prepare(notebook, items, config, kind, stage=stage, directory=directory, search=search)
     record, before, items = task["record"], task["before"], task["items"]
     candidate = Path(task["candidate"]) if task["candidate"] else None
@@ -1702,9 +1708,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     refusals = []
     run_turn = _retry_timeouts(metrics)
     try:
-        from .inquiry import routing, stage_config
+        from .inquiry import inquiry_routed
         from .inquiry import run as inquiry_run
-        if stage == "investigate" and candidate and routing(notebook.root):
+        if stage == "investigate" and candidate and inquiry_routed(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,
                 lambda _task_directory, text, route, phase: run_turn(workdir, text, route, phase))

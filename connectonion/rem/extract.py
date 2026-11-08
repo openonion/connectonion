@@ -66,7 +66,8 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
     with tempfile.TemporaryDirectory(prefix="extract-", dir=tasks) as temporary:
         directory = Path(temporary)
         task = prepare(items, config, kind, root=root, directory=directory)
-        return check(task, run_task(tasks, task["prompt"], config, "extract"))
+        from .inquiry import stage_config
+        return check(task, run_task(tasks, task["prompt"], stage_config(root, config, "extract"), "extract"))
 
 
 def prepare(items, config, kind="", *, root, directory, native=False):

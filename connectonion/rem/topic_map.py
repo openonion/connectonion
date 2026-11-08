@@ -446,8 +446,8 @@ def _propose_topics(notebook):
     from . import runner
     from .config import read_config
     from .files import RemError
-    config = read_config(notebook.root)
-    config = {**config, 'model': config['models']['summary']}
+    from .inquiry import stage_config
+    config = stage_config(notebook.root, read_config(notebook.root), 'topic')
     prompt = ('Name up to 30 subjects that recur across these notes: businesses, activities, courses, processes, '
               'issues (for example short-term rental, a visa application, fundraising, a university course). '
               'Not people, organisations or projects that already have a note, not tools or places on their own, '

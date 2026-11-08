@@ -89,8 +89,10 @@ def _input_matches(root, task, path, digest):
     # Reproduce the pre-model-split view of an unchanged saved file. read_config
     # adds models and migrates Luna, neither of which existed in those digests.
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    legacy_current = {**current, "model": saved["model"]}
-    if "models" not in saved:
+    legacy_current = {**current, "model": saved.get("model", current["model"])}
+    if "models" in saved:
+        legacy_current["models"] = saved["models"]
+    else:
         legacy_current.pop("models")
     if _hash(path) == digest or digest in _legacy_config_hashes(legacy_current):
         return True  # Unchanged raw-file or old semantic config, without a snapshot.

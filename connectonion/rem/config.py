@@ -37,17 +37,48 @@ def schedule_runner() -> str:
     return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
 
 
+# The cheapest model that does each kind of call well, measured on the owner's
+# runs 2026-10-10..11-09 (sprint-12/model-levels.md). Level 1 is the weakest.
+LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-terra",
+                "level3": "gpt-6.1-sol", "level4": "gpt-6-astra"}
+STAGE_LEVELS = {
+    # 1: short, structured, checked by code afterwards.
+    "sessions-summary": 1, "topic": 1,
+    # 2: faithful transformation or a narrow judgement over small input.
+    "translate": 2, "extract": 2, "same-person": 2, "plan": 2,
+    # 3: writing pages and drafts the owner reads, from cited evidence.
+    "maintain": 3, "abstract": 3, "init": 3, "investigate": 3, "render": 3,
+    "projects": 3, "reply-draft": 3, "native": 3,
+    # 4: deep rounds, independent audits, and owed work done for the owner.
+    "enrich": 4, "muse": 4, "claim-audit": 4, "insight-critic": 4, "synthesize": 4, "task": 4,
+}
+
+
+# Names before 1.9.3, still accepted by `config set`.
+OLD_NAMES = {"model": "models.level3", "models.summary": "models.level1"}
+
+
+def level_model(config: dict, stage: str) -> str:
+    return config["models"][f"level{STAGE_LEVELS[stage]}"]
+
+
+def describe_levels(config: dict) -> list[str]:
+    """One line per level for status and config: its model, then the stages on it."""
+    return [f"level {n} {config['models'][f'level{n}']} · "
+            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == n) for n in range(1, 5)]
+
+
 def default_config() -> dict:
-    # Owner decision 2026-11-08: REM judgement uses the top model. Only
-    # standalone summary calls use models.summary; a native work session keeps
-    # the work model throughout, including any inline summaries.
+    # models: owner decision 2026-11-09, one model per level; STAGE_LEVELS says
+    # which level each model call runs on. `model` is never saved: it is level3's
+    # model, kept beside the levels for code that runs the work level.
     # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
     # tasks.auto: owed work starts after the night's drafts, sealed, with Undo. Off
     # until the sealed run's reads are limited to an allow-list, not a deny-list.
-    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -111,10 +142,10 @@ LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
 
 def validate(config: dict) -> dict:
     defaults = default_config()
-    if not isinstance(config, dict) or set(config) != set(defaults) or config["version"] != 1:
+    if not isinstance(config, dict) or set(config) - {"model"} != set(defaults) - {"model"} or config["version"] != 1:
         raise RemError("Invalid co rem config keys or version")
-    if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
-        raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    if config["runner"] not in RUNNERS:
+        raise RemError(f"runner must be one of {', '.join(RUNNERS)}")
     if not isinstance(config["tasks"], dict) or set(config["tasks"]) != {"auto"} or type(config["tasks"]["auto"]) is not bool:
         raise RemError("tasks.auto must be true or false")
     notify = config["notify"]
@@ -123,9 +154,9 @@ def validate(config: dict) -> dict:
             or not isinstance(notify["target"], str)):
         raise RemError("notify.channel must be none, telegram, lark, whatsapp or email; notify.target must be text")
     models = config["models"]
-    if (not isinstance(models, dict) or set(models) != {"summary"}
-            or not isinstance(models["summary"], str) or not models["summary"].strip()):
-        raise RemError("models.summary must be a model name or default")
+    if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
+            or any(not isinstance(name, str) or not name.strip() for name in models.values())):
+        raise RemError("models.level1 to models.level4 must each be a model name or default")
     if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
         raise RemError("effort must be minimal, low, medium, high or xhigh")
     if config["speed"] not in ("fast", "standard"):
@@ -182,7 +213,7 @@ def _drop_superseded(root: Path, config: dict) -> None:
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
         saved = config.get(section) if section else config
-        current = defaults[section] if section else defaults
+        current = defaults[section] if section else {"model": LEVEL_MODELS["level3"]}
         value = saved.get(name) if isinstance(saved, dict) else None
         if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
             saved[name] = current[name]
@@ -211,11 +242,22 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
         config['schedule']['runner'] = default_config()['schedule']['runner']
     _drop_superseded(root, config)
-    # Existing non-Codex notebooks must not receive a model their harness cannot
-    # run. A summary choice saved by the owner always wins.
-    config.setdefault("models", {"summary": default_config()["models"]["summary"]
-                                 if config.get("runner") == "codex" else config.get("model", "default")})
+    _migrate_models(config)
     return validate(config) if validated else config
+
+
+def _migrate_models(config: dict) -> None:
+    """Before 1.9.3 `model` was the work model (now level3) and models.summary
+    the summary model (now level1). A non-Codex notebook keeps its one model on
+    every level its harness can run; a saved level always wins."""
+    work = config.pop("model", None)
+    saved = config.get("models") if isinstance(config.get("models"), dict) else {}
+    levels = dict(LEVEL_MODELS) if config.get("runner") == "codex" else dict.fromkeys(LEVEL_MODELS, work or "default")
+    levels.update({"level3": work} if work else {})
+    levels.update({"level1": saved["summary"]} if "summary" in saved else {})
+    levels.update({key: value for key, value in saved.items() if key in LEVEL_MODELS})
+    config["models"] = levels
+    config["model"] = levels["level3"]
 
 
 def _move_generated_notes(root: Path) -> None:
@@ -244,7 +286,12 @@ def prepare(root: Path) -> None:
     _move_generated_notes(root)
     path = safe_path(root, "config.yaml")
     if not path.exists():
-        atomic_write(path, yaml.safe_dump(first_runner(default_config()), sort_keys=False))
+        atomic_write(path, yaml.safe_dump(saved(first_runner(default_config())), sort_keys=False))
+
+
+def saved(config: dict) -> dict:
+    """What config.yaml holds: the levels, not the `model` derived from them."""
+    return {key: value for key, value in config.items() if key != "model"}
 
 
 def first_runner(config: dict) -> dict:
@@ -254,7 +301,7 @@ def first_runner(config: dict) -> dict:
     if not ready(config)[0]:
         return config
     fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5",
-                "models": {"summary": "claude-sonnet-5-5"}}
+                "models": dict.fromkeys(LEVEL_MODELS, "claude-sonnet-5-5")}
     return fallback if not ready(fallback)[0] else config
 
 
@@ -279,6 +326,7 @@ def request_language(root: Path, language: str) -> dict:
 def _set_config(root: Path, pairs: list[str]) -> dict:
     config = copy.deepcopy(read_config(root, validated=False))
     previous_runner = config["runner"]
+    pairs = [OLD_NAMES.get(part, part) if index % 2 == 0 else part for index, part in enumerate(pairs)]
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
@@ -286,10 +334,10 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
-        elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+        elif len(parts) != 1 or key not in ("runner", "speed", "effort", "language", "languages"):
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":
             if raw not in ("true", "false"):
                 raise RemError("tasks.auto must be true or false")
@@ -306,13 +354,13 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
         else:
             value = raw
         target[parts[-1]] = value
-    if config["runner"] != previous_runner and "model" not in pairs[::2]:
-        config["model"] = "default"
+    if config["runner"] != previous_runner:
+        # Another harness cannot run these model names; levels this command names stay.
+        config["models"].update({level: LEVEL_MODELS[level] if config["runner"] == "codex" else "default"
+                                 for level in LEVEL_MODELS if f"models.{level}" not in pairs[::2]})
     explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
-    if config["runner"] != previous_runner and "models.summary" not in explicit:
-        config["models"]["summary"] = (default_config()["models"]["summary"]
-                                       if config["runner"] == "codex" else config["model"])
+    config["model"] = config["models"]["level3"]
     validate(config)
-    atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
+    atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(saved(config), sort_keys=False))
     write_json(state_path(root, EXPLICIT), sorted(explicit))
     return config
