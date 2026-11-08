@@ -201,6 +201,10 @@ def prepare(root, row, config, *, directory):
     from .runner import today_note
     material = directory / 'reply-material.json'
     identities = _identities(root, row)
+    if not (directory / 'verdict.json').exists():
+        # The owner's tier on the People page is the permission; the writer may only lower it.
+        tier = identities['person']['direct_send']
+        write_json(directory / 'verdict.json', {'kind': 'reply', 'send': 'now' if tier in ('partner', 'close') else 'owner'})
     write_json(material, {**row, 'channel': row.get('channel', 'mail'), **identities, 'owner_samples': _owner_samples(root, row)})
     candidate = directory / 'candidate.json'
     language = next(iter(owner_languages(root)['languages']), config['language'])

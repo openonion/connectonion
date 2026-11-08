@@ -678,6 +678,9 @@ def advance(root, cursor, task, result):
     elif operation == "draft":
         row = task["task"]["row"]
         cursor.setdefault("draft_attempts", []).append([row["id"], row["version"]])
+        if not result.get("discarded"):
+            from .approvals import send_direct
+            send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
     elif operation == "translate":
         cursor["translations"].append(task["record"])
         cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])

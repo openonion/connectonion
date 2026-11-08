@@ -100,28 +100,42 @@ ACTIONS = {'reply': _reply, 'handled': _handled, 'task': _task}
 
 
 def approve(root, ids, *, bodies=None):
-    release_at = (service.now() + timedelta(minutes=10)).isoformat()
     with maintenance_lock(root):
-        available = {item['id']: item for item in outcomes(root)}
-        queue = read_json(state_path(root, 'approvals.json'), {})
-        results = []
-        for key in dict.fromkeys(ids):
-            previous = queue.get(key)
-            if previous and previous['status'] != 'cancelled':
-                results.append(previous)
-                continue
-            item = available.get(key)
-            # Invalid selections and provider rejections are expected per-item failures.
-            try:
-                if item is None:
-                    raise RemError('This outcome is no longer current; reload Today')
-                value = ACTIONS[item['kind']](root, item, (bodies or {}).get(key), release_at)
-                results.append(_save(root, queue, value))
-            except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
-                claim = read_json(state_path(root, 'approvals.json'), {}).get(key)
-                failure = {'id': key, 'status': 'error', 'error': str(error)}
-                results.append(_save(root, queue, {**claim, **failure}) if claim else failure)
-        return {'release_at': release_at, 'results': results}
+        return _approve(root, ids, bodies=bodies)
+
+
+def send_direct(root, draft_id):
+    """A reply the writer marked send=now, for someone the owner trusts REM with,
+    goes out through the same 10-minute hold and Undo, recorded as REM's decision."""
+    saved = read_json(drafts.path(root, draft_id), {})
+    if saved.get('send') != 'now' or saved.get('status') != 'prepared' or drafts.has_slots(saved.get('body', '')):
+        return None
+    item = next((item for item in outcomes(root) if item.get('draft_id') == draft_id and item['kind'] == 'reply'), None)
+    return _approve(root, [item['id']], by='rem') if item else None
+
+
+def _approve(root, ids, *, bodies=None, by='owner'):
+    release_at = (service.now() + timedelta(minutes=10)).isoformat()
+    available = {item['id']: item for item in outcomes(root)}
+    queue = read_json(state_path(root, 'approvals.json'), {})
+    results = []
+    for key in dict.fromkeys(ids):
+        previous = queue.get(key)
+        if previous and previous['status'] != 'cancelled':
+            results.append(previous)
+            continue
+        item = available.get(key)
+        # Invalid selections and provider rejections are expected per-item failures.
+        try:
+            if item is None:
+                raise RemError('This outcome is no longer current; reload Today')
+            value = ACTIONS[item['kind']](root, item, (bodies or {}).get(key), release_at)
+            results.append(_save(root, queue, {**value, 'by': by}))
+        except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
+            claim = read_json(state_path(root, 'approvals.json'), {}).get(key)
+            failure = {'id': key, 'status': 'error', 'error': str(error)}
+            results.append(_save(root, queue, {**claim, **failure}) if claim else failure)
+    return {'release_at': release_at, 'results': results}
 
 
 def undo(root, ids):
