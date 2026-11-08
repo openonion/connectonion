@@ -2244,6 +2244,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
           co browser -t shop cookies save                   # default ~/.co/browser/cookies/shop.json
           co browser -t shop cookies load ~/.co/browser/cookies/shop.json
           co browser cookies --all
+          co browser cookies ls --all --domain linkedin.com --json
 
         Cookies belong to the whole browser, not to one tab; the tab only says
         which site you mean, so its current page decides the default scope.
@@ -2260,6 +2261,12 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             site = "" if all else self._tab_site(key, tab)
             if action == "ls":
                 found = await self.browser.cookies([site] if site else [])
+                if domain:
+                    # Filter here so subdomains and every path survive, but the
+                    # whole jar never has to fit in one OIP reply (#2887).
+                    scope = domain.lstrip(".")
+                    found = [c for c in found if c["domain"].lstrip(".") == scope
+                             or c["domain"].endswith("." + scope)]
                 return network_log.render_cookies(found, raw=raw, as_json=json)
             if action == "set":
                 if not name:

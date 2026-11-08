@@ -11,6 +11,14 @@ preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
+## Unreleased fixes
+
+- `co browser import` reads Chrome's encrypted cookies as bytes even when SQLite
+  stores them as TEXT. Target-cookie replies are scoped to one imported domain
+  at a time, including subdomains and all paths, so unrelated cookies no longer
+  overflow the OIP frame limit. If a target read fails, the command says
+  "nothing was written" and stops before loading any cookies ([#2887](https://github.com/openonion/connectonion/issues/2887)).
+
 ## Current release
 
 Stable **1.9.2** is the default production channel. Hand a coding session to someone else's
