@@ -17,8 +17,9 @@ Two instruments, because each alone is wrong in one direction:
   replace, remove, mkdir, chmod/utime, shutil copy/move/rmtree, sqlite3 -- with
   the running test's node id, to a per-run file. Any record fails the run,
   naming test and path, with no allowlist. It cannot see a subprocess.
-- A manifest of the real ~/.co by lstat() only (never opening a file; ~/.co/ssh
-  holds private keys), taken by the controller at start and end. It sees every
+- One `find -cnewer` pass over the real ~/.co by lstat only (never opening a
+  file; ~/.co/ssh holds private keys), taken by the controller at the end:
+  every entry whose ctime moved since the session started. It sees every
   writer, including the operator's own: scheduled REM rounds, token refresh in
   keys.env, mail stores, another worktree's test run. A change it sees with no
   matching record is printed as "changed by another process" and does not fail:
@@ -26,6 +27,13 @@ Two instruments, because each alone is wrong in one direction:
   ignore. A change under ssh/ is printed loudly, but is not a failure either --
   `co server new` and `co keys` legitimately write there, and a test's
   subprocess (invisible to the hook) is indistinguishable from them by stat.
+  A removed entry shows as its directory, unless another change in that
+  directory is already listed.
+
+A pytest started from inside a running pytest (CONNECTONION_REAL_HOME_GUARD_OWNER
+names a live owner) keeps the audit hook and writes to the owner's records,
+so its writes still turn the owner red; it skips the pass over ~/.co and never
+reads or removes the owner's records.
 
 CONNECTONION_TEST_REAL_HOME points both at a scratch home for the guard's own
 red-first check; nothing else should set it.
@@ -50,7 +58,7 @@ REAL_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or pwd.getpwuid(os.
 IMPORT_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or os.path.expanduser("~")) / ".co"
 _PREFIXES = tuple({str(REAL_CO), os.path.realpath(REAL_CO)})
 
-# Left out of the manifest because they are large and churn constantly (the
+# Left out of the pass over ~/.co because they are large and churn constantly (the
 # `co browser` daemon's profile alone is thousands of files); the audit hook
 # still covers them. A scratch home has no live writers, so nothing is left out.
 _NOT_IN_MANIFEST = frozenset() if _GUARD_SELF_TEST else frozenset({
@@ -65,6 +73,26 @@ if not os.environ.get(_RECORDS_ENV):
     os.close(_fd)
     os.environ[_RECORDS_ENV] = _path
 _RECORDS = os.environ[_RECORDS_ENV]
+
+# The pytest that owns the report marks itself for every process it starts. A
+# pytest run from inside it (a test that runs `pytest --collect-only`) keeps its
+# audit hook, whose records land in the owner's file and turn the owner red, but
+# skips its own look at ~/.co and leaves the owner's records file alone.
+_OWNER_ENV = "CONNECTONION_REAL_HOME_GUARD_OWNER"
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+_owner = os.environ.get(_OWNER_ENV, "")
+_NESTED = _owner.isdigit() and int(_owner) != os.getpid() and _alive(int(_owner))
+if not _NESTED:
+    os.environ[_OWNER_ENV] = str(os.getpid())
 
 # ---- the audit hook ----------------------------------------------------------
 
@@ -138,50 +166,53 @@ def pytest_runtest_logfinish(nodeid, location):
     _current_test = "<between tests>"
 
 
-# ---- the manifest ------------------------------------------------------------
+# ---- what changed during the run ---------------------------------------------
 
-def manifest():
-    """{relative path: (kind, size, mtime_ns, inode)} of the real ~/.co, by lstat only."""
-    found = {}
+def changed_since(marker):
+    """Relative paths under the real ~/.co whose ctime is newer than marker's mtime.
+
+    One `find -cnewer` pass at the end of the run, by lstat only (never opening a
+    file). ctime moves on every content write, chmod, rename and link, including
+    an in-place append that leaves the directory's mtime alone; a created or
+    removed entry also moves its directory's. So nothing is hidden, and no start
+    snapshot is needed. Measured on a 1M-entry ~/.co: the Python lstat walk this
+    replaces took ~80 s and ran twice, at start and end; this one pass ~35 s.
+    """
     if not REAL_CO.is_dir():
-        return found
-    for root, dirs, files in os.walk(REAL_CO):
-        if root == str(REAL_CO):
-            dirs[:] = [d for d in dirs if d not in _NOT_IN_MANIFEST]
-            files = [f for f in files if f not in _NOT_IN_MANIFEST]
-        for name in files + dirs:
-            try:
-                st = os.lstat(os.path.join(root, name))
-            except FileNotFoundError:
-                continue  # removed between the listing and the stat
-            except PermissionError:
-                continue  # an entry another sandbox made unreadable to us; nothing to compare
-            rel = os.path.relpath(os.path.join(root, name), REAL_CO)
-            found[rel] = ("dir" if name in dirs else "file", st.st_size, st.st_mtime_ns, st.st_ino)
+        return []
+    skip = [arg for name in sorted(_NOT_IN_MANIFEST) for arg in ("-o", "-path", str(REAL_CO / name))][1:]
+    prune = ["(", *skip, ")", "-prune", "-o"] if skip else []
+    out = subprocess.run(["find", "-H", str(REAL_CO), *prune, "-cnewer", marker, "-print"],
+                         capture_output=True, text=True).stdout  # unreadable entries go to stderr
+    return sorted(os.path.relpath(line, REAL_CO) for line in out.splitlines() if line)
+
+
+def unexplained(changed, by_us):
+    """Changes this pytest's records do not explain, labelled for the report.
+
+    A directory is listed only when nothing listed under it explains it: then an
+    entry in it was removed or renamed away.
+    """
+    explained = set(changed) | by_us
+    found = []
+    for path in changed:
+        if path in by_us:
+            continue
+        if os.path.isdir(REAL_CO / path):
+            inside = "" if path == "." else path + os.sep
+            if any(p != path and p.startswith(inside) for p in explained):
+                continue
+            found.append(("entry removed in", path))
+        else:
+            found.append(("changed", path))
     return found
-
-
-def _comparable(entry):
-    # A directory's mtime moves whenever an entry is added; the entries are in
-    # the manifest themselves, so a directory counts only as existing.
-    return entry[:1] if entry[0] == "dir" else entry
-
-
-def diff(before, after):
-    """[(created|changed|deleted, relative path)] between two manifests."""
-    created = sorted(after.keys() - before.keys())
-    changed = sorted(p for p in before.keys() & after.keys() if _comparable(before[p]) != _comparable(after[p]))
-    deleted = sorted(before.keys() - after.keys())
-    return [("created", p) for p in created] + [("changed", p) for p in changed] + [("deleted", p) for p in deleted]
 
 
 # ---- naming the other writer -------------------------------------------------
 
-def _rem_turns_in_window(after, started_ns):
-    """REM `.state/turns` entries whose mtime falls inside the run, from the manifest."""
-    return sorted(p for p, entry in after.items()
-                  if p.startswith("rem") and f"{os.sep}.state{os.sep}turns{os.sep}" in os.sep + p
-                  and entry[2] >= started_ns)
+def _rem_turns(changed):
+    """REM `.state/turns` entries changed during the run."""
+    return [p for p in changed if p.startswith("rem") and f"{os.sep}.state{os.sep}turns{os.sep}" in os.sep + p]
 
 
 def _live_co_processes():
@@ -213,8 +244,11 @@ def _live_co_processes():
 # ---- session hooks (controller only; the workers share its filesystem) -------
 
 def pytest_sessionstart(session):
-    if not hasattr(session.config, "workerinput"):
-        session.config._real_co_start = (time.time_ns(), manifest())
+    if hasattr(session.config, "workerinput") or _NESTED:
+        return  # the owner reads the records and looks at ~/.co once, for everyone
+    fd, marker = tempfile.mkstemp(prefix="co-real-home-start-")
+    os.close(fd)
+    session.config._real_co_start = (time.time_ns(), marker)
 
 
 def _read_records():
@@ -234,15 +268,16 @@ def pytest_sessionfinish(session, exitstatus):
     start = getattr(session.config, "_real_co_start", None)
     if start is None:
         return
-    started_ns, before = start
-    after = manifest()
+    _started_ns, marker = start
+    changed = changed_since(marker)
+    os.unlink(marker)
     written = _read_records()
     by_us = {os.path.relpath(path, REAL_CO) for _test, _event, path in written}
-    others = [(label, p) for label, p in diff(before, after) if p not in by_us]
+    others = unexplained(changed, by_us)
     session.config._real_co_report = {
         "written": written,
         "others": others,
-        "rem_turns": _rem_turns_in_window(after, started_ns) if others else [],
+        "rem_turns": _rem_turns(changed) if others else [],
         "processes": _live_co_processes() if others else [],
     }
     if written and session.exitstatus == pytest.ExitCode.OK:
