@@ -216,3 +216,137 @@ The ingest contract is tested with `fernhill/lanterns` and fictional contributor
 The reader will read JSON at `.state/code/<owner>__<repo>/repository.json` only;
 read-only acquisition and conservative session links are implemented separately
 from snapshot rendering. Issues, PRs and runs are capped at 200/100/200 per sync.
+
+`native_round.prepare()` refreshes once per round, under the existing maintenance
+lock, after consented sessions are imported. It uses no model. It considers at
+most 2,000 project pages and syncs at most three due repositories, oldest attempt
+first. Private project pages are excluded. `sync_repository()` is also callable
+explicitly under that lock. The canonical Facts `Repository: owner/repo` (or GitHub
+URL) identifies the repository. No additional database or service account exists.
+
+Each repository waits 30 minutes after its last attempt (including failure).
+GitHub reads use the owner's `gh` executable and its normal authentication:
+
+- Issues: two GET pages of 100, all states, newest updated first; the GitHub REST
+  issues endpoint includes PRs, which are removed after the bounded read. A
+  200-item response is therefore not necessarily 200 issues.
+- PRs: one fixed GraphQL query, newest updated first, at most 100; at most 100
+  check contexts each, with the overall rollup state required to prove green.
+- Workflow runs: two GET pages of 100, newest first.
+- Releases and tags: one GET page of 100 each. These are bounded samples too.
+
+There is no automatic pagination. The REST resources retain ETags and response
+bodies in the same `repository.json`; subsequent due syncs send `If-None-Match`.
+A 304 reuses the corresponding body, with the revalidation command/time recorded.
+GraphQL has no ETag and is read again. Each gh/git request has a 20-second timeout.
+`github_read()` validates the **entire argv** against a closed allowlist of the
+above GET endpoints or the exact fixed GraphQL query and owner/name fields.
+Arbitrary queries, write methods, input files, alternate hosts and all other gh
+subcommands (including comment/edit/merge/rerun) raise before spawning gh.
+
+Successful cache replacement is atomic. On failure the last successful packet
+and its `synced_at`/verification survive; `attempted_at`, `error`, and
+`failed_verification` report the failed attempt. An initial failure has no
+successful data. Absence, stale data, a failed request and a verified empty
+bounded sample remain distinct. The packet's `coverage` contains caps, not
+claims of exhaustive repository coverage.
+
+`repository_projection()` reads the cache only. Every project record with a
+canonical repo gains `repository`; missing cache gives
+`{"repo":"fernhill/lanterns","status":"missing","joins":[]}`. A successful
+packet exposes `schema_version`, `repo`, `status` (`cached` or `error`),
+`attempted_at`, `synced_at`, `error`, `coverage`, and these arrays/objects:
+
+- `issues`: number, title, state, label names, author login, `commentCount`,
+  `updatedAt`, `closedAt`, `url`, and `milestone.dueOn`. URL/milestone preserve
+  the existing issue priority, health and deadline projection. Explicit `issues=`
+  or legacy issue cache wins over this fallback.
+- `prs`: number, title, state, `headRefName`, `headRefOid`, additions, deletions,
+  `mergedAt`, `createdAt`, `updatedAt`, `reviewDecision`, `authorAssociation`,
+  author login object, `checkRollupState`, and `statusCheckRollup` contexts.
+  Check runs carry name/conclusion/startedAt/completedAt; legacy status contexts
+  carry context/state/createdAt. The context array is a bounded sample.
+- `runs`: id, `workflowName`, event, branch, conclusion, `createdAt`, `headSha`,
+  associated PR numbers in `prs`, and `completedAt`. For concluded runs,
+  `completedAt` is REST `updated_at`: a conservative completion upper bound,
+  not the exact last job finish time.
+- `releases` and `tags`: bounded GitHub REST objects (including tag name and
+  commit SHA, release tag_name/name/published_at/draft/prerelease).
+- `pypi`: package, found, versions, or null when no package is declared.
+  An explicit Facts `PyPI: lanterns` or PyPI project URL wins; otherwise local
+  pyproject `[project].name`/`[tool.poetry].name` supplies the library name.
+  PyPI uses HTTPS GET of `/pypi/<package>/json`, 20-second timeout and 4 MB
+  response bound; a 404 is recorded as found=false. Remote-only library pages
+  need the explicit PyPI fact. No version ordering is inferred from strings.
+- `churn`: since/until UTC instants, commit cap (1,000), possibly_truncated,
+  commits (sha/time), areas, session_links; null without matched local evidence.
+  `local_status` distinguishes matched/not_configured/repository_mismatch.
+  A local directory must be a Git root whose origin names the canonical GitHub
+  repo. `git log --all --numstat --no-renames` covers the last 14 days by default;
+  areas group by top path prefix (`(root)` for root files), with additions,
+  deletions, changed-file occurrences and distinct commit counts. Binary files
+  count as files with zero text-line changes. No claim about runtime follows.
+
+The existing `.state/sessions.json` file entries retain `code_evidence`, populated
+by consented import: exact cwd, start/end UTC instants, session ID and branches
+printed in commit output. Mixed-cwd sessions are excluded. Existing session
+imports are refreshed once through the session format version. Cache links are
+computed only when cwd resolves **exactly** to the repository root or a path in
+`git worktree list --porcelain`, and commit time is within
+`[session start, session end + 2 hours]`. Subdirectories, sibling repositories,
+missing times and invalid intervals do not qualify. Branch names are copied
+verbatim from printed commit records, never inferred from requests or text
+similarity. A link is temporal/path evidence, not proof of commit authorship.
+Shared projections omit churn.session_links. All stored times are UTC; views
+convert for display using the notebook timezone.
+
+`joins` is computed without a model, each with kind, bounded=true and
+`verification: [{command: [argv...], ran_at: UTC, resource: ...}]`. These exact
+commands and execution times are the data for the page's 「核对」 line:
+
+- `merges_after_green_deploy`: latest successful workflow with “deploy” in its
+  name and known completion bound; PR numbers merged after that bound. Missing
+  deploy evidence leaves deploy=null and prs=[]. It does not prove deployment
+  contents or environment.
+- `failed_release`: failed workflows with “release” in the name, run ID, matching
+  tags (same SHA or exact branch/tag), tag_present, pypi_present. PyPI presence
+  compares tag without leading `v` to a published version; null means no PyPI
+  observation, false means absent from the supplied version list. Tag absence
+  is only absence from the bounded tag sample.
+- `merged_title_open_issue`: pairs of merged PR and currently open issue numbers
+  for the literal `(#N)` in PR title; no semantic closing inference.
+- `green_unmerged_age`: open PR numbers, green_since (latest supplied check
+  completion), age_hours, and as_of. Overall rollup SUCCESS and successful or
+  neutral/skipped supplied checks are required; missing checks/times produce
+  no age claim. Age is observed check age, not an uninterrupted-green history.
+- `zero_comment_issues`: count and numbers of sampled open issues with zero comments.
+- `external_action_required`: exact PR-number or head-SHA joins between action_required
+  runs and PRs with association NONE/FIRST_TIMER/FIRST_TIME_CONTRIBUTOR/CONTRIBUTOR.
+  This is an association category, not a claim about a person's identity.
+
+A fictional projection fragment (the packet also contains the arrays above):
+
+```json
+{
+  "repository": {
+    "repo": "fernhill/lanterns",
+    "schema_version": 1,
+    "status": "cached",
+    "synced_at": "2026-11-08T12:00:00Z",
+    "issues": [{"number":7,"title":"Cedar light","state":"OPEN",
+      "labels":[],"author":"mara-quill","commentCount":0,
+      "updatedAt":"2026-11-08T11:00:00Z","closedAt":null,
+      "url":"https://github.com/fernhill/lanterns/issues/7","milestone":{"dueOn":null}}],
+    "joins": [{
+      "kind": "zero_comment_issues", "bounded": true, "count": 1, "issues": [7],
+      "verification": [{
+        "command": ["gh","api","repos/fernhill/lanterns/issues?per_page=100&page=1&state=all&sort=updated&direction=desc","--method","GET","--include"],
+        "ran_at": "2026-11-08T12:00:00Z", "resource": "issues", "status": 200
+      }]
+    }]
+  }
+}
+```
+
+This is the projection contract for the separate UI branch; `reader.html` is
+unchanged. A rendered page has not been reviewed in this data-only worktree.

@@ -242,7 +242,7 @@ def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> t
         if meta.get("subagent"):
             return {}, "exec_or_subagent"
         session = {"id": meta.get("id") or path.stem, "cwd": meta.get("cwd") or "",
-                   "kind": kind, "messages": [], "reply": "", "touched": Counter(), "pr_calls": set(),
+                   "code_cwds": {meta.get("cwd") or ""}, "kind": kind, "messages": [], "reply": "", "touched": Counter(), "pr_calls": set(),
                    "artifacts": {"prs": {}, "commits": {}, "branches": {}, "files": {},
                                  "commands": {"count": 0, "notable": {}}}}
         reasons = set()
@@ -282,6 +282,7 @@ def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> t
                 continue
             session["id"] = item.get("session") or session["id"]
             session["cwd"] = item.get("cwd") or session["cwd"]
+            session["code_cwds"].add(session["cwd"])
             session["reply"] = ""  # A later owner turn makes an earlier reply non-final.
             session["ended"] = item["timestamp"]
             session["messages"].append({**item, "text": _redact(item["text"]),
@@ -542,6 +543,13 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts, s
     retain_cited_sessions(notebook.root, session["messages"], {m["source"] for m in session["messages"]}, replace=True)
     progress["files"][str(path)] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
                                      "record": record, "session": key, "since": since.isoformat()}
+    # This stays in the existing session index. Branches come only from printed
+    # commit records; requested branch commands are not evidence of output.
+    progress["files"][str(path)]["code_evidence"] = {
+        "id": key, "cwd": session["cwd"] if len(session.get("code_cwds", {session["cwd"]}) - {""}) == 1 else "",
+        "started": source.timestamp(session["messages"][0]["timestamp"]).astimezone(timezone.utc).isoformat(),
+        "ended": source.timestamp(session["ended"]).astimezone(timezone.utc).isoformat() if session.get("ended") else "",
+        "printed_branches": list(dict.fromkeys(c["branch"] for c in session["artifacts"]["commits"]))}
     progress["sessions"][key] = record
     counts["updated" if updated else "imported"] += 1
     return ""
@@ -560,7 +568,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     skipped = Counter()
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
-        settings = {"days": days, "timezone": str(zone), "format": 4}
+        settings = {"days": days, "timezone": str(zone), "format": 5}
         if progress.get("settings") != settings:
             progress["files"] = {}
         progress["settings"] = settings

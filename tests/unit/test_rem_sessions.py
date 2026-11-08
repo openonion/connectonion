@@ -986,3 +986,32 @@ def test_session_summary_uses_summary_model_only(notebook, summary_ready):
         return summary_answer("s1")
     assert summarise_sessions(root, run=run)["summarised"] == 1
     assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6-luna"
+
+
+def test_code_evidence_excludes_sessions_that_change_cwd(notebook):
+    root, _, _ = notebook
+    transcript(notebook, kind="claude-code", session="cedar-session", rows=[
+        claude("Inspect cedar", cwd="/work/lanterns"),
+        claude("Inspect birch", cwd="/work/birch", timestamp="2026-10-15T23:12:00Z"),
+    ])
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    index = read_json(state_path(root, "sessions.json"), {})
+    evidence, = [row["code_evidence"] for row in index["files"].values()]
+    assert evidence["cwd"] == ""
+
+
+def test_code_evidence_keeps_printed_branches_only(notebook):
+    root, _, _ = notebook
+    transcript(notebook, cwd="/work/lanterns", rows=[codex("Inspect cedar"),
+        {"type": "response_item", "timestamp": STAMP, "payload": {
+            "type": "function_call", "name": "exec_command", "call_id": "cedar-call",
+            "arguments": json.dumps({"cmd": "git switch -c requested-branch"})}},
+        {"type": "response_item", "timestamp": STAMP, "payload": {
+            "type": "function_call_output", "call_id": "cedar-call",
+            "output": "[printed-cedar abcdef1] Add a cedar light.\n"}},
+    ])
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    index = read_json(state_path(root, "sessions.json"), {})
+    evidence, = [row["code_evidence"] for row in index["files"].values()]
+    assert evidence["printed_branches"] == ["printed-cedar"]
+    assert evidence["started"].endswith("+00:00")

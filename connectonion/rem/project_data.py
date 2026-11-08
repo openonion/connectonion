@@ -28,6 +28,13 @@ def enrich_records(root, records, contexts, *, today=None, local=False, states=N
             continue
         row['kind_counts'] = {kind: sum(item['kind'] == kind for item in row['open']) for kind in KINDS}
         if row['category'] == 'projects':
+            repo = identity(row)['repo']
+            if repo:
+                row['repository'] = repository_projection(root, repo)
+                if not local and row['repository'].get('churn'):
+                    row['repository']['churn'].pop('session_links', None)
+                if repo not in issues and row['repository'].get('synced_at'):
+                    issues = {**issues, repo: row['repository']['issues']}
             _project(row, by_path, contexts, issues, today)
             apply_override(row, overrides.get(row['path'], {}), today)
     for candidate in candidates:
@@ -50,3 +57,73 @@ def _project(row, records, contexts, issues, today):
     row['promised'] = list({(p['date'], p['text'], p['source']): p for p in row['promised']}.values())
     row.update(score_project(row, records, contexts, repo_issues, today))
     row['health'], row['health_reason'] = health(row, today, repo_issues)
+
+
+def repository_projection(root, repo, *, now=None):
+    """Cache-only repository contract; bounded observations are never a complete audit."""
+    import re
+    from .project_pages import code_cache_path, code_utc
+    now = now or datetime.now(timezone.utc)
+    cache = read_json(code_cache_path(root, repo), {})
+    if not cache:
+        return {'repo': repo, 'status': 'missing', 'joins': []}
+    result = {key: value for key, value in cache.items() if key not in ('resources',)}
+    result['status'] = 'error' if cache.get('error') else 'cached'
+    result['joins'] = []
+    if not cache.get('synced_at'):
+        return result
+    prs, runs = cache['prs'], cache['runs']
+    issues = {row['number']: row for row in cache['issues'] if row['state'].upper() == 'OPEN'}
+    merged = [pr for pr in prs if pr.get('mergedAt')]
+    deploys = [run for run in runs if run['conclusion'] == 'success'
+               and run.get('completedAt') and re.search(r'deploy', run['workflowName'], re.I)]
+    deploy = max(deploys, key=lambda run: run['completedAt'], default=None)
+    _repo_join(result, 'merges_after_green_deploy', ['prs', 'actions/runs'],
+               deploy=deploy, prs=[pr['number'] for pr in merged
+                                   if deploy and code_utc(pr['mergedAt']) > deploy['completedAt']])
+    pairs = [{'pr': pr['number'], 'issue': int(number)} for pr in merged
+             for number in re.findall(r'\(#(\d+)\)', pr['title']) if int(number) in issues]
+    _repo_join(result, 'merged_title_open_issue', ['prs', 'issues'], pairs=pairs)
+    zero = [n for n, issue in issues.items() if issue['commentCount'] == 0]
+    _repo_join(result, 'zero_comment_issues', ['issues'], count=len(zero), issues=zero)
+    green = []
+    for pr in prs:
+        checks = pr.get('statusCheckRollup') or []
+        if pr['state'] != 'OPEN' or pr.get('checkRollupState') != 'SUCCESS' or not checks or not all(
+                (check.get('conclusion') or check.get('state')) in ('SUCCESS', 'NEUTRAL', 'SKIPPED') for check in checks):
+            continue
+        completed = [check.get('completedAt') or check.get('createdAt') for check in checks]
+        completed = [code_utc(at) for at in completed if at]
+        if completed:
+            since = max(completed)
+            at = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            green.append({'pr': pr['number'], 'green_since': since,
+                          'age_hours': max(0, (now - at).total_seconds() / 3600)})
+    _repo_join(result, 'green_unmerged_age', ['prs'], prs=green, as_of=code_utc(now))
+    failed = []
+    versions = (cache.get('pypi') or {}).get('versions', [])
+    for run in runs:
+        if not re.search(r'release', run['workflowName'], re.I) or run['conclusion'] != 'failure':
+            continue
+        tags = [tag['name'] for tag in cache['tags'] if tag.get('commit', {}).get('sha') == run['headSha']
+                or tag['name'] == run['branch']]
+        failed.append({'run': run['id'], 'tags': tags, 'tag_present': bool(tags),
+                       'pypi_present': any(tag.removeprefix('v') in versions for tag in tags)
+                       if cache.get('pypi') is not None else None})
+    _repo_join(result, 'failed_release', ['actions/runs', 'tags', 'pypi'], runs=failed)
+    external = []
+    for run in runs:
+        if run['conclusion'] != 'action_required':
+            continue
+        for pr in prs:
+            if pr.get('authorAssociation') in ('NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'CONTRIBUTOR') and (
+                    pr['number'] in run.get('prs', []) or
+                    (pr.get('headRefOid') and pr['headRefOid'] == run['headSha'])):
+                external.append({'pr': pr['number'], 'run': run['id'], 'association': pr['authorAssociation']})
+    _repo_join(result, 'external_action_required', ['prs', 'actions/runs'], pairs=external)
+    return result
+
+
+def _repo_join(result, kind, resources, **values):
+    result['joins'].append({'kind': kind, **values, 'bounded': True,
+                            'verification': [v for v in result.get('verification', []) if v['resource'] in resources]})
