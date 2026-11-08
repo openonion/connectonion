@@ -20,7 +20,7 @@ def notebook(tmp_path):
 
 def test_cited_fields_survive_normalization_and_uncited_values_do_not():
     for path, field, value in [(ORG, 'Kind', 'client_partner'), (ORG, 'To you', '你的客户。'),
-                               (PERSON, 'Team', 'Founders programme')]:
+                               (PERSON, 'Unit', 'Founders programme')]:
         text = f'# Fernhill Labs\n\n## Facts\n- {field}: {value} [1]\n'
         parsed = facts.parse(facts.upgrade(path, text), path)
         assert parsed[field] == [{'value': value, 'qualifier': '', 'citations': ['1']}]

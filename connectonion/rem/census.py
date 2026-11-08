@@ -256,14 +256,20 @@ def _obligation_words(text: str) -> str:
 
 
 def _obligation_evidence(item: tuple) -> tuple:
-    _, text, sources = item
+    record, text, sources = item
+    from .reader_model import notebook_links
+    metadata = re.findall(r'(?:^|\s)- Unit:[ \t]*(.*?)(?=\s- Unit:|$)', text)
+    scope = {path for value in metadata for path in notebook_links(record['path'], value)}
+    text = re.sub(r'(?:^|\s)- Unit:[ \t]*.*?(?=\s- Unit:|$)', '', text)
     ids = {sources[n] for n in CITATION.findall(text) if n in sources}
     quotes = [_obligation_words(a or b) for a, b in QUOTED_WORDS.findall(text)]
     words = _obligation_words(CITATION.sub("", QUOTED_WORDS.sub("", text)))
-    return ids, [q for q in quotes if q], words
+    return ids, [q for q in quotes if q], words, scope
 
 
 def _same_obligation(a: tuple, b: tuple) -> bool:
+    if a[3] and b[3] and a[3].isdisjoint(b[3]):
+        return False
     return bool(a[0] & b[0]) and (a[2] == b[2] or
                                  any(x in y or y in x for x in a[1] for y in b[1]))
 
@@ -272,7 +278,13 @@ def _thread_groups(items: list) -> list:
     """Connected obligations, preserving the reader's existing sort order."""
     groups, evidence = [], [_obligation_evidence(item) for item in items]
     for i in range(len(items)):
-        matches = [group for group in groups if any(_same_obligation(evidence[i], evidence[j]) for j in group)]
+        matches = [group for group in groups
+                   if any(_same_obligation(evidence[i], evidence[j]) for j in group)
+                   and all(not evidence[i][3] or not evidence[j][3]
+                           or not evidence[i][3].isdisjoint(evidence[j][3]) for j in group)]
+        scopes = [evidence[j][3] for group in matches for j in group if evidence[j][3]]
+        if any(a.isdisjoint(b) for a in scopes for b in scopes):
+            matches = []  # An unplaced copy must not bridge two explicitly different units.
         if not matches:
             groups.append([i])
             continue

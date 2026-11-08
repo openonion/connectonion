@@ -31,14 +31,17 @@ docs/cli/rem.md, "Facts and Insight on every page", is the user-facing contract.
 import re
 
 FIELDS = {
-    "people": ("Email", "Phone", "Company", "Role", "Team", "Location", "Time zone", "Links", "How we know them",
+    "people": ("Email", "Phone", "Company", "Role", "Unit", "Role in unit", "Location", "Time zone", "Links", "How we know them",
                "First contact", "Last contact", "Signing entity", "Handles", "Language", "Also known as"),
     "projects": ("Repository", "Stack", "Status", "People", "Organisation", "Started", "Last activity"),
-    "orgs": ("Kind", "To you", "What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact",
+    "orgs": ("Kind", "To you", "What they do", "Parent", "You are", "Website", "Location", "Legal entity", "Your contacts", "First contact",
              "Last contact"),
     "sessions": ("Date", "Agent", "Project", "Folder", "Session", "Turns"),
 }
 ORG_KINDS = ("university", "investor", "client_partner", "supplier", "community", "own_company", "personal")
+UNIT_KINDS = ("faculty", "school", "department", "course", "team", "programme", "venue", "lab")
+YOU_ARE = ("client", "incubatee", "partner", "alumnus", "casual staff")
+REPEATABLE = ("Unit", "Role in unit")
 UNCITED = ("Email", "Handles", "Also known as")
 # Fields that hold several values: a value the extractor found is added beside
 # the model's. Single-valued fields (a date, a role) keep the model's word.
@@ -77,8 +80,12 @@ def _lines(text: str) -> dict[str, str]:
     found = {}
     for line in text[span[0]:span[1]].splitlines():
         match = re.match(r"^- ([^:\n]+):[ \t]*(.*)$", line)
-        if match and match[1] not in found:
-            found[match[1]] = match[2].strip()
+        if match:
+            label = "Unit" if match[1] == "Team" else match[1]
+            if label in REPEATABLE and label in found:
+                found[label] += "; " + match[2].strip()
+            elif label not in found:
+                found[label] = match[2].strip()
     return found
 
 
@@ -103,6 +110,8 @@ def values(raw: str) -> list[dict]:
         return []
     result = []
     for part in _split(raw):
+        if part.casefold().startswith("unknown"):
+            continue
         part = part.rstrip(" .")   # `… [9].`: a sentence's full stop after its citation
         cites = CITES.search(part)
         body = part[:cites.start()].strip()
@@ -122,7 +131,17 @@ def parse(text: str, record: str = "") -> dict[str, list[dict]]:
     """Every field of the page's kind, in order; `[]` is Unknown or a missing line."""
     raw = _lines(text)
     labels = fields(record) or max(FIELDS.values(), key=lambda labels: len(set(labels) & set(raw)))
-    return {label: values(raw.get(label, "")) for label in labels}
+    parsed = {label: values(raw.get(label, "")) for label in labels}
+    span = _bounds(text, "Facts") or _bounds(text, LEGACY)
+    if span:
+        for label in (*REPEATABLE, "Parent"):
+            if label not in labels:
+                continue
+            spelling = "(?:Unit|Team)" if label == "Unit" else re.escape(label)
+            lines = re.findall(rf"(?m)^- {spelling}:[ \t]*(.*)$", text[span[0]:span[1]])
+            # Citation coverage stays within a line, never across independent claims.
+            parsed[label] = [value for line in lines for value in values(line)]
+    return parsed
 
 
 def coverage(text: str, record: str) -> dict:
@@ -135,7 +154,10 @@ def _block(record: str, raw_lines: list[str]) -> str:
     owned, extra, current = {}, [], None
     for line in raw_lines:
         match = re.match(r"^- ([^:\n]{1,40}):", line)
-        if match and match[1] in fields(record) and match[1] not in owned:
+        if match and match[1] in REPEATABLE and match[1] in owned:
+            owned[match[1]].append(line)
+            current = owned[match[1]]
+        elif match and match[1] in fields(record) and match[1] not in owned:
             current = owned.setdefault(match[1], [line])
         elif current is not None and line.startswith((" ", "\t")) and line.strip():
             current.append(line)
@@ -146,11 +168,32 @@ def _block(record: str, raw_lines: list[str]) -> str:
     return "\n".join(out + extra)
 
 
+def _unit_roles(text: str) -> str:
+    """Qualify adjacent bare unit roles before field ordering separates the pairs."""
+    span = _bounds(text, "Facts") or _bounds(text, LEGACY)
+    if not span:
+        return text
+    current, lines = "", []
+    for line in text[span[0]:span[1]].splitlines(keepends=True):
+        unit = re.match(r"^- (?:Unit|Team):[ \t]*(.*)$", line)
+        role = re.match(r"^- Role in unit:[ \t]*(.*)$", line)
+        if unit:
+            found = values(unit[1])
+            current = found[0]["value"] if len(found) == 1 and re.fullmatch(r"\[\[orgs/[^\]]+\]\]|\[[^\]]+\]\([^)]+\)", found[0]["value"]) else ""
+        elif role and current and values(role[1]) and not re.search(r"\[\[|\]\(", role[1]):
+            line = f"- Role in unit: {current} — {role[1].rstrip()}" + ("\n" if line.endswith("\n") else "")
+        lines.append(line)
+    return text[:span[0]] + "".join(lines) + text[span[1]:]
+
+
 def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
     """Bring a page to the Facts shape: rename a legacy `## Contact`, normalize
     missing values to `Unknown`, add a missing Facts section or label, and give a
     person or project page its Insight section. A page already in shape is returned as is."""
     labels = fields(record)
+    if kind(record) == "people":
+        text = _unit_roles(text)
+        text = re.sub(r"(?m)^- Team:", "- Unit:", text)
     if not labels:
         return text
     if _bounds(text, "Facts") is None and _bounds(text, LEGACY) is not None:
@@ -252,16 +295,16 @@ def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[
     for label in fields(record):
         if label in UNCITED:
             continue
-        line = re.search(rf"(?m)^- {re.escape(label)}:[ \t]*(.*)$", text)
-        if not line:
-            continue
         carried = {v["value"] for v in before.get(label, [])}
-        parts, found = _split(line[1]), values(line[1])
-        if len(parts) != len(found) or all(v["citations"] or v["value"] in carried for v in found):
-            continue
-        kept = [part for part, v in zip(parts, found) if v["citations"] or v["value"] in carried]
-        text = text[:line.start()] + f"- {label}: {'; '.join(kept) or 'Unknown'}" + text[line.end():]
-        touched.append(label)
+        def keep(match):
+            parts, found = _split(match[1]), values(match[1])
+            if len(parts) != len(found):
+                return match[0]
+            kept = [part for part, v in zip(parts, found) if v["citations"] or v["value"] in carried]
+            if len(kept) != len(parts) and label not in touched:
+                touched.append(label)
+            return f"- {label}: {'; '.join(kept) or 'Unknown'}"
+        text = re.sub(rf"(?m)^- {re.escape(label)}:[ \t]*(.*)$", keep, text)
     return text, touched
 
 
