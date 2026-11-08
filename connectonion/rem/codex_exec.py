@@ -61,7 +61,17 @@ def _sealed(writable) -> list[str]:
     return ['--ignore-user-config', '-c', 'web_search="disabled"', '-c', 'features.apps=false',
             '-c', 'features.plugins=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false',
             '-c', 'default_permissions="rem_task"', '-c', f'permissions.rem_task.filesystem={table}',
-            '-c', 'permissions.rem_task.network.enabled=false']
+            '-c', 'permissions.rem_task.network.enabled=false',
+            # connectonion's import loads keys.env into the environment; `env` must not show it.
+            '-c', 'shell_environment_policy.inherit="core"']
+
+
+SECRET_NAME = re.compile('KEY|TOKEN|SECRET|PASSWORD|API', re.I)
+
+
+def sealed_environment(environment) -> dict:
+    """What a sealed Codex itself starts with: no secrets. It signs in from CODEX_HOME's auth file."""
+    return {name: value for name, value in environment.items() if not SECRET_NAME.search(name)}
 
 
 def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(), sealed=False) -> list[str]:

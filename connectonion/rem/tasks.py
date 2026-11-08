@@ -151,7 +151,8 @@ def _interrupted(signum, frame):
 
 def _run(command, log, timeout, receipt):
     with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
-                                                  stderr=subprocess.STDOUT, start_new_session=True) as process:
+                                                  stderr=subprocess.STDOUT, start_new_session=True,
+                                                  env=codex_exec.sealed_environment(os.environ)) as process:
         receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
         write_json(Path(receipt['receipt']), receipt)
         try:

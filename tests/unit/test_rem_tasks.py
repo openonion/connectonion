@@ -34,6 +34,7 @@ import json, os, pathlib, sys, time
 args = sys.argv[1:]
 last = pathlib.Path(args[args.index('-o') + 1])
 (last.parent / 'argv.json').write_text(json.dumps(args))
+(last.parent / 'env.json').write_text(json.dumps(sorted(os.environ)))
 last.write_text('Reviewed the Mara pilot.')
 os.chdir(args[args.index('-C') + 1])
 pathlib.Path('codex-was-here.md').write_text('Mara pilot notes')
@@ -118,8 +119,13 @@ def _writable(argv):
     return [argv[index + 1] for index, arg in enumerate(argv) if arg == '--add-dir']
 
 
-def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path):
+def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
+    import re
     from connectonion.rem import tasks
+    # connectonion's import loads keys.env into os.environ; none of it may reach the task.
+    monkeypatch.setenv('CANARY_API_KEY', 'fern-canary')
+    monkeypatch.setenv('FERNHILL_TOKEN', 'fern-canary')
+    monkeypatch.setenv('MARA_PASSWORD', 'fern-canary')
     repo = _repository(tmp_path / 'pilot-repository')
     _link_project(task_notebook, repo)
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
@@ -151,6 +157,11 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     # writable inside a denied ~/.co.
     from connectonion.rem.sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
     assert 'default_permissions="rem_task"' in argv and 'permissions.rem_task.network.enabled=false' in argv
+    # The shell tool gets only Codex's core variables, and Codex itself gets no secrets.
+    assert 'shell_environment_policy.inherit="core"' in argv
+    names = read_json(folder / 'env.json', [])
+    assert 'PATH' in names and 'HOME' in names
+    assert not [name for name in names if re.search('KEY|TOKEN|SECRET|PASSWORD|API', name, re.I)], names
     table = next(arg for arg in argv if arg.startswith('permissions.rem_task.filesystem='))
     home = os.path.realpath(Path.home())
     for name in ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', '.netrc', '.git-credentials'):

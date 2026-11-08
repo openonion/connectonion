@@ -108,6 +108,10 @@ and `CREDENTIAL_FILES`: `~/.co`, `~/.ssh`, `~/.config/gh`, `~/.aws`, `~/.gnupg`,
 directory and temp, and has no network. `--ignore-user-config` with apps,
 plugins, browser use and computer use off means none of the owner's MCP servers,
 connectors or hooks start (they run outside the sandbox); web search is off.
+Codex starts with no environment variable whose name matches
+KEY|TOKEN|SECRET|PASSWORD|API (it signs in from `CODEX_HOME`), and its shell tool
+inherits only Codex's core variables (`shell_environment_policy.inherit="core"`),
+so `env` cannot show what connectonion loaded from `keys.env`.
 So a task cannot push, merge into the owner's checkout, send mail or post, and
 cannot read keys. The cost: it cannot browse, search the web, install packages,
 call any API, or read notebook pages (they live under `~/.co`); it works from
