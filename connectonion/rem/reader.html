@@ -2014,6 +2014,8 @@
   .brief-header .eyebrow { font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); margin: 0; }
   /* The one thing a page is about takes the display size: Today's count here, an entity's name on its page. */
   .brief-header h1 { font-weight: var(--w-bold); font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); overflow-wrap: anywhere; margin: 8px 0 12px; animation: today-rise var(--t-draw) var(--ease-out) both; }
+  /* Before the first pass the page is about the map ("N records mapped"), not a count: the headline steps down so the next step stays on the first screen. */
+  #main:has(.first-map) .brief-header h1 { font-size: var(--s-head); letter-spacing: 0; }
   .brief-header .lede { font: var(--w-regular) var(--s-body)/27px var(--font); color: var(--grey); margin: 0 0 4px; animation: today-rise var(--t-draw) var(--t-stagger) var(--ease-out) both; }
   .brief-header .late, .qage.late { color: var(--red); font-weight: var(--w-bold); }
   .brief-header .waiting-more { font: var(--w-regular) var(--s-body)/22px var(--font); margin: 0; }
