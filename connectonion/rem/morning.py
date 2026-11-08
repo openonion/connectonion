@@ -82,8 +82,11 @@ def preview(root):
     zh = config['language'].lower().startswith('zh')
     names = list(dict.fromkeys(name for row in pending if (name := _name(row))))[:2]
     c = totals
+    nouns = {key: (single if c[key] == 1 else plural) for key, single, plural in (
+        ('drafts', 'draft', 'drafts'), ('sent', 'reply', 'replies'),
+        ('dispatched', 'task', 'tasks'), ('investigations', 'investigation', 'investigations'))}
     first = (f"昨夜：备好 {c['drafts']} 封草稿，已发 {c['sent']} 封回复，派出 {c['dispatched']} 项任务、完成 {c['finished']} 项，讲清 {c['investigations']} 项调查。" if zh else
-             f"Overnight: {c['drafts']} drafts prepared, {c['sent']} replies sent, {c['dispatched']} tasks dispatched, {c['finished']} finished, {c['investigations']} investigations explained.")
+             f"Overnight: {c['drafts']} {nouns['drafts']} prepared, {c['sent']} {nouns['sent']} sent, {c['dispatched']} {nouns['dispatched']} dispatched, {c['finished']} finished, {c['investigations']} {nouns['investigations']} explained.")
     second = f"{len(pending)} 件等你点一下" if zh else f"{len(pending)} need one click"
     if names:
         second += '：' + '、'.join(names) if zh else ': ' + ', '.join(names)
@@ -173,12 +176,16 @@ def sender_status():
 
 def doctor(root):
     config = read_config(root)
+    senders = sender_status()
     rows = [{'check': 'morning sender ' + item['channel'], 'ok': True,
              'detail': ('configured' if item['configured'] else 'not configured') + '; next: ' + item['next']}
-            for item in sender_status()]
+            for item in senders]
     selected = config['notify']['channel']
-    rows.append({'check': 'morning channel', 'ok': selected == 'none' or bool(config['notify']['target']),
-                 'detail': selected, 'fix': 'co rem config set notify.target YOUR_OWN_CHAT'})
+    sender = next((item for item in senders if item['channel'] == selected), {})
+    ready = bool(config['notify']['target']) and sender.get('configured', False)
+    rows.append({'check': 'morning channel', 'ok': selected == 'none' or ready,
+                 'detail': selected if selected == 'none' or ready else selected + '; setup incomplete',
+                 'fix': sender.get('next', 'co rem morning --help')})
     for date, entry in read_json(state_path(root, 'morning.json'), {}).items():
         if entry['status'] in ('failed', 'sending'):
             rows.append({'check': 'morning delivery', 'ok': False,

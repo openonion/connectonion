@@ -2158,7 +2158,8 @@ No work and no current one-click actions means no message. A checked local date
 never sends twice, including after a failed send; inspect `co rem doctor`.
 
 Default channel is `none`. Run `co rem doctor` for existing configured senders
-and their next command, then choose your own destination explicitly:
+and their next command. Doctor marks an enabled channel with an absent sender
+or destination as incomplete setup. Choose your own destination explicitly:
 
 ```sh
 co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram

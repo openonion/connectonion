@@ -145,3 +145,8 @@ Each entry has `checked_at`, `channel`, and `status` (`quiet`, `disabled`, `send
 provider payloads. The maintenance lock serializes the claim before external IO.
 A crash leaves `sending`, diagnosed by doctor; it never auto-resends. A disabled
 or quiet date is also final. Dry-run reads state without claiming a date.
+
+Notification settings are round controls, not task evidence. Native-task input
+checks accept legacy config digests with or without `notify`, including old
+model/language digest variants, while still rejecting changes to task content.
+Doctor reports incomplete setup when the selected sender or target is absent.

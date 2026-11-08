@@ -207,3 +207,18 @@ def test_late_check_excludes_daytime_work(morning_book, monkeypatch):
     write_json(state_path(morning_book, 'investigations/index.json'), {'items': [
         {'status': 'explained', 'explained_at': '2026-11-08T10:00:00+11:00'}]})
     assert morning.preview(morning_book)['counts']['investigations'] == 0
+
+
+def test_english_singular_counts(morning_book):
+    from connectonion.rem import morning
+    message = morning.preview(morning_book)['message']
+    assert '1 draft prepared' in message and '1 reply sent' in message
+    assert '1 task dispatched' in message and '1 investigation explained' in message
+
+
+def test_doctor_flags_unconfigured_selected_sender(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    monkeypatch.setattr(morning, 'sender_status', lambda: [
+        {'channel': 'telegram', 'configured': False, 'next': 'co telegram check'}])
+    rows = morning.doctor(morning_book)
+    assert any(not row['ok'] and 'telegram' in row['detail'] for row in rows)
