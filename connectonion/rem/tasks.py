@@ -21,10 +21,6 @@ from .service import now
 
 
 ACTIVE = ('starting', 'running')
-# rc62 safety hold; rc63 removes it. Codex runs git outside its sandbox in the task's folder, so
-# a task is recorded and its prompt offered, but no Codex run starts: approved, automatic or CLI.
-HOLD = True
-HELD = 'Recorded. For safety this version does not run it; open it in Codex'
 
 
 def identity(key):
@@ -115,8 +111,7 @@ def _prompt(receipt):
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
             'End with a one-line summary of the work. '
-            'Never push, merge, send mail or post. Commands have no network and cannot read credentials; '
-            'if the work needs the web or an account, say so as a missing input. '
+            'Never push, merge, send mail or post: those stay the owner\'s click. '
             'do not send anything to anyone; write the result and stop')
 
 
@@ -127,8 +122,6 @@ def _prepared(root, task_id):
 
 def start(root, task_id):
     """Detach a worker, never a second worker for the same obligation."""
-    if HOLD:
-        raise RemError(HELD + '. co rem task status ID shows its prompt.')
     from .runner import child_env
     root = Path(root).resolve()
     folder = directory(root, task_id)
@@ -158,7 +151,7 @@ def _interrupted(signum, frame):
 def _run(command, log, timeout, receipt):
     with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
                                                   stderr=subprocess.STDOUT, start_new_session=True,
-                                                  env={**codex_exec.sealed_environment(os.environ),
+                                                  env={**os.environ,
                                                        'TMPDIR': str(Path(receipt['receipt']).parent / 'tmp')}) as process:
         receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
         write_json(Path(receipt['receipt']), receipt)
@@ -196,9 +189,8 @@ def _execute(root, folder, receipt, timeout):
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)
-        reads = [receipt[name] for name in ('repository', 'project') if receipt.get(name)]
         command = codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True, reads=reads)
+                                          prompt=_prompt(receipt), add_dirs=(folder,), full_access=True)
         write_json(folder / 'receipt.json', receipt)
         code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt)
         deliverable = Path(receipt['deliverable'])
@@ -319,7 +311,7 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    if HOLD or not config['tasks']['auto']:
+    if not config['tasks']['auto']:
         _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn

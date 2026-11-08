@@ -45,9 +45,9 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    # tasks.auto: owed work starts after the night's drafts, sealed, with Undo. Off
-    # until the sealed run's reads are limited to an allow-list, not a deny-list.
-    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    # tasks.auto: owed work starts after the night's drafts, with full access and Undo
+    # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -172,6 +172,8 @@ SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.investigation_quota_points": {20},
               "limits.quota_floor_percent": {70},
               "limits.drafts_per_night": {10},
+              # init wrote the rc61 default into every config.yaml; it was never his choice.
+              "tasks.auto": {False},
               "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
 
@@ -203,7 +205,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
     config.setdefault("notify", {"channel": "none", "target": ""})
-    config.setdefault("tasks", {"auto": False})
+    config.setdefault("tasks", {"auto": True})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")

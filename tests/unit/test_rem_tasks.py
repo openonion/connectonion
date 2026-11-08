@@ -13,12 +13,9 @@ from connectonion.rem.files import RemError, Notebook, read_json, state_path, wr
 
 @pytest.fixture
 def task_notebook(tmp_path, monkeypatch, rem_clock):
-    from connectonion.rem import tasks
-    monkeypatch.setattr(tasks, 'HOLD', False)  # these tests exercise the run itself; one test holds
     root = tmp_path / 'rem'
     prepare(root)
-    # tasks.auto is off by default until the inverted read boundary ships; these tests run it on.
-    set_config(root, ["runner", "codex", "model", default_config()["model"], "tasks.auto", "true"])
+    set_config(root, ["runner", "codex", "model", default_config()["model"]])
     book = Notebook(root)
     book.stub_project('projects/pilot.md', 'Mara pilot', [])
     book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
@@ -84,7 +81,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
     argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
     assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
-    assert 'default_permissions="rem_task"' in argv and '--add-dir' in argv
+    assert argv[argv.index('-s') + 1] == 'danger-full-access' and '--add-dir' in argv
     assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
     assert 'do not send anything to anyone; write the result and stop' in argv[-1]
     assert saved['deliverable'] in argv[-1]
@@ -126,13 +123,11 @@ def _writable(argv):
     return [argv[index + 1] for index, arg in enumerate(argv) if arg == '--add-dir']
 
 
-def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
-    import re
+def test_task_runs_with_full_access_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
+    # D-100: owed work runs as the owner's own Codex runs do, with full access. It needs the
+    # web and his accounts (gh, co) to do the job, so nothing is sealed and no variable is stripped.
     from connectonion.rem import tasks
-    # connectonion's import loads keys.env into os.environ; none of it may reach the task.
-    monkeypatch.setenv('CANARY_API_KEY', 'fern-canary')
-    monkeypatch.setenv('FERNHILL_TOKEN', 'fern-canary')
-    monkeypatch.setenv('MARA_PASSWORD', 'fern-canary')
+    monkeypatch.setenv('FERNHILL_TOKEN', 'fern-token')
     repo = _repository(tmp_path / 'pilot-repository')
     _link_project(task_notebook, repo)
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
@@ -141,55 +136,19 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     folder = Path(saved['receipt']).parent
     argv = read_json(folder / 'argv.json', [])
     work = folder / 'work'
-    # Codex writes only in a worktree on its own branch, plus its task folder.
     assert argv[argv.index('-C') + 1] == str(work) == saved['cwd'] and _writable(argv) == [str(folder)]
+    assert argv[argv.index('-s') + 1] == 'danger-full-access'
+    assert not any('rem_task' in arg or 'network.enabled=false' in arg for arg in argv)
+    assert '--ignore-user-config' not in argv and 'web_search="disabled"' not in argv
+    assert 'FERNHILL_TOKEN' in read_json(folder / 'env.json', [])
+    assert (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
+    # Its own branch: the owner's checkout keeps its branch and has no new files.
     assert _git(work, 'branch', '--show-current') == saved['branch'] == f"rem/task-{receipt['id']}"
     assert (work / 'codex-was-here.md').is_file() and saved['project'] == str(repo)
-    # The owner's checkout keeps its branch and has no new files.
     assert _git(repo, 'branch', '--show-current') == 'main' and _git(repo, 'status', '--porcelain') == ''
-    # No network for its commands: nothing can be pushed, mailed or posted.
-    assert not any('network_access=true' in arg for arg in argv)
-    # A -s flag overrides the permission profile: measured with codex 0.167, a run with
-    # -s workspace-write read the canary credentials and reached the network.
-    assert '-s' not in argv and '--sandbox' not in argv
-    # Codex's own web search could carry what it read to a live URL; it is off too.
-    assert 'web_search="disabled"' in argv
-    # MCP servers, plugins and app connectors run outside the sandbox with network
-    # (a GitHub connector can open an issue): the owner's Codex config is not loaded.
-    assert '--ignore-user-config' in argv
-    assert {'features.apps=false', 'features.plugins=false', 'features.browser_use=false',
-            'features.computer_use=false'} <= set(argv)
-    assert not any(arg.startswith('mcp_servers.') and 'enabled=true' in arg for arg in argv)
-    # Codex's seatbelt reads the disk except the owner's credentials; the task folder stays
-    # writable inside a denied ~/.co.
-    from connectonion.rem.sandbox_profile import CREDENTIAL_DIRS, CREDENTIAL_FILES
-    assert 'default_permissions="rem_task"' in argv and 'permissions.rem_task.network.enabled=false' in argv
-    # The shell tool gets only Codex's core variables, and Codex itself gets no secrets.
-    assert 'shell_environment_policy.inherit="core"' in argv
-    # Codex's command executor (code mode) runs outside the seatbelt; memories persist across runs,
-    # subagents were not shown to inherit the profile, and skill text stays away from the model.
-    assert 'features.code_mode_host=false' not in argv  # codex 0.167 runs no command without it
-    # The owner's execpolicy rules can run a matching command outside the sandbox.
-    assert '--ignore-rules' in argv
-    assert {'features.code_mode=false', 'features.memories=false',
-            'features.multi_agent=false', 'features.multi_agent_v2=false',
-            'skills.include_instructions=false'} <= set(argv)
-    names = read_json(folder / 'env.json', [])
-    assert 'PATH' in names and 'HOME' in names
-    assert not [name for name in names if re.search('KEY|TOKEN|SECRET|PASSWORD|API', name, re.I)], names
-    table = next(arg for arg in argv if arg.startswith('permissions.rem_task.filesystem='))
-    # Outside the task folder, work dir, repository and Codex's release the disk's user areas are unreadable.
-    for root in ('/Users', '/Volumes', '/tmp', '/private/tmp', '/private/var/folders'):
-        assert f'"{root}"="none"' in table
-    assert ':tmpdir' not in table and ':slash_tmp' not in table
-    assert f'"{os.path.realpath(repo)}"="read"' in table
-    assert table.count('="write"') == 2  # the task folder and its work dir: nothing under the repo's .git
-    assert read_json(folder / 'env.json', []) and (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
-    home = os.path.realpath(Path.home())
-    for name in ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', '.netrc', '.git-credentials'):
-        assert name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES) and f'"{home}/{name}"="none"' in table
-    assert f'"{os.path.realpath(folder)}"="write"' in table and f'"{os.path.realpath(work)}"="write"' in table
+    # Pushing, merging and sending stay the owner's one irreversible click.
     assert str(repo) in argv[-1] and 'Never push' in argv[-1]
+    assert 'no network' not in argv[-1] and 'cannot read credentials' not in argv[-1]
     assert saved['result'] == 'completed'
 
 
@@ -342,19 +301,17 @@ def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_no
     assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
 
 
-def test_this_version_holds_approved_tasks_and_starts_no_codex_run(task_notebook, monkeypatch):
+def test_an_approved_task_starts_its_codex_run(task_notebook, fake_codex):
+    # rc62 held every task ("this version does not run it"); D-100 lifts the hold.
     from connectonion.rem import approvals, tasks
-    monkeypatch.setattr(tasks, 'HOLD', True)
-    monkeypatch.setattr(tasks.subprocess, 'Popen', lambda *a, **k: pytest.fail('no Codex run starts while held'))
     offered = approvals.outcomes(task_notebook)[0]
     assert approvals.approve(task_notebook, [offered['id']])['results'][0]['status'] == 'queued'
-    calls = []
-    assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == [] and not calls
+    released = approvals.release(task_notebook, dispatch=lambda item: tasks.start(task_notebook, item['receipt_id']))
+    assert released[0]['status'] == 'dispatched'
     task = night.listing(task_notebook)[0]['task']
-    assert task['result'] == 'held' and task['prompt']
-    with pytest.raises(RemError, match='open it in Codex'):
-        tasks.start(task_notebook, task['id'])
-    assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
+    assert task['result'] != 'held'
+    assert _finished(task_notebook, task['id'])['result'] == 'completed'
+    assert not hasattr(tasks, 'HOLD') and not hasattr(tasks, 'HELD')
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):
@@ -388,21 +345,25 @@ def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch)
     assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived undo'
 
 
-def test_auto_is_off_by_default_and_the_owner_can_turn_it_on(task_notebook, monkeypatch):
+def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monkeypatch):
     from connectonion.rem import tasks, service
+    from connectonion.rem.config import EXPLICIT
     launched = []
     monkeypatch.setattr(tasks, 'start', lambda root, identity: launched.append(identity) or {'id': identity})
-    set_config(task_notebook, ['tasks.auto', 'false'])
+    assert default_config()['tasks']['auto'] is True
+    config_path = task_notebook / 'config.yaml'
+    # init wrote the old default, auto: false, into config.yaml; that is not the owner's choice.
+    config_path.write_text(config_path.read_text().replace('tasks:\n  auto: true\n', 'tasks:\n  auto: false\n'))
+    assert 'auto: false' in config_path.read_text() and read_config(task_notebook)['tasks']['auto'] is True
+    config_path.write_text(config_path.read_text().replace('tasks:\n  auto: false\n', ''))
+    assert read_config(task_notebook)['tasks']['auto'] is True  # an older notebook without the key
+    tasks.auto_dispatch(task_notebook, read_config(task_notebook))
+    assert launched and service.status(task_notebook)['tasks']['auto'] is True
+    launched.clear()
+    set_config(task_notebook, ['tasks.auto', 'false'])  # the owner's own choice wins
+    assert 'tasks.auto' in read_json(state_path(task_notebook, EXPLICIT), [])
     assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
     assert not launched and service.status(task_notebook)['tasks']['auto'] is False
-    (task_notebook / 'config.yaml').write_text((task_notebook / 'config.yaml').read_text().replace(
-        'tasks:\n  auto: false\n', ''))
-    assert default_config()['tasks']['auto'] is False
-    assert read_config(task_notebook)['tasks']['auto'] is False  # an older notebook without the key
-    set_config(task_notebook, ['tasks.auto', 'true'])
-    tasks.auto_dispatch(task_notebook, read_config(task_notebook))
-    assert launched
-    assert service.status(task_notebook)['tasks']['auto'] is True
     with pytest.raises(RemError, match='tasks.auto'):
         set_config(task_notebook, ['tasks.auto', 'yes'])
 

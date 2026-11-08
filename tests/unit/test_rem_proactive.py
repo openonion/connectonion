@@ -1307,7 +1307,6 @@ def test_approve_release_uses_existing_send_path_once_and_checks_slots(notebook,
 
 def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, monkeypatch):
     from connectonion.rem import approvals, tasks, today, threads
-    monkeypatch.setattr(tasks, 'HOLD', False)  # release semantics; the rc62 hold is tested in test_rem_tasks
     book = Notebook(notebook)
     book.write('people/fern.md', '# Fern Vale\n\n## Open threads\n- You owe Fern a review.\n- You owe Fern a date.\n')
     keys = ['people/fern.md\nYou owe Fern a review.', 'people/fern.md\nYou owe Fern a date.']
@@ -1329,7 +1328,6 @@ def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, 
 def test_approval_dispatch_does_not_lock_notebook(notebook, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from connectonion.rem import approvals, tasks
-    monkeypatch.setattr(tasks, 'HOLD', False, raising=False)
     from connectonion.rem.files import maintenance_lock
     key = 'people/fern.md\nReview the pilot.'  # approved task records carry their obligation key
     item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'key': key, 'keys': [key], 'text': 'Review the pilot.'}
