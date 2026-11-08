@@ -4881,10 +4881,9 @@ def test_approve_all_sheet_slots_results_and_undo(reader, width, theme):
 def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
     page, uri = reader
     page.goto(uri)
-    assert page.locator('#approve-all').is_disabled()
-    assert page.locator('.approval-header code').count() == 1
-    assert 'co rem' in page.locator('.approval-header code').inner_text()
-    assert 'open' in page.locator('.approval-header code').inner_text()
+    # A snapshot never gains outcomes later: no empty "Approve all 0" and no command for nothing to approve.
+    assert page.locator('#approve-all').count() == 0
+    assert page.locator('.approval-header code').count() == 0
     assert page.locator('.qcard a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
 
 
@@ -4922,7 +4921,7 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         result = card.locator('.task-result')
         assert result.is_visible()
         assert 'Completed' in result.inner_text()
-        assert page.locator('#approve-all').inner_text() == 'Approve all 0'
+        assert page.locator('#approve-all').count() == 0  # nothing to approve in a snapshot
         assert receipt['deliverable'] in result.inner_text()
         assert result.locator('textarea').input_value() == f"REM 已经做完：Reviewed the Mara pilot. · 附：{receipt['deliverable']}"
         assert result.locator('textarea').get_attribute('readonly') is not None

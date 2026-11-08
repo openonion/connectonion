@@ -144,3 +144,77 @@ with the current test id:
     18756 passed, 19 skipped, 2944 warnings in 151.68s (0:02:31)
 
 The audit hook recorded no write.
+
+## Follow-up: blame only on evidence that this pytest wrote
+
+Review: on the owner's Mac, scheduled REM rounds, token refresh in keys.env and the mail stores
+write the real ~/.co during a run, so a manifest-only guard goes red with no test at fault, and
+people learn to ignore a guard that is always red. The guard moved to `tests/real_home_guard.py`
+(imported at the top of conftest, before connectonion):
+
+- an audit hook in every pytest process (controller and each xdist worker) appends
+  `test id, event, path` to a per-run file for each write under the real ~/.co: write-mode
+  open, rename/replace/remove/rmdir/mkdir/truncate/chmod/utime/symlink/link, shutil
+  copy/move/rmtree, sqlite3.connect. The first check is a substring test for `.co`. **Any
+  record fails the run**, for any path, with no allowlist;
+- the stat-only manifest stays. A change no record explains is printed as "changed by another
+  process during the run" and **does not fail**. It names likely writers: REM `.state/turns`
+  entries with an mtime inside the run, and live `co`/`codex` processes that this pytest
+  did not start (from `ps`);
+- **ssh/ warns and does not fail.** A stat-only manifest plus an in-process hook cannot fail it
+  safely: `co server new`/`co keys` write ssh/ legitimately, another worktree running a
+  branch without 649bebd56 writes ssh/id_ed25519_* (seen at 23:03), and a test's subprocess is
+  invisible to the hook. None of these can be told apart by stat. It gets its own loud banner.
+
+Red first (a), a scratch test (not committed) writing `ssh/id_ed25519_from_a_test` under
+`CONNECTONION_TEST_REAL_HOME`, under `-n 2`:
+
+    ..............................................................           [100%]
+    ! a test wrote the real <scratch>/g.8678/.co !
+    tests/unit/test_zz_scratch_writes_the_real_home.py::test_this_one_writes_the_real_home: open <scratch>/g.8678/.co/ssh/id_ed25519_from_a_test
+    tests/unit/test_zz_scratch_writes_the_real_home.py::test_this_one_writes_the_real_home: os.mkdir <scratch>/g.8678/.co/ssh
+    Usually a module-level constant built from Path.home() at import. Resolve it at call time, or let _never_touch_the_real_home rebase it.
+    62 passed in 5.85s
+    exit=1
+
+Red first (b), a real concurrent writer: a script `Popen`s a detached process
+(`start_new_session=True`) that rewrites rem-trials/nb/.state/turns/t1, keys.env and
+ssh/id_ed25519_other every 0.5 s, then runs pytest:
+
+    detached writer pid 95065
+    ! <scratch>/g.UpSy/.co/ssh CHANGED during this run, n
+    Nothing in the suite should write there. Check `co server`/`co keys` runs and other worktrees' test runs (a br
+    - <scratch>/g.UpSy/.co changed by another process dur
+    changed: keys.env
+    changed: rem-trials/nb/.state/turns/t1
+    changed: ssh/id_ed25519_other
+    likely writer: REM turn active in the window: rem-trials/nb/.state/turns/t1
+    likely writer: live process 649 /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/M
+    likely writer: live process 738 /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/M
+    likely writer: live process 42107 /opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions
+    likely writer: live process 50525 /Users/changxing/.codex/packages/app-server-daemon/releases/0.167.0-aarch64-
+    likely writer: live process 63055 /Users/changxing/.codex/packages/app-server-daemon/releases/0.167.0-aarch64-
+    likely writer: live process 81257 /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents
+    likely writer: live process 95349 /private/tmp/rem-sprint11/morning-message/.venv/bin/python /private/tmp/rem-
+    likely writer: live process 95350 /private/tmp/rem-sprint11/morning-message/.venv/bin/python /private/tmp/rem-
+    likely writer: live process 95351 /private/tmp/rem-sprint11/morning-message/.venv/bin/python /private/tmp/rem-
+    likely writer: live process 95354 /private/tmp/rem-sprint11/morning-message/.venv/bin/python /private/tmp/rem-
+    likely writer: ... and 7 more co/codex processes
+    real-home guard: no write to <scratch>/g.UpSy/.co fro
+    144 passed in 6.93s
+    pytest exit=0
+
+Unit suite, `HOME=$(mktemp -d) OPENONION_API_KEY=test-key`, `-n 6 --dist=worksteal`: all 18
+earlier `MissingAmbientAPIKey` failures pass with the key set.
+
+    real-home guard: <scratch>/.co unchanged, no write from this pytest
+    18756 passed, 19 skipped, 2944 warnings in 511.16s (0:08:31)
+
+Final guarded run on the real home (23:38), exit 0:
+
+    - ~/.co changed by another process during the run (not a failure) -
+    changed: .browser_tip
+    changed: lark_quota_watch.err
+    likely writer: live process ... (8 codex processes)
+    real-home guard: no write to ~/.co from this pytest
+    18756 passed, 19 skipped, 2944 warnings in 164.26s (0:02:44)
