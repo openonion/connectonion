@@ -5639,3 +5639,19 @@ def test_project_page_open_items_are_a_record_without_green_or_self_links(reader
     assert page.evaluate(GREEN) == 0
     assert page.locator("#open-threads").get_by_text("Open the page", exact=True).count() == 0
     assert items.first.get_by_role("button", name="Mark done", exact=True).count() == 1
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person(reader, width):
+    """The name is not centred in an empty poster band, and a long role never wraps
+    onto a line of its own where it reads as the next person's role."""
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
+    page.evaluate("""() => { const p = REM.records.find(r => r.category === 'people');
+      p.text = p.text.replace(/^(- Role: ).*$/m, '$1Former sales and marketing intern for the pilot programme across three campuses'); render(); }""",
+      isolated_context=False)
+    assert page.locator(".ov-say h1").bounding_box()["y"] < 160
+    for item in page.locator(".ov-key li").all():
+        name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
+        assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
+        assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"

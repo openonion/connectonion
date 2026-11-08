@@ -2321,6 +2321,13 @@
   .list-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; }
   .list-today { flex: none; font: 400 14px/22px var(--today-font); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
   .list-today:hover { color: var(--ink); text-decoration-color: currentColor; }
+  /* Organisation page: the name starts at the top of the first screen, not centred in an empty band. */
+  .ov-say { align-self: start; padding-top: 56px; }
+  /* Each person's role sits under that person's name, never wrapped onto a line that reads as the next person's. */
+  .ov-key li { display: block; }
+  .ov-key li + li { margin-top: 10px; }
+  .ov-key li .ov-meta { display: block; margin: 0; font-size: 12px; line-height: 18px; }
+  @media (max-width: 720px) { .ov-say { padding-top: 16px; } }
 </style>
 </head>
 <body>
