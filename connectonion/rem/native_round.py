@@ -35,7 +35,8 @@ def prepare(root, config, *, scheduled):
     collect_projects(root, sources, lock_held=True)
     refresh(root)
     from .topic_map import backfill_topics
-    topics = backfill_topics(Notebook(root), lock_held=True, propose=True)
+    # co rem next never calls a model: the native round reuses this week's proposal only.
+    topics = backfill_topics(Notebook(root), lock_held=True)
     progress = read_json(state_path(root, "progress.json"), {})
     batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
     from .people_basics import refresh as refresh_basics

@@ -44,6 +44,16 @@ def _claim_audit_passes(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _topic_proposal_is_offline(request, monkeypatch):
+    """The nightly round asks the summary model to name topics once a week;
+    unit tests of other features never make that call."""
+    if request.module.__name__.endswith("test_rem_topic_map"):
+        return
+    from connectonion.rem import topic_map
+    monkeypatch.setattr(topic_map, "_propose_topics", lambda notebook: {"topics": [], "usage": {}})
+
+
+@pytest.fixture(autouse=True)
 def _codex_onboarding_is_offline(request, monkeypatch):
     """Unit tests never install a CLI or open the operator's OAuth browser.
 
