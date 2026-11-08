@@ -1764,7 +1764,7 @@
     .r4 h1 .soft { display: block; font-size: 16px; line-height: 22px; margin-top: 2px; }
     .r4 h1 .soft::before { content: none; }
     .r4 h2 { margin-top: 32px; }
-    .r4-headrow { flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .r4-headrow { flex-wrap: wrap; gap: 14px; margin-top: 10px; }
     .r4 .face.lg { width: 48px; height: 48px; font-size: 16px; }
     .r4 .r4-primary { width: 100%; justify-content: center; height: 46px; order: 3; }
     .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -1898,6 +1898,7 @@
     .session-controls { display: grid; }
     .session-tabs { overflow-x: auto; }
     .session-tabs button { flex: 1; min-height: 40px; }
+    .sessions-view.r4 .session-result-line button, .session-person, .session-curtain-show, .session-more { min-height: 40px; }
     #session-search { height: 44px; font-size: 16px; }
     .session-row { align-items: flex-start; min-height: 64px; }
     .session-row > .session-state { margin-top: 4px; }
@@ -1921,6 +1922,7 @@
   }
   .ov-child-units { display: grid; gap: 10px; margin-top: 12px; }
   .ov-child-units .ov-team { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
+  .ov-teams:has(.ov-child-units) { grid-template-columns: minmax(0, 1fr); }
 </style>
 <style id="org-style">
   /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
@@ -2070,6 +2072,7 @@
   .ov-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--ov-ink4); font-weight: 700; }
   .ov-src { font-size: 12.5px; color: var(--ov-ink3) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
   .ov-src .ov-i { width: 13px; height: 13px; }
+  .ov-head .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: var(--ov-ink2); }
   .ov-curtain { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 16px; }
   main:has(> .ov) > .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
   @media (max-width: 1180px) { .ov-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -2086,7 +2089,7 @@
     .ov-fs { white-space: normal; }
     .ov .ov-primary { width: 100%; max-width: none; height: 46px; line-height: 46px; text-align: center; box-sizing: border-box; }
     .ov-bar { margin-top: 28px; }
-    .ov-head { flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .ov-head { flex-wrap: wrap; gap: 14px; margin-top: 6px; }
     .ov-head .ov-tile.xl { width: 48px; height: 48px; font-size: 17px; }
     .ov-head > .ov-primary, .ov-head > .draft-now { order: 3; }
     .ov-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -5914,6 +5917,7 @@ function owedRow(r, entry) {
   return el("div", { class: "owe" + (theirs ? " theirs" : "") + (isDone(entry) ? " closed" : "") }, [
     el("div", { class: "owe-t" }, [el("span", { text: title }), el("span", { class: "chip " + state.cls, text: state.text })]),
     parts.head ? owedEvidence(entry, parts) : null, owedActions(entry),
+    entry.t.returnedAt ? el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) }) : null,
     sources ? el("span", {class: "r4-owed-sources", html: inline(sources, entry.r?.path || r.path)}) : null]);
 }
 function owedCard(r, entries) {
@@ -5997,7 +6001,8 @@ function personSub(r) {
 function personHead(r, entry) {
   const org = personOrg(r);
   return el("header", { class: "r4-head person-head" }, [
-    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true)]),
+    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true),
+      uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark(true) : null]),
     el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personPrimary(r, entry)])]);
 }
 function timelineRow(r, item) {
@@ -6582,7 +6587,7 @@ function orgResults(rows, box) {
     box.append(el("h2", { class: "ov-grp" }, [name === "Waiting on you" ? el("span", { class: "ov-dot lamp" }) : null,
       orgT(name) + " · " + list.length, el("span", { class: "ov-hint", text: orgT(hint) })]), card);
   }
-  if (!box.childElementCount) box.appendChild(el("p", { class: "ov-quiet", text: orgT("No organisation matches") }));
+  if (!box.childElementCount) box.appendChild(emptyState("No matching pages", "Clear filters →", "#c=orgs", () => { orgFilter = {query: "", tab: "all"}; orgsView(); }));
 }
 function orgRow(o) {
   const { r, owed } = o, hidden = orgHidden(r), kind = hidden ? "" : orgKind(r);
@@ -6626,7 +6631,8 @@ function orgHead(r, owed, people = []) {
   return el("header", { class: "ov-head" }, [orgTile(r, "xl"), el("div", { class: "ov-body" }, [el("h1", { text: orgName(r) }),
     r.domain ? el("p", { class: "ov-domain", text: r.domain }) : null,
     orgHidden(r) ? null : updatedMarker(r, true),
-    orgHidden(r) ? null : el("p", { class: "ov-sub" }, orgSub(r, people))]), owed.length ? orgPrimary(owed[0]) : null]);
+    orgHidden(r) ? null : el("p", { class: "ov-sub" }, orgSub(r, people)),
+    !orgHidden(r) && sourceList(r).length ? el("a", {class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →")}) : null]), owed.length ? orgPrimary(owed[0]) : null]);
 }
 function orgCurtain(r) {
   const show = el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show") });
@@ -6783,7 +6789,7 @@ function orgRail(r, people) {
   const fact = name => (parseFacts(r).get(name) || []).map(item => plainLine(item.value)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
   const about = [["What", fact("What they do")], ["Website", fact("Website").replace(/^https?:\/\/(?:www\.)?|\/$/g, "") || r.domain || ""], ["Where", fact("Location")]].filter(([, value]) => value);
   const projects = (r.projects || []).map(byPath).filter(Boolean);
-  const unsure = [!r.kind ? orgT("What kind of organisation this is") : null, !r.to_you ? orgT("What it is to you") : null,
+  const unsure = [!r.kind && !r.unit_kind ? orgT("What kind of organisation this is") : null, !r.to_you ? orgT("What it is to you") : null,
     people.some(p => !(p.team || "").trim()) && people.some(p => (p.team || "").trim()) ? orgT("Which department {n} people sit in", { n: people.filter(p => !(p.team || "").trim()).length }) : null].filter(Boolean).slice(0, 2);
   const sources = sourceList(r).length;
   return [about.length ? el("h4", { text: orgT("About") }) : null,
@@ -8121,7 +8127,7 @@ function record(path, heading) {
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person ? recordContext(r) : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person || r.category === "orgs" ? recordContext(r) : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
   const sections = toc.length + (note.firstElementChild && note.firstElementChild.tagName !== "H2" ? 1 : 0)
     + grid.querySelectorAll(".deep-context .focus-section, .side .panel:not(.toc-panel)").length
     + Number(!!parts.related) + Number(!!parts.sources);
@@ -8458,7 +8464,7 @@ function render() {
   document.title = (reviews ? t("Questions & connections") : r ? (byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
-  const viewKey = r || c || view || (reviews ? "reviews" : query ? "search" : "today");
+  const viewKey = r || (c === "people" ? c + (peopleTable ? ":table" : ":rows") : c) || view || (reviews ? "reviews" : query ? "search" : "today");
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
   entranceView = viewKey;
   refreshFocusExpansion();

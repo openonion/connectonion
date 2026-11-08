@@ -170,3 +170,14 @@ def test_parent_unit_page_renders_direct_members_in_their_known_unit():
       console.log(JSON.stringify(page.children[2].children));
     ''')
     assert result == [{'path': 'people/mara.md', 'unitPath': 'orgs/course.md'}]
+
+
+@pytest.mark.parametrize('unit_kind,unknown', [('team', False), ('', True)])
+def test_known_unit_kind_is_not_presented_as_an_unknown_organisation(unit_kind, unknown):
+    result = run_js(['orgRail'], r'''
+      const parseFacts = () => new Map(), plainLine = text => text, byPath = () => null;
+      const orgT = text => text, known = () => ({status: 'Investigated'}), sourceList = () => [];
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      console.log(JSON.stringify(orgRail({unit_kind: ''' + json.dumps(unit_kind) + r''', to_you: 'Your delivery unit'}, [])));
+    ''')
+    assert ('What kind of organisation this is' in json.dumps(result)) is unknown

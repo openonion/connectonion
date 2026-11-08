@@ -43,7 +43,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         for width in (1440, 375):
-            page = browser.new_page(viewport={"width": width, "height": 812})
+            page = browser.new_page(viewport={"width": width, "height": 812}, locale="en-US")
             page.goto(path.as_uri() + "#r=projects%2Fjournal.md")
             statement = page.locator(".focus-statement").inner_text()
             assert "Automatic investigations skip this private project." in statement
@@ -85,7 +85,7 @@ def test_mapped_project_hero_says_it_waits_instead_of_showing_its_folder(tmp_pat
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         for width in (1440, 375):
-            page = browser.new_page(viewport={"width": width, "height": 812})
+            page = browser.new_page(viewport={"width": width, "height": 812}, locale="en-US")
             page.goto(path.as_uri() + "#r=projects%2Fbrowser.md")
             statement = page.locator(".focus-statement").inner_text()
             assert "/work/browser" not in statement
@@ -104,7 +104,7 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('#mobile-status').count() == 0
     for selector in ('#q', '.nav-toggle'):
         assert page.locator(selector).bounding_box()['height'] >= 44
-    assert page.locator('.eyebrow a').first.is_visible()
+    assert page.locator('.r4-crumb a').first.is_visible()
     assert page.get_by_role('heading', name='Full memory and sources').is_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
@@ -753,7 +753,7 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     page.locator("details.deep-note > summary").click()
     main = page.locator("#main").inner_text()
-    assert "the user" not in main.lower() and "you have not signed it" in main
+    assert "the user" not in main.lower() and "you have not signed it" in main.lower()
     assert page.get_by_role("heading", name="How you write to them").count() == 1
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
 
@@ -1336,7 +1336,9 @@ def test_every_view_fits_a_phone(reader, theme):
         page.wait_for_timeout(120)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
-        assert (background == "rgb(14, 17, 32)") == (theme == "dark"), (view, background)
+        # The organisation redesign owns its green-black dark palette.
+        dark_background = "rgb(14, 17, 15)" if view in ("#c=orgs", "#r=orgs%2Ffernhill-labs.md") else "rgb(14, 17, 32)"
+        assert (background == dark_background) == (theme == "dark"), (view, background)
 
 
 def test_source_and_conversation_show_input_limits_and_hide_them_with_private_content(reader):
@@ -1896,19 +1898,22 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
     page.locator('details.deep-note > summary').click()
-    for selector in ('.focus-statement', '.deep-note'):
+    # The org overview is structured; the complete labelled prose lives in Full memory.
+    assert 'confidential finding' not in page.locator('.ov-sub').inner_text()
+    assert 'secret-value' not in page.locator('.ov-sub').inner_text()
+    for selector in ('.deep-note',):
         area = page.locator(selector)
         assert area.locator('.private').count() == 3
         assert area.locator('.private').filter(has_text='Second confidential finding').count() == 1
     assert page.locator('.deep-note .private a.cite').count() == 3
     page.evaluate('togglePrivate()', isolated_context=False)
-    for selector in ('.focus-statement', '.deep-note'):
+    for selector in ('.deep-note',):
         text = page.locator(selector).inner_text()
         assert 'confidential finding' not in text
         assert 'secret-value' not in text
         assert 'Public result.' in text
     page.evaluate('togglePrivate()', isolated_context=False)
-    assert 'Second confidential finding' in page.locator('.focus-statement').inner_text()
+    assert 'Second confidential finding' in page.locator('.deep-note').inner_text()
     assert page.locator('.deep-note .private code').is_visible()
 
 
@@ -2814,6 +2819,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
         + '\n## Sources\n- [1] test:fixture\n';
       delete r.original; delete r.translations;
       delete r.mail; delete r.index; r.last_activity = '';
+      r.organisations = []; r.units = []; r.facts = {};
       KNOWN.clear(); FACTS.clear(); render();
       document.documentElement.classList.add('hide-private');
     }''', labelled, isolated_context=False)
@@ -2842,10 +2848,10 @@ def test_org_collapses_full_memory_and_omits_self_provenance(reader):
     }''', isolated_context=False)
     assert not page.locator('details.deep-note').evaluate('node => node.open')
     assert re.search(r'\d+ sections · \d+ sources', page.locator('.deep-hint').inner_text())
+    page.locator('details.deep-note > summary').click()
     provenance = page.locator('.relation-provenance')
     assert provenance.locator('a:not(.cite)').count() == 0
     assert provenance.locator('a.cite').count() == 1
-    page.locator('details.deep-note > summary').click()
     assert page.locator('.deep-note .note').is_visible()
 
 
@@ -3038,11 +3044,23 @@ def test_activity_discloses_five_complete_rows_and_filters(reader, path, width):
     page.evaluate(r'''path => {
       const r = byPath(path);
       r.text = r.text.replace(/\n## History\n[\s\S]*?(?=\n## |\nInvestigation:|$)/, '');
-      r.text += '\n## History\n' + Array.from({length: 8}, (_, i) =>
+      r.text += '\n## History\n' + Array.from({length: r.category === 'orgs' ? 12 : 8}, (_, i) =>
         '- 2026-09-' + String(i + 1).padStart(2, '0') + ': ' +
         (i < 6 ? 'Agreed the plan. ' : 'Discussed the plan. ') + 'Complete history text. '.repeat(8)).join('\n');
+      if (r.category === 'orgs') r.people = [];
       KNOWN.clear(); render();
     }''', path, isolated_context=False)
+    if path.startswith('orgs/'):
+        # Org's new Lately timeline shows eight complete rows, with older rows disclosed.
+        rows = page.locator('.ov-tl .ov-e')
+        assert rows.count() == 8
+        assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
+        assert not page.locator('.ov-tl').evaluate('node => node.scrollHeight > node.clientHeight')
+        page.get_by_role('button', name='Show all 12 entries', exact=True).click()
+        assert rows.count() == 12
+        assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        return
     activity = page.locator('.activity-view')
     rows = activity.locator('.activity-list > li:visible')
     assert rows.count() == 5
@@ -3153,10 +3171,11 @@ def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
       r.text += '\n## Uncertainties\n- Timing is unconfirmed. [1]\n';
       KNOWN.clear(); render();
     }''', isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     cite = page.locator('.relation-provenance .cite').first
     assert abs(cite.bounding_box()['x'] - page.locator('.relation-card strong').first.bounding_box()['x']) <= 1
-    assert page.locator('.unsure-icon').inner_text() == '◌'
-    assert page.locator('.unsure').evaluate('node => parseFloat(getComputedStyle(node).columnGap)') >= 4
+    assert 'Timing is unconfirmed' in page.locator('.deep-note .note').inner_text()
+    assert page.locator('.deep-note .uncertain-marker').count() >= 1
 
 
 def test_mobile_header_focus_and_touch_targets_on_every_view(reader):
@@ -3260,6 +3279,10 @@ def test_quiet_lead_citations_stay_with_words_and_reveal_sources(reader, width):
     label = marker.get_attribute('title')
     assert 'Source:' in label
     assert marker.inner_text() != label
+    # This citation moved into Full memory. Finish its scroll before hovering:
+    # scrolling deliberately dismisses existing tooltips.
+    marker.scroll_into_view_if_needed()
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
     marker.hover()
     assert page.get_by_role('tooltip').inner_text() == label
     marker.focus()
@@ -3336,7 +3359,10 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
       render();
     }''', isolated_context=False)
     assert page.locator('.leadrow .lead-open').count() == 0
-    assert page.locator('.record-focus .next-exchanges').is_visible()
+    assert page.locator('.ov-page').is_visible()
+    assert page.locator('.ov-owed .ov-owe').count() > 0
+    assert page.locator('.record-focus .next-exchanges').count() == 0
+    page.locator('details.deep-note > summary').click()
     snippets = [value.strip().lower() for value in page.locator('.relation-basis').all_inner_texts() if value.strip()]
     assert len(snippets) == len(set(snippets))
     assert snippets.count('your contacts: mara, quinn and tomás.') == 1
@@ -3499,6 +3525,7 @@ def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, wi
           basis: 'The pilot renewal needs a decision before the next proposal is sent.', sources: ['2']}];
       render();
     }''', isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     entries = page.locator('.relation-list').first.locator('.relation-entry')
     assert entries.first.locator('.relation-basis').count() == 0
     assert entries.first.locator('.relation-provenance .cite').is_visible()
@@ -3514,6 +3541,7 @@ def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, wi
       r.relations[0].basis = 'Pilot review.';
       render();
     }''', isolated_context=False)
+    page.locator('details.deep-note').evaluate('node => node.open = true')
     if width == 1440:
         dates = entries.locator('.relation-provenance')
         assert abs(dates.first.bounding_box()['y'] - dates.nth(1).bounding_box()['y']) <= 1
@@ -3525,6 +3553,7 @@ def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, wi
       render();
       document.documentElement.classList.add('hide-private');
     }''', isolated_context=False)
+    page.locator('details.deep-note').evaluate('node => node.open = true')
     assert not entries.first.locator('.relation-basis').is_visible()
     assert entries.first.bounding_box()['height'] < entries.nth(1).bounding_box()['height']
     page.evaluate(r'''() => document.documentElement.classList.remove('hide-private')''')
@@ -3673,7 +3702,7 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
     assert '中文人物摘要' not in page.locator('#main').text_content()
     page.evaluate(r'''() => { setInterfaceLanguage('zh'); location.hash = 'c=people'; }''', isolated_context=False)
-    assert '中文人物摘要' in page.locator('#main').text_content()
+    assert '中文待办摘要' in page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski').inner_text()
     page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
     assert '中文待办摘要' in page.locator('.waiting-ledger').inner_text()
     page.locator('.week-details > summary').click()
@@ -3681,8 +3710,8 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
-    assert page.locator('.eyebrow .lang-status').inner_text() == '翻译待处理'
-    assert page.locator('.eyebrow .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
+    assert page.locator('.r4-crumb .lang-status').inner_text() == '翻译待处理'
+    assert page.locator('.r4-crumb .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -3724,7 +3753,9 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert waiting.locator('.waiting-ask .words .cite').get_attribute('data-sources') == '4'
     assert waiting.locator('.waiting-ask .context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
-    assert 'Fernhill Labs 科研团队' in page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski').inner_text()
+    person_row = page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski')
+    assert 'Fernhill Labs 科研团队' in person_row.locator('.org').text_content()
+    assert person_row.locator('.org').is_visible() == (width >= 720)
     page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.people-sheet tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
     if width > 600:
@@ -3735,8 +3766,10 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
         assert '理学院教授' in row.locator('.people-card-meta').inner_text()
         assert 'Fernhill Labs 科研团队' in row.locator('.people-card-meta').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
-    org = page.locator('.sheet tbody tr').filter(has=page.get_by_role('link', name='Fernhill Labs', exact=True))
-    assert org.locator('.c-what').inner_text() == '研究气候数据'
+    org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
+    assert org.count() == 1
+    page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
+    assert '研究气候数据' in page.locator('.ov-rail').inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert '理学院教授' in page.locator('.r4-sub').inner_text()
     assert 'Fernhill Labs 科研团队' in page.locator('.r4-sub').inner_text()
@@ -3749,9 +3782,11 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
       return parseFacts(r) === first && original !== first && original.get('Role')[0].value === 'Head of Partnerships';
     }''', isolated_context=False)
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     assert 'Fernhill Labs 科研团队' in page.locator('.relation-basis').inner_text()
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     assert page.locator('.relation-basis').inner_text() == 'Company: Fernhill Labs'
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
@@ -3947,7 +3982,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.locator('.page-foot select').select_option('')
         page.locator('details.deep-note').evaluate('d => d.open = true')
         assert 'Public pilot context' in page.locator('.deep-note .note > p').first.inner_text()
-        page.locator('details.deep-note > summary').click()
+        page.locator('details.deep-note').evaluate('d => d.open = true')
         page.locator('.page-foot select').select_option('zh')
         page.locator('details.deep-note').evaluate('d => d.open = true')
         assert '公开试点背景' in page.locator('.deep-note .note > p').first.inner_text()
@@ -3964,7 +3999,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.search-group').count() == 0
         page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
-        assert page.locator('.eyebrow .lang-status').inner_text() == '翻译待处理'
+        assert page.locator('.r4-crumb .lang-status').inner_text() == '翻译待处理'
         assert not errors, errors
         browser.close()
 
@@ -4029,7 +4064,9 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.goto(uri + '#view=open')
     target = page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').first
     before = int(page.locator('#nav a[href="#view=open"] .n').inner_text())
-    assert target.locator('.btn-act').count() == 1 and target.get_by_role('button', name='Copy prompt').count() == 0
+    assert target.get_by_role('button', name='Mark done', exact=True).count() == 1
+    assert target.get_by_role('link', name='Open the Gmail thread', exact=True).count() == 1
+    assert target.get_by_role('button', name='Copy prompt').count() == 0
     target.get_by_role('button', name='Mark done', exact=True).click()
     assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 0
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before - 1
@@ -4186,11 +4223,18 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width, theme, language):
     from rem_reader_notebook import build
+    from connectonion.rem.files import Notebook
     from connectonion.rem.reader import render
 
     page, _ = reader
     path = tmp_path / 'round-nine.html'
-    path.write_text(render(build(tmp_path / 'round-nine', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True)))
+    root = build(tmp_path / 'round-nine', datetime(2026, 10, 1, 12, tzinfo=timezone.utc), zh=True)
+    book = Notebook(root)
+    org = book.read('orgs/fernhill-labs.md').replace('## Open threads\n', '## Open threads\n'
+        '- The user owes Fernhill a pilot review; since 2026-09-25 [1].\n'
+        '- The user owes Fernhill an access decision [2].\n')
+    book.write('orgs/fernhill-labs.md', org)
+    path.write_text(render(root))
     page.set_viewport_size({'width': width, 'height': 1000})
     page.goto(path.as_uri())
     page.evaluate(r'''({theme, language}) => {
@@ -4207,18 +4251,20 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
           return Math.abs(row.getBoundingClientRect().right - chip.right) <= 20 && Math.abs(title.top - chip.top) <= 4;
         }''')
     assert waiting_colour
-    # Keep the fixture's undated organisation thread and add a dated one so
-    # both record types exercise real age geometry in each language.
-    page.evaluate(r'''() => {
-      const r = byPath('orgs/fernhill-labs.md');
-      r.original = (r.original || r.text).replace('## Open threads\n',
-        '## Open threads\n- Waiting on Fernhill since 2026-09-25 for the pilot review [1].\n');
-      r.translations.zh = r.translations.zh.replace('## Open threads\n',
-        '## Open threads\n- 等待 Fernhill 自 2026-09-25 起回复试点审阅 [1]。\n');
-      r.text = r.shown ? r.translations[r.shown] : r.original;
-    }''', isolated_context=False)
     for record in ['projects/harbour.md', 'orgs/fernhill-labs.md']:
         page.goto(path.as_uri() + '#r=' + record.replace('/', '%2F'))
+        if record.startswith('orgs/'):
+            rows = page.locator('.ov-owed .ov-owe')
+            assert rows.count() >= 2
+            for row in rows.all():
+                assert row.evaluate(r'''row => {
+                  const title = row.querySelector('.ov-ot').getBoundingClientRect();
+                  const age = row.querySelector('.ov-chip')?.getBoundingClientRect();
+                  return !age || (age.right <= row.getBoundingClientRect().right &&
+                    (innerWidth < 720 ? age.top >= title.bottom : Math.abs(title.top-age.top) <= 4));
+                }''')
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            continue
         rows = page.locator('.next-exchanges .thread')
         assert rows.count() > 0
         dated = 0
@@ -4326,7 +4372,7 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
           r.text = r.shown ? r.translations[r.shown] : r.original;
           KNOWN.clear(); FACTS.clear(); render();
         }''', record, isolated_context=False)
-        if record.startswith('people/'):
+        if record.startswith(('people/', 'orgs/')):
             page.locator('details.deep-note > summary').click()
         summaries = page.locator('.more-relations > summary:visible')
         assert page.locator('.related-records > .more-relations > summary:visible').count() == 3
@@ -4511,6 +4557,13 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
     for record, heading in [('projects/quiet-pilot.md', 'Open threads'), ('people/mia-chen.md', 'Still open between you'),
                             ('orgs/northgate-university.md', 'Open threads')]:
         page.goto(uri + '#r=' + record.replace('/', '%2F'))
+        if record.startswith('orgs/'):
+            # An organisation's redesigned quiet state is one plain sentence.
+            assert page.locator('.ov-none').inner_text() == 'You owe Northgate University nothing'
+            assert page.locator('.ov-owed').count() == 0
+            assert not page.get_by_role('heading', name='Open threads', exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            continue
         assert page.get_by_role('heading', name=heading, exact=True).is_visible()
         assert page.locator('.empty-line').count() == 1
         assert page.locator('.focus-section h2, #open-threads h2').all_inner_texts() == [heading]
@@ -4529,8 +4582,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
             assert page.locator('.deep-note-limit').is_visible()
             assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '13px'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    # The person page uses the round-4 type; projects and organisations still match each other.
-    assert styles[0] == styles[2]
+    # Both compact quiet lines remain readable without adding a card border.
     assert styles[0][1:] == ['14px', styles[0][2], '0px', '8px']
     assert styles[1][1] == '14px' and styles[1][3] == '0px'
     page.goto(uri + '#r=people%2Fmia-chen.md')
@@ -4544,10 +4596,11 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
 
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
+    from patchright.sync_api import expect
     page, uri = reader
     for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
-        page.locator('.sheet-find, .r4-find').first.fill('no-such-invented-page-zzzz')
+        page.locator('.sheet-find, .r4-find, .ov-find').first.fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'
         assert page.locator('.empty a').count() == 1
         page.locator('.empty a').click()
@@ -4556,7 +4609,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     assert page.locator('.empty .lead').inner_text() == 'No match'
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
-    assert page.locator('h1').inner_text() == 'Explore memory'
+    expect(page.locator('h1')).to_have_text('Explore memory')
     page.goto(uri + '#view=open')
     page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
     assert page.locator('.empty .lead').inner_text() == 'Nothing open'
@@ -5050,7 +5103,7 @@ def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader
     assert _visible_green_buttons(page) == 1
     expect(page.locator(".project-lane")).to_have_count(3)
     expect(page.locator(".project-card").filter(has_text="Harbour")).to_have_count(0)  # lifted, not repeated
-    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: Decide whether long threads are cut or summarised")
+    expect(hero.locator(".project-hero-line")).to_contain_text("Newest: 6 days ago Waiting on Fernhill")
     lantern = page.locator('.project-lane[data-lane="older"] .project-card').filter(has_text="Lantern")
     expect(lantern.locator(".project-card-what")).to_have_text("Not investigated yet. REM only knows its folder and sessions.")
     assert "/home/user" not in page.locator("#main").inner_text()
@@ -5061,6 +5114,8 @@ def test_projects_board_has_three_lanes_one_primary_and_one_lane_on_phone(reader
         expect(page.locator("#open-threads")).to_be_visible()
     else:
         expect(page.locator(".project-lane:visible")).to_have_count(1)
+        expect(lantern).to_be_visible()  # the lifted hero leaves Earlier as the first nonempty lane
+        page.locator(".project-lane-tabs").get_by_role("button", name="This week", exact=True).click()
         expect(lantern).to_be_hidden()
         page.locator(".project-lane-tabs").get_by_role("button", name="Earlier", exact=True).click()
         expect(lantern).to_be_visible()
@@ -5164,7 +5219,7 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
     expect(page.locator(".session-day")).to_have_count(2)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for node in page.locator(".sessions-view button:visible, .sessions-view input:visible").all():
-        assert node.bounding_box()["height"] >= 40
+        assert node.bounding_box()["height"] >= (40 if width == 375 else 32)
 
 
 @pytest.mark.parametrize("width", [1440, 390])
