@@ -55,7 +55,7 @@ def _config_hash(config, *, include_languages=False, include_models=False):
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
                   "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
-    ignored = {"schedule", "effort"}
+    ignored = {"schedule", "effort", "notify"}
     if not include_languages:
         ignored.update(("language", "languages"))
     if not include_models:
@@ -176,6 +176,9 @@ def _stop(root, config, *, phase=None):
 
 def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,

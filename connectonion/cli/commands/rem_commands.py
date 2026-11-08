@@ -2259,6 +2259,22 @@ def make_rem_app(factory):
             return records, (["logs", records[0]["id"]] if records and not chosen else ["status"])
         _handle(ctx, operation, ["logs"])
 
+    @rem.command("morning", cls=V("co rem morning"))
+    def morning(ctx: typer.Context, dry_run: bool = typer.Option(False, "--dry-run")):
+        from ...rem.morning import run
+        from ...rem.files import RemError
+        try:
+            value = run(ctx.obj["root"], dry_run=dry_run)
+        except (RemError, OSError) as error:
+            _emit(ctx, str(error), ["doctor"], failed=True)
+            return
+        if dry_run and not ctx.obj.get("json"):
+            typer.echo("Channel: " + value["channel"])
+            if value["message"]:
+                typer.echo(value["message"])
+        else:
+            _emit(ctx, value, ["open"])
+
     @rem.command("doctor", cls=V("co rem doctor"))
     def doctor(ctx: typer.Context):
         import shutil
@@ -2274,6 +2290,8 @@ def make_rem_app(factory):
             checks, rem_fixes = [], []
             from ...rem.tidy import notebook_checks
             checks.extend(notebook_checks(root))
+            from ...rem.morning import doctor as morning_checks
+            checks.extend(morning_checks(root))
 
             def check(name, ok, detail, fix="", rem_fix=None):
                 """`rem_fix` is a co rem command, spelled for this root; `fix` is anything else."""
@@ -2573,7 +2591,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs doctor history "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs morning doctor history "
              "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

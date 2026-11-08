@@ -117,3 +117,31 @@ offline snapshots need a new `co rem open` to obtain later receipts.
 This is execution evidence, not an independent judgement of work quality: the
 owner reviews the deliverable before sending or marking the obligation done.
 Tasks do not send messages, mark threads done, or make external commitments.
+
+## Morning message (sprint 11)
+
+The model-free morning projection reads `night.json` `items.*.outcome.kind`,
+`draft_id` (deduplicated) and `prepared_at`; only `prepared` drafts count.
+It reads `approvals.json` entries with `kind: reply`, `by: rem`, `status: sent`,
+and `release_at` inside the overnight window. Held replies are not counted as
+sent. Task receipts are the existing `tasks.py` `.state/tasks/do-*/receipt.json`:
+`started_at` counts dispatches, and `result: completed` with `finished_at` counts
+finished work. No task status reconciliation or model calls occur here.
+
+The optional investigation contract is `.state/investigations/index.json`:
+`{"items": [{"status": "explained", "explained_at": "ISO8601 with offset"}]}`.
+Missing file means zero. The investigation writer must set `explained_at` when
+its explanation becomes reviewable; merely starting an investigation never counts.
+The window is yesterday 22:00 through today 06:00, in `schedule.timezone`.
+Existing `.state/drafts/*.json` receipts (`id`, `status`, `prepared_at`) also
+count prepared/held/sent drafts: sent work may have left the current night
+projection. IDs deduplicate both sources; this adds no store.
+Current unblocked `approvals.outcomes` supply one-click counts and up to two titles;
+held/sent replies and dispatched tasks are excluded by the existing projection.
+
+The only new store is `.state/morning.json`, keyed by notebook-local ISO date.
+Each entry has `checked_at`, `channel`, and `status` (`quiet`, `disabled`, `sending`,
+`sent`, `failed`); failures include only the exception class in `error`, never
+provider payloads. The maintenance lock serializes the claim before external IO.
+A crash leaves `sending`, diagnosed by doctor; it never auto-resends. A disabled
+or quiet date is also final. Dry-run reads state without claiming a date.

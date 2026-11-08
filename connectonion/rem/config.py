@@ -45,7 +45,7 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    return {"version": 1, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -113,6 +113,11 @@ def validate(config: dict) -> dict:
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
     if not isinstance(config["tasks"], dict) or set(config["tasks"]) != {"auto"} or type(config["tasks"]["auto"]) is not bool:
         raise RemError("tasks.auto must be true or false")
+    notify = config["notify"]
+    if (not isinstance(notify, dict) or set(notify) != {"channel", "target"}
+            or notify["channel"] not in ("none", "telegram", "lark", "whatsapp", "email")
+            or not isinstance(notify["target"], str)):
+        raise RemError("notify.channel must be none, telegram, lark, whatsapp or email; notify.target must be text")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != {"summary"}
             or not isinstance(models["summary"], str) or not models["summary"].strip()):
@@ -193,6 +198,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    config.setdefault("notify", {"channel": "none", "target": ""})
     config.setdefault("tasks", {"auto": False})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
@@ -272,7 +278,7 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks"):
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
