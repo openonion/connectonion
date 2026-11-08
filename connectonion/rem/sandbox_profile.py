@@ -25,8 +25,13 @@ SANDBOX_EXEC = '/usr/bin/sandbox-exec'
 CREDENTIAL_DIRS = ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', 'Library/Keychains', '.docker',
                    '.kube', '.config/gcloud', '.azure', '.claude')
 CREDENTIAL_FILES = ('.netrc', '.git-credentials', '.npmrc', '.pypirc')
-# Keychain items are served by securityd over mach, not read from files.
-KEYCHAIN_SERVICES = ('com.apple.SecurityServer', 'com.apple.securityd')
+# Keychain items come over mach, not from files. com.apple.securityd (the data-protection
+# keychain) can be denied. com.apple.SecurityServer cannot: Codex's TLS trust check goes through
+# it and every model request failed with it denied. The login keychain's cheapest door is the
+# Apple-signed `security` CLI that tools like gh are trusted through, so it is unreadable and
+# unrunnable here (unreadable also stops a copy, which would keep Apple's signature).
+KEYCHAIN_RULES = ('(deny mach-lookup (global-name "com.apple.securityd"))',
+                  '(deny file-read* process-exec (literal "/usr/bin/security"))')
 # What Codex writes in ~/.codex during an exec (found by running it under this profile). Its
 # config, rules, hooks, skills and binaries stay unwritable, so a run cannot plant code that
 # the owner's next unsandboxed Codex would execute.
@@ -59,7 +64,7 @@ def _codex_state(home: Path) -> list[str]:
             f'(allow file-write* (require-all (subpath {_quote(codex)}) (regex #"{CODEX_STATE_REGEX}")))']
 
 
-def profile(home=None, *, allow_co=(), deny=(), writable=None, keychain=True) -> str:
+def profile(home=None, *, allow_co=(), deny=(), writable=None) -> str:
     """The SBPL text. Later rules win, so the allow list follows the denies it carves from."""
     home = Path(os.path.realpath(home or Path.home()))
     co = Path(os.path.realpath(home / '.co'))
@@ -71,14 +76,14 @@ def profile(home=None, *, allow_co=(), deny=(), writable=None, keychain=True) ->
         lines.append('(deny file-write*)')
         roots = [*writable, '/private/tmp', '/private/var/folders', tempfile.gettempdir(), '/dev']
         lines += _rule('allow file-write*', 'subpath', roots) + _codex_state(home)
+        # Parity with Codex's workspace-write, which keeps these read-only inside a writable root.
+        lines += _rule('deny file-write*', 'subpath',
+                       [Path(root) / name for root in writable for name in ('.git', '.codex')])
     lines += _rule('deny file-read* file-write*', 'subpath',
                    [home / name for name in CREDENTIAL_DIRS] + list(deny))
     lines += _rule('deny file-read* file-write*', 'literal', [home / name for name in CREDENTIAL_FILES])
     lines += _rule('allow file-read* file-write*', 'subpath', allow_co)
-    if keychain:
-        names = ' '.join(f'(global-name "{name}")' for name in KEYCHAIN_SERVICES)
-        lines.append(f'(deny mach-lookup {names})')
-    return '\n'.join(lines) + '\n'
+    return '\n'.join([*lines, *KEYCHAIN_RULES]) + '\n'
 
 
 def prefix(**options) -> tuple[list[str], bool]:

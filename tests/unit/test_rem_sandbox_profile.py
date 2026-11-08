@@ -140,6 +140,17 @@ def test_the_profile_denies_every_canary_and_keeps_codex_auth_readable(tmp_path)
 
 
 @mac_only
+def test_the_security_cli_can_neither_run_nor_be_copied(tmp_path):
+    profile = sp.profile(fake_home(tmp_path))
+    run = subprocess.run(['/usr/bin/sandbox-exec', '-p', profile, '/usr/bin/security',
+                          'find-generic-password', '-s', 'wren-no-such-item'], capture_output=True)
+    copy = subprocess.run(['/usr/bin/sandbox-exec', '-p', profile, '/bin/cp', '/usr/bin/security',
+                           str(tmp_path / 'security-copy')], capture_output=True)
+    assert run.returncode not in (0, 44)  # 44 is "item not found": the CLI ran
+    assert copy.returncode != 0
+
+
+@mac_only
 def test_writable_blocks_writes_elsewhere_and_allows_the_workspace(tmp_path):
     home = fake_home(tmp_path)
     work = tmp_path / 'work'
@@ -152,6 +163,8 @@ def test_writable_blocks_writes_elsewhere_and_allows_the_workspace(tmp_path):
     # The fake home sits under the temp roots Codex may write, so the denials proven here are
     # the ones layered above them; a write outside every root is shown on the real path.
     assert touch(work / 'ok') == 0
+    (work / '.git').mkdir()
+    assert touch(work / '.git' / 'hooks-post-checkout') != 0
     assert touch(home / '.ssh' / 'planted') != 0
     assert touch(home / '.codex' / 'config.toml') != 0
     assert touch(home / '.codex' / 'sessions-file') != 0
