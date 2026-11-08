@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc60
+## Current Version: 1.9.3rc61
+
+Today becomes one card per person with one statement and one green action, a Cmd-K palette and
+J/K/E/R keys; organisation and person pages become records, with to-dos left to Today; topics are
+named weekly by the summary model and filed only on evidence. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc61.md).
+
+- 1.9.3rc61 (Today redesign, records-first organisation and person pages, topics).
+
+### Previous candidate: 1.9.3rc60
 
 The night round gives every owed item an outcome; Approve all with a 10-minute hold; owed work
 dispatched to Codex with receipts; People, Organisations, Projects and Sessions redesigned; REM on
