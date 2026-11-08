@@ -362,3 +362,21 @@ def test_shared_projection_names_no_local_paths(tmp_path, gh):
     shared = project(False)
     assert '/home/mara-quill' not in shared
     assert '["git", "-C", "<local repository>", "log", "--all"]' in shared
+
+
+def test_a_synced_cache_outranks_the_undated_legacy_issue_file(tmp_path, gh):
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['issues'][0].update(labels=[{'name': 'bug'}], html_url='https://github.com/fernhill/lanterns/issues/7',
+                               milestone={'due_on': '2026-11-10T12:00:00Z'})
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    pages.write_json(pages.state_path(tmp_path, 'project-issues.json'), {REPO: []})
+    def project(**kwargs):
+        row = {'path': 'projects/lanterns.md', 'category': 'projects', 'title': 'Lanterns',
+               'text': '# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n'}
+        data.enrich_records(tmp_path, [row], {}, today=NOW.date(), local=True, **kwargs)
+        return row['health']
+    assert project() == 'at_risk'
+    # An in-memory fetch the caller just made is fresher than any cache.
+    assert project(issues={REPO: []}) != 'at_risk'

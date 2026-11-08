@@ -20,7 +20,10 @@ def enrich_records(root, records, contexts, *, today=None, local=False, states=N
     by_path = {row['path']: row for row in records}
     owner_name = (by_path.get(owner, {}).get('title', '').split() or [''])[0]
     overrides = read_json(state_path(root, 'project-overrides.json'), {}) if local else {}
-    issues = read_json(state_path(root, 'project-issues.json'), {}) if issues is None else issues
+    # project-issues.json is undated, so a synced .state/code cache is newer than
+    # it; an explicit in-memory `issues=` was just fetched and wins over both.
+    legacy = issues is None
+    issues = read_json(state_path(root, 'project-issues.json'), {}) if legacy else issues
     names = people_index(by_path)
     for row in records:
         if row['category'] in ('projects', 'people', 'orgs'):
@@ -38,7 +41,7 @@ def enrich_records(root, records, contexts, *, today=None, local=False, states=N
                 row['repository'] = repository_projection(root, repo)
                 if not local:
                     row['repository'] = _shared_repository(row['repository'])
-                if repo not in issues and row['repository'].get('synced_at'):
+                if (legacy or repo not in issues) and row['repository'].get('synced_at'):
                     issues = {**issues, repo: row['repository']['issues']}
             _project(row, by_path, contexts, issues, today)
             apply_override(row, overrides.get(row['path'], {}), today)

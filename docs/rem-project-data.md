@@ -268,8 +268,9 @@ packet exposes `schema_version`, `repo`, `status` (`cached` or `error`),
 
 - `issues`: number, title, state, label names, author login, `commentCount`,
   `updatedAt`, `closedAt`, `url`, and `milestone.dueOn`. URL/milestone preserve
-  the existing issue priority, health and deadline projection. Explicit `issues=`
-  or legacy issue cache wins over this fallback.
+  the existing issue priority, health and deadline projection. A synced cache
+  wins over the legacy `.state/project-issues.json`, which carries no fetch time;
+  an explicit in-memory `issues=` (just fetched by the caller) wins over both.
 - `prs`: number, title, state, `headRefName`, `headRefOid`, additions, deletions,
   `closingIssues` (same-repository closing issue numbers), `mergedAt`, `createdAt`, `updatedAt`, `reviewDecision`, `authorAssociation`,
   author login object, `checkRollupState`, and `statusCheckRollup` contexts.
