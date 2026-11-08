@@ -5212,6 +5212,28 @@ def test_project_timeline_draws_session_ticks_the_late_line_and_pencil_forecasts
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("width", [1440, 390])
+def test_project_timeline_month_headers_are_never_cut(reader, width, language):
+    """At 1440 "Mostly ConnectOnion and browser · 106 session days" lost its last line to the
+    header's fixed height. Every month header shows all of its text, at both widths."""
+    page = _project_page(reader, "timeline", width)
+    page.evaluate("""language => {
+      if (language === 'zh') setInterfaceLanguage('zh');
+      byPath('projects/atlas.md').title = 'ConnectOnion platform and agents';
+      byPath('projects/atlas-api.md').title = 'browser automation (onionwright)';
+      render();
+    }""", language, isolated_context=False)
+    cut = page.evaluate("""() => [...document.querySelectorAll('.pd-col')].filter(col => getComputedStyle(col).display !== 'none')
+      .flatMap(col => [col, ...col.children]).filter(n => getComputedStyle(n).display !== 'none'
+        && (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1)).map(n => n.className + ' ' + [n.scrollWidth, n.clientWidth, n.scrollHeight, n.clientHeight] + ': ' + n.textContent)""",
+                        isolated_context=False)
+    assert cut == []
+    if width == 1440:  # the line is drawn there, so the check above is not vacuous
+        assert "ConnectOnion" in page.locator(".pd-col-line").first.inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 @pytest.mark.parametrize("width", [1440, 390])
 def test_project_list_names_what_is_on_file_instead_of_unlabelled_squares(reader, width):
     """P大 on the approved list mock: "那排小方块是啥？" Seven unlabelled squares made the reader

@@ -1840,7 +1840,8 @@
   .pd-scale { position: relative; min-height: 84px; }
   .pd-col { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--rule); padding: 8px 8px 8px 7px; overflow: hidden; }
   .pd-col-label { display: inline-block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
-  .pd-col-line { display: block; margin-top: 4px; font: 12.5px/1.5 var(--voice); color: var(--ink-2); }
+  .pd-col-line { display: block; margin-top: 4px; font: 12.5px/1.5 var(--voice); color: var(--ink-2); overflow-wrap: anywhere; }
+  .pd-col-line small { display: block; color: var(--ink-3); font-size: 11.5px; }
   .pd-now-label { position: absolute; top: 6px; transform: translateX(calc(-100% - 6px)); font-size: 11.5px; font-weight: 600; background: var(--bg); padding: 0 2px; }
   .pd:not([data-zoom="quarter"]) .pd-pencil-label { display: none; }
   .pd-pencil-label { position: absolute; top: 6px; padding-left: 8px; font-size: 11px; color: var(--pencil); white-space: nowrap; }
@@ -7053,8 +7054,8 @@ const PD_ZH = {
   "REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes":
     "REM {when} 的快照 · 按规则生成，依据 {n} 个项目页、{m} 个会话日与 {k} 条逾期承诺 · 虚线下划线是推测 · 换刻度，这句话跟着换",
   "Sorted by health; a sub-project sits under its project": "按健康排列；子项目缩在它的项目下", "session": "会话", "forecast · 30-day rule": "推测 · 30 天规则",
-  "overdue promise": "逾期承诺", "quiet": "安静", "Mostly {a} and {b} · {n} session days": "多在 {a} 与 {b} · {n} 个会话日",
-  "Mostly {a} · {n} session days": "多在 {a} · {n} 个会话日", "One line a month · by session days": "每月一句 · 按会话日",
+  "overdue promise": "逾期承诺", "quiet": "安静", "Mostly {a} and {b}": "多在 {a} 与 {b}",
+  "Mostly {a}": "多在 {a}", "One line a month · by session days": "每月一句 · 按会话日",
   "Today": "今天", "forecast →": "推测 →", "REM's notes {n} · at most 5": "REM 的批注 {n} 条 · 上限 5", "Days REM wrote pages": "写页的日子",
   "due {date}": "{date} 期限", "{n} days late": "晚 {n} 天", "from {date}": "{date}起", "read {r}/{a}": "读 {r}/{a}",
   "Turns quiet on {date} by the 30-day rule if no session comes": "若再没有会话，按 30 天规则 {date} 转为安静",
@@ -7456,18 +7457,19 @@ function projectMonthLabel(day, i, zoom) {
 function projectMonthLine(all, from, to) {
   const tally = all.map(r => [r, projectSessionDays(r).filter(day => day >= from && day < to).length]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
   const n = tally.reduce((sum, [, k]) => sum + k, 0);
-  if (!n) return "";
-  return tally.length > 1 ? pdT("Mostly {a} and {b} · {n} session days", { a: tally[0][0].title, b: tally[1][0].title, n }) : pdT("Mostly {a} · {n} session days", { a: tally[0][0].title, n });
+  if (!n) return null;
+  const names = tally.length > 1 ? pdT("Mostly {a} and {b}", { a: tally[0][0].title, b: tally[1][0].title }) : pdT("Mostly {a}", { a: tally[0][0].title });
+  return el("span", { class: "pd-col-line" }, [names, el("small", { text: pdT(n === 1 ? "1 session day" : "{n} session days", { n }) })]);
 }
 function projectGanttHead(all, win, notes) {
   const now = pdAt(win, win.today), months = win.zoom === "quarter";
   const scale = el("div", { class: "pd-scale" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
   let labelled = 0;
   projectMonths(win).forEach(([day, next], i) => {
-    const left = pdAt(win, day), width = pdAt(win, next) - left, line = months && next <= win.today && width >= 11 ? projectMonthLine(all, day, next) : "";
+    const left = pdAt(win, day), width = pdAt(win, next) - left, line = months && next <= win.today && width >= 11 ? projectMonthLine(all, day, next) : null;
     if (width <= 0) return;
     scale.appendChild(el("div", { class: "pd-col", style: "left:" + left + "%;width:" + width + "%" }, [
-      width >= 4 ? el("span", { class: "pd-col-label", text: projectMonthLabel(day, labelled++, win.zoom) }) : null, line ? el("span", { class: "pd-col-line", text: line }) : null]));
+      width >= 4 ? el("span", { class: "pd-col-label", text: projectMonthLabel(day, labelled++, win.zoom) }) : null, line]));
   });
   scale.appendChild(el("span", { class: "pd-now-label", style: "left:" + now + "%", text: pdT("Today") }));
   scale.appendChild(el("span", { class: "pd-pencil-label", style: "left:" + now + "%", text: pdT("forecast →") }));
@@ -7668,7 +7670,17 @@ function projectsView() {
   const body = state.view === "list" ? projectList(all, tree, win, notes) : state.view === "board" ? projectBoard(all, win, notes, pairs, state.ask) : projectTimeline(all, tree, win, notes);
   document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view, "data-zoom": state.zoom }, [
     projectHead(all, state), projectLede(all, win), el("hr", { class: "pd-rule" }), state.view === "board" ? null : projectLegend(), body]));
+  projectScaleFit();
   projectAxisCollisions();
+}
+// A month's line wraps in a column as narrow as 127px at 1440; the header grows to show all of it
+// rather than cutting the last line. Measured, like the collisions below, and again after a resize.
+function projectScaleFit() {
+  const scale = document.querySelector(".pd-scale");
+  if (!scale) return;
+  scale.style.minHeight = "";
+  const need = Math.max(...[...scale.querySelectorAll(".pd-col")].map(col => col.scrollHeight));
+  if (need > scale.clientHeight) scale.style.minHeight = need + "px";
 }
 // As orgLabelPlan does for the map: a month label that would collide with "Today" is not drawn.
 // Widths depend on the font and the viewport, so this is measured, and again after a resize.
@@ -11017,7 +11029,7 @@ window.addEventListener("resize", evidenceLayout);
 // The organisation page's time line and diagonal follow the window; Esc turns its tree back.
 window.addEventListener("resize", () => orgLayout(true));
 // The projects directory's month labels are re-measured against Today after a resize.
-window.addEventListener("resize", () => requestAnimationFrame(projectAxisCollisions));
+window.addEventListener("resize", () => requestAnimationFrame(() => { projectScaleFit(); projectAxisCollisions(); }));
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape" || document.querySelector("dialog[open]") || document.getElementById("evidence-panel")?.parentElement?.hidden === false) return;
   orgUnfocus(orgCurrent);
