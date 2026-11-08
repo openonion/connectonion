@@ -625,7 +625,7 @@ def test_unquoted_inline_html_never_parses_a_dom():
 def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["blockerTag", "threadAge", "dueLabel", "threadDate", "fmtDate", "age", "daysSince"])
+                          for name in ["blocksWork", "blockerTag", "threadAge", "dueLabel", "threadDate", "fmtDate", "age", "daysSince"])
     cases = [
         {"text": "Please review the draft.", "since": "2026-10-17"},
         {"text": "This blocks the launch.", "since": "2026-10-17"},

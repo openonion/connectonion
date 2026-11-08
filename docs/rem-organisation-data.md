@@ -59,6 +59,28 @@ explicit entities/shared mailboxes filed under `people/`, with a concrete fix.
 It does not create, move or rewrite pages. Census excludes these non-person
 records even when investigated; snapshot `service: true` exposes that decision.
 
+## What the organisation page draws from these fields (round 6)
+
+The organisation page (`orgPage` in `connectonion/rem/reader.html`) is a record of the
+organisation, not a to-do list (owner, 2026-11-08); what you owe stays in Today. It adds
+no fields and reads:
+
+| On screen | Source | When the source is missing |
+| --- | --- | --- |
+| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` | "还不清楚是什么机构" / "还没调查" |
+| Facts line | domain, roster size, unit count, first and latest dated History line, page last contact | the missing part is left out |
+| Recently in touch (3 people) | each person's last contact or newest dated History line, role in unit | the block is left out |
+| One link to Today | count of open `mine` obligations | no line |
+| X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units`; size = people you know there | no units: the people form the ring |
+| Ring around a unit | someone there in touch within 45 days | no ring |
+| Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey; legend says warmth is not known yet |
+| Time line and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once | no time line |
+| Units and people, who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no reply speed claimed |
+| Unit crumb | the `parent` chain | top-level: 组织 › kind |
+
+Not drawn because REM does not record them yet: term weeks, settled agreements, a
+gave/received value ledger, renewal cycles, logos.
+
 ## Hierarchy contract (sprint9/org-hierarchy)
 
 A unit is an ordinary `orgs/` page. **One Kind field** serves both shapes:
