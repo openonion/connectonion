@@ -2249,9 +2249,13 @@
   @keyframes ov-flow { to { stroke-dashoffset: -10; } }
   @keyframes ov-slide { from { transform: translateX(var(--from)); } }
   @media (max-width: 719px) {
-    .ov-stage { display: block; min-height: 0; }
+    /* The name must start right under the compact phone chrome; the crumb and sources row follow it. */
+    .ov-stage { display: flex; flex-direction: column; min-height: 0; }
+    .ov-stage > .ov-say { order: 1; }
+    .ov-stage > .ov-over { order: 2; margin-top: 12px; }
+    .ov-stage > .ov-xray { order: 3; } .ov-stage > .ov-time { order: 4; }
     .ov-over .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; }
-    .ov-say { padding: 18px 0 0; }
+    .ov-say { padding: 0; }
     .ov.ov-r6 .ov-say h1 { font-size: 34px; line-height: 40px; margin-top: 10px; }
     .ov.ov-r6 .ov-say .ov-sub { font-size: 14px; line-height: 22px; margin-top: 8px; }
     .ov-facts { margin-top: 12px; }
@@ -7007,7 +7011,8 @@ function orgLabelPlan(v, all) {
   let ring = 0;
   for (const d of order) {
     if (d.depth === 2 && ring >= cap) continue;
-    const spot = orgLabelSpots(d, fs).find(spot => !placed.some(b => spot.x0 < b.x1 && spot.x1 > b.x0 && spot.y0 < b.y1 && spot.y1 > b.y0));
+    const size = orgSize(d) + 2, own = { x0: d.x - size, x1: d.x + size, y0: d.y - size, y1: d.y + size };
+    const spot = orgLabelSpots(d, fs).find(spot => ![...placed, own].some(b => spot.x0 < b.x1 && spot.x1 > b.x0 && spot.y0 < b.y1 && spot.y1 > b.y0));
     if (!spot) continue;
     placed.push(spot);
     plan.set(d, svgEl("text", { class: "ov-label", x: spot.x, y: spot.y, "text-anchor": spot.anchor, style: `font-size:${fs}px;--d:${0.7 + d.depth * 0.15}s` }, [spot.text]));
@@ -7019,8 +7024,9 @@ function orgLabelPlan(v, all) {
 function orgLabelSpots(d, fs) {
   const size = orgSize(d), sx = Math.sin(d.turn), cy = -Math.cos(d.turn), off = size + 7;
   const outward = Math.abs(sx) < .25 ? ["middle", 0, cy > 0 ? off + fs : -off - 2] : [sx > 0 ? "start" : "end", sx * off, cy * off + fs * .35];
-  const spots = orgShape(d) === "square" ? [["middle", 0, -size - 6], ["middle", 0, size + fs + 2], [sx > 0 ? "start" : "end", sx > 0 ? off : -off, fs * .35]]
-    : [outward, ["middle", 0, -off - 2], ["middle", 0, off + fs]];
+  const spots = orgShape(d) === "square" ? [["middle", 0, -size - 6], ["start", -size, -size - 6], ["end", size, -size - 6], ["middle", 0, size + fs + 2],
+    ["start", -size, size + fs + 2], ["end", size, size + fs + 2], [sx > 0 ? "start" : "end", sx > 0 ? off : -off, fs * .35]]
+    : [outward, ["middle", 0, -off - 2], ["middle", 0, off + fs], [sx > 0 ? "end" : "start", sx > 0 ? -off : off, fs * .35]];
   return spots.map(([anchor, x, y]) => orgLabelSpot(d, fs, anchor, x, y));
 }
 function orgLabelSpot(d, fs, anchor, x, y) {
