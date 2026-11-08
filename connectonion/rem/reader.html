@@ -1919,6 +1919,8 @@
     .project-lane[data-hidden] { display: none; }
     .project-lane-head { display: none; }
   }
+  .ov-child-units { display: grid; gap: 10px; margin-top: 12px; }
+  .ov-child-units .ov-team { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
 </style>
 <style id="org-style">
   /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
@@ -6043,7 +6045,9 @@ function railOrg(r) {
   const what = found.full || found.org && (plainLine(String(facts(found.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") || plainLine(String(facts(found.org).what || "")));
   const card = el(found.org ? "a" : "div", { class: "r4-card mini", ...(found.org ? { href: href(found.org) } : {}) }, [
     el("span", { class: "sq", text: found.name.trim()[0].toUpperCase() }), el("div", {}, [el("b", { text: found.name }), what ? el("small", { text: what }) : null])]);
-  return [el("h4", { text: t("Organisation") }), card];
+  const units = (r.units || []).map(edge => ({edge, unit: byPath(edge.path)})).filter(({unit}) => unit && !orgHidden(unit));
+  return [el("h4", { text: t("Organisation") }), card, ...(units.length ? [el("h4", {text: orgT("Units")}),
+    ...units.map(({edge, unit}) => el("a", {class: "r4-card mini", href: href(unit)}, [el("div", {}, [el("b", {text: unit.title}), edge.role ? el("small", {text: unlabelled(edge.role)}) : null])]))] : [])];
 }
 function railUnsure(r) {
   // Only the bullets: a summary paragraph under them is not an open question.
@@ -6343,6 +6347,7 @@ function projectBoardLanes(lanes, days) {
 // written before Kind, To you and Team existed, so every unknown has a quiet
 // finished form instead of an empty slot (art direction, 2026-11-08).
 const ORG_UI_ZH = {
+  "faculty": "学部", "school": "学院", "department": "部门", "course": "课程", "team": "团队", "programme": "项目组", "venue": "场所", "lab": "实验室", "Units": "所属单位",
   "University": "大学", "Investor": "投资方", "Client or partner": "客户与合作", "Supplier": "供应商",
   "Community and events": "社区与活动", "Your company": "你的公司", "Personal": "个人",
   "Not sure what this is yet": "还不清楚是什么机构",
@@ -6403,10 +6408,17 @@ function orgIcon(name) {
 // "University of New South Wales (UNSW)" is UNSW in lists and headings.
 function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.title; }
 function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
-function orgKind(r) { return r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
+function orgKind(r) { return r.unit_kind ? orgT(r.unit_kind) : r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
 function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
 function orgRelation(r) { return firstSentence(plainLine(r.to_you || "") || plainLine(facts(r).how || "") || known(r).summary); }
-function orgHidden(r) { return !!r.private && !revealedOrgs.has(r.path); }
+function orgHidden(r) {
+  const seen = new Set();
+  for (let page = r; page && !seen.has(page.path); page = byPath(page.parent)) {
+    seen.add(page.path);
+    if (page.private && !revealedOrgs.has(page.path)) return true;
+  }
+  return false;
+}
 function orgTile(r, size = "") { return el("span", { class: "ov-tile " + size, "aria-hidden": "true", text: [...orgName(r)][0].toUpperCase() }); }
 function orgFace(p, size = "") {
   const words = p.title.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/);
@@ -6422,7 +6434,7 @@ function orgFirstName(p) { return p.title.trim().split(/\s+/)[0]; }
 // The organisation's deduplicated obligations (reader_model.organisation_obligations),
 // joined back to their page thread so done keys, drafts and actions are Today's own.
 function orgEntries(r) {
-  return (r.obligations || []).map(row => {
+  return (r.obligations || []).filter(row => !(row.units || []).some(path => byPath(path) && orgHidden(byPath(path)))).map(row => {
     const page = byPath(row.record);
     if (!page) return null;
     const found = threads(page).items.find(item => doneKey({ r: page, t: item }) === row.key);
@@ -6479,14 +6491,14 @@ function orgPrimary(entry) {
 function orgRows() {
   const byName = new Map();
   for (const r of inCategory("orgs")) {
-    const key = (orgHidden(r) ? "hidden:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
+    const key = (orgHidden(r) || r.unit_kind ? "page:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
     byName.set(key, [...(byName.get(key) || []), r]);
   }
   return [...byName.values()].map(pages => {
     const r = [...pages].sort((a, b) => (b.people || []).length - (a.people || []).length)[0];
     const seen = new Set();
     const owed = pages.flatMap(orgOwed).filter(entry => !seen.has(entry.row.key) && seen.add(entry.row.key)).sort(owedFirst);
-    const people = [...new Set(pages.flatMap(page => page.people || []))].map(byPath).filter(p => p && !p.service);
+    const people = [...new Map(pages.flatMap(page => orgMembers(page)).map(p => [p.path, p])).values()];
     return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
   });
 }
@@ -6597,7 +6609,7 @@ function orgPage(r) {
     return box;
   }
   const owed = orgOwed(r);
-  const people = (r.people || []).map(byPath).filter(p => p && !p.service);
+  const people = orgMembers(r);
   box.append(orgHead(r, owed, people), el("div", { class: "ov-grid" }, [
     el("div", { class: "ov-col" }, [orgStats(r, owed, people), orgOwedSection(r, owed), orgPeopleSection(r, people, owed), orgTimeline(r, people)]),
     el("aside", { class: "ov-rail", "aria-label": orgT("About") }, orgRail(r, people))]));
@@ -6616,11 +6628,20 @@ function orgHead(r, owed, people = []) {
 }
 function orgCurtain(r) {
   const show = el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show") });
-  show.onclick = () => { revealedOrgs.add(r.path); render(); };
+  show.onclick = () => {
+    const seen = new Set();
+    for (let page = r; page && !seen.has(page.path); page = byPath(page.parent)) {
+      seen.add(page.path);
+      if (page.private) revealedOrgs.add(page.path);
+    }
+    revealedOrgs.add(r.path);
+    render();
+  };
   return el("div", { class: "ov-card ov-curtain" }, [orgLock(), show]);
 }
 function orgStats(r, owed, people) {
-  const units = new Set(people.map(p => (p.team || "").trim()).filter(Boolean)).size, late = owed.filter(overdue).length;
+  const countUnits = unit => unit.units.reduce((total, child) => total + 1 + countUnits(child), 0);
+  const units = countUnits(orgUnitTree(r, people, owed).tree), late = owed.filter(overdue).length;
   const stat = (value, words, extra) => el("div", {}, [el("b", { text: String(value) }), words, extra || null]);
   return el("div", { class: "ov-stats" }, [stat(people.length, orgT("people you know")),
     units ? stat(units, orgT("teams or departments")) : null,
@@ -6646,7 +6667,7 @@ function orgOwedRow(entry, covered, counts) {
   done.onclick = () => setDone(entry, true, "done", [entry]);
   return el("div", { class: "ov-owe" }, [who ? orgFace(who) : orgTile(entry.r), el("div", { class: "ov-body" }, [
     el("div", { class: "ov-ot", text: title }),
-    who ? el("div", { class: "ov-who" }, [el("a", { href: href(who), text: who.title }), who.team ? " · " + who.team : "", more > 0 ? " · " + orgT("{n} more with them", { n: more }) : ""]) : null,
+    who ? el("div", { class: "ov-who" }, [el("a", { href: href(who), text: who.title }), orgTeamLabel(who) ? " · " + orgTeamLabel(who) : "", more > 0 ? " · " + orgT("{n} more with them", { n: more }) : ""]) : null,
     quote ? el("div", { class: "ov-ev" }, [el("q", { text: quote }), entry.t.since ? el("sup", { text: fmtDate(entry.t.since) }) : null]) : null]),
     el("div", { class: "ov-end" }, [owedAge(entry), covered ? null : done])]);
 }
@@ -6659,24 +6680,42 @@ function orgWaiting(theirs) {
   });
   return el("p", { class: "ov-quiet" }, [orgIcon("clock"), el("span", {}, [orgT("Waiting on them, {n}: ", { n: theirs.length }), ...items])]);
 }
-// Where people sit, as a tree of units: { name, people, units, owed }. The page
-// holds the organisation's own people and owed items; each unit holds its people,
-// what they are owed, and child units. Today the only source is each person's
-// Team, so the tree is one level deep; the hierarchy round (org → faculty →
-// school → course → team) will build deeper units here and the body below
-// renders whatever depth it is given.
+// Validated Parent edges and direct Unit memberships form the explicit tree;
+// old free-text Team values remain a flat fallback without inventing an edge.
+function orgMembers(r, seen = new Set()) {
+  if (!r || seen.has(r.path) || orgHidden(r)) return [];
+  seen.add(r.path);
+  const people = [...(r.people || []).map(byPath), ...(r.children || []).flatMap(path => orgMembers(byPath(path), seen))]
+    .filter(p => p && !p.service && !p.needs_review && p.path !== REM.owner);
+  return [...new Map(people.map(p => [p.path, p])).values()];
+}
+function orgTeamLabel(p) {
+  const names = (p.units || []).map(edge => byPath(edge.path)).filter(unit => unit && !orgHidden(unit)).map(orgName);
+  if (names.length) return names.join(" · ");
+  return /\[\[|\]\(/.test(p.team || "") ? "" : plainLine(p.team || "");
+}
 function orgUnitTree(r, people, owed) {
   const owing = owed.reduce((map, entry) => map.set(owedPerson(entry)?.path, [...(map.get(owedPerson(entry)?.path) || []), entry]), new Map());
-  const teams = new Map();
-  for (const p of people) if ((p.team || "").trim()) teams.set(p.team.trim(), [...(teams.get(p.team.trim()) || []), p]);
-  const unit = (name, members, units = []) => ({ name, people: members, units, owed: members.flatMap(p => owing.get(p.path) || []) });
-  return { tree: unit(orgName(r), people.filter(p => !(p.team || "").trim()), [...teams].map(([name, members]) => unit(name, members))), owing };
+  const build = (page, seen = new Set()) => {
+    if (seen.has(page.path)) return null;
+    const next = new Set([...seen, page.path]);
+    const units = (page.children || []).map(byPath).filter(child => child && !orgHidden(child)).map(child => build(child, next)).filter(Boolean);
+    const placed = new Set(units.flatMap(unitPeople).map(p => p.path));
+    return {name: orgName(page), path: page.path, units,
+      people: (page.people || []).map(byPath).filter(p => p && people.some(member => member.path === p.path) && (!placed.has(p.path) || (p.units || []).some(edge => edge.path === page.path))),
+      owed: owed.filter(entry => (entry.row.units || []).includes(page.path) || !(entry.row.units || []).length && page.path === r.path)};
+  };
+  const tree = build(r), teams = new Map();
+  const loose = tree.people.filter(p => !(p.units || []).length);
+  for (const p of loose) if (orgTeamLabel(p)) teams.set(orgTeamLabel(p), [...(teams.get(orgTeamLabel(p)) || []), p]);
+  tree.people = tree.people.filter(p => !loose.includes(p) || !orgTeamLabel(p));
+  tree.units.push(...[...teams].map(([name, members]) => ({name, people: members, units: [], owed: members.flatMap(p => owing.get(p.path) || [])})));
+  return {tree, owing};
 }
-// Open items roll up: a unit is owed what its people and every child unit are owed.
-function unitOwed(unit) { return [...unit.owed, ...unit.units.flatMap(unitOwed)]; }
-function unitPeople(unit) { return [...unit.people, ...unit.units.flatMap(unitPeople)]; }
+function unitOwed(unit) { return [...new Map([...unit.owed, ...unit.units.flatMap(unitOwed)].map(entry => [entry.row.key, entry])).values()]; }
+function unitPeople(unit) { return [...new Map([...unit.people, ...unit.units.flatMap(unitPeople)].map(p => [p.path, p])).values()]; }
 function orgPeopleSection(r, people, owed) {
-  if (!people.length) return null;
+  if (!people.length && !(r.children || []).length) return null;
   const { tree, owing } = orgUnitTree(r, people, owed);
   const loose = [...tree.people].sort((a, b) => (owing.get(b.path) || []).length - (owing.get(a.path) || []).length || known(b).last.localeCompare(known(a).last));
   const units = [...tree.units].sort((a, b) => unitOwed(b).length - unitOwed(a).length || a.name.localeCompare(b.name));
@@ -6690,12 +6729,13 @@ function orgPeopleSection(r, people, owed) {
       shown.length || units.length ? orgT("{n} more people in {org}, department not known yet: ", { n: rest.length, org: orgName(r) }) : orgT("Department not known yet: "),
       ...rest.slice(0, 8).flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })]), rest.length > 8 ? " …" : ""])]) : null]);
 }
-// One unit as a small card; its child units (when the hierarchy supplies them) follow as names.
+// Units link to their own pages; child cards retain people and roles at every depth.
 function orgTeam(unit) {
   const items = unitOwed(unit), late = items.some(overdue);
-  return el("div", { class: "ov-card ov-team" }, [el("div", { class: "ov-tn" }, [unit.name, items.length ? el("span", { class: "ov-dot " + (late ? "late" : "lamp") }) : null]),
-    ...unit.people.map(p => el("a", { class: "ov-m", href: href(p) }, [orgFace(p, "xs"), el("span", { text: p.title }), orgRole(p, "small")])),
-    unit.units.length ? el("div", { class: "ov-s", text: unit.units.map(child => child.name + " · " + unitPeople(child).length).join("、") }) : null]);
+  return el("div", { class: "ov-card ov-team" }, [el("div", { class: "ov-tn" }, [unit.path ? el("a", {href: href(byPath(unit.path)), text: unit.name}) : unit.name, items.length ? el("span", { class: "ov-dot " + (late ? "late" : "lamp") }) : null]),
+    ...unit.people.map(p => el("a", { class: "ov-m", href: href(p) }, [orgFace(p, "xs"), el("span", { text: p.title }),
+      (p.units || []).find(edge => edge.path === unit.path)?.role ? el("small", {text: unlabelled(p.units.find(edge => edge.path === unit.path).role)}) : orgRole(p, "small")])),
+    unit.units.length ? el("div", { class: "ov-child-units" }, unit.units.map(orgTeam)) : null]);
 }
 function orgRole(p, tag = "small") {
   const role = contactFields(p).find(f => f.label === "Role")?.value;

@@ -5257,3 +5257,37 @@ def test_org_kind_and_teams_appear_when_the_page_records_them(reader):
     assert team.locator(".ov-tn").inner_text().strip() == "Pilot squad"
     assert team.locator(".ov-dot.lamp, .ov-dot.late").count() == 1
     assert page.locator(".ov-stats").inner_text().count("teams or departments") == 1
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, width, theme):
+    from patchright.sync_api import expect
+    page, uri = reader
+    _org_view(page, uri, '#r=orgs%2Ffernhill-labs.md', width, theme)
+    page.evaluate("""() => {
+      const org = byPath('orgs/fernhill-labs.md'), mara = byPath('people/mara-ostrowski.md');
+      const course = {...org, path: 'orgs/pilot-course.md', title: 'Pilot course', unit_kind: 'course', kind: '',
+        text: '# Pilot course', children: ['orgs/pilot-squad.md'], people: [], obligations: [], private: false};
+      const team = {...course, path: 'orgs/pilot-squad.md', title: 'Pilot squad', unit_kind: 'team',
+        text: '# Pilot squad', children: [], people: [mara.path]};
+      REM.records.push(course, team);
+      org.children = [course.path]; org.people = org.people.filter(path => path !== mara.path);
+      mara.units = [{path: team.path, role: 'Product Owner'}];
+      org.obligations.forEach(row => row.units = [team.path]);
+      render();
+    }""", isolated_context=False)
+    course_link = page.locator('.ov-tn > a').filter(has_text='Pilot course')
+    team_link = page.locator('.ov-tn > a').filter(has_text='Pilot squad')
+    expect(course_link).to_be_visible()
+    expect(team_link).to_be_visible()
+    expect(team_link).to_have_attribute('href', '#r=orgs%2Fpilot-squad.md')
+    mara = page.locator('.ov-people .ov-m').filter(has_text='Mara Ostrowski')
+    expect(mara).to_have_count(1)
+    expect(mara).to_contain_text('Product Owner')
+    assert page.locator('.ov-stats').inner_text().count('teams or departments') == 1
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    mara.click()
+    page.locator('.r4-person').wait_for()
+    expect(page.locator('.r4-rail a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

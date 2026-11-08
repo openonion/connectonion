@@ -8,19 +8,19 @@ pages, infer employment from domains, or backfill missing facts.
 
 | Record category | Added fields |
 | --- | --- |
-| `orgs` | `facts`, `kind`, `to_you`, `private`, `people`, `projects`, `obligations` |
-| `people` | `facts`, `team`, `organisations` |
+| `orgs` | `facts`, `kind`, `to_you`, `private`, `people`, `projects`, `obligations`, plus hierarchy fields below |
+| `people` | `facts`, `units`, `organisations` (`team` is a legacy display alias of Unit) |
 | `projects` | `facts`, `organisations` |
 
 `facts` maps each canonical label to a list of
 `{"value": "…", "qualifier": "…", "citations": ["1"]}`. An unknown field is
 an empty list. Citation labels resolve against that record's `Sources`.
-`kind`, `to_you` and `team` are strings, empty when unknown. Invalid kinds
+`kind`, `to_you` and the legacy `team` alias are strings, empty when unknown. Invalid kinds
 remain visible in the original Facts but project to an empty filter value.
 Kinds are `university`, `investor`, `client_partner`, `supplier`, `community`,
 `own_company`, and `personal`.
 
-`to_you` and `team` retain the page language. For another display language,
+`to_you` and Unit values retain the page language. For another display language,
 read the corresponding Facts from the existing `translations[language]`
 page text; these convenience strings are not independently translated.
 
@@ -59,7 +59,179 @@ explicit entities/shared mailboxes filed under `people/`, with a concrete fix.
 It does not create, move or rewrite pages. Census excludes these non-person
 records even when investigated; snapshot `service: true` exposes that decision.
 
-## Validation and instruction budget
+## Hierarchy contract (sprint9/org-hierarchy)
+
+A unit is an ordinary `orgs/` page. **One Kind field** serves both shapes:
+`ORG_KINDS` stays unchanged for top-level organisations; `UNIT_KINDS` adds
+`faculty`, `school`, `department`, `course`, `team`, `programme`, `venue`, `lab`.
+A unit requires one cited Parent link. The user's field enums take precedence
+over the wider art-direction sketch (`company` and `member` are not added).
+There is no stored depth or rollup fact.
+
+```markdown
+# 9900-F15C-CAKE
+
+## Facts
+- Kind: team [1]
+- Parent: [9900](course-9900.md) [1]
+- You are: client [2]
+
+## Sources
+- [1] gmail:team-introduction — 2026-11-01
+- [2] gmail:client-agreement — 2026-11-02
+```
+
+`You are` is optional and cited: `client`, `incubatee`, `partner`, `alumnus`,
+`casual staff`. `To you` remains the free-text organisation relationship.
+People keep Company linked to the top-level organisation:
+
+```markdown
+- Company: [Fernhill University](../orgs/fernhill.md) [1]
+- Unit: [9900-F15C-CAKE](../orgs/team-cake.md) [1]
+- Role in unit: [9900-F15C-CAKE](../orgs/team-cake.md) — Product Owner [1]
+```
+
+Unit and Role in unit may repeat. A unit-qualified role is unambiguous even
+when several memberships are listed. A bare role immediately following one
+Unit link is also supported. `Team` is a read alias of Unit: upgrade renames
+it; it does not create a parallel field or a unit from free text. Citations
+never spill between repeated lines. Legacy free-text Unit remains visible in
+Facts and the compatibility `team` string, but does not place anybody.
+
+Each org record adds:
+
+| Field | Shape and meaning |
+| --- | --- |
+| `parent` | Existing parent org path, or `""`; never more than one |
+| `unit_kind` | Unit enum value or `""`; `kind` remains the top-level filter enum |
+| `you_are` | Cited allowed owner relationship, otherwise `""` |
+| `children` | Sorted direct child paths |
+| `depth` | Root = 0; valid descendants count Parent hops; disconnected units = `null` |
+| `hierarchy_issues` | Invalid/uncited/missing/multiple Parent or cycle explanations |
+| `structure_source` | `"web"` if Kind/Parent cites public web structure, else `""` |
+| `rollup` | `{open_owed: number, people: number, overdue: number}` across the subtree |
+| `unplaced` | `{people: [person paths], obligations: [Today keys]}` lacking a specific placement |
+
+Navigation counts top-level institutions from records with empty `unit_kind`,
+not all `orgs/` pages; the generic notebook page census still counts unit pages.
+
+A person adds `units: [{path: "orgs/team-cake.md", role: "Product Owner"}]`.
+Only existing unit pages and cited Unit values qualify. Service pages, held
+people and the owner do not enter member counts. `people` on an org remains
+its direct roster (including its Unit links); `rollup.people` unions every
+person across descendants. Explicit unit membership adds the root affiliation
+to the reader's `organisations`; it never rewrites Company from a domain.
+
+Obligations on entity pages can carry one or more cited Unit metadata lines:
+
+```markdown
+## Open threads
+- The user owes Fernhill University: feedback — due 2026-11-07 [1]
+  - Unit: [9900-F15C-CAKE](team-cake.md) [1]
+- Fernhill University owes the user: countersigned agreement [2]
+```
+
+Each grouped obligation exposes `units: [unit paths]`. The metadata belongs
+to that obligation only. Threads on a unit page are scoped there automatically;
+a person's thread with exactly one known Unit can use that placement. Multiple
+memberships without an explicit Unit remain unplaced. An explicit target scopes
+an obligation to that node and ancestors, rather than to every unit containing
+the person. `obligations` on a parent includes the deduplicated subtree, using
+Today's existing identity and done/skipped decisions. `rollup.open_owed` counts
+open `mine` rows, including quiet ones. `rollup.overdue` counts only `mine` rows
+with a valid due date before the notebook's local day. `theirs` rows remain in
+obligations for the waiting-on view. Each person and obligation counts once
+per ancestor even when two descendant branches contain it.
+
+No Parent/Unit facts leaves a flat root with `children: []`, `depth: 0` and
+unplaced lists. Partial knowledge exposes known units and leaves the rest
+unplaced; it never fills missing intermediate faculties or schools. Multiple
+Parents, missing targets and chains leading into cycles are rejected. Valid
+edges within orphan subtrees remain visible with `depth: null`.
+Doctor reports malformed Parent and missing/invalid Unit links with fixes.
+
+### Deterministic inference and writes
+
+`org_inference.infer()` returns a **read-only plan**. Map's `reconcile()` and
+accepted investigation/maintenance writes apply it under the notebook lock.
+Snapshot reads never infer or write. Full team codes retain every component:
+`9900-F15C-CAKE` and `9900-F13F-CAKE` are distinct units under course `9900`.
+Course codes, including combined course codes and an explicitly labelled bare
+course number, form course units; arbitrary numbers do not. Authored subject
+metadata can establish coded unit candidates, but proves no membership or role.
+
+Cited Role/Unit fields and subject signatures establish named chains; e.g.
+`Events Coordinator | Founders Program, Division of Research & Enterprise`
+creates programme → department → existing org (Division maps to department).
+Sibling labels of the same kind do not establish a chain. Narrative identity
+sentences can place explicit course/team codes but cannot manufacture a name
+from words like “with four students per team”. Uncertain or negated assertions
+are skipped. Existing affiliations/rosters select the root; domains never do.
+
+A shared-mailbox identity creates an observed-name unit (programme when named
+as such, otherwise team), never a person membership. Existing service pages
+remain excluded from people; normal tidy relocates them out of `people/`.
+Source IDs follow each proposed fact. Public Structure input creates units
+with `web-sourced` provenance and no person membership. Different people with
+the same role and team nickname but different full codes yield an evidence-
+linked review question on the new unit; the codes stay separate. Existing
+facts are preserved, never overwritten with inferred alternatives.
+
+### Validation for the hierarchy change
+
+New tests use only Fernhill University, Mara and Avery. The first tree-contract
+run was red (11 failures); inference was red before its module existed.
+Additional red regressions cover maintenance integration, negated claims,
+repeated citation isolation, multiple Parents, sibling ambiguity, generic
+mailboxes, native promotion hashes, subject candidates and narrative noise.
+The final focused run passes 322 cases across hierarchy/inference, facts,
+organisation data, instruction budget, fixture shape, census, Today, map and
+tidy. The instruction budget remains 24,000 characters; composed owner
+investigation is 23,949, person 22,992 and org 18,819. The org page skill is
+7,085 characters and the person page skill is 7,887. The six-case benchmark was
+authored before skill changes and passes `co benchmark check rem-org-hierarchy`;
+no paid model evaluation was run.
+
+An independent AI principal-engineer review examined backend facts, inference,
+reader projections and promotion safety. It did not inspect rendered desktop
+or mobile pages; the existing organisation UI still needs integration in its
+own workstream. This is not a human founder review. Main-repo documentation is
+updated here; carry the final fields into the Wiki/docs website with that UI.
+
+`scripts/validation/rem_hierarchy_dry_run.py ROOT [--names]` reports candidate
+counts without applying plans. The final read-only dry run proposed 22 units
+(3 course, 2 department, 1 faculty, 7 programme, 1 school, 8 team), 27
+memberships for 24 people, and 2 review questions. All 22 unit pages would
+be new. Code rules account for 9 units / 16 people; named-unit rules account
+for 13 units / 8 people. The two questions represent the same code mismatch
+on its two unit pages. No web-sourced unit was proposed in this dry run. Page hashes before/after matched. This measures existing cited page
+identities and authored subject metadata, not a new investigation or confirmed
+structure. The owner's real notebook is read-only;
+no real names or notebook material are included in test fixtures.
+
+The final requested full-unit command completed after the last code change.
+Its exact last line is:
+
+```text
+15 failed, 18489 passed, 19 skipped, 2948 warnings, 2 errors in 140.75s (0:02:20)
+```
+
+All new hierarchy/inference cases passed. The same 15 failures and two host
+errors occurred in both preceding full runs. Selected reruns on untouched
+branch head `bc8437a8` (with imports verified from the detached worktree)
+reproduced 13 failures: schedule/default-model expectations (3), provider-error
+format expectations (5), terminal styling (4), and host SIGHUP shutdown (1).
+The two proactive failures and two host errors passed in that isolated baseline
+run (`13 failed, 4 passed, 1 warning in 12.22s`); they remain full-run-only
+results and are not claimed fixed. The full suite is not green.
+
+The temporary baseline worktree was removed. No commits were made. Local
+verification output is in `/tmp/rem-hierarchy-final-focused.log`,
+`/tmp/rem-org-hierarchy-final-result.log`, and
+`/tmp/rem-org-hierarchy-baseline.log`.
+
+## Prior organisation-data validation and instruction budget
+
 
 Fixtures use Fernhill Labs, Mara and Avery only. The first new regression run
 failed all 13 cases. The independent AI data-contract review identified two

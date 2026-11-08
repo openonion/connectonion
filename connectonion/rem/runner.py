@@ -1194,6 +1194,16 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
+    if record.startswith(("people/", "orgs/")):
+        from .org_inference import infer, apply
+        hierarchy_evidence = [row for item in items if item.get('role') == 'facts'
+                              for row in item.get('facts', [])]
+        apply(notebook, infer(notebook, record, hierarchy_evidence), lock_held=True)
+        final = notebook.read(record)
+        if final != saved:
+            prepare_promotion(notebook.root, record, final, items)
+            if receipt:
+                write_json(receipt, {"record": record, "sha256": hashlib.sha256(final.encode()).hexdigest()})
     if record.startswith("people/"):
         store.refresh(notebook.root)
 

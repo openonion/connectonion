@@ -2652,6 +2652,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   searched_sources(coverage), changed=record in result.get("changed", []),
                   repository_items=repository_items,
                   session_items=original_items,
+                  hierarchy_evidence=fact_rows,
                   project_coverage={"inputs_read": project_inputs,
                                     "inputs_available": page_state(root, record).get("messages", 0),
                                     "days": days, "scope": "archived"}
@@ -2695,7 +2696,7 @@ def _repositories_note(roots: list[str], line) -> str:
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
                   *, changed: bool = False, repository_items=(), session_items=(), skill_records=(),
-                  project_coverage=None, lock_held=False) -> None:
+                  project_coverage=None, hierarchy_evidence=(), lock_held=False) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -2716,6 +2717,9 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
+        if changed and record.startswith(('people/', 'orgs/')):
+            from .org_inference import infer, apply
+            apply(notebook, infer(notebook, record, hierarchy_evidence), lock_held=True)
         notebook.note_investigation(record, ", ".join(searched))
         if project_coverage:
             from .project_material import page_state

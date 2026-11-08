@@ -182,6 +182,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record.update(session_detail(record["text"], private=local))
     owner = owner_record(root)
     organisation_members(records, owner)
+    from .org_hierarchy import structure, rollups
+    structure(records, owner)
     people = [record for record in records if record["category"] == "people" and record["path"] != owner]
     mentioned = mentions(people, [record for record in records if record["category"] == "sessions"])
     for record in people:
@@ -272,6 +274,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         for row in data['today_queue']:
             row.pop('reply', None)
     organisation_obligations(records, data['today_queue'])
+    from .service import notebook_today
+    rollups(records, notebook_today(root))
     return _today_data(data) if today else data
 
 

@@ -54,7 +54,7 @@ def organisation_fields(record: dict, paths: set[str]) -> dict:
     else:
         result['organisations'] = [org for org in organisation_links(path, text) if org in paths]
         if category == 'people':
-            result['team'] = value('Team')
+            result['team'] = value('Unit')  # compatibility alias, never a second concept
     return result
 
 
@@ -93,6 +93,15 @@ def _obligation_people(row: dict, people: list[dict], origins: set[str]) -> list
 
 def organisation_obligations(records: list[dict], queue: list[dict]) -> None:
     """Reuse Today's obligation identity, including all copy keys and owner decisions."""
+    from .org_hierarchy import obligation_units
+    for row in queue:
+        row['units'] = obligation_units(row, records)
+        if not row['units'] and not any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys']):
+            origins = {key.partition('\n')[0] for key in row['keys']}
+            units = {unit['path'] for person in records if person['path'] in origins
+                     for unit in person.get('units', [])}
+            if len(units) == 1:
+                row['units'] = sorted(units)
     for org in records:
         if org['category'] != 'orgs':
             continue
@@ -101,7 +110,10 @@ def organisation_obligations(records: list[dict], queue: list[dict]) -> None:
         org['obligations'] = []
         for row in queue:
             origins = {key.partition('\n')[0] for key in row['keys']}
-            if not row['closed'] and origins & (members | {org['path']}):
+            scoped = org['path'] in row['units']
+            direct = origins & (members | {org['path']})
+            explicit = any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys'])
+            if not row['closed'] and (scoped or direct and (not org.get('unit_kind') or not row['units'] and not explicit)):
                 org['obligations'].append({**row, 'people': _obligation_people(row, people, origins)})
 
 

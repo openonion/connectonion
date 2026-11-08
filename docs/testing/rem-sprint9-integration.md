@@ -84,3 +84,23 @@ now keep hidden pages outside public aggregates until revealed. Org Chinese
 wording is scoped through orgT instead of overwriting global Today/People
 translations. Added visibility-boundary and translation-isolation regressions;
 focused complete reader/person/org recheck follows these repairs.
+
+Org UI final scoped recheck: `322 passed in 11.13s`.
+
+5. `sprint9/org-hierarchy` (`3a0f4e9f`): no textual conflicts (runner merged
+   automatically). Bound the org UI's existing tree seam to validated Parent
+   children, explicit person Unit edges/roles and recursive unit cards. Root
+   rosters include descendants once; obligation/person rollups deduplicate by
+   identity. Old free-text Team remains a flat grouping and does not invent a
+   linked unit. Same-name units stay distinct by path. Hidden child units, their
+   members and scoped obligations stay outside public parent aggregates.
+   Person rails show validated unit/role links. Added three unit integration
+   cases plus desktop/phone light/dark nested navigation browser cases.
+   Focused hierarchy/data/UI verification: `71 passed in 1.28s`.
+
+Independent AI hierarchy review additionally found inherited private-unit
+visibility and explicit dual membership edge cases. Hidden ancestors now hide
+their descendant obligations; explicit memberships at both parent and child
+retain their separate roles while rollup people still count once. Added focused
+regressions for both. Unit names in organisation obligations use resolved
+labels instead of exposing raw Unit wikilink syntax.
