@@ -521,3 +521,59 @@ def test_page_stamps_use_the_notebook_day(tmp_path, monkeypatch, zone, day):
     book.note_investigation("people/robin.md", "fixture")
     assert f"mapped {day}" in book.read("people/robin.md")
     assert f"investigated {day} (fixture)" in book.read("people/robin.md")
+
+
+OLD_TIMES = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+
+
+def _pin_old_default(root):
+    """What a session restore left in a real notebook: the old default, marked as the owner's."""
+    import json
+    import yaml
+    from connectonion.rem.files import state_path
+    saved = yaml.safe_load((root / "config.yaml").read_text())
+    saved["schedule"]["times"] = OLD_TIMES
+    (root / "config.yaml").write_text(yaml.safe_dump(saved))
+    state_path(root, "config-explicit.json").write_text(json.dumps(["schedule.times"]))
+    state_path(root, "config-pin-checked.json").unlink(missing_ok=True)  # saved before this version
+
+
+def test_a_pin_equal_to_the_old_default_takes_the_new_night_once_and_says_so(tmp_path):
+    from connectonion.rem.config import migrate_schedule_pin
+    from connectonion.rem.files import read_json, state_path
+    prepare(tmp_path)
+    _pin_old_default(tmp_path)
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES  # read alone already unpins
+    migrate_schedule_pin(tmp_path)
+    assert "schedule.times" not in read_json(state_path(tmp_path, "config-explicit.json"), [])
+    [entry] = [__import__("json").loads(line) for line in state_path(tmp_path, "config-migrations.jsonl").read_text().splitlines()]
+    assert entry["key"] == "schedule.times" and entry["from"] == OLD_TIMES and entry["to"] == NIGHT_TIMES
+    migrate_schedule_pin(tmp_path)  # once
+    assert len(state_path(tmp_path, "config-migrations.jsonl").read_text().splitlines()) == 1
+    # Chosen again after the migration, the old times are his and stay.
+    set_config(tmp_path, ["schedule.times", ",".join(OLD_TIMES)])
+    assert read_config(tmp_path)["schedule"]["times"] == OLD_TIMES
+
+
+def test_a_pin_that_differs_from_the_old_default_stays(tmp_path):
+    from connectonion.rem.config import migrate_schedule_pin
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.times", "05:00,21:00"])
+    migrate_schedule_pin(tmp_path)
+    assert read_config(tmp_path)["schedule"]["times"] == ["05:00", "21:00"]
+
+
+def test_the_dense_profile_runs_every_half_hour_overnight_and_explicit_times_win(tmp_path):
+    from connectonion.rem.config import PROFILES
+    prepare(tmp_path)
+    assert read_config(tmp_path)["schedule"]["profile"] == "default"
+    set_config(tmp_path, ["schedule.profile", "dense"])
+    times = read_config(tmp_path)["schedule"]["times"]
+    assert times == PROFILES["dense"] and times[0] == "00:00" and "22:00" in times and "07:00" in times
+    assert len(times) == 19 and "07:30" not in times and "21:30" not in times
+    set_config(tmp_path, ["schedule.profile", "default"])
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES
+    set_config(tmp_path, ["schedule.times", "05:00,21:00", "schedule.profile", "dense"])
+    assert read_config(tmp_path)["schedule"]["times"] == ["05:00", "21:00"]
+    with pytest.raises(RemError, match="schedule.profile"):
+        set_config(tmp_path, ["schedule.profile", "sparse"])

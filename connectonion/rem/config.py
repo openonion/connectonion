@@ -1,6 +1,7 @@
 """Start-first defaults. Read-only inspection never initializes the notebook."""
 
 import copy
+import json
 import os
 import re
 from pathlib import Path
@@ -54,7 +55,7 @@ def default_config() -> dict:
             # number of slots, bounds what the night spends.
             "schedule": {"times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00",
                                    "17:00", "18:00", "19:00", "22:00", "23:00"],
-                         "timezone": local_timezone(), "runner": "codex-exec"},
+                         "timezone": local_timezone(), "runner": "codex-exec", "profile": "default"},
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
             # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
@@ -104,6 +105,12 @@ def default_config() -> dict:
 
 
 LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+# D-104: schedules are compared night against night (.state/night-stats.jsonl). dense is a
+# slot every 30 minutes from 22:00 to 07:00, each with its 15-minute follow-ups.
+# Times set with `config set schedule.times` win over any profile.
+PROFILES = {"default": default_config()["schedule"]["times"],
+            "dense": sorted(f"{hour:02d}:{minute:02d}" for hour in (*range(22, 24), *range(0, 8))
+                            for minute in (0, 30) if (hour, minute) != (7, 30))}
 
 
 def validate(config: dict) -> dict:
@@ -133,8 +140,10 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner"}:
+    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner", "profile"}:
         raise RemError("Schedule requires times and timezone")
+    if schedule["profile"] not in PROFILES:
+        raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
     if schedule["runner"] not in ("codex-exec", "codex-app"):
         raise RemError("schedule.runner must be codex-exec or codex-app")
     times = schedule["times"]
@@ -178,8 +187,46 @@ RETIRED_NOTE = ("was retired (D-104): count caps no longer stop the night; only 
                 "(limits.quota_floor_percent) does")
 
 
-def _drop_superseded(root: Path, config: dict) -> None:
+OLD_TIMES = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+# Written once the pin migration ran, and by any later `config set schedule.times`:
+# from then on a pin equal to the old default is the owner's choice.
+PIN_CHECKED = "config-pin-checked.json"
+
+
+def _explicit(root: Path, config: dict) -> set:
+    """Keys the owner set. A schedule.times pin equal to the old default, saved before the
+    pin check, came from a session restore rather than from him, and does not count."""
     explicit = set(read_json(state_path(root, EXPLICIT), []))
+    schedule = config.get("schedule") if isinstance(config.get("schedule"), dict) else {}
+    if ("schedule.times" in explicit and schedule.get("times") == OLD_TIMES
+            and not state_path(root, PIN_CHECKED).is_file()):
+        explicit.discard("schedule.times")
+    return explicit
+
+
+def migrate_schedule_pin(root: Path) -> None:
+    """Once: unpin a schedule equal to the old default and log it. Caller holds the lock (start)."""
+    if state_path(root, PIN_CHECKED).is_file() or not safe_path(root, "config.yaml").is_file():
+        return
+    saved = yaml.safe_load(safe_path(root, "config.yaml").read_text(encoding="utf-8")) or {}
+    explicit = read_json(state_path(root, EXPLICIT), [])
+    if "schedule.times" in explicit and "schedule.times" not in _explicit(root, saved):
+        write_json(state_path(root, EXPLICIT), [key for key in explicit if key != "schedule.times"])
+        entry = {"at": _now(), "key": "schedule.times", "from": OLD_TIMES, "to": read_config(root)["schedule"]["times"],
+                 "why": "the pinned value was exactly the old default (a session restore, not a choice); "
+                        "co rem config set schedule.times pins times again"}
+        with state_path(root, "config-migrations.jsonl").open("a", encoding="utf-8") as log:
+            log.write(json.dumps(entry) + "\n")
+    write_json(state_path(root, PIN_CHECKED), {"at": _now()})
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _drop_superseded(root: Path, config: dict) -> None:
+    explicit = _explicit(root, config)
     defaults = default_config()
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
@@ -213,7 +260,13 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     config.setdefault("effort", "medium")
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
         config['schedule']['runner'] = default_config()['schedule']['runner']
+    if isinstance(config.get("schedule"), dict):
+        config["schedule"].setdefault("profile", "default")
     _drop_superseded(root, config)
+    explicit = _explicit(root, config)
+    if ("schedule.profile" in explicit and "schedule.times" not in explicit
+            and config["schedule"].get("profile") in PROFILES):
+        config["schedule"]["times"] = PROFILES[config["schedule"]["profile"]]
     # Existing non-Codex notebooks must not receive a model their harness cannot
     # run. A summary choice saved by the owner always wins.
     config.setdefault("models", {"summary": default_config()["models"]["summary"]
@@ -248,6 +301,7 @@ def prepare(root: Path) -> None:
     path = safe_path(root, "config.yaml")
     if not path.exists():
         atomic_write(path, yaml.safe_dump(first_runner(default_config()), sort_keys=False))
+    migrate_schedule_pin(root)
 
 
 def first_runner(config: dict) -> dict:
@@ -280,6 +334,7 @@ def request_language(root: Path, language: str) -> dict:
 
 
 def _set_config(root: Path, pairs: list[str]) -> dict:
+    migrate_schedule_pin(root)
     config = copy.deepcopy(read_config(root, validated=False))
     previous_runner = config["runner"]
     for key, raw in zip(pairs[::2], pairs[1::2]):
@@ -290,11 +345,11 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("model", "runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[0] == "limits" and parts[-1] in RETIRED:
             raise RemError(f"{key} {RETIRED_NOTE}")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, effort, language, languages, models.summary, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":
             if raw not in ("true", "false"):
                 raise RemError("tasks.auto must be true or false")
@@ -320,4 +375,6 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     validate(config)
     atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
     write_json(state_path(root, EXPLICIT), sorted(explicit))
+    if "schedule.times" in pairs[::2]:
+        write_json(state_path(root, PIN_CHECKED), {"at": _now()})
     return config

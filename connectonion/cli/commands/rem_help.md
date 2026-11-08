@@ -728,7 +728,9 @@ Keys:     model                          gpt-6.1-sol (default): investigation, w
           languages                      zh,en: the languages you read, first in the reader's
                                          "Read in" menu; unset, the ones detected from your own
                                          sent mail and typed sessions (shown under "your languages")
-          schedule.times                 "03:00,17:00"
+          schedule.times                 "03:00,17:00": set here, these win over any profile
+          schedule.profile               default | dense (a slot every 30 minutes, 22:00-07:00);
+                                         compare nights with co rem status
           schedule.timezone              Australia/Sydney
           notify.channel                 none (default) | telegram | lark | whatsapp | email
           notify.target                  your own chat ID or personal email address
