@@ -9,6 +9,9 @@ import shlex
 import shutil
 import sys
 import textwrap
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -28,6 +31,18 @@ SCHEDULED_CONTINUATION = (
     "Keep going until next says the round is done or stopped."
 )
 AUDIT_BATCH_SIZE = 8
+# 11-07: about 30 turns on one task refused again and again; nothing else ran
+# all night. A task refused twice for the same reason, or three times in all,
+# is parked: the round moves on and the page is retried on a later day.
+PARK_SAME_REASON, PARK_TOTAL = 2, 3
+# 11-08: one `co rem next --scheduled` printed nothing until the turn was
+# killed. Preparing a task measured 0.9 min median, 3.7 min p90 (74 tasks,
+# 11-05..11-08); ten minutes is also the lock wait.
+NEXT_DEADLINE_SECONDS = 600
+PROGRESS_SECONDS = 60
+DEADLINE_EXIT = 75  # EX_TEMPFAIL: run next again
+STALLED = "stalled-next.json"
+_WATCH = {"label": "starting", "skip": {}, "deadline": None}
 
 
 def pending(root):
@@ -179,6 +194,77 @@ def _stop(root, config, *, phase=None):
     return reason or None, meter
 
 
+def progress_step(label, **skip):
+    """What next is doing now: the progress line says it, and a stall skips it next time."""
+    _WATCH.update(label=label, skip=skip)
+
+
+def _watch(root, stop):
+    began = time.monotonic()
+    while True:
+        deadline = _WATCH["deadline"]
+        wait = PROGRESS_SECONDS if deadline is None else min(PROGRESS_SECONDS, deadline - time.monotonic())
+        if stop.wait(max(0, wait)):
+            return
+        if deadline is not None and time.monotonic() >= deadline:
+            _stalled(root)
+        print(f"Still {_WATCH['label']} ({int(time.monotonic() - began)} s so far)…", file=sys.stderr, flush=True)
+
+
+def _stalled(root):
+    """Record what hung, say so, and end the process: the lock goes with it."""
+    write_json(state_path(root, STALLED), {"label": _WATCH["label"], "at": service.now().isoformat(),
+                                          **_WATCH["skip"]})
+    print(f"co rem next passed its deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {_WATCH['label']}. "
+          "Run co rem next again: it moves on to the next work.", flush=True)
+    os._exit(DEADLINE_EXIT)
+
+
+JOB_OPERATIONS = ("investigation", "inquiry", "project", "project-quote", "project-final")
+
+
+def _leave_job(root, task):
+    """A discarded investigation round goes on to the page's next round; a parked one leaves the page."""
+    cursor = read_json(state_path(root, "round.json"), {})
+    jobs, index = cursor.get("jobs") or [], cursor.get("job_index", 0)
+    if task["operation"] in JOB_OPERATIONS and index < len(jobs) and jobs[index]["record"] == task["record"]:
+        cursor.update(job_index=index + 1, current=None, project_quote=None)
+        write_json(state_path(root, "round.json"), cursor)
+
+
+def _skip_stalled(root):
+    """The last next hung: move the round past what it was preparing."""
+    stall = read_json(state_path(root, STALLED), {})
+    if not stall:
+        return []
+    state_path(root, STALLED).unlink()
+    cursor = read_json(state_path(root, "round.json"), {})
+    why = f"parked: preparing it passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline"
+    if cursor.get("started_at") != stall.get("round") or cursor.get("pending"):
+        return [f"The last co rem next passed its deadline while {stall['label']}; trying again"]
+    if "mail_slot" in stall:
+        cursor["mail_slot"] = stall["mail_slot"]
+    if cursor.get("job_index") == stall.get("job_index"):
+        from .refusals import remember_refusal
+        remember_refusal(root, stall["record"], [], why, stage="parked", parked=True)
+        cursor.update(job_index=cursor["job_index"] + 1, current=None, project_quote=None)
+    write_json(state_path(root, "round.json"), cursor)
+    return [f"Skipped {stall['label']}: the last co rem next passed its deadline there"]
+
+
+@contextmanager
+def _watching(root):
+    """A progress line every PROGRESS_SECONDS; the deadline once the lock is held."""
+    stop = threading.Event()
+    watcher = threading.Thread(target=_watch, args=(root, stop), daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:  # an error must not leave a deadline armed in a longer-lived process
+        stop.set()
+        watcher.join()
+
+
 def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     if scheduled:
@@ -186,13 +272,18 @@ def next_task(root, *, scheduled=False, discard=False):
         morning_message(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
-                          scheduled=scheduled) as waited_for, runner.private_task_mask():
+    progress_step("waiting for the maintenance lock")
+    _WATCH["deadline"] = None
+    with _watching(root), maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
+                                           scheduled=scheduled) as waited_for, runner.private_task_mask():
+        _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
+        progress_step("preparing the next task")
+        stall_notices = _skip_stalled(root)
         cursor = read_json(state_path(root, "round.json"), {})
         previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get("pending") else {}
-        notices = []
+        notices = stall_notices
         if cursor.get("pending"):
-            notices = _resume(root, cursor, previous, discard=discard, scheduled=scheduled)
+            notices += _resume(root, cursor, previous, discard=discard, scheduled=scheduled)
         if discard:
             cursor = {}
         tasks = pending(root)
@@ -240,10 +331,15 @@ def _next_round(root, cursor, *, scheduled, notices):
         return {"outcome": "done", "reason": "not due", "notices": notices}
     # A round still working through its jobs reads each new slot's mail; one in its
     # translation tail is about to finish, and the next round reads mail anyway.
+    # Not while a page is open: new mail that edits it would refuse every later
+    # turn with "Task input changed". It is read at the next slot after the page.
     if (cursor and scheduled and not cursor.get("done") and cursor.get("phase") != "daily-translation"
-            and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])):
+            and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])
+            and not cursor.get("current") and not cursor.get("project_quote")):
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
         if slot and slot.isoformat() > (cursor.get("mail_slot") or cursor.get("slot") or ""):
+            progress_step(f"reading new mail for the {slot:%H:%M} slot", round=cursor["started_at"],
+                          mail_slot=slot.isoformat())
             native_round.read_new_mail(root, cursor, config, slot)
     if cursor and scheduled and cursor.get("investigation_left") == 0:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
@@ -266,6 +362,7 @@ def _next_round(root, cursor, *, scheduled, notices):
                 return {"outcome": "done", "reason": "round done", "notices": notices}
             return {"outcome": "done", "reason": reason or "investigation portion cap reached", "notices": notices}
     if not cursor or cursor.get("done"):
+        progress_step("starting a new round")
         cursor = (native_round.prepare_translation_round(root, config, scheduled=scheduled) if translation_only
                   else native_round.prepare(root, config, scheduled=scheduled))
         if cursor.get("reason"):
@@ -276,6 +373,7 @@ def _next_round(root, cursor, *, scheduled, notices):
 def _new_task(root, cursor, config, meter, notices, *, translation_only=False, stop_reason=None):
     from . import native_round
     from .daily import _reserve
+    progress_step("preparing the next task")
     task_id = "native-" + uuid4().hex
     directory = state_path(root, f"tasks/{task_id}")
     directory.mkdir(parents=True, mode=0o700)
@@ -319,11 +417,11 @@ def _resume(root, cursor, task, *, discard, scheduled=False):
     return []
 
 
-def _discard(root, cursor, task, reason):
+def _discard(root, cursor, task, reason, *, outcome="discarded", **fields):
     from . import native_round
     task.update(status="discarded", reason=reason)
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
-    _log(root, task, "discarded", reason=reason)
+    _log(root, task, outcome, reason=reason, **fields)
     native_round.advance(root, cursor, task, {"discarded": reason})
     runner.scrub_task(Path(task["directory"]))
     return [f"Discarded {task['id']}: {reason}"]
@@ -428,7 +526,7 @@ def submit(root, task_id, *, usage=None):
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
-        if result.get("outcome") == "refused":
+        if result.get("outcome") in ("refused", "parked"):
             return result
         if result.get("needs_review"):
             return _request_review(root, task, result)
@@ -523,10 +621,39 @@ def _refuse_submission(root, task, reason):
     display = _display(root, task)
     task["last_result"] = {"outcome": "refused", "reason": reason, "fix": str(fix),
                            **{key: display[key] for key in ("candidate", "submit", "continuation") if key in display}}
+    task.setdefault("refusals", []).append(reason)
     _write_instructions(task)
     write_json(directory / "task.json", task, readable=True)
     _log(root, task, "refused", reason=reason)
-    return task["last_result"]
+    why = _park_reason(task["refusals"])
+    return _park(root, task, why) if why else task["last_result"]
+
+
+def _same_reason(reason):
+    """Two refusals of one problem differ in counts and citation numbers, not words."""
+    return re.sub(r"\d+", "#", reason.strip().splitlines()[0] if reason.strip() else "")[:200]
+
+
+def _park_reason(refusals):
+    if len(refusals) >= PARK_TOTAL:
+        return f"refused {len(refusals)} times: {refusals[-1][:300]}"
+    if refusals and [_same_reason(r) for r in refusals].count(_same_reason(refusals[-1])) >= PARK_SAME_REASON:
+        return f"refused twice for the same reason: {refusals[-1][:300]}"
+    return None
+
+
+def _park(root, task, why):
+    """Set the task aside for a later day, recorded with its reasons; the round moves on."""
+    from .refusals import material_sources, remember_refusal
+    reason = "parked: " + why
+    if task.get("record"):
+        remember_refusal(root, task["record"], material_sources(task["task"].get("items", [])), reason,
+                         stage="parked", parked=True)
+    _discard(root, read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
+             refusals=[refusal[:300] for refusal in task["refusals"]])
+    _leave_job(root, task)
+    return {"outcome": "parked", "id": task["id"], "record": task.get("record"), "reason": reason,
+            "refusals": task["refusals"], "same_turn": True}
 
 
 def _continue_review(root, task, reason):
