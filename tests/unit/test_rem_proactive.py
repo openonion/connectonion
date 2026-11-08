@@ -1329,7 +1329,8 @@ def test_approval_dispatch_does_not_lock_notebook(notebook):
     from concurrent.futures import ThreadPoolExecutor
     from connectonion.rem import approvals
     from connectonion.rem.files import maintenance_lock
-    item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'text': 'Review the pilot.'}
+    key = 'people/fern.md\nReview the pilot.'  # approved task records carry their obligation key
+    item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'key': key, 'keys': [key], 'text': 'Review the pilot.'}
     write_json(state_path(notebook, 'approvals.json'), {item['id']: item})
     def dispatch(task):
         def edit():

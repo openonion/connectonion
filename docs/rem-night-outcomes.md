@@ -18,16 +18,19 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-By default (`tasks.auto: true`) the night starts owed tasks after drafting, one
-at a time and at most `limits.tasks_per_night` (3) per night, counted noon to
-noon, and none once the Codex week reaches `limits.quota_floor_percent`. A task
-that has to wait is written to `.state/tasks/waiting.json` and its Today card
-says "Queued: later tonight" or "Queued: budget used up" with the reason. Each
-start is recorded in `.state/approvals.json` with `by: rem`, so Today says "REM started
-this" and offers Stop and Undo. Undo stops the task, removes its folder, worktree
-and branch, and records `cancelled`: the night never starts it again, while
-morning approval still can. With `tasks.auto: false` morning approval reserves a
-receipt and the Host starts `co rem task run ID`. `co rem status` names the choice.
+By default (`tasks.auto: false`) morning approval reserves a receipt and the
+Host starts `co rem task run ID`. With `tasks.auto: true` the night also starts
+owed tasks after drafting and records each in `.state/approvals.json` with
+`by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo stops
+the task, removes its folder, worktree and branch, and records `cancelled`: the
+night never starts it again, while morning approval still can. It stays off by
+default until the sealed run reads only an allow-list (today it denies a list of
+credential paths). Either way a task passes one gate: one task at a time, at
+most `limits.tasks_per_night` (3) started per night, counted noon to noon, and
+none once the Codex week reaches `limits.quota_floor_percent`. A task that has
+to wait is written to `.state/tasks/waiting.json` and its Today card says
+"Queued: later tonight" or "Queued: budget used up" with the reason.
+`co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
 Nothing here sends messages or marks an obligation done; the morning UI still

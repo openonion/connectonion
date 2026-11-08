@@ -15,7 +15,8 @@ from connectonion.rem.files import RemError, Notebook, read_json, state_path, wr
 def task_notebook(tmp_path, monkeypatch, rem_clock):
     root = tmp_path / 'rem'
     prepare(root)
-    set_config(root, ["runner", "codex", "model", default_config()["model"]])
+    # tasks.auto is off by default until the inverted read boundary ships; these tests run it on.
+    set_config(root, ["runner", "codex", "model", default_config()["model"], "tasks.auto", "true"])
     book = Notebook(root)
     book.stub_project('projects/pilot.md', 'Mara pilot', [])
     book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
@@ -189,10 +190,9 @@ def _approvals(root):
     return list(read_json(state_path(root, 'approvals.json'), {}).values())
 
 
-def test_night_dispatches_by_default_and_records_rem_as_the_one_who_started(task_notebook, fake_codex):
+def test_night_dispatches_when_on_and_records_rem_as_the_one_who_started(task_notebook, fake_codex):
     from connectonion.rem import approvals, reader, tasks
     config = read_config(task_notebook)
-    assert default_config()['tasks']['auto'] is True and config['tasks']['auto'] is True
     started = tasks.auto_dispatch(task_notebook, config)
     assert len(started) == 1 and started[0]['by'] == 'rem'
     saved = _finished(task_notebook, started[0]['id'])
@@ -270,6 +270,28 @@ def test_the_night_starts_no_task_past_the_weeks_floor(task_notebook, monkeypatc
     assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
     [waiting] = _waiting(task_notebook).values()
     assert waiting['wait'] == 'budget' and '93%' in waiting['reason']
+    set_config(task_notebook, ['tasks.auto', 'false'])
+    tasks.auto_dispatch(task_notebook, read_config(task_notebook))
+    assert _waiting(task_notebook) == {}  # with auto off nothing will start it, so it is not "queued"
+
+
+def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    _second_task(task_notebook)
+    first = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
+    try:
+        offered = approvals.outcomes(task_notebook)[0]
+        approvals.approve(task_notebook, [offered['id']])
+        calls = []
+        assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == []
+        assert not calls and approvals.pending(task_notebook)[0]['status'] == 'queued'
+        [waiting] = _waiting(task_notebook).values()
+        assert waiting['wait'] == 'later' and waiting['by'] == 'owner'
+    finally:
+        tasks.stop(task_notebook, first['id'])
+    released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
+    assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):
@@ -303,7 +325,7 @@ def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch)
     assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived undo'
 
 
-def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monkeypatch):
+def test_auto_is_off_by_default_and_the_owner_can_turn_it_on(task_notebook, monkeypatch):
     from connectonion.rem import tasks, service
     launched = []
     monkeypatch.setattr(tasks, 'start', lambda root, identity: launched.append(identity) or {'id': identity})
@@ -312,7 +334,8 @@ def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monk
     assert not launched and service.status(task_notebook)['tasks']['auto'] is False
     (task_notebook / 'config.yaml').write_text((task_notebook / 'config.yaml').read_text().replace(
         'tasks:\n  auto: false\n', ''))
-    assert read_config(task_notebook)['tasks']['auto'] is True  # an older notebook without the key
+    assert default_config()['tasks']['auto'] is False
+    assert read_config(task_notebook)['tasks']['auto'] is False  # an older notebook without the key
     set_config(task_notebook, ['tasks.auto', 'true'])
     tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     assert launched

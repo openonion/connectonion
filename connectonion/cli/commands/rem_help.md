@@ -743,8 +743,8 @@ Tier:     agent    the model drives tools: it reads the material and writes the 
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
-Tasks:    tasks.auto is true by default: the night starts owed work after drafts.
-          co rem config set tasks.auto false leaves it for morning approval.
+Tasks:    tasks.auto is false by default: morning approval starts work.
+          co rem config set tasks.auto true also starts it after nightly drafts.
 ```
 
 ## co rem logs
@@ -1158,9 +1158,10 @@ repository on branch rem/task-ID when there is one, otherwise do-ID/work.
 The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-The night starts tasks after drafts (tasks.auto, default true), one at a time,
-at most limits.tasks_per_night (3), none past the week's quota floor; the reader's
-Undo removes a task's work and the night never starts it again.
+Morning approval starts tasks; with tasks.auto true (default false) the night
+also does. Either way one at a time, at most limits.tasks_per_night (3), none
+past the week's quota floor. The reader's Undo removes a task's work and the
+night never starts it again.
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem task status
@@ -1188,7 +1189,7 @@ is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
 .state/tasks/do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-The night starts tasks after drafts unless tasks.auto is false (default true).
+Night tasks wait for morning approval unless tasks.auto is true (default false).
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem --root /tmp/mara-rem task run ID

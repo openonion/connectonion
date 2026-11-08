@@ -198,7 +198,17 @@ def release(root, *, at=None, dispatch=None):
     return [value for item in ready if (value := _release_one(root, item['id'], at, dispatch))]
 
 
+def _waits(root, key):
+    """An approved task passes the same gate as REM's own: one at a time, the nightly cap, the floor."""
+    from .config import read_config
+    from .tasks import gate
+    item = read_json(state_path(root, 'approvals.json'), {})[key]
+    return item['kind'] == 'task' and item['status'] == 'queued' and gate(root, read_config(root), item['key'])
+
+
 def _release_one(root, key, at, dispatch):
+    if dispatch is not None and _waits(root, key):
+        return None
     with maintenance_lock(root):
         queue = read_json(state_path(root, 'approvals.json'), {})
         item = queue[key]
@@ -214,7 +224,8 @@ def _release_one(root, key, at, dispatch):
         else:
             with maintenance_lock(root):
                 receipt = _deliver(root, item, at)
-        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt}
+        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt,
+                 **({'dispatched_at': service.now().isoformat()} if task else {})}
     except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
         value = {**item, 'status': 'error', 'error': str(error)}
     with maintenance_lock(root):

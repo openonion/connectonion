@@ -295,24 +295,40 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    waiting_path = state_path(Path(root), 'tasks/waiting.json')
     if not config['tasks']['auto']:
-        write_json(waiting_path, {})
+        _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn
     from .night import listing
-    rows = [row for row in listing(root) if row['kind'] == 'task' and not withdrawn(root, row['key'])
-            and not receipt_for(root, row['key'])]
-    launched, waiting = [], {}
-    for row in rows:
-        if hold := _hold(root, config):
-            waiting[row['key']] = hold
+    launched = []
+    for row in listing(root):
+        if (row['kind'] != 'task' or withdrawn(root, row['key']) or receipt_for(root, row['key'])
+                or gate(root, config, row['key'])):
             continue
         receipt = reserve(root, row, by='rem')
         started(root, row, receipt)
         launched.append(start(root, receipt['id']))
-    write_json(waiting_path, waiting)
     return launched
+
+
+def _forget_unstarted(root):
+    """With tasks.auto off nothing will start an unapproved task, so it no longer shows as queued."""
+    path = state_path(Path(root), 'tasks/waiting.json')
+    waiting = read_json(path, {})
+    kept = {key: hold for key, hold in waiting.items() if receipt_for(root, key)}
+    if kept != waiting:
+        write_json(path, kept)
+
+
+def gate(root, config, key):
+    """None when the task owed for `key` may start now; otherwise why not, kept for its Today card.
+    REM's own starts and the owner's approved ones pass the same gate."""
+    path = state_path(Path(root), 'tasks/waiting.json')
+    waiting = read_json(path, {})
+    hold = _hold(root, config)
+    if hold != waiting.pop(key, None):
+        write_json(path, {**waiting, key: hold} if hold else waiting)
+    return hold
 
 
 def _hold(root, config):
@@ -337,7 +353,7 @@ def _started_tonight(root, config):
     zone = service.notebook_zone(config)
     tonight = _night(service.now(), zone)
     records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
-    return sum(1 for record in records if record.get('by') == 'rem' and record.get('kind') == 'task'
+    return sum(1 for record in records if record.get('kind') == 'task' and record.get('dispatched_at')
                and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
 
 
