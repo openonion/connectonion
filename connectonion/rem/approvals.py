@@ -95,6 +95,33 @@ def _task(root, item, body, release_at):
     return {**item, 'status': 'queued', 'receipt_id': receipt['id']}
 
 
+def started(root, item, receipt):
+    """A task REM started itself, recorded like an approval so Today names who started it.
+    The night caller already holds the notebook lock."""
+    queue = read_json(state_path(root, 'approvals.json'), {})
+    key = _id('task', item['key'])
+    if key in queue:
+        return queue[key]
+    return _save(root, queue, {'id': key, 'kind': 'task', 'keys': item['keys'], 'title': item['title'],
+                               'text': item['text'], 'status': 'dispatched', 'by': 'rem',
+                               'receipt_id': receipt['id'], 'dispatched_at': service.now().isoformat(),
+                               'result': {'id': receipt['id'], 'receipt': receipt['receipt']}})
+
+
+def withdrawn(root, key):
+    return read_json(state_path(root, 'approvals.json'), {}).get(_id('task', key), {}).get('status') == 'cancelled'
+
+
+def withdraw(root, receipt):
+    """The owner undid a task: the night never starts it again; morning approval still can."""
+    with maintenance_lock(root):
+        queue = read_json(state_path(root, 'approvals.json'), {})
+        key = _id('task', receipt['key'])
+        record = queue.get(key) or {'id': key, 'kind': 'task', 'keys': receipt['keys'],
+                                    'title': receipt['title'], 'text': receipt['text']}
+        return _save(root, queue, {**record, 'status': 'cancelled', 'cancelled_at': service.now().isoformat()})
+
+
 # A new prepared outcome kind adds one handler here; the reader renders the common fields.
 ACTIONS = {'reply': _reply, 'handled': _handled, 'task': _task}
 
@@ -171,7 +198,17 @@ def release(root, *, at=None, dispatch=None):
     return [value for item in ready if (value := _release_one(root, item['id'], at, dispatch))]
 
 
+def _waits(root, key):
+    """An approved task passes the same gate as REM's own: one at a time, the nightly cap, the floor."""
+    from .config import read_config
+    from .tasks import gate
+    item = read_json(state_path(root, 'approvals.json'), {})[key]
+    return item['kind'] == 'task' and item['status'] == 'queued' and gate(root, read_config(root), item['key'])
+
+
 def _release_one(root, key, at, dispatch):
+    if dispatch is not None and _waits(root, key):
+        return None
     with maintenance_lock(root):
         queue = read_json(state_path(root, 'approvals.json'), {})
         item = queue[key]
@@ -187,7 +224,8 @@ def _release_one(root, key, at, dispatch):
         else:
             with maintenance_lock(root):
                 receipt = _deliver(root, item, at)
-        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt}
+        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt,
+                 **({'dispatched_at': service.now().isoformat()} if task else {})}
     except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
         value = {**item, 'status': 'error', 'error': str(error)}
     with maintenance_lock(root):

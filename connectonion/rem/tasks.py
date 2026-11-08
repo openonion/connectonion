@@ -5,14 +5,16 @@ import fcntl
 import hashlib
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import time
 from contextlib import contextmanager, suppress
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import codex_exec
+from . import codex_exec, service
 from .config import read_config
 from .files import RemError, read_json, state_path, write_json
 from .service import now
@@ -40,14 +42,14 @@ def _lock(folder, name='control.lock'):
         yield
 
 
-def reserve(root, outcome):
+def reserve(root, outcome, by='owner'):
     """Queue without a model call. Host and night share this idempotent claim."""
     task_id = identity(outcome.get('key') or outcome['keys'][0])
     folder = directory(root, task_id)
     with _lock(folder):
         if saved := read_json(folder / 'receipt.json', {}):
             return saved
-        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(),
+        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by,
                    'key': outcome.get('key') or outcome['keys'][0], 'keys': outcome['keys'],
                    'record': outcome.get('record', ''), 'title': outcome['title'], 'text': outcome['text'],
                    'prompt': outcome.get('task', {}).get('prompt') or f"Prepare the work owed: {outcome['text']}",
@@ -57,7 +59,8 @@ def reserve(root, outcome):
         return receipt
 
 
-def project_workdir(root, receipt, folder):
+def _project_dir(root, receipt):
+    """The one project directory the obligation's page links to, or None."""
     from .files import Notebook
     from .investigate import project_paths
     record = receipt['record']
@@ -72,20 +75,44 @@ def project_workdir(root, receipt, folder):
             if resolved.parent == Path(root).resolve() / 'projects' and resolved.suffix == '.md':
                 pages.append(resolved.relative_to(Path(root).resolve()).as_posix())
     paths = [Path(path).expanduser() for page in pages for path in project_paths(book.read(page))]
-    existing = [path.resolve() for path in paths if path.is_absolute() and path.is_dir()]
-    if len(set(existing)) == 1:
-        return existing[0]
+    existing = {path.resolve() for path in paths if path.is_absolute() and path.is_dir()}
+    return existing.pop() if len(existing) == 1 else None
+
+
+def _git(*args):
+    process = subprocess.run(['git', *args], capture_output=True, text=True)
+    if process.returncode:
+        raise RemError(f"git {args[2]} failed: {process.stderr.strip()}")
+    return process.stdout.strip()
+
+
+def workspace(root, receipt, folder):
+    """Codex writes only here: a worktree of the project on its own branch, else work/."""
     work = folder / 'work'
+    project = _project_dir(root, receipt)
+    if project:
+        receipt['project'] = str(project)
+        top = subprocess.run(['git', '-C', str(project), 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
+        if top.returncode == 0:
+            branch = f"rem/task-{receipt['id']}"
+            _git('-C', top.stdout.strip(), 'worktree', 'add', '-q', '-b', branch, str(work), 'HEAD')
+            receipt.update(repository=top.stdout.strip(), branch=branch)
     work.mkdir(exist_ok=True, mode=0o700)
     return work
 
 
 def _prompt(receipt):
-    return (receipt['prompt'] + '\n\n'
+    place = f"Project, to read only: {receipt['project']}\n" if receipt.get('project') else ''
+    if receipt.get('branch'):
+        place += (f"Your copy is the worktree {receipt['cwd']} on branch {receipt['branch']}: "
+                  'change files there and leave them uncommitted for review.\n')
+    return (receipt['prompt'] + '\n\n' + place +
             f"Done means: produce reviewable work satisfying this obligation: {receipt['text']} "
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
             'End with a one-line summary of the work. '
+            'Never push, merge, send mail or post. Commands have no network and cannot read credentials; '
+            'if the work needs the web or an account, say so as a missing input. '
             'do not send anything to anyone; write the result and stop')
 
 
@@ -124,7 +151,8 @@ def _interrupted(signum, frame):
 
 def _run(command, log, timeout, receipt):
     with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
-                                                  stderr=subprocess.STDOUT, start_new_session=True) as process:
+                                                  stderr=subprocess.STDOUT, start_new_session=True,
+                                                  env=codex_exec.sealed_environment(os.environ)) as process:
         receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
         write_json(Path(receipt['receipt']), receipt)
         try:
@@ -158,10 +186,10 @@ def _execute(root, folder, receipt, timeout):
     code, result = None, 'failed'
     try:
         config = read_config(root)
-        work = project_workdir(root, receipt, folder)
+        work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         command = codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                          prompt=_prompt(receipt), add_dirs=(folder,))
+                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True)
         write_json(folder / 'receipt.json', receipt)
         code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt)
         deliverable = Path(receipt['deliverable'])
@@ -267,10 +295,85 @@ def stop(root, task_id):
 
 
 def auto_dispatch(root, config):
-    if not config.get('tasks', {}).get('auto', False):
+    """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
+    if not config['tasks']['auto']:
+        _forget_unstarted(root)
         return []
+    from .approvals import started, withdrawn
     from .night import listing
-    return [start(root, reserve(root, row)['id']) for row in listing(root) if row['kind'] == 'task']
+    launched = []
+    for row in listing(root):
+        if (row['kind'] != 'task' or withdrawn(root, row['key']) or receipt_for(root, row['key'])
+                or gate(root, config, row['key'])):
+            continue
+        receipt = reserve(root, row, by='rem')
+        started(root, row, receipt)
+        launched.append(start(root, receipt['id']))
+    return launched
+
+
+def _forget_unstarted(root):
+    """With tasks.auto off nothing will start an unapproved task, so it no longer shows as queued."""
+    path = state_path(Path(root), 'tasks/waiting.json')
+    waiting = read_json(path, {})
+    kept = {key: hold for key, hold in waiting.items() if receipt_for(root, key)}
+    if kept != waiting:
+        write_json(path, kept)
+
+
+def gate(root, config, key):
+    """None when the task owed for `key` may start now; otherwise why not, kept for its Today card.
+    REM's own starts and the owner's approved ones pass the same gate."""
+    path = state_path(Path(root), 'tasks/waiting.json')
+    waiting = read_json(path, {})
+    hold = _hold(root, config)
+    if hold != waiting.pop(key, None):
+        write_json(path, {**waiting, key: hold} if hold else waiting)
+    return hold
+
+
+def _hold(root, config):
+    """Why REM starts no task now, or None: one at a time, a nightly cap, the week's floor."""
+    from . import quota
+    if any(_reconcile(path.parent).get('result') in ACTIVE for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json')):
+        return {'wait': 'later', 'reason': 'Another task is running; this one starts on a later tick tonight.'}
+    cap = config['limits']['tasks_per_night']
+    if _started_tonight(root, config) >= cap:
+        return {'wait': 'budget', 'reason': f'{cap} tasks already started tonight (limits.tasks_per_night).'}
+    if floor := quota.floor_block(quota.read(config), config['limits']):
+        return {'wait': 'budget', 'reason': floor[0].upper() + floor[1:] + '.'}
+    return None
+
+
+def _night(moment, zone):
+    """The night a moment belongs to: noon to noon, so 22:00-06:00 is one night."""
+    return (moment.astimezone(zone) - timedelta(hours=12)).date()
+
+
+def _started_tonight(root, config):
+    zone = service.notebook_zone(config)
+    tonight = _night(service.now(), zone)
+    records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
+    return sum(1 for record in records if record.get('kind') == 'task' and record.get('dispatched_at')
+               and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
+
+
+def undo(root, task_id):
+    """The owner's Undo: never started again by the night; stop it and remove its work."""
+    from .approvals import withdraw
+    folder = directory(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    if not receipt:
+        raise RemError('No receipt for this task; run co rem task status')
+    record = withdraw(root, receipt)
+    if receipt['result'] in (*ACTIVE, 'queued'):
+        stop(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    if receipt.get('branch'):
+        _git('-C', receipt['repository'], 'worktree', 'remove', '--force', str(folder / 'work'))
+        _git('-C', receipt['repository'], 'branch', '-D', receipt['branch'])
+    shutil.rmtree(folder)
+    return record
 
 
 def host_dispatch(root, item):

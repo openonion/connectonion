@@ -213,6 +213,7 @@
   .draft-reason { grid-column: 1 / -1; }
   .task-result { grid-column: 1 / -1; min-width: 0; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
   .task-result p { margin: 6px 0 12px; overflow-wrap: anywhere; }
+  .task-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; }
   .task-result textarea { box-sizing: border-box; display: block; width: 100%; min-height: 100px; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font: 14px/1.6 var(--ui); resize: vertical; }
   .mail-actions .cmd { min-width: 0; max-width: 100%; flex-basis: 100%; }
   .mail-actions .cmd:not([hidden]) { display: flex; align-items: center; gap: 8px; }
@@ -2830,6 +2831,12 @@ const UI = {
     "Awaiting approval": "等待批准",
     "Refresh task progress": "刷新任务进度",
     "Could not refresh. Try again.": "未能刷新，请重试。",
+    "REM started this": "REM 自己开始的",
+    "Queued: later tonight": "排队：今晚稍后",
+    "Queued: budget used up": "排队：预算用完",
+    "Open the deliverable": "打开交付物",
+    "Stop": "停止",
+    "Could not do that. Try again.": "没能完成，请重试。",
     "Awaiting Host": "等待 Host 派发",
     "Starting": "正在启动",
     "Task failed": "任务失败",
@@ -5938,7 +5945,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5960,7 +5967,30 @@ function taskResult(entry) {
     };
     result.appendChild(refresh);
   }
+  const controls = taskControls(task);
+  if (controls) result.appendChild(controls);
   return result;
+}
+// Who started a task, its deliverable, and the owner's Stop and Undo (Undo removes the work).
+function taskControls(task) {
+  if (!task.result || ["ready", "waiting"].includes(task.result)) return null;
+  const live = REM.live && location.protocol !== "file:";
+  const act = (action, label) => {
+    const button = el("button", {type: "button", class: "btn-quiet", text: t(label)});
+    button.onclick = async () => {
+      button.disabled = true;
+      const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id, action})}).catch(() => null);
+      if (response?.ok) location.reload();
+      else {button.disabled = false; button.textContent = t("Could not do that. Try again.");}
+    };
+    return button;
+  };
+  const file = task.result === "completed" && task.deliverable;
+  return el("div", {class: "task-controls"}, [
+    task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
+    file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,
+    live && ["queued", "starting", "running"].includes(task.result) ? act("stop", "Stop") : null,
+    live ? act("undo", "Undo") : null]);
 }
 
 // ---- Today: one card per person ----------------------------------------------

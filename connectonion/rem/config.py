@@ -45,6 +45,8 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
+    # tasks.auto: owed work starts after the night's drafts, sealed, with Undo. Off
+    # until the sealed run's reads are limited to an allow-list, not a deny-list.
     return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
@@ -74,7 +76,9 @@ def default_config() -> dict:
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
             "limits": {"runner_calls_per_day": 200, "jobs_per_round": 8,
-                       "translations_per_day": 100, "drafts_per_night": 30, "items_per_batch": 20,
+                       "translations_per_day": 100, "drafts_per_night": 30,
+                       # Owed-work tasks REM starts itself per night (noon to noon), one at a time.
+                       "tasks_per_night": 3, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;

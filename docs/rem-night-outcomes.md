@@ -18,9 +18,19 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-Morning approval reserves a receipt and the Host starts `co rem task run ID`.
-The night may dispatch after drafting only when `tasks.auto: true`; its default
-is false. `co rem status` names this choice.
+By default (`tasks.auto: false`) morning approval reserves a receipt and the
+Host starts `co rem task run ID`. With `tasks.auto: true` the night also starts
+owed tasks after drafting and records each in `.state/approvals.json` with
+`by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo stops
+the task, removes its folder, worktree and branch, and records `cancelled`: the
+night never starts it again, while morning approval still can. It stays off by
+default until the sealed run reads only an allow-list (today it denies a list of
+credential paths). Either way a task passes one gate: one task at a time, at
+most `limits.tasks_per_night` (3) started per night, counted noon to noon, and
+none once the Codex week reaches `limits.quota_floor_percent`. A task that has
+to wait is written to `.state/tasks/waiting.json` and its Today card says
+"Queued: later tonight" or "Queued: budget used up" with the reason.
+`co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
 Nothing here sends messages or marks an obligation done; the morning UI still
@@ -87,11 +97,30 @@ text that might contain credentials or private URLs.
 ## Obligation work
 
 Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
-`co rem task stop ID` to stop it. Each ID gets one Codex session, using the
-configured work model and the same sandbox/network/credential-directory flags
-as upkeep. An unambiguous existing repository from the obligation's project
-page (or an explicit project link on its page) is the working directory;
-otherwise the working directory is `.state/tasks/do-ID/work`.
+`co rem task stop ID` to stop it. Each ID gets one Codex session with the
+configured work model, sealed. The prompt comes from mail, which is untrusted,
+so Codex runs its own seatbelt with a permission profile (`default_permissions =
+"rem_task"`, no `-s` flag: with codex 0.167 a `-s workspace-write` run ignored
+the profile, read canary credentials and reached the network). The profile reads
+the disk except the owner's credential paths (`sandbox_profile.CREDENTIAL_DIRS`
+and `CREDENTIAL_FILES`: `~/.co`, `~/.ssh`, `~/.config/gh`, `~/.aws`, `~/.gnupg`,
+`.netrc`, `.git-credentials` and more), writes only the task folder, its work
+directory and temp, and has no network. `--ignore-user-config` with apps,
+plugins, browser use and computer use off means none of the owner's MCP servers,
+connectors or hooks start (they run outside the sandbox); web search is off.
+Codex starts with no environment variable whose name matches
+KEY|TOKEN|SECRET|PASSWORD|API (it signs in from `CODEX_HOME`), and its shell tool
+inherits only Codex's core variables (`shell_environment_policy.inherit="core"`),
+so `env` cannot show what connectonion loaded from `keys.env`.
+So a task cannot push, merge into the owner's checkout, send mail or post, and
+cannot read keys. The cost: it cannot browse, search the web, install packages,
+call any API, or read notebook pages (they live under `~/.co`); it works from
+its prompt and what else is on disk, and names anything missing. When the
+obligation's project page (or an explicit project link on its page) names one
+existing directory inside a git repository, REM creates a worktree of it at
+`.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,
+uncommitted; the owner's checkout is untouched. Otherwise `do-ID/work` is an
+empty folder and the project is named in the prompt to read.
 
 The prepared prompt is extended with the completion criteria, the absolute
 `.state/tasks/do-ID/result.md` deliverable path, and “do not send anything to
@@ -99,8 +128,9 @@ anyone; write the result and stop”. Reviewable work can include repository edi
 the deliverable names changed files, evidence, checks and missing inputs.
 
 `do-ID/receipt.json` records `queued_at`, `started_at`, `finished_at`, `exit_code`,
-`result`, worker/Codex process identities, `cwd`, `log`, `last_message` and
-`deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
+`result`, `by` (`rem` or `owner`), worker/Codex process identities, `cwd`,
+`project`, `repository` and `branch` when a worktree was made, `log`,
+`last_message` and `deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
 `stopped`. A zero exit without a nonempty deliverable is failed. Repeated `run`
 returns the same receipt, including failures; automatic retries are deliberately
 absent. `status` reconciles dead workers into a durable failure and stops verified
@@ -109,7 +139,8 @@ Native maintenance cleanup preserves every `do-*` directory.
 
 Local Today snapshots attach receipt fields to `outcome.task`; shared snapshots
 still expose no private outcomes. The Today card shows receipt progress and,
-after completion, the deliverable path plus a copyable prepared reply:
+who started it, Stop while it runs, Undo, a failure's reason, and after
+completion a link to the deliverable plus a copyable prepared reply:
 `REM 已经做完：<one line> · 附：<path>`. The owner sends it. Existing receipts
 are not offered for another batch approval. Live cards provide a refresh action;
 offline snapshots need a new `co rem open` to obtain later receipts.

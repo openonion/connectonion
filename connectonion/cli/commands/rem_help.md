@@ -747,7 +747,7 @@ Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
 Tasks:    tasks.auto is false by default: morning approval starts work.
-          co rem config set tasks.auto true opts into dispatch after nightly drafts.
+          co rem config set tasks.auto true also starts it after nightly drafts.
 ```
 
 ## co rem logs
@@ -1152,13 +1152,19 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model, workspace-write and network access, with the
-same credential-directory access as REM upkeep. Work uses the project page's
-repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
-done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+Uses the configured work model, sealed: a Codex permission profile with no
+network that cannot read the owner's credential paths (~/.co, ~/.ssh, gh, aws,
+gpg, .netrc ...), and none of the owner's Codex config, MCP servers, plugins or
+connectors. It cannot push, send, post, browse or install packages. It
+writes only in .state/tasks/do-ID/: a git worktree of the project page's
+repository on branch rem/task-ID when there is one, otherwise do-ID/work.
+The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Night tasks wait for morning approval unless tasks.auto is true (default false).
+Morning approval starts tasks; with tasks.auto true (default false) the night
+also does. Either way one at a time, at most limits.tasks_per_night (3), none
+past the week's quota floor. The reader's Undo removes a task's work and the
+night never starts it again.
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem task status
@@ -1179,10 +1185,11 @@ Usage: co rem [--root DIR] [--json] task run ID
 Arguments:
   ID            Task ID printed by co rem task status.
 
-Uses the configured work model, workspace-write and network access, with the
-same credential-directory access as REM upkeep. Work uses the project page's
-repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
-done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+Uses the configured work model, sealed: no network, no reads of the owner's
+credential paths, none of the owner's MCP servers or connectors. Work happens in
+a git worktree of the project page's repository on branch rem/task-ID when there
+is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
+.state/tasks/do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
 Night tasks wait for morning approval unless tasks.auto is true (default false).
