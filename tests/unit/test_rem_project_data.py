@@ -20,6 +20,102 @@ def enrich(tmp_path, rows, contexts=None, **kwargs):
     return rows[0]
 
 
+def test_overdue_promise_outranks_paying_client_without_one(tmp_path):
+    client = page('projects/fernhill.md', 'Fernhill Labs', facts='- Unpaid invoice: AUD 12000.', opened='\n'.join([
+        '- You owe [Fern](../people/fern.md) a report, since 2026-11-03.',
+        '- You owe [Fern](../people/fern.md) a preview, since 2026-11-03.',
+    ]))
+    capstone = page('projects/avery.md', 'Avery capstone', opened='\n'.join([
+        '- You owe [Mara](../people/mara.md) feedback by 2026-10-25. [1]',
+        '- You owe [Avery](../people/avery.md) a report.',
+        '- You owe [Fern](../people/fern.md) a preview.',
+    ]), sources='- [1] gmail:feedback')
+    rows = [client, capstone, page('people/fern.md', 'Fern', facts='- Paying client.'),
+            page('people/mara.md', 'Mara'), page('people/avery.md', 'Avery')]
+    enrich_records(tmp_path, rows, {}, today=TODAY)
+    assert client['score'] > capstone['score']
+    assert capstone.get('overdue_days', 0) == 14
+    from connectonion.rem.project_priority import rank_key
+    assert sorted(rows[:2], key=rank_key)[0] is capstone
+    assert 'Mara' in capstone['reasons'][0]['text']
+    assert '14 days late' in capstone['reasons'][0]['text']
+    assert capstone['reasons'][0]['source'] == 'gmail:feedback'
+
+    from connectonion.rem.project_priority import apply_override
+    apply_override(client, {'pin': True}, TODAY)
+    assert sorted(rows[:2], key=rank_key)[0] is client
+    apply_override(capstone, {'pin': True}, TODAY)
+    assert '14 days late' in capstone['reasons'][0]['text']
+
+    capstone['text'] = capstone['text'].replace(' by 2026-10-25', '')
+    enrich_records(tmp_path, rows, {}, today=TODAY)
+    assert capstone['overdue_days'] == 0
+    assert sorted(rows[:2], key=rank_key)[0] is client
+
+    capstone['text'] = capstone['text'].replace(' feedback.', ' feedback by 2026-10-25.')
+    state = tmp_path / '.state'
+    state.mkdir()
+    (state / 'project-overrides.json').write_text(json.dumps({capstone['path']: {
+        'pin': True, 'snooze_until': '2026-11-10'}}))
+    enrich_records(tmp_path, rows, {}, today=TODAY, local=True)
+    assert capstone['overdue_days'] == 0 and capstone['pinned'] is False
+    assert sorted(rows[:2], key=rank_key)[0] is client
+
+    from connectonion.rem.project_priority import score_project
+    for flag in ({'needs_review': True}, {'project_match': {'needs_review': True}}):
+        capstone['open'][0].update(flag)
+        capstone.update(score_project(capstone, {row['path']: row for row in rows}, {}, [], TODAY))
+        assert capstone['overdue_days'] == 0
+        assert sorted(rows[:2], key=rank_key)[0] is client
+        capstone['open'][0].pop('project_match', None)
+        capstone['open'][0]['needs_review'] = False
+
+
+@pytest.mark.parametrize('kind, flags, due, expected', [
+    ('owed', {}, '2026-10-25', 14),
+    ('owed', {}, None, 0),
+    ('owed', {}, '2026-11-08', 0),
+    ('owed', {}, '2026-11-09', 0),
+    ('owed', {}, '2026-02-30', 0),
+    ('owed', {'needs_review': True}, '2026-10-25', 0),
+    ('owed', {'project_match': {'needs_review': True}}, '2026-10-25', 0),
+    ('waiting', {}, '2026-10-25', 0),
+    ('agent', {}, '2026-10-25', 0),
+    ('answerable', {}, '2026-10-25', 0),
+])
+def test_overdue_tier_requires_confirmed_owner_promise(kind, flags, due, expected):
+    from connectonion.rem.project_priority import overdue_promise
+    item = {'kind': kind, 'due': due, **flags}
+    oldest = overdue_promise([item, {'kind': 'owed', 'due': '2026-11-09'}], TODAY)
+    assert ((TODAY - date.fromisoformat(oldest['due'])).days if oldest else 0) == expected
+
+
+def test_project_rank_tiers_and_tie_breaks():
+    from connectonion.rem.project_priority import rank_key
+    base = {'title': 'Avery', 'pinned': False, 'overdue_days': 0, 'score': 10, 'open': []}
+    waiter = {'kind': 'owed', 'who': 'people/mara.md'}
+    rows = [base, {**base, 'title': 'Fern'}, {**base, 'open': [waiter, waiter]},
+            {**base, 'overdue_days': 20, 'score': 1}, {**base, 'overdue_days': 14},
+            {**base, 'overdue_days': 21}, {**base, 'pinned': True, 'score': 0}]
+    assert sorted(rows, key=rank_key) == [rows[i] for i in (6, 5, 4, 3, 2, 0, 1)]
+    reviewed = {**base, 'open': [{**waiter, 'needs_review': True}]}
+    assert rank_key(reviewed) == rank_key(base)
+
+
+def test_inferred_candidates_use_overdue_tier_and_milestones_do_not(tmp_path):
+    client = page('orgs/fernhill.md', 'Fernhill Labs', facts='- Paying client.',
+                  opened='- You owe the unpaid invoice for AUD 12000, since 2026-11-03.')
+    capstone = page('people/mara.md', 'Mara', opened='- You owe feedback by 2026-10-25.')
+    candidates = enrich_records(tmp_path, [client, capstone], {}, today=TODAY)
+    assert candidates[0]['record'] == capstone['path']
+    assert candidates[0]['score'] < candidates[1]['score']
+    project = page(facts='- Repository: fernhill-labs/preview')
+    issue = {'url': 'https://github.com/fernhill-labs/preview/issues/1', 'state': 'OPEN',
+             'milestone': {'dueOn': '2026-10-01'}}
+    enrich_records(tmp_path, [project], {}, today=TODAY, issues={'fernhill-labs/preview': [issue]})
+    assert project['overdue_days'] == 0
+
+
 @pytest.mark.parametrize('category', ['projects', 'people', 'orgs'])
 def test_directions_and_agent_requests_are_not_human_debts(tmp_path, category):
     row = page(f'{category}/harbour.md', opened='\n'.join([
