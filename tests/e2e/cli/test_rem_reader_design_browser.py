@@ -239,11 +239,12 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
         .replace(/^## Domains\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert page.locator('.ov-head h1').inner_text() == 'ConnectOnion'
-    domain = page.locator('.ov-head .ov-domain')
+    # Round 6: the name heads the page's top line; the domain follows it, smaller.
+    assert page.locator('.ov-over .ov-name').inner_text() == 'ConnectOnion'
+    domain = page.locator('.ov-over .ov-domain')
     assert domain.inner_text() == 'connectonion.com'
     assert domain.is_visible()
-    assert domain.bounding_box()['y'] >= page.locator('.ov-head h1').bounding_box()['y']
+    assert domain.bounding_box()['y'] >= page.locator('.ov-over .ov-name').bounding_box()['y']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.goto(uri + '#c=orgs')
     row = page.locator('.ov-row').filter(has_text='ConnectOnion')
@@ -3769,7 +3770,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
     assert org.count() == 1
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
-    assert '研究气候数据' in page.locator('.ov-rail').inner_text()
+    assert '研究气候数据' in page.locator('.ov-about').inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert '理学院教授' in page.locator('.r4-sub').inner_text()
     assert 'Fernhill Labs 科研团队' in page.locator('.r4-sub').inner_text()
@@ -4259,7 +4260,7 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
             for row in rows.all():
                 assert row.evaluate(r'''row => {
                   const title = row.querySelector('.ov-ot').getBoundingClientRect();
-                  const age = row.querySelector('.ov-chip')?.getBoundingClientRect();
+                  const age = row.querySelector('.ov-age')?.getBoundingClientRect();
                   return !age || (age.right <= row.getBoundingClientRect().right &&
                     (innerWidth < 720 ? age.top >= title.bottom : Math.abs(title.top-age.top) <= 4));
                 }''')
@@ -5249,18 +5250,21 @@ def test_org_list_groups_organisations_under_one_green_next_step(reader, width, 
 def test_org_page_answers_what_you_owe_and_who_you_know(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, theme)
-    assert page.locator(".ov-head h1").inner_text() == "Fernhill Labs"
+    # Round 6: the name tops the page, a counted statement leads, one green action names the person.
+    assert page.locator(".ov-over .ov-name").inner_text() == "Fernhill Labs"
+    owed = page.evaluate("orgOwed(byPath('orgs/fernhill-labs.md')).length", isolated_context=False)
+    assert page.locator(".ov-say h1").inner_text().replace("\n", " ") == f"{owed} things are waiting on you."
     assert page.evaluate(GREEN) == 1
-    primary = page.locator(".ov-head .ov-primary")
+    primary = page.locator(".ov-say .ov-primary")
     assert "Mara" in primary.inner_text()
     assert primary.bounding_box()["y"] + primary.bounding_box()["height"] <= (844 if width < 600 else 900)
-    for selector in (".ov-stats", ".ov-owed .ov-owe", ".ov-people .ov-row", ".ov-rail"):
+    for selector in (".ov-xray .ov-node", ".ov-owed .ov-owe", ".ov-people li", ".ov-coda .ov-src"):
         assert page.locator(selector).first.is_visible(), selector
     assert page.locator(".ov-owed h2").inner_text().startswith("You owe Fernhill Labs")
-    assert page.locator(".ov-owed .ov-owe").first.locator(".ov-btn").count() == 0
+    assert page.locator(".ov-owed .ov-owe button, .ov-owed .ov-owe .ov-btn").count() == 0
     assert "Mara Ostrowski" in page.locator(".ov-people").inner_text()
-    col, rail = page.locator(".ov-col").bounding_box(), page.locator(".ov-rail").bounding_box()
-    assert (rail["y"] >= col["y"] + col["height"]) if width < 600 else (rail["x"] >= col["x"] + col["width"])
+    # Things about the organisation come after what is owed and who to ask, never beside it.
+    assert page.locator(".ov-coda").bounding_box()["y"] > page.locator(".ov-owed").bounding_box()["y"]
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5301,17 +5305,18 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
 def test_org_kind_and_teams_appear_when_the_page_records_them(reader):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", 1440, "light")
-    assert page.locator(".ov-crumb").inner_text().strip() == "Organisations"
-    assert page.locator(".ov-teams").count() == 0
+    assert "Client or partner" not in page.locator(".ov-sub").inner_text()
+    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 0
     page.evaluate("""() => { const org = byPath('orgs/fernhill-labs.md');
       org.kind = 'client_partner'; org.to_you = 'Your first paying pilot.';
       byPath('people/mara-ostrowski.md').team = 'Pilot squad'; render(); }""", isolated_context=False)
-    assert "Client or partner" in page.locator(".ov-crumb").inner_text()
     assert page.locator(".ov-sub").inner_text() == "Client or partner · Your first paying pilot."
-    team = page.locator(".ov-team")
-    assert team.locator(".ov-tn").inner_text().strip() == "Pilot squad"
-    assert team.locator(".ov-dot.lamp, .ov-dot.late").count() == 1
-    assert page.locator(".ov-stats").inner_text().count("teams or departments") == 1
+    # A free-text team groups its people (a circle and a row) but never becomes a unit link.
+    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 1
+    team = page.locator(".ov-ball .ov-team").filter(has_text="Pilot squad")
+    assert team.count() == 1
+    page.get_by_role("link", name="List", exact=True).click()
+    assert page.locator(".ov-outline .ov-tn").filter(has_text="Pilot squad").locator("a").count() == 0
 
 
 @pytest.mark.parametrize('width', [1440, 390])
@@ -5332,25 +5337,226 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
       org.obligations.forEach(row => row.units = [team.path]);
       render();
     }""", isolated_context=False)
+    # The picture draws the course as a square and the team as a circle; the text outline links both.
+    assert page.locator('.ov-xray .ov-node[data-shape=square]').count() == 1
+    assert page.locator('.ov-xray .ov-node[data-shape=circle]').count() == 1
+    page.get_by_role('link', name='List', exact=True).click()
     course_link = page.locator('.ov-tn > a').filter(has_text='Pilot course')
     team_link = page.locator('.ov-tn > a').filter(has_text='Pilot squad')
     expect(course_link).to_be_visible()
     expect(team_link).to_be_visible()
     expect(team_link).to_have_attribute('href', '#r=orgs%2Fpilot-squad.md')
-    mara = page.locator('.ov-people .ov-m').filter(has_text='Mara Ostrowski')
+    mara = page.locator('.ov-outline .ov-m').filter(has_text='Mara Ostrowski')
     expect(mara).to_have_count(2)
     expect(mara.filter(has_text='Product Owner')).to_have_count(1)
-    assert page.locator('.ov-stats').inner_text().count('teams or departments') == 1
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     course_link.click()
     page.locator('.ov-page').wait_for()
-    direct = page.locator('.ov-people .ov-row').filter(has_text='Mara Ostrowski')
+    page.get_by_role('link', name='List', exact=True).click()
+    direct = page.locator('.ov-outline > .ov-m').filter(has_text='Mara Ostrowski')
     expect(direct).to_contain_text('Tutor')
-    assert 'department not known yet' not in page.locator('.ov-people').inner_text()
+    assert 'department not known yet' not in page.locator('.ov-outline').inner_text()
     direct.click()
     page.locator('.r4-person').wait_for()
     expect(page.locator('.r4-rail a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+# ---------- Organisation page, round 6 ("Bauhaus lightness") on an invented university ----------
+ORG_TREE = "#r=orgs%2Ffernhill-university.md"
+LATE = ("rgb(196, 54, 44)", "rgb(240, 103, 92)")
+# What competes on the first screen of #main (the art-direction audit, ported).
+FIRST_SCREEN = r"""() => {
+  const H = innerHeight, main = document.getElementById('main');
+  const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+    if (!(r.width > 0 && r.height > 0 && r.top < H && r.bottom > 0 && s.visibility !== 'hidden' && s.display !== 'none')) return false;
+    for (let p = e; p && p !== document.body; p = p.parentElement) { const ps = getComputedStyle(p); if (+ps.opacity < 0.05) return false;
+      if (p !== e && ps.overflow === 'hidden') { const pr = p.getBoundingClientRect(); if (r.top >= pr.bottom || r.bottom <= pr.top || pr.height < 1) return false; } }
+    return true; };
+  const all = [...main.querySelectorAll('*')].filter(vis);
+  const textLeaves = all.filter(e => e.tagName !== 'text' && e.tagName !== 'tspan' && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+  const svgText = all.filter(e => (e.tagName === 'text' || e.tagName === 'tspan') && e.textContent.trim());
+  const sizes = new Set(), weights = new Set();
+  [...textLeaves, ...svgText].forEach(e => { const s = getComputedStyle(e); sizes.add(s.fontSize); weights.add(s.fontWeight); });
+  const buttons = all.filter(e => e.matches('button, [role=button], .ov-primary, .btn-act, .btn-quiet, .ov-btn'));
+  const chips = all.filter(e => e.matches('.ov-chip, .chip, a.cite, .kind-badge'));
+  const late = __LATE__;
+  const red = all.filter(e => !e.closest('.ov-pulse') && [getComputedStyle(e).color, getComputedStyle(e).fill, getComputedStyle(e).stroke, getComputedStyle(e).backgroundColor]
+    .some(c => late.includes(c)) && (e.tagName !== 'text' || late.includes(getComputedStyle(e).fill)) && !(e.childElementCount && !e.matches('svg *')));
+  const marks = new Set(red.map(e => e.closest('[data-mark]') || e));
+  return {text: textLeaves.length + svgText.length, sizes: [...sizes], weights: [...weights], buttons: buttons.map(e => e.textContent.trim()),
+    chips: chips.length, red: marks.size, untagged: red.filter(e => !e.closest('[data-mark]')).map(e => e.outerHTML.slice(0, 80))};
+}""".replace("__LATE__", repr(list(LATE)))
+
+
+@pytest.fixture
+def org_reader(tmp_path, monkeypatch):
+    """Fernhill University, its course teams and people: structure the real snapshot derives."""
+    from patchright.sync_api import sync_playwright
+    from rem_org_tree_notebook import build
+    from connectonion.rem import reader as rem_reader
+    from connectonion.rem.today import queue
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    snapshot = rem_reader.snapshot
+
+    def fixed_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
+        data["as_of"] = now.isoformat()
+        data['today_queue'] = queue(root, records=data['records'], contexts=data['source_context'], states=data['threads'], as_of=now.date())
+        return data
+
+    monkeypatch.setattr(rem_reader, "snapshot", fixed_snapshot)
+    path = tmp_path / "reader.html"
+    path.write_text(rem_reader.render(build(tmp_path / "rem", now), local=True), encoding="utf-8")
+    errors, contexts = [], []
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+
+        def open_page(width, theme="light", motion="reduce", language="zh"):
+            phone = width < 600
+            context = browser.new_context(viewport={"width": width, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone,
+                                          color_scheme=theme, reduced_motion=motion, locale="en-US")
+            context.route("http*://**/*", lambda route: route.abort())
+            contexts.append(context)
+            page = context.new_page()
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(path.as_uri())
+            page.locator("#main").wait_for()
+            page.evaluate("language => setInterfaceLanguage(language)", language, isolated_context=False)
+            page.evaluate("hash => { location.hash = hash.slice(1); }", ORG_TREE, isolated_context=False)
+            page.locator("#main .ov-r6").wait_for()
+            return page
+
+        yield open_page
+        for context in contexts:
+            context.close()
+        browser.close()
+    assert not errors, errors
+
+
+def _waiting_teams(page):
+    """Distinct units that hold something the owner owes, read from the snapshot itself."""
+    return page.evaluate("""() => new Set(byPath('orgs/fernhill-university.md').obligations
+      .filter(row => row.dir === 'mine' && !row.quiet).flatMap(row => row.units)).size""", isolated_context=False)
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_org_first_screen_is_one_statement_one_picture_one_action(org_reader, width, theme):
+    page = org_reader(width, theme)
+    teams = _waiting_teams(page)
+    assert teams == 4
+    statement = page.locator(".ov-say h1")
+    assert statement.inner_text().replace("\n", "") == f"{teams} 个团队在等你。"
+    assert statement.evaluate("node => getComputedStyle(node).fontSize") == ("52px" if width > 600 else "34px")
+    audit = page.evaluate(FIRST_SCREEN, isolated_context=False)
+    assert audit["text"] <= 70, audit
+    assert len(audit["buttons"]) == 1, audit["buttons"]
+    assert audit["chips"] == 0
+    assert audit["red"] <= 4 and not audit["untagged"], audit
+    assert set(audit["weights"]) <= {"400", "700"}, audit["weights"]
+    assert page.evaluate(GREEN, isolated_context=False) == 1
+    primary = page.locator(".ov-say .ov-primary")
+    box = primary.bounding_box()
+    assert box["y"] + box["height"] <= (844 if width < 600 else 900)
+    if width < 600:
+        assert box["height"] >= 46 and box["width"] >= 390 - 32 - 1
+    # The picture: square = branch, circle = team, one red node for the overdue team.
+    assert page.locator(".ov-xray .ov-node[data-shape=square]").count() == 3
+    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 9
+    assert page.locator(".ov-xray .ov-node.late").count() == 1
+    assert "T11A-KESTREL" in page.locator(".ov-xray .ov-node.late").get_attribute("aria-label")
+    assert "逾期" in page.locator(".ov-say .ov-lede").inner_text()
+    assert page.locator(".ov-time .ov-now").count() == 1
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_org_statement_follows_the_data_and_says_when_nothing_is_owed(org_reader):
+    page = org_reader(1440, language="en")
+    assert page.locator(".ov-say h1").inner_text().replace("\n", " ") == "4 teams are waiting on you."
+    page.evaluate("""() => { const root = byPath('orgs/fernhill-university.md');
+      root.obligations = root.obligations.filter(row => !(row.units || []).includes('orgs/team-t13c-wren.md')); render(); }""", isolated_context=False)
+    assert page.locator(".ov-say h1").inner_text().replace("\n", " ") == "3 teams are waiting on you."
+    page.evaluate("""() => { for (const r of REM.records) if (r.category === 'orgs') r.obligations = r.obligations.filter(row => row.dir !== 'mine'); render(); }""",
+                  isolated_context=False)
+    assert page.locator(".ov-say h1").inner_text() == "You owe Fernhill University nothing"
+    assert "3 waiting on them" in page.locator(".ov-say .ov-lede").inner_text()
+    assert page.evaluate(GREEN, isolated_context=False) == 0
+    assert page.locator(".ov-xray .ov-node").count() == 13
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_reduced_motion_shows_the_still_end_state(org_reader, width):
+    page = org_reader(width, motion="reduce")
+    still = page.evaluate("""() => ({running: document.getAnimations().filter(a => a.playState === 'running').length,
+      pulse: [...document.querySelectorAll('.ov-pulse')].map(node => +getComputedStyle(node).opacity),
+      statement: getComputedStyle(document.querySelector('.ov-say h1')).opacity,
+      now: document.querySelector('.ov-now').getBoundingClientRect().x})""", isolated_context=False)
+    assert still["running"] == 0
+    assert still["pulse"] and all(abs(value - 0.5) < 0.01 for value in still["pulse"])
+    assert still["statement"] == "1"
+    page.wait_for_timeout(600)
+    assert page.evaluate("document.querySelector('.ov-now').getBoundingClientRect().x", isolated_context=False) == still["now"]
+    moving = org_reader(width, motion="no-preference")
+    moving.evaluate("orgFreeze(150)", isolated_context=False)
+    assert float(moving.locator(".ov-say h1").evaluate("node => getComputedStyle(node).opacity")) < 1
+    moving.evaluate("orgFreeze(4000)", isolated_context=False)
+    assert moving.locator(".ov-say h1").evaluate("node => getComputedStyle(node).opacity") == "1"
+    assert moving.evaluate("document.querySelector('.ov-now').getBoundingClientRect().x", isolated_context=False) == still["now"]
+
+
+def test_org_missing_temperature_is_neutral_and_a_real_signal_shows_it(org_reader):
+    page = org_reader(1440)
+    temps = page.locator(".ov-xray .ov-node[data-depth='2']").evaluate_all("nodes => nodes.map(node => node.dataset.temp)")
+    assert set(temps) == {"unknown"}
+    legend = page.locator(".ov-legend").inner_text()
+    assert "冷热还不知道" in legend and not re.search(r"\d", legend)
+    page.evaluate("""() => { byPath('people/juno-hale.md').index = {relationship: {trend: 'cooling', last_mail: '2026-09-01',
+      weekly_messages: Array(52).fill(0), change_percent: -60, quiet: false}}; render(); }""", isolated_context=False)
+    wren = page.locator(".ov-xray .ov-node[aria-label*='T13C-WREN']")
+    assert wren.get_attribute("data-temp") == "cooling"
+    assert "在变冷" in page.locator(".ov-legend").inner_text()
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_rows_carry_ball_and_blocking_marks_with_actions_behind_hover(org_reader, width):
+    page = org_reader(width)
+    rows = page.locator(".ov-ball .ov-team")
+    assert rows.count() == 6
+    heron = rows.filter(has_text="T12B-HERON")
+    assert heron.locator(".ov-block").count() == 1
+    assert rows.filter(has_text="T11A-KESTREL").locator(".ov-block").count() == 0
+    assert rows.filter(has_text="T15E-FINCH").locator(".ov-ball-line").inner_text() == "在他们那边"
+    action = heron.locator(".ov-act")
+    heron.scroll_into_view_if_needed()
+    assert not action.is_visible() or float(action.evaluate("node => getComputedStyle(node).opacity")) < 0.05
+    if width < 600:
+        heron.locator(".ov-tn").click()
+    else:
+        heron.hover()
+    page.wait_for_timeout(50)
+    assert action.is_visible() and action.evaluate("node => getComputedStyle(node).opacity") == "1"
+    owed = page.locator(".ov-owed .ov-owe")
+    assert owed.count() == 3
+    assert page.locator(".ov-owed .ov-owe button").count() == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_org_clicking_a_team_turns_the_tree_and_opens_its_panel(org_reader):
+    page = org_reader(1440)
+    node = page.locator(".ov-xray .ov-node[aria-label*='W14D-OSPREY']")
+    before = node.bounding_box()
+    node.locator(".ov-shape").click()
+    panel = page.locator(".ov-np")
+    panel.wait_for(state="visible")
+    assert "W14D-OSPREY" in panel.inner_text()
+    assert "test agent address" in panel.inner_text()
+    assert "null" not in panel.inner_text() and "undefined" not in panel.inner_text()
+    after = node.bounding_box()
+    assert abs(after["x"] - before["x"]) + abs(after["y"] - before["y"]) > 20
+    page.keyboard.press("Escape")
+    panel.wait_for(state="hidden")
 
 
 def test_person_owed_item_opens_its_cited_original_without_searching_full_memory(reader):
