@@ -4896,3 +4896,106 @@ def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
     assert 'co rem' in page.locator('.approval-header code').inner_text()
     assert 'open' in page.locator('.approval-header code').inner_text()
     assert page.locator('.today-thread a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
+
+
+# Visible Fresh-green fills; a collapsed "Full memory" note keeps its own controls out of sight.
+GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(getComputedStyle(node).backgroundColor)).length"
+
+
+def _org_view(page, uri, hash_, width, theme):
+    page.set_viewport_size({"width": width, "height": 844 if width < 600 else 900})
+    page.emulate_media(color_scheme=theme)
+    page.goto(uri + hash_)
+    page.locator("#main .ov").wait_for()
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_org_list_groups_organisations_under_one_green_next_step(reader, width, theme):
+    page, uri = reader
+    _org_view(page, uri, "#c=orgs", width, theme)
+    assert re.fullmatch(r"\d+ organisations\s*·?\s*1 waiting on you", page.locator(".ov-list h1").inner_text().replace("\n", " ").strip())
+    focal = page.locator(".ov-focal")
+    assert "Fernhill Labs" in focal.inner_text()
+    assert page.evaluate(GREEN) == 1
+    primary = focal.locator(".ov-primary")
+    assert "Mara" in primary.inner_text()
+    assert primary.bounding_box()["y"] + primary.bounding_box()["height"] <= (844 if width < 600 else 900)
+    assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
+    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
+    assert page.locator(".ov-tabs button").count() <= 4
+    assert page.locator(".ov-find").count() == 1
+    page.locator(".ov-find").fill("no such organisation")
+    assert page.locator(".ov-row").count() == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_org_page_answers_what_you_owe_and_who_you_know(reader, width, theme):
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, theme)
+    assert page.locator(".ov-head h1").inner_text() == "Fernhill Labs"
+    assert page.evaluate(GREEN) == 1
+    primary = page.locator(".ov-head .ov-primary")
+    assert "Mara" in primary.inner_text()
+    assert primary.bounding_box()["y"] + primary.bounding_box()["height"] <= (844 if width < 600 else 900)
+    for selector in (".ov-stats", ".ov-owed .ov-owe", ".ov-people .ov-row", ".ov-rail"):
+        assert page.locator(selector).first.is_visible(), selector
+    assert page.locator(".ov-owed h2").inner_text().startswith("You owe Fernhill Labs")
+    assert page.locator(".ov-owed .ov-owe").first.locator(".ov-btn").count() == 0
+    assert "Mara Ostrowski" in page.locator(".ov-people").inner_text()
+    col, rail = page.locator(".ov-col").bounding_box(), page.locator(".ov-rail").bounding_box()
+    assert (rail["y"] >= col["y"] + col["height"]) if width < 600 else (rail["x"] >= col["x"] + col["width"])
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_with_nothing_owed_has_no_green_button(reader, width):
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
+    page.evaluate("() => { for (const r of REM.records) if (r.category === 'orgs') r.obligations = []; render(); }", isolated_context=False)
+    assert page.evaluate(GREEN) == 0
+    assert page.locator(".ov-primary").count() == 0
+    assert page.locator(".ov-none").inner_text() == "You owe Fernhill Labs nothing"
+    page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
+    page.locator(".ov-list").wait_for()
+    assert page.locator(".ov-focal").count() == 0
+    assert "nothing waiting on you" in page.locator(".ov-list h1").inner_text()
+    assert page.evaluate(GREEN) == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
+    page, uri = reader
+    _org_view(page, uri, "#c=orgs", 1440, "light")
+    page.evaluate("() => { byPath('orgs/fernhill-labs.md').private = true; render(); }", isolated_context=False)
+    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    assert "Personal · shown only on this Mac" in row.inner_text()
+    assert page.locator(".ov-focal").count() == 0
+    assert row.locator(".ov-dot, .ov-chip").count() == 1
+    assert "pilot" not in page.locator("#main").inner_text().lower()
+    page.evaluate("() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }", isolated_context=False)
+    page.locator(".ov-curtain").wait_for()
+    assert page.locator(".ov-primary").count() == 0
+    assert "climate" not in page.locator("#main").inner_html().lower()
+    page.get_by_role("button", name="Show", exact=True).click()
+    assert page.locator(".ov-owed .ov-owe").count() >= 1
+    assert page.evaluate(GREEN) == 1
+
+
+def test_org_kind_and_teams_appear_when_the_page_records_them(reader):
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", 1440, "light")
+    assert page.locator(".ov-crumb").inner_text().strip() == "Organisations"
+    assert page.locator(".ov-teams").count() == 0
+    page.evaluate("""() => { const org = byPath('orgs/fernhill-labs.md');
+      org.kind = 'client_partner'; org.to_you = 'Your first paying pilot.';
+      byPath('people/mara-ostrowski.md').team = 'Pilot squad'; render(); }""", isolated_context=False)
+    assert "Client or partner" in page.locator(".ov-crumb").inner_text()
+    assert page.locator(".ov-sub").inner_text() == "Client or partner · Your first paying pilot."
+    team = page.locator(".ov-team")
+    assert team.locator(".ov-tn").inner_text().strip() == "Pilot squad"
+    assert team.locator(".ov-dot.lamp, .ov-dot.late").count() == 1
+    assert page.locator(".ov-stats").inner_text().count("teams or departments") == 1
