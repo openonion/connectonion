@@ -1755,6 +1755,184 @@
   }
   @media (prefers-reduced-motion: reduce) { .r4 * { transition: none !important; } }
 
+  /* ---- Projects directory (墨与铅 · Ink & Pencil): flat paper, hairlines, ink = cited fact, dashed pencil = inference ---- */
+  :root:has(main > .pd) { --paper: #ffffff; --sheet: #ffffff; --line: #e7e9e7; }
+  :root[data-theme="dark"]:has(main > .pd) { --paper: #0e100f; --sheet: #151817; --line: #242927; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):has(main > .pd) { --paper: #0e100f; --sheet: #151817; --line: #242927; } }
+  main:has(> .pd) { max-width: none; padding: 28px 40px 80px; }
+  .pd {
+    --bg: #ffffff; --surface: #f7f8f7; --wash: #fafbfa; --rule: #e7e9e7; --rule-2: #d4d8d5;
+    --ink: #121413; --ink-2: #565d59; --ink-3: #7d8480; --pencil: #9aa19d; --red: #d92d20;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+    --voice: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+    --name: 210px; --note: 270px;
+    color: var(--ink); font: 14px/1.55 var(--sans); font-variant-numeric: tabular-nums; max-width: 1480px;
+  }
+  :root[data-theme="dark"] .pd { --bg: #0e100f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pd { --bg: #0e100f; --surface: #151817; --wash: #121514; --rule: #242927; --rule-2: #333a37; --ink: #e8ebe9; --ink-2: #a4aca7; --ink-3: #7e8782; --pencil: #66706b; --red: #ff6a5c; } }
+  .pd a { color: inherit; }
+  .pd a, .pd p a { text-decoration: none; }
+  .pd a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .pd .red { color: var(--red); }
+  .pd .mut { color: var(--ink-3); }
+  .pd small { font-size: 11.5px; color: var(--ink-3); display: block; line-height: 1.5; }
+  .pd .pd-c { font: 10px/1 var(--sans); color: var(--ink-3); vertical-align: super; margin-left: 1px; }
+  .pd .pd-inf { border-bottom: 1px dashed var(--pencil); }
+  .pd .tag { display: inline-block; font: 11px/1.5 var(--sans); color: var(--ink-3); border: 1px dashed var(--pencil); border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+  .pd-head { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .pd-title { margin: 0; font: 700 22px/1.2 var(--sans); letter-spacing: -.01em; }
+  .pd-count { margin-left: 8px; color: var(--ink-3); font-weight: 400; font-size: 15px; }
+  .pd-views { display: flex; gap: 18px; }
+  .pd-views a { padding: 4px 0; color: var(--ink-3); font-size: 14px; border-bottom: 2px solid transparent; }
+  .pd-views a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+  .pd-views a:hover { text-decoration: none; color: var(--ink); }
+  .pd-head-end { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+  .pd-cov { color: var(--ink-3); font-size: 12px; }
+  .pd-cov b { color: var(--ink); font-weight: 600; }
+  .pd-seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 7px; padding: 2px; gap: 2px; flex-wrap: wrap; }
+  .pd-seg a { font-size: 12px; color: var(--ink-2); padding: 3px 11px; border-radius: 5px; line-height: 1.5; }
+  .pd-seg a:hover { text-decoration: none; color: var(--ink); }
+  .pd-seg a.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--rule-2); }
+  .pd-rem { margin: 34px 0 0; max-width: 900px; }
+  .pd-lede { margin: 0; font: 400 24px/1.65 var(--voice); letter-spacing: .005em; color: var(--ink); }
+  .pd-basis { margin: 10px 0 0; color: var(--ink-3); font-size: 12px; }
+  .pd-rule { border: 0; border-top: 1px solid var(--ink); margin: 30px 0 0; }
+  .pd-legend { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 12px 0; color: var(--ink-2); font-size: 12px; }
+  .pd-keys { display: flex; gap: 16px; flex-wrap: wrap; color: var(--ink-3); }
+  .pd-keys > span { display: inline-flex; align-items: center; gap: 6px; }
+  .pd-keys .k-tick { width: 1px; height: 10px; background: var(--ink); }
+  .pd-keys .k-pencil { width: 22px; border-top: 1px dashed var(--pencil); }
+  .pd-keys .k-late { width: 22px; height: 2px; background: var(--red); }
+  .pd-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink); }
+  .pd-dot.off_track { background: var(--red); }
+  .pd-dot.at_risk { background: transparent; box-shadow: inset 0 0 0 1.5px var(--red); }
+  .pd-dot.quiet, .pd-dot.done { background: transparent; box-shadow: inset 0 0 0 1px var(--ink-3); }
+
+  /* the strip: every view draws the same marks */
+  .pd-track { position: relative; min-height: 32px; }
+  .pd-track.mini { min-height: 18px; height: 18px; }
+  .pd-future { position: absolute; top: 0; bottom: 0; right: 0; background: var(--wash); }
+  .pd-now { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink); }
+  .pd-span { position: absolute; top: 50%; height: 1px; background: var(--rule-2); }
+  .pd-tick { position: absolute; top: 50%; width: 1px; height: 10px; margin-top: -5px; background: var(--ink); }
+  .pd-track.mini .pd-tick { height: 8px; margin-top: -4px; }
+  .pd-late { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--red); }
+  .pd-pencil { position: absolute; top: 50%; border-top: 1px dashed var(--pencil); }
+  .pd-pencil-end { position: absolute; top: 50%; width: 7px; height: 7px; margin: -4px 0 0 -4px; border: 1px dashed var(--pencil); border-radius: 50%; background: var(--bg); }
+  .pd-ring { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border: 1px solid var(--ink-2); border-radius: 50%; background: var(--bg); }
+  .pd-lbl { position: absolute; top: 1px; font-size: 10.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; }
+  .pd-lbl.red { color: var(--red); }
+  .pd-late-n { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 7px; color: var(--red); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+
+  /* 时间线 */
+  .pd-gantt { border-top: 1px solid var(--rule); }
+  .pd-row { display: grid; grid-template-columns: var(--name) minmax(0, 1fr) var(--note); border-bottom: 1px solid var(--rule); }
+  .pd-name { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 5px 12px 5px 0; font-size: 13.5px; }
+  .pd-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .pd-name-line a { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pd-name-line a.red { color: var(--red); }
+  .pd-row.kid .pd-name-line, .pd-lrow.kid .pd-name-line { padding-left: 16px; }
+  .pd-read { margin-left: 15px; color: var(--ink-3); font-size: 11px; }
+  .pd-name > b { font-size: 13px; }
+  .pd-note-cell { border-left: 1px solid var(--rule); padding: 7px 0 7px 14px; min-width: 0; }
+  .pd-note { margin: 0; font: 13.5px/1.55 var(--voice); color: var(--ink); }
+  .pd-kicker { font: 600 12px/1 var(--sans); color: var(--ink); margin-right: 4px; }
+  .pd-kicker.red { color: var(--red); }
+  .pd-note-pencil .pd-kicker { color: var(--ink-3); font-weight: 500; }
+  .pd-group { display: flex; align-items: baseline; gap: 8px; padding: 18px 0 6px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .pd-group-name { font-weight: 600; }
+  .pd-group-n, .pd-group-rule { color: var(--ink-3); font-size: 12px; }
+  .pd-group-rule { margin-left: 6px; }
+  .pd-scale-row { border-bottom: 1px solid var(--rule); }
+  .pd-scale-name { justify-content: flex-end; color: var(--ink-3); font-size: 11.5px; padding-bottom: 8px; }
+  .pd-scale { position: relative; min-height: 84px; }
+  .pd-col { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--rule); padding: 8px 8px 8px 7px; overflow: hidden; }
+  .pd-col-label { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .pd-col-line { display: block; margin-top: 4px; font: 12.5px/1.5 var(--voice); color: var(--ink-2); }
+  .pd-now-label { position: absolute; top: 6px; transform: translateX(calc(-100% - 6px)); font-size: 11.5px; font-weight: 600; background: var(--bg); padding: 0 2px; }
+  .pd-pencil-label { position: absolute; top: 6px; padding-left: 8px; font-size: 11px; color: var(--pencil); white-space: nowrap; }
+  .pd-note-head { color: var(--ink-3); font-size: 11.5px; display: flex; align-items: flex-end; padding-bottom: 8px; }
+  .pd-rem-row .pd-name small { display: inline; margin-left: 8px; }
+  .pd-rem-row .pd-name { flex-direction: row; align-items: center; justify-content: flex-start; }
+  .pd-fold .pd-name-line { color: var(--ink-2); }
+  .pd .pd-fold-names { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 15px; }
+  .pd-fold-btn { margin-left: auto; border: 0; background: none; padding: 2px 4px; font: 12px var(--sans); color: var(--ink-3); cursor: pointer; border-bottom: 1px solid var(--rule-2); }
+  .pd-fold-btn:hover { color: var(--ink); }
+  .pd-fold-end { padding: 10px 0; text-align: right; }
+
+  /* 列表 */
+  .pd-list { border-top: 1px solid var(--rule); }
+  .pd-lrow { display: grid; grid-template-columns: minmax(0, 1fr) 80px 92px minmax(150px, 190px) 170px 140px 70px; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: start; font-size: 13px; }
+  .pd-lhead { padding: 10px 0 8px; color: var(--ink-3); font-size: 11.5px; border-bottom: 1px solid var(--ink); align-items: end; }
+  .pd-lname { min-width: 0; }
+  .pd-lname .pd-name-line { font-size: 14px; }
+  .pd-lname .pd-note { margin: 6px 0 0 15px; font-size: 13px; color: var(--ink-2); }
+  .pd-lrow .pd-when { font-weight: 500; }
+  .pd-lstrip .pd-track { margin-top: 1px; }
+  .pd-lhead .pd-lstrip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pd-partial { border-bottom: 1px dashed var(--pencil); }
+  .pd-pencil-word { color: var(--pencil); }
+  .pd-lknown span { color: var(--ink-2); }
+
+  /* 看板 */
+  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 0 0; font-size: 12.5px; }
+  .pd-answer { margin: 14px 0 22px; max-width: 900px; font: 400 18px/1.7 var(--voice); }
+  .pd-cols { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 20px; align-items: start; }
+  .pd-board[data-ask="drop"] .pd-cols { --cols: 3; }
+  .pd-colm h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); font: 600 14px/1.4 var(--sans); }
+  .pd-colm h2 small { display: inline; font-weight: 400; text-align: right; }
+  .pd-colm.red h2 { color: var(--red); border-bottom-color: var(--red); }
+  .pd-card { border: 1px solid var(--rule); border-radius: 4px; padding: 12px 14px; margin-bottom: 10px; background: var(--bg); }
+  .pd-card.weak { border-style: dashed; border-color: var(--rule-2); }
+  .pd-card.late { border-color: var(--red); }
+  .pd-card-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 14px; }
+  .pd-card-head .pd-when { flex: none; color: var(--ink-3); font-size: 12px; }
+  .pd-card .pd-note { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+  .pd-card-extra { margin: 6px 0 0; color: var(--ink-2); font-size: 12.5px; }
+  .pd-card-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 10px; font-size: 11.5px; color: var(--ink-3); }
+  .pd-pair .pd-inf { display: inline; margin: 0; font-size: 13px; }
+  .pd-compact { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  .pd-compact li { display: flex; gap: 10px; padding: 3px 0; }
+  .pd-compact li .mut { flex: none; min-width: 66px; font-size: 12px; }
+  .pd-pair-names { font-size: 14px; }
+  .pd-pencil-box { border: 1px dashed var(--pencil); border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; }
+  .pd-pencil-head { margin: 0 0 6px; font-size: 12.5px; color: var(--ink-2); }
+  .pd-sub { margin: 4px 0 6px; color: var(--ink-3); font-size: 12px; }
+  .pd-empty { color: var(--ink-3); font-size: 12.5px; margin: 0; }
+
+  @media (max-width: 1240px) {
+    .pd-row { grid-template-columns: var(--name) minmax(0, 1fr); }
+    .pd-note-cell { grid-column: 1 / -1; border-left: 0; padding: 0 0 8px 15px; }
+    .pd-note-cell:empty, .pd-note-head { display: none; }
+    .pd-lrow { grid-template-columns: minmax(0, 1fr) 70px 86px minmax(120px, 160px) 130px 110px 56px; gap: 12px; }
+    .pd-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pd-board[data-ask="drop"] .pd-cols { --cols: 2; }
+  }
+  @media (max-width: 719px) {
+    main:has(> .pd) { padding: 18px 16px 60px; }
+    .pd-head { gap: 14px; }
+    .pd-head-end { margin-left: 0; justify-content: flex-start; width: 100%; }
+    .pd-rem { margin-top: 22px; }
+    .pd-lede { font-size: 20px; line-height: 1.65; }
+    .pd-legend .pd-legend-what { width: 100%; }
+    .pd-row { grid-template-columns: minmax(0, 1fr); padding: 6px 0; }
+    .pd-name { padding: 2px 0; }
+    .pd-track { min-height: 24px; }
+    .pd-scale { min-height: 30px; }
+    .pd-scale-name, .pd-col-line, .pd-pencil-label, .pd-lbl:not(.red) { display: none; }
+    .pd-col { padding: 6px 4px; }
+    .pd-col-label { font-size: 10.5px; }
+    .pd-note-cell { padding: 0 0 4px; }
+    .pd-lhead { display: none; }
+    .pd-lrow { grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "name name name" "strip strip strip" "health last last" "open open open" "known known read"; gap: 6px 14px; }
+    .pd-lname { grid-area: name; } .pd-lstrip { grid-area: strip; } .pd-lhealth { grid-area: health; } .pd-llast { grid-area: last; }
+    .pd-lopen { grid-area: open; } .pd-lknown { grid-area: known; } .pd-lread { grid-area: read; text-align: right; }
+    .pd-lhealth small, .pd-llast small { display: inline; margin-left: 6px; }
+    .pd-lopen:empty, .pd-fold .pd-lknown, .pd-fold .pd-lread { display: none; }
+    .pd-cols, .pd-board[data-ask="drop"] .pd-cols { grid-template-columns: minmax(0, 1fr); }
+    .pd-answer { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .pd * { transition: none !important; animation: none !important; } }
   /* ---- Projects board and Sessions list (art direction r4): tokens scoped to these two views ---- */
   .projects-view, .sessions-view.r4 {
     --ink: #121a15; --ink-2: #4b554f; --ink-3: #868f89; --ink-4: #b4bab6; --line: rgba(18, 26, 21, .08);
@@ -1787,36 +1965,6 @@
   .projects-view .btn-act, .sessions-view.r4 .btn-act { gap: 8px; min-height: 40px; padding: 0 20px; border-radius: 10px; background: var(--act); color: var(--act-ink) !important; font-family: var(--r4font); box-shadow: 0 6px 16px -6px rgba(34, 210, 122, .55); transition: background .12s ease-out; }
   .projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover { background: var(--act-hover); }
   .btn-act.play::before { content: ""; width: 0; height: 0; border-left: 9px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-  .project-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 24px; margin: 0 0 40px; padding: 24px 22px 24px 24px; border-radius: 18px; background: var(--sheet); box-shadow: var(--lift); }
-  .project-hero-kicker { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; color: var(--ink-3); font-size: 13px; }
-  .project-hero h2 { margin: 0 0 4px; font: 650 20px/28px var(--r4font); letter-spacing: -.015em; }
-  .project-hero h2 a { color: var(--ink); text-decoration: none; }
-  .project-hero-line { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .project-weeks { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
-  .project-weeks span { width: 6px; border-radius: 1.5px; background: var(--ink-4); }
-  .project-weeks span.none { background: var(--line); }
-  .project-lane-tabs { display: none; }
-  .project-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
-  .project-lane-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 12px 4px; font: 600 13px/18px var(--r4font); color: var(--ink); border: 0; padding: 0; }
-  .project-lane-head .n { color: var(--ink-3); font-weight: 400; }
-  .project-lane-caption { margin-left: auto; color: var(--ink-3); font-weight: 400; font-size: 12px; }
-  .project-lane-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .project-card { position: relative; border-radius: 14px; background: var(--sheet); box-shadow: var(--ring); transition: box-shadow .2s ease-out; }
-  .project-card:hover { box-shadow: var(--lift); }
-  .project-card-link { display: grid; gap: 4px; padding: 14px 16px; color: inherit; text-decoration: none !important; }
-  .project-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-  .project-card-name::after { content: ""; position: absolute; inset: 0; border-radius: 14px; }
-  .project-twin { position: relative; z-index: 1; }
-  .project-card-name { text-decoration: none !important; min-width: 0; font-weight: 600; font-size: 14.5px; line-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .project-card-when { flex: none; color: var(--ink-3); font-size: 12px; }
-  .project-card-what { color: var(--ink-2); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .project-card-what.unknown { color: var(--ink-3); }
-  .project-card-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; color: var(--ink-3); font-size: 12px; line-height: 16px; }
-  .project-open { color: var(--lamp); }
-  .project-open::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
-  .project-twin { display: block; margin: -4px 12px 12px; padding: 8px 12px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); font-size: 12.5px; line-height: 18px; text-decoration: none; }
-  .project-lane-more { display: block; margin: 12px auto 0; border: 0; background: none; color: var(--ink-3); font: 13px var(--r4font); cursor: pointer; }
-  .project-lane-more::after { content: " →"; }
   .sessions-view.r4 { max-width: 720px; margin: 0 auto; min-width: 0; }
   .session-stopped { margin: 0 0 36px; padding: 24px; border-radius: 18px; background: var(--sheet); box-shadow: var(--lift); }
   .session-stopped-kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 6px; color: var(--ink-3); font-size: 13px; line-height: 18px; }
@@ -1876,15 +2024,6 @@
     .projects-view h1.page-state, .sessions-view.r4 h1.page-state { font-size: 24px; line-height: 31px; margin-bottom: 20px; }
     .page-state-sub { display: block; font-size: 16px; line-height: 24px; letter-spacing: 0; }
     .page-state-sub .sep { display: none; }
-    .project-hero { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 18px; margin-bottom: 24px; }
-    .project-hero .project-weeks { display: none; }
-    .project-hero-go { width: 100%; min-height: 46px !important; }
-    .project-lane-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; margin: 0 0 16px; border-radius: 10px; background: var(--sunk); }
-    .project-lane-tabs button { min-height: 36px; border: 0; border-radius: 8px; background: none; color: var(--ink-3); font: 500 14px var(--r4font); }
-    .project-lane-tabs button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--ring); }
-    .project-board { grid-template-columns: minmax(0, 1fr); }
-    .project-lane[data-hidden] { display: none; }
-    .project-lane-head { display: none; }
   }
   .ov-child-units { display: grid; gap: 10px; margin-top: 12px; }
   .ov-child-units .ov-team { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
@@ -6569,7 +6708,7 @@ function categoryCount(c, counts, total) {
 }
 function category(c) {
   if (c === "sessions") { sessionsView(); return; }
-  if (c === "projects" && inCategory("projects").length) { projectsBoard(); return; }
+  if (c === "projects" && inCategory("projects").length) { projectsView(); return; }
   if (c === "orgs") { orgsView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
@@ -6606,53 +6745,640 @@ function category(c) {
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
 
-// ---------- projects: a board by recency, the busiest one lifted (art direction r4) ----------
-const PROJECT_LANES = [["week", "This week", 7, "Moved in the last 7 days"], ["month", "This month", 30, "Slowed down"],
-  ["older", "Earlier", Infinity, "Quiet, or no date"]];
+// ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
+// Ink is what REM knows from a source; pencil (always dashed) is what REM infers or forecasts.
+// Every number, sentence and mark here is computed in the browser from the snapshot's project
+// data by a named rule. What REM does not have yet (families, a per-project line, a write path,
+// last-visit data) is not drawn and never faked. Red is only for a promise past its date. The
+// directory has no green: none of its record actions (accept a grouping, merge, ink a forecast)
+// can write to the notebook yet, and a button that cannot act would be a lie.
+const PD_ZH = {
+  "Projects": "项目", "Timeline": "时间线", "List": "列表", "Board": "看板", "View": "视图", "Zoom": "刻度",
+  "Week": "周", "Month": "月", "Quarter": "季", "Year": "年",
+  "Off track": "偏离", "At risk": "风险", "On track": "正常", "Quiet": "安静", "Done": "完成",
+  "A dated promise has passed": "有期限的约定已过期", "Due within 7 days, waiting over 14 days, or blocked": "7 天内到期、等了 14 天以上或受阻",
+  "Activity within 30 days": "30 天内有活动", "No activity for 30 days": "30 天没有活动",
+  "Of the {n} projects with a coverage record, REM read {r} / {a} inputs": "有覆盖记录的 {n} 个项目里，REM 读了 {r} / {a} 份输入",
+  "{n} projects moved this week: {names}.": "这周 {n} 个项目有动静：{names}。", "1 project moved this week: {names}.": "这周 1 个项目有动静：{names}。",
+  "No project moved this week.": "这周没有项目有动静。",
+  "{n} projects moved in the last 30 days; {risk} at risk, {off} off track.": "近 30 天 {n} 个项目有动静，{risk} 个有风险、{off} 个偏离。",
+  "{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.": "这一季记下 {total} 个项目，{n} 个有会话，最常出现的是 {names}；{quiet} 个已经安静。",
+  "{total} projects on record; the earliest, {first}, started {date}. Today {ok} are on track and {quiet} are quiet.": "记下的 {total} 个项目里，最早的 {first} 起于 {date}。今天 {ok} 个正常、{quiet} 个安静。",
+  "{total} projects on record. Today {ok} are on track and {quiet} are quiet.": "记下 {total} 个项目。今天 {ok} 个正常、{quiet} 个安静。",
+  "On {project}, a promise to {who} is {n} days late.": "{project} 上欠 {who} 的一件事已经晚了 {n} 天。",
+  "On {project}, a promise is {n} days late.": "{project} 上有一件答应过的事已经晚了 {n} 天。",
+  ", ": "、",
+  "REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes":
+    "REM {when} 的快照 · 按规则生成，依据 {n} 个项目页、{m} 个会话日与 {k} 条逾期承诺 · 虚线下划线是推测 · 换刻度，这句话跟着换",
+  "Sorted by health; a sub-project sits under its project": "按健康排列；子项目缩在它的项目下", "session": "会话", "forecast · 30-day rule": "推测 · 30 天规则",
+  "overdue promise": "逾期承诺", "quiet": "安静", "Mostly {a} and {b} · {n} session days": "多在 {a} 与 {b} · {n} 个会话日",
+  "Mostly {a} · {n} session days": "多在 {a} · {n} 个会话日", "One line a month · by session days": "每月一句 · 按会话日",
+  "Today": "今天", "forecast →": "推测 →", "REM's notes {n} · at most 5": "REM 的批注 {n} 条 · 上限 5", "Days REM wrote pages": "写页的日子",
+  "due {date}": "{date} 期限", "{n} days late": "晚 {n} 天", "from {date}": "{date}起", "read {r}/{a}": "读 {r}/{a}",
+  "Turns quiet on {date} by the 30-day rule if no session comes": "若再没有会话，按 30 天规则 {date} 转为安静",
+  "{n} quiet": "安静 {n} 个", "Show": "展开", "Hide": "收起", "Inference": "推测",
+  "Overdue": "过期", "Same?": "重复?", "Part of?": "子项目?", "{k} of its {n} sessions are also {other}'s. It may be part of {other}.": "它的 {n} 个会话里有 {k} 个也属于 {other}。可能是 {other} 的一部分。", "Read a corner": "只读了一角", "Forecast": "推演",
+  "{who}: {what}. Due {date}, still open, {n} days late.": "{who}：{what}。期限 {date}，至今仍开着，晚了 {n} 天。",
+  "{what}. Due {date}, still open, {n} days late.": "{what}。期限 {date}，至今仍开着，晚了 {n} 天。",
+  "{k} of its {n} sessions also appear in {other}. It may be the same project.": "它的 {n} 个会话里有 {k} 个也出现在 {other} 里。可能是同一个项目。",
+  "Its page marks it as possibly the same project as {other}.": "它的页面标记它可能和 {other} 是同一个项目。",
+  "Of {of} inputs in the last {days} days, REM read {read}. Its picture of this project rests on a corner of them.": "近 {days} 天 {of} 份输入只读了 {read} 份，这一页的判断只基于其中一角。",
+  "If no session comes, by the 30-day rule these turn quiet within a week: {list}.": "若再没有会话，按 30 天规则，一周内转为安静的有：{list}。",
+  "{name} ({date})": "{name}（{date}）",
+  "Project · REM's line": "项目 · REM 的一句", "Project": "项目", "Health": "健康", "Latest": "最近", "Open promises": "开着的约定",
+  "On file (7)": "资料（7 项）", "REM read": "REM 读了", "{n} session days": "{n} 个会话日", "1 session day": "1 个会话日", "No sessions": "无会话",
+  "You owe {n}": "你欠 {n}", "Waiting {n}": "等人 {n}", "Agents {n}": "智能体 {n}", "All 7 on file": "七项齐全", "Not investigated": "未调查",
+  "Missing: {list}": "缺 {list}", "Only: {list}": "只有 {list}", "No record": "无记录",
+  "repository": "仓库", "stack": "技术栈", "status": "状态", "people": "人", "organisation": "组织", "start": "开始", "last activity": "最近活动",
+  "On file: {known}. Not on file: {missing}.": "已有：{known}。没有：{missing}。", "nothing": "无",
+  "latest {date}": "{date} 最晚", "Sub-project of {name}": "{name} 的子项目",
+  "The board's axis is a question:": "看板的轴是一个问题：", "By health": "按健康", "Who waits on whom": "谁在等谁",
+  "What can be set down": "哪些可以放下", "What may be one project": "哪些可能是同一个",
+  "{off} off track, {risk} at risk, {ok} on track, {quiet} quiet.": "偏离 {off}、风险 {risk}、正常 {ok}、安静 {quiet}。",
+  "If no session comes, {n} more turn quiet by {date} under the 30-day rule, the first on {first}.": "若再没有会话，到 {date} 为止还有 {n} 个会按 30 天规则挪进「安静」，最早的是 {first}。",
+  "Pencil · arriving here by {date}": "铅笔 · {date} 前会到这里", "{n} already quiet": "已经安静的 {n} 个",
+  "You owe others": "你欠别人", "You wait on others": "你在等别人", "Only with agents": "只交给了智能体", "No open promise": "没有开着的约定",
+  "someone owes the owner": "对方欠你", "the owner owes someone": "你欠对方", "instructions to agents": "交给智能体的指示", "nothing open": "什么都没开着",
+  "You owe {n} things across {p} projects and wait on others for {w}; {a} projects hold only agent instructions.": "你在 {p} 个项目里欠别人 {n} 件，在等别人 {w} 件；{a} 个项目只有交给智能体的事。",
+  "You owe: {names}": "你欠：{names}", "Waiting on: {names}": "在等：{names}", "{n} things": "{n} 件", "{n} with agents": "智能体 {n} 件",
+  "Can be set down": "可以放下", "Quiet, promises still open": "安静，但约定还开着", "Still moving": "还在动",
+  "quiet and nobody waiting": "安静，也没人在等", "quiet, someone still waits": "安静，但还有人在等", "activity within 30 days": "30 天内有活动",
+  "{n} projects have had no activity for 30 days and nobody waits on them: they {can}. {m} are quiet with a promise still open.": "{n} 个项目 30 天没有活动、也没有人在等，{can}；{m} 个安静但还有约定开着。",
+  "can be set down": "可以放下",
+  "Shared sessions": "共用会话", "Marked on the page": "页面上标过", "Similar names": "名字相近", "No signal": "没有信号",
+  "85% or more of the smaller one's sessions": "小的那个有 85% 以上的会话重合", "REM's same_as suggestion": "REM 的同一项目建议", "a distinctive shared word": "共用一个少见的词",
+  "{g} groups may each be one project: {s} share sessions, {t} are marked on their page, {u} have similar names; the other {rest} show no signal. All are inferences; REM merges nothing by itself.":
+    "{g} 组可能各是同一个项目：{s} 组共用会话、{t} 组页面上标过、{u} 组名字相近；其余 {rest} 个没有信号。这些都是推测，REM 不会自己合并。",
+  "{k}/{n} sessions shared · may be one project": "共用 {k}/{n} 个会话 · 可能是同一个", "{k} of {a}'s {n} sessions are {b}'s too · may be part of it": "{a} 的 {n} 个会话里 {k} 个也属于 {b} · 可能是它的一部分",
+  "all contain “{word}”": "名字里都有「{word}」",
+  "{a} and {b}": "{a} 与 {b}", "{n} projects": "{n} 个项目", "Nothing here": "这里没有", "No project has a coverage record yet": "还没有项目有覆盖记录",
+};
+function pdT(key, values = {}) {
+  const words = uiLanguage === "zh" ? PD_ZH[key] : null;
+  return (words || t(key)).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+}
+
+const PD_TIERS = ["off_track", "at_risk", "on_track", "quiet"];
+const PD_HEALTH = { off_track: "Off track", at_risk: "At risk", on_track: "On track", quiet: "Quiet", done: "Done" };
+const PD_RULES = { off_track: "A dated promise has passed", at_risk: "Due within 7 days, waiting over 14 days, or blocked",
+  on_track: "Activity within 30 days", quiet: "No activity for 30 days" };
+// [label, days back, days forward]: the window around the snapshot's day.
+const PD_ZOOM = { week: ["Week", 9, 14], month: ["Month", 38, 30], quarter: ["Quarter", 99, 32], year: ["Year", 525, 53] };
+const PD_VIEWS = [["timeline", "Timeline"], ["list", "List"], ["board", "Board"]];
+const PD_ASKS = [["health", "By health"], ["waiting", "Who waits on whom"], ["drop", "What can be set down"], ["same", "What may be one project"]];
+const PD_FACTS = [["Repository", "repository"], ["Stack", "stack"], ["Status", "status"], ["People", "people"],
+  ["Organisation", "organisation"], ["Started", "start"], ["Last activity", "last activity"]];
+const PD_QUIET_DAYS = 30, PD_NOTES = 5;
+let pdQuietOpen = false, PD_SESSIONS = null;
+
+// ---- data: ported from the sprint-10 project views (their UI was rejected, their rules were not) ----
 function projectLast(r) { return facts(r).last || r.last_activity || ""; }
-function projectLane(r) {
-  const days = projectLast(r) ? daysSince(projectLast(r)) : null;
-  return PROJECT_LANES.find(([, , limit]) => days != null && days <= limit)?.[0] || "older";
+function projectDone(r) { return (r.reasons || []).some(reason => reason.text === "Project explicitly marked completed"); }
+function projectMapped(r) { return known(r).status === "Mapped"; }
+function projectTier(r) { return projectDone(r) ? "done" : PD_TIERS.includes(r.health) ? r.health : "quiet"; }
+// Someone else waits on the owner. Agent instructions and unconfirmed organisation joins never count.
+function projectOwed(r) { return (r.open || []).filter(item => item.kind === "owed" && !item.project_match?.needs_review); }
+function projectOverdue(r) { return r.overdue_days || 0; }
+// The same order as rank_key in project_priority.py: pinned, an overdue explicit promise, score,
+// then days overdue, distinct people owed, and a casefolded title.
+function projectPeopleOwed(r) { return new Set(projectOwed(r).filter(item => item.who && !item.needs_review).map(item => item.who)).size; }
+function projectTitleKey(title) { return String(title).toLowerCase().normalize("NFKC"); }
+function projectRank(a, b) {
+  const title = r => projectTitleKey(r.title);
+  return Number(!!b.pinned) - Number(!!a.pinned) || Number(projectOverdue(b) > 0) - Number(projectOverdue(a) > 0)
+    || (b.score || 0) - (a.score || 0) || projectOverdue(b) - projectOverdue(a)
+    || projectPeopleOwed(b) - projectPeopleOwed(a) || (title(a) < title(b) ? -1 : title(a) > title(b) ? 1 : 0);
 }
-function projectSessionDays() {
-  const days = new Map();
-  for (const s of REM.records) if (s.category === "sessions" && s.session_project && s.session_date)
-    days.set(s.session_project, [...(days.get(s.session_project) || []), s.session_date]);
-  return days;
+function stripCites(text) { return String(text).replace(/\s*\[W?\d{1,3}\]/g, "").trim(); }
+function projectShort(text) { return firstClause(stripCites(text)).replace(/[.。]$/, ""); }
+// The snapshot's calendar day, or the clock's when a snapshot carries no date (as daysSince does).
+function projectAsOfDay(asOf) { return calendarDay(asOf || new Date().toISOString()); }
+function pdAddDays(day, n) { return new Date(Date.parse(day + "T00:00:00Z") + n * DAY_MS).toISOString().slice(0, 10); }
+function pdBetween(a, b) { return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / DAY_MS); }
+function pdDay(day, year = false) {
+  return new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}) });
 }
-function projectRecent(days, limit = 30) { return days.filter(day => daysSince(day) < limit).length; }
-// One sentence of "What it is": the card is a glance, the page is the read.
-function projectBlurb(r) {
-  const what = section(r, "what it is");
-  const line = what ? plainLine(listItems(what.text)[0] || what.text) : "";
-  return line && !/^Unknown\b/i.test(line) ? (line.match(/^.+?(?:[。！？]|[.!?](?=\s|$))/) || [line])[0] : "";
+function pdList(names) {
+  if (names.length <= 1) return names[0] || "";
+  return names.slice(0, -1).join(pdT(", ")) + (uiLanguage === "zh" ? " 和 " : " and ") + names.at(-1);
 }
-function projectOpenLine(n) { return el("span", { class: "project-open", text: t(n === 1 ? "{n} open item" : "{n} open items", { n }) }); }
-// Two pages whose names differ only by case are probably one project; say so, never merge silently.
-function projectTwin(r) {
-  const twin = inCategory("projects").find(other => other !== r && other.title.trim().toLowerCase() === r.title.trim().toLowerCase());
-  return twin ? el("a", { class: "project-twin", href: href(twin), text: t("Another page, {name}, may be the same project", { name: twin.title }) }) : null;
+function pdWho(who) { const page = who && byPath(who); return page ? page.title : who && !String(who).includes("/") ? String(who) : ""; }
+
+// ---- the tree: sub-projects and possible duplicates hang under the page they point to; nothing is merged ----
+function projectHost(r, order) {
+  if (r.parent?.path && r.parent.path !== r.path && order.has(r.parent.path)) return r.parent.path;
+  return (r.same_as || []).map(match => match.path).find(path => order.has(path) && order.get(path) < order.get(r.path)) || "";
 }
-function projectCard(r, days) {
-  const open = facts(r).open.length, recent = projectRecent(days), studied = known(r).status !== "Mapped", blurb = studied ? projectBlurb(r) : "";
-  return el("li", { class: "project-card" }, [
-    el("div", { class: "project-card-link" }, [
-      el("span", { class: "project-card-head" }, [el("a", { class: "project-card-name", href: href(r), text: r.title }), el("span", { class: "project-card-when", text: fmtDate(projectLast(r)) })]),
-      !studied ? el("span", { class: "project-card-what unknown", text: t("Not investigated yet. REM only knows its folder and sessions.") })
-        : blurb ? el("span", { class: "project-card-what", text: blurb })
-        : hasPrivacy(section(r, "what it is")?.text || "") ? el("span", { class: "project-card-what unknown", text: t("Hidden labelled passage") }) : null,
-      open || recent ? el("span", { class: "project-card-foot" }, [open ? projectOpenLine(open) : el("span"),
-        recent ? el("span", { text: t(recent === 1 ? "{n} session · 30 days" : "{n} sessions · 30 days", { n: recent }) }) : null]) : null]),
-    projectTwin(r)]);
+// One level only: a page that is itself attached to another stays a top-level row.
+function projectTree(ranked) {
+  const order = new Map(ranked.map((r, i) => [r.path, i])), kids = new Map(), top = [];
+  for (const r of ranked) {
+    const host = projectHost(r, order);
+    if (host && !projectHost(byPath(host), order)) kids.set(host, [...(kids.get(host) || []), r]);
+    else top.push(r);
+  }
+  return { top, kids };
 }
-// Twelve weeks of sessions, oldest first, in neutral ink: shape only, no axis.
-function projectWeeks(days) {
-  const weeks = Array(12).fill(0);
-  for (const day of days) { const week = Math.floor(daysSince(day) / 7); if (week < 12) weeks[11 - week]++; }
-  const peak = Math.max(1, ...weeks), title = t("Sessions per week · 12 weeks");
-  return el("span", { class: "project-weeks", title, role: "img", "aria-label": title },
-    weeks.map(n => el("span", { style: "height:" + (n ? Math.max(18, Math.round(100 * n / peak)) : 7) + "%", class: n ? "" : "none" })));
+
+// ---- dates someone wrote down. The same filter as overdue_promise in project_priority.py:
+// only a confirmed owed item with an explicit due date can be late. ----
+function projectDueItems(r) { return projectOwed(r).filter(item => item.due && !item.needs_review); }
+// Written dates as {day, text, state, who}. Waiting, answerable, review and milestone dates that have
+// passed are "past", never "late". Two deadlines on one day are two marks.
+function projectMarks(r, today = projectAsOfDay(REM.as_of)) {
+  const marks = new Map(), covered = new Set();
+  for (const item of projectDueItems(r)) {
+    const promise = (item.promised || []).find(p => p.date === item.due);
+    (item.promised || []).forEach(p => covered.add(p.date + "|" + p.text));
+    marks.set(item.due + "|" + item.text, { day: item.due, text: promise?.text || projectShort(item.text), owed: true, who: item.who || "", item: item.text });
+  }
+  for (const p of [...(r.promised || []), ...(r.written_deadlines || [])])
+    if (p.date && !covered.has(p.date + "|" + p.text) && !marks.has(p.date + "|" + p.text)) marks.set(p.date + "|" + p.text, { day: p.date, text: p.text, owed: false, who: "" });
+  return [...marks.values()].map(mark => ({ ...mark, state: mark.day >= today ? "next" : mark.owed ? "late" : "past" }))
+    .sort((a, b) => a.day.localeCompare(b.day) || a.text.localeCompare(b.text));
 }
+// A promise whose only words are a date is labelled by its open item's own words.
+function projectMarkWhat(mark) {
+  if (!(/\d{4}-\d{2}-\d{2}/.test(mark.text) && mark.text.length < 24)) return projectShort(mark.text);
+  return mark.item ? projectItemWhat(mark.item) : t("Written date");
+}
+// The thing itself: no debtor prefix, no quoted original, no trailing due date or labels.
+function projectItemWhat(text) {
+  let what = stripCites(text).replace(/\s*\[(?:personal|private|sensitive)[^\]]*\]/gi, "").replace(/\s+[—–-]\s*due\s+\d{4}-\d{2}-\d{2}.*$/i, "")
+    .replace(/^(?:the user owes [^:：]{1,60}|[^:：]{1,60} asked the user)[:：]\s*/i, "");
+  what = what.split(/\s+[—–]\s+|\s*[“"「]/)[0].trim().replace(/[.。:：]$/, "");
+  return what.length > 72 ? what.slice(0, 70).replace(/\s+\S*$/, "") + "…" : what;
+}
+// The oldest late mark, with its age in days.
+function projectLate(r) {
+  const mark = projectMarks(r).find(m => m.state === "late");
+  return mark ? { ...mark, days: daysSince(mark.day) } : null;
+}
+
+// ---- sessions: the days an agent session touched the project (relations and session records) ----
+function projectSessionIndex() {
+  if (PD_SESSIONS) return PD_SESSIONS;
+  PD_SESSIONS = new Map();
+  const add = (path, session, day) => {
+    if (!day) return;
+    const entry = PD_SESSIONS.get(path) || { days: new Set(), paths: new Set() };
+    entry.days.add(day); entry.paths.add(session); PD_SESSIONS.set(path, entry);
+  };
+  for (const s of REM.records) if (s.category === "sessions" && s.session_project) add(s.session_project, s.path, calendarDay(s.session_date || ""));
+  for (const p of inCategory("projects")) for (const rel of p.relations || []) {
+    const day = /^sessions\/(\d{4}-\d{2}-\d{2})/.exec(rel.path || "")?.[1];
+    if (day) add(p.path, rel.path, day);
+  }
+  return PD_SESSIONS;
+}
+function projectSessionDays(r) { return [...(projectSessionIndex().get(r.path)?.days || [])].sort(); }
+function projectSessionPaths(r) { return projectSessionIndex().get(r.path)?.paths || new Set(); }
+// Ticks: every session day, plus the last dated activity when no session carries it.
+function projectTicks(r) {
+  const days = new Set(projectSessionDays(r)), last = projectLast(r) && calendarDay(projectLast(r));
+  if (last) days.add(last);
+  return [...days].sort();
+}
+// Pencil: an on-track project turns quiet on day 31 without activity (health() in project_priority.py).
+function projectQuietOn(r) {
+  const last = projectLast(r) && calendarDay(projectLast(r));
+  return projectTier(r) === "on_track" && last ? pdAddDays(last, PD_QUIET_DAYS + 1) : "";
+}
+function projectCoverage(r) {
+  const c = r.project_coverage;
+  return c && c.inputs_available ? { read: c.inputs_read || 0, of: c.inputs_available, days: c.days || 30 } : null;
+}
+function projectKnown(r) {
+  return r.facts && typeof r.facts === "object" ? PD_FACTS.map(([key, label]) => [label, (r.facts[key] || []).length > 0]) : null;
+}
+function projectCite(r, key) {
+  const cite = r.date_sources?.[key]?.cite;
+  return cite ? el("a", { class: "pd-c", href: href(r) + "&h=src-" + String(cite).toLowerCase(), title: t("source {n}", { n: cite }), text: String(cite) }) : null;
+}
+
+// ---- inferences: possible duplicates. Shared sessions and page suggestions, then distinctive words. ----
+function projectPairs(all) {
+  const pairs = [], same = (p, a, b) => (p.a === a && p.b === b) || (p.a === b && p.b === a);
+  for (const a of all) for (const b of all) {
+    if (a === b) continue;
+    const A = projectSessionPaths(a), B = projectSessionPaths(b);
+    if (A.size < 5 || B.size < A.size || (B.size === A.size && a.path > b.path)) continue;
+    const k = [...A].filter(path => B.has(path)).length;
+    if (k / A.size >= 0.85) pairs.push({ kind: "sessions", a, b, k, n: A.size, m: B.size, inside: B.size > A.size * 1.5 });
+  }
+  for (const a of all) for (const match of a.same_as || []) {
+    const b = byPath(match.path);
+    if (b && b !== a && !pairs.some(p => same(p, a, b))) pairs.push({ kind: "page", a, b });
+  }
+  // A word shared by two or three titles; a word in more is a prefix (an organisation), not a signal.
+  const generic = new Set(["android", "macos", "windows", "landingpage", "landing", "browser", "project", "website", "service", "client", "server"]);
+  const words = new Map();
+  for (const r of all) for (const word of new Set(String(r.title).toLowerCase().split(/[^a-z0-9一-鿿]+/)))
+    if (word.length >= 5 && !generic.has(word)) words.set(word, [...(words.get(word) || []), r]);
+  for (const [word, rows] of words) if (rows.length >= 2 && rows.length <= 3 && !rows.every((r, i) => !i || pairs.some(p => same(p, rows[0], r))))
+    pairs.push({ kind: "name", rows, word });
+  return pairs;
+}
+
+// ---- REM's notes in the margin: rule-made only, at most five, one per project ----
+function projectNotes(all, pairs) {
+  const notes = new Map(), today = projectAsOfDay(REM.as_of), put = (r, note) => { if (notes.size < PD_NOTES && !notes.has(r.path)) notes.set(r.path, note); };
+  for (const [r, late] of all.map(r => [r, projectLate(r)]).filter(([, late]) => late).sort((a, b) => b[1].days - a[1].days)) {
+    const who = pdWho(late.who), values = { who, what: projectMarkWhat(late), date: pdDay(late.day), n: late.days };
+    put(r, { kind: "fact", kicker: "Overdue", text: pdT(who ? "{who}: {what}. Due {date}, still open, {n} days late." : "{what}. Due {date}, still open, {n} days late.", values), red: true });
+  }
+  for (const p of pairs.filter(p => p.kind === "sessions" && !p.inside))
+    put(p.a, { kind: "inference", kicker: "Same?", text: pdT("{k} of its {n} sessions also appear in {other}. It may be the same project.", { k: p.k, n: p.n, other: p.b.title }) });
+  for (const p of pairs.filter(p => p.kind === "page"))
+    put(p.a, { kind: "inference", kicker: "Same?", text: pdT("Its page marks it as possibly the same project as {other}.", { other: p.b.title }) });
+  for (const r of all) {
+    const c = projectCoverage(r);
+    if (c && c.of >= 20 && c.read / c.of < 0.2) put(r, { kind: "fact", kicker: "Read a corner", text: pdT("Of {of} inputs in the last {days} days, REM read {read}. Its picture of this project rests on a corner of them.", c) });
+  }
+  const soon = all.map(r => [r, projectQuietOn(r)]).filter(([, day]) => day && day > today && pdBetween(today, day) <= 7).sort((a, b) => a[1].localeCompare(b[1]));
+  if (soon.length) put(soon[0][0], { kind: "pencil", kicker: "Forecast",
+    text: pdT("If no session comes, by the 30-day rule these turn quiet within a week: {list}.", { list: soon.map(([r, day]) => pdT("{name} ({date})", { name: r.title, date: pdDay(day) })).join(pdT(", ")) }) });
+  for (const p of pairs.filter(p => p.kind === "sessions" && p.inside))
+    put(p.a, { kind: "inference", kicker: "Part of?", text: pdT("{k} of its {n} sessions are also {other}'s. It may be part of {other}.", { k: p.k, n: p.n, other: p.b.title }) });
+  return notes;
+}
+function projectNoteNode(note, inline = false) {
+  return el(inline ? "p" : "div", { class: "pd-note pd-note-" + note.kind }, [
+    el("b", { class: "pd-kicker" + (note.red ? " red" : ""), text: pdT(note.kicker) }), " ",
+    el("span", { class: note.kind === "fact" ? "" : "pd-inf", text: note.text })]);
+}
+
+// ---- the window, the sentence and the shared marks ----
+function projectWindow(zoom) {
+  const today = projectAsOfDay(REM.as_of), [, back, forward] = PD_ZOOM[zoom];
+  let a = pdAddDays(today, -back);
+  if (zoom === "quarter" || zoom === "year") a = a.slice(0, 8) + "01";
+  return { a, b: pdAddDays(today, forward), today, zoom };
+}
+function pdAt(win, day) { return Math.max(0, Math.min(100, pdBetween(win.a, day) / pdBetween(win.a, win.b) * 100)); }
+function pdIn(win, day, to = win.b) { return day >= win.a && day <= to; }
+function projectActive(all, win, days = projectTicks) {
+  return all.map(r => [r, days(r).filter(day => pdIn(win, day, win.today)).length]).filter(([, n]) => n)
+    .sort((a, b) => b[1] - a[1] || projectRank(a[0], b[0])).map(([r]) => r);
+}
+function projectTierCounts(all) {
+  const count = tier => all.filter(r => projectTier(r) === tier).length;
+  return { off: count("off_track"), risk: count("at_risk"), ok: count("on_track"), quiet: count("quiet") + count("done") };
+}
+function projectLede(all, win) {
+  const active = win.zoom === "quarter" ? projectActive(all, win, projectSessionDays) : projectActive(all, win), counts = projectTierCounts(all), names = active.slice(0, 3).map(r => r.title);
+  let line;
+  if (win.zoom === "week") line = !active.length ? pdT("No project moved this week.")
+    : pdT(active.length === 1 ? "1 project moved this week: {names}." : "{n} projects moved this week: {names}.", { n: active.length, names: pdList(names) });
+  else if (win.zoom === "month") line = pdT("{n} projects moved in the last 30 days; {risk} at risk, {off} off track.", { n: active.length, risk: counts.risk, off: counts.off });
+  else if (win.zoom === "quarter") line = pdT("{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.",
+    { total: all.length, n: active.length, names: pdList(names), quiet: counts.quiet });
+  else {
+    const first = all.filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.started || "")).sort((a, b) => a.started.localeCompare(b.started))[0];
+    line = first ? pdT("{total} projects on record; the earliest, {first}, started {date}. Today {ok} are on track and {quiet} are quiet.",
+      { total: all.length, first: first.title, date: pdDay(first.started.slice(0, 10), true), ok: counts.ok, quiet: counts.quiet })
+      : pdT("{total} projects on record. Today {ok} are on track and {quiet} are quiet.", { total: all.length, ok: counts.ok, quiet: counts.quiet });
+  }
+  const worst = all.map(r => [r, projectLate(r)]).filter(([, late]) => late).sort((a, b) => b[1].days - a[1].days)[0];
+  const late = worst ? pdT(pdWho(worst[1].who) ? "On {project}, a promise to {who} is {n} days late." : "On {project}, a promise is {n} days late.",
+    { project: worst[0].title, who: pdWho(worst[1].who), n: worst[1].days }) : "";
+  const lates = all.reduce((n, r) => n + projectMarks(r).filter(m => m.state === "late").length, 0);
+  const sessionDays = all.reduce((n, r) => n + projectSessionDays(r).length, 0);
+  return el("section", { class: "pd-rem" }, [
+    el("p", { class: "pd-lede" }, [line, late ? " " : null, late ? el("span", { class: "red", text: late }) : null]),
+    el("p", { class: "pd-basis", text: pdT("REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes",
+      { when: fmtTime(REM.as_of), n: all.length, m: sessionDays, k: lates }) })]);
+}
+function projectDot(r) {
+  const tier = projectTier(r), word = pdT(PD_HEALTH[tier]);
+  return el("span", { class: "pd-dot " + tier, title: word, role: "img", "aria-label": word });
+}
+// A strip of the window: ticks, the span, the late line, today, and the pencil forecast right of today.
+function projectStrip(r, win, labels = false) {
+  const now = pdAt(win, win.today), track = el("div", { class: "pd-track" + (labels ? "" : " mini") }, [
+    el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  const ticks = projectTicks(r), first = [r.started && calendarDay(r.started.slice(0, 10)), ticks[0]].filter(Boolean).sort()[0];
+  const shown = ticks.filter(day => pdIn(win, day));
+  if (first && shown.length) {
+    const from = pdAt(win, first), to = pdAt(win, shown.at(-1));
+    if (to > from) track.appendChild(el("i", { class: "pd-span", style: "left:" + from + "%;width:" + (to - from) + "%" }));
+    if (labels && first < win.a && !projectLate(r)) track.appendChild(el("span", { class: "pd-lbl", style: "left:0", text: "← " + pdT("from {date}", { date: pdDay(first, true) }) }));
+  }
+  for (const day of shown) track.appendChild(el("i", { class: "pd-tick", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
+  const late = projectLate(r);
+  if (late) {
+    const from = pdAt(win, late.day);
+    track.appendChild(el("i", { class: "pd-late", style: "left:" + from + "%;width:" + (now - from) + "%", title: projectMarkWhat(late) + " · " + pdDay(late.day, true) }));
+    if (labels) {
+      track.appendChild(el("span", { class: "pd-lbl red", style: "left:" + Math.min(from, 70) + "%", text: (late.day < win.a ? "← " : "") + pdT("due {date}", { date: pdDay(late.day) }) }));
+      track.appendChild(el("span", { class: "pd-late-n", style: "left:" + now + "%", text: pdT("{n} days late", { n: late.days }) }));
+    }
+  }
+  const quietOn = projectQuietOn(r);
+  if (quietOn && quietOn > win.today) {
+    const end = pdAt(win, quietOn), tip = pdT("Turns quiet on {date} by the 30-day rule if no session comes", { date: pdDay(quietOn) });
+    track.appendChild(el("i", { class: "pd-pencil", style: "left:" + now + "%;width:" + (end - now) + "%", title: tip }));
+    if (quietOn <= win.b) track.appendChild(el("i", { class: "pd-pencil-end", style: "left:" + end + "%", title: tip }));
+  }
+  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
+  return track;
+}
+// Several folded rows read as one strip: the union of their ticks, nothing else.
+function projectFoldStrip(rows, win) {
+  const now = pdAt(win, win.today), track = el("div", { class: "pd-track mini" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  for (const day of [...new Set(rows.flatMap(projectTicks))].filter(d => pdIn(win, d)).sort())
+    track.appendChild(el("i", { class: "pd-tick", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
+  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
+  return track;
+}
+
+// ---- the head: title, views, coverage, zoom; the sentence; the legend ----
+function pdParams() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  return { view: PD_VIEWS.some(([k]) => k === p.get("v")) ? p.get("v") : "timeline", zoom: PD_ZOOM[p.get("z")] ? p.get("z") : "quarter",
+    ask: PD_ASKS.some(([k]) => k === p.get("ask")) ? p.get("ask") : "health" };
+}
+function pdHref(change) {
+  const s = { ...pdParams(), ...change };
+  return "#c=projects&v=" + s.view + "&z=" + s.zoom + (s.view === "board" && s.ask !== "health" ? "&ask=" + s.ask : "");
+}
+function projectCoverageLine(all) {
+  const rows = all.map(projectCoverage).filter(Boolean);
+  return el("span", { class: "pd-cov" }, rows.length ? [pdT("Of the {n} projects with a coverage record, REM read {r} / {a} inputs",
+    { n: rows.length, r: "\u0000", a: "\u0001" }).split(/(\u0000|\u0001)/).map(part => part === "\u0000" ? el("b", { text: String(rows.reduce((n, c) => n + c.read, 0)) })
+    : part === "\u0001" ? el("b", { text: String(rows.reduce((n, c) => n + c.of, 0)) }) : part)].flat() : [pdT("No project has a coverage record yet")]);
+}
+function projectHead(all, state) {
+  return el("header", { class: "pd-head" }, [
+    el("h1", { class: "pd-title" }, [pdT("Projects"), el("span", { class: "pd-count", text: String(all.length) })]),
+    el("div", { class: "pd-views", role: "navigation", "aria-label": pdT("View") }, PD_VIEWS.map(([key, name]) =>
+      el("a", { href: pdHref({ view: key }), class: key === state.view ? "on" : "", ...(key === state.view ? { "aria-current": "page" } : {}), text: pdT(name) }))),
+    el("div", { class: "pd-head-end" }, [projectCoverageLine(all),
+      el("div", { class: "pd-seg", role: "group", "aria-label": pdT("Zoom") }, Object.entries(PD_ZOOM).map(([key, [name]]) =>
+        el("a", { href: pdHref({ zoom: key }), class: key === state.zoom ? "on" : "", "aria-pressed": String(key === state.zoom), text: pdT(name) })))])]);
+}
+function projectLegend() {
+  return el("div", { class: "pd-legend" }, [el("span", { class: "pd-legend-what", text: pdT("Sorted by health; a sub-project sits under its project") }),
+    el("span", { class: "pd-keys" }, [
+      el("span", {}, [el("i", { class: "k-tick" }), pdT("session")]), el("span", {}, [el("i", { class: "k-pencil" }), pdT("forecast · 30-day rule")]),
+      el("span", {}, [el("i", { class: "k-late" }), pdT("overdue promise")]), el("span", {}, [el("i", { class: "pd-dot quiet" }), pdT("quiet")])])]);
+}
+// Rows in health order: top-level rows by tier, each followed by its sub-projects; quiet and done fold.
+function projectGroups(top, kids) {
+  const rank = r => ({ off_track: 0, at_risk: 1, on_track: 2, quiet: 3, done: 3 })[projectTier(r)];
+  const groups = PD_TIERS.slice(0, 3).map(tier => [tier, top.filter(r => projectTier(r) === tier)]).filter(([, rows]) => rows.length);
+  const quiet = top.filter(r => rank(r) === 3);
+  const withKids = rows => rows.flatMap(r => [[r, false], ...(kids.get(r.path) || []).map(kid => [kid, r])]);
+  return { groups: groups.map(([tier, rows]) => [tier, withKids(rows)]), quiet: withKids(quiet) };
+}
+function projectGroupHead(tier, n, extra) {
+  return el("div", { class: "pd-group" }, [el("span", { class: "pd-group-name" + (tier === "off_track" ? " red" : ""), text: pdT(PD_HEALTH[tier]) }),
+    el("span", { class: "pd-group-n", text: String(n) }), el("span", { class: "pd-group-rule", text: pdT(PD_RULES[tier]) }), extra || null]);
+}
+function projectFoldButton(n) {
+  const button = el("button", { type: "button", class: "pd-fold-btn", "aria-expanded": String(pdQuietOpen), text: pdT(pdQuietOpen ? "Hide" : "Show") });
+  button.onclick = () => { pdQuietOpen = !pdQuietOpen; projectsView(); };
+  return button;
+}
+function projectNameNode(r, host) {
+  return el("span", { class: "pd-name-line" }, [projectDot(r),
+    el("a", { href: href(r), class: projectTier(r) === "off_track" ? "red" : "", text: r.title, ...(host ? { title: pdT("Sub-project of {name}", { name: host.title }) } : {}) })]);
+}
+
+// ---- 时间线: a Gantt of real session ticks ----
+function projectMonths(win) {
+  const cols = [], step = win.zoom === "week" || win.zoom === "month";
+  let day = step ? pdAddDays(win.a, (8 - new Date(win.a + "T00:00:00Z").getUTCDay()) % 7) : win.a.slice(0, 8) + "01";
+  if (!step && day < win.a) day = pdAddDays(day.slice(0, 7) + "-28", 4).slice(0, 8) + "01";
+  if (!step && win.a.endsWith("-01")) day = win.a;
+  while (day <= win.b) {
+    const next = step ? pdAddDays(day, 7) : pdAddDays(day.slice(0, 8) + "28", 4).slice(0, 8) + "01";
+    cols.push([day, next]);
+    day = next;
+  }
+  return cols;
+}
+function projectMonthLabel(day, i, zoom) {
+  if (zoom === "week" || zoom === "month") return pdDay(day);
+  const d = new Date(day + "T00:00:00Z"), month = d.toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short" });
+  return i === 0 || day.slice(5, 7) === "01" ? d.getUTCFullYear() + " " + month : month;
+}
+function projectMonthLine(all, from, to) {
+  const tally = all.map(r => [r, projectSessionDays(r).filter(day => day >= from && day < to).length]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
+  const n = tally.reduce((sum, [, k]) => sum + k, 0);
+  if (!n) return "";
+  return tally.length > 1 ? pdT("Mostly {a} and {b} · {n} session days", { a: tally[0][0].title, b: tally[1][0].title, n }) : pdT("Mostly {a} · {n} session days", { a: tally[0][0].title, n });
+}
+function projectGanttHead(all, win, notes) {
+  const now = pdAt(win, win.today), months = win.zoom === "quarter";
+  const scale = el("div", { class: "pd-scale" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  projectMonths(win).forEach(([day, next], i) => {
+    const left = pdAt(win, day), width = pdAt(win, next) - left, line = months && next <= win.today && width >= 11 ? projectMonthLine(all, day, next) : "";
+    if (width <= 0) return;
+    scale.appendChild(el("div", { class: "pd-col", style: "left:" + left + "%;width:" + width + "%" }, [
+      el("span", { class: "pd-col-label", text: projectMonthLabel(day, i, win.zoom) }), line ? el("span", { class: "pd-col-line", text: line }) : null]));
+  });
+  scale.appendChild(el("span", { class: "pd-now-label", style: "left:" + now + "%", text: pdT("Today") }));
+  scale.appendChild(el("span", { class: "pd-pencil-label", style: "left:" + now + "%", text: pdT("forecast →") }));
+  scale.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
+  return el("div", { class: "pd-row pd-scale-row" }, [el("div", { class: "pd-name pd-scale-name", text: months ? pdT("One line a month · by session days") : "" }), scale,
+    el("div", { class: "pd-note-cell pd-note-head", text: pdT("REM's notes {n} · at most 5", { n: notes.size }) })]);
+}
+// REM's own row: the days it wrote project pages. It has no read log, so reads are not drawn.
+function projectRemRow(all, win) {
+  const now = pdAt(win, win.today), track = el("div", { class: "pd-track" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  for (const day of [...new Set(all.map(r => r.updated && calendarDay(r.updated)).filter(Boolean))].filter(d => pdIn(win, d, win.today)).sort())
+    track.appendChild(el("i", { class: "pd-ring", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
+  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
+  return el("div", { class: "pd-row pd-rem-row" }, [el("div", { class: "pd-name" }, [el("b", { text: "REM" }), el("small", { text: pdT("Days REM wrote pages") })]), track, el("div", { class: "pd-note-cell" })]);
+}
+function projectGanttRow(r, host, win, note) {
+  const c = projectCoverage(r);
+  return el("div", { class: "pd-row" + (host ? " kid" : ""), "data-path": r.path }, [
+    el("div", { class: "pd-name" }, [projectNameNode(r, host), c && c.read < c.of ? el("span", { class: "pd-read", text: pdT("read {r}/{a}", { r: c.read, a: c.of }) }) : null]),
+    projectStrip(r, win, true), el("div", { class: "pd-note-cell" }, [note ? projectNoteNode(note) : null])]);
+}
+function projectFoldNote(rows, notes) { return rows.map(([r]) => notes.get(r.path)).find(Boolean); }
+function projectTimeline(all, tree, win, notes) {
+  const { groups, quiet } = projectGroups(tree.top, tree.kids), body = [projectGanttHead(all, win, notes), projectRemRow(all, win)];
+  for (const [tier, rows] of groups) {
+    body.push(projectGroupHead(tier, rows.length));
+    for (const [r, host] of rows) body.push(projectGanttRow(r, host, win, notes.get(r.path)));
+  }
+  if (quiet.length) {
+    body.push(projectGroupHead("quiet", quiet.length));
+    if (pdQuietOpen) for (const [r, host] of quiet) body.push(projectGanttRow(r, host, win, notes.get(r.path)));
+    else {
+      const note = projectFoldNote(quiet, notes);
+      body.push(el("div", { class: "pd-row pd-fold" }, [
+        el("div", { class: "pd-name" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
+          el("small", { class: "pd-fold-names", text: quiet.map(([r]) => r.title).join(" · ") })]),
+        projectFoldStrip(quiet.map(([r]) => r), win), el("div", { class: "pd-note-cell" }, [note ? projectNoteNode(note) : null])]));
+    }
+    if (pdQuietOpen) body.push(el("div", { class: "pd-fold-end" }, [projectFoldButton(quiet.length)]));
+  }
+  return el("section", { class: "pd-gantt pd-timeline" }, body);
+}
+
+// ---- 列表: one row per project, the same strip in miniature ----
+function projectOpenCell(r) {
+  const owed = projectOwed(r).length, waiting = (r.open || []).filter(i => i.kind === "waiting").length;
+  const agents = (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length, late = projectLate(r);
+  const parts = [owed ? el("span", { class: late ? "red" : "", text: pdT("You owe {n}", { n: owed }) }) : null,
+    waiting ? el("span", { text: pdT("Waiting {n}", { n: waiting }) }) : null, agents ? el("span", { class: "mut", text: pdT("Agents {n}", { n: agents }) }) : null].filter(Boolean);
+  return parts.length ? parts.flatMap((part, i) => i ? [el("span", { class: "mut", text: " · " }), part] : [part]) : [el("span", { class: "mut", text: "—" })];
+}
+// What REM has on file, in words: the squares P大 could not read are now the names of the gaps.
+function projectKnownCell(r) {
+  const known = projectKnown(r);
+  if (projectMapped(r)) return el("span", { class: "pd-pencil-word", text: pdT("Not investigated") });
+  if (!known) return el("span", { class: "mut", text: "—" });
+  const have = known.filter(([, ok]) => ok).map(([label]) => pdT(label)), lack = known.filter(([, ok]) => !ok).map(([label]) => pdT(label));
+  const title = pdT("On file: {known}. Not on file: {missing}.", { known: have.join(pdT(", ")) || pdT("nothing"), missing: lack.join(pdT(", ")) || pdT("nothing") });
+  if (!lack.length) return el("span", { class: "mut", title, text: pdT("All 7 on file") });
+  return lack.length <= have.length ? el("span", { title, text: pdT("Missing: {list}", { list: lack.join(pdT(", ")) }) })
+    : el("span", { title, text: pdT("Only: {list}", { list: have.join(pdT(", ")) || pdT("nothing") }) });
+}
+function projectReadCell(r) {
+  const c = projectCoverage(r);
+  return c ? el("span", { class: c.read < c.of ? "pd-partial" : "", text: c.read + "/" + c.of }) : el("span", { class: "pd-pencil-word", text: pdT("No record") });
+}
+function projectLastCell(r) {
+  const last = projectLast(r), days = projectSessionDays(r).length;
+  return [el("span", { class: "pd-when" }, [last ? pdDay(calendarDay(last)) : "—", last ? projectCite(r, "last_activity") : null]),
+    el("small", { text: days ? pdT(days === 1 ? "1 session day" : "{n} session days", { n: days }) : pdT("No sessions") })];
+}
+function projectHealthCell(r) {
+  const tier = projectTier(r), late = projectLate(r);
+  return [el("span", { class: tier === "off_track" ? "red" : "", text: pdT(PD_HEALTH[tier]) }), late ? el("small", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null];
+}
+function projectListRow(r, host, win, note) {
+  return el("div", { class: "pd-lrow" + (host ? " kid" : ""), "data-path": r.path }, [
+    el("div", { class: "pd-lname" }, [projectNameNode(r, host), note ? projectNoteNode(note, true) : null]),
+    el("div", { class: "pd-lhealth" }, projectHealthCell(r)), el("div", { class: "pd-llast" }, projectLastCell(r)),
+    el("div", { class: "pd-lstrip" }, [projectStrip(r, win)]), el("div", { class: "pd-lopen" }, projectOpenCell(r)),
+    el("div", { class: "pd-lknown" }, [projectKnownCell(r)]), el("div", { class: "pd-lread" }, [projectReadCell(r)])]);
+}
+function projectList(all, tree, win, notes) {
+  const { groups, quiet } = projectGroups(tree.top, tree.kids);
+  const head = el("div", { class: "pd-lrow pd-lhead" }, [el("div", { text: pdT("Project · REM's line") }), el("div", { text: pdT("Health") }),
+    el("div", { text: pdT("Latest") }), el("div", { class: "pd-lstrip" }, [pdDay(win.a) + " – " + pdDay(win.b) + " ", el("span", { class: "mut", text: pdT("Today") + " | " + pdT("forecast →") })]),
+    el("div", { text: pdT("Open promises") }), el("div", { text: pdT("On file (7)") }), el("div", { text: pdT("REM read") })]);
+  const body = [head];
+  for (const [tier, rows] of groups) {
+    body.push(projectGroupHead(tier, rows.length));
+    for (const [r, host] of rows) body.push(projectListRow(r, host, win, notes.get(r.path)));
+  }
+  if (quiet.length) {
+    body.push(projectGroupHead("quiet", quiet.length));
+    if (pdQuietOpen) {
+      for (const [r, host] of quiet) body.push(projectListRow(r, host, win, notes.get(r.path)));
+      body.push(el("div", { class: "pd-fold-end" }, [projectFoldButton(quiet.length)]));
+    } else {
+      const latest = quiet.map(([r]) => projectLast(r) && calendarDay(projectLast(r))).filter(Boolean).sort().at(-1), note = projectFoldNote(quiet, notes);
+      body.push(el("div", { class: "pd-lrow pd-fold" }, [
+        el("div", { class: "pd-lname" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
+          el("small", { class: "pd-fold-names", text: quiet.map(([r]) => r.title).join(" · ") }), note ? projectNoteNode(note, true) : null]),
+        el("div", { class: "pd-lhealth mut", text: pdT("Quiet") }), el("div", { class: "pd-llast mut", text: latest ? pdT("latest {date}", { date: pdDay(latest) }) : "—" }),
+        el("div", { class: "pd-lstrip" }, [projectFoldStrip(quiet.map(([r]) => r), win)]), el("div", { class: "pd-lopen" }), el("div", { class: "pd-lknown" }), el("div", { class: "pd-lread" })]));
+    }
+  }
+  return el("section", { class: "pd-list" }, body);
+}
+
+// ---- 看板: the axis is a question ----
+function projectCard(r, win, note, extra) {
+  const c = projectCoverage(r), last = projectLast(r);
+  return el("article", { class: "pd-card" + (c && c.read / c.of < 0.2 ? " weak" : "") + (projectTier(r) === "off_track" ? " late" : ""), "data-path": r.path }, [
+    el("div", { class: "pd-card-head" }, [projectNameNode(r), el("span", { class: "pd-when" }, [last ? pdDay(calendarDay(last)) : "", last ? projectCite(r, "last_activity") : null])]),
+    note ? projectNoteNode(note, true) : null, extra ? el("p", { class: "pd-card-extra", text: extra }) : null,
+    el("div", { class: "pd-card-foot" }, [projectStrip(r, win), c ? el("span", { class: c.read < c.of ? "pd-partial" : "", text: pdT("read {r}/{a}", { r: c.read, a: c.of }) }) : null])]);
+}
+function projectCompact(rows, line) {
+  return el("ul", { class: "pd-compact" }, rows.map(r => el("li", {}, [line ? el("span", { class: "mut", text: line(r) }) : null, el("a", { href: href(r), text: r.title })])));
+}
+function projectColumn(title, caption, children, red = false) {
+  return el("section", { class: "pd-colm" + (red ? " red" : "") }, [
+    el("h2", {}, [el("span", { text: title }), el("small", { text: caption })]), ...(children.length ? children : [el("p", { class: "pd-empty", text: pdT("Nothing here") })])]);
+}
+function projectBoardHealth(all, win, notes) {
+  const by = tier => all.filter(r => projectTier(r) === tier).sort(projectRank), counts = projectTierCounts(all);
+  const coming = by("on_track").map(r => [r, projectQuietOn(r)]).filter(([, day]) => day > win.today && day <= win.b).sort((a, b) => a[1].localeCompare(b[1]));
+  const quiet = [...by("quiet"), ...by("done")].sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
+  const say = [pdT("{off} off track, {risk} at risk, {ok} on track, {quiet} quiet.", counts),
+    coming.length ? pdT("If no session comes, {n} more turn quiet by {date} under the 30-day rule, the first on {first}.", { n: coming.length, date: pdDay(win.b), first: pdDay(coming[0][1]) }) : ""].filter(Boolean).join(" ");
+  const pencil = coming.length ? el("div", { class: "pd-pencil-box" }, [el("p", { class: "pd-pencil-head" }, [pdT("Pencil · arriving here by {date}", { date: pdDay(win.b) }), el("span", { class: "tag", text: pdT("forecast · 30-day rule") })]),
+    projectCompact(coming.map(([r]) => r), r => pdDay(projectQuietOn(r)))]) : null;
+  const cols = ["off_track", "at_risk", "on_track"].map(tier => projectColumn(pdT(PD_HEALTH[tier]), pdT(PD_RULES[tier]), by(tier).map(r => projectCard(r, win, notes.get(r.path))), tier === "off_track"));
+  cols.push(projectColumn(pdT("Quiet"), pdT(PD_RULES.quiet), [pencil, quiet.length ? el("p", { class: "pd-sub", text: pdT("{n} already quiet", { n: quiet.length }) }) : null,
+    quiet.length ? projectCompact(quiet, r => projectLast(r) ? pdDay(calendarDay(projectLast(r))) : "") : null].filter(Boolean)));
+  return [say, cols];
+}
+function projectBoardWaiting(all, win, notes) {
+  const owedRows = all.filter(r => projectOwed(r).length), waitRows = all.filter(r => !owedRows.includes(r) && (r.open || []).some(i => i.kind === "waiting"));
+  const agentRows = all.filter(r => !owedRows.includes(r) && !waitRows.includes(r) && (r.open || []).some(i => i.kind === "agent" || i.kind === "answerable"));
+  const none = all.filter(r => ![owedRows, waitRows, agentRows].some(rows => rows.includes(r)));
+  const names = (r, kind) => [...new Set((r.open || []).filter(i => i.kind === kind && !(kind === "owed" && i.project_match?.needs_review)).map(i => pdWho(i.who)).filter(Boolean))];
+  const line = r => [projectOwed(r).length ? (names(r, "owed").length ? pdT("You owe: {names}", { names: names(r, "owed").join(pdT(", ")) }) + " · " : "") + pdT("{n} things", { n: projectOwed(r).length }) : "",
+    names(r, "waiting").length ? pdT("Waiting on: {names}", { names: names(r, "waiting").join(pdT(", ")) }) : ""].filter(Boolean).join(" ／ ");
+  const agents = r => pdT("{n} with agents", { n: (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length });
+  const say = pdT("You owe {n} things across {p} projects and wait on others for {w}; {a} projects hold only agent instructions.",
+    { n: owedRows.reduce((n, r) => n + projectOwed(r).length, 0), p: owedRows.length, w: all.reduce((n, r) => n + (r.open || []).filter(i => i.kind === "waiting").length, 0), a: agentRows.length });
+  return [say, [
+    projectColumn(pdT("You owe others"), pdT("the owner owes someone"), owedRows.sort(projectRank).map(r => projectCard(r, win, null, line(r)))),
+    projectColumn(pdT("You wait on others"), pdT("someone owes the owner"), waitRows.sort(projectRank).map(r => projectCard(r, win, null, line(r)))),
+    projectColumn(pdT("Only with agents"), pdT("instructions to agents"), agentRows.length ? [projectCompact(agentRows.sort(projectRank), agents)] : []),
+    projectColumn(pdT("No open promise"), pdT("nothing open"), none.length ? [projectCompact(none.sort(projectRank))] : [])]];
+}
+function projectBoardDrop(all, win, notes) {
+  const quiet = all.filter(r => ["quiet", "done"].includes(projectTier(r)));
+  const held = r => projectOwed(r).length || (r.open || []).some(i => i.kind === "waiting");
+  const drop = quiet.filter(r => !held(r)), open = quiet.filter(held), moving = all.filter(r => !quiet.includes(r));
+  const say = el("span", {}, pdT("{n} projects have had no activity for 30 days and nobody waits on them: they {can}. {m} are quiet with a promise still open.", { n: drop.length, m: open.length, can: "\u0000" })
+    .split("\u0000").flatMap((part, i) => i ? [el("span", { class: "pd-inf", text: pdT("can be set down") }), part] : [part]));
+  const last = r => projectLast(r) ? pdDay(calendarDay(projectLast(r))) : "";
+  return [say, [
+    projectColumn(pdT("Can be set down"), pdT("quiet and nobody waiting"), drop.length ? [el("span", { class: "tag", text: pdT("Inference") }), projectCompact(drop.sort((a, b) => projectLast(a).localeCompare(projectLast(b))), last)] : []),
+    projectColumn(pdT("Quiet, promises still open"), pdT("quiet, someone still waits"), open.map(r => projectCard(r, win, notes.get(r.path)))),
+    projectColumn(pdT("Still moving"), pdT("activity within 30 days"), moving.length ? [projectCompact(moving.sort(projectRank), last)] : [])]];
+}
+function projectBoardSame(all, win, pairs) {
+  const sessions = pairs.filter(p => p.kind === "sessions"), page = pairs.filter(p => p.kind === "page"), name = pairs.filter(p => p.kind === "name");
+  const touched = new Set(pairs.flatMap(p => p.rows || [p.a, p.b]));
+  const rest = all.filter(r => !touched.has(r));
+  // Names first, as links; then the basis and REM's reading of it, in pencil.
+  const pairCard = (rows, basis) => el("article", { class: "pd-card pd-pair" }, [
+    el("div", { class: "pd-pair-names" }, rows.flatMap((r, i) => [i ? el("span", { class: "mut", text: rows.length === 2 ? " · " : pdT(", ") }) : null, el("a", { href: href(r), text: r.title })])),
+    el("p", { class: "pd-card-extra" }, [el("span", { class: "pd-inf", text: basis }), el("span", { class: "tag", text: pdT("Inference") })])]);
+  const say = pdT("{g} groups may each be one project: {s} share sessions, {t} are marked on their page, {u} have similar names; the other {rest} show no signal. All are inferences; REM merges nothing by itself.",
+    { g: pairs.length, s: sessions.length, t: page.length, u: name.length, rest: rest.length });
+  return [say, [
+    projectColumn(pdT("Shared sessions"), pdT("85% or more of the smaller one's sessions"), sessions.map(p => pairCard([p.a, p.b], pdT(p.inside ? "{k} of {a}'s {n} sessions are {b}'s too · may be part of it" : "{k}/{n} sessions shared · may be one project", { a: p.a.title, b: p.b.title, k: p.k, n: p.n })))),
+    projectColumn(pdT("Marked on the page"), pdT("REM's same_as suggestion"), page.map(p => pairCard([p.a, p.b], pdT("REM's same_as suggestion")))),
+    projectColumn(pdT("Similar names"), pdT("a distinctive shared word"), name.map(p => pairCard(p.rows, pdT("all contain “{word}”", { word: p.word })))),
+    projectColumn(pdT("No signal"), pdT("{n} projects", { n: rest.length }), rest.length ? [projectCompact(rest.sort(projectRank))] : [])]];
+}
+function projectBoard(all, win, notes, pairs, ask) {
+  const [say, cols] = ask === "waiting" ? projectBoardWaiting(all, win, notes) : ask === "drop" ? projectBoardDrop(all, win, notes)
+    : ask === "same" ? projectBoardSame(all, win, pairs) : projectBoardHealth(all, win, notes);
+  return el("section", { class: "pd-board", "data-ask": ask }, [
+    el("div", { class: "pd-asks" }, [el("span", { class: "mut", text: pdT("The board's axis is a question:") }),
+      el("div", { class: "pd-seg" }, PD_ASKS.map(([key, name]) => el("a", { href: pdHref({ ask: key }), class: key === ask ? "on" : "", "aria-pressed": String(key === ask), text: pdT(name) })))]),
+    el("p", { class: "pd-answer" }, [say]), el("div", { class: "pd-cols" }, cols)]);
+}
+
+// ---- the page ----
+// Every count, column and date comes from all project pages, sub-projects included; the
+// timeline and list nest a sub-project under its project, and nothing is merged.
+function projectsView() {
+  PD_SESSIONS = null;
+  const state = pdParams(), all = inCategory("projects").sort(projectRank), tree = projectTree(all), win = projectWindow(state.zoom);
+  const pairs = projectPairs(all), notes = projectNotes(all, pairs);
+  const body = state.view === "list" ? projectList(all, tree, win, notes) : state.view === "board" ? projectBoard(all, win, notes, pairs, state.ask) : projectTimeline(all, tree, win, notes);
+  document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view, "data-zoom": state.zoom }, [
+    projectHead(all, state), projectLede(all, win), el("hr", { class: "pd-rule" }), state.view === "board" ? null : projectLegend(), body]));
+}
+
 // The hero line is a glance: each part is cut at its first clause.
 function firstClause(text) {
   const clause = plainLine(text).replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "").split(/[，,；;。]|\s[—–]\s/)[0].trim();
@@ -6662,59 +7388,8 @@ function firstClause(text) {
   const cut = short.slice(0, 39), space = cut.lastIndexOf(" ");
   return (space > 24 ? cut.slice(0, space) : cut) + "…";
 }
-function projectHero(r, days) {
-  const f = facts(r), open = f.open.length;
-  const standing = [...(section(r, "where it stands")?.text || "").matchAll(/^\s*-\s+(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]).sort().at(-1);
-  const shipped = newestStanding(r) ? [standing ? fmtDate(standing) : "", firstClause(newestStanding(r))].filter(Boolean).join(" ") : "";
-  const latest = [...f.open].sort((a, b) => (b.since || "").localeCompare(a.since || ""))[0];
-  const newest = [latest.since ? fmtDate(latest.since) : "", firstClause(latest.text)].filter(Boolean).join(" ");
-  const recent = projectRecent(days);
-  const line = [shipped, recent ? t("{n} sessions in 30 days", { n: recent }) : "", t("Newest: {what}", { what: newest })].filter(Boolean).join(" · ");
-  return el("section", { class: "project-hero", "aria-label": t("Busiest this week") }, [
-    el("div", { class: "project-hero-text" }, [
-      el("p", { class: "project-hero-kicker" }, [el("span", { class: "chip lamp", text: t(open === 1 ? "{n} open item" : "{n} open items", { n: open }) }), t("Busiest this week")]),
-      el("h2", {}, [el("a", { href: href(r), text: r.title })]),
-      el("p", { class: "project-hero-line", text: line })]),
-    projectWeeks(days),
-    el("a", { class: "btn-act project-hero-go", href: href(r) + "&h=open-threads", text: t("Go through them one by one") })]);
-}
-// Busiest = the most open items among projects that moved this week; else the most open items anywhere.
-function projectBusiest(items) {
-  const open = items.filter(r => facts(r).open.length && !r.private_project).sort((a, b) => facts(b).open.length - facts(a).open.length);
-  return open.find(r => projectLane(r) === "week") || open[0];
-}
-function projectLaneNode(lane, label, rows, days, shown, caption) {
-  const list = el("ul", { class: "project-lane-cards" }, rows.slice(0, 7).map(r => projectCard(r, days.get(r.path) || [])));
-  const more = rows.length > 7 ? sessionButton(t("{n} more projects", { n: rows.length - 7 }), () => {
-    list.append(...rows.slice(7).map(r => projectCard(r, days.get(r.path) || []))); more.remove(); }, { class: "project-lane-more" }) : null;
-  return el("section", { class: "project-lane", "data-lane": lane, "aria-label": t(label), ...(shown ? {} : { "data-hidden": "" }) }, [
-    el("h2", { class: "project-lane-head" }, [el("span", { text: t(label) }), el("span", { class: "n", text: String(rows.length) }),
-      el("span", { class: "project-lane-caption", text: t(caption) })]), list, more]);
-}
 // The second half of a page title: same line on desktop, its own line on phone.
 function pageStateSub(text) { return el("span", { class: "page-state-sub" }, [el("span", { class: "sep", text: " · " }), text]); }
-function projectsBoard() {
-  const main = document.getElementById("main"), items = inCategory("projects").sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
-  // The lifted project is not repeated in its lane.
-  const days = projectSessionDays(), busiest = projectBusiest(items), week = items.filter(r => projectLane(r) === "week").length;
-  const lanes = PROJECT_LANES.map(([key, label, , caption]) => [key, label, items.filter(r => r !== busiest && projectLane(r) === key), caption]);
-  main.replaceChildren(el("div", { class: "projects-view" }, [
-    el("p", { class: "page-kicker", text: label("projects") }),
-    el("h1", { class: "page-state" }, [t("{n} projects", { n: items.length }), week ? pageStateSub(t("{n} active this week", { n: week })) : null]),
-    busiest ? projectHero(busiest, days.get(busiest.path) || []) : null,
-    projectBoardLanes(lanes, days)]));
-}
-// Phone shows one lane at a time; the segmented control picks it.
-function projectBoardLanes(lanes, days) {
-  const first = lanes.find(([, , rows]) => rows.length)?.[0] || "week";
-  const board = el("div", { class: "project-board" }, lanes.map(([key, label, rows, caption]) => projectLaneNode(key, label, rows, days, key === first, caption)));
-  const tabs = el("div", { class: "project-lane-tabs", role: "group", "aria-label": t("When") }, lanes.map(([key, label]) =>
-    sessionButton(label, () => {
-      for (const lane of board.children) lane.toggleAttribute("data-hidden", lane.dataset.lane !== key);
-      for (const tab of tabs.children) tab.setAttribute("aria-pressed", String(tab.dataset.lane === key));
-    }, { "data-lane": key, "aria-pressed": String(key === first) })));
-  return el("div", {}, [tabs, board]);
-}
 
 // ---------- organisations: the list (#c=orgs) and one organisation's page ----------
 // An organisation answers, in this order: what it is to you, what you owe it,
