@@ -2346,6 +2346,202 @@
     .ov-r6 .ov-section > .ov-btn.ghost { margin-left: 0; }
   }
 </style>
+<style id="graph-style">
+  /* Graph and topics (#view=graph, #c=knowledge, a topic page, the local graph in rails).
+     Bauhaus lightness: ink geometry on paper, shape = kind, four type sizes, two weights, no boxes in boxes. */
+  :root:has(#main > .gx:not(.gx-attach)) { --paper: #f6f6f3; }
+  .gx {
+    --gx-bg: #f6f6f3; --gx-surface: #fff; --gx-ink: #121a15; --gx-ink2: #4b554f; --gx-ink3: #79827c; --gx-ink4: #b4bab6;
+    --gx-line: rgba(18,26,21,.1); --gx-rule: #121a15; --gx-hover: rgba(15,23,18,.045);
+    --gx-knowledge: #121a15; --gx-people: #4b554f; --gx-orgs: #121a15; --gx-projects: #121a15; --gx-notes: #79827c; --gx-sessions: #b4bab6;
+    --gx-edge: rgba(18,26,21,.16); --gx-topic-edge: rgba(18,26,21,.34);
+    --gx-act: #22d27a; --gx-act-hover: #1bbf6c; --gx-act-ink: #05301b;
+    --gx-lift: 0 0 0 1px var(--gx-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
+    --gx-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    color: var(--gx-ink); font: 400 14px/22px var(--gx-font); font-feature-settings: "tnum" 1;
+  }
+  :root[data-theme="dark"]:has(#main > .gx:not(.gx-attach)) { --paper: #0e110f; }
+  :root[data-theme="dark"] .gx {
+    --gx-bg: #0e110f; --gx-surface: #161a17; --gx-ink: #ecefec; --gx-ink2: #a9b1ac; --gx-ink3: #7d867f; --gx-ink4: #4b524d;
+    --gx-line: rgba(255,255,255,.08); --gx-rule: #ecefec; --gx-hover: rgba(255,255,255,.05);
+    --gx-knowledge: #ecefec; --gx-people: #a9b1ac; --gx-orgs: #ecefec; --gx-projects: #ecefec; --gx-notes: #7d867f; --gx-sessions: #4b524d;
+    --gx-edge: rgba(236,239,236,.13); --gx-topic-edge: rgba(236,239,236,.3);
+    --gx-act: #3be38f; --gx-act-hover: #58ea9f; --gx-lift: 0 0 0 1px rgba(255,255,255,.13), 0 16px 40px -8px rgba(0,0,0,.6);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):has(#main > .gx:not(.gx-attach)) { --paper: #0e110f; }
+    :root:not([data-theme="light"]) .gx {
+      --gx-bg: #0e110f; --gx-surface: #161a17; --gx-ink: #ecefec; --gx-ink2: #a9b1ac; --gx-ink3: #7d867f; --gx-ink4: #4b524d;
+      --gx-line: rgba(255,255,255,.08); --gx-rule: #ecefec; --gx-hover: rgba(255,255,255,.05);
+      --gx-knowledge: #ecefec; --gx-people: #a9b1ac; --gx-orgs: #ecefec; --gx-projects: #ecefec; --gx-notes: #7d867f; --gx-sessions: #4b524d;
+      --gx-edge: rgba(236,239,236,.13); --gx-topic-edge: rgba(236,239,236,.3);
+      --gx-act: #3be38f; --gx-act-hover: #58ea9f; --gx-lift: 0 0 0 1px rgba(255,255,255,.13), 0 16px 40px -8px rgba(0,0,0,.6);
+    }
+  }
+  .gx a { color: inherit; text-decoration: none; }
+  .gx h1, .gx h2, .gx h3, .gx h4, .gx p { margin: 0; }
+  .gx button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .gx .gx-glyph { flex: none; display: block; }
+  .gx-statement { font: 700 52px/60px var(--gx-font); letter-spacing: -.035em; }
+  .gx-lede { font-size: 17px; line-height: 27px; color: var(--gx-ink2); margin-top: 12px; max-width: 640px; }
+  .gx-quiet, .gx-quiet-line { color: var(--gx-ink3); font-size: 12px; line-height: 18px; }
+  .gx-quiet-line { margin-top: 16px; }
+  .gx-quiet-line a, .gx-link { color: var(--gx-ink2); font-size: 14px; text-decoration: underline; text-decoration-color: var(--gx-line); text-underline-offset: 4px; }
+  .gx-link { display: inline-block; margin-top: 16px; }
+  .gx-link:hover, .gx-quiet-line a:hover { color: var(--gx-ink); text-decoration-color: currentColor; }
+
+  /* ---- the settled map: full bleed, heading over the canvas, panel at the right ---- */
+  #main:has(> .gx-map) { padding: 0; max-width: none; }
+  .gx-map { position: relative; height: 100vh; overflow: hidden; background: var(--gx-bg); }
+  .gx-stage { position: absolute; inset: 0; }
+  .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .gx-head { position: absolute; z-index: 2; left: 40px; top: 32px; right: 436px; pointer-events: none; }
+  .gx-head > * { pointer-events: auto; }
+  .gx-title { font: 700 52px/60px var(--gx-font); letter-spacing: -.035em; width: fit-content; }
+  .gx-soft { display: block; font: 400 17px/27px var(--gx-font); letter-spacing: 0; color: var(--gx-ink3); margin-top: 2px; }
+  .gx-bar { display: flex; align-items: flex-end; gap: 32px; margin-top: 18px; flex-wrap: wrap; width: fit-content; }
+  .gx-find { position: relative; width: 320px; }
+  .gx-search { width: 100%; height: 36px; border: 0; border-bottom: 1.5px solid var(--gx-rule); background: transparent; color: var(--gx-ink); font: 400 14px var(--gx-font); padding: 0 28px 0 0; border-radius: 0; }
+  .gx-search::placeholder { color: var(--gx-ink3); }
+  .gx-search:focus { outline: none; border-bottom-color: var(--gx-ink); }
+  .gx-search::-webkit-search-cancel-button { display: none; }
+  .gx-clear { position: absolute; right: 2px; top: 8px; width: 20px; height: 20px; color: var(--gx-ink3) !important; font-size: 12px !important; }
+  .gx-results { position: absolute; left: 0; right: 0; top: 42px; margin: 0; padding: 6px; list-style: none; background: var(--gx-surface); border-radius: 12px; box-shadow: var(--gx-lift); z-index: 5; }
+  .gx-results li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .gx-results li:hover { background: var(--gx-hover); }
+  .gx-results small { margin-left: auto; color: var(--gx-ink3); font-size: 12px; }
+  .gx-tabs { display: flex; gap: 20px; }
+  .gx-tabs button { height: 36px; color: var(--gx-ink3) !important; border-bottom: 1.5px solid transparent !important; }
+  .gx-tabs button[aria-selected="true"] { color: var(--gx-ink) !important; font-weight: 700; border-bottom-color: var(--gx-rule) !important; }
+  .gx-legend { position: absolute; left: 40px; right: 540px; bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 12px; line-height: 18px; color: var(--gx-ink2); pointer-events: none; }
+  .gx-key { display: inline-flex; align-items: center; gap: 6px; }
+  .gx-key-head { color: var(--gx-ink3); }
+  .gx-zoom { position: absolute; right: 420px; bottom: 16px; display: flex; gap: 2px; }
+  .gx-zoom button { width: 32px; height: 32px; color: var(--gx-ink2) !important; font-size: 16px !important; border-radius: 8px !important; }
+  .gx-zoom button:hover { background: var(--gx-hover) !important; color: var(--gx-ink) !important; }
+  .gx-tip { position: absolute; pointer-events: none; padding: 4px 9px; border-radius: 7px; background: var(--gx-ink); color: var(--gx-bg); font-size: 12px; white-space: nowrap; }
+  .gx-tip[hidden] { display: none; }
+  .gx-empty { padding: 200px 40px; color: var(--gx-ink3); }
+
+  /* The panel is a transient layer, so it may be a card: the one lifted object on the map. */
+  .gx-panel { position: absolute; right: 24px; top: 24px; bottom: 24px; width: 348px; display: flex; flex-direction: column; background: var(--gx-surface); border-radius: 18px; box-shadow: var(--gx-lift); overflow: hidden; z-index: 3; }
+  .gx-panel-head { padding: 22px 22px 18px; border-bottom: 1px solid var(--gx-line); }
+  .gx-kicker { display: flex; align-items: center; gap: 8px; color: var(--gx-ink3); font-size: 12px; }
+  .gx-panel h2 { font: 700 17px/27px var(--gx-font); margin-top: 6px; overflow-wrap: anywhere; }
+  .gx-panel-head p { color: var(--gx-ink2); margin-top: 4px; }
+  .gx-counts { display: flex; gap: 18px; margin-top: 12px; color: var(--gx-ink3); font-size: 12px; line-height: 18px; }
+  .gx-counts b { display: block; color: var(--gx-ink); font-size: 17px; line-height: 24px; }
+  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: 10px; background: var(--gx-act); color: var(--gx-act-ink) !important; font-weight: 700; transition: background-color 120ms ease-out; }
+  .gx-open:hover { background: var(--gx-act-hover); }
+  .gx-depth { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 12px; color: var(--gx-ink3); }
+  .gx-depth button { color: var(--gx-ink3) !important; border-bottom: 1.5px solid transparent !important; line-height: 20px; }
+  .gx-depth button[aria-pressed="true"] { color: var(--gx-ink) !important; font-weight: 700; border-bottom-color: var(--gx-rule) !important; }
+  .gx-depth .gx-quiet { margin-left: auto; }
+  .gx-panel-body { flex: 1; overflow: auto; padding: 4px 12px 18px; }
+  .gx-panel-body h3 { display: flex; font-size: 12px; font-weight: 700; color: var(--gx-ink3); padding: 16px 10px 6px; }
+  .gx-panel-body h3 span { margin-left: auto; font-weight: 400; }
+  .gx-item { display: flex !important; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: 8px !important; min-height: 40px; }
+  .gx-item:hover { background: var(--gx-hover) !important; }
+  .gx-item-body { min-width: 0; display: flex; flex-direction: column; }
+  .gx-item b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-item small { font-size: 12px; line-height: 16px; color: var(--gx-ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-more { display: block; color: var(--gx-ink3) !important; font-size: 12px !important; padding: 4px 10px 4px 36px !important; text-align: left; }
+
+  /* ---- topics: the list and the record ---- */
+  .gx-topics, .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
+  .gx-rows { margin-top: 36px; border-top: 1.5px solid var(--gx-rule); }
+  .gx-rows li a { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--gx-line); }
+  .gx-rows li a:hover b { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .gx-row-body b { font-weight: 700; }
+  .gx-row-body small, .gx-row-meta { color: var(--gx-ink3); font-size: 12px; line-height: 18px; }
+  .gx-row-meta { white-space: nowrap; }
+  .gx-crumb { color: var(--gx-ink3) !important; font-size: 12px; }
+  .gx-topic-name { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+  .gx-topic-name h1 { overflow-wrap: anywhere; }
+  .gx-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; margin-top: 28px; padding-top: 14px; border-top: 1.5px solid var(--gx-rule); }
+  .gx-stats div { display: flex; flex-direction: column; }
+  .gx-stats b { font: 700 17px/27px var(--gx-font); }
+  .gx-stats span { color: var(--gx-ink3); font-size: 12px; line-height: 18px; }
+  .gx-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 56px; margin-top: 40px; }
+  .gx-sec + .gx-sec { margin-top: 40px; }
+  .gx-sec > h2 { display: flex; align-items: baseline; gap: 10px; font: 700 17px/27px var(--gx-font); padding-bottom: 8px; border-bottom: 1.5px solid var(--gx-rule); }
+  .gx-sec > h2 span { color: var(--gx-ink3); font: 400 12px var(--gx-font); }
+  .gx-group h3 { display: flex; font-size: 12px; line-height: 18px; font-weight: 700; color: var(--gx-ink3); margin-top: 20px; }
+  .gx-group h3 span { margin-left: auto; font-weight: 400; }
+  .gx-link-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--gx-line); }
+  .gx-link-row > .gx-glyph { margin-top: 4px; }
+  .gx-row-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .gx-row-name a { font-weight: 700; white-space: nowrap; }
+  .gx-row-name a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-row-name small { color: var(--gx-ink3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-link-row p { color: var(--gx-ink2); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .gx-said b { color: var(--gx-ink); font-weight: 700; }
+  .gx-link-row time { color: var(--gx-ink3); font-size: 12px; line-height: 22px; white-space: nowrap; }
+  .gx-group .gx-more { padding: 10px 0 !important; }
+  .gx-group .gx-more:hover { color: var(--gx-ink) !important; }
+  .gx-time { display: block; width: 100%; height: 36px; margin-top: 16px; overflow: visible; }
+  .gx-time line { stroke: var(--gx-rule); stroke-width: 1.5; }
+  .gx-time circle { fill: var(--gx-ink); fill-opacity: .55; }
+  .gx-time-ends { display: flex; justify-content: space-between; gap: 16px; color: var(--gx-ink3); font-size: 12px; line-height: 18px; margin-top: 4px; }
+  .gx-time-ends span:nth-child(2) { color: var(--gx-ink2); text-align: center; }
+  .gx-prose { margin-top: 12px; color: var(--gx-ink2); }
+  .gx-prose ul { margin: 0; padding-left: 18px; }
+  .gx-rail { display: flex; flex-direction: column; gap: 0; }
+  .gx-rail h4, .gx-attach h4 { font-size: 12px; line-height: 18px; font-weight: 700; color: var(--gx-ink3); margin: 28px 0 8px; }
+  .gx-rail > :first-child h4, .gx-attach > :first-child h4 { margin-top: 0; }
+  .gx-rail-list li { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--gx-line); }
+  .gx-rail-list a { display: flex; align-items: center; gap: 8px; }
+  .gx-rail-list small { color: var(--gx-ink3); font-size: 12px; line-height: 18px; padding-left: 20px; }
+  .gx-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; font-size: 12px; line-height: 18px; }
+  .gx-kv dt { color: var(--gx-ink3); }
+  .gx-kv dd { margin: 0; color: var(--gx-ink); overflow-wrap: anywhere; }
+
+  /* ---- the local graph: in a topic's rail, and above a person, organisation or project rail ---- */
+  .gx-attach { margin-bottom: 24px; }
+  .gx .gx-local-svg { display: block; width: 100%; max-width: 260px; height: auto; overflow: visible; }
+  .gx-attach.gx-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 40px; max-width: 1000px; margin: 40px 0; padding-top: 12px; border-top: 1.5px solid var(--gx-rule); }
+  .gx-attach.gx-inline .gx-local { width: 260px; }
+  .gx-attach.gx-inline .gx-topic-line { flex: 1; min-width: 200px; margin: 0 0 24px !important; font-size: 14px; line-height: 22px; }
+  .gx-local-lines line { stroke: var(--gx-edge); stroke-width: 1; }
+  .gx-local-lines line.topic { stroke: var(--gx-topic-edge); }
+  .gx-local-svg text { font: 400 10.5px var(--gx-font); fill: var(--gx-ink2); paint-order: stroke; stroke: var(--gx-bg); stroke-width: 3px; }
+  .gx-local-svg text.centre { font-weight: 700; fill: var(--gx-ink); font-size: 12px; }
+  .gx-local-svg a:hover > :not(title) { opacity: .6; }
+  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; line-height: 18px; color: var(--gx-ink3); }
+  .gx-local-foot a { color: var(--gx-ink2) !important; text-decoration: underline; text-decoration-color: var(--gx-line); text-underline-offset: 3px; }
+  .gx-topic-line { margin-top: 10px !important; font-size: 12px; line-height: 18px; color: var(--gx-ink3); }
+  .gx-topic-line a { color: var(--gx-ink) !important; font-weight: 700; text-decoration: none !important; }
+
+  @media (prefers-reduced-motion: reduce) { .gx * { transition: none !important; } }
+  @media (max-width: 720px) {
+    .gx-statement, .gx-title { font-size: 34px; line-height: 40px; }
+    .gx-map { height: auto; overflow: visible; padding: 20px 16px 24px; }
+    .gx-head { position: static; right: auto; }
+    .gx-soft { font-size: 14px; line-height: 22px; }
+    .gx-bar { width: auto; gap: 12px; margin-top: 12px; }
+    .gx-find { width: 100%; }
+    .gx-tabs { overflow-x: auto; scrollbar-width: none; gap: 18px; width: 100%; }
+    .gx-tabs button { flex: none; }
+    .gx-stage { position: relative; inset: auto; height: 320px; margin: 4px -16px 0; }
+    .gx-legend, .gx-zoom { display: none; }
+    .gx-panel { position: static; width: auto; margin: 4px -4px 0; border-radius: 18px; max-height: none; }
+    .gx-panel-head { padding: 14px 18px 14px; }
+    .gx-panel-head p { display: none; }
+    .gx-counts { margin-top: 6px; }
+    .gx-open { margin-top: 12px; }
+    .gx-open { height: 46px; }
+    .gx-depth { display: none; }
+    .gx-panel-body { max-height: 360px; }
+    .gx-grid { grid-template-columns: 1fr; gap: 40px; margin-top: 32px; }
+    .gx-stats { gap: 10px 24px; }
+    .gx-stats div:nth-child(n+4) { display: none; }
+    .gx-link-row { grid-template-columns: 14px minmax(0, 1fr); }
+    .gx-link-row time { display: none; }
+    .gx-row-name { flex-wrap: wrap; }
+  }
+</style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -2366,6 +2562,7 @@
   </aside>
   <main id="main" tabindex="-1"></main>
 </div>
+<script id="graph-d3">/*__D3__*/</script>
 <script>
 "use strict";
 const REM = /*__REM_DATA__*/null;
@@ -3463,7 +3660,7 @@ function el(tag, attrs, children) {
   return node;
 }
 const CATEGORY_LABEL = {
-  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
+  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Topics",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
   agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
@@ -5254,6 +5451,7 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
   }
+  if (detailReady ? REM.graph?.nodes?.length : true) nav.appendChild(el("a", { href: "#view=graph", class: active === "graph" ? "active" : "" }, [el("span", { text: graphT("Graph") })]));
   nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("a", { href: "#view=activity", class: active === "activity" ? "active" : "" }, [el("span", { text: t("Activity") })]));
   nav.appendChild(el("div", { class: "gap" }));
@@ -6571,6 +6769,7 @@ function category(c) {
   if (c === "sessions") { sessionsView(); return; }
   if (c === "projects" && inCategory("projects").length) { projectsBoard(); return; }
   if (c === "orgs") { orgsView(); return; }
+  if (c === "knowledge") { topicList(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
@@ -8765,7 +8964,8 @@ function record(path, heading) {
     main.appendChild(orgPage(r));
     orgLayout();
     if (orgHidden(r)) return;
-  } else {
+  } else if (r.category === "knowledge") main.appendChild(topicPage(r));
+  else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
     head.appendChild(leadRow(r));
@@ -8898,6 +9098,7 @@ function record(path, heading) {
       target.classList.add("flash");
     } else if (target) target.scrollIntoView();
   }
+  graphRailAttach(main, r);
 }
 
 function highlight(line, needle) {
@@ -9094,7 +9295,7 @@ function cacheChineseInterface() {
 let entranceView = "";
 let detailLoad = null, detailReady = !REM?.deferred_details && !REM?.detail_url;
 function needsDetails(state) {
-  return state.record || state.category || state.query || state.reviews || ["activity", "changes"].includes(state.view);
+  return state.record || state.category || state.query || state.reviews || ["activity", "changes", "graph"].includes(state.view);
 }
 function loadDetails() {
   if (detailReady) return Promise.resolve();
@@ -9124,6 +9325,588 @@ function loadDetails() {
   });
   return detailLoad;
 }
+// ---------- graph and topics (sprint 11): a settled map, topic records, local graphs ----------
+// One layout over every real link, kept still so the owner learns where things sit; a search
+// or a click turns it into the neighbourhood of one record (art direction, knowledge round 1).
+const GRAPH_UI_ZH = {
+  "Graph": "图谱", "Topics": "主题", "People": "人物", "Organisations": "组织", "Projects": "项目",
+  "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
+  "{n} records linked together": "{n} 条记录连在一起", "{n} not linked yet": "{n} 条还没连上",
+  "Search people, organisations, topics": "搜索人、组织、主题，看它连着谁", "Clear focus": "清除聚焦",
+  "Shape = kind": "形状 = 类型", "size = links": "大小 = 连接数", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
+  "{n} records link to nothing yet": "另有 {n} 条还没连上任何记录", "Whole map": "整张图",
+  "Click a point to see what it connects": "点一个点，看它连着谁",
+  "Topics are the thread between people, organisations and projects. Start with one.": "主题是把人、组织和项目串起来的那根线。从一个主题开始最快。",
+  "Most connected": "连接最多", "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open topic page": "打开主题页",
+  "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
+  "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
+  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Topic": "主题", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
+  "Last mentioned": "最近提到", "First mentioned": "首次提到", "Aliases": "别名", "About": "关于",
+  "Local graph": "局部图谱", "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
+  "Related topics": "相关主题", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
+  "Linked here": "链接到这里", "Where you stand": "你现在在哪", "Timeline": "时间线", "Open threads": "还没结的线",
+  "Maybe related": "可能也相关", "Only the words match; REM did not count these as links.": "只是字面相同，REM 没把它们算成链接。",
+  "Confirm in Questions & connections →": "去「问题与连接」里确认 →",
+  "people": "位相关的人", "orgs": "个组织", "projects": "个项目", "sessions mention it": "个会话提到", "decisions": "条决定",
+  "Also named in {n} sessions and {m} skills": "另有 {n} 个会话、{m} 个技能提到它", "Also named in {n} sessions and 1 skill": "另有 {n} 个会话、1 个技能提到它",
+  "Also named in {n} sessions": "另有 {n} 个会话提到它",
+  "REM has not written this page yet · named in {n} records since {date}": "REM 还没写这一页 · 从 {date} 起在 {n} 条记录里出现",
+  "REM has not written this page yet": "REM 还没写这一页",
+  "{n} mentions, from {first} to {last}": "{n} 次提到，从 {first} 到 {last}",
+  "{n} topics": "{n} 个主题", "Subjects that tie your records together: a market, a course, a way of working.": "把记录串起来的主题：一门生意、一门课、一种做法。",
+  "{n} records": "{n} 条记录", "No topics yet": "还没有主题",
+  "Topics are filed when a subject recurs across your notes; none has yet.": "一个主题在笔记里反复出现后才会建页；现在还没有。",
+  "See them in the graph →": "在图谱里看 →", "Topics here": "相关主题", "Not in the graph yet": "图谱里还没有它",
+  "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
+};
+function graphT(key, values = {}) {
+  const words = uiLanguage === "zh" ? GRAPH_UI_ZH[key] : null;
+  return (words || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+}
+const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
+const GRAPH_NAME = { knowledge: "Topics", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
+const GRAPH_ONE = { knowledge: "Topic", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
+const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Topics"]];
+function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
+function graphPhone() { return innerWidth < 720; }
+function graphCss(name) { return getComputedStyle(document.querySelector(".gx") || document.documentElement).getPropertyValue(name).trim(); }
+
+// ---------- the model: nodes, edges, adjacency and one settled layout ----------
+let GRAPH = null;
+function graphModel() {
+  if (GRAPH && GRAPH.source === REM.graph) return GRAPH;
+  const source = REM.graph || { nodes: [], edges: [] };
+  const records = new Map(REM.records.map(r => [r.path, r]));
+  const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const edges = source.edges.filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
+  const adj = new Map();
+  for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
+  const linked = nodes.filter(n => adj.has(n.id));
+  graphLayout(linked, edges, byId);
+  GRAPH = { source: REM.graph, nodes, byId, edges, adj, linked, isolated: nodes.filter(n => !adj.has(n.id)) };
+  return GRAPH;
+}
+function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
+// A labelled-private record keeps its name only on this Mac and only while passages are shown.
+function graphHidden(n) { return n.private && (!n.r || document.documentElement.classList.contains("hide-private")); }
+function graphTitle(n) { return graphHidden(n) ? graphT("Personal") : topicName(n.r?.title || n.title || n.id).replace(" (automated candidate)", ""); }
+function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
+function graphShort(text, n = 22) { text = text.replace(/\s*\([^)]*\)\s*$/, ""); return [...text].length > n ? [...text].slice(0, n - 1).join("") + "…" : text; }
+function graphRadius(n) {
+  const d = GRAPH.adj.get(n.id)?.size || 0;
+  if (n.k === "sessions") return 1.8;
+  if (n.k === "knowledge") return Math.min(17, 6 + Math.sqrt(d) * 1.25);
+  return Math.max(3, Math.min(14, 2.6 + Math.sqrt(d) * 1.5));
+}
+// d3-force from a fixed start is deterministic: the same notebook always lands in the same place.
+function graphLayout(nodes, edges, byId) {
+  if (!nodes.length || typeof d3 === "undefined") return;
+  const links = edges.map(e => ({ source: e.s, target: e.t, k: e.k }));
+  const degree = id => links.filter(l => l.source === id || l.target === id).length;
+  const size = new Map(nodes.map(n => [n.id, degree(n.id)]));
+  const radius = n => n.k === "knowledge" ? Math.min(17, 6 + Math.sqrt(size.get(n.id)) * 1.25) : Math.max(3, Math.min(14, 2.6 + Math.sqrt(size.get(n.id)) * 1.5));
+  d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 70 : 34).strength(l => l.k === "topic" ? .06 : .5))
+    .force("charge", d3.forceManyBody().strength(-46).distanceMax(420))
+    .force("x", d3.forceX().strength(.035)).force("y", d3.forceY().strength(.05))
+    .force("collide", d3.forceCollide(d => radius(d) + 1.5)).stop().tick(320);
+}
+
+// ---------- the view ----------
+const graphState = { focus: "", depth: 1, tab: "all", T: null, near1: new Set(), near2: new Set() };
+function graphVisible(n) {
+  if (!GRAPH.adj.has(n.id)) return false;
+  const tab = graphState.tab;
+  if (tab === "people") return n.k === "people" || n.k === "orgs";
+  if (tab === "projects") return n.k === "projects" || n.k === "sessions";
+  if (tab === "knowledge") return n.k === "knowledge" || [...GRAPH.adj.get(n.id)].some(id => GRAPH.byId.get(id).k === "knowledge");
+  return true;
+}
+function graphFocusSets() {
+  const { focus, depth } = graphState;
+  graphState.near1 = new Set(focus ? GRAPH.adj.get(focus) || [] : []);
+  graphState.near2 = new Set();
+  if (focus && depth > 1) for (const id of graphState.near1) for (const far of GRAPH.adj.get(id) || []) if (far !== focus && !graphState.near1.has(far)) graphState.near2.add(far);
+}
+function graphAlpha(n) {
+  const { focus, near1, near2 } = graphState;
+  if (!focus || n.id === focus || near1.has(n.id)) return 1;
+  return near2.has(n.id) ? .5 : .07;
+}
+function graphView() {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  const model = graphModel(), params = new URLSearchParams(location.hash.slice(1));
+  const asked = params.get("focus") || "";
+  graphState.focus = model.adj.has(asked) ? asked : graphPhone() ? graphFirst() : "";
+  graphState.depth = params.get("depth") === "2" ? 2 : 1;
+  graphState.tab = "all";
+  graphFocusSets();
+  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img" }),
+    el("div", { class: "gx-tip", hidden: "" })]), graphLegend(model), graphZoom(), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
+  main.appendChild(box);
+  if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
+  graphBind(box);
+  graphResize();
+  graphFit();
+  graphPanel();
+  graphDraw();
+}
+function graphFirst() {
+  const topics = GRAPH.linked.filter(n => n.k === "knowledge" && !n.private).sort((a, b) => graphDegree(b) - graphDegree(a));
+  return (topics[0] || [...GRAPH.linked].sort((a, b) => graphDegree(b) - graphDegree(a))[0])?.id || "";
+}
+function graphHead(model) {
+  const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, topics"), "aria-label": graphT("Search people, organisations, topics"), autocomplete: "off" });
+  const tabs = el("div", { class: "gx-tabs", role: "tablist" }, GRAPH_TABS.map(([key, name]) =>
+    el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
+  return el("header", { class: "gx-head" }, [
+    el("h1", { class: "gx-title" }, [graphT("{n} records linked together", { n: model.linked.length }),
+      el("span", { class: "gx-soft", text: graphT("{n} not linked yet", { n: model.isolated.length }) })]),
+    el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
+      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]);
+}
+// The legend is one line under the map, so it never covers a point.
+function graphLegend(model) {
+  const count = {};
+  for (const n of model.linked) count[n.k] = (count[n.k] || 0) + 1;
+  const kinds = GRAPH_ORDER.filter(k => k !== "sessions" && count[k]).map(k =>
+    el("span", { class: "gx-key" }, [graphGlyph(k, 12), graphT(GRAPH_NAME[k]) + " " + count[k]]));
+  const folded = REM.graph?.folded_sessions || 0, alone = {};
+  for (const n of model.isolated) alone[n.k] = (alone[n.k] || 0) + 1;
+  const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphT(GRAPH_NAME[k]) + " " + n).join(" · ");
+  return el("footer", { class: "gx-legend" }, [el("span", { class: "gx-key-head", text: graphT("Shape = kind") + " · " + graphT("size = links") }), ...kinds,
+    folded ? el("span", { class: "gx-quiet", text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
+    model.isolated.length ? el("span", { class: "gx-quiet", text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
+}
+function graphZoom() {
+  return el("div", { class: "gx-zoom" }, [["+", "Zoom in", 1.4], ["−", "Zoom out", 1 / 1.4], ["⤢", "Fit", 0]].map(([text, name, by]) =>
+    el("button", { type: "button", "data-zoom": String(by), "aria-label": graphT(name), title: graphT(name), text })));
+}
+// An SVG glyph per kind: the same shape on the map, the legend, the lists and the local graph.
+function graphGlyph(kind, size = 14, privateNode = false) {
+  const h = size / 2, r = size * .36, k = graphKind(kind);
+  const fill = privateNode ? "var(--gx-ink4)" : `var(--gx-${k})`;
+  const shape = k === "orgs" ? svgEl("rect", { x: h - r, y: h - r, width: 2 * r, height: 2 * r, rx: r * .3, fill })
+    : k === "projects" ? svgEl("path", { d: `M${h} ${h - r * 1.25}L${h + r * 1.25} ${h}L${h} ${h + r * 1.25}L${h - r * 1.25} ${h}Z`, fill: "none", stroke: fill, "stroke-width": 1.6 })
+    : k === "notes" ? svgEl("path", { d: `M${h} ${h - r * 1.15}L${h + r * 1.1} ${h + r * .8}L${h - r * 1.1} ${h + r * .8}Z`, fill })
+    : k === "knowledge" ? svgEl("g", {}, [svgEl("circle", { cx: h, cy: h, r, fill: "none", stroke: fill, "stroke-width": 2.2 }), svgEl("circle", { cx: h, cy: h, r: r * .4, fill })])
+    : svgEl("circle", { cx: h, cy: h, r: k === "sessions" ? r * .5 : r, fill });
+  return svgEl("svg", { class: "gx-glyph", width: size, height: size, viewBox: `0 0 ${size} ${size}`, "aria-hidden": "true" }, [shape]);
+}
+
+// ---------- canvas ----------
+function graphCanvas() { return document.querySelector(".gx-map .gx-canvas"); }
+function graphResize() {
+  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  canvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  graphState.W = rect.width; graphState.H = rect.height;
+}
+function graphShape(ctx, n, x, y, r) {
+  ctx.beginPath();
+  if (n.k === "orgs") ctx.roundRect(x - r, y - r, 2 * r, 2 * r, r * .3);
+  else if (n.k === "projects") { ctx.moveTo(x, y - r * 1.25); ctx.lineTo(x + r * 1.25, y); ctx.lineTo(x, y + r * 1.25); ctx.lineTo(x - r * 1.25, y); ctx.closePath(); }
+  else if (n.k === "notes") { ctx.moveTo(x, y - r * 1.2); ctx.lineTo(x + r * 1.1, y + r * .8); ctx.lineTo(x - r * 1.1, y + r * .8); ctx.closePath(); }
+  else ctx.arc(x, y, r, 0, 2 * Math.PI);
+}
+function graphMark(ctx, n, x, y, r, colours) {
+  graphShape(ctx, n, x, y, r);
+  const colour = n.private ? colours.ink4 : colours[n.k];
+  if (n.k === "knowledge") {
+    ctx.fillStyle = colours.bg; ctx.fill(); ctx.lineWidth = Math.max(2, r * .26); ctx.strokeStyle = colour; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r * .38, 0, 2 * Math.PI); ctx.fillStyle = colour; ctx.fill();
+  } else if (n.k === "projects") { ctx.fillStyle = colours.bg; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = colour; ctx.stroke(); }
+  else { ctx.fillStyle = colour; ctx.fill(); }
+}
+function graphColours() {
+  return Object.fromEntries(["bg", "ink", "ink2", "ink3", "ink4", "knowledge", "people", "orgs", "projects", "notes", "sessions", "edge", "topic-edge"]
+    .map(name => [name.replace("-e", "E"), graphCss("--gx-" + name)]));
+}
+function graphDraw() {
+  const canvas = graphCanvas();
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2 } = graphState;
+  ctx.save();
+  ctx.clearRect(0, 0, graphState.W, graphState.H);
+  ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
+  for (const e of GRAPH.edges) {
+    const a = GRAPH.byId.get(e.s), b = GRAPH.byId.get(e.t);
+    if (!graphVisible(a) || !graphVisible(b)) continue;
+    const on = focus && (e.s === focus || e.t === focus);
+    const outer = focus && !on && ((near1.has(e.s) && near2.has(e.t)) || (near2.has(e.s) && near1.has(e.t)));
+    ctx.globalAlpha = on ? .75 : outer ? .3 : focus ? .04 : 1;
+    ctx.strokeStyle = on ? colours.ink : e.k === "topic" ? colours.topicEdge : colours.edge;
+    ctx.lineWidth = (on ? 1.3 : .8) / Math.sqrt(T.k);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  const order = GRAPH.linked.filter(graphVisible).sort((a, b) => graphAlpha(a) - graphAlpha(b) || graphRadius(a) - graphRadius(b));
+  for (const n of order) {
+    ctx.globalAlpha = graphAlpha(n);
+    graphMark(ctx, n, n.x, n.y, graphRadius(n), colours);
+    if (n.id === focus) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
+  }
+  ctx.restore();
+  graphLabels(ctx, order, colours);
+}
+// Topics always carry a name; others when big enough on screen. Greedy, so labels never overlap.
+function graphLabels(ctx, order, colours) {
+  const { focus, near1, T, W, H } = graphState, phone = graphPhone(), boxes = [], right = phone ? 4 : graphPanelWidth();
+  const want = order.filter(n => {
+    if (graphAlpha(n) < .4 || graphHidden(n)) return false;
+    if (focus) return n.id === focus || near1.has(n.id);
+    return n.k === "knowledge" || graphRadius(n) * T.k >= (phone ? 11 : 8.5);
+  }).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || graphRadius(b) - graphRadius(a));
+  ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  const centre = focus && GRAPH.byId.get(focus);
+  if (centre) { const x = T.applyX(centre.x), y = T.applyY(centre.y), r = graphRadius(centre) * T.k + 7; boxes.push([x - r, y - r, x + r, y + r]); }
+  const font = graphCss("--gx-font");
+  for (const n of want) {
+    const top = n.k === "knowledge" || n.id === focus, x = T.applyX(n.x), y = T.applyY(n.y), r = graphRadius(n) * T.k;
+    ctx.font = `${top ? 700 : 400} 12px ${font}`;
+    const text = graphShort(graphTitle(n)), w = ctx.measureText(text).width, bx = x + r + (n.id === focus ? 10 : 5);
+    const box = [bx - 2, y - 8, bx + w + 2, y + 8];
+    if (bx + w > W - right || bx < 0 || y < 8 || y > H - 8 || boxes.slice(n.id === focus ? 1 : 0).some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+    boxes.push(box);
+    ctx.lineWidth = 3.5; ctx.strokeStyle = colours.bg; ctx.strokeText(text, bx, y);
+    ctx.fillStyle = top ? colours.ink : colours.ink2; ctx.fillText(text, bx, y);
+  }
+}
+function graphPanelWidth() { return graphPhone() ? 0 : 396; }
+// Fit what is shown, leaving room for the heading above, the panel at the right and the legend below.
+function graphFit() {
+  const { focus, near1, near2, W, H } = graphState, phone = graphPhone();
+  const ids = focus ? new Set([focus, ...near1, ...near2]) : null;
+  const points = GRAPH.linked.filter(n => ids ? ids.has(n.id) : graphVisible(n));
+  if (!points.length) return;
+  const [x0, x1] = d3.extent(points, n => n.x), [y0, y1] = d3.extent(points, n => n.y);
+  const L = phone ? 16 : 40, R = phone ? 16 : graphPanelWidth() + 24, top = phone ? 20 : 170, bottom = phone ? 20 : 56;
+  const k = Math.min((W - L - R) / ((x1 - x0) || 1), (H - top - bottom) / ((y1 - y0) || 1), ids ? 2 : 4) * (ids ? .8 : .92);
+  graphState.T = d3.zoomIdentity.translate(L + (W - L - R) / 2 - k * (x0 + x1) / 2, top + (H - top - bottom) / 2 - k * (y0 + y1) / 2).scale(k);
+  if (graphState.zoom) d3.select(graphCanvas()).call(graphState.zoom.transform, graphState.T);
+}
+function graphHit(event) {
+  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), T = graphState.T;
+  const x = T.invertX(event.clientX - rect.left), y = T.invertY(event.clientY - rect.top);
+  let best = null, bestD = Infinity;
+  for (const n of GRAPH.linked) {
+    if (!graphVisible(n) || graphAlpha(n) < .4) continue;
+    const d = Math.hypot(n.x - x, n.y - y);
+    if (d < graphRadius(n) + 4 / T.k && d < bestD) { best = n; bestD = d; }
+  }
+  return best;
+}
+function graphBind(box) {
+  const canvas = box.querySelector(".gx-canvas");
+  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).on("zoom", event => { graphState.T = event.transform; graphDraw(); });
+  d3.select(canvas).call(graphState.zoom).on("dblclick.zoom", null);
+  canvas.addEventListener("click", event => graphFocus(graphHit(event)?.id || ""));
+  canvas.addEventListener("mousemove", event => graphTip(event, graphHit(event)));
+  canvas.addEventListener("mouseleave", () => { box.querySelector(".gx-tip").hidden = true; });
+  for (const button of box.querySelectorAll("[data-zoom]")) button.onclick = () => {
+    const by = Number(button.dataset.zoom);
+    if (by) d3.select(canvas).transition().duration(matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160).call(graphState.zoom.scaleBy, by);
+    else { graphFit(); graphDraw(); }
+  };
+  for (const tab of box.querySelectorAll("[data-tab]")) tab.onclick = () => {
+    graphState.tab = tab.dataset.tab;
+    box.querySelectorAll("[data-tab]").forEach(other => other.setAttribute("aria-selected", String(other === tab)));
+    graphDraw();
+  };
+  graphSearchBind(box);
+}
+function graphTip(event, n) {
+  const tip = document.querySelector(".gx-map .gx-tip"), rect = graphCanvas().getBoundingClientRect();
+  graphCanvas().style.cursor = n ? "pointer" : "";
+  tip.hidden = !n;
+  if (!n) return;
+  tip.textContent = graphTitle(n) + " · " + graphT("{n} links", { n: graphDegree(n) });
+  tip.style.left = event.clientX - rect.left + 12 + "px";
+  tip.style.top = event.clientY - rect.top - 30 + "px";
+}
+// Focus lives in the URL, so a topic page's "open in graph" lands focused; no re-render on change.
+function graphFocus(id) {
+  graphState.focus = id;
+  graphFocusSets();
+  const hash = "#view=graph" + (id ? "&focus=" + encodeURIComponent(id) : "") + (id && graphState.depth > 1 ? "&depth=2" : "");
+  history.replaceState(null, "", hash);
+  const search = document.querySelector(".gx-search"), clear = document.querySelector(".gx-clear");
+  search.value = id ? graphTitle(GRAPH.byId.get(id)) : "";
+  clear.hidden = !id;
+  graphFit();
+  graphPanel();
+  graphDraw();
+}
+function graphMatches(query) {
+  const words = query.trim().toLocaleLowerCase();
+  if (!words) return [];
+  const names = n => [graphTitle(n), ...(n.r?.topic?.aliases || [])].join(" ").toLocaleLowerCase();
+  return GRAPH.linked.filter(n => !graphHidden(n) && n.k !== "sessions" && names(n).includes(words))
+    .sort((a, b) => (b.k === "knowledge") - (a.k === "knowledge") || graphDegree(b) - graphDegree(a)).slice(0, 8);
+}
+function graphSearchBind(box) {
+  const input = box.querySelector(".gx-search"), list = box.querySelector(".gx-results"), clear = box.querySelector(".gx-clear");
+  input.value = graphState.focus ? graphTitle(GRAPH.byId.get(graphState.focus)) : "";
+  clear.hidden = !graphState.focus;
+  const pick = id => { list.hidden = true; input.blur(); graphFocus(id); };
+  input.oninput = () => {
+    const found = graphMatches(input.value);
+    list.replaceChildren(...found.map(n => {
+      const item = el("li", { role: "option", "data-id": n.id }, [graphGlyph(n.k, 14), el("span", { text: graphTitle(n) }), el("small", { text: graphT(GRAPH_NAME[n.k]) })]);
+      item.onmousedown = event => { event.preventDefault(); pick(n.id); };
+      return item;
+    }));
+    list.hidden = !found.length;
+  };
+  input.onkeydown = event => {
+    if (event.key === "Enter" && list.firstChild) pick(list.firstChild.dataset.id);
+    if (event.key === "Escape") { list.hidden = true; input.blur(); }
+  };
+  input.onblur = () => { list.hidden = true; };
+  clear.onclick = () => graphFocus("");
+}
+
+// ---------- the panel: the whole map's guide, or one record and what it connects ----------
+function graphItem(n, meta) {
+  const item = el("button", { type: "button", class: "gx-item", "data-id": n.id }, [graphGlyph(n.k, 14, n.private),
+    el("span", { class: "gx-item-body" }, [el("b", { text: graphTitle(n) }), meta ? el("small", { text: meta }) : null])]);
+  item.onclick = () => graphFocus(n.id);
+  return item;
+}
+function graphLast(n) {
+  const r = n.r;
+  if (!r) return "";
+  return r.topic?.last || r.last_activity || r.mail?.last || "";
+}
+function graphRole(n) {
+  const r = n.r;
+  if (!r || graphHidden(n)) return "";
+  if (n.k === "people") return plainLine(String(facts(r).role || "")).split(/[.;。]/)[0];
+  return "";
+}
+function graphPanel() {
+  const panel = document.querySelector(".gx-map .gx-panel");
+  panel.replaceChildren(...(graphState.focus ? graphPanelFocus(GRAPH.byId.get(graphState.focus)) : graphPanelGuide()));
+}
+function graphPanelGuide() {
+  const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
+  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
+  const count = n => graphT("{n} links", { n: graphDegree(n) });
+  return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
+      topics.length ? el("p", { text: graphT("Topics are the thread between people, organisations and projects. Start with one.") }) : null]),
+    el("div", { class: "gx-panel-body" }, [
+      ...(topics.length ? [el("h3", { text: graphT("Topics") }), ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : "")))] : []),
+      el("h3", { text: graphT("Most connected") }), ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
+}
+function graphGroups(ids) {
+  const groups = new Map(GRAPH_ORDER.map(k => [k, []]));
+  for (const id of ids) groups.get(GRAPH.byId.get(id).k).push(GRAPH.byId.get(id));
+  for (const list of groups.values()) list.sort((a, b) => graphLast(b).localeCompare(graphLast(a)) || graphDegree(b) - graphDegree(a));
+  return [...groups].filter(([, list]) => list.length);
+}
+function graphOpenLabel(n) {
+  return graphT({ knowledge: "Open topic page", people: "Open person page", orgs: "Open organisation page", projects: "Open project page" }[n.k] || "Open page");
+}
+function graphPanelFocus(n) {
+  const groups = graphGroups(graphState.near1), phone = graphPhone();
+  const counts = groups.filter(([k]) => k !== "sessions" && k !== "notes").map(([k, list]) => el("span", {}, [el("b", { text: String(list.length) }), graphT(GRAPH_NAME[k])]));
+  const sub = n.k === "knowledge" ? (graphLast(n) ? graphT("Last mentioned") + " " + fmtDate(graphLast(n)) : "") : graphRole(n) || graphT(GRAPH_NAME[n.k]);
+  const depth = el("div", { class: "gx-depth" }, [el("span", { text: graphT("Depth") }), ...[1, 2].map(d => {
+    const button = el("button", { type: "button", "aria-pressed": String(graphState.depth === d), text: graphT(d === 1 ? "1 hop" : "2 hops") });
+    button.onclick = () => { graphState.depth = d; graphFocus(n.id); };
+    return button;
+  }), el("span", { class: "gx-quiet", text: graphState.depth === 2 ? graphT("{n} more further out", { n: graphState.near2.size }) : graphT("Direct links only") })]);
+  const lists = groups.flatMap(([k, list]) => {
+    const max = phone ? 3 : k === "people" ? 6 : 4;
+    return [el("h3", {}, [graphT(GRAPH_NAME[k]), el("span", { text: String(list.length) })]),
+      ...list.slice(0, max).map(m => graphItem(m, (k === "people" && graphRole(m)) || (graphLast(m) ? fmtDate(graphLast(m)) : ""))),
+      list.length > max ? el("p", { class: "gx-more", text: graphT("{n} more", { n: list.length - max }) }) : null];
+  });
+  return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker" }, [graphGlyph(n.k, 12, n.private), graphT(GRAPH_ONE[n.k])]),
+      el("h2", { text: graphTitle(n) }), sub ? el("p", { text: sub }) : null, el("div", { class: "gx-counts" }, counts),
+      n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, depth]),
+    el("div", { class: "gx-panel-body" }, lists)];
+}
+addEventListener("resize", () => { if (document.querySelector(".gx-map")) { graphResize(); graphFit(); graphDraw(); } });
+addEventListener("keydown", event => {
+  if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+    event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();
+  }
+}, true);
+
+// ---------- topics: the list, and a topic page as a record ----------
+function topicRecords() { return inCategory("knowledge"); }
+function topicLinked(r) {
+  const model = graphModel();
+  return [...(model.adj.get(r.path) || [])].map(id => model.byId.get(id)).filter(n => n.r);
+}
+function topicList() {
+  const main = document.getElementById("main"), items = topicRecords();
+  main.textContent = "";
+  const rows = items.map(r => ({ r, n: topicLinked(r).length, last: r.topic?.last || "" })).sort((a, b) => b.n - a.n || b.last.localeCompare(a.last));
+  main.appendChild(el("div", { class: "gx gx-topics" }, [
+    el("h1", { class: "gx-statement", text: items.length ? graphT("{n} topics", { n: items.length }) : graphT("No topics yet") }),
+    el("p", { class: "gx-lede", text: graphT(items.length ? "Subjects that tie your records together: a market, a course, a way of working." : "Topics are filed when a subject recurs across your notes; none has yet.") }),
+    items.length ? el("a", { class: "gx-link", href: "#view=graph", text: graphT("See them in the graph →") }) : null,
+    el("ul", { class: "gx-rows" }, rows.map(({ r, n, last }) => el("li", {}, [el("a", { href: href(r) }, [graphGlyph("knowledge", 16, r.private),
+      el("span", { class: "gx-row-body" }, [el("b", { text: topicName(r.title) }), el("small", { text: topicAliases(r).slice(1, 5).join(" · ") })]),
+      el("span", { class: "gx-row-meta", text: graphT("{n} records", { n }) + (last ? " · " + fmtDate(last) : "") })])])))]));
+}
+function topicAliases(r) { return r.topic?.aliases?.length ? r.topic.aliases : [r.title]; }
+function topicKnown(r, name) {
+  const text = section(r, name)?.text || "";
+  return listItems(text).length || plainLine(text) ? text : "";
+}
+// One row per linked record: what it is, the sentence that names the topic, and when.
+function topicRows(r) {
+  const own = new Map((r.relations || []).filter(rel => rel.kind === "linked").map(rel => [rel.path, { sentence: rel.basis, date: "" }]));
+  const said = new Map((r.topic?.mentions || []).map(m => [m.path, m]));
+  return topicLinked(r).filter(n => n.k !== "sessions" && n.k !== "knowledge").map(n => ({ n, ...(own.get(n.id) || said.get(n.id) || { sentence: "", date: "" }) }))
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || graphDegree(b.n) - graphDegree(a.n));
+}
+function topicSentence(text, aliases) {
+  const span = el("span", { class: "gx-said" });
+  const words = aliases.filter(Boolean).map(a => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).sort((a, b) => b.length - a.length);
+  const parts = words.length ? text.split(new RegExp("(" + words.join("|") + ")", "gi")) : [text];
+  span.append(...parts.map((part, i) => i % 2 ? el("b", { text: part }) : document.createTextNode(part)));
+  return span;
+}
+function topicRow({ n, sentence, date }, aliases) {
+  const role = n.private ? "" : graphRole(n) || (n.k === "orgs" ? plainLine(String(facts(n.r).domain || "")) : "");
+  return el("li", { class: "gx-link-row" }, [graphGlyph(n.k, 14, n.private), el("div", { class: "gx-row-body" }, [
+    el("div", { class: "gx-row-name" }, [el("a", { href: href(n.r), text: graphTitle(n) }), role ? el("small", { text: role }) : null]),
+    sentence && !n.private ? el("p", {}, [topicSentence(plainLine(sentence), aliases)]) : null]),
+    date ? el("time", { datetime: date, text: fmtDate(date) }) : null]);
+}
+function topicGroup(kind, rows, aliases) {
+  const max = 6, rest = rows.slice(max);
+  const more = rest.length ? el("button", { type: "button", class: "gx-more", text: graphT("{n} more", { n: rest.length }) + ": " + rest.slice(0, 4).map(row => graphShort(graphTitle(row.n), 16)).join("、") + (rest.length > 4 ? " …" : "") + " ›" }) : null;
+  const list = el("ul", { class: "gx-link-rows" }, rows.slice(0, max).map(row => topicRow(row, aliases)));
+  if (more) more.onclick = () => { list.append(...rest.map(row => topicRow(row, aliases))); more.remove(); };
+  return el("div", { class: "gx-group" }, [el("h3", {}, [graphT(kind === "notes" ? "Decisions" : GRAPH_NAME[kind]), el("span", { text: String(rows.length) })]), list, more]);
+}
+function topicLinks(r) {
+  const rows = topicRows(r), aliases = topicAliases(r);
+  const topic = r.topic || {};
+  const quiet = topic.sessions ? el("p", { class: "gx-quiet-line" }, [el("a", { href: "#q=" + encodeURIComponent(aliases[0]),
+    text: topic.skills ? graphT(topic.skills === 1 ? "Also named in {n} sessions and 1 skill" : "Also named in {n} sessions and {m} skills", { n: topic.sessions, m: topic.skills }) : graphT("Also named in {n} sessions", { n: topic.sessions }) })]) : null;
+  if (!rows.length) return el("section", { class: "gx-sec" }, [el("h2", { text: graphT("Linked here") }), el("p", { class: "gx-quiet-line", text: graphT("Nothing links here yet") }), quiet]);
+  const groups = ["people", "projects", "orgs", "notes"].map(k => [k, rows.filter(row => row.n.k === k)]).filter(([, list]) => list.length);
+  return el("section", { class: "gx-sec" }, [el("h2", {}, [graphT("Linked here"), el("span", { text: String(rows.length) })]),
+    ...groups.map(([k, list]) => topicGroup(k, list, aliases)), quiet]);
+}
+function topicHead(r) {
+  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is"), first = rows.map(row => row.date).filter(Boolean).sort()[0];
+  const sub = what ? plainLine(what).split(/(?<=[.。!?！？])\s*/)[0]
+    : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: rows.length, date: fmtDate(first) })
+    : graphT("REM has not written this page yet");
+  const count = kind => rows.filter(row => row.n.k === kind).length;
+  const stats = [[count("people"), "people"], [count("orgs"), "orgs"], [count("projects"), "projects"], [topic.sessions || 0, "sessions mention it"]]
+    .map(([n, name]) => el("div", {}, [el("b", { text: String(n) }), el("span", { text: graphT(name) })]));
+  if (topic.last) stats.push(el("div", {}, [el("b", { text: fmtDate(topic.last) }), el("span", { text: graphT("Last mentioned") })]));
+  return el("header", { class: "gx-topic-head" }, [el("a", { class: "gx-crumb", href: "#c=knowledge", text: graphT("Topics") }),
+    el("div", { class: "gx-topic-name" }, [graphGlyph("knowledge", 40, r.private), el("h1", { class: "gx-statement", text: topicName(r.title) })]),
+    el("p", { class: "gx-lede", text: sub }), el("div", { class: "gx-stats" }, stats)]);
+}
+// Time as a line: every dated mention is a dot; no labels to read, only where it clusters.
+function topicTimeline(r) {
+  const dates = topicRows(r).map(row => row.date).filter(Boolean).sort();
+  const written = topicKnown(r, "timeline");
+  if (!dates.length && !written) return null;
+  const parts = [el("h2", { text: graphT("Timeline") })];
+  if (dates.length > 1) {
+    const first = Date.parse(dates[0]), span = Math.max(1, Date.parse(dates.at(-1)) - first);
+    const svg = svgEl("svg", { class: "gx-time", viewBox: "0 0 600 36", preserveAspectRatio: "none", "aria-hidden": "true" }, [
+      svgEl("line", { x1: 0, y1: 18, x2: 600, y2: 18 }),
+      ...dates.map(day => svgEl("circle", { cx: 4 + 592 * (Date.parse(day) - first) / span, cy: 18, r: 4 }))]);
+    parts.push(svg, el("div", { class: "gx-time-ends" }, [el("span", { text: fmtDate(dates[0]) }),
+      el("span", { text: graphT("{n} mentions, from {first} to {last}", { n: dates.length, first: fmtDate(dates[0]), last: fmtDate(dates.at(-1)) }) }), el("span", { text: fmtDate(dates.at(-1)) })]));
+  }
+  if (written) parts.push(el("div", { class: "gx-prose", html: markdown(written, r.path) }));
+  return el("section", { class: "gx-sec" }, parts);
+}
+function topicProse(r, name, title) {
+  const text = topicKnown(r, name);
+  return text ? el("section", { class: "gx-sec" }, [el("h2", { text: graphT(title) }), el("div", { class: "gx-prose", html: markdown(text, r.path) })]) : null;
+}
+function topicDoubtful(r) {
+  const doubtful = (r.topic?.doubtful || []).map(d => ({ ...d, n: GRAPH.byId.get(d.record) })).filter(d => d.n?.r);
+  if (!doubtful.length) return null;
+  const asked = (REM.reviews || []).some(review => review.status === "pending" && review.subjects?.[0] === r.path);
+  return el("section", { class: "gx-sec" }, [el("h2", {}, [graphT("Maybe related"), el("span", { text: String(doubtful.length) })]),
+    el("p", { class: "gx-quiet-line", text: graphT("Only the words match; REM did not count these as links.") }),
+    el("ul", { class: "gx-link-rows" }, doubtful.slice(0, 6).map(d => topicRow({ n: d.n, sentence: d.sentence, date: "" }, topicAliases(r)))),
+    asked ? el("a", { class: "gx-link", href: "#reviews=1", text: graphT("Confirm in Questions & connections →") }) : null]);
+}
+function topicRelated(r) {
+  const mine = new Set(topicLinked(r).map(n => n.id));
+  const others = topicRecords().filter(other => other.path !== r.path).map(other => ({ other, shared: topicLinked(other).filter(n => mine.has(n.id)).length }))
+    .filter(({ shared }) => shared).sort((a, b) => b.shared - a.shared).slice(0, 3);
+  return others.length ? [el("h4", { text: graphT("Related topics") }), el("ul", { class: "gx-rail-list" }, others.map(({ other, shared }) =>
+    el("li", {}, [el("a", { href: href(other) }, [graphGlyph("knowledge", 12, other.private), topicName(other.title)]), el("small", { text: graphT("{n} shared records", { n: shared }) })])))] : [];
+}
+function topicAbout(r) {
+  const topic = r.topic || {}, aliases = topicAliases(r).slice(1);
+  const rows = [aliases.length ? ["Aliases", aliases.join(" · ")] : null, topic.first ? ["First mentioned", fmtDate(topic.first)] : null, topic.last ? ["Last mentioned", fmtDate(topic.last)] : null].filter(Boolean);
+  return rows.length ? [el("h4", { text: graphT("About") }), el("dl", { class: "gx-kv" }, rows.flatMap(([k, v]) => [el("dt", { text: graphT(k) }), el("dd", { text: v })]))] : [];
+}
+function topicUnsure(r) {
+  const items = listItems(section(r, "uncertainties")?.text || "").map(line => plainLine(line)).filter(line => line && !/^Unknown\b/.test(line)).slice(0, 2);
+  return items.length ? [el("h4", { text: graphT("REM is not sure") }), el("ul", { class: "gx-rail-list" }, items.map(item => el("li", { text: item })))] : [];
+}
+function topicPage(r) {
+  graphModel();
+  const rail = el("aside", { class: "gx-rail", "aria-label": graphT("About") }, [graphLocal(r), ...topicAbout(r), ...topicRelated(r), ...topicUnsure(r)]);
+  return el("div", { class: "gx gx-topic" }, [topicHead(r), el("div", { class: "gx-grid" }, [el("div", { class: "gx-main" }, [
+    topicProse(r, "where you stand", "Where you stand"), topicLinks(r), topicTimeline(r), topicProse(r, "open threads", "Open threads"), topicDoubtful(r)]), rail])]);
+}
+
+// ---------- a local graph for a record's rail: one hop, kind shapes, labels for the few that matter ----------
+function graphLocal(r) {
+  const model = graphModel(), centre = model.byId.get(r.path);
+  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
+  const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
+    .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
+  const W = 236, H = 200, cx = W / 2, cy = H / 2, labelled = new Set([...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5).map(n => n.id));
+  const marks = [], lines = [], labels = [];
+  ring.forEach((n, i) => {
+    const angle = -Math.PI / 2 + 2 * Math.PI * i / ring.length, radius = ring.length > 18 && i % 2 ? 58 : ring.length <= 6 ? 60 : 82;
+    const x = cx + Math.cos(angle) * radius, y = cy + Math.sin(angle) * radius;
+    lines.push(svgEl("line", { x1: cx, y1: cy, x2: x, y2: y, class: n.k === "knowledge" || centre.k === "knowledge" ? "topic" : "" }));
+    marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6));
+    if (labelled.has(n.id) && !n.private) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), 12))]));
+  });
+  const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
+    graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);
+  return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), svg,
+    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]);
+}
+function graphLocalMark(n, x, y, r, centre = false) {
+  const fill = n.private ? "var(--gx-ink4)" : `var(--gx-${n.k})`;
+  const shape = n.k === "orgs" ? svgEl("rect", { x: x - r, y: y - r, width: 2 * r, height: 2 * r, rx: r * .3, fill })
+    : n.k === "projects" ? svgEl("path", { d: `M${x} ${y - r * 1.25}L${x + r * 1.25} ${y}L${x} ${y + r * 1.25}L${x - r * 1.25} ${y}Z`, fill: "var(--gx-bg)", stroke: fill, "stroke-width": 1.5 })
+    : n.k === "knowledge" ? svgEl("g", {}, [svgEl("circle", { cx: x, cy: y, r, fill: "var(--gx-bg)", stroke: fill, "stroke-width": 2 }), svgEl("circle", { cx: x, cy: y, r: r * .4, fill })])
+    : n.k === "notes" ? svgEl("path", { d: `M${x} ${y - r * 1.15}L${x + r * 1.1} ${y + r * .8}L${x - r * 1.1} ${y + r * .8}Z`, fill })
+    : svgEl("circle", { cx: x, cy: y, r: n.k === "sessions" ? 2 : r, fill });
+  const link = svgEl("a", { ...(centre ? { class: "centre" } : {}), href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) }, [svgEl("title", {}, [document.createTextNode(graphTitle(n))]), shape]);
+  return link;
+}
+// Person, organisation and project pages: a local graph and their topics in the rail.
+function graphRailAttach(main, r) {
+  if (!["people", "orgs", "projects"].includes(r.category) || !REM.graph?.nodes) return;
+  const model = graphModel();
+  if (!model.adj.has(r.path)) return;
+  const topics = [...model.adj.get(r.path)].map(id => model.byId.get(id)).filter(n => n.k === "knowledge" && n.r && !privateTopicHidden(n.r));
+  const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Topics here") + " " }),
+    ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
+  // A person has a rail; a project or organisation page has none yet, so the block sits above the full note.
+  const rail = main.querySelector(".r4-rail"), deep = main.querySelector(":scope > .deep-note");
+  if (rail) rail.prepend(block);
+  else main.insertBefore(block, deep);
+  block.classList.toggle("gx-inline", !rail);
+}
+
 function render() {
   if (!REM) return;
   threadEntries.cached = null;
@@ -9162,10 +9945,11 @@ function render() {
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
+  else if (view === "graph") graphView();
   else if (c) category(c);
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
-    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
+    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" ? graphT("Graph") : c ? (c === "all" ? t("Explore") : label(c)) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
   const viewKey = r || (c === "people" ? c + (peopleTable ? ":table" : ":rows") : c) || view || (reviews ? "reviews" : query ? "search" : "today");
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
