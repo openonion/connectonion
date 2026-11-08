@@ -1666,7 +1666,7 @@
     --r4-ink: #121a15; --r4-ink2: #4b554f; --r4-ink3: #69716c; --r4-ink4: #b4bab6;
     --r4-line: rgba(18,26,21,.08); --r4-line2: rgba(18,26,21,.14);
     --r4-fresh: #22d27a; --r4-fresh-h: #1bbf6c; --r4-on-fresh: #05301b; --r4-green: #0b7a42; --r4-tint: #e3faee;
-    --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late: #c4362c; --r4-late-ink: #b3261e;
+    --r4-dawn: #b5521f; --r4-lamp: #c98a06; --r4-lamp-ink: #8a5d00; --r4-lamp-bg: #fdf3dc; --r4-late: #c4362c; --r4-late-ink: #b3261e;
     --r4-shadow: 0 0 0 1px var(--r4-line), 0 1px 2px rgba(16,24,20,.04);
     --r4-shadow-up: 0 0 0 1px var(--r4-line), 0 2px 4px rgba(16,24,20,.04), 0 12px 32px -8px rgba(16,24,20,.12);
     font: 400 14px/20px var(--r4-font); color: var(--r4-ink); font-feature-settings: "tnum" 1; max-width: 1000px; margin: 0 auto;
@@ -1676,7 +1676,7 @@
     --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
     --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
     --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-    --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
+    --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
     --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
   }
   @media (prefers-color-scheme: dark) {
@@ -1685,7 +1685,7 @@
       --r4-ink: #ecefec; --r4-ink2: #a9b1ac; --r4-ink3: #8f9892; --r4-ink4: #4b524d;
       --r4-line: rgba(255,255,255,.07); --r4-line2: rgba(255,255,255,.13);
       --r4-fresh: #3be38f; --r4-fresh-h: #2fd27f; --r4-green: #4fdc93; --r4-tint: rgba(59,227,143,.12);
-      --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
+      --r4-dawn: #f08a52; --r4-lamp: #e8b440; --r4-lamp-ink: #e8b440; --r4-lamp-bg: rgba(232,180,64,.12); --r4-late: #f0675c; --r4-late-ink: #f0675c;
       --r4-shadow: 0 0 0 1px var(--r4-line); --r4-shadow-up: 0 0 0 1px var(--r4-line2), 0 16px 40px -8px rgba(0,0,0,.6);
     }
   }
@@ -1721,6 +1721,8 @@
   /* The person page */
   .r4-crumb { font: 500 12.5px var(--r4-font); color: var(--r4-ink3); }
   .r4-crumb a:hover { color: var(--r4-ink); }
+  .r4-crumb .updated-label { margin-left: 10px; color: var(--r4-dawn); }
+  .r4-crumb .fresh-dot { margin: 0 4px 0 0; color: var(--r4-dawn); }
   .r4-headrow { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
   .r4-headrow .body { flex: 1; min-width: 0; }
   .r4-headrow h1 { margin: 0; }
@@ -1891,7 +1893,7 @@ const UI = {
     "1 day overdue": "逾期 1 天",
     "Looks done": "看起来已办",
     "open": "未结",
-    "You replied on {date}: ": "你 {date} 回复 ",
+    "You replied on {date}: ": "你{date}回复：",
     "Close by this mail": "按这封邮件关闭",
     "Not done yet": "还没办完",
     "Personal item": "个人事项",
@@ -5523,8 +5525,12 @@ function overdueDays(thread) { return thread.due && thread.due < calendarDay(REM
 function looksDone(entry) {
   return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
 }
+// The merged queue first; a thread on the page that the queue has not projected yet still shows.
 function personEntries(r) {
-  return threadEntries().filter(entry => (entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) && entry.t.dir !== "third");
+  const entries = threadEntries().filter(entry => (entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) && entry.t.dir !== "third");
+  const listed = new Set(entries.flatMap(entry => (entry.members || [entry]).map(doneKey)));
+  const own = threads(r).items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
+  return [...entries, ...own];
 }
 function byUrgency(a, b) {
   return (a.t.due || "9999").localeCompare(b.t.due || "9999") || (a.t.since || "").localeCompare(b.t.since || "");
@@ -5640,7 +5646,7 @@ function personSub(r) {
 function personHead(r, entry) {
   const org = personOrg(r);
   return el("header", { class: "r4-head person-head" }, [
-    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null]),
+    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true)]),
     el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personPrimary(r, entry)])]);
 }
 function timelineRow(r, item) {
@@ -5707,11 +5713,19 @@ function railSources(r) {
   };
   return [button];
 }
+// Sessions that name this person: five rows under the timeline, the rest one link away.
+function personSessions(r) {
+  const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
+  if (!sessions.length) return null;
+  return el("section", { class: "r4-sec person-sessions" }, [el("h2", { text: t("Mentioned in sessions") }),
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
+    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
+}
 function personPage(r) {
   const entries = personEntries(r), urgent = urgentEntry(entries);
   const rail = el("aside", { class: "r4-rail", "aria-label": t("About this person") }, [...railContact(r), ...railOrg(r), ...railUnsure(r), ...railSources(r)]);
   return el("div", { class: "r4 r4-person" }, [personHead(r, urgent),
-    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personStats(r), owedCard(r, entries), personTimeline(r)]), rail])]);
+    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personStats(r), owedCard(r, entries), personTimeline(r), personSessions(r)]), rail])]);
 }
 
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.

@@ -2586,12 +2586,14 @@ def test_person_and_today_use_the_same_merged_obligation_and_source_record():
     result = _run_reader_js(function + r"""
       const r = {path: 'people/mara.md'}, origin = {path: 'people/avery.md'};
       const current = {dir: 'mine', text: 'You owe Mara the signed plan [2].', since: '2026-10-23'};
-      const threadEntries = () => [{r: origin, t: current, also: [r]}, {r, t: {dir: 'third', text: 'Fern owes Avery.'}},
-        {r: origin, t: {dir: 'mine', text: 'Unrelated.'}, also: []}];
-      console.log(JSON.stringify(personEntries(r)));
+      const threadEntries = () => [{r: origin, t: current, also: [r], members: [{r: origin, t: current}, {r, t: {text: 'Mara copy.'}}]},
+        {r, t: {dir: 'third', text: 'Fern owes Avery.'}}, {r: origin, t: {dir: 'mine', text: 'Unrelated.'}, also: []}];
+      const doneKey = entry => entry.t.text;
+      // The page's copy is already merged; the new request is not projected yet; a third-party line stays out.
+      const threads = () => ({items: [{dir: 'mine', text: 'Mara copy.'}, {dir: 'theirs', text: 'Mara owes the export.'}, {dir: 'third', text: 'Quinn owes Tomás.'}]});
+      console.log(JSON.stringify(personEntries(r).map(entry => [entry.r.path, entry.t.text])));
     """)
-    assert result == [{'r': {'path': 'people/avery.md'}, 't': {'dir': 'mine', 'text': 'You owe Mara the signed plan [2].',
-                       'since': '2026-10-23'}, 'also': [{'path': 'people/mara.md'}]}]
+    assert result == [['people/avery.md', 'You owe Mara the signed plan [2].'], ['people/mara.md', 'Mara owes the export.']]
 
 
 def test_plain_words_drops_observation_stamps_and_the_due_suffix_the_card_header_already_shows():
@@ -3088,7 +3090,7 @@ def test_person_owed_row_says_looks_done_with_your_reply_and_offers_both_answers
         text(late.children[0]), text(late.children[1]), text(reopened.children[0])]));
     ''')
     assert result[0] == 'Mara asked you to choose a Friday slot看起来已办'
-    assert result[1].startswith('你 10月28日 回复 Friday works.')
+    assert result[1].startswith('你10月28日回复：Friday works.')
     assert result[2] == ['按这封邮件关闭', '还没办完']
     assert result[3] == 'You owe Mara feedback on the demo逾期 14 天'
     assert result[4].startswith('I will watch it that week.')

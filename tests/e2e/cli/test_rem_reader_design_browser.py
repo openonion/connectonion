@@ -334,7 +334,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
 def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     page.get_by_role("button", name="More columns", exact=True).click()
     sheet = page.locator("table.sheet")
     # a409b633: the owner has a separate You page, outside People.
@@ -375,7 +375,7 @@ def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(read
 def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     scroller = page.locator(".sheet-scroll")
     # The default columns fit at 1440, including what is open.
     assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
@@ -395,7 +395,7 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
     page, uri = reader
     page.set_viewport_size({'width': 1440, 'height': 1000})
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     page.get_by_role('button', name='More columns', exact=True).click()
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
@@ -407,7 +407,7 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
       r.original = r.text;
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
-    page.get_by_role("button", name="Table").click()
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     for kind, first, count, title in [
         ('email', 'marcus_jian.vale@some-long-domain.example', '+2',
@@ -465,7 +465,7 @@ def test_people_mobile_phone_preview_wraps_with_its_label(reader, width):
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 844})
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index, phone: '+61 0491570157 (mobile); +61 0491570158 (work)'};
@@ -499,7 +499,7 @@ def test_people_phone_cards_keep_contact_metadata_and_sorting(reader, width):
       r.original = r.text;
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
-    page.get_by_role("button", name="Table").click()
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     assert row.locator('.name .nm a').is_visible()
     assert row.locator('.email-first').is_visible()
@@ -558,7 +558,7 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     assert page.locator(".contact-directory").get_attribute("open") is not None
     page.locator(".contact-directory").get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
     assert page.locator(".contact-directory tbody tr").count() == 1
-    page.get_by_role("button", name="Table").click()
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     sheet = page.locator(".sheet-scroll")
     assert page.locator(".sheet tbody tr").count() >= 575
     for _ in range(2):
@@ -681,7 +681,7 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
     for index, expected, other in ((0, first, second), (1, second, first)):
         chips.nth(index).click()
         claim = page.locator(".evidence-claim > div").inner_text()
-        assert claim == expected.removesuffix(" (2026-10-14)")
+        assert claim == expected  # the full memory keeps the prose date the person page used to trim
         assert other not in claim
         page.get_by_role("button", name="Close source context").click()
 
@@ -1776,14 +1776,14 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
 
         page.goto(uri + '#c=people')
         page.locator('.r4-people h1').wait_for()
-        page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+        page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
         quinn = page.locator('.sheet tbody tr').filter(has_text='Quinn Alder')
         assert quinn.locator('.c-last .mono').inner_text() == 'Sep 16'
         assert quinn.locator('.c-last .mono').get_attribute('title') == 'Last contact in map'
 
         page.goto(uri + '#r=people%2Fmara-ostrowski.md')
         page.get_by_role('heading', name='Mara Ostrowski', exact=True).wait_for()
-        assert 'Last contact in map' not in page.locator('.leadrow').inner_text()
+        assert 'Last contact in map' not in page.locator('.r4-person').inner_text()
 
         page.goto(uri + '#r=people%2Fquinn-alder.md')
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
@@ -1792,7 +1792,7 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
           r.last_activity = ''; r.mail.last = '';
           KNOWN.delete(r.path); FACTS.delete(r.path); render();
         }""", isolated_context=False)
-        assert 'Last contact in map' not in page.locator('.leadrow').inner_text()
+        assert 'Sep 16' not in page.locator('.r4-stats').inner_text()
         page.locator('details.deep-note > summary').click()
         assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
@@ -2128,7 +2128,7 @@ def test_citations_name_the_source_and_open_marked_margin_or_sheet(reader):
         }""", isolated_context=False)
         page.locator('details.deep-note').evaluate('d => d.open = true')
         chip = page.locator('.block-insight a.cite[href$="src-5"]').first
-        assert chip.inner_text() == '5'  # Quiet superscript; source date remains in the accessible label.
+        assert chip.inner_text() == 'Oct 14'  # The full memory labels the source by its date.
         assert 'Mara, Outlook, Oct 14' in chip.get_attribute('title')
         assert 'subject “Harbour renewal”' in chip.get_attribute('aria-label')
         assert 'data-tip' not in chip.evaluate('e => e.outerHTML')
@@ -2197,7 +2197,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
     page.get_by_role('button', name='Close source context').click()
     page.locator('details.deep-note').evaluate('d => d.open = true')
     grouped = page.locator('.block-insight .cite.run[data-sources="4 5 6"]')
-    assert grouped.inner_text() == '4'
+    assert grouped.inner_text() == 'Sep 22 +2'
     assert grouped.get_attribute('data-sources') == '4 5 6'
     assert '3 sources for this line' in grouped.get_attribute('aria-label')
     grouped.click()
@@ -2777,7 +2777,7 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     expect(page.locator(".session-result-line")).to_contain_text("12 of 15 sessions")
     assert "project=projects%2Falpha.md" in page.url
     page.evaluate("location.hash = '#r=people%2Favery.md'", isolated_context=False)
-    mentions = page.locator(".person-sessions")  # beside Recently, not inside the full note
+    mentions = page.locator(".person-sessions")  # under the timeline, not inside the full note
     expect(mentions.get_by_role("heading", name="Mentioned in sessions")).to_be_visible()
     expect(mentions.locator(".session-context-row")).to_have_count(5)
     expect(mentions.get_by_role("link", name="All 15 sessions", exact=True)).to_have_attribute("href", "#c=sessions&person=people%2Favery.md")
@@ -2911,7 +2911,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
     assert page.locator('#history-timeline .private-history-notice').inner_text() == '1 private entry hidden'
     assert page.locator('.r4-kv dt').filter(has_text='Phone').count() == 0
     assert page.locator('.r4-sub').count() == 0  # Role "—" and no company: no invented subtitle
-    assert page.locator('.r4-stats').count() == 0  # no mail, no dates: no empty number strip
+    assert page.locator('.r4-stats > div').count() == 1  # no mail and unknown dates: only the first dated exchange
     page.locator('details.deep-note > summary').click()
     assert page.locator('.factlist').count() == 0
     assert page.locator('.timeline > li:visible').count() == 0
@@ -3480,7 +3480,7 @@ def test_hidden_excerpt_keeps_identity_claim_and_inline_reveal(reader, width):
 def test_people_columns_disclose_sort_and_remember_without_changing_phone_cards(reader):
     page, uri = reader
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     assert page.locator('.sheet th:visible').all_text_contents() == [
         'Name↕', "What's open↕", 'Company↕', 'Last contact↕']
     assert page.locator('.sheet td.c-email').first.is_hidden()
@@ -3507,7 +3507,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''language => setInterfaceLanguage(language)''', language, isolated_context=False)
     label = '昨夜更新' if language == 'zh' else 'updated last night'
-    assert page.locator('.eyebrow .updated-label').inner_text() == '●' + label
+    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label').inner_text() == '●' + label
     role = page.locator('.page-head .changed-value, .r4-sub .changed-value').filter(has_text='Head of Partnerships')
     assert 'Head of Partnerships' in role.inner_text()
     assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
@@ -3522,9 +3522,9 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert marker.evaluate(r'''node => node.nextSibling.textContent === '\u200a' ''')
     assert marker.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
     page.goto(uri + '#r=people%2Ftomas-reyes.md')
-    assert page.locator('.eyebrow .updated-label, .changed-value').count() == 0
+    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label, .changed-value').count() == 0
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     fresh = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.fresh-label')
     assert fresh.is_visible()
     assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
@@ -3721,11 +3721,11 @@ def test_memory_markers_enter_once_per_page_view_and_respect_reduced_motion(read
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     field = page.locator('.page-head .changed-value, .r4-sub .changed-value').filter(has_text='Head of Partnerships')
     assert field.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-underline')
-    assert page.locator('.eyebrow .updated-label').evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
+    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label').evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
     page.evaluate(r'() => render()', isolated_context=False)
     assert field.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     marker = page.locator('.fresh-label').first
     assert marker.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
     page.locator('.sheet-find').fill('Mara')
@@ -3748,22 +3748,22 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
         .replace(/- \*\*Data-sharing addendum\*\*[^\n]*/, '- 你需要签署中文待办摘要；since 2026-09-22 [4].')};
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert '中文人物摘要' in page.locator('#main').inner_text()
+    assert '中文人物摘要' in page.locator('#main').text_content()
     assert 'Theo Park 发来中文合同' in page.locator('.tl').inner_text()
     assert page.locator('#history-timeline h2').inner_text().startswith('往来')
     page.locator('details.deep-note > summary').click()
     assert '中文相识经过' in page.locator('.deep-note').inner_text()
-    assert 'Original indexed relationship' not in page.locator('#main').inner_text()
+    assert 'Original indexed relationship' not in page.locator('#main').text_content()
     assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').count() == 0
     assert page.locator('.page-head .lang-bar').count() == 0
     assert page.locator('.page-foot .lang-bar select').is_visible()
     page.locator('.page-foot select').select_option('')
-    assert '中文人物摘要' not in page.locator('#main').inner_text()
+    assert '中文人物摘要' not in page.locator('#main').text_content()
     assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').count() == 0
     page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
-    assert '中文人物摘要' not in page.locator('#main').inner_text()
+    assert '中文人物摘要' not in page.locator('#main').text_content()
     page.evaluate(r'''() => { setInterfaceLanguage('zh'); location.hash = 'c=people'; }''', isolated_context=False)
-    assert '中文人物摘要' in page.locator('#main').inner_text()
+    assert '中文人物摘要' in page.locator('#main').text_content()
     page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
     assert '中文待办摘要' in page.locator('.waiting-ledger').inner_text()
     page.locator('.week-details > summary').click()
@@ -3815,7 +3815,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert waiting.locator('.waiting-ask .context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     assert 'Fernhill Labs 科研团队' in page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski').inner_text()
-    page.get_by_role('button', name='表格').click()
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.people-sheet tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
     if width > 600:
         page.locator('.more-columns').click()
@@ -4679,7 +4679,7 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
         assert values and all(v['ratio'] >= 4.5 and v['opacity'] == '1' for v in values), values
         assert page.locator('span[aria-label]:not([role])').count() == 0
     page.goto(uri + '#c=people')
-    page.locator('.table-toggle').click()  # the sheet is one toggle away from the rows
+    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     assert page.locator('.st').count() > 0
     assert page.locator('.st').evaluate_all(r'nodes => nodes.every(n => n.getAttribute("role") === "img" && n.getAttribute("aria-label"))')
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
@@ -4963,7 +4963,8 @@ def test_person_looks_done_row_closes_by_mail_or_stays_open(reader):
     page.evaluate("""() => {
       const r = byPath('people/mara-ostrowski.md');
       const entry = personEntries(r).find(e => e.t.dir === 'mine');
-      REM.today_queue = [{key: doneKey(entry), keys: [doneKey(entry)], reply: {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'}}];
+      REM.today_queue = [{key: doneKey(entry), keys: [doneKey(entry)], dir: 'mine', since: entry.t.since, due: '', quiet: false,
+        reply: {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'}}];
       render();
     }""", isolated_context=False)
     row = page.locator(".owe").filter(has_text="Data-sharing addendum")
@@ -5002,7 +5003,7 @@ def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, widt
     assert all(box["height"] >= 56 for box in (rows.nth(i).bounding_box() for i in range(rows.count())))
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.locator(".r4-find").fill("mara")
-    assert page.locator(".r4 .row.prow").all_inner_texts()[0].startswith("Mara Ostrowski")
+    assert page.locator(".r4 .row.prow .nm").all_inner_texts()[0] == "Mara Ostrowski"
     page.get_by_role("button", name="表格").click()
     assert page.locator("table.sheet").is_visible()
     page.get_by_role("button", name="列表").click()

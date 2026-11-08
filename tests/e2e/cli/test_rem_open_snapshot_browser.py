@@ -116,7 +116,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             page.locator(".r4-people h1").wait_for()
             rows = page.locator(".r4 .row.prow .nm").all_inner_texts()
             assert rows.index("Known Person") < rows.index("Recent Person") < rows.index("Quiet Person")
-            page.locator(".table-toggle").click()  # the full sheet is one toggle away
+            page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the full sheet is one toggle away
             titles = page.locator(".sheet tbody .name a").all_inner_texts()
             assert titles.index("Known Person") < titles.index("Recent Person") < titles.index("Quiet Person")
             assert "Runs the Aurora pilot with us." in page.locator(".sheet").inner_text()
