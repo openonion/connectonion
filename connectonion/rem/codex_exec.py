@@ -44,13 +44,17 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=()) -> list[str]:
+def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(), sealed=False) -> list[str]:
+    """sealed: the commands Codex runs get no network and no credential directory, so an
+    owed-work task can read anything but cannot push, send or post."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
+    credentials = [] if sealed else ['--add-dir', str(selected_env_file().parent)]
     command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
-               '-C', str(root), '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
-               '--add-dir', str(selected_env_file().parent), '--skip-git-repo-check',
+               '-C', str(root), '-s', 'workspace-write',
+               '-c', f'sandbox_workspace_write.network_access={"false" if sealed else "true"}',
+               *credentials, '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]

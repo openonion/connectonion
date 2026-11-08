@@ -45,7 +45,9 @@ def default_config() -> dict:
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
     # menu; empty offers detected suggestions but requests no background work.
-    return {"version": 1, "tasks": {"auto": False}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    # tasks.auto: owed work starts after the night's drafts, sealed (no network,
+    # writes only in its own folder or worktree), and the owner can Undo it.
+    return {"version": 1, "tasks": {"auto": True}, "runner": "codex", "model": "gpt-6.1-sol", "models": {"summary": "gpt-6-luna"}, "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -193,7 +195,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
-    config.setdefault("tasks", {"auto": False})
+    config.setdefault("tasks", {"auto": True})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")

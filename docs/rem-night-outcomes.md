@@ -18,9 +18,12 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-Morning approval reserves a receipt and the Host starts `co rem task run ID`.
-The night may dispatch after drafting only when `tasks.auto: true`; its default
-is false. `co rem status` names this choice.
+By default (`tasks.auto: true`) the night starts each task after drafting and
+records it in `.state/approvals.json` with `by: rem`, so Today says "REM started
+this" and offers Stop and Undo. Undo stops the task, removes its folder, worktree
+and branch, and records `cancelled`: the night never starts it again, while
+morning approval still can. With `tasks.auto: false` morning approval reserves a
+receipt and the Host starts `co rem task run ID`. `co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
 Nothing here sends messages or marks an obligation done; the morning UI still
@@ -87,11 +90,16 @@ text that might contain credentials or private URLs.
 ## Obligation work
 
 Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
-`co rem task stop ID` to stop it. Each ID gets one Codex session, using the
-configured work model and the same sandbox/network/credential-directory flags
-as upkeep. An unambiguous existing repository from the obligation's project
-page (or an explicit project link on its page) is the working directory;
-otherwise the working directory is `.state/tasks/do-ID/work`.
+`co rem task stop ID` to stop it. Each ID gets one Codex session with the
+configured work model, sealed: `workspace-write` with
+`sandbox_workspace_write.network_access=false` and no credential directory, so
+its commands can read anything but write only in `.state/tasks/do-ID/` and
+cannot push, merge into the owner's checkout, send mail or post. When the
+obligation's project page (or an explicit project link on its page) names one
+existing directory inside a git repository, REM creates a worktree of it at
+`.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,
+uncommitted; the owner's checkout is untouched. Otherwise `do-ID/work` is an
+empty folder and the project is named in the prompt to read.
 
 The prepared prompt is extended with the completion criteria, the absolute
 `.state/tasks/do-ID/result.md` deliverable path, and “do not send anything to
@@ -99,8 +107,9 @@ anyone; write the result and stop”. Reviewable work can include repository edi
 the deliverable names changed files, evidence, checks and missing inputs.
 
 `do-ID/receipt.json` records `queued_at`, `started_at`, `finished_at`, `exit_code`,
-`result`, worker/Codex process identities, `cwd`, `log`, `last_message` and
-`deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
+`result`, `by` (`rem` or `owner`), worker/Codex process identities, `cwd`,
+`project`, `repository` and `branch` when a worktree was made, `log`,
+`last_message` and `deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
 `stopped`. A zero exit without a nonempty deliverable is failed. Repeated `run`
 returns the same receipt, including failures; automatic retries are deliberately
 absent. `status` reconciles dead workers into a durable failure and stops verified
@@ -109,7 +118,8 @@ Native maintenance cleanup preserves every `do-*` directory.
 
 Local Today snapshots attach receipt fields to `outcome.task`; shared snapshots
 still expose no private outcomes. The Today card shows receipt progress and,
-after completion, the deliverable path plus a copyable prepared reply:
+who started it, Stop while it runs, Undo, a failure's reason, and after
+completion a link to the deliverable plus a copyable prepared reply:
 `REM 已经做完：<one line> · 附：<path>`. The owner sends it. Existing receipts
 are not offered for another batch approval. Live cards provide a refresh action;
 offline snapshots need a new `co rem open` to obtain later receipts.

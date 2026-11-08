@@ -34,6 +34,8 @@ args = sys.argv[1:]
 last = pathlib.Path(args[args.index('-o') + 1])
 (last.parent / 'argv.json').write_text(json.dumps(args))
 last.write_text('Reviewed the Mara pilot.')
+os.chdir(args[args.index('-C') + 1])
+pathlib.Path('codex-was-here.md').write_text('Mara pilot notes')
 if os.environ.get('TASK_FAKE_SLEEP'):
     time.sleep(float(os.environ['TASK_FAKE_SLEEP']))
 if not os.environ.get('TASK_FAKE_MISSING'):
@@ -74,7 +76,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
     assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
     assert argv[argv.index('-s') + 1] == 'workspace-write'
-    assert 'sandbox_workspace_write.network_access=true' in argv and '--add-dir' in argv
+    assert 'sandbox_workspace_write.network_access=false' in argv and '--add-dir' in argv
     assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
     assert 'do not send anything to anyone; write the result and stop' in argv[-1]
     assert saved['deliverable'] in argv[-1]
@@ -92,26 +94,142 @@ def test_timeout_kills_work_and_keeps_receipt(task_notebook, fake_codex, monkeyp
     assert not saved.get('prepared_reply') and saved['finished_at']
 
 
-def test_project_repository_is_working_directory(task_notebook, fake_codex, tmp_path):
+def _git(directory, *args):
+    import subprocess
+    return subprocess.run(['git', '-C', str(directory), '-c', 'user.name=Mara', '-c', 'user.email=mara@example.com',
+                           *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def _link_project(root, path):
+    book = Notebook(root)
+    book.write('projects/pilot.md', book.read('projects/pilot.md').replace('## Paths\n', f'## Paths\n- {path}\n'))
+
+
+def _repository(path):
+    path.mkdir()
+    _git(path, 'init', '-q', '-b', 'main')
+    (path / 'README.md').write_text('Fernhill Labs pilot\n')
+    _git(path, 'add', 'README.md')
+    _git(path, 'commit', '-q', '-m', 'Start the pilot')
+    return path
+
+
+def _writable(argv):
+    return [argv[index + 1] for index, arg in enumerate(argv) if arg == '--add-dir']
+
+
+def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path):
     from connectonion.rem import tasks
-    repo = tmp_path / 'pilot-repository'
-    repo.mkdir()
-    book = Notebook(task_notebook)
-    book.write('projects/pilot.md', book.read('projects/pilot.md').replace('## Paths\n', f'## Paths\n- {repo}\n'))
+    repo = _repository(tmp_path / 'pilot-repository')
+    _link_project(task_notebook, repo)
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
     tasks.execute(task_notebook, receipt['id'])
-    argv = read_json(Path(receipt['receipt']).parent / 'argv.json', [])
-    assert argv[argv.index('-C') + 1] == str(repo)
-    assert str(Path(receipt['receipt']).parent) in argv
+    saved = tasks.status(task_notebook, receipt['id'])
+    folder = Path(saved['receipt']).parent
+    argv = read_json(folder / 'argv.json', [])
+    work = folder / 'work'
+    # Codex writes only in a worktree on its own branch, plus its task folder.
+    assert argv[argv.index('-C') + 1] == str(work) == saved['cwd'] and _writable(argv) == [str(folder)]
+    assert _git(work, 'branch', '--show-current') == saved['branch'] == f"rem/task-{receipt['id']}"
+    assert (work / 'codex-was-here.md').is_file() and saved['project'] == str(repo)
+    # The owner's checkout keeps its branch and has no new files.
+    assert _git(repo, 'branch', '--show-current') == 'main' and _git(repo, 'status', '--porcelain') == ''
+    # No network for its commands: nothing can be pushed, mailed or posted.
+    assert 'sandbox_workspace_write.network_access=false' in argv
+    assert not any('network_access=true' in arg for arg in argv)
+    assert str(repo) in argv[-1] and 'Never push' in argv[-1]
+    assert saved['result'] == 'completed'
 
 
-def test_auto_is_opt_in_and_status_explains_it(task_notebook, monkeypatch):
+def test_task_without_a_repository_reads_the_project_and_writes_in_its_folder(task_notebook, fake_codex, tmp_path):
+    from connectonion.rem import tasks
+    project = tmp_path / 'pilot-notes'
+    project.mkdir()
+    _link_project(task_notebook, project)
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    tasks.execute(task_notebook, receipt['id'])
+    saved = tasks.status(task_notebook, receipt['id'])
+    folder = Path(saved['receipt']).parent
+    argv = read_json(folder / 'argv.json', [])
+    assert argv[argv.index('-C') + 1] == str(folder / 'work') and _writable(argv) == [str(folder)]
+    assert not (project / 'codex-was-here.md').exists() and 'branch' not in saved
+    assert str(project) in argv[-1]
+
+
+def _finished(root, task_id):
+    from connectonion.rem import tasks
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        saved = tasks.status(root, task_id)
+        if saved['result'] not in ('queued', 'starting', 'running'):
+            return saved
+        time.sleep(.05)
+    raise AssertionError(saved)
+
+
+def _approvals(root):
+    return list(read_json(state_path(root, 'approvals.json'), {}).values())
+
+
+def test_night_dispatches_by_default_and_records_rem_as_the_one_who_started(task_notebook, fake_codex):
+    from connectonion.rem import approvals, reader, tasks
+    config = read_config(task_notebook)
+    assert default_config()['tasks']['auto'] is True and config['tasks']['auto'] is True
+    started = tasks.auto_dispatch(task_notebook, config)
+    assert len(started) == 1 and started[0]['by'] == 'rem'
+    saved = _finished(task_notebook, started[0]['id'])
+    assert saved['result'] == 'completed'
+    [record] = _approvals(task_notebook)
+    assert record['by'] == 'rem' and record['kind'] == 'task' and record['status'] == 'dispatched'
+    assert record['receipt_id'] == saved['id'] and record['keys'] == night.listing(task_notebook)[0]['keys']
+    task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
+    assert task['by'] == 'rem' and task['prepared_reply'].startswith('REM 已经做完：')
+    # The next round finds the receipt: no second session, no second record.
+    assert tasks.auto_dispatch(task_notebook, config)[0]['finished_at'] == saved['finished_at']
+    assert len(_approvals(task_notebook)) == 1 and approvals.outcomes(task_notebook) == []
+
+
+def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):
+    from connectonion.rem import approvals, tasks
+    repo = _repository(tmp_path / 'pilot-repository')
+    _link_project(task_notebook, repo)
+    config = read_config(task_notebook)
+    saved = _finished(task_notebook, tasks.auto_dispatch(task_notebook, config)[0]['id'])
+    folder = Path(saved['receipt']).parent
+    assert tasks.undo(task_notebook, saved['id'])['status'] == 'cancelled'
+    assert not folder.exists() and _git(repo, 'branch', '--list', 'rem/*') == ''
+    assert len(_git(repo, 'worktree', 'list').splitlines()) == 1
+    assert [record['status'] for record in _approvals(task_notebook)] == ['cancelled']
+    [offered] = approvals.outcomes(task_notebook)
+    assert offered['kind'] == 'task' and tasks.auto_dispatch(task_notebook, config) == []
+    assert approvals.approve(task_notebook, [offered['id']])['results'][0]['status'] == 'queued'
+
+
+def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch):
+    from connectonion.rem import tasks
+    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
+    deadline = time.monotonic() + 10
+    while not read_json(Path(started['receipt']), {}).get('codex_pid') and time.monotonic() < deadline:
+        time.sleep(.05)
+    pid = read_json(Path(started['receipt']), {})['codex_pid']
+    assert tasks.undo(task_notebook, started['id'])['status'] == 'cancelled'
+    assert not Path(started['receipt']).parent.exists()
+    import subprocess
+    process = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True)
+    assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived undo'
+
+
+def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monkeypatch):
     from connectonion.rem import tasks, service
     launched = []
     monkeypatch.setattr(tasks, 'start', lambda root, identity: launched.append(identity) or {'id': identity})
-    assert not read_config(task_notebook)['tasks']['auto']
+    set_config(task_notebook, ['tasks.auto', 'false'])
     assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
-    assert not launched
+    assert not launched and service.status(task_notebook)['tasks']['auto'] is False
+    (task_notebook / 'config.yaml').write_text((task_notebook / 'config.yaml').read_text().replace(
+        'tasks:\n  auto: false\n', ''))
+    assert read_config(task_notebook)['tasks']['auto'] is True  # an older notebook without the key
     set_config(task_notebook, ['tasks.auto', 'true'])
     tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     assert launched

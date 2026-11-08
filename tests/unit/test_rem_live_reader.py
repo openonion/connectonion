@@ -281,3 +281,19 @@ def test_task_refresh_is_owner_only_and_reads_the_receipt(host):
     status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
     assert status == 200 and json.loads(text)['result'] == 'failed'
     assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=b'{}')[0] == 400
+
+
+def test_task_stop_and_undo_go_through_the_owner_endpoint(host, monkeypatch):
+    from connectonion.rem import tasks
+    calls = []
+    monkeypatch.setattr(tasks, 'stop', lambda root, task_id: calls.append(('stop', task_id)) or {'result': 'stopped'})
+    monkeypatch.setattr(tasks, 'undo', lambda root, task_id: calls.append(('undo', task_id)) or {'status': 'cancelled'})
+    task_id = 'a' * 32
+    for action, expected in (('stop', {'result': 'stopped'}), ('undo', {'status': 'cancelled'})):
+        body = json.dumps({'id': task_id, 'action': action}).encode()
+        assert call(host.routes, 'POST', '/rem/task', body=body)[0] == 401
+        status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+        assert status == 200 and json.loads(text) == expected
+    assert calls == [('stop', task_id), ('undo', task_id)]
+    body = json.dumps({'id': task_id, 'action': 'push'}).encode()
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 400

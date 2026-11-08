@@ -743,8 +743,8 @@ Tier:     agent    the model drives tools: it reads the material and writes the 
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
-Tasks:    tasks.auto is false by default: morning approval starts work.
-          co rem config set tasks.auto true opts into dispatch after nightly drafts.
+Tasks:    tasks.auto is true by default: the night starts owed work after drafts.
+          co rem config set tasks.auto false leaves it for morning approval.
 ```
 
 ## co rem logs
@@ -1149,13 +1149,15 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model, workspace-write and network access, with the
-same credential-directory access as REM upkeep. Work uses the project page's
-repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
-done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+Uses the configured work model, sealed: workspace-write without network or the
+credential directory, so it reads anything but cannot push, send or post. It
+writes only in .state/tasks/do-ID/: a git worktree of the project page's
+repository on branch rem/task-ID when there is one, otherwise do-ID/work.
+The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Night tasks wait for morning approval unless tasks.auto is true (default false).
+The night starts tasks after drafts (tasks.auto, default true); the reader's
+Undo removes a task's work and the night never starts it again.
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem task status

@@ -115,11 +115,12 @@ async def _action(scope, receive, send, root, headers):
     from ...rem.files import RemError
     from ...rem import drafts, threads, translate
     if scope["path"] == "/rem/task":
-        from ...rem.tasks import status
-        if not isinstance(body.get("id"), str):
-            await _reply(send, 400, json.dumps({"error": "Expected task id"}), "application/json")
+        from ...rem import tasks
+        action = body.get("action", "status")
+        if not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
+            await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop or undo"}), "application/json")
             return
-        operation = lambda: status(root, body['id'])
+        operation = lambda: getattr(tasks, action)(root, body['id'])
     elif scope["path"] == "/rem/approve":
         from ...rem import approvals
         if (body.get("action", "approve") not in ("approve", "undo")
