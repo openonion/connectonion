@@ -200,10 +200,12 @@ def release(root, *, at=None, dispatch=None):
 
 def _waits(root, key):
     """An approved task passes the same gate as REM's own: one at a time, the nightly cap, the floor."""
+    from . import tasks
     from .config import read_config
-    from .tasks import gate
     item = read_json(state_path(root, 'approvals.json'), {})[key]
-    return item['kind'] == 'task' and item['status'] == 'queued' and gate(root, read_config(root), item['key'])
+    if item['kind'] != 'task' or item['status'] != 'queued':
+        return None
+    return tasks.HOLD or tasks.gate(root, read_config(root), item['key'])
 
 
 def _release_one(root, key, at, dispatch):

@@ -1325,9 +1325,10 @@ def test_approve_done_tasks_and_unknown_ids_return_individual_results(notebook, 
     assert len(dispatched) == 1
 
 
-def test_approval_dispatch_does_not_lock_notebook(notebook):
+def test_approval_dispatch_does_not_lock_notebook(notebook, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    from connectonion.rem import approvals
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setattr(tasks, 'HOLD', False, raising=False)
     from connectonion.rem.files import maintenance_lock
     key = 'people/fern.md\nReview the pilot.'  # approved task records carry their obligation key
     item = {'id': 'task:fern', 'kind': 'task', 'status': 'queued', 'key': key, 'keys': [key], 'text': 'Review the pilot.'}

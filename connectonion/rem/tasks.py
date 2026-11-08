@@ -21,6 +21,10 @@ from .service import now
 
 
 ACTIVE = ('starting', 'running')
+# rc62 safety hold; rc63 removes it. Codex runs git outside its sandbox in the task's folder, so
+# a task is recorded and its prompt offered, but no Codex run starts: approved, automatic or CLI.
+HOLD = True
+HELD = 'Recorded. For safety this version does not run it; open it in Codex'
 
 
 def identity(key):
@@ -96,7 +100,7 @@ def workspace(root, receipt, folder):
         if top.returncode == 0:
             branch = f"rem/task-{receipt['id']}"
             _git('-C', top.stdout.strip(), 'worktree', 'add', '-q', '-b', branch, str(work), 'HEAD')
-            receipt.update(repository=top.stdout.strip(), branch=branch)
+            receipt.update(repository=top.stdout.strip(), branch=branch, gitdir=(work / '.git').read_text())
     work.mkdir(exist_ok=True, mode=0o700)
     return work
 
@@ -123,6 +127,8 @@ def _prepared(root, task_id):
 
 def start(root, task_id):
     """Detach a worker, never a second worker for the same obligation."""
+    if HOLD:
+        raise RemError(HELD + '. co rem task status ID shows its prompt.')
     from .runner import child_env
     root = Path(root).resolve()
     folder = directory(root, task_id)
@@ -152,7 +158,8 @@ def _interrupted(signum, frame):
 def _run(command, log, timeout, receipt):
     with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
                                                   stderr=subprocess.STDOUT, start_new_session=True,
-                                                  env=codex_exec.sealed_environment(os.environ)) as process:
+                                                  env={**codex_exec.sealed_environment(os.environ),
+                                                       'TMPDIR': str(Path(receipt['receipt']).parent / 'tmp')}) as process:
         receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
         write_json(Path(receipt['receipt']), receipt)
         try:
@@ -188,8 +195,10 @@ def _execute(root, folder, receipt, timeout):
         config = read_config(root)
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
+        (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)
+        reads = [receipt[name] for name in ('repository', 'project') if receipt.get(name)]
         command = codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True)
+                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True, reads=reads)
         write_json(folder / 'receipt.json', receipt)
         code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt)
         deliverable = Path(receipt['deliverable'])
@@ -203,9 +212,23 @@ def _execute(root, folder, receipt, timeout):
         # Missing executables, inaccessible projects and invalid configs are expected launch failures.
         receipt['reason'] = str(error)
     finally:
+        if receipt.get('gitdir'):
+            _neuter(folder / 'work', receipt['gitdir'])
         receipt.update(result=result, exit_code=code, finished_at=now().isoformat())
         write_json(folder / 'receipt.json', receipt)
     return _project(receipt)
+
+
+def _neuter(work, gitdir):
+    """The model wrote this worktree. Before the owner runs git in it, its .git is REM's pointer
+    again and no per-worktree config (core.fsmonitor, hooksPath) remains to run on `git status`."""
+    marker = work / '.git'
+    if marker.is_dir() and not marker.is_symlink():
+        shutil.rmtree(marker)
+    elif marker.exists() or marker.is_symlink():
+        marker.unlink()
+    marker.write_text(gitdir)
+    (Path(gitdir.split(':', 1)[1].strip()) / 'config.worktree').unlink(missing_ok=True)
 
 
 def _project(receipt):
@@ -296,7 +319,7 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    if not config['tasks']['auto']:
+    if HOLD or not config['tasks']['auto']:
         _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn

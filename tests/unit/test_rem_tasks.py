@@ -13,6 +13,8 @@ from connectonion.rem.files import RemError, Notebook, read_json, state_path, wr
 
 @pytest.fixture
 def task_notebook(tmp_path, monkeypatch, rem_clock):
+    from connectonion.rem import tasks
+    monkeypatch.setattr(tasks, 'HOLD', False)  # these tests exercise the run itself; one test holds
     root = tmp_path / 'rem'
     prepare(root)
     # tasks.auto is off by default until the inverted read boundary ships; these tests run it on.
@@ -35,9 +37,14 @@ args = sys.argv[1:]
 last = pathlib.Path(args[args.index('-o') + 1])
 (last.parent / 'argv.json').write_text(json.dumps(args))
 (last.parent / 'env.json').write_text(json.dumps(sorted(os.environ)))
+(last.parent / 'tmpdir.txt').write_text(os.environ.get('TMPDIR', ''))
 last.write_text('Reviewed the Mara pilot.')
 os.chdir(args[args.index('-C') + 1])
 pathlib.Path('codex-was-here.md').write_text('Mara pilot notes')
+if os.environ.get('TASK_FAKE_PLANT') and pathlib.Path('.git').is_file():
+    pathlib.Path('.git').unlink()
+    pathlib.Path('.git').mkdir()
+    pathlib.Path('.git/config').write_text('[core]\\n\\tfsmonitor = touch planted\\n')
 if os.environ.get('TASK_FAKE_SLEEP'):
     time.sleep(float(os.environ['TASK_FAKE_SLEEP']))
 if not os.environ.get('TASK_FAKE_MISSING'):
@@ -162,6 +169,8 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     # Codex's command executor (code mode) runs outside the seatbelt; memories persist across runs,
     # subagents were not shown to inherit the profile, and skill text stays away from the model.
     assert 'features.code_mode_host=false' not in argv  # codex 0.167 runs no command without it
+    # The owner's execpolicy rules can run a matching command outside the sandbox.
+    assert '--ignore-rules' in argv
     assert {'features.code_mode=false', 'features.memories=false',
             'features.multi_agent=false', 'features.multi_agent_v2=false',
             'skills.include_instructions=false'} <= set(argv)
@@ -169,12 +178,34 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     assert 'PATH' in names and 'HOME' in names
     assert not [name for name in names if re.search('KEY|TOKEN|SECRET|PASSWORD|API', name, re.I)], names
     table = next(arg for arg in argv if arg.startswith('permissions.rem_task.filesystem='))
+    # Outside the task folder, work dir, repository and Codex's release the disk's user areas are unreadable.
+    for root in ('/Users', '/Volumes', '/tmp', '/private/tmp', '/private/var/folders'):
+        assert f'"{root}"="none"' in table
+    assert ':tmpdir' not in table and ':slash_tmp' not in table
+    assert f'"{os.path.realpath(repo)}"="read"' in table
+    assert table.count('="write"') == 2  # the task folder and its work dir: nothing under the repo's .git
+    assert read_json(folder / 'env.json', []) and (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
     home = os.path.realpath(Path.home())
     for name in ('.co', '.ssh', '.config/gh', '.aws', '.gnupg', '.netrc', '.git-credentials'):
         assert name in (*CREDENTIAL_DIRS, *CREDENTIAL_FILES) and f'"{home}/{name}"="none"' in table
     assert f'"{os.path.realpath(folder)}"="write"' in table and f'"{os.path.realpath(work)}"="write"' in table
     assert str(repo) in argv[-1] and 'Never push' in argv[-1]
     assert saved['result'] == 'completed'
+
+
+def test_a_worktree_the_model_wrote_gets_its_git_pointer_back(task_notebook, fake_codex, tmp_path, monkeypatch):
+    import subprocess
+    from connectonion.rem import tasks
+    repo = _repository(tmp_path / 'pilot-repository')
+    _link_project(task_notebook, repo)
+    monkeypatch.setenv('TASK_FAKE_PLANT', '1')  # the model swaps work/.git for a repo with core.fsmonitor
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
+    tasks.execute(task_notebook, receipt['id'])
+    work = Path(receipt['receipt']).parent / 'work'
+    assert (work / '.git').is_file() and (work / '.git').read_text() == tasks.status(task_notebook, receipt['id'])['gitdir']
+    assert _git(work, 'branch', '--show-current') == f"rem/task-{receipt['id']}"
+    monitor = subprocess.run(['git', '-C', str(work), 'config', '--get', 'core.fsmonitor'], capture_output=True, text=True)
+    assert monitor.returncode == 1 and not monitor.stdout
 
 
 def test_task_without_a_repository_reads_the_project_and_writes_in_its_folder(task_notebook, fake_codex, tmp_path):
@@ -309,6 +340,21 @@ def test_an_approved_task_waits_for_the_running_one_and_its_card_says_so(task_no
         tasks.stop(task_notebook, first['id'])
     released = approvals.release(task_notebook, dispatch=lambda item: {'id': item['receipt_id']})
     assert released[0]['status'] == 'dispatched' and released[0]['dispatched_at']
+
+
+def test_this_version_holds_approved_tasks_and_starts_no_codex_run(task_notebook, monkeypatch):
+    from connectonion.rem import approvals, tasks
+    monkeypatch.setattr(tasks, 'HOLD', True)
+    monkeypatch.setattr(tasks.subprocess, 'Popen', lambda *a, **k: pytest.fail('no Codex run starts while held'))
+    offered = approvals.outcomes(task_notebook)[0]
+    assert approvals.approve(task_notebook, [offered['id']])['results'][0]['status'] == 'queued'
+    calls = []
+    assert approvals.release(task_notebook, dispatch=lambda item: calls.append(item) or {}) == [] and not calls
+    task = night.listing(task_notebook)[0]['task']
+    assert task['result'] == 'held' and task['prompt']
+    with pytest.raises(RemError, match='open it in Codex'):
+        tasks.start(task_notebook, task['id'])
+    assert tasks.auto_dispatch(task_notebook, read_config(task_notebook)) == []
 
 
 def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(task_notebook, fake_codex, tmp_path):

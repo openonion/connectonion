@@ -18,6 +18,13 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
+**This version holds every task** (`tasks.HOLD`, removed in rc63): Codex runs
+git outside its sandbox in the task's folder, so approval records the task and
+its Today card says "Recorded. For safety this version does not run it; open it
+in Codex" with the prepared prompt to copy, but no Codex run starts, whether
+approved, automatic or `co rem task run`. What follows describes the run once
+the hold is lifted.
+
 By default (`tasks.auto: false`) morning approval reserves a receipt and the
 Host starts `co rem task run ID`. With `tasks.auto: true` the night also starts
 owed tasks after drafting and records each in `.state/approvals.json` with
