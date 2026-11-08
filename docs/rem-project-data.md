@@ -209,3 +209,10 @@ notebook audit results and their dataset limitations are in the separate report;
 real people and project examples do not belong in source code or fixtures.
 This change delivers the data contract only; the parallel designer owns screens.
 The wiki and docs website should link to this contract when those views ship.
+
+## Repository ingest (sprint 11)
+
+The ingest contract is tested with `fernhill/lanterns` and fictional contributors.
+The reader will read JSON at `.state/code/<owner>__<repo>/repository.json` only;
+read-only acquisition and conservative session links are implemented separately
+from snapshot rendering. Issues, PRs and runs are capped at 200/100/200 per sync.
