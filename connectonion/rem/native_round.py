@@ -108,9 +108,9 @@ def _jobs(root, first, logs, sources):
     rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
              for row in daily.unfinished_by_recency(root)
              if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
-    from .refusals import due_for_retry
-    retries = due_for_retry(root)
-    rows = [row for row in rows if row["record"] not in retries]
+    from .refusals import due_for_retry, parked_waiting
+    retries, parked = due_for_retry(root), parked_waiting(root)
+    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return (daily._owner_due(root) + rows)[:limit]
@@ -238,6 +238,8 @@ def finish(root, cursor):
 def _prepare_job(root, cursor, config, directory):
     job = cursor["jobs"][cursor["job_index"]]
     record, book = job["record"], Notebook(root)
+    from .native import progress_step
+    progress_step(f"preparing {record}", round=cursor["started_at"], job_index=cursor["job_index"], record=record)
     if job["kind"] == "retry":
         from .refusals import mark_retried
         mark_retried(root, record)
