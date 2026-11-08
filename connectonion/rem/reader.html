@@ -1618,6 +1618,7 @@
   .r4-btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
   .r4-btn.ghost { box-shadow: none; background: none; color: var(--r4-ink2); }
   .r4-btn.ghost:hover { background: var(--r4-hover); }
+  .r4 .r4-today { flex: none; align-self: center; color: var(--r4-ink2); font: 500 14px var(--r4-font); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
   .r4 .r4-primary { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 18px; border-radius: 10px; font: 650 14px var(--r4-font); white-space: nowrap; background: var(--r4-fresh); color: var(--r4-on-fresh); flex: none;
     box-shadow: 0 1px 0 rgba(5,48,27,.12), 0 4px 14px -4px color-mix(in srgb, var(--r4-fresh) 70%, transparent); transition: background 120ms ease-out; }
   .r4 .r4-primary:hover { background: var(--r4-fresh-h); }
@@ -2244,6 +2245,7 @@ const UI = {
     "{n} sources": "{n} 个来源",
     "About this person": "关于这个人",
     "{n} items": "{n} 件",
+    "1 item in Today": "今天里有 1 件", "{n} items in Today": "今天里有 {n} 件",
     "Answer first": "最该先回的人",
     "{name} is waiting on you": "{name} 在等你",
     "Waiting on you · {n}": "在等你 · {n}",
@@ -6179,7 +6181,13 @@ function personHead(r, entry) {
   return el("header", { class: "r4-head person-head" }, [
     el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true),
       uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark(true) : null]),
-    el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personPrimary(r, entry)])]);
+    el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personTodayLink(r)])]);
+}
+// A person's page is their record; what you owe them is done from Today
+// (owner, 2026-11-08). One quiet link there, never a reply button here.
+function personTodayLink(r) {
+  const n = waitingOn(r).length;
+  return n ? el("a", { class: "r4-today", href: "#", text: t(n === 1 ? "1 item in Today" : "{n} items in Today", { n }) }) : null;
 }
 function timelineRow(r, item) {
   const text = withoutDateClutter(youify(item.text));

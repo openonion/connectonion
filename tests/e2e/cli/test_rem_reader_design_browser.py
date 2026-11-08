@@ -4966,9 +4966,11 @@ def test_person_page_leads_with_one_next_step_owed_rows_timeline_and_rail(reader
     page.evaluate("theme => { setTheme(theme); setInterfaceLanguage('zh'); }", theme, isolated_context=False)
     assert page.locator(".r4-person h1").inner_text() == "Mara Ostrowski"
     assert "Fernhill Labs" in page.locator(".r4-sub").inner_text()
-    assert _green_primaries(page) == ["给 Mara 回信"]
-    primary = page.locator(".r4-primary").bounding_box()
-    assert primary["y"] + primary["height"] <= 844, "the primary is on the first screen"
+    # The person page is her record; what you owe her is done from Today (owner, 2026-11-08).
+    assert _green_primaries(page) == []
+    today = page.locator(".r4-today")
+    assert re.fullmatch(r"今天里有 \d+ 件", today.inner_text()) and today.get_attribute("href") == "#"
+    assert today.bounding_box()["y"] + today.bounding_box()["height"] <= 844, "the Today link is on the first screen"
     assert page.locator(".r4-stats > div").count() >= 3
     assert page.locator("#open-threads h2").inner_text() == "你们之间还没结的事"
     titles = page.locator(".owe-t").all_inner_texts()
@@ -5004,7 +5006,7 @@ def test_person_looks_done_row_closes_by_mail_or_stays_open(reader):
     row.get_by_role("button", name="Not done yet").click()
     row = page.locator(".owe").filter(has_text="Data-sharing addendum")
     assert row.locator(".chip").inner_text() != "Looks done"
-    assert _green_primaries(page) == ["Write to Mara"]
+    assert _green_primaries(page) == [] and page.locator(".r4-today").inner_text() == "1 item in Today"
     page.evaluate("() => { notDoneKeys.clear(); render(); }", isolated_context=False)
     page.locator(".owe").filter(has_text="Data-sharing addendum").get_by_role("button", name="Close by this mail").click()
     assert page.locator(".owe").filter(has_text="Data-sharing addendum").locator(".chip").inner_text() == "Marked done"
@@ -5040,7 +5042,7 @@ def test_people_are_grouped_rows_with_one_focus_search_and_few_tabs(reader, widt
     assert page.locator("table.sheet").count() == 0
 
 
-@pytest.mark.parametrize('route', ['#c=people', '#r=people%2Fmara-ostrowski.md'])
+@pytest.mark.parametrize('route', ['#c=people'])
 def test_prepared_person_draft_primary_reviews_static_live_and_private_drafts(reader, route):
     page, uri = reader
     page.goto(uri + route)
