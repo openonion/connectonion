@@ -159,6 +159,12 @@ def test_task_works_sealed_in_its_own_worktree_and_leaves_the_project_alone(task
     assert 'default_permissions="rem_task"' in argv and 'permissions.rem_task.network.enabled=false' in argv
     # The shell tool gets only Codex's core variables, and Codex itself gets no secrets.
     assert 'shell_environment_policy.inherit="core"' in argv
+    # Codex's command executor (code mode) runs outside the seatbelt; memories persist across runs,
+    # subagents were not shown to inherit the profile, and skill text stays away from the model.
+    assert 'features.code_mode_host=false' not in argv  # codex 0.167 runs no command without it
+    assert {'features.code_mode=false', 'features.memories=false',
+            'features.multi_agent=false', 'features.multi_agent_v2=false',
+            'skills.include_instructions=false'} <= set(argv)
     names = read_json(folder / 'env.json', [])
     assert 'PATH' in names and 'HOME' in names
     assert not [name for name in names if re.search('KEY|TOKEN|SECRET|PASSWORD|API', name, re.I)], names
