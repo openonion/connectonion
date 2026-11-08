@@ -1822,10 +1822,11 @@
   .pd-ring { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border: 1px solid var(--ink-2); border-radius: 50%; background: var(--bg); }
   .pd-lbl { position: absolute; top: 1px; font-size: 10.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; }
   .pd-lbl.red { color: var(--red); }
+  .pd-late-n.left { transform: translate(-100%, -50%); padding: 0 7px 0 0; background: var(--bg); }
   .pd-late-n { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 7px; color: var(--red); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 
   /* 时间线 */
-  .pd-gantt { border-top: 1px solid var(--rule); }
+  .pd-gantt { border-top: 1px solid var(--rule); overflow-x: clip; }
   .pd-row { display: grid; grid-template-columns: var(--name) minmax(0, 1fr) var(--note); border-bottom: 1px solid var(--rule); }
   .pd-name { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 5px 12px 5px 0; font-size: 13.5px; }
   .pd-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1850,6 +1851,7 @@
   .pd-col-label { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
   .pd-col-line { display: block; margin-top: 4px; font: 12.5px/1.5 var(--voice); color: var(--ink-2); }
   .pd-now-label { position: absolute; top: 6px; transform: translateX(calc(-100% - 6px)); font-size: 11.5px; font-weight: 600; background: var(--bg); padding: 0 2px; }
+  .pd:not([data-zoom="quarter"]) .pd-pencil-label { display: none; }
   .pd-pencil-label { position: absolute; top: 6px; padding-left: 8px; font-size: 11px; color: var(--pencil); white-space: nowrap; }
   .pd-note-head { color: var(--ink-3); font-size: 11.5px; display: flex; align-items: flex-end; padding-bottom: 8px; }
   .pd-rem-row .pd-name small { display: inline; margin-left: 8px; }
@@ -7072,7 +7074,7 @@ function projectStrip(r, win, labels = false) {
     track.appendChild(el("i", { class: "pd-late", style: "left:" + from + "%;width:" + (now - from) + "%", title: projectMarkWhat(late) + " · " + pdDay(late.day, true) }));
     if (labels) {
       track.appendChild(el("span", { class: "pd-lbl red", style: "left:" + Math.min(from, 70) + "%", text: (late.day < win.a ? "← " : "") + pdT("due {date}", { date: pdDay(late.day) }) }));
-      track.appendChild(el("span", { class: "pd-late-n", style: "left:" + now + "%", text: pdT("{n} days late", { n: late.days }) }));
+      track.appendChild(el("span", { class: "pd-late-n" + (now > 80 ? " left" : ""), style: "left:" + now + "%", text: pdT("{n} days late", { n: late.days }) }));
     }
   }
   const quietOn = projectQuietOn(r);
@@ -7153,7 +7155,9 @@ function projectMonths(win) {
   if (!step && day < win.a) day = pdAddDays(day.slice(0, 7) + "-28", 4).slice(0, 8) + "01";
   if (!step && win.a.endsWith("-01")) day = win.a;
   while (day <= win.b) {
-    const next = step ? pdAddDays(day, 7) : pdAddDays(day.slice(0, 8) + "28", 4).slice(0, 8) + "01";
+    let next = step ? pdAddDays(day, 7) : pdAddDays(day.slice(0, 8) + "28", 4).slice(0, 8) + "01";
+    // A year reads in quarters: twelve narrow months would only be cut-off labels.
+    if (win.zoom === "year") while (!["01", "04", "07", "10"].includes(next.slice(5, 7))) next = pdAddDays(next.slice(0, 8) + "28", 4).slice(0, 8) + "01";
     cols.push([day, next]);
     day = next;
   }
@@ -7173,11 +7177,12 @@ function projectMonthLine(all, from, to) {
 function projectGanttHead(all, win, notes) {
   const now = pdAt(win, win.today), months = win.zoom === "quarter";
   const scale = el("div", { class: "pd-scale" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  let labelled = 0;
   projectMonths(win).forEach(([day, next], i) => {
     const left = pdAt(win, day), width = pdAt(win, next) - left, line = months && next <= win.today && width >= 11 ? projectMonthLine(all, day, next) : "";
     if (width <= 0) return;
     scale.appendChild(el("div", { class: "pd-col", style: "left:" + left + "%;width:" + width + "%" }, [
-      el("span", { class: "pd-col-label", text: projectMonthLabel(day, i, win.zoom) }), line ? el("span", { class: "pd-col-line", text: line }) : null]));
+      width >= 4 ? el("span", { class: "pd-col-label", text: projectMonthLabel(day, labelled++, win.zoom) }) : null, line ? el("span", { class: "pd-col-line", text: line }) : null]));
   });
   scale.appendChild(el("span", { class: "pd-now-label", style: "left:" + now + "%", text: pdT("Today") }));
   scale.appendChild(el("span", { class: "pd-pencil-label", style: "left:" + now + "%", text: pdT("forecast →") }));
