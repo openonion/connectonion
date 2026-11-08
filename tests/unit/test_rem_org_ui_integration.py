@@ -156,3 +156,17 @@ def test_explicit_parent_and_child_memberships_keep_both_scoped_roles():
     ''')
     assert result['parentMembers'] == result['total'] == 1
     assert 'Tutor' in json.dumps(result['card']) and 'Product Owner' in json.dumps(result['card'])
+
+
+def test_parent_unit_page_renders_direct_members_in_their_known_unit():
+    result = run_js(['orgPeopleSection'], r'''
+      const mara = {path: 'people/mara.md'}, child = {name: 'Squad'};
+      const tree = {people: [mara], units: [child]}, owing = new Map();
+      const orgUnitTree = () => ({tree, owing}), known = () => ({last: ''}), unitOwed = () => [];
+      const orgT = text => text, orgTeam = () => null, orgIcon = () => null;
+      const orgPerson = (p, owing, unitPath) => ({path: p.path, unitPath});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const page = orgPeopleSection({path: 'orgs/course.md', unit_kind: 'course'}, [mara], []);
+      console.log(JSON.stringify(page.children[2].children));
+    ''')
+    assert result == [{'path': 'people/mara.md', 'unitPath': 'orgs/course.md'}]

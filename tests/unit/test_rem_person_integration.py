@@ -129,3 +129,15 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
     ''')
     assert result['org']['path'] == 'orgs/fernhill.md'
     assert result['name'] == label
+
+
+def test_person_owed_sources_keep_the_origin_namespace_and_omit_private_passages():
+    result = run_js(['owedRow', 'privatePassages', 'unlabelled'], r'''
+      const r = {title: 'Mara', path: 'people/mara.md'};
+      const entry = {r: {path: 'orgs/fernhill.md'}, t: {text: 'Public ask [2]. Private ask [3][personal]. Public note [4].'}};
+      const owedParts = () => ({head: 'Public ask'}), owedState = () => ({cls: 'mute', text: 'open'});
+      const firstName = () => 'Mara', isDone = () => false, owedEvidence = () => null, owedActions = () => null;
+      const inline = (text, from) => ({text, from}), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      console.log(JSON.stringify(owedRow(r, entry).children.at(-1).html));
+    ''')
+    assert result == {'text': '[2] [4]', 'from': 'orgs/fernhill.md'}

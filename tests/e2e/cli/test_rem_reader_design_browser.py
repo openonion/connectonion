@@ -5268,12 +5268,12 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
     page.evaluate("""() => {
       const org = byPath('orgs/fernhill-labs.md'), mara = byPath('people/mara-ostrowski.md');
       const course = {...org, path: 'orgs/pilot-course.md', title: 'Pilot course', unit_kind: 'course', kind: '',
-        text: '# Pilot course', children: ['orgs/pilot-squad.md'], people: [], obligations: [], private: false};
+        text: '# Pilot course', children: ['orgs/pilot-squad.md'], people: [mara.path], obligations: [], private: false};
       const team = {...course, path: 'orgs/pilot-squad.md', title: 'Pilot squad', unit_kind: 'team',
         text: '# Pilot squad', children: [], people: [mara.path]};
       REM.records.push(course, team);
       org.children = [course.path]; org.people = org.people.filter(path => path !== mara.path);
-      mara.units = [{path: team.path, role: 'Product Owner'}];
+      mara.units = [{path: course.path, role: 'Tutor'}, {path: team.path, role: 'Product Owner'}];
       org.obligations.forEach(row => row.units = [team.path]);
       render();
     }""", isolated_context=False)
@@ -5283,11 +5283,29 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
     expect(team_link).to_be_visible()
     expect(team_link).to_have_attribute('href', '#r=orgs%2Fpilot-squad.md')
     mara = page.locator('.ov-people .ov-m').filter(has_text='Mara Ostrowski')
-    expect(mara).to_have_count(1)
-    expect(mara).to_contain_text('Product Owner')
+    expect(mara).to_have_count(2)
+    expect(mara.filter(has_text='Product Owner')).to_have_count(1)
     assert page.locator('.ov-stats').inner_text().count('teams or departments') == 1
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    mara.click()
+    course_link.click()
+    page.locator('.ov-page').wait_for()
+    direct = page.locator('.ov-people .ov-row').filter(has_text='Mara Ostrowski')
+    expect(direct).to_contain_text('Tutor')
+    assert 'department not known yet' not in page.locator('.ov-people').inner_text()
+    direct.click()
     page.locator('.r4-person').wait_for()
     expect(page.locator('.r4-rail a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_person_owed_item_opens_its_cited_original_without_searching_full_memory(reader):
+    from patchright.sync_api import expect
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    cite = page.locator('.owe .r4-owed-sources a.cite').first
+    expect(cite).to_be_visible()
+    source = cite.get_attribute('href')
+    assert 'h=src-' in source
+    cite.click()
+    expect(page.locator('#evidence-panel')).to_be_visible()
+    assert page.locator('details.deep-note').get_attribute('open') is None

@@ -104,3 +104,37 @@ their descendant obligations; explicit memberships at both parent and child
 retain their separate roles while rollup people still count once. Added focused
 regressions for both. Unit names in organisation obligations use resolved
 labels instead of exposing raw Unit wikilink syntax.
+
+Hierarchy complete unit run: `18613 passed, 19 skipped, 2944 warnings in 135.08s (0:02:15)`;
+final focused edge-case recheck: `73 passed in 1.43s`.
+
+6. `sprint9/project-data` (`aaa4a5a6`): shared reader unit-test append
+   conflict retained both person owed/reply/no-reply tests and all project
+   metadata-scan/session-mention performance and Unicode cases. Snapshot
+   enrichment merged automatically after org structure and before Today queue,
+   with hierarchy obligation rollups retained afterward. No older person
+   selector harness replaced the current one.
+
+Closed the remaining AI-review evidence-navigation issue: person owed items
+again expose their own cited originals through the existing evidence panel.
+Citation numbers retain the obligation origin page's namespace and private
+passages do not contribute source affordances. Added a focused privacy/source
+identity regression and a real-browser evidence-panel case. Existing Looks
+done assertions keep their exact behavior; only the isolated inline renderer
+seam was added to that test's JS fixture.
+
+Project-data complete unit run: `18677 passed, 19 skipped, 2944 warnings in 133.88s (0:02:13)`;
+project/reader/person/org focused validation: `382 passed in 11.03s`.
+The final hierarchy composition recheck also covers a parent unit's own page:
+its direct member is rendered in the known unit with the parent-specific role,
+while child membership and role remain independently visible.
+
+## Full browser command (one invocation)
+
+```sh
+CO_REM_BROWSER_TEST=1 uv run --quiet --python 3.13 --extra dev python -m pytest -q -p no:cacheprovider tests/e2e/cli/test_rem_reader_design_browser.py tests/e2e/cli/test_rem_reader_browser.py tests/e2e/cli/test_rem_open_snapshot_browser.py tests/e2e/cli/test_rem_thread_actions_browser.py -n 2 -o timeout=300
+```
+
+The full run is allowed to finish. Any post-triage rerun will name only failing
+cases, not repeat the full suite. Pytest basetemp is removed after completion;
+fixture screenshots needed for review are copied outside it first.

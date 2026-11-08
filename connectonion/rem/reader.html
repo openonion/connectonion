@@ -5910,9 +5910,11 @@ function owedRow(r, entry) {
   const parts = owedParts(entry), state = owedState(entry), theirs = entry.t.dir === "theirs";
   const named = parts.head.startsWith(firstName(r));
   const title = !parts.head ? t("Personal item") : theirs && !named ? t("{name} owes you: {what}", { name: firstName(r), what: parts.head }) : parts.head;
+  const sources = [...new Set(unlabelled(entry.t.originalText || entry.t.text).match(/[\[［]W?\d{1,3}[\]］]/g) || [])].join(" ");
   return el("div", { class: "owe" + (theirs ? " theirs" : "") + (isDone(entry) ? " closed" : "") }, [
     el("div", { class: "owe-t" }, [el("span", { text: title }), el("span", { class: "chip " + state.cls, text: state.text })]),
-    parts.head ? owedEvidence(entry, parts) : null, owedActions(entry)]);
+    parts.head ? owedEvidence(entry, parts) : null, owedActions(entry),
+    sources ? el("span", {class: "r4-owed-sources", html: inline(sources, entry.r?.path || r.path)}) : null]);
 }
 function owedCard(r, entries) {
   const order = entry => isDone(entry) ? 3 : entry.t.dir === "mine" ? (looksDone(entry) ? 1 : 0) : 2;
@@ -6719,12 +6721,12 @@ function orgPeopleSection(r, people, owed) {
   const { tree, owing } = orgUnitTree(r, people, owed);
   const loose = [...tree.people].sort((a, b) => (owing.get(b.path) || []).length - (owing.get(a.path) || []).length || known(b).last.localeCompare(known(a).last));
   const units = [...tree.units].sort((a, b) => unitOwed(b).length - unitOwed(a).length || a.name.localeCompare(b.name));
-  const shown = units.length ? [] : people.length <= 6 ? loose : loose.slice(0, 5);
+  const shown = units.length ? (r.unit_kind ? loose : []) : people.length <= 6 ? loose : loose.slice(0, 5);
   const rest = loose.filter(p => !shown.includes(p));
   return el("section", { class: "ov-section ov-people" }, [
     el("h2", {}, [orgT("People you know here"), el("span", { class: "ov-n", text: String(people.length) }), units.length ? el("span", { class: "ov-hint", text: orgT("by where they sit") }) : null]),
     units.length ? el("div", { class: "ov-teams" }, units.map(orgTeam)) : null,
-    shown.length ? el("div", { class: "ov-rows" }, shown.map(p => orgPerson(p, owing))) : null,
+    shown.length ? el("div", { class: "ov-rows" }, shown.map(p => orgPerson(p, owing, r.unit_kind ? r.path : ""))) : null,
     rest.length ? el("p", { class: "ov-quiet" }, [orgIcon("users"), el("span", {}, [
       shown.length || units.length ? orgT("{n} more people in {org}, department not known yet: ", { n: rest.length, org: orgName(r) }) : orgT("Department not known yet: "),
       ...rest.slice(0, 8).flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })]), rest.length > 8 ? " …" : ""])]) : null]);
@@ -6741,9 +6743,10 @@ function orgRole(p, tag = "small") {
   const role = contactFields(p).find(f => f.label === "Role")?.value;
   return role && !UNKNOWN_TEXT.test(role) && !/^unknown\b/i.test(role) ? el(tag, { class: "ov-role" }, [roleSummary(role, p.path)]) : null;
 }
-function orgPerson(p, owing) {
+function orgPerson(p, owing, unitPath = "") {
+  const role = (p.units || []).find(edge => edge.path === unitPath)?.role;
   return el("a", { class: "ov-row", href: href(p) }, [orgFace(p), el("div", { class: "ov-body" }, [
-    el("div", { class: "ov-t" }, [p.title, orgRole(p)]), el("div", { class: "ov-s", text: plainLine(facts(p).how || "") || known(p).summary })]),
+    el("div", { class: "ov-t" }, [p.title, role ? el("small", {class: "ov-role", text: unlabelled(role)}) : orgRole(p)]), el("div", { class: "ov-s", text: plainLine(facts(p).how || "") || known(p).summary })]),
     el("div", { class: "ov-end" }, [owing.has(p.path) ? el("span", { class: "ov-dot " + (owing.get(p.path).some(overdue) ? "late" : "lamp") }) : null,
       el("span", { class: "ov-when", text: fmtDate(known(p).last) })])]);
 }
