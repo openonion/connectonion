@@ -29,6 +29,7 @@ Keep it current
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
+  task          Run, inspect or stop work owed by the owner.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -742,6 +743,8 @@ Tier:     agent    the model drives tools: it reads the material and writes the 
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
+Tasks:    tasks.auto is false by default: morning approval starts work.
+          co rem config set tasks.auto true opts into dispatch after nightly drafts.
 ```
 
 ## co rem logs
@@ -1108,4 +1111,93 @@ Requires: co rem init.
 Output:   One line per page: accepted, refused (and why) or failed; pages left.
 Next:     co rem show PAGE
 Back:     co rem projects --help
+```
+
+
+## co rem task
+
+```
+Run work owed by the owner in one background Codex session. Nothing is sent.
+
+Usage: co rem [--root DIR] [--json] task COMMAND
+
+Commands:
+  run           Start a prepared task by ID; repeated calls return its receipt.
+  status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
+  stop          Stop a task by ID and its children; keep all files.
+
+Uses the configured work model, workspace-write and network access, with the
+same credential-directory access as REM upkeep. Work uses the project page's
+repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
+done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+A zero exit without a nonempty result is failed, never completed work.
+One session per ID: failed and stopped receipts stay; run does not retry them.
+Night tasks wait for morning approval unless tasks.auto is true (default false).
+Do not send anything to anyone; write the result and stop.
+
+Example: co rem task status
+         co rem --root /tmp/mara-rem task run ID
+         co rem task status ID
+         co rem task stop ID
+Back: co rem --help
+```
+
+
+## co rem task run
+
+```
+Start one prepared obligation in background Codex; return its receipt immediately.
+
+Usage: co rem [--root DIR] [--json] task run ID
+
+Arguments:
+  ID            Task ID printed by co rem task status.
+
+Uses the configured work model, workspace-write and network access, with the
+same credential-directory access as REM upkeep. Work uses the project page's
+repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
+done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+A zero exit without a nonempty result is failed, never completed work.
+One session per ID: failed and stopped receipts stay; run does not retry them.
+Night tasks wait for morning approval unless tasks.auto is true (default false).
+Do not send anything to anyone; write the result and stop.
+
+Example: co rem --root /tmp/mara-rem task run ID
+Back: co rem task --help
+```
+
+
+## co rem task status
+
+```
+Read task progress from receipt.json; never infer completion from model text.
+
+Usage: co rem [--root DIR] [--json] task status [ID]
+
+Arguments:
+  ID            Optional task ID; omit to list IDs and receipt states.
+
+Completed receipts include a deliverable and a prepared reply for you to send.
+Failed, timed-out and stopped receipts retain logs and the last message.
+A dead worker is recorded as failed; any verified orphan Codex process is stopped.
+No ID lists current prepared tasks and retained receipts. Does not start work.
+
+Example: co rem task status
+         co rem --root /tmp/mara-rem --json task status ID
+Back: co rem task --help
+```
+
+
+## co rem task stop
+
+```
+Stop one task and its children. Keep all task files and its receipt.
+
+Usage: co rem [--root DIR] [--json] task stop ID
+
+Arguments:
+  ID            Task ID printed by co rem task status.
+
+Example: co rem --root /tmp/mara-rem task stop ID
+Back: co rem task --help
 ```

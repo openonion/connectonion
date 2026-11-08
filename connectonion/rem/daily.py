@@ -251,6 +251,8 @@ def _draft_replies(root, config, maintenance):
                 break
             attempted.append([row['id'], row['version']])
             _prepare_reply(root, row, config, maintenance)
+        from .tasks import auto_dispatch
+        auto_dispatch(root, config)
 
 
 def _prepare_reply(root, row, config, maintenance):

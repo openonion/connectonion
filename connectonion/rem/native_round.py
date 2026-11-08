@@ -150,6 +150,8 @@ def prepare_task(root, cursor, config, directory):
         row = rows[0]
         task = drafts.prepare(root, row, config, directory=directory)
         return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
+    from .tasks import auto_dispatch
+    auto_dispatch(root, config)
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             remaining = service.daily_cap(root)["remaining"]

@@ -190,7 +190,7 @@ def test_replied_card_offers_completion_first_and_localized_explanation(language
 def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prepared):
     if prepared and not provider:
         provider, label = 'gmail', 'Gmail reply'
-    result = _run_reader_js(reader_functions('threadKind', 'kindBadge', 'queueCard') + r'''
+    result = _run_reader_js(reader_functions('threadKind', 'kindBadge', 'queueCard', 'taskResult') + r'''
       const provider = PROVIDER, prepared = PREPARED;
       const entry = {r:{path:'people/fern.md', title:'Fern', category:'people'}, t:{text:provider ? 'You owe Fern feedback [1].' : 'You owe Fern feedback.'}};
       const draft = prepared ? {status:'prepared', provider, thread:'meeting'} : null;
@@ -210,7 +210,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('state', ['replied', 'task'])
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
-    functions = reader_functions('queueCard', 'threadDraft', 'threadActions', 'primaryAction', 'draftNote')
+    functions = reader_functions('queueCard', 'taskResult', 'threadDraft', 'threadActions', 'primaryAction', 'draftNote')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
       const draft = {status, provider:'outlook', thread:'feedback', body:'Here is my feedback on Demo A.', gist:'Fern needs no further reply.'};

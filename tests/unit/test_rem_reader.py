@@ -1515,7 +1515,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_queue_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['queueCard', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
+                          for name in ['queueCard', 'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
                                        'threadActions', 'primaryAction', 'mailtoLink', 'draftNowButton'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
@@ -1640,7 +1640,7 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayEntries', 'todayThread', 'threadAge', 'queueCard', 'morningWords', 'withoutDateClutter'])
+                          for name in ['todayEntries', 'todayThread', 'threadAge', 'queueCard', 'taskResult', 'morningWords', 'withoutDateClutter'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
@@ -1883,7 +1883,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'contactLine',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'morningThread', 'queueCard', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'morningThread', 'queueCard', 'taskResult', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
@@ -2187,7 +2187,7 @@ def test_schedule_reader_states_are_short_and_translated():
 def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'threadRow', 'withoutDateClutter'])
+                          for name in ['threadWho', 'todayThread', 'morningThread', 'queueCard', 'taskResult', 'threadRow', 'withoutDateClutter'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};

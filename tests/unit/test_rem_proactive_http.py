@@ -173,28 +173,23 @@ def test_approve_endpoint_auth_validation_and_per_item_results(host, monkeypatch
     assert status == 200 and json.loads(body)['results'][0]['status'] == 'cancelled'
 
 
-def test_host_approval_clock_releases_outbox_and_dispatches_through_session_path(host, monkeypatch):
+def test_host_approval_clock_dispatches_receipt_through_public_task_cli(host, monkeypatch):
     import asyncio
-    import threading
     from connectonion.network.host.rem_http import approval_tick
-    from connectonion.rem import approvals, service
-    called, completed = [], threading.Event()
-    def input_handler(factory, storage, prompt, ttl, session):
-        called.append((prompt, session))
-        completed.set()
-        return {'status': 'done'}
+    from connectonion.rem import approvals, service, tasks
+    called = []
+    item = {'id': 'task:fern', 'receipt_id': 'fictional-receipt', 'text': 'Review the pilot.'}
+
+    def dispatch(root, task):
+        called.append((root, task))
+        return {'id': task['receipt_id']}
+
     def release(root, *, at, dispatch):
         assert root == host.root
-        receipt = dispatch({'id': 'task:fern', 'text': 'Review the pilot.'})
-        assert receipt == {'session_id': 'rem-approval-fern'}
+        assert dispatch(item) == {'id': 'fictional-receipt'}
         return []
+
     monkeypatch.setattr(approvals, 'release', release)
-    from importlib import import_module
-    monkeypatch.setattr(import_module('connectonion.network.host.http_router'), 'input_handler', input_handler)
-    async def run():
-        tick = approval_tick(host.root, None, None, 60)
-        await tick(service.now())
-        assert await asyncio.to_thread(completed.wait, 2)
-    asyncio.run(run())
-    assert 'Review the pilot.' in called[0][0]
-    assert called[0][1] == {'session_id': 'rem-approval-fern'}
+    monkeypatch.setattr(tasks, 'host_dispatch', dispatch)
+    asyncio.run(approval_tick(host.root, None, None, 60)(service.now()))
+    assert called == [(host.root, item)]

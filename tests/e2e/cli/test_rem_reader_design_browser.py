@@ -4909,3 +4909,48 @@ def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
     assert 'co rem' in page.locator('.approval-header code').inner_text()
     assert 'open' in page.locator('.approval-header code').inner_text()
     assert page.locator('.today-thread a.btn-act[href^="https://"], .waiting-row a.btn-act[href^="https://"]').count() == 0
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypatch, rem_clock, width, theme):
+    """A real receipt supplies the Today card; model prose alone cannot finish it."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem import night, tasks
+    from connectonion.rem.config import prepare, read_config
+    from connectonion.rem.files import Notebook, write_json
+    from connectonion.rem.reader import render
+
+    root = tmp_path / 'mara-rem'
+    prepare(root)
+    book = Notebook(root)
+    book.stub_project('projects/pilot.md', 'Mara pilot', [])
+    book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
+        '## Open threads\n', '## Open threads\n- You owe Mara a pilot review.\n'))
+    night.prepare(root, read_config(root))
+    receipt = tasks.reserve(root, night.listing(root)[0])
+    Path(receipt['deliverable']).write_text('# Mara pilot review\nReviewed the fictional pilot.\n')
+    Path(receipt['last_message']).write_text('Reviewed the Mara pilot.')
+    write_json(Path(receipt['receipt']), {**receipt, 'result': 'completed', 'exit_code': 0,
+                                         'started_at': '2026-09-07T10:00:00Z', 'finished_at': '2026-09-07T10:01:00Z'})
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    path = tmp_path / 'reader.html'
+    path.write_text(render(root, local=True))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 844})
+        page.goto(path.as_uri())
+        page.evaluate('theme => setTheme(theme)', theme, isolated_context=False)
+        card = page.locator('.qcard').filter(has_text='Mara pilot')
+        result = card.locator('.task-result')
+        assert result.is_visible()
+        assert 'Completed' in result.inner_text()
+        assert page.locator('#approve-all').inner_text() == 'Approve all 0'
+        assert receipt['deliverable'] in result.inner_text()
+        assert result.locator('textarea').input_value() == f"REM 已经做完：Reviewed the Mara pilot. · 附：{receipt['deliverable']}"
+        assert result.locator('textarea').get_attribute('readonly') is not None
+        assert result.get_by_role('button', name='Copy prepared reply').is_visible()
+        assert 'Send' not in result.locator('button').all_inner_texts()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.screenshot(path=str(tmp_path / f'task-{theme}-{width}.png'), full_page=True)
+        browser.close()

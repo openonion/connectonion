@@ -44,7 +44,7 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
+def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=()) -> list[str]:
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
@@ -54,7 +54,9 @@ def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
-    return [*command, automation_prompt(root)]
+    for directory in add_dirs:
+        command += ['--add-dir', str(directory)]
+    return [*command, automation_prompt(root) if prompt is None else prompt]
 
 
 def _startup_timeout(signum, frame):

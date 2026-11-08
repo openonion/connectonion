@@ -94,7 +94,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -114,7 +114,13 @@ async def _action(scope, receive, send, root, headers):
         return
     from ...rem.files import RemError
     from ...rem import drafts, threads, translate
-    if scope["path"] == "/rem/approve":
+    if scope["path"] == "/rem/task":
+        from ...rem.tasks import status
+        if not isinstance(body.get("id"), str):
+            await _reply(send, 400, json.dumps({"error": "Expected task id"}), "application/json")
+            return
+        operation = lambda: status(root, body['id'])
+    elif scope["path"] == "/rem/approve":
         from ...rem import approvals
         if (body.get("action", "approve") not in ("approve", "undo")
                 or not isinstance(body.get("ids"), list) or len(body["ids"]) > 500
@@ -198,30 +204,12 @@ def _progress(root, page: str, language: str) -> dict:
 
 def approval_tick(root, create_agent, storage, result_ttl, extra_tick=None):
     """Attach durable REM outbox delivery to the Host's existing minute clock."""
-    running = set()
-
-    async def run_task(item):
-        from .http_router import input_handler
-        return await asyncio.to_thread(input_handler, create_agent, storage,
-                                       'The owner approved this REM task. Carry it out using the cited notebook context:\n'
-                                       + json.dumps(item, ensure_ascii=False), result_ttl,
-                                       session={"session_id": "rem-approval-" + item['id'].split(':')[-1]})
-
-    def finished(future):
-        running.discard(future)
-        # The session path records failure; surface unexpected worker errors too.
-        if not future.cancelled():
-            future.result()
-
     async def tick(at):
         from ...rem.approvals import release
-        loop = asyncio.get_running_loop()
+        from ...rem.tasks import host_dispatch
 
         def dispatch(item):
-            future = asyncio.run_coroutine_threadsafe(run_task(item), loop)
-            running.add(future)
-            future.add_done_callback(finished)
-            return {"session_id": "rem-approval-" + item['id'].split(':')[-1]}
+            return host_dispatch(root, item)
 
         if root is not None and root.is_dir():
             await asyncio.to_thread(release, root, at=at, dispatch=dispatch)
