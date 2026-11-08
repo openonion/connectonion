@@ -3749,7 +3749,9 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     waiting = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
     assert '理学院教授' in waiting.locator('.qhead .meta').inner_text()
     assert 'Fernhill Labs 科研团队' in waiting.locator('.qhead .meta').inner_text()
-    assert waiting.locator('.words').first.text_content() == '你需要签署试点协议；后续安排明天讨论4'
+    if 'open' not in waiting.get_attribute('class').split():
+        waiting.locator('.qage').click()
+    assert waiting.locator('.words').first.inner_text() == '你需要签署试点协议；后续安排明天讨论4'
     assert waiting.locator('.words .cite').first.get_attribute('data-sources') == '4'
     assert waiting.locator('.context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
