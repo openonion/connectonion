@@ -191,7 +191,7 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         from .languages import refresh
         refresh(root)
         from .topic_map import backfill_topics
-        maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)
+        maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True, propose=True)
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)

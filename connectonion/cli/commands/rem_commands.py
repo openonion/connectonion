@@ -2574,7 +2574,7 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
     order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs doctor history "
-             "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

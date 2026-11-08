@@ -54,7 +54,7 @@ Use co rem init to rebuild; a terminal prints its summary, undo block and estima
 Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, translate, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
@@ -835,6 +835,7 @@ Everyday use needs none of them.
 
 Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
+  backfill      File topics REM already holds evidence about; subjects named by the summary model.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
   import        Write one page per Codex / Claude Code session you typed in. No model.
   stub          Create one empty page by hand, with every section marked Unknown.
@@ -915,19 +916,19 @@ Back:     co rem advanced --help
 ## co rem backfill
 
 ```
-Discover topics from existing pages, session summaries and archived mail. No
-network calls by default. Evidence must span 3 independent sources, 14 days and
-2 records. Personal topics are marked before filing. Repeated runs reuse pages.
+File topics for subjects REM already holds evidence about. The summary model
+names subjects from page summaries at most once a week; code files a subject
+only when 3 independent sources over 14 days touch 2 records. Personal topics
+are marked before filing. Repeated runs reuse pages.
 
 Usage:    co rem backfill topics [--dry-run] [--propose]
-Example:  co rem backfill topics --dry-run --json
+Example:  co rem backfill topics --propose --dry-run
+          --propose  ask the summary model for subject names (one call; reused for 7 days)
           --dry-run  report candidates, counts, qualification and privacy; no notebook writes
-          --propose  one models.summary call proposes names; code verifies evidence
-          --json     print one {"ok", "data", "next"} result
-Effects:  Without --dry-run, files qualifying topic frames under the maintenance
-          lock. Alias matches alone never become graph links. The nightly map
-          runs the same discovery. Reads at most 2,000 pages, 1,000 extracts and
-          5,000 archived messages; reports limits when reached.
+Effects:  Without --dry-run, files qualifying topic pages under the maintenance
+          lock and keeps this week's proposal. A name with no evidence is never
+          filed. The nightly round runs the same with --propose. Reads at most
+          2,000 pages, 1,000 extracts and 5,000 archived messages.
 Next:     co rem investigate topics --list
 Back:     co rem advanced --help
 ```

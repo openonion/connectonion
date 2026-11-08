@@ -16,6 +16,8 @@ from connectonion.rem.files import Notebook, read_json, state_path, write_json
 def notebook(tmp_path, monkeypatch, rem_clock):
     prepare(tmp_path)
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
+    from connectonion.rem import topic_map
+    monkeypatch.setattr(topic_map, '_propose_topics', lambda notebook: {'topics': [], 'usage': {}})
     return tmp_path
 
 
