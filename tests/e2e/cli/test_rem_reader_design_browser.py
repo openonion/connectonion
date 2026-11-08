@@ -5232,6 +5232,19 @@ def test_project_timeline_draws_session_ticks_the_late_line_and_pencil_forecasts
     expect(row("workshop")).to_be_visible()
     # REM's own row is the days it wrote pages.
     assert page.locator(".pd-rem-row .pd-ring").count() >= 1
+    # Labels never sit on marks: the due label clears the strip, and a month label the today marker
+    # covers is hidden (the scrum master read "今天 1月" with 11月 clipped on a phone).
+    assert page.evaluate("""() => {
+      const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const row = document.querySelector('.pd-row[data-path="projects/capstone-review.md"]');
+      const label = row.querySelector('.pd-lbl.red').getBoundingClientRect();
+      const marks = [...row.querySelectorAll('.pd-tick, .pd-late')].map(n => n.getBoundingClientRect());
+      const today = document.querySelector('.pd-now-label').getBoundingClientRect();
+      const months = [...document.querySelectorAll('.pd-col-label')].filter(n => getComputedStyle(n).visibility !== 'hidden').map(n => n.getBoundingClientRect());
+      // Only the label the marker covers goes: every other month keeps its name.
+      const hidden = [...document.querySelectorAll('.pd-col-label')].filter(n => getComputedStyle(n).visibility === 'hidden').length;
+      return !marks.some(m => hit(label, m)) && !months.some(m => hit(today, m)) && hidden <= 1;
+    }""", isolated_context=False)
     # Zoom rewrites the window and the sentence together.
     page.locator(".pd-seg").get_by_role("link", name="Week").click()
     expect(page.locator(".pd")).to_have_attribute("data-zoom", "week")
@@ -5257,7 +5270,8 @@ def test_project_list_names_what_is_on_file_instead_of_unlabelled_squares(reader
     assert page.locator(".pd-lknown i").count() == 0  # no squares left to decode
     if width == 1440:
         expect(page.locator(".pd-lhead")).to_contain_text("On file (7)")
-    expect(row("fernhill-pilot").locator(".pd-lopen")).to_have_text("You owe 2 · Agents 1")  # an agent instruction is not owed
+    # An agent instruction is not owed, and it says who has it in the owner's words.
+    expect(row("fernhill-pilot").locator(".pd-lopen")).to_have_text("You owe 2 · Handed to agents 1")
     expect(row("capstone-review").locator(".pd-lopen .red")).to_have_text("You owe 4")
     expect(row("fernhill-pilot").locator(".pd-lread .pd-partial")).to_have_text("2/40")
     expect(row("grant").locator(".pd-lread")).to_have_text("No record")
@@ -5266,6 +5280,7 @@ def test_project_list_names_what_is_on_file_instead_of_unlabelled_squares(reader
     expect(row("capstone-review").locator(".pd-lhealth")).to_contain_text("14 days late")
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(fernhill).to_have_text("缺 状态、组织、开始")
+    expect(row("fernhill-pilot").locator(".pd-lopen")).to_have_text("你欠 2 · 交给智能体 1")
     expect(page.locator(".pd-views a")).to_have_text(["时间线", "列表", "看板"])
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 

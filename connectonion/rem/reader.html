@@ -1820,7 +1820,9 @@
   .pd-pencil { position: absolute; top: 50%; border-top: 1px dashed var(--pencil); }
   .pd-pencil-end { position: absolute; top: 50%; width: 7px; height: 7px; margin: -4px 0 0 -4px; border: 1px dashed var(--pencil); border-radius: 50%; background: var(--bg); }
   .pd-ring { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border: 1px solid var(--ink-2); border-radius: 50%; background: var(--bg); }
-  .pd-lbl { position: absolute; top: 1px; font-size: 10.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; }
+  .pd-track.has-lbl { min-height: 46px; }
+  .pd-track.has-lbl > :is(.pd-span, .pd-tick, .pd-late, .pd-pencil, .pd-pencil-end, .pd-late-n) { top: calc(50% + 7px); }
+  .pd-lbl { position: absolute; top: 2px; font-size: 10.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; }
   .pd-lbl.red { color: var(--red); }
   .pd-late-n.left { transform: translate(-100%, -50%); padding: 0 7px 0 0; background: var(--bg); }
   .pd-late-n { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 7px; color: var(--red); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
@@ -1848,7 +1850,7 @@
   .pd-scale-name { justify-content: flex-end; color: var(--ink-3); font-size: 11.5px; padding-bottom: 8px; }
   .pd-scale { position: relative; min-height: 84px; }
   .pd-col { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--rule); padding: 8px 8px 8px 7px; overflow: hidden; }
-  .pd-col-label { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .pd-col-label { display: inline-block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
   .pd-col-line { display: block; margin-top: 4px; font: 12.5px/1.5 var(--voice); color: var(--ink-2); }
   .pd-now-label { position: absolute; top: 6px; transform: translateX(calc(-100% - 6px)); font-size: 11.5px; font-weight: 600; background: var(--bg); padding: 0 2px; }
   .pd:not([data-zoom="quarter"]) .pd-pencil-label { display: none; }
@@ -6789,7 +6791,7 @@ const PD_ZH = {
   "{name} ({date})": "{name}（{date}）",
   "Project · REM's line": "项目 · REM 的一句", "Project": "项目", "Health": "健康", "Latest": "最近", "Open promises": "开着的约定",
   "On file (7)": "资料（7 项）", "REM read": "REM 读了", "{n} session days": "{n} 个会话日", "1 session day": "1 个会话日", "No sessions": "无会话",
-  "You owe {n}": "你欠 {n}", "Waiting {n}": "等人 {n}", "Agents {n}": "智能体 {n}", "All 7 on file": "七项齐全", "Not investigated": "未调查",
+  "You owe {n}": "你欠 {n}", "Waiting {n}": "等人 {n}", "Handed to agents {n}": "交给智能体 {n}", "All 7 on file": "七项齐全", "Not investigated": "未调查",
   "Missing: {list}": "缺 {list}", "Only: {list}": "只有 {list}", "No record": "无记录",
   "repository": "仓库", "stack": "技术栈", "status": "状态", "people": "人", "organisation": "组织", "start": "开始", "last activity": "最近活动",
   "On file: {known}. Not on file: {missing}.": "已有：{known}。没有：{missing}。", "nothing": "无",
@@ -6802,7 +6804,7 @@ const PD_ZH = {
   "You owe others": "你欠别人", "You wait on others": "你在等别人", "Only with agents": "只交给了智能体", "No open promise": "没有开着的约定",
   "someone owes the owner": "对方欠你", "the owner owes someone": "你欠对方", "instructions to agents": "交给智能体的指示", "nothing open": "什么都没开着",
   "You owe {n} things across {p} projects and wait on others for {w}; {a} projects hold only agent instructions.": "你在 {p} 个项目里欠别人 {n} 件，在等别人 {w} 件；{a} 个项目只有交给智能体的事。",
-  "You owe: {names}": "你欠：{names}", "Waiting on: {names}": "在等：{names}", "{n} things": "{n} 件", "{n} with agents": "智能体 {n} 件",
+  "You owe: {names}": "你欠：{names}", "Waiting on: {names}": "在等：{names}", "{n} things": "{n} 件", "{n} handed to agents": "交给智能体 {n} 件",
   "Can be set down": "可以放下", "Quiet, promises still open": "安静，但约定还开着", "Still moving": "还在动",
   "quiet and nobody waiting": "安静，也没人在等", "quiet, someone still waits": "安静，但还有人在等", "activity within 30 days": "30 天内有活动",
   "{n} projects have had no activity for 30 days and nobody waits on them: they {can}. {m} are quiet with a promise still open.": "{n} 个项目 30 天没有活动、也没有人在等，{can}；{m} 个安静但还有约定开着。",
@@ -7060,6 +7062,7 @@ function projectDot(r) {
 function projectStrip(r, win, labels = false) {
   const now = pdAt(win, win.today), track = el("div", { class: "pd-track" + (labels ? "" : " mini") }, [
     el("i", { class: "pd-future", style: "left:" + now + "%" })]);
+  if (labels && (projectLate(r) || ([r.started, projectTicks(r)[0]].filter(Boolean).sort()[0] || "") < win.a)) track.classList.add("has-lbl");
   const ticks = projectTicks(r), first = [r.started && calendarDay(r.started.slice(0, 10)), ticks[0]].filter(Boolean).sort()[0];
   const shown = ticks.filter(day => pdIn(win, day));
   if (first && shown.length) {
@@ -7235,7 +7238,7 @@ function projectOpenCell(r) {
   const owed = projectOwed(r).length, waiting = (r.open || []).filter(i => i.kind === "waiting").length;
   const agents = (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length, late = projectLate(r);
   const parts = [owed ? el("span", { class: late ? "red" : "", text: pdT("You owe {n}", { n: owed }) }) : null,
-    waiting ? el("span", { text: pdT("Waiting {n}", { n: waiting }) }) : null, agents ? el("span", { class: "mut", text: pdT("Agents {n}", { n: agents }) }) : null].filter(Boolean);
+    waiting ? el("span", { text: pdT("Waiting {n}", { n: waiting }) }) : null, agents ? el("span", { class: "mut", text: pdT("Handed to agents {n}", { n: agents }) }) : null].filter(Boolean);
   return parts.length ? parts.flatMap((part, i) => i ? [el("span", { class: "mut", text: " · " }), part] : [part]) : [el("span", { class: "mut", text: "—" })];
 }
 // What REM has on file, in words: the squares P大 could not read are now the names of the gaps.
@@ -7331,7 +7334,7 @@ function projectBoardWaiting(all, win, notes) {
   const names = (r, kind) => [...new Set((r.open || []).filter(i => i.kind === kind && !(kind === "owed" && i.project_match?.needs_review)).map(i => pdWho(i.who)).filter(Boolean))];
   const line = r => [projectOwed(r).length ? (names(r, "owed").length ? pdT("You owe: {names}", { names: names(r, "owed").join(pdT(", ")) }) + " · " : "") + pdT("{n} things", { n: projectOwed(r).length }) : "",
     names(r, "waiting").length ? pdT("Waiting on: {names}", { names: names(r, "waiting").join(pdT(", ")) }) : ""].filter(Boolean).join(" ／ ");
-  const agents = r => pdT("{n} with agents", { n: (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length });
+  const agents = r => pdT("{n} handed to agents", { n: (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length });
   const say = pdT("You owe {n} things across {p} projects and wait on others for {w}; {a} projects hold only agent instructions.",
     { n: owedRows.reduce((n, r) => n + projectOwed(r).length, 0), p: owedRows.length, w: all.reduce((n, r) => n + (r.open || []).filter(i => i.kind === "waiting").length, 0), a: agentRows.length });
   return [say, [
@@ -7387,7 +7390,22 @@ function projectsView() {
   const body = state.view === "list" ? projectList(all, tree, win, notes) : state.view === "board" ? projectBoard(all, win, notes, pairs, state.ask) : projectTimeline(all, tree, win, notes);
   document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view, "data-zoom": state.zoom }, [
     projectHead(all, state), projectLede(all, win), el("hr", { class: "pd-rule" }), state.view === "board" ? null : projectLegend(), body]));
+  projectAxisCollisions();
 }
+// As orgLabelPlan does for the map: a month label that would collide with "Today" is not drawn.
+// Widths depend on the font and the viewport, so this is measured, and again after a resize.
+function projectAxisCollisions() {
+  const today = document.querySelector(".pd-now-label");
+  if (!today) return;
+  const box = today.getBoundingClientRect();
+  for (const label of document.querySelectorAll(".pd-col-label")) {
+    label.style.visibility = "";
+    const other = label.getBoundingClientRect();
+    const column = label.parentNode.getBoundingClientRect();  // a name cut by its column's edge reads as a different month
+    if ((other.left < box.right + 4 && other.right > box.left - 4) || other.right > column.right + 1) label.style.visibility = "hidden";
+  }
+}
+window.addEventListener("resize", () => requestAnimationFrame(projectAxisCollisions));
 
 // The hero line is a glance: each part is cut at its first clause.
 function firstClause(text) {
