@@ -7683,7 +7683,6 @@ function projectAxisCollisions() {
     if ((other.left < box.right + 4 && other.right > box.left - 4) || other.right > column.right + 1) label.style.visibility = "hidden";
   }
 }
-window.addEventListener("resize", () => requestAnimationFrame(projectAxisCollisions));
 
 // The hero line is a glance: each part is cut at its first clause.
 function firstClause(text) {
@@ -11015,6 +11014,8 @@ window.addEventListener("hashchange", () => {
 window.addEventListener("resize", evidenceLayout);
 // The organisation page's time line and diagonal follow the window; Esc turns its tree back.
 window.addEventListener("resize", () => orgLayout(true));
+// The projects directory's month labels are re-measured against Today after a resize.
+window.addEventListener("resize", () => requestAnimationFrame(projectAxisCollisions));
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape" || document.querySelector("dialog[open]") || document.getElementById("evidence-panel")?.parentElement?.hidden === false) return;
   orgUnfocus(orgCurrent);
