@@ -7,6 +7,7 @@ Unknown — not investigated yet. Last contact: Unknown.
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
+- Team: Unknown
 - Location: Unknown
 - Time zone: Unknown
 - Links: Unknown

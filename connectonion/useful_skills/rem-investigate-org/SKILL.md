@@ -37,5 +37,6 @@ LinkedIn prohibition and saved captures. Establish what the organisation does, w
 ## What to produce
 
 Follow `rem-page-org` exactly, every section present, in order.
+Fill its cited `Kind` and `To you` Facts from evidence; unsupported stays `Unknown`.
 
 - Keep Facts dates scoped to confirmed target-domain correspondence when cross-domain identity remains unverified. Put candidate-domain dates in explicitly qualified related context instead.

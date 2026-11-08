@@ -5787,8 +5787,11 @@ function personOrg(r) {
   const company = String(facts(r).company || "");
   // The page's own words name the organisation (they follow the reading language); the link finds its page.
   const link = /\[([^\]]+)\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
-  const org = link && byPath(link[2].replace(/^\.\.\//, ""));
-  const full = link ? plainLine(link[1]) : plainLine(company).replace(/\s*\(from email domain\)$/i, "");
+  const wiki = /\[\[(orgs\/[^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/.exec(company);
+  const path = link ? link[2].replace(/^\.\.\//, "") : wiki ? wiki[1].replace(/(?:\.md)?$/, ".md") : r.organisations?.[0];
+  const org = path ? byPath(path) : null;
+  const full = link ? plainLine(link[1]) : wiki ? plainLine(wiki[2] || org?.title || wiki[1])
+    : plainLine(company).replace(/\s*\(from email domain\)$/i, "") || org?.title || "";
   const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
   return knownValue(full) ? { org, name: acronym ? acronym[2] : full, full: acronym ? acronym[1] : "" } : null;
 }

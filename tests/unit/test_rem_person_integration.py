@@ -111,3 +111,21 @@ def test_person_draft_review_closes_after_skip_and_restores_a_connected_control(
       console.log(JSON.stringify({closed, removed, focused}));
     ''')
     assert result == {'closed': True, 'removed': True, 'focused': 'undo'}
+
+
+@pytest.mark.parametrize('company,label', [
+    ('[[orgs/fernhill]]', 'Fernhill Labs'),
+    ('[[orgs/fernhill.md|Fernhill 中文]]', 'Fernhill 中文'),
+    ('[页面上的名称](../orgs/fernhill.md)', '页面上的名称'),
+    ('', 'Fernhill Labs'),
+])
+def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_labels(company, label):
+    result = run_js(['personOrg'], r'''
+      const facts = () => ({company: ''' + json.dumps(company) + r'''});
+      const plainLine = text => text, knownValue = Boolean;
+      const org = {path: 'orgs/fernhill.md', title: 'Fernhill Labs'};
+      const byPath = path => path === org.path ? org : null;
+      console.log(JSON.stringify(personOrg({organisations: [org.path]})));
+    ''')
+    assert result['org']['path'] == 'orgs/fernhill.md'
+    assert result['name'] == label

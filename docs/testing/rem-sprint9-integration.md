@@ -49,3 +49,16 @@ asking for another reply where the draft explicitly says none is needed.
 
 People/person final complete unit run: `18530 passed, 19 skipped, 2944 warnings in 148.90s (0:02:28)`.
 The additional Skip-dialog lifecycle repair passed the focused 19-case run.
+
+Projects/Sessions complete unit run: `18532 passed, 19 skipped, 2944 warnings in 139.87s (0:02:19)`.
+
+3. `sprint9/org-data` (`bc8437a8`): no conflicts. Retained rc60 CLI changes
+   and added structured organisation fields, membership/project links,
+   obligations, diagnostics, fixtures and all data tests.
+
+Organisation data integration also resolves Company wikilinks on People/person
+surfaces through explicit snapshot affiliations, preserving page-written
+Markdown and translated labels. Added four fictional label/destination cases.
+Protected rc60 Today/approval/task-card functions remain byte-for-byte identical
+to `ce727ddc` (including overview, queueCard, taskResult, primaryAction,
+threadActions, replyDraftCard, openWriter and all approval helpers).

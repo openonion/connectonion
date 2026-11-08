@@ -60,9 +60,18 @@ def _counted(record: str) -> bool:
     return category in CATEGORIES
 
 
+def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
+    """Explicit entity/desk identity or the existing service rules, even after writing."""
+    from .map import service_page
+    from .scan import institutional_name
+    return bool(re.search(r'^## Domains\s*$', text, re.M)
+                or re.search(r'\bshared mailbox\b', title, re.I)
+                or institutional_name(title) or service_page(title, emails, row, automated))
+
+
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
     """{record: {category, written, last, held, service, duplicate}} for every counted page."""
-    from .map import needs_review, service_page
+    from .map import needs_review
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
     # Rows with an address: the owner's row names only the record.
@@ -91,8 +100,8 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": category == 'people' and record != owner and not written(text)
-            and service_page(title, emails, rows.get(record), automated)}
+            "service": category == 'people' and record != owner
+            and non_person(title, text, emails, rows.get(record), automated)}
     return found
 
 
@@ -185,10 +194,12 @@ def direction(text: str, first_name: str = "") -> str:
     owner = re.match(rf"^{me}\s+(owes?|asked)\b", prefix, re.I)
     if owner:
         return "theirs" if owner[1].lower() == "asked" else "mine"
-    debt = re.match(r"^([^:;!?]+?)\s+owes?\s+(.+)", prefix, re.I)
+    debt = re.match(r"^([^:;!?]+?)\s+(owes?|asked)\s+(.+)", prefix, re.I)
     if debt and re.match(r"^[A-Z]", debt[1]) and 1 <= len(debt[1].split()) <= 6 \
             and not re.search(r",|\b(?:said|would|that|what)\b", debt[1], re.I):
-        return "theirs" if re.match(rf"^{me}\b", debt[2], re.I) else "third"
+        if re.match(rf"^{me}\b", debt[3], re.I):
+            return "mine" if debt[2].lower() == "asked" else "theirs"
+        return "third"
     mine, theirs = (pattern.search(text) for pattern in _directions(first_name))
     if not (mine or theirs):
         return "plain"
@@ -278,7 +289,7 @@ def _thread_counterpart(item: tuple, person: dict, owner: str, first: str) -> bo
     me = "(?:the user|user|you" + (f"|{re.escape(first)}" if first else "") + ")"
     text = text.replace("**", "")
     named = re.match(rf"^{me}\s+(?:owes?|asked)\s+(.+)", text, re.I) or re.match(
-        rf"^(.+?)\s+owes?\s+{me}\b", text, re.I)
+        rf"^(.+?)\s+(?:owes?|asked)\s+{me}\b", text, re.I)
     named = named[1] if named else ""
     link = re.match(r"\s*\[[^\]]+\]\(([^)]+\.md)\)", named)
     if link and normpath(str(Path(record["path"]).parent / link[1])) == person["path"]:

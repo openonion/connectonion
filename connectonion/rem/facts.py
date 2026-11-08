@@ -31,13 +31,14 @@ docs/cli/rem.md, "Facts and Insight on every page", is the user-facing contract.
 import re
 
 FIELDS = {
-    "people": ("Email", "Phone", "Company", "Role", "Location", "Time zone", "Links", "How we know them",
+    "people": ("Email", "Phone", "Company", "Role", "Team", "Location", "Time zone", "Links", "How we know them",
                "First contact", "Last contact", "Signing entity", "Handles", "Language", "Also known as"),
     "projects": ("Repository", "Stack", "Status", "People", "Organisation", "Started", "Last activity"),
-    "orgs": ("What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact",
+    "orgs": ("Kind", "To you", "What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact",
              "Last contact"),
     "sessions": ("Date", "Agent", "Project", "Folder", "Session", "Turns"),
 }
+ORG_KINDS = ("university", "investor", "client_partner", "supplier", "community", "own_company", "personal")
 UNCITED = ("Email", "Handles", "Also known as")
 # Fields that hold several values: a value the extractor found is added beside
 # the model's. Single-valued fields (a date, a role) keep the model's word.
