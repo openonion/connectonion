@@ -59,6 +59,25 @@ explicit entities/shared mailboxes filed under `people/`, with a concrete fix.
 It does not create, move or rewrite pages. Census excludes these non-person
 records even when investigated; snapshot `service: true` exposes that decision.
 
+## What the organisation page draws from these fields (round 6)
+
+The page (`orgPage` in `connectonion/rem/reader.html`) adds no fields; it reads:
+
+| On screen | Source | When the source is missing |
+| --- | --- | --- |
+| Statement "N teams are waiting on you." | distinct `units` paths of open, non-quiet `mine` obligations; "teams" only when every unit's `unit_kind` is `team` | no placed units: counts things owed; nothing owed: "You owe <org> nothing" |
+| X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units` | no units: the people form the ring |
+| Node size | open `mine` + `theirs` obligations in the subtree | — |
+| Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey, legend says warmth is not known yet |
+| Red node, diagonal, time-line segment | the most urgent `mine` obligation with a `due` before today | no red at all |
+| Blocking flag | explicit blocking words in the obligation text (same rule as Today's blocker tag) | no flag |
+| Time line | dated `History` lines of the org and its people, plus `due` dates | undated items are not drawn |
+| Who to ask | Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no speed claimed |
+
+Not drawn because REM does not record them yet: a written briefing and proposed
+meeting, term weeks, the owner's calendar, settled-by links ("looks done"), a
+gave/received value ledger, kept promises (so no kept rate), renewal cycles.
+
 ## Hierarchy contract (sprint9/org-hierarchy)
 
 A unit is an ordinary `orgs/` page. **One Kind field** serves both shapes:
