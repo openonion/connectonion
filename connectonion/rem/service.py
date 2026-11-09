@@ -684,6 +684,10 @@ def round_state(root: Path, config: dict) -> dict | None:
     cursor = read_json(state_path(root, "round.json"), {})
     if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
         return None
+    # Held by the floor, a budget or the cap: the round reads mail but its pages wait, and the reason says until when.
+    held = read_json(state_path(root, "round-held.json"), {})
+    if held and not cursor.get("pending"):
+        return {"state": "stuck", "since": held["since"], "reason": held["reason"]}
     # Progress is the round's own slots and the newest model run since: a round that runs
     # all day across slots is working while its tasks keep landing.
     newest = next(iter(run_logs(root)), {}).get("started_at")

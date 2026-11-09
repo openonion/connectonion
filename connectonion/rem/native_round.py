@@ -70,8 +70,10 @@ def read_new_mail(root, cursor, config, slot):
     Mail used to be read only when a round began, so a 14-hour round left every
     mailbox unread since morning. The batch runs before the round's remaining jobs.
     """
-    batch = service.prepare_sync(root, service._selected_sources(root, ""),
-                                 read_json(state_path(root, "progress.json"), {}), config)
+    # A slot's read is one source batch; the coding sessions are read when a round begins.
+    selected = service._selected_sources(root, "")
+    mailboxes = {name: source for name, source in selected.items() if source.get("kind") in service.MAIL_KINDS}
+    batch = service.prepare_sync(root, mailboxes or selected, read_json(state_path(root, "progress.json"), {}), config)
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
     if not batch["done"] and batch["digested"] is not None:
@@ -124,37 +126,46 @@ def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
 
 
+def prepare_batch(root, cursor, config, directory):
+    """The round's next source-batch task, or None once the batch is done and its progress saved."""
+    batch = cursor["batch"]
+    if batch["done"]:
+        return None
+    if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
+        raise RemError("Source progress changed between tasks; run co rem next --discard")
+    if batch["record"]["extracted"] and batch["digested"] is None:
+        task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
+        return _task("extract", task, cursor, stage="extract", operation="batch")
+    leads = batch["leads"] or [None]
+    if cursor["batch_index"] < len(leads) and batch["items"]:
+        record = leads[cursor["batch_index"]]
+        items = batch["items"]
+        if record:
+            page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
+                    "timestamp": service.now().isoformat(), "text": Notebook(root).read(record)}
+            items = [page, *(i for i in items if not i.get("feedback_revision")
+                            or record in i["feedback_pending_targets"])]
+        task = runner.prepare(Notebook(root), items, config, batch["kind"], directory=directory, native=True)
+        return _task("runner", task, cursor, stage="maintain", record=record, operation="batch")
+    batch["done"] = True
+    if not batch.get("abandoned"):
+        if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
+            raise RemError("Source progress changed between tasks; run co rem next --discard")
+        write_json(state_path(root, "progress.json"), batch["updated"])
+    extract.forget_digest(root)
+    return None
+
+
 def prepare_task(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    task = prepare_batch(root, cursor, config, directory)
+    if task:
+        return task
     if cursor["phase"] == "daily-translation":
         task = prepare_translation(root, cursor, config, directory)
         if not task:
             finish(root, cursor)
         return task
-    batch = cursor["batch"]
-    if not batch["done"]:
-        if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
-            raise RemError("Source progress changed between tasks; run co rem next --discard")
-        if batch["record"]["extracted"] and batch["digested"] is None:
-            task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
-            return _task("extract", task, cursor, stage="extract", operation="batch")
-        leads = batch["leads"] or [None]
-        if cursor["batch_index"] < len(leads) and batch["items"]:
-            record = leads[cursor["batch_index"]]
-            items = batch["items"]
-            if record:
-                page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
-                        "timestamp": service.now().isoformat(), "text": Notebook(root).read(record)}
-                items = [page, *(i for i in items if not i.get("feedback_revision")
-                                or record in i["feedback_pending_targets"])]
-            task = runner.prepare(Notebook(root), items, config, batch["kind"], directory=directory, native=True)
-            return _task("runner", task, cursor, stage="maintain", record=record, operation="batch")
-        batch["done"] = True
-        if not batch.get("abandoned"):
-            if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
-                raise RemError("Source progress changed between tasks; run co rem next --discard")
-            write_json(state_path(root, "progress.json"), batch["updated"])
-        extract.forget_digest(root)
     if cursor["current"] and cursor["current"].get("finalized"):
         _finish_investigation(root, cursor)
     from . import same_person
@@ -271,6 +282,10 @@ def _prepare_job(root, cursor, config, directory):
         job.update(kind=daily._route(root, record), days=daily.RETRY_DAYS, retry_refused=True)
     if job["kind"] == "project":
         return _project_task(root, cursor, config, directory, record)
+    if cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record):
+        # The page changed under its open investigation (mail read while the floor held
+        # the round, or the owner): investigate it again from the page as it is now.
+        cursor["current"] = None
     if cursor["current"] is None:
         cursor["current"] = _prepare_investigation(root, cursor, job, directory)
         if cursor["current"] is None:
@@ -278,8 +293,6 @@ def _prepare_job(root, cursor, config, directory):
             return None
     state = cursor["current"]
     state.setdefault("before", book.read(record))
-    if book.read(record) != state["before"]:
-        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
     page = {**state["page"], "text": state.get("draft", state["before"])}
     items = investigate.prepare_round(book, state, page=page) if not state.get("tail") else None
     if items is None:
@@ -400,7 +413,8 @@ def _project_task(root, cursor, config, directory, record):
             _finish_project(root, cursor, record, previous["through"])
             return None
     if Notebook(root).read(record) != previous["before"][record]:
-        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+        cursor["project_quote"] = None  # the page changed under it: write it again from the page as it is now
+        return _project_task(root, cursor, config, directory, record)
     items = previous["items"]
     counts = project_pages.project_falls_short(previous["draft"], sum(i.get("role") == "user" for i in items))
     if counts is None or previous.get("quotes_done"):

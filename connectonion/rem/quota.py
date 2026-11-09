@@ -183,6 +183,8 @@ def floor_block(reading: dict, limits: dict) -> str:
         return ""
     floor = limits["quota_floor_percent"]
     if reading["used_percent"] >= floor:
+        resets = datetime.fromtimestamp(reading["resets_at"]).astimezone() if reading.get("resets_at") else None
         return (f"the Codex week is at {reading['used_percent']}%, at or past the {floor}% "
-                "floor kept for your own work")
+                "floor kept for your own work" + (f"; investigation resumes when it resets {resets:%a %d %b %H:%M}"
+                                                  if resets else ""))
     return ""
