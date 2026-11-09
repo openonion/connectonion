@@ -298,10 +298,17 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
     assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
     assert opened == [] and asked == []
-    # Rendered on every run, so the page opened is never older than the notebook.
+    # A changed notebook opens the saved page at once, marked while it is rebuilt behind it.
+    from connectonion.rem import reader
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     Notebook(tmp_path / ".co/rem").write("people/bob.md", "# Bob\nJoined yesterday.")
     assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
+    assert "Joined yesterday" not in snapshot.read_text(encoding="utf-8")
+    assert 'id="rem-updating"' in snapshot.read_text(encoding="utf-8")
+    reader.refresh(tmp_path / ".co/rem")                     # what the detached build runs
+    assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
     assert "Joined yesterday" in snapshot.read_text(encoding="utf-8")
+    assert "rem-updating" not in snapshot.read_text(encoding="utf-8")
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):

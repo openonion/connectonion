@@ -13,6 +13,18 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
+Stable **1.9.4** is the default production channel: a hotfix on 1.9.3, in which the first
+`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
+waits on a build; a saved page opens at once marked "Updating…". See
+[1.9.4 notes](releases/1.9.4.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.4'
+```
+
+## Previous stable
+
 Stable **1.9.3** is the default production channel. REM does the work: overnight it reads new
 mail, drafts the replies you owe and runs the tasks you approved through `co claude` or Codex; in
 the reader any unfinished item can be handed to Codex or Claude, or talked over with them in a
@@ -20,10 +32,6 @@ conversation that resumes the agent's own session. Replies to people you trust c
 10-minute hold, and `co rem open` serves the last page at once. See
 [1.9.3 notes](releases/1.9.3.md) and the
 [GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.3).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3'
-```
 
 ## Previous previews
 

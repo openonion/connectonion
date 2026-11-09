@@ -1748,12 +1748,13 @@ def make_rem_app(factory):
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
             owner = identity and identity["address"]
+            # A first render, with no saved page to show, says how it is going (stderr).
             if local:
-                result = reader.open_snapshot(root, launch=launch)
+                result = reader.open_snapshot(root, launch=launch, say=rem_look.step)
             elif live:
-                result = reader.live_or_snapshot(root, owner, live=True, launch=launch)
+                result = reader.live_or_snapshot(root, owner, live=True, launch=launch, say=rem_look.step)
             else:
-                result = reader.local_or_snapshot(root, owner, launch=launch)
+                result = reader.local_or_snapshot(root, owner, launch=launch, say=rem_look.step)
             return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
         _handle(ctx, operation, ["doctor"])
 

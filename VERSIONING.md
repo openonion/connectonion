@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3
+## Current Version: 1.9.4
+
+Stable 1.9.4 is a hotfix on 1.9.3: the first `co rem open` after upgrading from 1.9.3rc64 could wait
+minutes (17 measured) for a rebuild, because rc64's saved-page manifest did not list the file page.
+The reader now never waits on a build: any saved page, an older release's included, opens at once
+marked "Updating…" and rebuilds behind it; with no page at all it prints progress. A tested tag
+also gets its GitHub Release again. See [1.9.4 notes](docs/releases/1.9.4.md).
+
+- 1.9.4 (co rem open never waits on a build).
+
+## Previous stable: 1.9.3
 
 Stable 1.9.3: REM does the work. Overnight it reads new mail at every slot, drafts and holds replies,
 sends to people you trust through the 10-minute hold, and runs owed tasks you approved through
