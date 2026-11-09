@@ -118,10 +118,12 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
-      # Per-test times, for refreshing tests/ci_durations.json:
-      # python scripts/ci_test_shard.py --record junit-*/junit.xml
+      # Per-test times, only for refreshing tests/ci_durations.json
+      # (python scripts/ci_test_shard.py --record junit-*/junit.xml), so a
+      # flaky upload (ECONNRESET in run 42656357103) does not fail the shard.
       - name: Upload this shard's test times
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: junit-${{ matrix.python-version }}-${{ matrix.shard }}
