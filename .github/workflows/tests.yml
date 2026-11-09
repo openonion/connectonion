@@ -38,15 +38,15 @@ jobs:
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \
             --disable-pip --strict --progress-spinner off
 
-  # The offline suite is ~9 minutes of tests on a two-worker runner (over 15
-  # traced for coverage), so each Python runs it as six parallel shards.
-  # scripts/ci_test_shard.py splits by file, balanced by tests/ci_durations.json:
-  # a 50-line script instead of pytest-split, because that plugin makes every
-  # shard collect the whole suite. Inside a shard, --dist worksteal hands out
-  # single tests as `make test` always has: --dist loadfile pinned the largest
-  # files (test_cli_tips_name_real_commands.py, 150 s traced) to one worker,
-  # which set the floor for their shard. Six because a shard's fixed cost (checkout, install) is about
-  # a minute, and the free plan runs 20 jobs at once: 18 shards already fill it.
+  # The offline suite is ~9 minutes of tests on one two-worker runner, so each
+  # Python runs it as six parallel shards. scripts/ci_test_shard.py splits by
+  # file, balanced by tests/ci_durations.json: a 50-line script instead of
+  # pytest-split, because that plugin makes every shard collect the whole suite.
+  # Inside a shard, -n logical starts one worker per vCPU (auto counted physical
+  # cores: two of four) and --dist worksteal hands out single tests, as
+  # `make test` always has; --dist loadfile pinned the largest file
+  # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. Six,
+  # because the free plan runs 20 jobs at once across the whole org.
   test:
     name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
@@ -97,7 +97,7 @@ jobs:
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
         run: |
           pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} 6) \
-            -n auto --dist worksteal --tb=short \
+            -n logical --dist worksteal --tb=short \
             -m "not slow and not real_api and not network" \
             -o junit_family=xunit1 --junitxml=junit.xml \
             $COVERAGE_ARGS
