@@ -3794,6 +3794,32 @@ def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, mon
 
 
 
+def test_one_refresh_gives_the_page_and_its_details_one_time(tmp_path, monkeypatch):
+    """The live page and the snapshot's details are built one after the other; when
+    the second build crosses a second, they disagreed and an open page reloaded
+    itself every second (seen on a slow CI runner)."""
+    import json as _json
+    from datetime import datetime as real, timedelta, timezone
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    ticks = [real(2026, 11, 9, 8, 15, tzinfo=timezone.utc)]
+
+    class Ticking(_Clock):
+        @classmethod
+        def now(cls, tz=None):  # every reading is a second later, as on a slow machine
+            ticks.append(ticks[-1] + timedelta(seconds=1))
+            return ticks[-1]
+    monkeypatch.setattr(reader, "datetime", Ticking)
+    reader.refresh(root)
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+
+
 def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp_path, monkeypatch):
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"

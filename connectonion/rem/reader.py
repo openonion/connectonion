@@ -574,13 +574,16 @@ def tree_version(root: Path) -> str:
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
-def _render(root: Path, build: str) -> tuple[dict, str, float]:
-    """({file name: text}, as_of, seconds it took) of one build; nothing is written."""
+def _render(root: Path, build: str, as_of: str | None = None) -> tuple[dict, str, float]:
+    """({file name: text}, as_of, seconds it took) of one build; nothing is written.
+    Builds published together share `as_of`, so the page and its details agree."""
     began = time.monotonic()
     if build == "live":
         shell = snapshot(root, local=True, today=True)
+        shell["as_of"] = as_of or shell["as_of"]
         return {"live.html": _page(shell, live=True)}, shell["as_of"], time.monotonic() - began
     full = snapshot(root, local=True)
+    full["as_of"] = as_of or full["as_of"]
     return ({"data.json": json.dumps(full, ensure_ascii=False, default=str), "file.html": _page(full, live=False)},
             full["as_of"], time.monotonic() - began)
 
@@ -705,7 +708,8 @@ def _refresh_once(root: Path, builds):
             # Walked before rendering, so the page carries the tree it was built from
             # and the next check does not rebuild it again (+17 s on a 100 s build).
             tree = tree or tree_version(root)
-            _publish(root, {build: _render(root, build) for build in stale}, version, tree)
+            as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            _publish(root, {build: _render(root, build, as_of) for build in stale}, version, tree)
             _cached(root, "failed.json").unlink(missing_ok=True)
             if not _owner_since(root, started):
                 return started
