@@ -286,3 +286,12 @@ def test_the_exact_wheel_is_smoke_tested_offline_before_upload():
     assert '/bin/co" init --yes' in script
     assert "HTTPS_PROXY=http://127.0.0.1:9" in script
     assert '"$VERSION"' in script
+
+
+def test_finalize_runs_when_the_gate_skipped_the_tests():
+    """A tested tag skips the tests job; a job with no `if` then inherits success(),
+    which is false below a skipped ancestor. v1.9.3rc64 and v1.9.3 reached PyPI
+    with no GitHub Release that way."""
+    finalize_job = RELEASE.split("  finalize:", 1)[1].split("\n  ", 1)[0] + RELEASE.split("  finalize:", 1)[1][:600]
+    assert "if: ${{ !cancelled()" in finalize_job
+    assert "needs.publish.result == 'success'" in finalize_job

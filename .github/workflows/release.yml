@@ -234,6 +234,10 @@ jobs:
 
   finalize:
     needs: [build, publish]
+    # Without its own condition this job inherits success(), which is false when an
+    # ancestor was skipped: the gate skips the tests job for a tested tag, so the
+    # GitHub Release was never made for v1.9.3rc64 and v1.9.3 although PyPI had them.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
