@@ -3925,3 +3925,37 @@ class _Ticking:
     @classmethod
     def fromtimestamp(cls, *args, **kwargs):
         return cls.real.fromtimestamp(*args, **kwargs)
+
+
+def test_a_quick_explicit_open_stamps_the_page_and_its_details_with_one_time(tmp_path, monkeypatch):
+    """A small notebook re-renders live and full during co rem open; they must name one time."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.open_snapshot(root, launch=False)                      # renders both, in place
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.saved(root, "live")["as_of"] == reader.saved(root, "full")["as_of"]
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == reader.saved(root, "live")["as_of"]
+
+
+def test_a_planted_link_at_the_stable_page_is_neither_followed_nor_returned(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    if os.name == "nt":
+        pytest.skip("symlinks need privileges on Windows")
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    link = reader._cached(root, "file.html")
+    victim = tmp_path / "victim.html"
+    victim.write_text("planted")
+    os.utime(victim, ns=(4_000_000_000 * 10**9, 4_000_000_000 * 10**9))   # newer than any build
+    link.unlink()
+    os.symlink(victim, link)
+    with pytest.raises(OSError):
+        reader.page_path(root, "file.html")
+    assert victim.read_text() == "planted"

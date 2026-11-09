@@ -9,6 +9,7 @@ import json
 import os
 import posixpath
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -554,7 +555,13 @@ def _link(root: Path, current: Path) -> Path:
     """The stable file page, brought up to the manifest's set when a build stopped
     between naming that set and copying it here (comparing two files' times)."""
     link = _cached(root, "file.html")
-    if not link.exists() or link.stat().st_mtime_ns < current.stat().st_mtime_ns:
+    try:
+        info = link.lstat()  # never through a link: a planted one is refused, not followed
+    except FileNotFoundError:
+        info = None
+    if info is not None and stat.S_ISLNK(info.st_mode):
+        raise OSError(f"refusing a planted reader link: {link}")
+    if info is None or info.st_mtime_ns < current.lstat().st_mtime_ns:
         _replace(link, current.read_text(encoding="utf-8"))
     return link
 
@@ -579,10 +586,10 @@ def tree_version(root: Path) -> str:
         dirs[:] = sorted(name for name in dirs if name != ".git")
         for name in sorted(names):
             path = Path(directory) / name
-            stat = path.lstat()
-            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
+            info = path.lstat()
+            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not info.st_size:
                 continue
-            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+            files.append((str(path.relative_to(root)), info.st_mtime_ns, info.st_size))
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
@@ -782,7 +789,8 @@ def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, boo
         with _building(root, wait=True):
             if quick or (text := _read_page(root, name)) is None:
                 together = [b for b in ("live", "full") if b == build or saved(root, b)]
-                _publish(root, {b: _render(root, b) for b in together}, version)
+                as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
+                _publish(root, {b: _render(root, b, as_of) for b in together}, version)
                 text = _read_page(root, name)
     return text, _rebuild_stale(root, name, version, owner=owner)
 
