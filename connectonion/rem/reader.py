@@ -910,8 +910,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import ensure_local, local_reader, start
-    from .live_host import saved_host_dead
+    from .live_host import STARTING, ensure_local, local_reader, saved_host_dead, start
     if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
         # No Host answers: the saved page now, co ai starting behind it. Waiting
         # for it (up to 20 s) before the first paint was most of a cold open.
@@ -919,13 +918,13 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
             failed = start(address)
         except (OSError, RemError) as error:
             return open_snapshot(root, launch=launch, live=f"could not start co ai: {error}; run `co ai` to diagnose")
-        return open_snapshot(root, launch=launch, live=failed or (
-            "co ai is starting; this is the page saved at the last render. "
-            "co rem open again in a moment opens the live reader, which can translate"))
+        return open_snapshot(root, launch=launch, live=failed or STARTING)
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
+    if failure == STARTING:
+        return open_snapshot(root, launch=launch, live=STARTING)
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
         return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")
