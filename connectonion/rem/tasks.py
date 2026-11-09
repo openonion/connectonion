@@ -1,7 +1,6 @@
 """One owner-owed obligation, one Codex or Claude Code run, one durable deliverable receipt."""
 
 import argparse
-import fcntl
 import hashlib
 import json
 import math
@@ -49,6 +48,7 @@ def directory(root, task_id):
 @contextmanager
 def _lock(folder, name='control.lock'):
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    import fcntl  # POSIX-only, imported here: the reader reads receipts through this module on Windows
     with (folder / name).open('a') as held:
         fcntl.flock(held, fcntl.LOCK_EX)
         yield

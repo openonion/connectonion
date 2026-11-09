@@ -1,6 +1,5 @@
 """One launchd fire, one locked Codex work session, with durable turn receipts."""
 import argparse
-import fcntl
 import os
 import re
 import shlex
@@ -127,6 +126,7 @@ def run_turn(root: Path, *, run=_execute) -> str:
     root = Path(root).resolve()
     lock = state_path(root, 'exec-turn.lock')
     lock.parent.mkdir(parents=True, exist_ok=True)
+    import fcntl  # POSIX-only; rem.tasks imports this module and the reader imports rem.tasks
     with lock.open('a') as held:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -144,6 +144,7 @@ def _reap_orphan_maintenance(root):
     turn = read_json(state_path(root, f'turns/{turn_id}.json'), {})
     if not turn.get('finished_at') or turn.get('result') not in ('completed', 'failed', 'timed-out'):
         return []
+    import fcntl
     with state_path(root, 'maintenance.lock').open('a') as held:
         locked = True
         with suppress(BlockingIOError):

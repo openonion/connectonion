@@ -3997,3 +3997,23 @@ def test_a_planted_link_at_the_stable_page_is_neither_followed_nor_returned(tmp_
     with pytest.raises(OSError):
         reader.page_path(root, "file.html")
     assert victim.read_text() == "planted"
+
+
+def test_co_rem_open_runs_where_there_is_no_fcntl(tmp_path):
+    """Windows has no fcntl. The snapshot reads each row's task receipt through
+    rem.tasks, whose top-level `import fcntl` made `co rem open` exit 1 there
+    (windows-e2e, release/1.9.3). The cached open runs here with fcntl unimportable;
+    REM's own lock is stood in for, as on Windows it takes msvcrt instead."""
+    import sys
+    script = ("import sys; sys.modules['fcntl'] = None\n"
+              "from pathlib import Path\n"
+              "from connectonion.rem import files, reader, tasks\n"
+              "files._try_lock = lambda fd: None\n"
+              "root = Path(sys.argv[1])\n"
+              "assert tasks.receipt_for(root, 'people/mara.md\\nSend the notes') is None\n"
+              "print(reader.open_snapshot(root, launch=False)['page'])\n")
+    root = tmp_path / "unstarted notebook"
+    result = subprocess.run([sys.executable, "-c", script, str(root)], capture_output=True,
+                            text=True, cwd=os.getcwd(), timeout=50)
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "Not started" in open(result.stdout.strip(), encoding="utf-8").read()
