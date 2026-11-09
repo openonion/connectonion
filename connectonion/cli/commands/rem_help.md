@@ -1155,7 +1155,7 @@ Back:     co rem projects --help
 ## co rem task
 
 ```
-Run work owed by the owner in one background Codex session. Nothing is sent.
+Run work owed by the owner in one background Codex or Claude Code session. Nothing is sent.
 
 Usage: co rem [--root DIR] [--json] task COMMAND
 
@@ -1164,8 +1164,8 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model with full access, as your own Codex runs do:
-the web, your accounts and your Codex config. The prompt keeps pushing, merging,
+Codex runs on the configured work model, Claude Code on its own; both with full
+access, as co ai --harness runs them: the web and your accounts. The prompt keeps pushing, merging,
 sending and posting for your click. It works in .state/tasks/do-ID/: a git
 worktree of the project page's repository on branch rem/task-ID when there is
 one, otherwise do-ID/work.
@@ -1189,16 +1189,16 @@ Back: co rem --help
 ## co rem task run
 
 ```
-Start one prepared obligation in background Codex; return its receipt immediately.
+Start one prepared obligation in background Codex or Claude Code; return its receipt.
 
 Usage: co rem [--root DIR] [--json] task run ID [--agent codex|claude]
 
 Arguments:
   ID            Task ID printed by co rem task status.
 Options:
-  --agent       codex or claude (claude -p): who runs a task that has not started.
+  --agent       codex or claude: who runs a task that has not started.
 
-Uses the configured work model with full access. Work happens in
+Codex uses the configured work model; both run with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there
 is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
 .state/tasks/do-ID/result.md as the reviewable deliverable.

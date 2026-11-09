@@ -138,8 +138,11 @@ def expand_skill(prompt: str) -> str:
 
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
         sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard",
-        session_id: str = "") -> dict:
+        session_id: str = "", effort: str = "", add_dirs: tuple[str, ...] = ()) -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
+
+    effort (Codex only) and add_dirs, further directories the delegate may
+    write beside cwd, are for operator callers such as co rem's owed tasks.
 
     Each delegate answers in its own JSON shape and with its own idea of what
     "finished" means — Codex reports `exit_code`, Claude Code does not, and
@@ -150,16 +153,18 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
     text = expand_skill(prompt)
 
     if harness == "codex":
-        from ...useful_tools.codex import codex
+        from ...useful_tools.codex import _run_codex
         # approval="auto": nothing is watching a delegated one-shot, and the
         # tool fails closed on an unexpected approval callback rather than
         # hanging on a prompt nobody will answer.
-        raw = codex(prompt=text, cwd=cwd, sandbox=sandbox, model=model,
-                    timeout=timeout, approval="auto", speed=speed, session_id=session_id)
+        raw = _run_codex(prompt=text, cwd=cwd, sandbox=sandbox, model=model,
+                         timeout=timeout, approval="auto", speed=speed, session_id=session_id,
+                         effort=effort, writable_roots=add_dirs)
     else:
         from ...useful_tools.claude_code import _run_claude_code
         raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout,
-                               permission_mode=permission_mode, session_id=session_id)
+                               permission_mode=permission_mode, session_id=session_id,
+                               add_dirs=add_dirs)
 
     try:
         answer = json.loads(raw)
@@ -177,9 +182,10 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
     cost = answer.get("total_cost_usd")
     if type(cost) in (int, float) and math.isfinite(cost) and cost >= 0:
         usage["cost"] = cost
+    timed_out = answer.get("status") == "timeout"
     return {
         "result": answer.get("last_message") if harness == "codex" else answer.get("result"),
-        "outcome": "error" if failed else "natural",
+        "outcome": "timeout" if timed_out else "error" if failed else "natural",
         "error": error or (f"{harness} exited {exit_code}" if failed else None),
         # An empty usage means the delegate reported nothing, which is what
         # `null` says. Passing `{}` on lets a caller read "no tokens" out of it.

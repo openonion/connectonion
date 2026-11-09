@@ -6,6 +6,7 @@ import io
 import json
 import subprocess
 import sys
+from pathlib import Path
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -77,6 +78,9 @@ def test_success_preserves_the_stable_envelope_and_uses_stream_json(tmp_path):
         "exit_code": 0,
         "usage": {"input_tokens": 4},
         "total_cost_usd": 0.01,
+        "permission_denials": [],
+        "num_turns": None,
+        "duration_ms": None,
     }
     assert run.call_args.args[0] == [
         "claude",
@@ -1008,3 +1012,50 @@ def test_tool_is_exported_and_copyable():
     assert root_claude_code is claude_code
     assert ClaudeCode is UsefulClaudeCode
     assert TOOLS["claude_code"] == "claude_code.py"
+
+
+FIXTURES = Path(__file__).parents[1] / "fixtures" / "native_runners"
+
+
+def _replay(tmp_path, monkeypatch, **kwargs):
+    """The real runner over a recorded Claude Code stream (fake_claude.py)."""
+    monkeypatch.setenv("CLAUDE_CODE_CMD", str(FIXTURES / "fake_claude.py"))
+    return json.loads(claude_module._run_claude_code(
+        "Add one line to README.md saying hello", cwd=str(tmp_path), timeout=30, **kwargs))
+
+
+def test_a_headless_default_run_says_which_tools_were_refused(tmp_path, monkeypatch):
+    # Real run 2026-11-09: `co claude run` in default mode could not edit and
+    # still answered status "completed", exit 0, with no sign of the refusals.
+    result = _replay(tmp_path, monkeypatch)
+    assert result["status"] == "completed"
+    assert result["permission_denials"] == ["Bash", "Edit"]
+    assert result["num_turns"] == 4 and result["duration_ms"] > 0
+    assert not (tmp_path / "claude-was-here.md").exists()
+
+
+def test_an_accepted_run_reports_its_cost_turns_and_no_refusals(tmp_path, monkeypatch):
+    result = _replay(tmp_path, monkeypatch, permission_mode="acceptEdits")
+    assert result["status"] == "completed" and result["permission_denials"] == []
+    assert result["total_cost_usd"] == 0.50889575 and result["num_turns"] == 2
+    assert result["session_id"] == "bf1b715f-3272-4573-b78d-359571db650a"
+    assert (tmp_path / "claude-was-here.md").is_file()
+
+
+def test_extra_directories_and_bypass_reach_the_cli(tmp_path):
+    extra = tmp_path / "deliverables"
+    extra.mkdir()
+    with patch.object(claude_module, "_base_command", return_value=["claude"]), patch.object(
+        claude_module, "_run_process", return_value=_completed()
+    ) as run:
+        claude_module._run_claude_code("fix it", cwd=str(tmp_path), permission_mode="bypassPermissions",
+                                       add_dirs=[str(extra)])
+    argv = run.call_args.args[0]
+    assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+    assert argv[argv.index("--add-dir") + 1] == str(extra)
+    assert argv.index("--add-dir") < argv.index("--")
+
+
+def test_the_child_keeps_its_temporary_directory(monkeypatch, tmp_path):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    assert claude_module._claude_environment()["TMPDIR"] == str(tmp_path)
