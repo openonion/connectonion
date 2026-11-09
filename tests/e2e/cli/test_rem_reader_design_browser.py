@@ -620,7 +620,7 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
     assert page.locator('.r4-stats').inner_text().count('\n') >= 3
-    assert page.locator('#open-threads, .owe').count() == 0
+    assert page.locator('.r4-person #open-threads, .owe').count() == 0
     assert page.locator('.r4-fuse .fuse-tick').count() == 5
     assert page.locator('details.deep-note').get_attribute('open') is None
     assert not page.locator('.factlist').is_visible()
@@ -2274,7 +2274,7 @@ def test_person_threads_keep_their_dates_off_the_record_and_deep_hash_targets(re
       REM.source_context['gmail:0f9be4c12a55'].time = '2026-07-22T10:00:00Z';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert page.locator('#open-threads, .owe').count() == 0
+    assert page.locator('.r4-person #open-threads, .owe').count() == 0
     rows = page.evaluate("""() => personEntries(byPath('people/mara-ostrowski.md')).map(({t}) =>
       ({text: t.text, dir: t.dir, due: t.due ? dueLabel(t) : '', age: age(t.since), quiet: t.quiet}))""", isolated_context=False)
     mine = [row for row in rows if row['dir'] == 'mine']
@@ -2831,7 +2831,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
       KNOWN.clear(); FACTS.clear(); render();
       document.documentElement.classList.add('hide-private');
     }''', labelled, isolated_context=False)
-    assert page.locator('#open-threads').count() == 0 and page.locator('.r4-today').count() == 0
+    assert page.locator('.r4-person #open-threads').count() == 0 and page.locator('.r4-today').count() == 0
     assert page.locator('.tl > li.tl-e:visible').count() == 0
     assert page.locator('#history-timeline .private-history-notice').inner_text() == '1 private entry hidden'
     assert page.locator('.r4-kv dt').filter(has_text='Phone').count() == 0
@@ -4564,7 +4564,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
         if record.startswith('people/'):
             # A person's page is a record (D-30): nothing owed means no Today line and no empty ledger.
             assert page.locator('.r4-person h1').inner_text() == 'Mia Chen'
-            assert page.locator('#open-threads, .r4-today').count() == 0
+            assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
             assert not page.get_by_role('heading', name=heading, exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
@@ -4598,10 +4598,9 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
       r.text = '# Mia Chen\n\n## Open threads\n- Discuss the pilot review with Theo Park.\n';
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
-    # Something owed is one quiet link to Today, never a row on her record (D-30); the record keeps
-    # the thread as written in its full memory.
-    assert page.locator('#open-threads').count() == 0
-    assert page.locator('.r4-today').inner_text() == '1 item in Today'
+    # A thread that names no debtor is not Today's, and her page has no ledger (D-30): the record
+    # keeps it as written in its full memory, so it is never lost.
+    assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
     page.locator('details.deep-note > summary').click()
     assert 'Discuss the pilot review with Theo Park' in page.locator('.deep-note .person-threads').inner_text()
 
@@ -4980,7 +4979,7 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
     assert re.fullmatch(r"今天里有 \d+ 件", today.inner_text()) and today.get_attribute("href") == "#"
     assert today.bounding_box()["y"] + today.bounding_box()["height"] <= 844, "the Today link is on the first screen"
     assert page.locator(".r4-stats > div").count() >= 3
-    assert page.locator("#open-threads, .owe").count() == 0
+    assert page.locator(".r4-person #open-threads, .owe").count() == 0
     assert page.locator(".tl .tl-e .w i").count() >= 3
     assert page.locator(".r4-rail h4").all_inner_texts()[:2] == ["联系", "组织"]
     assert "REM 还不确定" in page.locator(".r4-rail").inner_text()
@@ -5012,7 +5011,7 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     page.evaluate("theme => setTheme(theme)", theme, isolated_context=False)
     main = page.locator("#main")
-    assert page.locator("#open-threads, .owe").count() == 0
+    assert page.locator(".r4-person #open-threads, .owe").count() == 0
     assert "Mark done" not in main.inner_text() and "Still open between you" not in main.inner_text()
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     assert "标为完成" not in main.inner_text()
@@ -5998,7 +5997,7 @@ def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
 def test_focus_ring_shows_on_controls_but_not_on_main_or_the_today_card(reader):
     """Hairline outlines replaced rings; the focus ring must beat them without framing #main or a Today card."""
     page, uri = reader
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.goto(uri + '#c=people')  # the person page has no buttons left (D-30); the People table toggle is an .r4-btn
     page.locator('.r4-btn').first.wait_for()
     page.keyboard.press('Tab')  # keyboard modality, so programmatic focus below counts as :focus-visible
     outline = "node => { node.focus(); const s = getComputedStyle(node); return [node.matches(':focus-visible'), s.outlineStyle, s.outlineWidth]; }"

@@ -1642,7 +1642,7 @@
   .r4.r4-person { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin: 0; }
   .r4-over { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
   .r4 .r4-over .r4-today { font-size: var(--s-meta); text-decoration-color: var(--rule); }
-  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: break-word; hyphens: auto; }
+  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: anywhere; hyphens: auto; }
   .r4-sub { font-size: var(--s-head); line-height: 1.4; color: var(--ink); margin-top: var(--u4); max-width: var(--measure); }
   .r4-sub a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .r4-sub a.soft { color: var(--grey); }
@@ -1740,7 +1740,8 @@
     .r4 h1 .soft { display: block; font-size: var(--s-body); line-height: 22px; margin-top: 2px; }
     .r4 h1 .soft::before { content: none; }
     .r4 h2 { margin-top: 32px; }
-    .r4 .r4-name { margin-top: var(--u5); }
+    .r4 .r4-name { margin-top: 0; }
+    .r4-over { gap: var(--u2); }
     .r4-sub { font-size: var(--s-body); margin-top: var(--u3); }
     .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .r4-rail h4:first-child { margin-top: 32px; }
@@ -2285,7 +2286,7 @@
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
   .ov-say { grid-column: 1 / span 5; align-self: center; position: relative; z-index: 2; padding: 24px 0; min-width: 0; }
-  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: break-word; hyphens: auto; }
+  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: anywhere; hyphens: auto; }
   .ov-say .updated-label, .ov-say .fresh-label { font-size: var(--s-meta); }
   .ov.ov-r6 .ov-say .ov-sub { display: block; font-size: var(--s-body); line-height: 27px; color: var(--grey); margin: 16px 0 0; max-width: 460px; -webkit-line-clamp: unset; }
   .ov-facts { font-size: var(--s-body); line-height: 22px; color: var(--grey); margin: 20px 0 0; max-width: 460px; }
@@ -6699,8 +6700,9 @@ function personQuotes(r) {
   // Their words, not the envelope: greetings, quoted lines and "X reacted to your message" (which quotes you) are dropped.
   const said = text => String(text || "").split(/\n+/).map(line => line.trim())
     .filter(line => line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
-  const seen = new Set();
-  const rows = sourceList(r).map(s => ({ s, c: REM.source_context?.[sourceId(s.text, s.plain)] }))
+  const seen = new Set(), cited = new Set((unlabelled(r.text.split(/\n## Sources\b/)[0]).match(/[\[［]W?\d{1,3}[\]］]/g) || []).map(m => m.slice(1, -1)));
+  // Only sources a public passage cites: a mail cited by a [personal] passage stays as private as the passage.
+  const rows = sourceList(r).filter(s => cited.has(s.n)).map(s => ({ s, c: REM.source_context?.[sourceId(s.text, s.plain)] }))
     .filter(({ c }) => c?.excerpt && !c.body_empty && theirs(c.sender)).map(row => ({ ...row, words: said(row.c.excerpt) }))
     .filter(({ words }) => [...words].length >= 12 && !/\breacted to your message\b/i.test(words) && !seen.has(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")) && seen.add(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")))
     .sort((a, b) => String(b.c.time).localeCompare(String(a.c.time)));

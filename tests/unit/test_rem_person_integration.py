@@ -84,16 +84,22 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
     assert result['name'] == label
 
 
-def test_person_owed_sources_keep_the_origin_namespace_and_omit_private_passages():
-    result = run_js(['owedRow', 'privatePassages', 'unlabelled'], r'''
-      const r = {title: 'Mara', path: 'people/mara.md'};
-      const entry = {r: {path: 'orgs/fernhill.md'}, t: {text: 'Public ask [2]. Private ask [3][personal]. Public note [4].'}};
-      const owedParts = () => ({head: 'Public ask'}), owedState = () => ({cls: 'mute', text: 'open'});
-      const firstName = () => 'Mara', isDone = () => false, owedEvidence = () => null, owedActions = () => null;
-      const inline = (text, from) => ({text, from}), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      console.log(JSON.stringify(owedRow(r, entry).children.at(-1).html));
+def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
+    """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
+    a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
+    result = run_js(['personQuotes', 'privatePassages', 'unlabelled'], r'''
+      const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
+        text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
+      const REM = {source_context: {'gmail:a': {excerpt: 'Hi Avery,\nThe renewal can include a fourth seat.', sender: 'Mara', time: '2026-10-01'},
+        'gmail:b': {excerpt: 'My private news, please keep it to yourself.', sender: 'Mara', time: '2026-10-02'},
+        'gmail:c': {excerpt: 'Mara reacted to your message: Hi Mara, thanks!', sender: 'Mara', time: '2026-10-03'}}};
+      const sourceList = () => [2, 3, 4].map(n => ({n: String(n), text: 'gmail:' + 'abc'[n - 2]}));
+      const sourceId = text => text, facts = () => ({email: ''}), firstName = () => 'Mara', t = text => text;
+      const fmtDate = day => day, calendarDay = day => day, inline = text => text;
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children).filter(Boolean)});
+      console.log(JSON.stringify(personQuotes(r).children[1].children.map(li => li.children[1].text)));
     ''')
-    assert result == {'text': '[2] [4]', 'from': 'orgs/fernhill.md'}
+    assert result == ['The renewal can include a fourth seat.']
 
 
 def test_owed_parts_drop_a_rest_that_is_only_punctuation_after_date_clutter():
