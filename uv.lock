@@ -461,7 +461,7 @@ requires-dist = [
     { name = "soupsieve", specifier = ">=2.8.4" },
     { name = "textual", specifier = ">=0.86.0" },
     { name = "textual-autocomplete", specifier = ">=3.0.0" },
-    { name = "typer", specifier = ">=0.20.0" },
+    { name = "typer", specifier = ">=0.20.0,<0.29" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "websockets", specifier = ">=11.0.0" },
