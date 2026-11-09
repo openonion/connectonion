@@ -1284,8 +1284,9 @@ If the note cannot be prepared, nothing is claimed and the next check retries.
 Setup: co rem config set notify.channel outlook
 Choices, in order: outlook, telegram, lark, whatsapp, email. co rem doctor
 lists which existing senders are configured and their next command.
-outlook sends a designed HTML mail (what REM did, then the 1-3 decisions with
-one button each into the live reader) from your linked Outlook mailbox to that
+outlook sends a designed HTML mail (replies drafted apart from replies sent,
+work finished, then up to 3 decisions, one per person with a count, each with
+one button into the live reader) from your linked Outlook mailbox to that
 same mailbox; leave notify.target empty, any other address is refused. Link
 your personal Outlook, not a company one. Chat channels get the short note:
   co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram

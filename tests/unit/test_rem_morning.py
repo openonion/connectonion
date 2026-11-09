@@ -498,8 +498,9 @@ def test_mail_tells_what_rem_did_then_the_decisions(morning_book, monkeypatch):
     monkeypatch.setattr(morning, 'today_link', lambda root: LIVE)
     value = morning.preview(mail_book(morning_book))
     text = visible(value['html'])
-    assert value['subject'] == 'REM 早报 · 昨夜 REM 替你做了 5 件事，2 件要你拍板'
-    assert text.index('昨夜 REM 替你做了 5 件事') < text.index('2 件要你拍板，在下面') < text.index('Fern Ivers')
+    lead = '昨夜 REM 替你拟好 3 份回信，发出 2 封；做完 1 项任务；查清 1 个问题'
+    assert value['subject'] == f'REM 早报 · {lead}，2 件要你拍板'
+    assert text.index(lead) < text.index('2 件要你拍板，在下面') < text.index('Fern Ivers')
     for words in ('Fern Ivers', '06:05 前可撤回', 'Avery Stone', 'Fernhill invoice', '02:00 发出', 'Mara Quill',
                   'Fernhill pilot dates', 'Tell Mara the pilot starts Monday', 'Fernhill Labs', '打开看结果',
                   'CI is red on main', '已查清', '看稿并发送', '打开 Today'):
@@ -589,3 +590,44 @@ def test_outlook_is_a_valid_channel(tmp_path):
     prepare(tmp_path)
     set_config(tmp_path, ['notify.channel', 'outlook'])
     assert read_config(tmp_path)['notify']['channel'] == 'outlook'
+
+
+def test_mail_gives_one_person_one_decision_with_the_count(morning_book, monkeypatch):
+    # Two items for Mara filled two of the three decision slots and named her twice.
+    from connectonion.rem import morning
+    monkeypatch.setattr(morning, 'today_link', lambda root: LIVE)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [
+        {'id': 'reply:mara', 'kind': 'reply', 'title': 'Mara Quill', 'text': 'Fernhill 试点何时开始',
+         'keys': ['people/mara-quill.md\nMara asked']},
+        {'id': 'reply:mara-2', 'kind': 'reply', 'title': 'Mara Quill', 'text': '实验室钥匙',
+         'keys': ['people/mara-quill.md\nMara asked again']},
+        {'id': 'reply:avery', 'kind': 'reply', 'title': 'Avery Stone', 'text': 'Fernhill 发票',
+         'keys': ['people/avery-stone.md\nAvery asked']},
+        {'id': 'task:plan', 'kind': 'task', 'title': 'Fernhill Labs', 'text': '把试点计划写出来', 'record': 'orgs/fernhill-labs.md'}])
+    html = morning.preview(mail_book(morning_book))['html']
+    decisions = visible(html.split('4 件要你拍板</td>')[1])
+    assert decisions.count('Mara Quill') == 1
+    assert 'Mara Quill · 2 件' in decisions and 'Fernhill 试点何时开始' in decisions and '实验室钥匙' in decisions
+    assert decisions.index('Mara Quill') < decisions.index('Avery Stone') < decisions.index('Fernhill Labs')
+    assert '还有' not in decisions  # three people, three decisions: nothing left over
+
+
+def draft_night(root, language, monkeypatch, drafts=13):
+    from connectonion.rem import morning
+    prepare(root)
+    set_config(root, ['schedule.timezone', 'UTC', 'notify.channel', 'outlook', 'languages', language])
+    at(monkeypatch, 2026, 11, 8, 7)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [])
+    for n in range(drafts):
+        write_json(state_path(root, f'drafts/draft-{n}.json'), {
+            'id': f'draft-{n}', 'status': 'prepared', 'subject': f'Re: Fernhill note {n}',
+            'prepared_at': '2026-11-07T23:10:00+00:00'})
+    return morning.preview(root)
+
+
+@pytest.mark.parametrize('language,lead', [('zh', '昨夜 REM 替你拟好 13 份回信，发出 0 封'),
+                                           ('en', 'Overnight, REM drafted 13 replies for you and sent 0')])
+def test_mail_headline_counts_drafts_as_prepared_never_as_done(tmp_path, monkeypatch, language, lead):
+    value = draft_night(tmp_path, language, monkeypatch)
+    assert value['subject'].endswith(lead) and lead in visible(value['html'])
+    assert '做了' not in value['html'] and ' did ' not in value['html']

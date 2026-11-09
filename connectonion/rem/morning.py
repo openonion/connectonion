@@ -193,7 +193,10 @@ INK, BODY, MUTED, RULE, PAPER, CANVAS = '#0f1a14', '#2b332e', '#6b736e', '#e6e2d
 ALARM, GREEN, GREEN_INK = '#e2401c', '#22d27a', '#05301b'
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif"
 WORDS = {
-    True: {'brand': 'REM 早报', 'did': '昨夜 REM 替你做了 {n} 件事', 'calm': '昨夜没有新动静', 'need': '{n} 件要你拍板', 'below': '，在下面',
+    # A draft is prepared, not done: the lead names drafts and sends apart, so 13 drafts
+    # and no send never reads as "13 things done".
+    True: {'brand': 'REM 早报', 'did': '昨夜 REM 替你{parts}', 'replies': '拟好 {p} 份回信，发出 {s} 封',
+           'tasks': '做完 {n} 项任务', 'problems': '查清 {n} 个问题', 'join': '；', 'count': ' · {n} 件', 'calm': '昨夜没有新动静', 'need': '{n} 件要你拍板', 'below': '，在下面',
            'sent': '已替你发出', 'holding': '正在发出，可撤回', 'drafted': '草稿已拟好，等你看', 'finished': '任务已做完',
            'explained': '问题已查清', 'sent_at': '{t} 发出', 'until': '{t} 前可撤回', 'undo': '撤回', 'open_one': '打开看结果',
            'reply': '看稿并发送', 'task': '决定做不做', 'handled': '不用回，标为已处理', 'more': '还有 {n} 件在 Today',
@@ -201,7 +204,8 @@ WORDS = {
            'quiet': 'REM 每天早上最多发一封；没有事就不发。', 'subject': 'REM 早报 · {did}', 'subject_need': '，{n} 件要你拍板',
            'states': {'explained': '已查清', 'needs_owner': '需要你', 'fix_proposed': '已拟修复'},
            'date': '{m}月{d}日 {w}', 'week': '周一 周二 周三 周四 周五 周六 周日'},
-    False: {'brand': 'REM morning', 'did': 'Overnight, REM did {n} things for you', 'calm': 'A quiet night',
+    False: {'brand': 'REM morning', 'did': 'Overnight, REM {parts}', 'replies': 'drafted {p} for you and sent {s}',
+            'tasks': 'finished {n}', 'problems': 'explained {n}', 'join': '; ', 'count': ' · {n} items', 'calm': 'A quiet night',
             'need': '{n} need you', 'below': ' — below', 'sent': 'Sent for you', 'holding': 'Sending — you can still undo',
             'drafted': 'Drafts ready for you', 'finished': 'Tasks finished', 'explained': 'Problems explained',
             'sent_at': 'sent {t}', 'until': 'undo until {t}', 'undo': 'Undo', 'open_one': 'Open the result',
@@ -287,20 +291,38 @@ def _group(label, rows, w):
             f'{_e(label.upper())}</td></tr>{body}')
 
 
+def _by_person(pending):
+    """One decision per person: their items together, in the order the first one came."""
+    people = {}
+    for row in pending:
+        people.setdefault(_page(row) or row.get('title') or row.get('id'), []).append(row)
+    return list(people.values())
+
+
+def _name(row):
+    return _plain(row.get('title'), 60) or _subject_line(row.get('subject'))
+
+
+def _words(row):
+    subject = _subject_line(row.get('subject'))
+    return _plain(row.get('text'), 120) or (subject if _name(row) != subject else '')
+
+
 def _decisions(pending, zh, w, link):
     if not pending:
         return ''
-    blocks = ''
-    for index, row in enumerate(pending[:3]):
-        name = _plain(row.get('title'), 60) or _subject_line(row.get('subject'))
-        words = _plain(row.get('text'), 120) or (_subject_line(row.get('subject')) if name != _subject_line(row.get('subject')) else '')
+    blocks, people = '', _by_person(pending)
+    for index, rows in enumerate(people[:3]):
+        row = rows[0]
+        name = _name(row) + (w['count'].format(n=len(rows)) if len(rows) > 1 else '')
+        words = w['join'].join(dict.fromkeys(filter(None, map(_words, rows))))
         href = _deep(link, _page(row))
         button = _button(w.get(row.get('kind'), w['handled']), href, index == 0) if href else ''
         blocks += (f'<tr><td class="rule" style="padding:18px 0 20px;border-top:1px solid {RULE}">'
                    f'<div class="ink" style="font:700 17px/24px {FONT};color:{INK}">{_e(name)}</div>'
                    f'<div class="body" style="font:15px/23px {FONT};color:{BODY};margin-top:4px">{_e(words)}</div>'
                    f'{button}</td></tr>')
-    more = len(pending) - 3
+    more = len(pending) - sum(map(len, people[:3]))
     if more > 0:
         blocks += (f'<tr><td class="mute rule" style="padding:12px 0;border-top:1px solid {RULE};color:{MUTED};'
                    f'font:13px/20px {FONT}">{_e(w["more"].format(n=more))}</td></tr>')
@@ -323,12 +345,23 @@ DARK = (f'@media (prefers-color-scheme: dark){{.canvas{{background:#0c110e!impor
         f'@media (max-width:620px){{.card{{padding:28px 20px 24px!important}}.lead{{font-size:25px!important;line-height:33px!important}}}}')
 
 
+def _lead(done, w, zh):
+    """Drafts count as prepared and sends as sent; only tasks and problems are done."""
+    sent = len(done['sent']) + len(done['holding'])
+    prepared, finished, explained = len(done['drafted']) + sent, len(done['finished']), len(done['explained'])
+    say = (lambda n, one, many: n) if zh else _plural
+    parts = [w['replies'].format(p=say(prepared, 'reply', 'replies'), s=sent) if prepared else '',
+             w['tasks'].format(n=say(finished, 'task', 'tasks')) if finished else '',
+             w['problems'].format(n=say(explained, 'problem', 'problems')) if explained else '']
+    parts = [part for part in parts if part]
+    return w['did'].format(parts=w['join'].join(parts)) if parts else w['calm']
+
+
 def _mail(done, pending, local, zh, link):
-    """The same morning as the note, as a designed mail: what REM did first, then the 1–3 decisions."""
+    """The same morning as the note, as a designed mail: what REM did first, then one decision per person for up to three people."""
     w = WORDS[zh]
     groups = _done_rows(done, local, w, link)
-    n = sum(len(rows) for _, rows in groups)
-    lead = w['did'].format(n=n) if n else w['calm']
+    lead = _lead(done, w, zh)
     subject = w['subject'].format(did=lead) + (w['subject_need'].format(n=len(pending)) if pending else '')
     need = (f'<span class="alarm-text" style="color:{ALARM};font-weight:700">{_e(w["need"].format(n=len(pending)))}'
             f'{_e(w["below"])}</span>') if pending and groups else ''
