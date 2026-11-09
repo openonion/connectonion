@@ -110,7 +110,7 @@ def test_a_waiting_row_the_night_never_prepared_is_handed_watched_and_its_result
     line.get_by_text("Codex finished").wait_for(timeout=30000)       # it follows the run by itself
     line.get_by_role("button", name="See result").click()
     from patchright.sync_api import expect
-    expect(row.locator(".task-output")).to_contain_text("Pilot review")
+    expect(row.locator(".task-output h2")).to_have_text("Pilot review")          # "# Pilot review", rendered
     if SHOTS:
         row.screenshot(path=str(Path(SHOTS) / "hand-row-finished.png"))
     line.get_by_role("button", name="Undo").click()
@@ -121,9 +121,29 @@ def test_a_waiting_row_the_night_never_prepared_is_handed_watched_and_its_result
 def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_turn(live):
     page, _ = live
     row = _row(page, "Fernhill Labs contract draft")
+    line = row.locator(".handoff-line")
+    assert line.evaluate("node => node.getBoundingClientRect().height") < 48      # one line, not four links on two
+    assert " ".join(line.inner_text().split()) == "Hand to Codex · Hand to Claude · Talk it over ▾"
+    if SHOTS:
+        page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
+        zh = _row(page, "Fernhill Labs contract draft")
+        assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "交给 Codex · 交给 Claude · 聊一聊 ▾"
+        zh.locator(".talk-menu > summary").click()
+        menu = zh.locator(".talk-choices")
+        assert menu.evaluate("node => document.elementFromPoint(node.getBoundingClientRect().left + 8, node.getBoundingClientRect().bottom - 8)?.closest('.talk-choices') === node")
+        box = zh.bounding_box()
+        page.screenshot(path=str(Path(SHOTS) / "row-zh-menu.png"),
+                        clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"] + 90})
+        page.evaluate("() => { setInterfaceLanguage('en'); render(); }", isolated_context=False)
+        row, line = _row(page, "Fernhill Labs contract draft"), _row(page, "Fernhill Labs contract draft").locator(".handoff-line")
+    line.locator(".talk-menu > summary").click()
     row.get_by_role("button", name="Talk with Claude about this").click()
     talk = row.locator(".talk")
     talk.locator(".talk-turn.agent").first.wait_for(timeout=30000)
+    # The reply is Markdown: its fenced block is a code block, never literal backticks.
+    first = talk.locator(".talk-turn.agent .agent-text").first
+    assert first.locator("pre code").inner_text().strip() == "Hello from Sample!"
+    assert "```" not in first.inner_text()
     assert talk.locator(".talk-context summary").inner_text() == "What Claude was given"
     assert talk.locator(".talk-turn.agent p").first.inner_text().strip()
     talk.get_by_role("textbox", name="Your message").fill("Draft the follow-up to Fern, short.")
@@ -133,3 +153,20 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     assert talk.get_by_role("button", name="Send").is_enabled()
     if SHOTS:
         row.screenshot(path=str(Path(SHOTS) / "talk-with-claude.png"))
+
+
+def test_agent_text_is_markdown_and_no_html_from_the_model_runs(live):
+    page, _ = live
+    shown = page.evaluate(r"""() => {
+      const box = agentText('Plan:\n\n- read `pilot.md`\n- [docs](https://docs.connectonion.com)\n\n```sh\nco rem status\n```\n\n'
+        + '<script>window.pwned = 1</script><img src=x onerror="window.pwned = 2"> [bad](javascript:alert(1))', 'projects/fernhill.md');
+      document.body.append(box);
+      return {pre: box.querySelector('pre code')?.textContent, items: [...box.querySelectorAll('li')].map(li => li.textContent),
+        code: box.querySelector('li code')?.textContent, link: box.querySelector('a[href^="https"]')?.getAttribute('href'),
+        scripts: box.querySelectorAll('script, img').length, js: box.querySelectorAll('a[href^="javascript"]').length,
+        text: box.textContent, pwned: window.pwned || 0};
+    }""", isolated_context=False)
+    assert shown['pre'] == 'co rem status' and shown['code'] == 'pilot.md'
+    assert shown['items'][1] == 'docs' and shown['link'] == 'https://docs.connectonion.com'
+    assert shown['scripts'] == 0 and shown['js'] == 0 and shown['pwned'] == 0
+    assert '<script>window.pwned = 1</script>' in shown['text']

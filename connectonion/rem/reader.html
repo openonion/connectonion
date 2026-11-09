@@ -2177,14 +2177,33 @@
   .handed { margin: var(--u2) 0 0; color: var(--ink); font-weight: var(--w-bold); }
   .handoff-status:empty { display: none; }
   .handoff { flex-direction: column; align-items: stretch; gap: var(--u1); }
-  .handoff-line, .talk-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
+  .handoff-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u2); }
+  .handoff-line > .sep { color: var(--grey); }
+  .talk-menu { position: relative; }
+  .talk-menu > summary { list-style: none; min-height: 32px; display: inline-flex; align-items: center; color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .talk-menu > summary::-webkit-details-marker { display: none; }
+  .talk-menu > summary:hover, .talk-menu[open] > summary { color: var(--ink); text-decoration-color: var(--ink); }
+  .talk-choices { position: absolute; z-index: 5; top: 100%; left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--u1); min-width: 10em; padding: var(--u2) var(--u3); background: var(--paper); border: var(--hair) solid var(--ink); }
   .handoff .handed { margin: 0; font-size: var(--s-body); }
-  .task-output, .talk-context pre { margin: 0; flex-basis: 100%; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--s-meta)/1.6 var(--mono); }
+  .talk-context pre { margin: 0; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--s-meta)/1.6 var(--mono); }
+  .task-output { flex-basis: 100%; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); }
+  /* An agent's Markdown, in the page's own type: paragraphs, lists, inline code and code blocks. */
+  .agent-text { min-width: 0; overflow-wrap: anywhere; line-height: var(--lh-body); }
+  .agent-text > :first-child { margin-top: var(--u1); }
+  .agent-text > :last-child { margin-bottom: 0; }
+  .agent-text p, .agent-text ul, .agent-text ol, .agent-text blockquote { margin: 0 0 var(--u2); }
+  .agent-text ul, .agent-text ol { padding-left: var(--u4); }
+  .agent-text h2, .agent-text h3, .agent-text h4, .agent-text h5, .agent-text h6 { margin: var(--u3) 0 var(--u2); font-size: var(--s-body); font-weight: var(--w-bold); }
+  .agent-text code { font: var(--s-meta) var(--mono); }
+  .agent-text .code-block { margin: 0 0 var(--u2); }
+  .agent-text pre { margin: 0; padding: var(--u3); overflow-x: auto; border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-meta)/1.55 var(--mono); }
+  .agent-text pre code { white-space: pre; overflow-wrap: normal; }
+  .agent-text a { text-decoration: underline; text-underline-offset: 3px; }
   .task-output[hidden] { display: none; }
   /* 和 Codex 聊这件事: the conversation under its row, in the reader's own type; quiet until it speaks. */
   .talk { margin-top: var(--u2); padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); }
   .talk-turns { display: flex; flex-direction: column; gap: var(--u3); }
-  .talk-turn p { margin: var(--u1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--lh-body); }
+  .talk-turn.owner p { margin: var(--u1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--lh-body); }
   .talk-turn.owner { padding-left: var(--u3); border-left: var(--rule-heavy) solid var(--ink); }
   .talk-who, .talk-context summary, .talk-status { font-size: var(--s-meta); color: var(--grey); }
   .talk-who { font-weight: var(--w-bold); }
@@ -3038,6 +3057,8 @@ const UI = {
     "See result": "看结果",
     "{agent} wrote nothing.": "{agent} 没有写下结果。",
     "Talk with {agent} about this": "和 {agent} 聊这件事",
+    "Talk it over": "聊一聊",
+    "With {agent}": "和 {agent} 聊",
     "What {agent} was given": "交给 {agent} 的背景",
     "Opening the conversation…": "正在打开对话…",
     "{agent} is answering…": "{agent} 正在回复…",
@@ -6360,12 +6381,16 @@ function hostPost(url, body) {
 }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
 function handOff(entry) {
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show) : handButtons(entry, show);
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel) : handButtons(entry, show, panel);
   const show = () => line.replaceChildren(...parts());
-  const line = el("div", { class: "handoff-line" }, parts()), panel = el("div", { class: "talk-slot" });
-  return el("div", { class: "handoff" }, [line, talkLinks(entry, panel), panel]);
+  const panel = el("div", { class: "talk-slot" }), line = el("div", { class: "handoff-line" }, parts());
+  return el("div", { class: "handoff" }, [line, panel]);
 }
-function handButtons(entry, show) {
+// One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾
+function dotted(nodes) {
+  return nodes.filter(Boolean).flatMap((node, i) => i ? [el("span", { class: "sep", "aria-hidden": "true", text: "·" }), node] : [node]);
+}
+function handButtons(entry, show, panel) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t("Hand to {agent}", { agent: name }) });
@@ -6388,10 +6413,10 @@ function handButtons(entry, show) {
     };
     return button;
   });
-  return [...buttons, status];
+  return [...dotted([...buttons, talkMenu(entry, panel)]), status];
 }
 // Codex is working · Stop · Undo, then Codex finished · See result · Undo; it follows the run by itself.
-function handState(entry, show) {
+function handState(entry, show, panel) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
   const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
@@ -6410,7 +6435,8 @@ function handState(entry, show) {
   if (liveHere() && active) followTask(entry, task, status, show);
   const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
-  return [status, reason, by, ...(liveHere() ? [active ? act("stop", "Stop") : see, act("undo", "Undo"), output] : [])].filter(Boolean);
+  const actions = liveHere() ? [active ? act("stop", "Stop") : see, act("undo", "Undo")] : [];
+  return [...dotted([status, reason, by, ...actions, talkMenu(entry, panel)]), output].filter(Boolean);
 }
 function followTask(entry, task, status, show) {
   setTimeout(async () => {
@@ -6422,13 +6448,14 @@ function followTask(entry, task, status, show) {
 }
 // See result: what the agent wrote, read from its deliverable through the Host, shown under the row.
 function seeResult(task) {
-  const output = el("pre", { class: "task-output", hidden: "" });
+  const output = el("div", { class: "task-output", hidden: "" });
   const button = el("button", { type: "button", class: "btn-quiet", "aria-expanded": "false", text: t("See result") });
   button.onclick = async () => {
-    if (!output.textContent) {
+    if (!output.childNodes.length) {
       const reply = await hostPost("/rem/task", { id: task.id, action: "result" });
-      output.textContent = reply.ok ? reply.text || reply.reason || t("{agent} wrote nothing.", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent })
-        : reply.error || t("REM is not answering right now. Try again in a moment.");
+      output.append(reply.ok && reply.text ? agentText(reply.text, task.record)
+        : el("p", { text: reply.ok ? reply.reason || t("{agent} wrote nothing.", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent })
+          : reply.error || t("REM is not answering right now. Try again in a moment.") }));
     }
     output.hidden = !output.hidden;
     button.setAttribute("aria-expanded", String(!output.hidden));
@@ -6436,17 +6463,31 @@ function seeResult(task) {
   return [button, output];
 }
 // 和 Codex 聊这件事: a real conversation with the agent about this row, under it, in this page.
-function talkLinks(entry, panel) {
-  return el("div", { class: "talk-links" }, Object.entries(AGENT_NAMES).map(([agent, name]) => {
-    const button = el("button", { type: "button", class: "btn-quiet", "data-talk": agent, text: t("Talk with {agent} about this", { agent: name }) });
+function talkMenu(entry, panel) {
+  const menu = el("details", { class: "talk-menu" }, [el("summary", {}, [t("Talk it over"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })])]);
+  menu.append(el("div", { class: "talk-choices" }, Object.entries(AGENT_NAMES).map(([agent, name]) => {
+    const button = el("button", { type: "button", class: "btn-quiet", "data-talk": agent, text: t("With {agent}", { agent: name }),
+      "aria-label": t("Talk with {agent} about this", { agent: name }) });
     button.disabled = !liveHere();
-    button.onclick = () => panel.replaceChildren(talkPanel({ action: "begin", agent, key: obligationKey(entry) }));
+    button.onclick = () => { menu.open = false; panel.replaceChildren(talkPanel({ action: "begin", agent, key: obligationKey(entry) })); };
     return button;
-  }));
+  })));
+  return menu;
 }
-function talkTurn(turn, name) {
+// What an agent wrote, as the notebook's own Markdown: escaped first, so no HTML from the model runs;
+// fenced code is a code block with its Copy button. `from` is the page its citations belong to.
+function agentText(text, from) {
+  const box = el("div", { class: "agent-text", html: markdown(text, from || "") });
+  for (const block of box.querySelectorAll(".code-block")) {
+    const copy = block.querySelector(".code-copy");
+    copy.onclick = () => copyToClipboard(block.querySelector("code").textContent, copy, t("Copied"));
+  }
+  return box;
+}
+function talkTurn(turn, name, from) {
   if (turn.role === "context") return el("details", { class: "talk-context" }, [el("summary", { text: t("What {agent} was given", { agent: name }) }), el("pre", { text: turn.text })]);
-  return el("div", { class: "talk-turn " + turn.role }, [el("span", { class: "talk-who", text: turn.role === "owner" ? t("You") : name }), el("p", { text: turn.text })]);
+  return el("div", { class: "talk-turn " + turn.role }, [el("span", { class: "talk-who", text: turn.role === "owner" ? t("You") : name }),
+    turn.role === "owner" ? el("p", { text: turn.text }) : agentText(turn.text, from)]);
 }
 // One conversation: each message is a turn of the same agent session; the page follows it while it answers.
 function talkPanel(begin) {
@@ -6459,7 +6500,8 @@ function talkPanel(begin) {
     if (!ok) { status.textContent = error || t("REM is not answering right now. Try again in a moment."); send.disabled = !talk; return; }
     talk = value;
     const name = AGENT_NAMES[talk.agent] || talk.agent, working = talk.state === "working";
-    turns.replaceChildren(...talk.turns.map(turn => talkTurn(turn, name)));
+    const from = talk.about.session || talk.about.key.split("\n")[0];
+    turns.replaceChildren(...talk.turns.map(turn => talkTurn(turn, name, from)));
     status.textContent = working ? t("{agent} is answering…", { agent: name }) : talk.reason || "";
     input.placeholder = t("Write to {agent}…", { agent: name });
     send.disabled = working;
