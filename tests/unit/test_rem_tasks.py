@@ -254,6 +254,18 @@ def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, mon
             tasks.stop(task_notebook, row['id'])
 
 
+def test_a_stop_signal_asks_the_run_to_cancel_instead_of_raising_inside_it(monkeypatch):
+    # An exception raised from the SIGTERM handler lands wherever the worker happens to
+    # be; inside the Codex client's lock waits it left the worker hung, and Stop was
+    # never confirmed (CI 3.13, 2026-11-09). The handler only records the stop; the
+    # integration's own cancellation check ends the run.
+    import signal
+    from connectonion.rem import tasks
+    monkeypatch.setattr(tasks, '_STOPPED', tasks.threading.Event())
+    tasks._interrupted(signal.SIGTERM, None)
+    assert tasks._STOPPED.is_set()
+
+
 def test_an_approved_task_starts_beside_a_running_one(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import approvals, tasks
     monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')

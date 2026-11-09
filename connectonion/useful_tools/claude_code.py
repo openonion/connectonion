@@ -182,6 +182,7 @@ def _run_claude_code(
     bridge_settings: Path | None = None,
     bridge_events: Path | None = None,
     add_dirs: tuple[str, ...] | list[str] = (),
+    cancelled=None,
 ) -> str:
     """Private runner shared by safe, configured, and co-ai entry points.
 
@@ -209,7 +210,8 @@ def _run_claude_code(
         command, prompt, session_id, permission_mode, model, bridge_settings, add_dirs
     )
     forwarder = _ClaudeStreamForwarder(agent)
-    cancelled = _provider_cancellation_check(agent)
+    # An operator's stop check (REM's task Stop) stands in for the Agent's Work Room Stop.
+    cancelled = cancelled or _provider_cancellation_check(agent)
 
     def provider_started() -> None:
         forwarder.emit_user_message(prompt)
@@ -277,6 +279,7 @@ def run_co_claude(
     agent=None,
     workspace: str | Path | None = None,
     add_dirs: tuple[str, ...] | list[str] = (),
+    cancelled=None,
 ) -> str:
     """Run one owned Claude turn with a scoped session-identity Hook.
 
@@ -299,6 +302,7 @@ def run_co_claude(
             bridge_settings=settings,
             bridge_events=events,
             add_dirs=add_dirs,
+            cancelled=cancelled,
         )
         outcome = json.loads(result)
         if outcome["status"] != "completed":

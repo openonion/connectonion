@@ -166,8 +166,9 @@ def start(root, task_id, agent=None):
 
 
 def _interrupted(signum, frame):
+    # Only record it: an exception raised here lands wherever the worker is, and inside
+    # the Codex client's lock waits it hung the worker. The run polls _STOPPED instead.
     _STOPPED.set()
-    raise InterruptedError('Task stopped by the owner')
 
 
 @contextmanager
@@ -192,10 +193,12 @@ def _delegate(receipt, folder, config, timeout):
     # REM's model names a Codex model; Claude Code keeps its own, and the owner's own
     # Claude setup loads (context over control): user_setup.
     model = config['model'] if agent == 'codex' and config['model'] != 'default' else ''
+    if _STOPPED.is_set():
+        raise InterruptedError('Task stopped by the owner')
     with _tmpdir(folder / 'tmp'):
         answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
                              timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
-                             user_setup=True, **FULL_ACCESS)
+                             user_setup=True, cancelled=_STOPPED.is_set, **FULL_ACCESS)
     if _STOPPED.is_set():
         raise InterruptedError('Task stopped by the owner')
     Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
@@ -441,12 +444,4 @@ if __name__ == '__main__':
     parser.add_argument('--id', required=True)
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, _interrupted)
-    try:
-        execute(args.root, args.id)
-    except InterruptedError:
-        # A stop may arrive while this worker is still acquiring its launch lock.
-        folder = directory(args.root, args.id)
-        with _lock(folder):
-            saved = read_json(folder / 'receipt.json', {})
-            saved.update(result='stopped', exit_code=130, finished_at=now().isoformat())
-            write_json(folder / 'receipt.json', saved)
+    execute(args.root, args.id)

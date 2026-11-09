@@ -116,13 +116,15 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
 
 
 def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", model="", timeout=600,
-               approval="manual", agent=None, speed="standard", effort="", writable_roots=()):
+               approval="manual", agent=None, speed="standard", effort="", writable_roots=(),
+               cancelled=None):
     """codex() plus the operator-only thread settings an Agent must not choose.
 
     effort: model_reasoning_effort for the thread; empty keeps the user's own.
     writable_roots: directories beside cwd that workspace-write may also write,
     as `codex exec --add-dir` does. Never on the Agent-facing tool: a model
     choosing it could widen its own sandbox.
+    cancelled: an operator's stop check, used instead of the Agent's Work Room Stop.
     """
     if sandbox not in SANDBOX_LEVELS:
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
@@ -172,7 +174,7 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
             denied.append(method)
         return allowed
 
-    cancelled = _provider_cancellation_check(agent)
+    cancelled = cancelled or _provider_cancellation_check(agent)
     working_directory = cwd or "."
     cancellation_check = cancelled if callable(cancelled) else None
     client = None
