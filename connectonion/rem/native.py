@@ -331,19 +331,20 @@ def _next_round(root, cursor, *, scheduled, notices):
     config = read_config(root)
     if scheduled and (not cursor or cursor.get("done")) and native_round.scheduled_slot(root, config) is None:
         return {"outcome": "done", "reason": "not due", "notices": notices}
+    reason, meter = _stop(root, config)
+    _held(root, reason)
+    if scheduled and reason and reason != "daily cap reached":  # the call cap bounds mail too
+        cursor, mail = _mail_while_held(root, cursor, config, meter, notices)
+        if mail:
+            return mail
     # A round still working through its jobs reads each new slot's mail; one in its
     # translation tail is about to finish, and the next round reads mail anyway.
-    # Not while a page is open: new mail that edits it would refuse every later
-    # turn with "Task input changed". It is read at the next slot after the page.
-    if (cursor and scheduled and not cursor.get("done") and cursor.get("phase") != "daily-translation"
+    # Not while a page is open: new mail that edits it would restart that page's
+    # investigation. It is read at the next slot after the page.
+    elif (cursor and scheduled and not cursor.get("done") and cursor.get("phase") != "daily-translation"
             and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])
             and not cursor.get("current") and not cursor.get("project_quote")):
-        slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
-        if slot and slot.isoformat() > (cursor.get("mail_slot") or cursor.get("slot") or ""):
-            progress_step(f"reading new mail for the {slot:%H:%M} slot", round=cursor["started_at"],
-                          mail_slot=slot.isoformat())
-            native_round.read_new_mail(root, cursor, config, slot)
-    reason, meter = _stop(root, config)
+        _read_slot_mail(root, cursor, config)
     if reason:
         from . import night
         night.prepare(root, config, stop=reason)
@@ -367,14 +368,51 @@ def _next_round(root, cursor, *, scheduled, notices):
     return _new_task(root, cursor, config, meter, notices, translation_only=translation_only, stop_reason=reason)
 
 
-def _new_task(root, cursor, config, meter, notices, *, translation_only=False, stop_reason=None):
+def _read_slot_mail(root, cursor, config):
+    from . import native_round
+    slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
+    if slot and slot.isoformat() > (cursor.get("mail_slot") or cursor.get("slot") or ""):
+        progress_step(f"reading new mail for the {slot:%H:%M} slot", round=cursor["started_at"],
+                      mail_slot=slot.isoformat())
+        native_round.read_new_mail(root, cursor, config, slot)
+
+
+def _mail_while_held(root, cursor, config, meter, notices):
+    """(cursor, the mail task or None): the floor holds investigation, never mail.
+
+    11-09: a page open when the week reached its floor kept every later slot's mail
+    unread for two days. A held round reads each slot's mail; with no round open
+    one starts, and its jobs wait for the floor like any other.
+    """
+    from . import native_round
+    if not cursor or cursor.get("done"):
+        cursor = native_round.prepare(root, config, scheduled=True)
+        if cursor.get("reason"):
+            return {}, None
+    elif cursor["batch"]["done"]:
+        _read_slot_mail(root, cursor, config)
+    result = _new_task(root, cursor, config, meter, notices, mail_only=True)
+    return cursor, result if result["outcome"] == "task" else None
+
+
+def _held(root, reason):
+    """Why the round cannot move now, and since when, for status; gone once it can."""
+    path = state_path(root, "round-held.json")
+    if not reason:
+        path.unlink(missing_ok=True)
+        return
+    write_json(path, {"reason": reason, "since": read_json(path, {}).get("since") or service.now().isoformat()})
+
+
+def _new_task(root, cursor, config, meter, notices, *, translation_only=False, mail_only=False, stop_reason=None):
     from . import native_round
     from .daily import _reserve
     progress_step("preparing the next task")
     task_id = "native-" + uuid4().hex
     directory = state_path(root, f"tasks/{task_id}")
     directory.mkdir(parents=True, mode=0o700)
-    prepared = (native_round.prepare_translation(root, cursor, config, directory) if translation_only
+    prepared = (native_round.prepare_batch(root, cursor, config, directory) if mail_only
+                else native_round.prepare_translation(root, cursor, config, directory) if translation_only
                 else native_round.prepare_task(root, cursor, config, directory))
     if prepared is None or prepared.get("stop"):
         if prepared is None and translation_only and cursor["phase"] == "daily-translation":
