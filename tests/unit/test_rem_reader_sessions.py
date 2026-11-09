@@ -105,6 +105,7 @@ def _composer(live, record, link=''):
         append(...items) { this.children.push(...items); }});
       const sessionAgent = r => (r.session_agent || '').toLowerCase().replaceAll(' ', '-'), talkPanel = begin => ({begin});
       const location = {protocol: 'http:'}, REM = ''' + state + ''';
+      const OPEN_TALKS = new Map();   // no conversation open yet, as on first render
       console.log(JSON.stringify(sessionComposer(''' + json.dumps(record) + ''')));
     ''')
 
