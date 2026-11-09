@@ -663,10 +663,14 @@ write REM makes touches `.state/reader-changed`; the category folders' times
 catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
 WAL hold committed rows; `reader.html` is part of the key, so an upgrade
 re-renders. The notebook's date is part of the key too, so the Today queue turns
-over at midnight. When the key changed, or the page is older than 10 minutes
-(`REBUILD_INTERVAL` in `reader.py`; clock-dependent parts such as **Next pass**
-and edits other tools make in place without REM's writers are caught this way),
-the last page is still served at once and one detached process
+over at midnight. Every 10 minutes (`REBUILD_INTERVAL` in `reader.py`) the
+background build walks the whole notebook (on a 31,136-file notebook about
+17 s of stat calls, never on the request path), which catches edits other
+tools make in place without REM's writers, and rebuilds only if the walk
+differs. A page older than an hour (`STALE_SCHEDULE_SECONDS`) is rebuilt
+anyway, so **Next pass** and schedule text are at most an hour late; a quiet
+notebook with the page open costs a walk every 10 minutes, not a rebuild.
+When the key changed, the last page is still served at once and one detached process
 (`python -m connectonion.rem.reader`, one at a time, log in the same folder,
 trimmed to its last 200 lines) renders the new one. It publishes the page and
 its details together, so a reload never pairs a new page with old details.

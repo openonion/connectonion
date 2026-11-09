@@ -409,8 +409,8 @@ def reader_version(root: Path) -> list:
     REM's writes touch `.state/reader-changed` (files.atomic_write); the category
     folders' times catch a page added, renamed or removed by hand; the database
     and a nonempty WAL hold committed rows; the notebook's day turns the Today
-    queue over. A page edited in place by another tool is caught when the saved
-    page passes REBUILD_INTERVAL. The template is part of the key, so a new
+    queue over. A page edited in place by another tool is caught by the
+    background walk (tree_version) each REBUILD_INTERVAL. The template is part of the key, so a new
     install re-renders.
     """
     from .files import CHANGED
@@ -470,10 +470,12 @@ def write_reader(root: Path) -> Path:
 # made from one snapshot. A build runs once at a time, in a detached process.
 BUILDS = {"live.html": "live", "data.json": "full", "file.html": "full"}
 # A rebuild costs ~100 s of CPU on a real notebook under load, and a night run
-# keeps writing: at most one per interval unless the owner acted. A page older
-# than this is rebuilt too: edits made by other tools touch no marker, and the
-# Today queue and "Next pass" move with the clock.
+# keeps writing: at most one per interval unless the owner acted. Each interval
+# the background build walks the notebook (~17 s of stat calls, never on the
+# request path) for edits other tools make without REM's writers.
 REBUILD_INTERVAL = 600
+# "Next pass" and schedule text move with the clock: at most this late.
+STALE_SCHEDULE_SECONDS = 3600
 # The live page asks for its details as soon as it loads, so it keeps both current.
 NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
 LOG_LINES = 200
@@ -509,13 +511,29 @@ def _read(path: Path):
 
 
 def saved(root: Path, build: str) -> dict:
-    """{version, as_of, built_at} of a build's saved pages; {} before the first."""
+    """{version, tree, as_of, built_at, checked_at} of a build's saved pages; {} before the first."""
     text = _read(_cached(root, build + ".json"))
     return json.loads(text) if text else {}
 
 
 def _now() -> float:
     return time.time()
+
+
+def tree_version(root: Path) -> str:
+    """Every file's name, time and size, hashed: the background build's check for
+    edits that touch no marker. SQLite's shared memory changes on reads; an empty
+    WAL has no committed frames."""
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            path = Path(directory) / name
+            stat = path.lstat()
+            if name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
 def _render(root: Path, build: str) -> tuple[dict, str]:
@@ -528,7 +546,7 @@ def _render(root: Path, build: str) -> tuple[dict, str]:
             "file.html": _page(full, live=False)}, full["as_of"]
 
 
-def _publish(root: Path, rendered: dict, version: list) -> None:
+def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     """Every page first, then every key: a reload that sees the new version gets the
     new page and the new details together."""
     for files, _ in rendered.values():
@@ -536,7 +554,8 @@ def _publish(root: Path, rendered: dict, version: list) -> None:
             _replace(_cached(root, name), text)
     for build, (_, as_of) in rendered.items():
         _replace(_cached(root, build + ".json"),
-                 json.dumps({"version": version, "as_of": as_of, "built_at": _now()}))
+                 json.dumps({"version": version, "tree": tree, "as_of": as_of,
+                             "built_at": _now(), "checked_at": _now()}))
 
 
 def owner_changed(root: Path) -> bool:
@@ -611,10 +630,25 @@ def _refresh_once(root: Path, builds):
         wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
         for _ in range(3):
             started, version = _now(), reader_version(root)
-            stale = [build for build in wanted if _behind(saved(root, build), version, started)]
+            rows = {build: saved(root, build) for build in wanted}
+            stale = [build for build in wanted if _behind(rows[build], version, started)]
+            tree = None
+            if any(_unchecked(rows[build], started) for build in wanted if build not in stale):
+                tree = tree_version(root)
+                for build in wanted:
+                    if build in stale:
+                        continue
+                    if rows[build].get("tree") != tree:
+                        stale.append(build)
+                    else:
+                        _replace(_cached(root, build + ".json"), json.dumps({**rows[build], "checked_at": started}))
             if not stale:
                 return started
-            _publish(root, {build: _render(root, build) for build in stale}, version)
+            stale = [build for build in wanted if build in stale]
+            # Walked before rendering, so the page carries the tree it was built from
+            # and the next check does not rebuild it again (+17 s on a 100 s build).
+            tree = tree or tree_version(root)
+            _publish(root, {build: _render(root, build) for build in stale}, version, tree)
             _cached(root, "failed.json").unlink(missing_ok=True)
             if not _owner_since(root, started):
                 return started
@@ -622,7 +656,12 @@ def _refresh_once(root: Path, builds):
 
 
 def _behind(row: dict, version: list, moment: float) -> bool:
-    return row.get("version") != version or moment - row.get("built_at", 0) >= REBUILD_INTERVAL
+    """Rebuild without walking: the key changed, or the clock text is an hour old."""
+    return row.get("version") != version or moment - row.get("built_at", 0) >= STALE_SCHEDULE_SECONDS
+
+
+def _unchecked(row: dict, moment: float) -> bool:
+    return moment - row.get("checked_at", 0) >= REBUILD_INTERVAL
 
 
 def main(argv) -> None:
@@ -691,11 +730,14 @@ def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False)
     rows = {build: saved(root, build) for build in ("live", "full")}
     missing = [build for build in NEEDS[name] if not rows[build]]
     behind = [build for build in NEEDS[name] if rows[build] and _behind(rows[build], version, _now())]
+    unchecked = [build for build in NEEDS[name] if rows[build] and _unchecked(rows[build], _now())]
     last = max((row.get("built_at", 0) for row in rows.values() if row), default=0)
     if behind and owner:
         return owner_changed(root)
     if missing or behind and _now() - last >= REBUILD_INTERVAL:
-        return _spawn_refresh(root, missing + behind)
+        return _spawn_refresh(root, list(dict.fromkeys(missing + behind + unchecked)))
+    if unchecked:  # the walk decides, in the background, whether anything changed
+        _spawn_refresh(root, unchecked)
     return False
 
 

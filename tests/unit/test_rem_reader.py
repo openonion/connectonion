@@ -3683,3 +3683,42 @@ def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
     task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
     assert "reloadWhenRendered(" in task
     assert '"Newer page · Reload": "有更新 · 刷新"' in page
+
+
+def test_a_quiet_visible_page_is_walked_every_interval_and_rebuilt_only_when_needed(tmp_path, monkeypatch):
+    """A rebuild is ~100 s of CPU on a real notebook; the walk is ~17 s of stat calls."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import service
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    day = [datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)]
+    monkeypatch.setattr(service, "now", lambda: day[0])
+    reader.open_snapshot(root, launch=False)
+    walks, renders, original_walk, original = [], [], reader.tree_version, reader.snapshot
+    monkeypatch.setattr(reader, "tree_version", lambda root: walks.append(1) or original_walk(root), raising=False)
+    monkeypatch.setattr(reader, "snapshot", lambda root, **o: renders.append(1) or original(root, **o))
+    # The detached build, run here: what a visible page's poll starts.
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: reader.refresh(root, builds) or True)
+    start = _Clock.seconds
+    at = lambda minutes: setattr(_Clock, "seconds", start + minutes * 60 + 1) or reader.cached_page(root, "file.html")
+    at(10)                                       # the first walk records the tree (the first page was built without one)
+    renders.clear(), walks.clear()
+    start = _Clock.seconds
+    for minutes in (10, 20, 50):
+        at(minutes)
+    assert len(walks) == 3 and renders == []     # walked, nothing differed: no rebuild
+    at(60)
+    assert renders == [1]                        # "Next pass" may be at most STALE_SCHEDULE_SECONDS late
+    assert reader.STALE_SCHEDULE_SECONDS == 3600
+    renders.clear()
+    (root / "people/alice.md").write_text("# Alice Example, edited by another tool\n")
+    at(65)
+    assert renders == []                         # the open never walks; the interval has not passed
+    at(71)
+    assert renders == [1] and "edited by another tool" in open(reader._cached(root, "file.html"), encoding="utf-8").read()
+    renders.clear()
+    day[0] += timedelta(days=1)
+    at(82)
+    assert renders == [1]                        # the notebook's day changed
