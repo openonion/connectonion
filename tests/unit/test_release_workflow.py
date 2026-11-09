@@ -16,7 +16,7 @@ def test_release_reuses_full_tests_and_waits_for_them_before_publication():
     build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
     publish_job = RELEASE.split("  publish:", 1)[1].split("  finalize:", 1)[0]
     assert "needs: tests" not in build_job
-    assert "needs: [tests, build]" in publish_job
+    assert "needs: [gate, tests, build]" in publish_job
 
 
 def test_ci_audits_the_exact_dependency_lock():
@@ -150,3 +150,139 @@ def test_external_actions_are_pinned_to_immutable_commits():
         reference = line.split("@", 1)[1].split()[0]
         assert len(reference) == 40
         assert all(character in "0123456789abcdef" for character in reference)
+
+
+# The release does not re-run a Tests run that already passed on the tagged
+# commit; .github/scripts/release_test_gate.py decides from the API's own
+# answers. The fixtures are recorded from the main-push Tests run of
+# 69685d5 (v1.9.3rc63's commit), trimmed to the fields the gate reads.
+
+import copy
+import importlib.util
+import json
+import sys
+
+import pytest
+
+_GATE_SPEC = importlib.util.spec_from_file_location(
+    "release_test_gate", ROOT / ".github/scripts/release_test_gate.py"
+)
+GATE = importlib.util.module_from_spec(_GATE_SPEC)
+sys.modules[_GATE_SPEC.name] = GATE  # dataclasses resolve their module by name
+_GATE_SPEC.loader.exec_module(GATE)
+
+FIXTURES = ROOT / "tests/fixtures/release_gate"
+RECORDED_SHA = "69685d5af38697eafdf02f6a8a476771d72bd361"
+RECORDED_RUNS = json.loads((FIXTURES / "tests_runs_for_sha.json").read_text())
+RECORDED_JOBS = json.loads((FIXTURES / "tests_run_jobs.json").read_text())
+
+
+def _decide(runs=None, jobs=None, sha=RECORDED_SHA):
+    runs = RECORDED_RUNS if runs is None else runs
+    jobs = RECORDED_JOBS if jobs is None else jobs
+    return GATE.decide(sha, runs, lambda run_id: jobs)
+
+
+def _with_job(name, **fields):
+    jobs = copy.deepcopy(RECORDED_JOBS)
+    for job in jobs["jobs"]:
+        if job["name"] == name:
+            job.update(fields)
+    return jobs
+
+
+def _with_run(**fields):
+    runs = copy.deepcopy(RECORDED_RUNS)
+    runs["workflow_runs"][0].update(fields)
+    return runs
+
+
+def test_a_green_tests_run_on_the_exact_commit_skips_the_matrix():
+    assert _decide().verdict == GATE.TESTED
+
+
+def test_an_untested_or_moved_tag_runs_the_full_matrix():
+    assert _decide(sha="0" * 40).verdict == GATE.UNTESTED
+    assert _decide(runs={"total_count": 0, "workflow_runs": []}).verdict == GATE.UNTESTED
+
+
+def test_a_pull_request_run_is_not_evidence_for_the_merged_commit():
+    # A pull_request run tests GitHub's merge ref, not the commit it names.
+    assert _decide(runs=_with_run(event="pull_request")).verdict == GATE.UNTESTED
+
+
+def test_a_run_still_in_progress_is_waited_for():
+    runs = _with_run(status="in_progress", conclusion=None)
+    assert _decide(runs=runs).verdict == GATE.WAIT
+
+
+def test_a_failed_run_blocks_publish():
+    runs = _with_run(conclusion="failure")
+    jobs = {"jobs": [
+        dict(job, conclusion="failure") if job["name"] in {"test (3.12) 4/6", "tests-passed"}
+        else job for job in RECORDED_JOBS["jobs"]]}
+    decision = _decide(runs=runs, jobs=jobs)
+    assert decision.verdict == GATE.BLOCKED
+    assert "test (3.12) 4/6" in decision.reason
+
+
+@pytest.mark.parametrize("conclusion", ["cancelled", "skipped"])
+def test_a_cancelled_or_skipped_shard_blocks_publish_even_under_a_green_run(conclusion):
+    decision = _decide(jobs=_with_job("test (3.11) 2/6", conclusion=conclusion))
+    assert decision.verdict == GATE.BLOCKED
+    assert "test (3.11) 2/6" in decision.reason
+
+
+def test_a_run_without_the_tests_passed_aggregate_is_not_green():
+    jobs = {"jobs": [job for job in RECORDED_JOBS["jobs"] if job["name"] != "tests-passed"]}
+    assert _decide(jobs=jobs).verdict == GATE.BLOCKED
+
+
+def test_a_green_attempt_beats_an_older_red_run_on_the_same_commit():
+    runs = copy.deepcopy(RECORDED_RUNS)
+    red = dict(runs["workflow_runs"][0], id=1, conclusion="failure")
+    runs["workflow_runs"].append(red)
+    decision = GATE.decide(RECORDED_SHA, runs,
+                           lambda run_id: RECORDED_JOBS if run_id != 1 else {"jobs": []})
+    assert decision.verdict == GATE.TESTED
+
+
+def _release():
+    return yaml.safe_load(RELEASE)
+
+
+def test_release_gate_reads_actions_and_feeds_publish():
+    jobs = _release()["jobs"]
+    assert jobs["gate"]["permissions"]["actions"] == "read"
+    assert "release_test_gate.py" in RELEASE
+    assert set(jobs["publish"]["needs"]) == {"gate", "tests", "build"}
+    condition = jobs["publish"]["if"]
+    assert "needs.gate.result == 'success'" in condition
+    assert "needs.build.result == 'success'" in condition
+    assert "needs.tests.result == 'success'" in condition
+    assert "needs.gate.outputs.tested == 'true'" in condition
+
+
+def test_the_full_matrix_runs_only_when_the_gate_found_no_green_run():
+    tests_job = _release()["jobs"]["tests"]
+    assert tests_job["uses"] == "./.github/workflows/tests.yml"
+    assert tests_job["needs"] == "gate"
+    assert tests_job["if"] == "needs.gate.outputs.tested != 'true'"
+
+
+def test_build_starts_without_waiting_for_the_gate_or_tests():
+    assert "needs" not in _release()["jobs"]["build"]
+
+
+def test_the_exact_wheel_is_smoke_tested_offline_before_upload():
+    build = _release()["jobs"]["build"]
+    names = [step.get("name", "") for step in build["steps"]]
+    smoke = next(step for step in build["steps"] if step.get("name", "").startswith("Smoke"))
+    assert names.index(smoke["name"]) < names.index("Preserve the reviewed artifacts")
+    script = smoke["run"]
+    assert 'dist/connectonion-${VERSION}-py3-none-any.whl' in script
+    assert '/bin/co" --version' in script
+    assert '/bin/co" --help' in script
+    assert '/bin/co" init --yes' in script
+    assert "HTTPS_PROXY=http://127.0.0.1:9" in script
+    assert '"$VERSION"' in script

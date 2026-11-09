@@ -2596,9 +2596,17 @@ When releasing a new version:
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
 - [ ] Review and merge the exact version commit, then create and push its immutable
       `vX.Y.Z` tag. Do not upload from a workstation in the normal release path.
-- [ ] Let `.github/workflows/release.yml` rerun the full matrix, build once,
+- [ ] Let `.github/workflows/release.yml` prove the commit, build once,
       publish through PyPI Trusted Publishing, install the public package,
       compare public artifacts byte-for-byte, and create the GitHub Release.
+      Its gate (`.github/scripts/release_test_gate.py`) accepts the main-push
+      Tests run on the exact tagged SHA only when every job of it passed,
+      waits up to 25 minutes for one still running, refuses to publish over a
+      red one (re-run it, then retry with workflow_dispatch), and runs the full
+      matrix itself only when the commit was never tested. The exact wheel is
+      smoke-tested offline (`co --version`, `co --help`, `co init --yes`)
+      before upload. Tag after main's Tests run is green and tag-to-PyPI is
+      about 4 minutes; tag straight after the merge and it waits for that run.
 - [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
       installs remain on stable, and an exact pin alone
       (`pip install --upgrade 'connectonion==X.YbN'`) installs the preview.
