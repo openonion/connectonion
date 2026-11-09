@@ -5240,7 +5240,7 @@ function threadDecisionHistory(r) {
   const current = new Set(threads(r).items.map(t => doneKey({ r, t })));
   const saved = Object.entries(threadStates).filter(([key]) => key.startsWith(r.path + "\n") && !current.has(key));
   if (!saved.length) return null;
-  return el("details", { class: "done-details thread-history" }, [el("summary", { text: t("Done or skipped ({n})", { n: saved.length }) }),
+  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: t("Done or skipped ({n})", { n: saved.length }) }),
     el("ul", { class: "threads" }, saved.map(([key, value]) => {
       const entry = { r, t: { text: key.slice(r.path.length + 1) } };
       const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
@@ -5253,7 +5253,7 @@ function threadDecisionHistory(r) {
 function markedDone(entries) {
   const done = entries.filter(isDone);
   if (!done.length) return null;
-  return el("details", { class: "done-details" }, [el("summary", { text: t("Done or skipped ({n})", { n: done.length }) }),
+  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: t("Done or skipped ({n})", { n: done.length }) }),
     el("p", { class: "quiet-line", text: t(Object.keys(pendingThreads).length
       ? "Saved on this device — sync pending" : "Saved in your notebook. Undo here or on the record page at any time.") }),
     el("ul", { class: "threads" }, done.map(({ r, t, also }) => threadRow(r, t, true, also, true)))]);
@@ -6580,7 +6580,7 @@ function quietThreads(entries, count, home = false) {
   if (!count) return null;
   const items = entries.filter(({ t }) => t.quiet);
   if (!items.length) return null;
-  return el("details", { class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
+  return el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
       el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: threadPreview(thread.text) }), alsoOn(also)]), el("span", { text: age(thread.since) })])))
       : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
@@ -6968,7 +6968,7 @@ function overview() {
   // This week: what the nightly passes rewrote, newest first, each with its one line.
   const week = weekChanges();
   if (week.length) {
-    main.appendChild(el("details", { class: "week-details" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
+    main.appendChild(el("details", { id: "week-pages", class: "week-details" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
       el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
         el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
         el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
@@ -11965,11 +11965,13 @@ function showLanguage(r, tag) {
 // offers a quiet link instead.
 const RELOAD_STATE = "co-rem-reload";
 const editedFields = new WeakSet();
+// A reply being written, or the answer typed into one of its slots.
+const EDITABLE = "textarea, [contenteditable], .owner-slot input";
 document.addEventListener("input", event => {
-  if (event.target.matches?.("textarea, [contenteditable]")) editedFields.add(event.target);
+  if (event.target.matches?.(EDITABLE)) editedFields.add(event.target);
 }, true);
 function unsavedDraft() {
-  return [...document.querySelectorAll("textarea, [contenteditable]")]
+  return [...document.querySelectorAll(EDITABLE)]
     .some(node => editedFields.has(node) && (node.value ?? node.textContent).trim());
 }
 // Only a newer render: an older or equal one (a build that crashed midway) is no reason to reload.
@@ -11983,8 +11985,10 @@ function viewState() {
   return { hash: location.hash, y: scrollY,
     open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
 }
-// A redraw after a sync keeps what the reader opened and where they were.
+// A redraw after a sync keeps what the reader opened and where they were. It waits while
+// they type or hold unsent words: threadStates is current, and the next render shows it.
 function redraw() {
+  if (typingIn(document.activeElement) || unsavedDraft()) return;
   const state = viewState();
   render();
   restoreView(state);
