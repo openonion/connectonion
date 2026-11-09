@@ -5090,7 +5090,7 @@ function draftNote(draft, entry) {
 function slotWhat(part) {
   return part.replace(/^[\[［【]|[\]］】]$/g, "").replace(/^需要你[:：]\s*/, "").split(/\s+—\s+/)[0];
 }
-function slotChoices(part, fills, i, onChange) {
+function slotChoices(part, fills, i, onChange, keep) {
   const what = slotWhat(part);
   const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
   const label = choices.length > 1 ? t("Your call") : what;
@@ -5104,7 +5104,7 @@ function slotChoices(part, fills, i, onChange) {
     };
     row.appendChild(button);
   } else {
-    const input = el("input", { type: "text", "aria-label": what, placeholder: t("Type your answer") });
+    const input = el("input", { type: "text", "aria-label": what, placeholder: t("Type your answer"), ...(keep ? { "data-keep": keep + ":" + i } : {}) });
     input.oninput = () => { fills[i] = input.value.trim() || undefined; onChange(); };
     row.appendChild(input);
   }
@@ -5123,7 +5123,7 @@ function replyDraftCard(draft, onSent) {
     if (REM.live) send.disabled = filled() === null;
     hint.hidden = filled() !== null;
   };
-  const choiceRows = parts.map((part, i) => isSlot(part) ? slotChoices(part, fills, i, () => syncChoices()) : null).filter(Boolean);
+  const choiceRows = parts.map((part, i) => isSlot(part) ? slotChoices(part, fills, i, () => syncChoices(), draft.id && "slot:" + draft.id) : null).filter(Boolean);
   const hint = el("span", { class: "choose-hint", text: t("Choose above before sending.") });
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
@@ -6371,6 +6371,8 @@ function sentNote() {
 // 交给 Codex / 交给 Claude (D-100) on every unfinished row: REM starts the work now, with that agent
 // and full access. The row then says where the work is, in place: working (Stop, Undo), then See result.
 const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];
+// An open conversation outlives a redraw: the same panel, its turns and its typed words, goes back in place.
+const OPEN_TALKS = new Map();
 function todayRow(entry) {
   if (entry.row) return entry.row;
   const key = doneKey(entry);
@@ -6395,7 +6397,7 @@ function liveHere() { return REM.live && location.protocol !== "file:"; }
 function handOff(entry) {
   const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel) : handButtons(entry, show, panel);
   const show = () => line.replaceChildren(...parts());
-  const panel = el("div", { class: "talk-slot" }), line = el("div", { class: "handoff-line" }, parts());
+  const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
   return el("div", { class: "handoff" }, [line, panel]);
 }
 // One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾
@@ -6488,7 +6490,12 @@ function talkMenu(entry, panel) {
     const button = el("button", { type: "button", class: "btn-quiet", "data-talk": agent, text: t("With {agent}", { agent: name }),
       "aria-label": t("Talk with {agent} about this", { agent: name }) });
     button.disabled = !liveHere();
-    button.onclick = () => { menu.open = false; panel.replaceChildren(talkPanel({ action: "begin", agent, key: obligationKey(entry) })); };
+    button.onclick = () => {
+      menu.open = false;
+      const talk = talkPanel({ action: "begin", agent, key: obligationKey(entry) });
+      OPEN_TALKS.set(obligationKey(entry), talk);
+      panel.replaceChildren(talk);
+    };
     return button;
   })));
   return menu;
@@ -6511,7 +6518,7 @@ function talkTurn(turn, name, from) {
 // One conversation: each message is a turn of the same agent session; the page follows it while it answers.
 function talkPanel(begin) {
   const turns = el("div", { class: "talk-turns" }), status = el("p", { class: "talk-status", role: "status", text: t("Opening the conversation…") });
-  const input = el("textarea", { rows: "2", "aria-label": t("Your message") });
+  const input = el("textarea", { rows: "2", "aria-label": t("Your message"), "data-keep": "talk:" + (begin.agent || "codex") + ":" + (begin.key || begin.session) });
   const send = el("button", { type: "submit", class: "btn-line", text: t("Send"), disabled: "" });
   const form = el("form", { class: "talk-form" }, [input, send]), box = el("section", { class: "talk", "aria-live": "polite" }, [turns, status, form]);
   let talk = null;
@@ -6551,7 +6558,8 @@ function personCard(group, focal) {
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
   if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
-  card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, .mailcard")) card.classList.toggle("open"); };
+  // The talk menu and an open conversation are the card's own controls: using them never folds it.
+  card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
   return card;
 }
 function openDraft(card) {
@@ -6767,7 +6775,7 @@ function openApprovalSheet(items) {
       el("p", {class: "approval-preview", text: (item.body || item.text || "").split("\n").find(line => line.trim()) || ""})]);
     const row = el("section", {class: "approval-row"}, [el("label", {}, [check, content]), result]);
     if (item.kind === "reply") {
-      const text = el("textarea", {"aria-label": t("Reply body")});
+      const text = el("textarea", {"aria-label": t("Reply body"), "data-keep": "approval:" + item.id});
       text.value = item.body || "";
       const save = el("button", {type: "button", class: "btn-quiet", text: t("Save reply")});
       const warning = el("p", {class: "quiet-line", role: "status", text: item.blocked ? t("Fill the marked part first") : ""});
@@ -9188,8 +9196,11 @@ function sessionComposer(r) {
   else if (!r.session_id || !["codex", "claude-code"].includes(kind)) box.append(el("p", { class: "session-composer-note", text: t("Session id not archived") }));
   else {
     const start = el("button", { type: "button", class: "btn-line", text: t("Continue with {agent}", { agent: name }) });
-    start.onclick = () => box.replaceChildren(talkPanel({ action: "begin", session: r.path }));
-    box.append(start);
+    start.onclick = () => {
+      OPEN_TALKS.set(r.path, talkPanel({ action: "begin", session: r.path }));
+      box.replaceChildren(OPEN_TALKS.get(r.path));
+    };
+    box.append(OPEN_TALKS.get(r.path) || start);
   }
   return box;
 }
@@ -10601,7 +10612,7 @@ function reviewPage() {
 // the review stays pending, so 改主意 can bring the choice back. A recorded verdict is final there.
 function reviewActions(row, box) {
   const acts = el("div", { class: "review-acts" }), status = el("p", { class: "quiet-line", role: "status" });
-  const answer = row.kind === "question" ? el("textarea", { rows: "2", "aria-label": t("Your answer"), placeholder: t("Your answer") }) : null;
+  const answer = row.kind === "question" ? el("textarea", { rows: "2", "aria-label": t("Your answer"), placeholder: t("Your answer"), "data-keep": "review:" + row.id }) : null;
   const choices = row.kind === "question" ? [["answer", "Save answer"], [null, "Not sure"]] : [["yes", "Yes"], ["no", "No"], [null, "Not sure"]];
   const reset = () => { acts.textContent = ""; status.textContent = ""; if (answer) acts.appendChild(answer); acts.append(...choices.map(choose)); };
   const choose = ([verdict, words]) => {
@@ -11970,8 +11981,30 @@ function reloadChoice({ latest, asOf, typing, unsaved }) {
 // A section is known by its id, else by its summary; positions move when a render adds rows.
 function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
 function viewState() {
-  return { hash: location.hash, y: scrollY,
+  return { hash: location.hash, y: scrollY, fields: keptFields(),
     open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
+}
+// Every field the owner types into carries a stable key (data-keep: the slot, the talk, the review);
+// its words, caret and focus ride through a redraw.
+function keptFields() {
+  return [...document.querySelectorAll("[data-keep]")].filter(node => editedFields.has(node)).map(node => ({
+    key: node.dataset.keep, value: node.value, focused: node === document.activeElement,
+    start: node.selectionStart ?? null, end: node.selectionEnd ?? null }));
+}
+function restoreFields(fields) {
+  for (const field of fields || []) {
+    const node = [...document.querySelectorAll("[data-keep]")].find(other => other.dataset.keep === field.key);
+    if (!node) continue;
+    editedFields.add(node);
+    if (node.value !== field.value) { node.value = field.value; node.dispatchEvent(new Event("input", { bubbles: true })); }
+    if (field.focused) { node.focus({ preventScroll: true }); if (field.start !== null) node.setSelectionRange(field.start, field.end); }
+  }
+}
+// Unsent words a redraw could not put back: an edited field in the page with no stable key.
+function unkeptWords() {
+  const main = document.getElementById("main");
+  return [...document.querySelectorAll(EDITABLE)].some(node => main?.contains(node) && !node.dataset.keep
+    && editedFields.has(node) && (node.value ?? node.textContent).trim());
 }
 // A redraw after a sync keeps what the reader opened and where they were. It waits while
 // they type or hold unsent words: threadStates is current, and the next render shows it.
@@ -11988,12 +12021,14 @@ function drawKeepingView() {
   render();
   restoreView(state);
 }
-// Clicking it is the owner's choice to draw now, as Newer page · Reload is.
+// Clicking it draws now and puts typed words back where they were (viewState carries them). A field
+// it could not put back holds the mark until that field is done. Pressing it leaves focus in the field.
 function markUpdatesWaiting() {
   if (document.getElementById("updates-waiting")) return;
   const mark = el("button", { id: "updates-waiting", type: "button", class: "updates-waiting", text: t("Updates waiting"),
     title: t("Shows when you finish writing. Click to show it now.") });
-  mark.onclick = drawKeepingView;
+  mark.onmousedown = event => event.preventDefault();
+  mark.onclick = () => { if (!unkeptWords()) drawKeepingView(); };
   document.body.appendChild(mark);
 }
 // Leaving the field, or the draft being sent or cleared, draws what waited.
@@ -12023,6 +12058,7 @@ function restoreView(state) {
   if (!state || state.hash !== location.hash) return false;
   const open = new Set(state.open || []);
   document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) node.open = true; });
+  restoreFields(state.fields);
   scrollTo(0, state.y || 0);
   return true;
 }

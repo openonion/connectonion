@@ -66,7 +66,8 @@ def test_the_token_is_traded_for_a_strict_cookie_and_leaves_the_address_bar(host
 ])
 def test_without_the_owner_token_nothing_is_read(host, kwargs):
     status, _, body = call(host.routes, "GET", "/rem", **kwargs)
-    assert status == 401 and "Alice" not in body and "co rem open" in body
+    # D-60: the Host's own 401 page names no command either; it has no language, so English.
+    assert status == 401 and "Alice" not in body and body == "This page's session has ended. Open REM again from your computer."
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -660,7 +661,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in HAND)
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n' + functions + r'''
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
       const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];

@@ -3220,7 +3220,7 @@ HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost'
 def _hand_js(body):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
-    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n'
+    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
                           + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4081,7 +4081,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     """#2909: the private project's own page is the key; the same /rem/task run as 交给 Codex, followed in place."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in INVESTIGATE)
-    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n'
+    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
                             + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4125,7 +4125,7 @@ def test_a_skipped_redraw_says_updates_are_waiting_and_draws_them_when_the_draft
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in STALE)
     result = _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
       let typing = true, unsaved = false, renders = 0, restored = [];
-      const typingIn = () => typing, unsavedDraft = () => unsaved, render = () => { renders++; };
+      const typingIn = () => typing, unsavedDraft = () => unsaved, unkeptWords = () => false, render = () => { renders++; };
       const viewState = () => ({open: ['#processing']}), restoreView = state => restored.push(state);
       const setTimeout = fn => fn(), shown = {};
       const body = {children: [], appendChild(node) { node.remove = () => { this.children = this.children.filter(n => n !== node); }; this.children.push(node); }};
@@ -4154,3 +4154,38 @@ def test_updates_waiting_reads_in_chinese_and_is_painted_from_the_sheet():
     page = TEMPLATE.read_text()
     assert '"Updates waiting": "有更新"' in page
     assert re.search(r'\.updates-waiting \{[^}]*var\(--grey\)', page)
+
+
+def test_a_redraw_carries_typed_words_caret_and_focus_by_stable_key_and_waits_for_a_field_without_one():
+    """Clicking 有更新 never loses words: keyed fields come back with caret and focus; an unkeyed one holds the mark."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['keptFields', 'restoreFields', 'unkeptWords', 'markUpdatesWaiting', 'drawKeepingView'])
+    result = _run_reader_js('let redrawSkipped = true; const editedFields = new Set(), EDITABLE = "textarea";\n' + functions + r"""
+      const field = (keep, value) => ({dataset: keep ? {keep} : {}, value, selectionStart: 2, selectionEnd: 4,
+        focus() { document.activeElement = this; }, setSelectionRange(a, b) { this.caret = [a, b]; },
+        dispatchEvent(event) { this.fired = event.type; }});
+      let nodes = [field('slot:d1:1', 'Friday'), field('talk:codex:people/fern.md\nReply', 'Draft it short')];
+      nodes.forEach(node => editedFields.add(node));
+      const main = {contains: () => true}, body = {children: [], appendChild(node) { node.remove = () => { this.children = []; }; this.children.push(node); }};
+      const document = {activeElement: nodes[1], body, querySelectorAll: () => nodes,
+        getElementById: id => id === 'main' ? main : body.children.find(n => n.id === id) || null};
+      globalThis.Event = class { constructor(type) { this.type = type; } };
+      const el = (tag, attrs = {}) => ({tag, ...attrs});
+      let renders = 0;
+      const viewState = () => ({fields: keptFields()}), restoreView = state => restoreFields(state.fields);
+      const render = () => { renders++; nodes = [field('slot:d1:1', ''), field('talk:codex:people/fern.md\nReply', '')]; };
+      markUpdatesWaiting();
+      body.children[0].onclick();
+      const after = nodes.map(node => ({value: node.value, fired: node.fired || null, caret: node.caret || null, kept: editedFields.has(node)}));
+      const focused = document.activeElement === nodes[1];
+      const loose = field(null, 'Words with no home');
+      nodes.push(loose); editedFields.add(loose);
+      markUpdatesWaiting();
+      body.children[0].onclick();
+      console.log(JSON.stringify({after, focused, renders, marks: body.children.length}));
+    """)
+    assert result['after'] == [{'value': 'Friday', 'fired': 'input', 'caret': None, 'kept': True},
+                               {'value': 'Draft it short', 'fired': 'input', 'caret': [2, 4], 'kept': True}]
+    # A field with no stable key: the mark stays and nothing more is drawn.
+    assert result['focused'] and result['renders'] == 1 and result['marks'] == 1
