@@ -9,6 +9,7 @@ import json
 import os
 import posixpath
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -138,6 +139,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     `local`: this machine's own reader (the file snapshot, the loopback live
     reader). Labelled excerpts are added only then; the O Chat view never has them.
     """
+    import connectonion
     from .store_messages import owner_addresses
     from .map import needs_review
     from .project_pages import private
@@ -269,6 +271,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "your_languages": languages["languages"],
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
+            "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records, "graph": graph,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
@@ -293,9 +297,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     outcomes = {row['key']: row for row in data['night_outcomes']}
+    from .tasks import receipt_for
     for row in data['today_queue']:
         if row['key'] in outcomes:
             row['outcome'] = outcomes[row['key']]
+        # A row the owner handed to an agent from any list carries its run, prepared by the night or not.
+        if local and row.get('outcome', {}).get('kind') != 'task' and (receipt := receipt_for(root, row['key'])):
+            row['task'] = receipt
     from . import approvals
     data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
     data['approval_pending'] = approvals.pending(root) if local else []
@@ -392,7 +400,10 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
 
 def _page(full: dict, *, live: bool) -> str:
     shell = full if live else _today_data(full)
-    data = _script_json({**shell, "live": live, "deferred_details": True,
+    from .live_host import live_link
+    # Only the owner's own snapshot of the notebook a live reader serves links to it.
+    link = live_link() if not live and full.get("default_root") and not full.get("shared") else ""
+    data = _script_json({**shell, "live": live, "live_link": link, "deferred_details": True,
                          "detail_url": "/rem/data.json" if live else ""})
     detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")
@@ -417,16 +428,19 @@ def reader_version(root: Path) -> list:
     folders' times catch a page added, renamed or removed by hand; the database
     and a nonempty WAL hold committed rows; the notebook's day turns the Today
     queue over. A page edited in place by another tool is caught by the
-    background walk (tree_version) each REBUILD_INTERVAL. The template is part of the key, so a new
-    install re-renders.
+    background walk (tree_version) each REBUILD_INTERVAL. The template and the package
+    version are part of the key, so a new install re-renders even when a release
+    changed only Python and left reader.html as it was.
     """
+    import connectonion
     from .files import CHANGED
     state = root / ".state"
     paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
              state / "rem.db", state / "rem.db-wal", TEMPLATE]
     from .service import notebook_today
     # The Today queue and every "overdue" turn over at the notebook's midnight.
-    key = [str(root.resolve()), str(TEMPLATE), str(notebook_today(root)) if root.is_dir() else None]
+    key = [str(root.resolve()), str(TEMPLATE), connectonion.__version__,
+           str(notebook_today(root)) if root.is_dir() else None]
     for path in paths:
         try:
             info = path.stat()
@@ -541,10 +555,25 @@ def page_path(root: Path, name: str):
 
     The file page keeps one name per notebook: `co rem open` prints that link, and
     a tab already open on it reaches the newest render on reload."""
-    if name == "file.html":
-        return _cached(root, name) if _cached(root, name).exists() else None
     file = _manifest(root)["files"].get(name)
+    if name == "file.html":
+        return _link(root, _cache_dir() / file) if file else None
     return _cache_dir() / file if file else None
+
+
+def _link(root: Path, current: Path) -> Path:
+    """The stable file page, brought up to the manifest's set when a build stopped
+    between naming that set and copying it here (comparing two files' times)."""
+    link = _cached(root, "file.html")
+    try:
+        info = link.lstat()  # never through a link: a planted one is refused, not followed
+    except FileNotFoundError:
+        info = None
+    if info is not None and stat.S_ISLNK(info.st_mode):
+        raise OSError(f"refusing a planted reader link: {link}")
+    if info is None or info.st_mtime_ns < current.lstat().st_mtime_ns:
+        _replace(link, current.read_text(encoding="utf-8"))
+    return link
 
 
 def _read_page(root: Path, name: str):
@@ -567,10 +596,10 @@ def tree_version(root: Path) -> str:
         dirs[:] = sorted(name for name in dirs if name != ".git")
         for name in sorted(names):
             path = Path(directory) / name
-            stat = path.lstat()
-            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
+            info = path.lstat()
+            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not info.st_size:
                 continue
-            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+            files.append((str(path.relative_to(root)), info.st_mtime_ns, info.st_size))
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
@@ -596,16 +625,15 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     prefix = _cached(root, "").name
     for build, (texts, as_of, took) in rendered.items():
         for name, text in texts.items():
-            if name != "file.html":
-                files[name] = f"{prefix}{generation}-{name}"
-                _replace(_cache_dir() / files[name], text)
+            files[name] = f"{prefix}{generation}-{name}"
+            _replace(_cache_dir() / files[name], text)
         rows[build] = {"version": version, "tree": tree, "as_of": as_of, "took": took,
                        "built_at": _now(), "checked_at": _now()}
     _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
-    # The file page is self-contained: replaced in place, after the set it belongs to.
-    for texts, _, _ in rendered.values():
-        if "file.html" in texts:
-            _replace(_cached(root, "file.html"), texts["file.html"])
+    # Then the stable link, copied from the set the manifest now names; page_path
+    # repairs it if a build stops between the two.
+    if "file.html" in files:
+        _link(root, _cache_dir() / files["file.html"])
     keep = {*files.values(), *manifest["files"].values(), _cached(root, "file.html").name}
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
@@ -704,7 +732,7 @@ def _refresh_once(root: Path, builds):
                         _checked(root, build, started)
             if not stale:
                 return started
-            stale = [build for build in wanted if build in stale]
+            stale = wanted  # every saved build together, so they name one render and one time
             # Walked before rendering, so the page carries the tree it was built from
             # and the next check does not rebuild it again (+17 s on a 100 s build).
             tree = tree or tree_version(root)
@@ -770,7 +798,9 @@ def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, boo
     if text is None or quick:
         with _building(root, wait=True):
             if quick or (text := _read_page(root, name)) is None:
-                _publish(root, {build: _render(root, build)}, version)
+                together = [b for b in ("live", "full") if b == build or saved(root, b)]
+                as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
+                _publish(root, {b: _render(root, b, as_of) for b in together}, version)
                 text = _read_page(root, name)
     return text, _rebuild_stale(root, name, version, owner=owner)
 
@@ -890,8 +920,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import ensure_local, local_reader, start
-    from .live_host import saved_host_dead
+    from .live_host import STARTING, ensure_local, local_reader, saved_host_dead, start
     if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
         # No Host answers: the saved page now, co ai starting behind it. Waiting
         # for it (up to 20 s) before the first paint was most of a cold open.
@@ -899,13 +928,13 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
             failed = start(address)
         except (OSError, RemError) as error:
             return open_snapshot(root, launch=launch, live=f"could not start co ai: {error}; run `co ai` to diagnose")
-        return open_snapshot(root, launch=launch, live=failed or (
-            "co ai is starting; this is the page saved at the last render. "
-            "co rem open again in a moment opens the live reader, which can translate"))
+        return open_snapshot(root, launch=launch, live=failed or STARTING)
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
+    if failure == STARTING:
+        return open_snapshot(root, launch=launch, live=STARTING)
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
         return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")

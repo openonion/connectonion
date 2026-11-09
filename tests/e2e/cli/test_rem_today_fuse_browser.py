@@ -155,8 +155,9 @@ def test_fuse_lanes_are_the_waiting_people_and_red_follows_the_days_overdue(toda
     assert page.locator('.fuse .lane[data-path="people/ines-halvorsen.md"] .late').inner_text() == "5 days overdue"
     undated = page.locator('.fuse .lane[data-path="projects/harbour.md"]')
     assert undated.locator(".burn").count() == 0 and undated.locator(".late").inner_text() == "No due date"
-    # One number says one thing (TOP10 #9): the other count names its unit.
-    assert "items waiting on you" in page.locator(".brief-header .waiting-more").inner_text()
+    # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
+    assert "items waiting on you" not in page.locator(".brief-header").inner_text()
+    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("on others →", "Everything open →"))
 
 
 def test_the_card_with_a_ready_reply_leads_while_the_lanes_keep_their_order(today):
@@ -180,13 +181,14 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     rows = page.locator(".today-brief .qitem")
     assert rows.count() >= 4
     for i in range(rows.count()):
-        names = rows.nth(i).locator(".handoff button").all_text_contents()
+        names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
         assert names == ["Hand to Codex", "Hand to Claude"]
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -199,7 +201,7 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     key = page.evaluate("obligationKey(todayGroups(threadEntries().filter(e => !isDone(e)))[0].entries[0])", isolated_context=False)
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".handoff").get_by_role("button", name="交给 Claude").click()
-    card.get_by_text("已交给 Claude · 进行中").wait_for()
+    card.get_by_text("Claude 正在做").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
     assert card.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
@@ -305,7 +307,8 @@ def test_counts_name_their_unit(today):
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
     assert page.locator("#approve-all").inner_text() == "2 件可一键批准"
-    assert "件等你处理" in page.locator(".brief-header .waiting-more").inner_text()
+    assert "件等你处理" not in page.locator(".brief-header").inner_text()  # the sidebar's 等你处理 says it
+    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("项等对方回复 →", "全部未完成事项 →"))
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
@@ -403,3 +406,44 @@ def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(tod
     assert door.count() == 1 and door.evaluate("a => !!a.closest('#main')")
     door.click()
     page.get_by_role("heading", name="Questions & connections", exact=True).wait_for()
+
+
+def test_the_phone_menu_opens_above_today_and_send_keeps_the_bottom(today):
+    """Owner, 2026-11-09: the sidebar «现在看起来不是很好». On a phone the native-looking "Browse notebook"
+    box became a quiet Menu button in the header row; it opens a sheet below the header. A bottom tab bar
+    was the art director's first idea, but Today's Send bar already owns the bottom edge (D-10)."""
+    page, _, _ = today
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("scrollTo(0, 0)", isolated_context=False)
+    assert page.locator("select").count() == 0
+    toggle = page.locator(".nav-toggle")
+    assert toggle.inner_text() == "Menu" and toggle.get_attribute("aria-expanded") == "false"
+    send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
+    # One header row: the brand, search and Menu share it, so the first screen keeps its room.
+    boxes = [page.locator(selector).bounding_box() for selector in (".brand", ".search", ".nav-toggle")]
+    assert max(box["y"] for box in boxes) < min(box["y"] + box["height"] for box in boxes)
+    assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
+    assert toggle.bounding_box()["height"] >= 44
+    toggle.click()
+    assert toggle.get_attribute("aria-expanded") == "true"
+    links = page.locator("#nav a")
+    assert links.first.is_visible() and page.locator(".rail .foot .version").is_visible()
+    # The open sheet sits above the pinned Send bar: every link it shows answers its own centre.
+    assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
+      const box = link.getBoundingClientRect();
+      if (box.bottom <= 0 || box.top >= innerHeight) return true;
+      const y = Math.min(Math.max(box.top + box.height / 2, 0), innerHeight - 1);
+      return link.contains(document.elementFromPoint(box.left + box.width / 2, y));
+    })""", isolated_context=False)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
+    page.locator("#nav").get_by_role("link", name="People", exact=True).click()
+    assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
+    assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
+    page.goto(BASE)
+    page.locator(".brief-header h1").wait_for()
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("scrollTo(0, 0)", isolated_context=False)
+    assert _box_inside(page, send, 16)

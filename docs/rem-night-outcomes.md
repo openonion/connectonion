@@ -99,8 +99,10 @@ text that might contain credentials or private URLs.
 
 Use `co rem task status` to find IDs, `co rem task run ID [--agent codex|claude]`
 to start one, and `co rem task stop ID` to stop it. The Host's
-`POST /rem/task {"action": "run", "key", "agent"}` does the same from Today's
-交给 Codex / 交给 Claude. Each ID gets one session, run through co's own
+`POST /rem/task {"action": "run", "key", "agent"}` does the same from the reader's
+交给 Codex / 交给 Claude, for any unfinished row it shows (`tasks.unfinished`): the
+night's outcome when it prepared one, otherwise a task reserved from the row itself.
+A key no unfinished row has is a 400 in plain words. Each ID gets one session, run through co's own
 integrations as `co ai --harness` runs them (`useful_tools/codex.py`,
 `useful_tools/claude_code.py`), with full access (owner decision D-100,
 2026-11-09): Codex with `danger-full-access`, Claude Code with

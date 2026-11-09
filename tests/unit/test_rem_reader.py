@@ -388,6 +388,17 @@ def test_render_embeds_records_and_neutralizes_markup(tmp_path):
     assert "as_of" in page
 
 
+def test_the_snapshot_carries_the_package_version_for_the_sidebar_footer(tmp_path, monkeypatch):
+    """The sidebar footer reads "co 1.9.3" from the page's own data, in the live reader and the file snapshot alike."""
+    import connectonion
+    prepare(tmp_path)
+    monkeypatch.setattr(connectonion, "__version__", "9.8.7")
+    for live in (False, True):
+        page = render(tmp_path, live=live, local=True)
+        data = json.loads(re.search(r"const REM = (.*?);\nwindow\.REM", page, re.S).group(1))
+        assert data["version"] == "9.8.7"
+
+
 def test_render_does_not_export_uncited_session_window_text(tmp_path):
     from connectonion.rem.files import state_path, write_json
 
@@ -1998,7 +2009,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
         appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
       const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
       const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
-      const statusPill = () => null, originalMark = () => null, mappedContact = () => false;
+      const statusPill = () => null, originalMark = () => null, translationMark = () => null, mappedContact = () => false;
       const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
       const localPath = text => text;
       const facts = () => ({last: '2026-10-17', sessions: 4, repo: '/work/harbour', domain: 'fernhill.example'});
@@ -2552,7 +2563,7 @@ def test_omitted_status_leaves_no_empty_field_or_header_separator():
                           for name in ['recordEyebrow', 'sidePanels'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, append(...nodes) {this.children.push(...nodes);}});
-      const known = () => ({}), categoryHref = () => '#', categoryName = () => 'Projects', updatedMarker = () => null;
+      const known = () => ({}), categoryHref = () => '#', categoryName = () => 'Projects', updatedMarker = () => null, translationMark = () => null;
       const statusPill = () => null, factList = () => null, panel = (text, children) => el('section', {text}, children);
       const r = {category: 'projects', text: '# Example'};
       console.log(JSON.stringify({separators: recordEyebrow(r, false).children.filter(n => n?.class === 'sep').map(n => n.text),
@@ -2769,22 +2780,27 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     page = TEMPLATE.read_text()
     ui = page[page.index('const UI = {'):page.index('function t(')].strip()
     ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede', 'turnTrouble'])
     result = _run_reader_js(ui + function + r'''
       uiLanguage = ''' + json.dumps(language) + r''';
       const waitingMore = () => null, threadWho = r => r.title;
       const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
       const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
-      console.log(JSON.stringify(briefHeader({}, []).children[0].text));
+      const line = briefHeader({}, []).children[0];
+      console.log(JSON.stringify([line.text, line.title]));
     ''')
-    assert 'exit 124' in result
-    assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
+    text, title = result
+    # D-71 (polish): the runner's raw English stays out of the line, in the reader's language or not;
+    # it is kept on the title for whoever debugs it.
+    assert 'exit 124' not in text and title == 'exit 124'
     # D-60 (build 3b review): the next step is said in words, never as a command to type.
-    assert 'co rem' not in result
-    action = ('处理阻塞后重新启动 REM' if language == 'zh' else 'Resolve the blocker, then restart REM') if code == 'blocked' else (
-        '已自动重试' if language == 'zh' else 'Retried automatically')
-    assert action in result
+    assert 'co rem' not in text
+    expected = {('zh', 'blocked'): '上一轮定时任务被挡住了，没有跑完，正在等阻塞解除。',
+                ('en', 'blocked'): 'The last scheduled round could not finish and is waiting for its blocker to clear.',
+                ('zh', 'repeated_failure'): '最近两轮定时任务都没有跑完；REM 会自动重试。',
+                ('en', 'repeated_failure'): 'The last two scheduled rounds did not finish; REM retries them automatically.'}
+    assert text == expected[(language, code)]
 
 
 def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():
@@ -3238,32 +3254,62 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     ''')
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
-def test_task_controls_say_rem_started_it_and_offer_stop_or_undo():
+HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
+        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu']
+
+
+def _hand_js(body):
     page = TEMPLATE.read_text()
-    function = re.search(r'function taskControls\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js(function + r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
-      const REM = {live: true}, location = {protocol: 'http:'};
-      const running = taskControls({id: 'a', by: 'rem', result: 'running'});
-      const done = taskControls({id: 'a', by: 'rem', result: 'completed', deliverable: '/fern hill/result.md'});
-      const failed = taskControls({id: 'a', result: 'failed', reason: 'Codex CLI not found'});
-      const ready = taskControls({id: 'a', result: 'ready'});
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
+    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n'
+                          + functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
+      const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {};
+      const texts = node => node.children[0].children.filter(child => child.class !== 'sep').map(child => child.text).filter(Boolean);
+      const line = node => node.children[0].children.map(child => child.class === 'talk-menu' ? 'menu' : child.text).filter(Boolean);
+      const row = (key, task) => ({key, keys: [key], task});
+''' + body)
+
+
+def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
+    result = _hand_js(r'''
+      const REM = {live: true, today_queue: [row('run', {id: 'a', by: 'rem', agent: 'codex', result: 'running'}),
+        row('done', {id: 'b', agent: 'claude', result: 'completed'}),
+        row('fail', {id: 'c', agent: 'codex', result: 'failed', reason: 'codex CLI not found'}),
+        row('open', null)]};
+      const shown = Object.fromEntries(['run', 'done', 'fail', 'open'].map(key => [key, texts(handOff({key}))]));
       REM.live = false;
-      const snapshot = taskControls({id: 'a', by: 'rem', result: 'running'});
-      console.log(JSON.stringify({running, done, failed, ready, snapshot}));
+      shown.snapshot = texts(handOff({key: 'run'}));
+      REM.live = true;
+      shown.line = line(handOff({key: 'open'}));
+      shown.runLine = line(handOff({key: 'run'}));
+      console.log(JSON.stringify(shown));
     ''')
-    texts = lambda node: [child.get('text') for child in node['children']]
-    assert texts(result['running']) == ['REM started this', 'Stop', 'Undo']
-    assert texts(result['done']) == ['REM started this', 'Open the deliverable', 'Undo']
-    assert result['done']['children'][1]['href'] == 'file:///fern%20hill/result.md'
-    assert texts(result['failed']) == ['Undo']
-    assert result['ready'] is None
-    assert texts(result['snapshot']) == ['REM started this']
+    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Undo']
+    assert result['done'] == ['Claude finished', 'See result', 'Undo']
+    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Undo']
+    assert result['open'] == ['Hand to Codex', 'Hand to Claude']
+    assert result['snapshot'] == ['Codex is working', 'REM started this']
+    # One line, a dot between each action, the conversation behind one quiet menu.
+    assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude', '·', 'menu']
+    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Undo', '·', 'menu']
+
+
+def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
+    result = _hand_js(r'''
+      const REM = {live: true, today_queue: [row('done', {id: 'b', agent: 'codex', result: 'completed'})]};
+      globalThis.fetch = async (url, options) => ({ok: true, status: 200, json: async () => ({status: 'cancelled'})});
+      const node = handOff({key: 'done'});
+      node.children[0].children.find(child => child.text === 'Undo').onclick().then(() =>
+        console.log(JSON.stringify({after: texts(node), task: REM.today_queue[0].task})));
+    ''')
+    assert result == {'after': ['Hand to Codex', 'Hand to Claude'], 'task': None}
 
 
 def test_a_queued_task_card_says_why_it_waits():
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'todayRow', 'rowTask', 'handed'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
@@ -3289,7 +3335,7 @@ def test_no_task_card_says_this_version_does_not_run_it():
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_the_empty_topic_list_names_the_command_that_files_topics(language):
+def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
                           for name in ['topicList', 'graphT', 'commandChip'])
@@ -3307,10 +3353,10 @@ def test_the_empty_topic_list_names_the_command_that_files_topics(language):
     text = json.dumps(result, ensure_ascii=False)
     # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
     assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') in text
-    assert ('从已有记录里整理知识：' if language == 'zh' else 'To file them from what you already have:') in text
+    assert ('REM 会在夜里那一轮从已有记录里整理知识。' if language == 'zh' else 'REM files knowledge from your records on its night run.') in text
     assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
-    assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
-    assert ('"复制"' if language == 'zh' else '"Copy"') in text
+    # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
+    assert 'co rem' not in text and '"code"' not in text and '"复制"' not in text and '"Copy"' not in text
 
 
 def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_sessions():
@@ -3565,6 +3611,18 @@ def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path,
     assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
 
 
+def test_a_new_install_changes_the_saved_pages_key_even_with_the_same_template(tmp_path, monkeypatch):
+    """The page shows the package version, and a release can change Python without touching reader.html."""
+    import connectonion
+    from connectonion.rem import reader
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    key = reader.reader_version(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.4")
+    assert reader.reader_version(root) != key
+
+
 def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tmp_path, monkeypatch):
     """The Today queue, dates and "Next pass" depend on the clock, not only on files."""
     from datetime import datetime, timezone
@@ -3594,6 +3652,9 @@ def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tm
 def test_details_and_page_are_published_together(tmp_path, monkeypatch):
     """A reload after an owner action must not get a new page over old details."""
     reader = _cached_reader(tmp_path, monkeypatch)
+    # No detached build: one still holding the build lock made this test's refresh a
+    # no-op, and the saved page stayed behind the new person (CI 3.11 and 3.12).
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     root = tmp_path / "rem"
     prepare(root)
     reader.cached_page(root, "live.html")
@@ -3708,9 +3769,6 @@ def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
       console.log(JSON.stringify([detailsKey({id: "people-columns", ...summary("Columns")}),
                                   detailsKey({id: "", ...summary("Review reply")})]));''')
     assert keys == ["#people-columns", "Review reply"]
-    # Task Stop and Undo wait for the render that carries them; Refresh reads in place.
-    task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
-    assert "reloadWhenRendered(" in task
     assert '"Newer page · Reload": "有更新 · 刷新"' in page
 
 
@@ -3847,3 +3905,123 @@ def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypat
     second = reader.open_snapshot(root, launch=False)
     assert second["page"] == first["page"] and "being built" not in second["note"]
     assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()
+
+
+def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
+    """The live page is built on the first request; its details later, in the
+    background. Rendered apart they named different seconds, and the page's
+    details disagreed with /rem/version. Every saved build is rendered together."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")                         # the first request: the page alone
+    reader.refresh(root)                                          # then its details, behind it
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+    assert served == re.search(r'"as_of": "([^"]+)"', offline).group(1)
+
+
+def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp_path, monkeypatch):
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    link = reader.page_path(root, "file.html")
+    real = reader._replace
+
+    def stops_at_the_link(path, text):
+        if path == link:
+            raise OSError("fictional stop")
+        real(path, text)
+    monkeypatch.setattr(reader, "_replace", stops_at_the_link)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    _Clock.seconds += 1
+    with pytest.raises(OSError):
+        reader.refresh(root)
+    monkeypatch.setattr(reader, "_replace", real)
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.page_path(root, "file.html") == link
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == _json.loads(details)["as_of"]
+    assert "Bruno Example" in offline
+
+
+class _Ticking:
+    """A wall clock that moves a second each time it is read: a loaded CI runner."""
+    from datetime import datetime as real, timezone
+    at = real(2026, 11, 9, 8, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def now(cls, tz=None):
+        from datetime import timedelta
+        cls.at += timedelta(seconds=1)
+        return cls.at
+
+    @classmethod
+    def fromtimestamp(cls, *args, **kwargs):
+        return cls.real.fromtimestamp(*args, **kwargs)
+
+
+def test_a_quick_explicit_open_stamps_the_page_and_its_details_with_one_time(tmp_path, monkeypatch):
+    """A small notebook re-renders live and full during co rem open; they must name one time."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.open_snapshot(root, launch=False)                      # renders both, in place
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.saved(root, "live")["as_of"] == reader.saved(root, "full")["as_of"]
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == reader.saved(root, "live")["as_of"]
+
+
+def test_a_planted_link_at_the_stable_page_is_neither_followed_nor_returned(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    if os.name == "nt":
+        pytest.skip("symlinks need privileges on Windows")
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    link = reader._cached(root, "file.html")
+    victim = tmp_path / "victim.html"
+    victim.write_text("planted")
+    os.utime(victim, ns=(4_000_000_000 * 10**9, 4_000_000_000 * 10**9))   # newer than any build
+    link.unlink()
+    os.symlink(victim, link)
+    with pytest.raises(OSError):
+        reader.page_path(root, "file.html")
+    assert victim.read_text() == "planted"
+
+
+def test_co_rem_open_runs_where_there_is_no_fcntl(tmp_path):
+    """Windows has no fcntl. The snapshot reads each row's task receipt through
+    rem.tasks, whose top-level `import fcntl` made `co rem open` exit 1 there
+    (windows-e2e, release/1.9.3). The cached open runs here with fcntl unimportable;
+    REM's own lock is stood in for, as on Windows it takes msvcrt instead."""
+    import sys
+    script = ("import sys; sys.modules['fcntl'] = None\n"
+              "from pathlib import Path\n"
+              "from connectonion.rem import files, reader, tasks\n"
+              "files._try_lock = lambda fd: None\n"
+              "root = Path(sys.argv[1])\n"
+              "assert tasks.receipt_for(root, 'people/mara.md\\nSend the notes') is None\n"
+              "print(reader.open_snapshot(root, launch=False)['page'])\n")
+    root = tmp_path / "unstarted notebook"
+    result = subprocess.run([sys.executable, "-c", script, str(root)], capture_output=True,
+                            text=True, cwd=os.getcwd(), timeout=50)
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "Not started" in open(result.stdout.strip(), encoding="utf-8").read()

@@ -328,7 +328,8 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator('.skip').focus()
     page.keyboard.press('Tab')
     expect(page.locator('.brand')).to_be_focused()
-    button = page.get_by_role("button", name="Browse notebook")
+    # Owner, 2026-11-09 (sidebar in Fuse): the phone's "Browse notebook" box became a quiet Menu button.
+    button = page.get_by_role("button", name="Menu", exact=True)
     expect(button).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#nav")).not_to_be_visible()
     button.focus()
@@ -407,9 +408,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        page.wait_for_function("document.querySelector('#nav a[href=\"#c=all\"] .n')?.textContent === '1'")
+        # Owner, 2026-11-09: the sidebar keeps no category counts, so the page itself is awaited.
         page.locator('#nav a[href="#c=all"]').click()
-        assert page.locator('.hits > li').count() == 1
+        page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.
@@ -441,10 +442,10 @@ def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
     page.goto(path.as_uri() + "#reviews=1")
     page.get_by_role('heading', name='Questions & connections', exact=True).wait_for()
     assert page.locator('#main img').count() == 0
-    command = page.locator('#main code').first.inner_text()
-    import shlex
-    assert shlex.split(command)[3] == "/synthetic/owner's co rem"
-    assert '--verdict yes' in command
+    # D-60: a snapshot decides nothing and copies nothing; one plain line says where deciding happens.
+    assert page.locator('#main code, #main .cmd, .review button').count() == 0
+    assert page.get_by_text('This is a snapshot; decide these on the live page.', exact=True).count() == 1
+    assert 'co rem' not in page.locator('#main').inner_text()
     shots = Path(os.environ.get('CO_REM_SHOTS', '/tmp/rem-review-shots'))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / 'reviews-desktop.png'), full_page=True)

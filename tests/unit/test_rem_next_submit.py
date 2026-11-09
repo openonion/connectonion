@@ -534,7 +534,10 @@ def test_refusal_inlines_bounded_audit_findings_and_short_errors(trial, refused_
         assert f'Claim: Fictional claim {i}.' in corrections and f'Required correction: Correction {i}.' in corrections
     assert 'Fictional claim 5.' not in corrections and 'Correction 5.' not in corrections
     assert 'c' * 501 not in corrections and 'x' * 501 not in corrections
-    assert 'claim-review.json' in corrections and len(corrections) < 7000
+    # The bound is on REM's words, not on where pytest put the notebook: a long TMPDIR
+    # (CI, sandboxes) lengthened every path in the text past 7000.
+    words = corrections.replace(str(trial.resolve()), '<notebook>').replace(str(trial), '<notebook>')
+    assert 'claim-review.json' in corrections and len(words) < 7000
 
 
 @pytest.mark.parametrize('failure', ['candidate', 'claim-audit'])

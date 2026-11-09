@@ -9,6 +9,11 @@ owner the signed WIKI_READ path admits, proven by the file system instead of a
 browser key. The first request trades it for a SameSite=Strict, HttpOnly
 cookie and redirects to the bare /rem, so the token leaves the address bar.
 
+POST /rem/task hands any unfinished row to Codex or Claude and follows it
+(run, status, stop, undo, result); POST /rem/talk is a conversation with the
+agent about a row or an archived session (begin, say, read); POST /rem/review
+records the owner's verdict on a review in 问题与关联 (reviews.decide).
+
 Only loopback clients, and only a Host header naming loopback (a rebound DNS
 name gets nothing), are answered. A translation runs in a worker thread; the
 page polls the same POST until it is ready or failed.
@@ -85,7 +90,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -96,7 +101,7 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 415, "application/json required")
         return
     try:
-        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve") else 4096) or b"{}")
+        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve", "/rem/talk", "/rem/review") else 4096) or b"{}")
     except (ValueError, UnicodeDecodeError):
         await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
         return
@@ -114,11 +119,28 @@ async def _action(scope, receive, send, root, headers):
                 await _reply(send, 400, json.dumps({"error": "Expected the item key and agent codex or claude"}), "application/json")
                 return
             operation = lambda: tasks.dispatch(root, body["key"], agent=body.get("agent", "codex"))
-        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
-            await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop or undo"}), "application/json")
+        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo", "result"):
+            await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop, undo or result"}), "application/json")
             return
         else:
             operation = lambda: getattr(tasks, action)(root, body['id'])
+    elif scope["path"] == "/rem/review":
+        from ...rem import reviews
+        # Exactly the verdicts reviews.decide accepts; it then checks the verdict fits the row's kind.
+        if (not isinstance(body.get("id"), str) or not body["id"] or body.get("verdict") not in ("yes", "no", "answer")
+                or not isinstance(body.get("response", ""), str)):
+            await _reply(send, 400, json.dumps({"error": "Expected the review id and verdict yes, no or answer"}), "application/json")
+            return
+        # An id the notebook no longer holds is its own answer, not "already decided".
+        if not any(row["id"] == body["id"] for row in await asyncio.to_thread(reviews.listing, root)):
+            await _reply(send, 404, json.dumps({"error": "No such review"}), "application/json")
+            return
+        operation = lambda: reviews.decide(root, body["id"], body["verdict"], author="owner", response=body.get("response", ""))
+    elif scope["path"] == "/rem/talk":
+        operation = _talk(root, body)
+        if operation is None:
+            await _reply(send, 400, json.dumps({"error": "Expected begin with a key or session, say with an id and text, or read with an id"}), "application/json")
+            return
     elif scope["path"] == "/rem/approve":
         from ...rem import approvals
         if (body.get("action", "approve") not in ("approve", "undo")
@@ -157,17 +179,35 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 400, json.dumps({"error": "Unknown draft action"}), "application/json")
         return
     # Provider/authentication errors must reach the card instead of leaving an empty tab.
+    from ...rem.tasks import UnknownItem
     try:
         result = await asyncio.to_thread(operation)
+    except UnknownItem as error:
+        await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
+        return
     except (RemError, ValueError) as error:
         await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
         return
     from ...rem.reader import owner_changed
     # The owner's own change shows now, not at the reader's next rebuild interval.
-    # A task status read changes nothing.
-    if not (scope["path"] == "/rem/task" and body.get("action", "status") == "status"):
+    # A task status or result read changes nothing, and neither does a conversation.
+    if not (scope["path"] == "/rem/task" and body.get("action", "status") in ("status", "result")
+            or scope["path"] == "/rem/talk"):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
+
+
+def _talk(root, body):
+    """和 Codex 聊这件事: the operation one /rem/talk body asks for, or None when it is malformed."""
+    from ...rem import conversations
+    action, text = body.get("action"), lambda name: isinstance(body.get(name), str) and body[name]
+    if action == "begin" and body.get("agent", "codex") in ("codex", "claude") and (text("key") or text("session")):
+        return lambda: conversations.begin(root, body.get("agent", "codex"), key=body.get("key"), session=body.get("session"))
+    if action == "say" and text("id") and text("text"):
+        return lambda: conversations.say(root, body["id"], body["text"])
+    if action == "read" and text("id"):
+        return lambda: conversations.read(root, body["id"])
+    return None
 
 
 async def _translate(scope, receive, send, root, headers):

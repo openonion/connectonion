@@ -227,8 +227,9 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     page = get()
     assert get() == page and builds == [{'local': True, 'today': True}]
-    reader.refresh(host.root)                       # the details the first request left behind it
-    assert builds[1:] == [{'local': True}]
+    reader.refresh(host.root)                       # the details the first request left behind it,
+    assert builds[1:] == [{'local': True, 'today': True}, {'local': True}]   # with the page: one render
+    page = get()
     changes = [
         ('Alice Chen-Vale', lambda: (host.root / 'people/alice-chen.md').write_text(PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
         ('Alice Chen-Vale', lambda: state_path(host.root, 'map.json').write_text('{"owner": {}}')),
@@ -342,6 +343,57 @@ def test_a_hand_to_codex_or_claude_button_dispatches_any_pending_item(host, monk
         assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=json.dumps(bad).encode())[0] == 400
 
 
+def test_a_key_no_unfinished_row_has_is_a_400_in_plain_words(host):
+    body = json.dumps({'key': 'people/nobody.md\nNothing.', 'action': 'run', 'agent': 'codex'}).encode()
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 400 and 'no longer open' in json.loads(text)['error']
+
+
+def test_see_result_reads_what_the_agent_wrote(host):
+    from connectonion.rem import tasks
+    from connectonion.rem.files import write_json
+    from pathlib import Path
+    receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
+        'keys': ['people/fern.md\nReview the pilot.'], 'record': 'people/fern.md',
+        'title': 'Fern Vale', 'text': 'Review the pilot.', 'task': {'prompt': 'Review it.'}})
+    body = json.dumps({'id': receipt['id'], 'action': 'result'}).encode()
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 409  # still queued
+    Path(receipt['deliverable']).write_text('# Pilot review\nFern can sign on Friday.\n')
+    write_json(Path(receipt['receipt']), {**receipt, 'result': 'completed', 'exit_code': 0})
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 200 and 'Fern can sign on Friday.' in json.loads(text)['text']
+
+
+def test_talk_routes_are_owner_only_and_reach_the_conversation(host, monkeypatch):
+    from connectonion.rem import conversations
+    calls = []
+    monkeypatch.setattr(conversations, 'begin', lambda root, agent, key=None, session=None:
+                        calls.append(('begin', agent, key, session)) or {'id': 'a' * 32, 'state': 'working'})
+    monkeypatch.setattr(conversations, 'say', lambda root, talk_id, text: calls.append(('say', talk_id, text)) or {'state': 'working'})
+    monkeypatch.setattr(conversations, 'read', lambda root, talk_id: calls.append(('read', talk_id)) or {'state': 'idle'})
+    for body in ({'action': 'begin', 'agent': 'claude', 'key': 'people/fern.md\nReview the pilot.'},
+                 {'action': 'begin', 'session': 'sessions/fern.md'},
+                 {'action': 'say', 'id': 'a' * 32, 'text': 'Draft it.'}, {'action': 'read', 'id': 'a' * 32}):
+        raw = json.dumps(body).encode()
+        assert call(host.routes, 'POST', '/rem/talk', body=raw)[0] == 401
+        assert call(host.routes, 'POST', '/rem/talk', cookie=f'co_rem={host.token}', body=raw)[0] == 200
+    assert calls == [('begin', 'claude', 'people/fern.md\nReview the pilot.', None), ('begin', 'codex', None, 'sessions/fern.md'),
+                     ('say', 'a' * 32, 'Draft it.'), ('read', 'a' * 32)]
+    for bad in ({'action': 'begin', 'agent': 'gemini', 'key': 'k'}, {'action': 'say', 'id': 'a' * 32}, {'action': 'push'}):
+        assert call(host.routes, 'POST', '/rem/talk', cookie=f'co_rem={host.token}', body=json.dumps(bad).encode())[0] == 400
+
+
+def test_a_snapshot_links_to_this_computers_live_reader_only_with_an_identity(host, monkeypatch):
+    from connectonion import address
+    identity = host.routes["identity_dir"]
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
+    assert live_host.live_link() == ""                        # no key here: no live reader to link to
+    address.save(address.generate(), identity)
+    assert live_host.live_link() == f"http://127.0.0.1:8000/rem?token={host.token}"
+    live_host.write_json(identity / "rem-live-host.json", {"port": 9125})
+    assert live_host.live_link() == f"http://127.0.0.1:9125/rem?token={host.token}"
+
+
 @pytest.fixture
 def clock(monkeypatch):
     """The reader's own clock, moved by the test: [seconds since the epoch]."""
@@ -404,7 +456,7 @@ def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkey
     result = reader.local_or_snapshot(host.root, "owner", launch=False)
     assert time.monotonic() - started < 1.0
     assert result["link"].startswith("file://") and "Alice Chen" in open(result["page"], encoding="utf-8").read()
-    assert started_hosts == [identity] and "co ai is starting" in result["live"]
+    assert started_hosts == [identity] and result["live"] == live_host.STARTING
     assert live_host.read_json(identity / "rem-live-host.json", {})["pid"] == 4242
 
 
@@ -418,8 +470,9 @@ def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cach
         for item in range(100):
             (directory / f"{item}.json").write_text("{}")
     get = lambda: call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
-    first = get()[2]
+    get()
     reader.refresh(host.root)                      # the details it left to the background
+    first = get()[2]
 
     def listed(*args, **kwargs):
         raise AssertionError("an unchanged notebook was listed again")
@@ -460,6 +513,80 @@ def test_rebuilds_wait_out_the_interval_unless_the_owner_acted_in_the_reader(hos
 
 
 
+def _review(root, kind="link"):
+    from connectonion.rem import reviews
+    (root / "people" / "noor-alvi.md").write_text("# Noor Alvi\n")
+    subjects = ["people/alice-chen.md", "people/noor-alvi.md"] if kind == "link" else ["people/alice-chen.md"]
+    return reviews.propose(root, kind, subjects, "Is Alice Chen the same person as Noor Alvi?", "Same phone in two signatures.")
+
+
+def test_a_review_is_decided_from_the_page_by_the_owner_only(host, cache, clock):
+    """问题与关联 decides in place: no terminal, no copied command (D-60)."""
+    from connectonion.rem import reviews
+    row = _review(host.root)
+    body = json.dumps({"id": row["id"], "verdict": "yes", "response": "Same phone."}).encode()
+    assert call(host.routes, "POST", "/rem/review", body=body)[0] == 401
+    assert reviews.listing(host.root)[0]["status"] == "pending"
+    call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
+    reader.refresh(host.root)
+    cache.clear()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 200
+    decided = json.loads(text)
+    assert decided["id"] == row["id"] and decided["status"] == "accepted" and decided["author"] == "owner"
+    saved = reviews.listing(host.root)[0]
+    assert saved["status"] == "accepted" and saved["response"] == "Same phone." and saved["author"] == "owner"
+    assert cache == [host.root]                                     # the page rebuilds now
+
+
+def test_a_question_is_answered_with_the_owners_words(host):
+    from connectonion.rem import reviews
+    row = _review(host.root, kind="question")
+    body = json.dumps({"id": row["id"], "verdict": "answer", "response": "Yes, she changed her name."}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 200 and json.loads(text)["status"] == "answered"
+    assert reviews.listing(host.root)[0]["response"] == "Yes, she changed her name."
+
+
+@pytest.mark.parametrize("bad", [{"verdict": "yes"}, {"id": "", "verdict": "yes"}, {"id": 7, "verdict": "no"},
+                                 {"id": "ID", "verdict": "maybe"}, {"id": "ID", "verdict": "unsure"},
+                                 {"id": "ID", "verdict": None}, {"id": "ID"},
+                                 {"id": "ID", "verdict": "yes", "response": ["Same phone."]}])
+def test_a_review_without_an_id_or_with_a_verdict_decide_refuses_is_a_400(host, bad):
+    from connectonion.rem import reviews
+    row = _review(host.root)
+    body = json.dumps({key: row["id"] if value == "ID" else value for key, value in bad.items()}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 400 and json.loads(text)["error"]
+    assert reviews.listing(host.root)[0]["status"] == "pending"
+
+
+def test_an_unknown_review_is_a_404_not_already_decided(host):
+    _review(host.root)
+    body = json.dumps({"id": "f" * 32, "verdict": "yes"}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 404 and "already been decided" not in json.loads(text)["error"]
+
+
+def test_a_long_answer_is_recorded_whole(host):
+    from connectonion.rem import reviews
+    row = _review(host.root, kind="question")
+    answer = "她在两个团队都做过产品负责人。" * 120                     # ~5 KB of UTF-8, past the 4 KB action limit
+    body = json.dumps({"id": row["id"], "verdict": "answer", "response": answer}, ensure_ascii=False).encode()
+    assert call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)[0] == 200
+    assert reviews.listing(host.root)[0]["response"] == answer
+
+
+def test_a_review_already_decided_says_so_instead_of_deciding_twice(host):
+    row = _review(host.root)
+    cookie = f"co_rem={host.token}"
+    body = json.dumps({"id": row["id"], "verdict": "no"}).encode()
+    assert call(host.routes, "POST", "/rem/review", cookie=cookie, body=body)[0] == 200
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=cookie,
+                           body=json.dumps({"id": row["id"], "verdict": "yes"}).encode())
+    assert status == 409 and "already been decided" in json.loads(text)["error"]
+
+
 def test_a_status_read_is_not_an_owner_change(host, cache, clock):
     from connectonion.rem import tasks
     receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
@@ -492,9 +619,9 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     monkeypatch.setattr(live_host, "_spawn", lambda directory: SimpleNamespace(
         pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
     first = reader.local_or_snapshot(host.root, "owner", launch=False)
-    assert "co ai is starting" in first["live"]
+    assert first["live"] == live_host.STARTING
     again = reader.local_or_snapshot(host.root, "owner", launch=False)  # that pid never ran
-    assert "rem-live-host.log" in again["live"] and "co ai is starting" not in again["live"]
+    assert "rem-live-host.log" in again["live"] and again["live"] != live_host.STARTING
 
 
 
@@ -522,7 +649,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     from connectonion.rem import night, tasks
     from connectonion.rem.config import read_config
     from connectonion.rem.files import Notebook, read_json
-    from tests.unit.test_rem_reader import TEMPLATE, _run_reader_js
+    from tests.unit.test_rem_reader import HAND, TEMPLATE, _run_reader_js
     book = Notebook(host.root)
     book.stub_project('projects/pilot.md', 'Mara pilot', [])
     book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
@@ -531,19 +658,19 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     row = night.listing(host.root)[0]
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayRow', 'obligationKey', 'rowTask', 'handedLine', 'handOff'])
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" };\n' + functions + r'''
+                          for name in HAND)
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
-      const doneKey = entry => entry.key, taskControls = () => null, requests = [];
+      const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
       const REM = {live: true, today_queue: [''' + json.dumps({'key': row['keys'][0], 'keys': row['keys']}) + r''']};
       globalThis.fetch = async (url, options) => { requests.push({url, ...options});
         return {ok: true, status: 200, json: async () => ({result: 'starting', agent: 'claude'})}; };
-      const node = handOff({key: REM.today_queue[0].key});
-      node.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
-        console.log(JSON.stringify({request: requests[0], shown: node.children[0].text})));
+      const line = handOff({key: REM.today_queue[0].key}).children[0];
+      line.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
+        console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text).filter(text => text && text !== '·')})));
     ''')
-    assert sent['request']['url'] == '/rem/task' and sent['shown'] == 'Handed to Claude · in progress'
+    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Undo']
     started = []
     monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
                         {'id': task_id, 'agent': agent, 'result': 'starting'})
@@ -552,3 +679,24 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     assert status == 200 and json.loads(text)['agent'] == 'claude' and started == ['claude']
     receipt = read_json(tasks.directory(host.root, json.loads(text)['id']) / 'receipt.json', {})
     assert receipt['agent'] == 'claude' and receipt['result'] == 'queued'
+
+
+def test_a_host_this_open_just_started_is_called_starting_not_someone_elses(tmp_path, monkeypatch):
+    """Seen on a real laptop: the relay saw the new Host before its port answered, and
+    the open blamed "a co ai not on a port co rem knows" for REM's own Host."""
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
+
+    def online(address):  # starts ours, then the relay sees it
+        live_host.write_json(tmp_path / "rem-live-host.json",
+                             {"address": address, "pid": 4242, "port": 9128, "command": "-m connectonion.cli.main ai"})
+    monkeypatch.setattr(live_host, "ensure_online", online)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)   # its port is not up yet
+    monkeypatch.setattr(live_host, "_alive", lambda saved: saved.get("pid") == 4242)
+    monkeypatch.setattr(live_host, "LOCAL_WAIT", 0.05, raising=False)
+    url, failure = live_host.ensure_local("owner")
+    assert url is None and failure == live_host.STARTING
+    assert "port co rem knows" not in failure and "`" not in failure and "co rem open" not in failure
+    prepare(tmp_path / "rem")
+    monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, live_host.STARTING))
+    note = reader.local_or_snapshot(tmp_path / "rem", "owner", launch=False)["live"]
+    assert note == live_host.STARTING                               # said plainly, not as "unavailable"

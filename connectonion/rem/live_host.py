@@ -160,6 +160,14 @@ def local_reader(address: str) -> str | None:
     return None
 
 
+# Said when this open started (or finds starting) the identity's own Host and
+# its port does not answer yet. Plain words: there is nothing to run.
+STARTING = "The live reader is starting; this time shows the saved page, and the next open is live."
+# ensure_online returns once the relay sees the Host, which can be before its own
+# port answers: wait this long for the port before saying it is starting.
+LOCAL_WAIT = 5.0
+
+
 def ensure_local(address: str) -> tuple[str | None, str | None]:
     """(url, None) for the live reader on this computer, starting co ai when none
     runs; (None, reason) when there is no Host here to read through."""
@@ -167,11 +175,30 @@ def ensure_local(address: str) -> tuple[str | None, str | None]:
     if not (base := local_reader(address)):
         if failure := ensure_online(address):
             return None, failure
-        base = local_reader(address)
+        base = local_reader(address) or _ours_coming_up(address)
+    if base is STARTING:
+        return None, STARTING
     if not base:
+        # Online (the relay or an endpoint answers as this identity), yet no Host
+        # of ours runs here: then, and only then, it is another co ai.
         return None, ("co ai is running, but not on a port co rem knows (8000 or one it started); "
                       "use `co rem open --live`, or stop that co ai and open again")
     return f"{base}/rem?token={reader_token(selected_identity_dir())}", None
+
+
+def _ours_coming_up(address: str):
+    """The base URL once the Host co rem started answers on its port; STARTING while it
+    is alive and not yet answering; None when no Host of ours is running."""
+    from ..project import selected_identity_dir
+    saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
+    if saved.get("address") != address or not isinstance(saved.get("port"), int) or not _alive(saved):
+        return None
+    deadline = time.monotonic() + LOCAL_WAIT
+    while time.monotonic() < deadline:
+        if answers(saved["port"], address):
+            return f"http://127.0.0.1:{saved['port']}"
+        time.sleep(0.2)
+    return STARTING
 
 
 def reader_token(directory: Path) -> str:
@@ -182,3 +209,16 @@ def reader_token(directory: Path) -> str:
         with os.fdopen(fd, "w") as output:
             output.write(secrets.token_urlsafe(32))
     return path.read_text().strip()
+
+
+def live_link() -> str:
+    """The live reader on this computer, for a snapshot's one sentence (D-60: a link, never a
+    command); "" without an identity. The file page that carries it is the owner's own (mode
+    600), as private as the token beside the Host's key. Served by co ai, which `co rem open` starts."""
+    from ..address import load
+    from ..project import selected_identity_dir
+    directory = selected_identity_dir()
+    if not load(directory):
+        return ""
+    port = read_json(directory / "rem-live-host.json", {}).get("port") or DEFAULT_PORT
+    return f"http://127.0.0.1:{port}/rem?token={reader_token(directory)}"

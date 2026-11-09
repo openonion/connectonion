@@ -70,6 +70,7 @@ def test_offline_startup_finishes_details_without_navigation():
       const reconcileThreads = () => Promise.resolve();
       const frames = [];
       function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}
+      function redraw() {render();}   // the reader's redraw keeps open sections; here a frame is a frame
     ''' + 'const startup = ' + startup + r'''
       startup.then(() => console.log(JSON.stringify(frames)));
     ''')

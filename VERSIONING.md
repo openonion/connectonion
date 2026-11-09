@@ -39,7 +39,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
+The published stable line is 1.9.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc64
+## Current Version: 1.9.3
+
+Stable 1.9.3: REM does the work. Overnight it reads new mail at every slot, drafts and holds replies,
+sends to people you trust through the 10-minute hold, and runs owed tasks you approved through
+`co claude` or Codex. In the reader every unfinished item can be handed to Codex or Claude, or talked
+through with them in a conversation that resumes the agent's own session; agent replies render as
+safe Markdown; the reviews page answers in place; Today hides empty states; the sidebar keeps one
+count and shows the version; `co rem open` serves the last page at once and works on Windows.
+Releases publish from the tag's green main Tests run. See [1.9.3 notes](docs/releases/1.9.3.md).
+
+- 1.9.3 (REM does the work).
+
+## Previous preview: 1.9.3rc64
 
 The candidate for stable 1.9.3. REM does the work: owed tasks run through `co claude` or Codex with
 Hand to Codex / Hand to Claude on every pending item; direct send for people you trust; no count
@@ -1096,7 +1108,7 @@ version (#2512). See [1.9.3b1 notes](docs/releases/1.9.3b1.md).
 
 - 1.9.3b1 (The recipient runs the release that sent it).
 
-## Stable release: 1.9.2
+## Previous stable: 1.9.2
 
 Stable 1.9.2 hands a coding session to someone else's agent. `co handoff send` drafts it from the
 session (Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok), has the sender's own

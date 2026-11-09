@@ -84,6 +84,12 @@ def handle(line):
     if os.environ.get('FAKE_CODEX_RECORD'):
         with open(os.environ['FAKE_CODEX_RECORD'], 'a') as record:
             record.write(json.dumps({'method': request['method'], 'params': request.get('params')}) + '\n')
+    if request['method'] == 'thread/resume':
+        # The real server answers a resume in thread/start's shape, naming the thread it resumed.
+        resumed = json.loads(json.dumps(BY_METHOD['thread/start']))
+        resumed['thread']['id'] = request['params']['threadId']
+        send({'id': request['id'], 'result': resumed})
+        return
     if request['method'] != 'turn/start':
         send({'id': request['id'], 'result': BY_METHOD.get(request['method'], {})})
         return
