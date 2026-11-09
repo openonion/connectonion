@@ -226,8 +226,9 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     page = get()
     assert get() == page and builds == [{'local': True, 'today': True}]
-    reader.refresh(host.root)                       # the details the first request left behind it
-    assert builds[1:] == [{'local': True}]
+    reader.refresh(host.root)                       # the details the first request left behind it,
+    assert builds[1:] == [{'local': True, 'today': True}, {'local': True}]   # with the page: one render
+    page = get()
     changes = [
         ('Alice Chen-Vale', lambda: (host.root / 'people/alice-chen.md').write_text(PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
         ('Alice Chen-Vale', lambda: state_path(host.root, 'map.json').write_text('{"owner": {}}')),
@@ -402,8 +403,9 @@ def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cach
         for item in range(100):
             (directory / f"{item}.json").write_text("{}")
     get = lambda: call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
-    first = get()[2]
+    get()
     reader.refresh(host.root)                      # the details it left to the background
+    first = get()[2]
 
     def listed(*args, **kwargs):
         raise AssertionError("an unchanged notebook was listed again")
