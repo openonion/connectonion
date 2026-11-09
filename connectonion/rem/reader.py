@@ -500,10 +500,17 @@ STALE_SCHEDULE_SECONDS = 3600
 # The live page asks for its details as soon as it loads, so it keeps both current.
 NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
 LOG_LINES = 200
-# A notebook whose last render took less than this is rendered again during an
-# explicit co rem open, so the page it opens is current; a larger one opens the
-# saved page at once and is rebuilt behind it.
-SYNC_RENDER_SECONDS = 2.0
+# Only with no saved page at all is one rendered while the owner waits, and then
+# a line says so at least this often (1.9.3's first open after the upgrade sat
+# silent for 1025 s).
+PROGRESS_SECONDS = 3.0
+# Put on a saved page served while a newer one is built; worded in the reader's
+# language, chosen as the page chooses it (uiLanguage in reader.html).
+UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
+            'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
+            '<script>(() => { const zh = (window.REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))'
+            ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
+            ' = zh ? "正在更新…" : "Updating…"; })();</script>')
 
 
 class CacheRefused(OSError):
@@ -628,7 +635,7 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
             files[name] = f"{prefix}{generation}-{name}"
             _replace(_cache_dir() / files[name], text)
         rows[build] = {"version": version, "tree": tree, "as_of": as_of, "took": took,
-                       "built_at": _now(), "checked_at": _now()}
+                       "release": _release(), "built_at": _now(), "checked_at": _now()}
     _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
     # Then the stable link, copied from the set the manifest now names; page_path
     # repairs it if a build stops between the two.
@@ -638,6 +645,11 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
             (_cache_dir() / old).unlink(missing_ok=True)
+
+
+def _release() -> str:
+    import connectonion
+    return connectonion.__version__
 
 
 def _checked(root: Path, build: str, moment: float) -> None:
@@ -679,21 +691,16 @@ def _keep_failure(root: Path) -> None:
 
 
 @contextmanager
-def _building(root: Path, *, wait: bool):
-    """Yields whether this caller holds the one build lock (always True with wait)."""
+def _building(root: Path):
+    """Yields whether this caller holds the one build lock; it never waits for it."""
     from .files import _try_lock
     fd = os.open(_cached(root, "build.lock"), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
-        while True:
-            try:
-                _try_lock(fd)
-                held = True
-                break
-            except BlockingIOError:
-                if not wait:
-                    held = False
-                    break
-                time.sleep(0.2)
+        try:
+            _try_lock(fd)
+            held = True
+        except BlockingIOError:
+            held = False
         yield held
     finally:
         os.close(fd)
@@ -712,7 +719,7 @@ def refresh(root: Path, builds=("live", "full")) -> None:
 
 def _refresh_once(root: Path, builds):
     """The start of the last pass, after the lock is released; None when another build ran."""
-    with _building(root, wait=False) as mine:
+    with _building(root) as mine:
         if not mine:
             return None
         wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
@@ -766,7 +773,7 @@ def main(argv) -> None:
 def _spawn_refresh(root: Path, builds) -> bool:
     """Start the detached build; True when one is running or was started. A build
     that failed is not started again within REBUILD_INTERVAL."""
-    with _building(root, wait=False) as free:
+    with _building(root) as free:
         if not free:
             return True
     failed = failure(root)
@@ -783,26 +790,81 @@ def _spawn_refresh(root: Path, builds) -> bool:
     return True
 
 
-def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, bool]:
-    """(the saved page, whether a newer one is being built). The first ever is built
-    here, once; a stale one is returned as it is and rebuilt in the background,
-    at once when the owner asked (`owner`). A cache folder that is refused is not
-    used: the page is rendered now, as before saved pages."""
+def cached_page(root: Path, name: str, *, owner: bool = False, say=None) -> tuple[str, bool]:
+    """(the saved page, whether a newer one is being built). Never waits on a build:
+    any saved page, an older release's included, is returned at once, marked
+    "Updating…" while its rebuild runs behind it (at once when the owner asked,
+    `owner`, or the release changed). Only with no page at all is the first built
+    here, saying so through `say`. A cache folder that is refused is not used: the
+    page is rendered now, as before saved pages."""
     try:
         version = reader_version(root)
-        text = _read_page(root, name)
+        text = _saved_page(root, name)
     except CacheRefused:
-        return _render(root, BUILDS[name])[0][name], False
+        with _saying(say, "Rendering the notebook (its saved pages cannot be used)"):
+            return _render(root, BUILDS[name])[0][name], False
+    if text is None:
+        text = _first_page(root, name, version, say)
+    building = _rebuild_stale(root, name, version, owner=owner)
+    if building and saved(root, BUILDS[name]).get("version") != version:
+        text = _updating(text)
+    return text, building
+
+
+def _saved_page(root: Path, name: str):
+    """The current set's page, else any older page this notebook still has: the
+    stable file page (1.9.3rc64 kept it out of the manifest), also in place of a
+    live page not built yet. None when there is none at all."""
+    text = _read_page(root, name)
+    if text is None and name != "data.json":
+        text = _read(_cached(root, "file.html"))
+    return text
+
+
+def _updating(page: str) -> str:
+    head, body, tail = page.rpartition("</body>")
+    return head + UPDATING + body + tail if body else page + UPDATING
+
+
+def _first_page(root: Path, name: str, version: list, say) -> str:
+    """No saved page at all: render it here, once. A build already running is not
+    run twice; its page is taken the moment it is published."""
     build = BUILDS[name]
-    quick = owner and saved(root, build).get("took", SYNC_RENDER_SECONDS) < SYNC_RENDER_SECONDS
-    if text is None or quick:
-        with _building(root, wait=True):
-            if quick or (text := _read_page(root, name)) is None:
-                together = [b for b in ("live", "full") if b == build or saved(root, b)]
-                as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
-                _publish(root, {b: _render(root, b, as_of) for b in together}, version)
-                text = _read_page(root, name)
-    return text, _rebuild_stale(root, name, version, owner=owner)
+    with _saying(say, "Rendering this notebook for the first time; later opens show the saved page at once"):
+        while True:
+            with _building(root) as mine:
+                if mine:
+                    if (text := _read_page(root, name)) is None:
+                        together = [b for b in ("live", "full") if b == build or saved(root, b)]
+                        as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
+                        _publish(root, {b: _render(root, b, as_of) for b in together}, version)
+                        text = _read_page(root, name)
+                    return text
+            if (text := _read_page(root, name)) is not None:
+                return text
+            time.sleep(0.2)
+
+
+@contextmanager
+def _saying(say, text: str):
+    """`text` now, then the seconds so far every PROGRESS_SECONDS until the block ends."""
+    if say is None:
+        yield
+        return
+    import threading
+    done, began = threading.Event(), time.monotonic()
+
+    def tick():
+        while not done.wait(PROGRESS_SECONDS):
+            say(f"Still rendering, {time.monotonic() - began:.0f} s…")
+    say(text + "…")
+    ticker = threading.Thread(target=tick, daemon=True)
+    ticker.start()
+    try:
+        yield
+    finally:
+        done.set()
+        ticker.join()
 
 
 def latest(root: Path) -> dict:
@@ -824,7 +886,9 @@ def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False)
     behind = [build for build in NEEDS[name] if rows[build] and _behind(rows[build], version, _now())]
     unchecked = [build for build in NEEDS[name] if rows[build] and _unchecked(rows[build], _now())]
     last = max((row.get("built_at", 0) for row in rows.values() if row), default=0)
-    if behind and owner:
+    # A page an older release rendered is rebuilt now, not at the next interval.
+    upgraded = any(rows[build].get("release") != _release() for build in behind)
+    if behind and (owner or upgraded):
         return owner_changed(root)
     if missing or behind and _now() - last >= REBUILD_INTERVAL:
         return _spawn_refresh(root, list(dict.fromkeys(missing + behind + unchecked)))
@@ -883,14 +947,15 @@ def host_online(address: str, timeout: float = 3.0) -> bool:
     return asyncio.run(bounded())
 
 
-def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
+def open_snapshot(root: Path, *, launch: bool, say=None, **notes) -> dict:
     """The saved offline page, at once; an explicit open is the owner acting, so a
     stale one starts its rebuild now."""
     try:
-        _, building = cached_page(root, "file.html", owner=True)
-        path, failed = page_path(root, "file.html"), failure(root)
+        text, building = cached_page(root, "file.html", owner=True, say=say)
+        path, failed = _file_page(root, text), failure(root)
     except CacheRefused as refused:
-        path = write_reader(root)
+        with _saying(say, "Rendering the notebook (its saved pages cannot be used)"):
+            path = write_reader(root)
         return {"page": str(path), "link": path.as_uri(), "launched": _launch(path, launch),
                 "note": f"rendered now, not from a saved page: {refused}", **notes}
     note = "the notebook as of its last render"
@@ -901,6 +966,19 @@ def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
     return {"page": str(path), "link": path.as_uri(), "launched": _launch(path, launch), "note": note, **notes}
 
 
+def _file_page(root: Path, text: str) -> Path:
+    """The stable file page, showing `text`. One that differs from the current set
+    (marked "Updating…", or an older release's) is dated before every set, so the
+    next publish, or the next open, replaces it."""
+    current = page_path(root, "file.html")
+    if current is not None and _read(current) == text:
+        return current
+    link = _cached(root, "file.html")
+    _replace(link, text)
+    os.utime(link, ns=(0, 0))
+    return link
+
+
 def _launch(path: Path, launch: bool) -> bool:
     if launch:
         webbrowser.open(path.as_uri())
@@ -909,16 +987,16 @@ def _launch(path: Path, launch: bool) -> bool:
 
 def _has_saved_page(root: Path) -> bool:
     try:
-        return _read_page(root, "file.html") is not None
+        return _saved_page(root, "file.html") is not None
     except CacheRefused:
         return False
 
 
-def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
+def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
     """What a bare `co rem open` shows: the reader served by this computer's co ai
     Host (started when none runs), or the snapshot, saying why."""
     if not address:
-        return open_snapshot(root, launch=launch, live=(
+        return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
     from .live_host import STARTING, ensure_local, local_reader, saved_host_dead, start
     if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
@@ -927,17 +1005,17 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
         try:
             failed = start(address)
         except (OSError, RemError) as error:
-            return open_snapshot(root, launch=launch, live=f"could not start co ai: {error}; run `co ai` to diagnose")
-        return open_snapshot(root, launch=launch, live=failed or STARTING)
+            return open_snapshot(root, launch=launch, say=say, live=f"could not start co ai: {error}; run `co ai` to diagnose")
+        return open_snapshot(root, launch=launch, say=say, live=failed or STARTING)
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
     if failure == STARTING:
-        return open_snapshot(root, launch=launch, live=STARTING)
+        return open_snapshot(root, launch=launch, say=say, live=STARTING)
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
-        return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")
+        return open_snapshot(root, launch=launch, say=say, live=f"Live reader unavailable: {failure}; showing a snapshot")
     if _has_saved_page(root):  # an explicit open is the owner acting
         _rebuild_stale(root, "live.html", reader_version(root), owner=True)
     if launch:
@@ -946,13 +1024,13 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
             "note": "the live reader, served by co ai on this computer; it can translate a page"}
 
 
-def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
+def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None) -> dict:
     """What `co rem open` shows: the live view only when it is wanted, belongs to
     this notebook, and its Host answers; otherwise the snapshot, saying why."""
     if not live:
-        return open_snapshot(root, launch=launch, **({"live_view": LIVE_HINT} if address else {}))
+        return open_snapshot(root, launch=launch, say=say, **({"live_view": LIVE_HINT} if address else {}))
     if not address:
-        return open_snapshot(root, launch=launch, live=(
+        return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
     if not host_online(address):
         from .live_host import ensure_online
@@ -961,7 +1039,7 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         except (OSError, RemError) as error:
             failure = f"could not start co ai: {error}; run `co ai` to diagnose"
         if failure:
-            return open_snapshot(root, launch=launch, live=f"Live startup failed: {failure}; showing a snapshot",
+            return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
                                  live_startup_failed=True)
     url = LIVE_REM_URL.format(address=address)
     if launch:

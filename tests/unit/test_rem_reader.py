@@ -3438,8 +3438,6 @@ def _cached_reader(tmp_path, monkeypatch):
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     monkeypatch.setattr(reader, "_now", lambda: _Clock.seconds, raising=False)
-    # As on a large notebook: an explicit open does not re-render in place.
-    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0, raising=False)
     _Clock.seconds = 1_794_000_000.0
     return reader
 
@@ -3506,7 +3504,7 @@ def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(t
     _Clock.seconds += 60
     # An explicit open is the owner acting: a minute after the last render, it still rebuilds now.
     stale = reader.open_snapshot(root, launch=False)
-    assert open(stale["page"], encoding="utf-8").read() == first      # the last page, at once
+    assert open(stale["page"], encoding="utf-8").read() == reader._updating(first)   # the last page, at once, marked
     assert spawned == [root]                                         # and one rebuild behind it
     assert "being built" in stale["note"]
 
@@ -3547,7 +3545,6 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     (tmp_path / "tmp").mkdir()
     monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))  # the child finds the same cache
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))
-    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0)   # as on a large notebook
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
@@ -3893,19 +3890,6 @@ def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp
     assert reader.open_snapshot(root, launch=False)["link"] == link
 
 
-def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypatch):
-    """When the last render was quick, the page co rem open opens is never older than the notebook."""
-    reader = _cached_reader(tmp_path, monkeypatch)
-    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
-    root = tmp_path / "rem"
-    prepare(root)
-    first = reader.open_snapshot(root, launch=False)
-    (root / "people" / "bob.md").write_text("# Bob\nJoined yesterday.\n")   # in place, by another tool
-    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt behind instead"))
-    second = reader.open_snapshot(root, launch=False)
-    assert second["page"] == first["page"] and "being built" not in second["note"]
-    assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()
-
 
 def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
     """The live page is built on the first request; its details later, in the
@@ -3973,21 +3957,6 @@ class _Ticking:
         return cls.real.fromtimestamp(*args, **kwargs)
 
 
-def test_a_quick_explicit_open_stamps_the_page_and_its_details_with_one_time(tmp_path, monkeypatch):
-    """A small notebook re-renders live and full during co rem open; they must name one time."""
-    reader = _cached_reader(tmp_path, monkeypatch)
-    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
-    root = tmp_path / "rem"
-    prepare(root)
-    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
-    reader.cached_page(root, "live.html")
-    reader.refresh(root)
-    monkeypatch.setattr(reader, "datetime", _Ticking)
-    reader.open_snapshot(root, launch=False)                      # renders both, in place
-    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
-    assert reader.saved(root, "live")["as_of"] == reader.saved(root, "full")["as_of"]
-    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == reader.saved(root, "live")["as_of"]
-
 
 def test_a_planted_link_at_the_stable_page_is_neither_followed_nor_returned(tmp_path, monkeypatch):
     reader = _cached_reader(tmp_path, monkeypatch)
@@ -4037,7 +4006,6 @@ def test_co_rem_open_runs_where_there_is_no_fcntl(tmp_path):
 def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
     import connectonion
     reader = _cached_reader(tmp_path, monkeypatch)
-    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0, raising=False)   # the shipped default
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
@@ -4104,7 +4072,7 @@ def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_do
 def test_with_no_saved_page_at_all_open_renders_once_and_says_so_every_few_seconds(tmp_path, monkeypatch):
     import time
     reader = _cached_reader(tmp_path, monkeypatch)
-    monkeypatch.setattr(reader, "PROGRESS_SECONDS", 0.05, raising=False)
+    monkeypatch.setattr(reader, "PROGRESS_SECONDS", 0.05)
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     root = tmp_path / "rem"
     prepare(root)

@@ -243,7 +243,8 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
         clock[0] += reader.REBUILD_INTERVAL + 1
         cache.clear()
         builds.clear()
-        assert get() == page and cache == [host.root] and builds == []   # the last page, a rebuild behind
+        # The last page, a rebuild behind it; marked when the key shows it behind (a hand edit only the walk finds is not).
+        assert get().replace(reader.UPDATING, "") == page and cache == [host.root] and builds == []
         reader.refresh(host.root)
         assert builds == [{'local': True, 'today': True}, {'local': True}]
         page = get()
@@ -424,7 +425,7 @@ def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache, 
     clock[0] += reader.REBUILD_INTERVAL
     Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale\n")
     cache.clear()
-    assert get() == first and cache == [host.root]   # instantly the last page, a rebuild behind it
+    assert get() == reader._updating(first) and cache == [host.root]   # instantly the last page, a rebuild behind it
     reader.refresh(host.root)
     Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale, again\n")
     cache.clear()
