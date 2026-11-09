@@ -1,7 +1,9 @@
 """The owner's live co rem on this computer: GET /rem and POST /rem/translate.
 
-`co rem open` opens http://127.0.0.1:<port>/rem?token=<t>. The token is the
-secret in the Host's identity directory (`rem-reader-token`, mode 600), so
+`co rem open` opens http://127.0.0.1:<port>/rem?token=<t>. /rem and
+/rem/data.json answer from the pages saved outside the notebook (reader.py,
+`cached_page`); /rem/version tells the open page when a newer one has landed.
+The token is the secret in the Host's identity directory (`rem-reader-token`, mode 600), so
 whoever can read it can already read the Host's key and the notebook: the same
 owner the signed WIKI_READ path admits, proven by the file system instead of a
 browser key. The first request trades it for a SameSite=Strict, HttpOnly
@@ -68,27 +70,16 @@ async def handle_rem_http(scope, receive, send, routes):
     if not _same(jar[COOKIE].value if COOKIE in jar else "", token):
         await _reply(send, 401, "Open co rem with `co rem open` on this computer.")
         return
-    if scope["method"] == "GET" and scope["path"] == "/rem":
-        from ...rem.reader import reader_version, render
-        # Per Host, after authentication. Concurrent reloads share one build.
-        cache = routes.setdefault("rem_reader_cache", {})
-        async with routes.setdefault("rem_reader_lock", asyncio.Lock()):
-            version = await asyncio.to_thread(reader_version, root)
-            if cache.get("version") != version:
-                page = await asyncio.to_thread(render, root, live=True, local=True)
-                cache.update(version=version, page=page)
-            page = cache["page"]
-        await _reply(send, 200, page, "text/html")
-    elif scope["method"] == "GET" and scope["path"] == "/rem/data.json":
-        from ...rem.reader import reader_version, snapshot
-        cache = routes.setdefault("rem_detail_cache", {})
-        async with routes.setdefault("rem_detail_lock", asyncio.Lock()):
-            version = await asyncio.to_thread(reader_version, root)
-            if cache.get("version") != version:
-                data = await asyncio.to_thread(snapshot, root, local=True)
-                cache.update(version=version, data=json.dumps(data, ensure_ascii=False, default=str))
-            data = cache["data"]
-        await _reply(send, 200, data, "application/json")
+    if scope["method"] == "GET" and scope["path"] in ("/rem", "/rem/data.json"):
+        from ...rem.reader import cached_page
+        # The saved page at once; a stale one is rebuilt by a detached process
+        # and the open page reloads when /rem/version names a newer render.
+        name = "live.html" if scope["path"] == "/rem" else "data.json"
+        page, _ = await asyncio.to_thread(cached_page, root, name)
+        await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/version":
+        from ...rem.reader import latest
+        await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
@@ -117,10 +108,17 @@ async def _action(scope, receive, send, root, headers):
     if scope["path"] == "/rem/task":
         from ...rem import tasks
         action = body.get("action", "status")
-        if not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
+        if action == "run":
+            # 交给 Codex / 交给 Claude on any pending item: {"key": obligation key, "agent": "codex"|"claude"}.
+            if not isinstance(body.get("key"), str) or body.get("agent", "codex") not in tasks.AGENTS:
+                await _reply(send, 400, json.dumps({"error": "Expected the item key and agent codex or claude"}), "application/json")
+                return
+            operation = lambda: tasks.dispatch(root, body["key"], agent=body.get("agent", "codex"))
+        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo"):
             await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop or undo"}), "application/json")
             return
-        operation = lambda: getattr(tasks, action)(root, body['id'])
+        else:
+            operation = lambda: getattr(tasks, action)(root, body['id'])
     elif scope["path"] == "/rem/approve":
         from ...rem import approvals
         if (body.get("action", "approve") not in ("approve", "undo")
@@ -164,6 +162,11 @@ async def _action(scope, receive, send, root, headers):
     except (RemError, ValueError) as error:
         await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
         return
+    from ...rem.reader import owner_changed
+    # The owner's own change shows now, not at the reader's next rebuild interval.
+    # A task status read changes nothing.
+    if not (scope["path"] == "/rem/task" and body.get("action", "status") == "status"):
+        await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 

@@ -587,11 +587,17 @@ def claude_run(
     cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
     session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
     model: str = typer.Option("", "--model", help="Claude model override"),
-    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+    timeout: int = typer.Option(600, "--timeout", min=1, max=3600, help="Maximum run time in seconds"),
+    permission_mode: str = typer.Option(
+        "default", "--permission-mode", metavar="default|acceptEdits|plan|...",
+        help="default asks before each edit or command, and with nobody to ask refuses them; "
+             "acceptEdits lets Claude change files in --cwd. Refused tools are listed in permission_denials."),
 ):
     """Experimental: send one prompt to Claude Code and print the result as JSON (reply, status, cost, session ID). Runs Claude Code in --cwd; --session resumes an earlier session."""
-    from ..useful_tools.claude_code import run_co_claude
+    from ..useful_tools.claude_code import PERMISSION_MODES, run_co_claude
 
+    if permission_mode not in PERMISSION_MODES:
+        raise typer.BadParameter(f"use one of {', '.join(PERMISSION_MODES)}", param_hint="--permission-mode")
     result = run_co_claude(
         prompt=prompt,
         cwd=str(cwd),
@@ -599,6 +605,7 @@ def claude_run(
         model=model,
         timeout=timeout,
         workspace=cwd,
+        permission_mode=permission_mode,
     )
     print(result)
     import json

@@ -9,10 +9,14 @@ import json
 import os
 import posixpath
 import re
+import subprocess
+import sys
 import tempfile
+import time
 import webbrowser
 from collections import Counter
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import CATEGORIES, MAP_DAYS, Notebook, RemError, read_json, state_path
@@ -134,6 +138,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     `local`: this machine's own reader (the file snapshot, the loopback live
     reader). Labelled excerpts are added only then; the O Chat view never has them.
     """
+    from .store_messages import owner_addresses
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
@@ -278,7 +283,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
-            "owner": owner}
+            "owner": owner,
+            # The owner's own addresses, so the reader can tell mail said to him from a list or Bcc copy.
+            "owner_addresses": sorted(owner_addresses(root)) if local else []}
     from .project_data import enrich_records
     data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
     from .today import queue as today_queue
@@ -292,6 +299,10 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from . import approvals
     data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
     data['approval_pending'] = approvals.pending(root) if local else []
+    from . import service as clock
+    from .morning import sent_by_rem
+    moment = clock.now()
+    data['sent_by_rem'] = sent_by_rem(root, moment - timedelta(days=1), moment) if local else []
     if not local:
         data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:
@@ -376,7 +387,10 @@ def _detail_data(full: dict, shell: dict) -> dict:
 def render(root: Path, *, live: bool = False, local: bool = False) -> str:
     """`live`: served by the Host (rem_http.py), so the page may ask it to translate.
     `local`: read on this machine by its owner (see `snapshot`)."""
-    full = snapshot(root, local, today=live)
+    return _page(snapshot(root, local, today=live), live=live)
+
+
+def _page(full: dict, *, live: bool) -> str:
     shell = full if live else _today_data(full)
     data = _script_json({**shell, "live": live, "deferred_details": True,
                          "detail_url": "/rem/data.json" if live else ""})
@@ -396,26 +410,31 @@ def _script_json(data: dict) -> str:
     return data
 
 
-def reader_version(root: Path) -> tuple:
-    """Cheap metadata key for the live reader, including retained source edits.
+def reader_version(root: Path) -> list:
+    """Cheap key for the saved pages: a fixed handful of stat calls, never a listing.
 
-    Do not follow directory links or inspect bodies. SQLite's shared-memory
-    bookkeeping changes on reads; an empty WAL has no committed frames.
-    Committed data lives in the db and nonempty WAL.
+    REM's writes touch `.state/reader-changed` (files.atomic_write); the category
+    folders' times catch a page added, renamed or removed by hand; the database
+    and a nonempty WAL hold committed rows; the notebook's day turns the Today
+    queue over. A page edited in place by another tool is caught by the
+    background walk (tree_version) each REBUILD_INTERVAL. The template is part of the key, so a new
+    install re-renders.
     """
-    files = []
-    for directory, dirs, names in os.walk(root):
-        dirs[:] = sorted(name for name in dirs if name != ".git")
-        for name in sorted(names):
-            if name == "rem.db-shm":
-                continue
-            path = Path(directory) / name
-            stat = path.lstat()
-            if name == "rem.db-wal" and not stat.st_size:
-                continue
-            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
-    template = TEMPLATE.stat()
-    return (str(root.resolve()), str(TEMPLATE), template.st_mtime_ns, template.st_size, tuple(files))
+    from .files import CHANGED
+    state = root / ".state"
+    paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
+             state / "rem.db", state / "rem.db-wal", TEMPLATE]
+    from .service import notebook_today
+    # The Today queue and every "overdue" turn over at the notebook's midnight.
+    key = [str(root.resolve()), str(TEMPLATE), str(notebook_today(root)) if root.is_dir() else None]
+    for path in paths:
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            info = None
+        empty_wal = info is not None and path.name == "rem.db-wal" and not info.st_size
+        key.append(None if info is None or empty_wal else [info.st_mtime_ns, info.st_size])
+    return key
 
 
 def reader_path(root: Path) -> Path:
@@ -424,19 +443,17 @@ def reader_path(root: Path) -> Path:
     return Path(tempfile.gettempdir()) / f"co-rem-{digest}.html"
 
 
-def write_reader(root: Path) -> Path:
-    page = render(root, local=True)
-    path = reader_path(root)
+def _replace(path: Path, text: str) -> None:
     # The public name is predictable. Write a private random file, then replace
     # the directory entry atomically so a planted link can never be truncated.
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", prefix="co-rem-", suffix=".html",
+            mode="w", encoding="utf-8", prefix="co-rem-", suffix=path.suffix,
             dir=path.parent, delete=False,
         ) as output:
             temporary = Path(output.name)
-            output.write(page)
+            output.write(text)
         if path.is_symlink():
             raise OSError(f"refusing to replace a planted reader link: {path}")
         if os.name != "nt":
@@ -445,7 +462,345 @@ def write_reader(root: Path) -> Path:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def write_reader(root: Path) -> Path:
+    path = reader_path(root)
+    _replace(path, render(root, local=True))
     return path
+
+
+# ---- Saved pages: an open is a file read, the rebuild runs behind it (owner, 2026-11-09) ----
+# Rendering a 31,136-file notebook took 35 s for the live page and 73 s for its
+# details, and every open did it again. Two builds, each keyed by reader_version:
+# "live" is the Host's page; "full" is its details and the offline file page,
+# made from one snapshot. A build runs once at a time, in a detached process.
+BUILDS = {"live.html": "live", "data.json": "full", "file.html": "full"}
+# A rebuild costs ~100 s of CPU on a real notebook under load, and a night run
+# keeps writing: at most one per interval unless the owner acted. Each interval
+# the background build walks the notebook (~17 s of stat calls, never on the
+# request path) for edits other tools make without REM's writers.
+REBUILD_INTERVAL = 600
+# "Next pass" and schedule text move with the clock: at most this late.
+STALE_SCHEDULE_SECONDS = 3600
+# The live page asks for its details as soon as it loads, so it keeps both current.
+NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
+LOG_LINES = 200
+# A notebook whose last render took less than this is rendered again during an
+# explicit co rem open, so the page it opens is current; a larger one opens the
+# saved page at once and is rebuilt behind it.
+SYNC_RENDER_SECONDS = 2.0
+
+
+class CacheRefused(OSError):
+    """The cache folder exists but is not this user's alone (a shared /tmp)."""
+
+
+def _cache_dir() -> Path:
+    """One private folder per user in the temporary directory, never in the notebook.
+    CONNECTONION_REM_CACHE names another folder (each test gets its own)."""
+    path = Path(os.environ.get("CONNECTONION_REM_CACHE") or
+                Path(tempfile.gettempdir()) / f"co-rem-cache-{os.getuid() if os.name != 'nt' else 'user'}")
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if (path.is_symlink() or not path.is_dir()
+            or os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+        raise CacheRefused(f"refusing a reader cache folder another user could change: {path}")
+    return path
+
+
+def _cached(root: Path, name: str) -> Path:
+    digest = hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
+    return _cache_dir() / f"{digest}-{name}"
+
+
+def _read(path: Path):
+    if path.is_symlink():
+        raise OSError(f"refusing to read a planted reader link: {path}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+
+def _manifest(root: Path) -> dict:
+    """{files: {name: file}, rows: {build: row}}: the one file that says which saved
+    pages belong together. It is written last, so a crash midway leaves the
+    previous set whole."""
+    text = _read(_cached(root, "current.json"))
+    return json.loads(text) if text else {"files": {}, "rows": {}}
+
+
+def saved(root: Path, build: str) -> dict:
+    """{version, tree, as_of, built_at, checked_at} of a build's saved pages; {} before the first."""
+    return _manifest(root)["rows"].get(build, {})
+
+
+def page_path(root: Path, name: str):
+    """The saved live.html or data.json of the current set, or the file page; None before.
+
+    The file page keeps one name per notebook: `co rem open` prints that link, and
+    a tab already open on it reaches the newest render on reload."""
+    if name == "file.html":
+        return _cached(root, name) if _cached(root, name).exists() else None
+    file = _manifest(root)["files"].get(name)
+    return _cache_dir() / file if file else None
+
+
+def _read_page(root: Path, name: str):
+    path = page_path(root, name)
+    return _read(path) if path else None
+
+
+def _now() -> float:
+    return time.time()
+
+
+def tree_version(root: Path) -> str:
+    """Every file's name, time and size, hashed: the background build's check for
+    edits that touch no marker. Left out, as from the marker: the lock's owner
+    file, rewritten by the Host's minute tick, and the marker itself. SQLite's
+    shared memory changes on reads; an empty WAL has no committed frames."""
+    from .files import QUIET_STATE
+    files = []
+    for directory, dirs, names in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(names):
+            path = Path(directory) / name
+            stat = path.lstat()
+            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
+                continue
+            files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
+    return hashlib.sha256(json.dumps(files).encode()).hexdigest()
+
+
+def _render(root: Path, build: str, as_of: str | None = None) -> tuple[dict, str, float]:
+    """({file name: text}, as_of, seconds it took) of one build; nothing is written.
+    Builds published together share `as_of`, so the page and its details agree."""
+    began = time.monotonic()
+    if build == "live":
+        shell = snapshot(root, local=True, today=True)
+        shell["as_of"] = as_of or shell["as_of"]
+        return {"live.html": _page(shell, live=True)}, shell["as_of"], time.monotonic() - began
+    full = snapshot(root, local=True)
+    full["as_of"] = as_of or full["as_of"]
+    return ({"data.json": json.dumps(full, ensure_ascii=False, default=str), "file.html": _page(full, live=False)},
+            full["as_of"], time.monotonic() - began)
+
+
+def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
+    """New files under a new generation's names, then the manifest naming them. The
+    set it replaces is kept for a page still open on it; older ones are removed."""
+    manifest, generation = _manifest(root), f"{time.time_ns():x}"
+    files, rows = dict(manifest["files"]), dict(manifest["rows"])
+    prefix = _cached(root, "").name
+    for build, (texts, as_of, took) in rendered.items():
+        for name, text in texts.items():
+            if name != "file.html":
+                files[name] = f"{prefix}{generation}-{name}"
+                _replace(_cache_dir() / files[name], text)
+        rows[build] = {"version": version, "tree": tree, "as_of": as_of, "took": took,
+                       "built_at": _now(), "checked_at": _now()}
+    _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
+    # The file page is self-contained: replaced in place, after the set it belongs to.
+    for texts, _, _ in rendered.values():
+        if "file.html" in texts:
+            _replace(_cached(root, "file.html"), texts["file.html"])
+    keep = {*files.values(), *manifest["files"].values(), _cached(root, "file.html").name}
+    for old in os.listdir(_cache_dir()):
+        if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
+            (_cache_dir() / old).unlink(missing_ok=True)
+
+
+def _checked(root: Path, build: str, moment: float) -> None:
+    manifest = _manifest(root)
+    manifest["rows"][build] = {**manifest["rows"][build], "checked_at": moment}
+    _replace(_cached(root, "current.json"), json.dumps(manifest))
+
+
+def owner_changed(root: Path) -> bool:
+    """The owner acted (in the reader, or an explicit co rem open): rebuild now, not
+    at the next interval. A build already running sees this and passes again.
+    True when a build is running or was started."""
+    try:
+        _replace(_cached(root, "owner"), str(_now()))
+    except CacheRefused:
+        return False
+    return _spawn_refresh(root, ("live", "full"))
+
+
+def _owner_since(root: Path, moment: float) -> bool:
+    try:
+        return float(_read(_cached(root, "owner")) or 0) >= moment
+    except ValueError:
+        # Unreadable: assume the owner just acted, once, rather than miss it.
+        _replace(_cached(root, "owner"), str(_now()))
+        return True
+
+
+def failure(root: Path):
+    """{at, log} of the newest background build when it failed; None otherwise."""
+    text = _read(_cached(root, "failed.json"))
+    return json.loads(text) if text else None
+
+
+def _keep_failure(root: Path) -> None:
+    _replace(_cached(root, "failed.json"),
+             json.dumps({"at": datetime.fromtimestamp(_now(), timezone.utc).isoformat(timespec="seconds"),
+                         "seconds": _now(), "log": str(_cached(root, "build.log"))}))
+
+
+@contextmanager
+def _building(root: Path, *, wait: bool):
+    """Yields whether this caller holds the one build lock (always True with wait)."""
+    from .files import _try_lock
+    fd = os.open(_cached(root, "build.lock"), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        while True:
+            try:
+                _try_lock(fd)
+                held = True
+                break
+            except BlockingIOError:
+                if not wait:
+                    held = False
+                    break
+                time.sleep(0.2)
+        yield held
+    finally:
+        os.close(fd)
+
+
+def refresh(root: Path, builds=("live", "full")) -> None:
+    """The background build: bring these saved pages, and any others already saved,
+    up to date, unless a build runs. It passes again only for an owner action made
+    meanwhile, also one made after its last look (bounded); other writes wait for
+    the next interval."""
+    for _ in range(3):
+        finished = _refresh_once(root, builds)
+        if finished is None or not _owner_since(root, finished):
+            return
+
+
+def _refresh_once(root: Path, builds):
+    """The start of the last pass, after the lock is released; None when another build ran."""
+    with _building(root, wait=False) as mine:
+        if not mine:
+            return None
+        wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
+        for _ in range(3):
+            started, version = _now(), reader_version(root)
+            rows = {build: saved(root, build) for build in wanted}
+            stale = [build for build in wanted if _behind(rows[build], version, started)]
+            tree = None
+            if any(_unchecked(rows[build], started) for build in wanted if build not in stale):
+                tree = tree_version(root)
+                for build in wanted:
+                    if build in stale:
+                        continue
+                    if rows[build].get("tree") != tree:
+                        stale.append(build)
+                    else:
+                        _checked(root, build, started)
+            if not stale:
+                return started
+            stale = [build for build in wanted if build in stale]
+            # Walked before rendering, so the page carries the tree it was built from
+            # and the next check does not rebuild it again (+17 s on a 100 s build).
+            tree = tree or tree_version(root)
+            as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            _publish(root, {build: _render(root, build, as_of) for build in stale}, version, tree)
+            _cached(root, "failed.json").unlink(missing_ok=True)
+            if not _owner_since(root, started):
+                return started
+        return started
+
+
+def _behind(row: dict, version: list, moment: float) -> bool:
+    """Rebuild without walking: the key changed, or the clock text is an hour old."""
+    return row.get("version") != version or moment - row.get("built_at", 0) >= STALE_SCHEDULE_SECONDS
+
+
+def _unchecked(row: dict, moment: float) -> bool:
+    return moment - row.get("checked_at", 0) >= REBUILD_INTERVAL
+
+
+def main(argv) -> None:
+    """The detached build (python -m connectonion.rem.reader ROOT BUILD...)."""
+    root = Path(argv[0])
+    try:
+        refresh(root, argv[1:])
+    except Exception:
+        _keep_failure(root)
+        raise  # the traceback is the log's last lines
+
+
+def _spawn_refresh(root: Path, builds) -> bool:
+    """Start the detached build; True when one is running or was started. A build
+    that failed is not started again within REBUILD_INTERVAL."""
+    with _building(root, wait=False) as free:
+        if not free:
+            return True
+    failed = failure(root)
+    if failed and _now() - failed.get("seconds", 0) < REBUILD_INTERVAL:
+        return False
+    log = _cached(root, "build.log")
+    kept = (_read(log) or "").splitlines(keepends=True)[-LOG_LINES:]
+    _replace(log, "".join(kept))
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(log, flags, 0o600), "ab") as output:
+        subprocess.Popen([sys.executable, "-m", "connectonion.rem.reader", str(root), *builds],
+                         stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    return True
+
+
+def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, bool]:
+    """(the saved page, whether a newer one is being built). The first ever is built
+    here, once; a stale one is returned as it is and rebuilt in the background,
+    at once when the owner asked (`owner`). A cache folder that is refused is not
+    used: the page is rendered now, as before saved pages."""
+    try:
+        version = reader_version(root)
+        text = _read_page(root, name)
+    except CacheRefused:
+        return _render(root, BUILDS[name])[0][name], False
+    build = BUILDS[name]
+    quick = owner and saved(root, build).get("took", SYNC_RENDER_SECONDS) < SYNC_RENDER_SECONDS
+    if text is None or quick:
+        with _building(root, wait=True):
+            if quick or (text := _read_page(root, name)) is None:
+                _publish(root, {build: _render(root, build)}, version)
+                text = _read_page(root, name)
+    return text, _rebuild_stale(root, name, version, owner=owner)
+
+
+def latest(root: Path) -> dict:
+    """When the live page was rendered and whether the newest build failed (polled by
+    the open page); starts a rebuild when one is due."""
+    try:
+        _rebuild_stale(root, "live.html", reader_version(root))
+        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root)}
+    except CacheRefused:
+        return {"as_of": None, "failed": None}
+
+
+def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False) -> bool:
+    """Start the background build when this page needs one that is missing, behind the
+    key, or older than REBUILD_INTERVAL, and it is due (owner: now). True when a
+    build was started or is running."""
+    rows = {build: saved(root, build) for build in ("live", "full")}
+    missing = [build for build in NEEDS[name] if not rows[build]]
+    behind = [build for build in NEEDS[name] if rows[build] and _behind(rows[build], version, _now())]
+    unchecked = [build for build in NEEDS[name] if rows[build] and _unchecked(rows[build], _now())]
+    last = max((row.get("built_at", 0) for row in rows.values() if row), default=0)
+    if behind and owner:
+        return owner_changed(root)
+    if missing or behind and _now() - last >= REBUILD_INTERVAL:
+        return _spawn_refresh(root, list(dict.fromkeys(missing + behind + unchecked)))
+    if unchecked:  # the walk decides, in the background, whether anything changed
+        _spawn_refresh(root, unchecked)
+    return False
 
 
 def open_reader(root: Path, *, launch: bool = True) -> Path:
@@ -499,9 +854,34 @@ def host_online(address: str, timeout: float = 3.0) -> bool:
 
 
 def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
-    path = open_reader(root, launch=launch)
-    return {"page": str(path), "link": path.as_uri(), "launched": launch,
-            "note": "a snapshot of the notebook as it is now; co rem open again shows later changes", **notes}
+    """The saved offline page, at once; an explicit open is the owner acting, so a
+    stale one starts its rebuild now."""
+    try:
+        _, building = cached_page(root, "file.html", owner=True)
+        path, failed = page_path(root, "file.html"), failure(root)
+    except CacheRefused as refused:
+        path = write_reader(root)
+        return {"page": str(path), "link": path.as_uri(), "launched": _launch(path, launch),
+                "note": f"rendered now, not from a saved page: {refused}", **notes}
+    note = "the notebook as of its last render"
+    if building:
+        note += "; a newer page is being built, co rem open again in a minute shows it"
+    if failed:
+        note += f"; the newest rebuild failed at {failed['at']} (details: {failed['log']})"
+    return {"page": str(path), "link": path.as_uri(), "launched": _launch(path, launch), "note": note, **notes}
+
+
+def _launch(path: Path, launch: bool) -> bool:
+    if launch:
+        webbrowser.open(path.as_uri())
+    return launch
+
+
+def _has_saved_page(root: Path) -> bool:
+    try:
+        return _read_page(root, "file.html") is not None
+    except CacheRefused:
+        return False
 
 
 def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
@@ -510,7 +890,18 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import ensure_local
+    from .live_host import ensure_local, local_reader, start
+    from .live_host import saved_host_dead
+    if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
+        # No Host answers: the saved page now, co ai starting behind it. Waiting
+        # for it (up to 20 s) before the first paint was most of a cold open.
+        try:
+            failed = start(address)
+        except (OSError, RemError) as error:
+            return open_snapshot(root, launch=launch, live=f"could not start co ai: {error}; run `co ai` to diagnose")
+        return open_snapshot(root, launch=launch, live=failed or (
+            "co ai is starting; this is the page saved at the last render. "
+            "co rem open again in a moment opens the live reader, which can translate"))
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
@@ -518,6 +909,8 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
         return open_snapshot(root, launch=launch, live=f"Live reader unavailable: {failure}; showing a snapshot")
+    if _has_saved_page(root):  # an explicit open is the owner acting
+        _rebuild_stale(root, "live.html", reader_version(root), owner=True)
     if launch:
         webbrowser.open(url)
     return {"page": url.split("?")[0], "link": url, "launched": launch,
@@ -549,3 +942,7 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         result["warning"] = ("O Chat does not serve this route yet (openonion/oo-chat#246); "
                              "until it is deployed the page opens as an empty chat")
     return result
+
+
+if __name__ == "__main__":  # the detached rebuild started by _spawn_refresh
+    main(sys.argv[1:])

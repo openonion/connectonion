@@ -9,7 +9,6 @@ again on the next request instead of being shown.
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
@@ -198,7 +197,9 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
 
 
 def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .inquiry import stage_config
     from .service import now
+    config = stage_config(root, config, "translate")
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")
@@ -365,32 +366,27 @@ def attempts_today(root):
 
 
 def languages(root):
+    """The languages pages are translated into: the reader's requests, then the configured
+    list, or when that is empty the languages the owner writes, detected (D-103)."""
     from .files import read_json
-    from .config import read_config
+    from .languages import owner_languages
     requested = read_json(state_path(root, 'translation-requests.json'), {})
-    return list(dict.fromkeys([*requested, *read_config(root)['languages']]))
+    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
 
 
 def coverage(root, *, next_run=None):
-    """Current coverage and the next queue, sharing one remaining daily budget."""
-    from .config import read_config
+    """Current coverage and what is queued: every missing page of a requested language (D-104)."""
     records, targets = Notebook(root).list(), languages(root)
     directory = state_path(root, "translations")
     saved = sorted(path.name for path in directory.iterdir()
                    if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
-    from .service import notebook_today, notebook_zone
-    config = read_config(root)
-    resets = next_run and datetime.fromisoformat(next_run).astimezone(notebook_zone(config)).date() > notebook_today(root)
-    remaining = max(0, config["limits"]["translations_per_day"] - (0 if resets else attempts_today(root)))
     report = {}
     for language in dict.fromkeys([*targets, *saved, "zh"]):
         if language.split("-")[0].lower() == "en":
             continue
         done = sum(cached(root, record, language) is not None for record in records)
-        queued = min(len(records) - done, remaining) if language in targets else 0
         report[language] = {"total": len(records), "translated": done,
-                            "requested": language in targets, "queued": queued}
-        remaining -= queued
+                            "requested": language in targets, "queued": len(records) - done if language in targets else 0}
     return report
 
 

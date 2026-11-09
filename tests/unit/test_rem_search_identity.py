@@ -134,7 +134,7 @@ def test_unique_whole_alias_keeps_best_match():
 def test_identity_details_use_original_visible_facts_without_poisoning_translation_cache():
     page = TEMPLATE.read_text()
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["identityDetails", "parseFacts", "rawSection", "plainLine", "plainValue", "knownValue"])
+                          for name in ["identityDetails", "parseFacts", "topLevelParts", "rawSection", "plainLine", "plainValue", "knownValue"])
     result = _run_reader_js(functions + r'''
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, UNFILLED_LINE = /^not investigated$/;
       const youify = s => s;

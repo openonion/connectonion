@@ -42,6 +42,8 @@ def prepare(root, config, *, scheduled):
     batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
     from .people_basics import refresh as refresh_basics
     basics_changed = refresh_basics(root)
+    from .direct_send import refresh as set_direct_send
+    basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
     today, recent = service.runs_today(logs, service.notebook_zone(config))
@@ -90,7 +92,6 @@ def prepare_translation_round(root, config, *, scheduled):
 
 
 def _jobs(root, first, logs, sources):
-    limit = read_config(root)["limits"]["jobs_per_round"]
     from datetime import datetime, timedelta
     from .people_pages import correspondents_since, queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
@@ -99,7 +100,7 @@ def _jobs(root, first, logs, sources):
     if first:
         resting = daily._found_nothing_lately(root)
         return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])[:limit]
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])
     rows = [{**row, "kind": "person"} for row in people_queue(root)
             if row["mode"] == "full" or row["last_activity"] > previous]
     rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
@@ -113,7 +114,7 @@ def _jobs(root, first, logs, sources):
     rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
-    return (daily._owner_due(root) + rows)[:limit]
+    return daily._owner_due(root) + rows
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -173,13 +174,12 @@ def prepare_task(root, cursor, config, directory):
     auto_dispatch(root, config)
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
-            remaining = service.daily_cap(root)["remaining"]
-            cursor["investigation_left"] = min(remaining, max(1, min(remaining - 2, daily.INVESTIGATION_CALLS)))
+            cursor["investigation_left"] = PORTION
         if cursor["investigation_left"] <= 0:
-            if cursor["current"] or cursor.get("project_quote"):
-                return {"stop": "investigation portion cap reached; the next scheduled slot can resume this round"}
-            cursor["job_index"] = len(cursor["jobs"])
-            break
+            task = _translation_turn(root, cursor, config, directory)
+            if task:
+                return task
+            cursor["investigation_left"] = PORTION
         task = _prepare_job(root, cursor, config, directory)
         if task:
             return task
@@ -209,13 +209,34 @@ def _reset_attempts(root, cursor):
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
 
 
+# D-104: a portion interleaves the night's work and never stops it. After PORTION
+# investigation turns, translation gets a share sized from its backlog (D-71: "翻译…
+# 应该安排的轮次不够多"), then investigation resumes in the same turn.
+PORTION = 8
+
+
+def translation_share(root):
+    """Translation turns per portion: a fiftieth of the pages waiting, at least 4, never more than wait."""
+    waiting = sum(len(translate.backlog(root, tag)) for tag in translate.languages(root)
+                  if tag.split("-")[0].lower() != "en")
+    return min(waiting, max(4, -(-waiting // 50)))
+
+
+def _translation_turn(root, cursor, config, directory):
+    cursor.setdefault("translation_left", translation_share(root))
+    task = prepare_translation(root, cursor, config, directory) if cursor["translation_left"] > 0 else None
+    if task:
+        cursor["translation_left"] -= 1
+        return task
+    cursor.pop("translation_left")
+    return None
+
+
 def prepare_translation(root, cursor, config, directory):
     _reset_attempts(root, cursor)
     for language in translate.languages(root):
         if language.split("-")[0].lower() == "en":
             continue
-        if translate.attempts_today(root) >= config["limits"]["translations_per_day"]:
-            return None
         attempted = cursor.get("translation_attempts", [])
         for record in translate.backlog(root, language, changed=cursor["changed"]):
             if [language, record] in attempted:
@@ -226,8 +247,10 @@ def prepare_translation(root, cursor, config, directory):
 
 
 def finish(root, cursor):
+    from .night_stats import recent
     cursor.update(done=True, pending=None)
-    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"])
+    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"],
+                         night=recent(root, nights=1)[0])
     write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if cursor["slot"]:
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
@@ -270,7 +293,7 @@ def _prepare_job(root, cursor, config, directory):
     task_inputs = state.get("input_paths", [])
     from . import inquiry
     inquiry_phase = state.get("inquiry", "plan")
-    if inquiry.routing(root) and inquiry_phase != "render":
+    if inquiry.inquiry_routed(root) and inquiry_phase != "render":
         task = inquiry.prepare(root, directory, items, config, inquiry_phase, plan_path=state.get("plan_path"), native=True)
         task["before"] = {record: book.read(record)}
         return _task("inquiry", task, cursor, stage=inquiry_phase, record=record,

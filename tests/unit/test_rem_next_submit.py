@@ -657,9 +657,9 @@ def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
 @pytest.mark.parametrize("key,value", [
     ("language", "zh"), ("languages", "zh,en"),
     ("model", "gpt-6-astra"), ("speed", "standard"), ("effort", "high"),
-    ("models.summary", "gpt-6.1-sol"),
+    ("models.summary", "gpt-6.1-sol"), ("models.level2", "gpt-6.1-sol"), ("models.level4", "gpt-6.1-sol"),
     ("schedule.times", "09:00,21:00"), ("schedule.timezone", "Pacific/Honolulu"),
-    ("limits.runner_calls_per_day", "100"), ("limits.translations_per_day", "20"),
+    ("limits.runner_calls_per_day", "100"),
     ("limits.timeout_seconds", "1800"), ("limits.workers", "8"),
     ("limits.investigation_quota_points", "40"), ("limits.quota_floor_percent", "95"),
     ("limits.depth_quota_points", "40"), ("limits.depth_workers", "4"),
@@ -1262,24 +1262,6 @@ def test_cli_json_and_logs_expose_the_native_work(trial):
     assert task["id"] in logs.stdout
 
 
-def test_translation_limit_uses_prior_rounds_from_today(trial):
-    from connectonion.rem import native_round
-    from connectonion.rem.config import set_config
-    set_config(trial, ["languages", "zh", "limits.translations_per_day", "1"])
-    book = Notebook(trial)
-    book.write("notes/pilot.md", "# Pilot\n\nRead the pilot notes.\n")
-    with maintenance_lock(trial):
-        cursor = native_round.prepare(trial, read_config(trial), scheduled=False)
-        cursor.update(changed=["notes/pilot.md"], jobs=[], summaries=[], same_left=0)
-        write_json(state_path(trial, "round.json"), cursor)
-        run, path = daily._reserve(trial, "daily-translation", 1, {})
-        run.update(outcome="completed")
-        write_json(path, run)
-    result = native.next_task(trial)
-    assert result["outcome"] == "done", result
-    assert not any(task.get("stage") == "translate" for task in native.pending(trial))
-
-
 def test_later_round_retries_held_refused_material(trial):
     from connectonion.rem.refusals import REFUSED, remember_refusal, refused_pages
     record = "people/avery-lin.md"
@@ -1837,11 +1819,12 @@ def test_later_slot_recovers_accepted_translation_and_continues_backlog(trial, m
     assert recovered['translations'] == [task['record']]
 
 
-def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, translation_round):
+def test_a_spent_portion_resumes_investigation_after_translation_in_the_same_slot(trial, monkeypatch, translation_round):
+    # D-104: rc62 waited for the next scheduled slot to refill the portion; now the round goes on.
     from connectonion.rem import native_round
     cursor = translation_round
     cursor.update(jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], current={'record': 'notes/pilot.md'},
-                  investigation_left=0)
+                  investigation_left=0, translation_left=1)
     write_json(state_path(trial, 'round.json'), cursor)
     translation = native.next_task(trial, scheduled=True)
     assert translation['stage'] == 'translate'
@@ -1853,13 +1836,11 @@ def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, t
         return native_round._task('runner', prepared, state, stage='investigate', record='notes/pilot.md',
                                   operation='investigation')
     monkeypatch.setattr(native_round, '_prepare_job', resume_job)
-    moment = service.now() + timedelta(hours=1)
-    monkeypatch.setattr(service, 'now', lambda: moment)
     result = native.next_task(trial, scheduled=True)
     assert result['outcome'] == 'task' and result['stage'] == 'investigate', result
     current = read_json(state_path(trial, 'round.json'), {})
     assert current['run']['id'] == cursor['run']['id']
-    assert current['portion_slot'] == moment.isoformat() and current['investigation_left'] > 0
+    assert current['investigation_left'] == native_round.PORTION - 1
 
 
 def _extraction_task(root):
@@ -2432,15 +2413,15 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
             native.submit(trial, task['id'])
 
 
-def test_a_page_task_saved_before_tasks_per_night_existed_still_submits(trial):
-    # rc61 hashed config.yaml before limits.tasks_per_night was a default. The nightly
-    # task cap governs future work, like drafts_per_night, so it is not material.
+def test_a_page_task_saved_before_the_count_caps_were_retired_still_submits(trial):
+    # rc62 hashed config.yaml with the count caps D-104 retired. They governed future
+    # work, never page material, so a task saved then still submits.
     record, source = _feedback(trial)
     task = native.next_task(trial)
     _candidate(trial, task, record, source)
     saved = native.pending(trial)[0]
     config = read_config(trial)
-    del config['limits']['tasks_per_night']
+    config['limits'].update(tasks_per_night=3, drafts_per_night=30, jobs_per_round=8, translations_per_day=100)
     saved['inputs'][str(trial / 'config.yaml')] = native._config_hash(config)
     write_json(Path(task['material']) / 'task.json', saved)
     assert _submit(trial, task)['outcome'] == 'accepted'

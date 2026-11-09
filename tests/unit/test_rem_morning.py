@@ -71,10 +71,10 @@ def morning_book(tmp_path, monkeypatch):
     from connectonion.rem import morning
     prepare(tmp_path)
     set_config(tmp_path, ['schedule.timezone', 'Australia/Sydney', 'notify.channel', 'telegram',
-                          'notify.target', 'fictional-owner', 'language', 'zh'])
+                          'notify.target', 'fictional-owner', 'languages', 'zh'])
     at(monkeypatch, 2026, 11, 7, 19)  # 06:00 Sydney, 8 November
     monkeypatch.setattr(morning, 'today_link', lambda root: 'co rem open')
-    monkeypatch.setattr(morning, 'actionable', lambda root: ROWS[read_config(root)['language']])
+    monkeypatch.setattr(morning, 'actionable', lambda root: ROWS['zh' if morning._zh(root, read_config(root)) else 'en'])
     write_json(state_path(tmp_path, 'night.json'), {'date': '2026-11-07', 'items': {
         'one': {'outcome': {'kind': 'prepared', 'draft_id': 'draft-one', 'prepared_at': '2026-11-07T23:30:00+11:00'}},
         'two': {'outcome': {'kind': 'prepared', 'draft_id': 'draft-one', 'prepared_at': '2026-11-07T23:30:00+11:00'}},
@@ -96,7 +96,7 @@ def morning_book(tmp_path, monkeypatch):
 @pytest.mark.parametrize('language', ['zh', 'en'])
 def test_full_night_message_is_the_pm_text(morning_book, language):
     from connectonion.rem import morning
-    set_config(morning_book, ['language', language])
+    set_config(morning_book, ['languages', language])
     value = morning.preview(morning_book)
     assert value['message'] == FULL[language]
     assert value['counts'] == {'sent': 1, 'drafted': 1, 'finished': 1, 'explained': 1}
@@ -169,7 +169,7 @@ def test_a_preview_error_claims_nothing_and_the_next_tick_retries(morning_book, 
 def test_real_outcomes_lines_use_the_rows_words_never_an_address(morning_book, monkeypatch):
     from connectonion.rem import approvals, drafts, morning, today
     monkeypatch.setattr(morning, 'actionable', REAL_ACTIONABLE)
-    set_config(morning_book, ['language', 'en'])
+    set_config(morning_book, ['languages', 'en'])
     thread = {'thread': 'fictional-thread-1', 'provider': 'outlook'}
     monkeypatch.setattr(today, 'queue', lambda root: [
         {'key': 'k1', 'keys': ['k1'], 'title': 'Mara Quill', 'closed': False, 'quiet': False, 'dir': 'mine',
@@ -193,7 +193,7 @@ def test_zero_counts_and_empty_decisions_are_left_out(morning_book, monkeypatch)
         state_path(morning_book, name).unlink()
     monkeypatch.setattr(morning, 'actionable', lambda root: [])
     assert morning.preview(morning_book)['message'] == '昨夜：跑完 1 项任务。\n打开 Today：co rem open'
-    set_config(morning_book, ['language', 'en'])
+    set_config(morning_book, ['languages', 'en'])
     assert morning.preview(morning_book)['message'] == 'Overnight: 1 task finished.\nOpen Today: co rem open'
 
 
@@ -295,12 +295,12 @@ def test_send_once_and_dry_run_does_not_claim(morning_book, monkeypatch):
     from connectonion.rem import morning
     send = Mock()
     monkeypatch.setattr(morning, 'send_message', send)
-    expected = morning.preview(morning_book)['message']
-    assert morning.run(morning_book, dry_run=True)['message'] == expected
+    expected = morning.preview(morning_book)
+    assert morning.run(morning_book, dry_run=True)['message'] == expected['message']
     assert not state_path(morning_book, 'morning.json').exists()
     assert morning.run(morning_book)['status'] == 'sent'
     assert morning.run(morning_book)['status'] == 'sent'
-    send.assert_called_once_with('telegram', 'fictional-owner', expected)
+    send.assert_called_once_with('telegram', 'fictional-owner', expected['message'], expected['html'], expected['subject'])
 
 
 def test_failure_is_durable_and_never_retried(morning_book, monkeypatch):
@@ -437,7 +437,7 @@ def test_a_sent_draft_is_counted_once_as_sent(morning_book):
 
 def test_english_plurals(morning_book):
     from connectonion.rem import morning
-    set_config(morning_book, ['language', 'en'])
+    set_config(morning_book, ['languages', 'en'])
     write_json(state_path(morning_book, 'tasks/do-two/receipt.json'), {
         'finished_at': '2026-11-08T04:00:00+11:00', 'result': 'completed'})
     message = morning.preview(morning_book)['message']
@@ -450,3 +450,184 @@ def test_doctor_flags_unconfigured_selected_sender(morning_book, monkeypatch):
         {'channel': 'telegram', 'configured': False, 'next': 'co telegram check'}])
     rows = morning.doctor(morning_book)
     assert any(not row['ok'] and 'telegram' in row['detail'] for row in rows)
+
+
+@pytest.mark.parametrize('language,line', [('en', 'Replied for you: Mara Quill'), ('zh', '替你回了：Mara Quill')])
+def test_the_morning_note_names_who_rem_replied_to(morning_book, language, line):
+    from connectonion.rem import morning
+    # The note speaks the owner's detected language (morning mail), not config.language.
+    set_config(morning_book, ['languages', language])
+    queue = read_json(state_path(morning_book, 'approvals.json'), {})
+    queue['one']['title'] = 'Mara Quill'
+    write_json(state_path(morning_book, 'approvals.json'), queue)
+    assert line in morning.preview(morning_book)['message'].splitlines()
+    assert [row['title'] for row in morning.sent_by_rem(morning_book)] == ['Mara Quill']
+
+
+# ---------- the morning mail ----------
+LIVE = 'https://chat.openonion.ai/fictional-address/rem'
+
+
+def visible(html):
+    import re
+    return re.sub(r'\s+', ' ', re.sub(r'<style.*?</style>|<[^>]+>', ' ', html, flags=re.S))
+
+
+def mail_book(book):
+    """One fictional night of every kind REM reports, with the people's own names."""
+    write_json(state_path(book, 'approvals.json'), {
+        'avery': {'kind': 'reply', 'by': 'rem', 'status': 'sent', 'title': 'Avery Stone', 'subject': 'Re: Fernhill invoice',
+                  'release_at': '2026-11-08T02:00:00+11:00', 'keys': ['people/avery-stone.md\nAvery asked']},
+        'fern': {'kind': 'reply', 'by': 'rem', 'status': 'held', 'title': 'Fern Ivers', 'subject': 'Re: Lab keys',
+                 'release_at': '2026-11-08T06:05:00+11:00', 'keys': ['people/fern-ivers.md\nFern asked']}})
+    write_json(state_path(book, 'drafts/draft-mara.json'), {
+        'id': 'draft-mara', 'version': 'outlook:mara-1', 'status': 'prepared', 'to': 'mara@fernhill.example',
+        'subject': 'Re: Fernhill pilot dates', 'gist': 'Tell Mara the pilot starts Monday',
+        'prepared_at': '2026-11-07T23:10:00+11:00'})
+    write_json(state_path(book, 'night.json'), {'items': {'mara': {'outcome': {
+        'kind': 'prepared', 'title': 'Mara Quill', 'draft_id': 'draft-mara', 'source': 'outlook:mara-1', 'prepared_at': '2026-11-07T23:10:00+11:00'}}}})
+    write_json(state_path(book, 'tasks/do-fern/receipt.json'), {
+        'finished_at': '2026-11-08T03:00:00+11:00', 'result': 'completed', 'title': 'Fernhill Labs',
+        'text': 'Write up the pilot plan', 'record': 'orgs/fernhill-labs.md',
+        'deliverable': '/fictional/.state/tasks/do-fern/result.md'})
+    return book
+
+
+def test_mail_tells_what_rem_did_then_the_decisions(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    monkeypatch.setattr(morning, 'today_link', lambda root: LIVE)
+    value = morning.preview(mail_book(morning_book))
+    text = visible(value['html'])
+    lead = '昨夜 REM 替你拟好 3 份回信，发出 2 封；做完 1 项任务；查清 1 个问题'
+    assert value['subject'] == f'REM 早报 · {lead}，2 件要你拍板'
+    assert text.index(lead) < text.index('2 件要你拍板，在下面') < text.index('Fern Ivers')
+    for words in ('Fern Ivers', '06:05 前可撤回', 'Avery Stone', 'Fernhill invoice', '02:00 发出', 'Mara Quill',
+                  'Fernhill pilot dates', 'Tell Mara the pilot starts Monday', 'Fernhill Labs', '打开看结果',
+                  'CI is red on main', '已查清', '看稿并发送', '打开 Today'):
+        assert words in text, words
+    assert text.index('Fernhill Labs') < text.index('看稿并发送')  # done first, decisions after
+    assert '@' not in text and '/fictional' not in text and 'draft-mara' not in text and 'Re:' not in text
+    assert f'{LIVE}#r=orgs/fernhill-labs.md' in value['html']
+    assert value['html'].count('#22d27a;border') == 1  # one primary action
+
+
+def test_mail_without_a_live_reader_has_no_dead_buttons(morning_book):
+    from connectonion.rem import morning
+    html = morning.preview(mail_book(morning_book))['html']
+    assert 'href="co rem open"' not in html and '看稿并发送' not in html
+    assert 'Today 现在打不开' in visible(html)
+
+
+def test_quiet_morning_has_no_mail(tmp_path, monkeypatch):
+    from connectonion.rem import morning
+    prepare(tmp_path)
+    set_config(tmp_path, ['schedule.timezone', 'UTC', 'notify.channel', 'outlook'])
+    at(monkeypatch, 2026, 11, 8, 7)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [])
+    value = morning.preview(tmp_path)
+    assert (value['message'], value['html'], value['subject']) == ('', '', '')
+
+
+def test_language_is_the_owners_detected_one_not_config_language(morning_book):
+    from connectonion.rem import morning
+    set_config(morning_book, ['languages', '', 'language', 'en'])
+    write_json(state_path(morning_book, 'map.json'), {'owner': {'languages': {
+        'languages': ['zh', 'en'], 'shares': {'zh': 0.75, 'en': 0.25}, 'english_terms': []}}})
+    assert morning.preview(morning_book)['message'].startswith('昨夜：')
+    write_json(state_path(morning_book, 'map.json'), {'owner': {'languages': {
+        'languages': ['en', 'zh'], 'shares': {'en': 0.6, 'zh': 0.4}, 'english_terms': []}}})
+    value = morning.preview(morning_book)
+    assert value['message'].startswith('Overnight: ') and value['subject'].startswith('REM morning · ')
+
+
+def outlook_mailbox(monkeypatch, own='mara@fernhill.example'):
+    box = Mock()
+    box.my_addresses.return_value = {own}
+    monkeypatch.setattr('connectonion.useful_tools.outlook.Outlook', lambda: box)
+    return box
+
+
+def test_outlook_sends_from_and_to_the_linked_mailbox(monkeypatch):
+    from connectonion.rem import morning
+    box = outlook_mailbox(monkeypatch)
+    morning.send_message('outlook', '', 'Fernhill ready', '<p>Fernhill ready</p>', 'REM 早报')
+    box.send.assert_called_once_with('mara@fernhill.example', 'REM 早报', 'Fernhill ready', html='<p>Fernhill ready</p>')
+
+
+def test_outlook_refuses_any_other_recipient(monkeypatch):
+    from connectonion.rem import morning
+    from connectonion.rem.files import RemError
+    box = outlook_mailbox(monkeypatch)
+    with pytest.raises(RemError, match='linked Outlook mailbox'):
+        morning.send_message('outlook', 'team@fernhill.example', 'Fernhill ready', '<p>x</p>', 'REM')
+    box.send.assert_not_called()
+
+
+def test_outlook_run_sends_the_designed_mail(morning_book, monkeypatch):
+    from connectonion.rem import morning
+    set_config(morning_book, ['notify.channel', 'outlook', 'notify.target', ''])
+    box = outlook_mailbox(monkeypatch)
+    assert morning.run(morning_book)['status'] == 'sent'
+    to, subject, body = box.send.call_args.args
+    assert (to, body) == ('mara@fernhill.example', FULL['zh'])
+    assert subject.startswith('REM 早报') and box.send.call_args.kwargs['html'].startswith('<!DOCTYPE html>')
+
+
+def test_cli_dry_run_writes_the_mail_and_prints_its_path(morning_book, monkeypatch, tmp_path):
+    import tempfile
+    from connectonion.cli.main import app
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    set_config(morning_book, ['notify.channel', 'outlook', 'notify.target', ''])
+    result = CliRunner().invoke(app, ['rem', '--root', str(morning_book), 'morning', '--dry-run'])
+    assert result.exit_code == 0, result.output
+    line = result.stdout.splitlines()[-1]
+    path = tmp_path / 'rem-morning-2026-11-08.html'
+    assert line == f'Mail preview: {path}' and path.read_text().startswith('<!DOCTYPE html>')
+    assert not state_path(morning_book, 'morning.json').exists()
+
+
+def test_outlook_is_a_valid_channel(tmp_path):
+    prepare(tmp_path)
+    set_config(tmp_path, ['notify.channel', 'outlook'])
+    assert read_config(tmp_path)['notify']['channel'] == 'outlook'
+
+
+def test_mail_gives_one_person_one_decision_with_the_count(morning_book, monkeypatch):
+    # Two items for Mara filled two of the three decision slots and named her twice.
+    from connectonion.rem import morning
+    monkeypatch.setattr(morning, 'today_link', lambda root: LIVE)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [
+        {'id': 'reply:mara', 'kind': 'reply', 'title': 'Mara Quill', 'text': 'Fernhill 试点何时开始',
+         'keys': ['people/mara-quill.md\nMara asked']},
+        {'id': 'reply:mara-2', 'kind': 'reply', 'title': 'Mara Quill', 'text': '实验室钥匙',
+         'keys': ['people/mara-quill.md\nMara asked again']},
+        {'id': 'reply:avery', 'kind': 'reply', 'title': 'Avery Stone', 'text': 'Fernhill 发票',
+         'keys': ['people/avery-stone.md\nAvery asked']},
+        {'id': 'task:plan', 'kind': 'task', 'title': 'Fernhill Labs', 'text': '把试点计划写出来', 'record': 'orgs/fernhill-labs.md'}])
+    html = morning.preview(mail_book(morning_book))['html']
+    decisions = visible(html.split('4 件要你拍板</td>')[1])
+    assert decisions.count('Mara Quill') == 1
+    assert 'Mara Quill · 2 件' in decisions and 'Fernhill 试点何时开始' in decisions and '实验室钥匙' in decisions
+    assert decisions.index('Mara Quill') < decisions.index('Avery Stone') < decisions.index('Fernhill Labs')
+    assert '还有' not in decisions  # three people, three decisions: nothing left over
+
+
+def draft_night(root, language, monkeypatch, drafts=13):
+    from connectonion.rem import morning
+    prepare(root)
+    set_config(root, ['schedule.timezone', 'UTC', 'notify.channel', 'outlook', 'languages', language])
+    at(monkeypatch, 2026, 11, 8, 7)
+    monkeypatch.setattr(morning, 'actionable', lambda root: [])
+    for n in range(drafts):
+        write_json(state_path(root, f'drafts/draft-{n}.json'), {
+            'id': f'draft-{n}', 'status': 'prepared', 'subject': f'Re: Fernhill note {n}',
+            'prepared_at': '2026-11-07T23:10:00+00:00'})
+    return morning.preview(root)
+
+
+@pytest.mark.parametrize('language,lead', [('zh', '昨夜 REM 替你拟好 13 份回信，发出 0 封'),
+                                           ('en', 'Overnight, REM drafted 13 replies for you and sent 0')])
+def test_mail_headline_counts_drafts_as_prepared_never_as_done(tmp_path, monkeypatch, language, lead):
+    value = draft_night(tmp_path, language, monkeypatch)
+    assert value['subject'].endswith(lead) and lead in visible(value['html'])
+    assert '做了' not in value['html'] and ' did ' not in value['html']

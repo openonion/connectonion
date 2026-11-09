@@ -19,7 +19,7 @@ from uuid import uuid4
 import yaml
 
 from . import quota, runner, service
-from .config import read_config
+from .config import read_config, saved as saved_config
 from .daily import record_cap_stop
 from ..environment import selected_command
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
@@ -104,15 +104,18 @@ def _input_matches(root, task, path, digest):
     # Reproduce the pre-model-split view of an unchanged saved file. read_config
     # adds models and migrates Luna, neither of which existed in those digests.
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    legacy_current = {**current, "model": saved["model"]}
-    if "models" not in saved:
+    legacy_current = {**current, "model": saved.get("model", current["model"])}
+    if "models" in saved:
+        legacy_current["models"] = saved["models"]
+    else:
         legacy_current.pop("models")
     if _hash(path) == digest or digest in _legacy_config_hashes(legacy_current):
         return True  # Unchanged raw-file or old semantic config, without a snapshot.
     # A saved stage config must reproduce the old digest. Never guess missing inputs.
     previous = task["task"].get("config")
     return (previous is not None
-            and digest in (hashlib.sha256(yaml.safe_dump(previous, sort_keys=False).encode()).hexdigest(),
+            and digest in (*(hashlib.sha256(yaml.safe_dump(form, sort_keys=False).encode()).hexdigest()
+                             for form in (previous, saved_config(previous))),  # Since 1.9.3 `model` is not saved.
                            *_legacy_config_hashes(previous))
             and _config_hash(previous) == _input_hash(root, path))
 
@@ -181,12 +184,9 @@ def _display(root, task):
 
 
 def _stop(root, config, *, phase=None):
-    from .translate import attempts_today
-    logs, meter = service.run_logs(root), quota.read(config)
+    logs, meter = service.run_logs(root), quota.meter(root, config)
     if phase == "daily-translation":
         reason = quota.floor_block(meter, config["limits"])
-        if not reason and attempts_today(root) >= config["limits"]["translations_per_day"]:
-            reason = "daily translation cap reached"
     else:
         reason = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
         if not reason and service.daily_cap(root)["remaining"] <= 0:
@@ -269,7 +269,9 @@ def next_task(root, *, scheduled=False, discard=False):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
+        from .night_stats import record as record_nights
         morning_message(root)
+        record_nights(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     progress_step("waiting for the maintenance lock")
@@ -341,16 +343,11 @@ def _next_round(root, cursor, *, scheduled, notices):
             progress_step(f"reading new mail for the {slot:%H:%M} slot", round=cursor["started_at"],
                           mail_slot=slot.isoformat())
             native_round.read_new_mail(root, cursor, config, slot)
-    if cursor and scheduled and cursor.get("investigation_left") == 0:
-        slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
-        if slot and slot.isoformat() != cursor.get("portion_slot", cursor.get("slot")):
-            cursor["investigation_left"] = min(service.daily_cap(root)["remaining"], 8)
-            cursor["portion_slot"] = slot.isoformat()
     reason, meter = _stop(root, config)
     if reason:
         from . import night
         night.prepare(root, config, stop=reason)
-    translation_only = bool(reason) or (cursor.get("investigation_left") == 0 and bool(cursor.get("current") or cursor.get("project_quote")))
+    translation_only = bool(reason)
     if translation_only:
         translation_reason, meter = _stop(root, config, phase="daily-translation")
         if translation_reason:
@@ -360,7 +357,7 @@ def _next_round(root, cursor, *, scheduled, notices):
             if cursor and not cursor.get("done") and cursor.get("phase") == "daily-translation":
                 native_round.finish(root, cursor)
                 return {"outcome": "done", "reason": "round done", "notices": notices}
-            return {"outcome": "done", "reason": reason or "investigation portion cap reached", "notices": notices}
+            return {"outcome": "done", "reason": reason, "notices": notices}
     if not cursor or cursor.get("done"):
         progress_step("starting a new round")
         cursor = (native_round.prepare_translation_round(root, config, scheduled=scheduled) if translation_only

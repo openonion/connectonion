@@ -63,7 +63,13 @@ def _account_home():
 REAL_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or _account_home()) / ".co"
 # Module constants froze whatever $HOME was at import; conftest rebases from here.
 IMPORT_CO = Path(os.environ.get("CONNECTONION_TEST_REAL_HOME") or os.path.expanduser("~")) / ".co"
-_PREFIXES = tuple({str(REAL_CO), os.path.realpath(REAL_CO)})
+# The REM reader's saved pages (connectonion/rem/reader.py, _cache_dir) live
+# outside ~/.co, in the real temporary directory: the owner's own reader cache.
+# conftest points each test at its own; the same hook catches a test that writes
+# the real one, and the run fails naming it.
+REAL_REM_CACHE = None if os.name == "nt" else Path(tempfile.gettempdir()) / f"co-rem-cache-{os.getuid()}"
+_PREFIXES = tuple({str(REAL_CO), os.path.realpath(REAL_CO),
+                   *((str(REAL_REM_CACHE), os.path.realpath(REAL_REM_CACHE)) if REAL_REM_CACHE else ())})
 
 # Left out of the pass over ~/.co because they are large and churn constantly (the
 # `co browser` daemon's profile alone is thousands of files); the audit hook
@@ -124,7 +130,7 @@ def _under_real_co(path):
         text = _fsdecode(path)
     except TypeError:
         return None
-    if ".co" not in text:  # the cheap test first; this runs on every open
+    if ".co" not in text and "co-rem-cache-" not in text:  # the cheap test first; this runs on every open
         return None
     text = _abspath(text)
     return text if any(text == p or text.startswith(p + os.sep) for p in _PREFIXES) else None
@@ -256,6 +262,16 @@ def pytest_sessionstart(session):
     fd, marker = tempfile.mkstemp(prefix="co-real-home-start-")
     os.close(fd)
     session.config._real_co_start = (time.time_ns(), marker)
+    session.config._real_cache_start = _cache_listing()
+
+
+def _cache_listing():
+    """{name: (mtime_ns, size)} of the real REM reader cache, by lstat only."""
+    if REAL_REM_CACHE is None or not REAL_REM_CACHE.is_dir():
+        return {}
+    with os.scandir(REAL_REM_CACHE) as entries:
+        return {entry.name: (entry.stat(follow_symlinks=False).st_mtime_ns, entry.stat(follow_symlinks=False).st_size)
+                for entry in entries}
 
 
 def _read_records():
@@ -281,6 +297,10 @@ def pytest_sessionfinish(session, exitstatus):
     written = _read_records()
     by_us = {os.path.relpath(path, REAL_CO) for _test, _event, path in written}
     others = unexplained(changed, by_us)
+    before, after = session.config._real_cache_start, _cache_listing()
+    ours = {os.path.basename(path) for _test, _event, path in written}
+    others += [("changed", str(REAL_REM_CACHE / name)) for name in sorted(set(before) | set(after))
+               if before.get(name) != after.get(name) and name not in ours]
     session.config._real_co_report = {
         "written": written,
         "others": others,
@@ -297,7 +317,7 @@ def pytest_terminal_summary(terminalreporter, config):
         return
     tr = terminalreporter
     if report["written"]:
-        tr.section(f"a test wrote the real {REAL_CO}", sep="!", red=True, bold=True)
+        tr.section(f"a test wrote the real {REAL_CO} or REM reader cache {REAL_REM_CACHE}", sep="!", red=True, bold=True)
         for test, event, path in report["written"]:
             tr.write_line(f"{test}: {event} {path}")
         tr.write_line("Usually a module-level constant built from Path.home() at import. "

@@ -1,10 +1,9 @@
 # Nightly outcomes for the morning confirmation
 
 The daily and native rounds cover every open, owner-owed item in the shared
-Today order, including items outside the first visible cards. The default
-`limits.drafts_per_night` is **30** model attempts per notebook day. Explicit
-configured caps remain in force across rounds. Owner verdicts and task prompts
-need no model calls. Every item left by a draft cap, daily cap, quota stop,
+Today order, including items outside the first visible cards. There is no
+nightly draft count (D-104, 2026-11-09). Owner verdicts and task prompts
+need no model calls. Every item left by a daily cap, quota stop,
 missing consent, provider failure or rejected draft has a named reason.
 
 REM retrieves missing cited originals through the existing Outlook/Gmail
@@ -18,25 +17,20 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-**This version holds every task** (`tasks.HOLD`, removed in rc63): Codex runs
-git outside its sandbox in the task's folder, so approval records the task and
-its Today card says "Recorded. For safety this version does not run it; open it
-in Codex" with the prepared prompt to copy, but no Codex run starts, whether
-approved, automatic or `co rem task run`. What follows describes the run once
-the hold is lifted.
-
-By default (`tasks.auto: false`) morning approval reserves a receipt and the
-Host starts `co rem task run ID`. With `tasks.auto: true` the night also starts
-owed tasks after drafting and records each in `.state/approvals.json` with
-`by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo stops
-the task, removes its folder, worktree and branch, and records `cancelled`: the
-night never starts it again, while morning approval still can. It stays off by
-default until the sealed run reads only an allow-list (today it denies a list of
-credential paths). Either way a task passes one gate: one task at a time, at
-most `limits.tasks_per_night` (3) started per night, counted noon to noon, and
-none once the Codex week reaches `limits.quota_floor_percent`. A task that has
-to wait is written to `.state/tasks/waiting.json` and its Today card says
-"Queued: later tonight" or "Queued: budget used up" with the reason.
+By default (`tasks.auto: true`, owner decision D-100, 2026-11-09) the night
+starts owed tasks after drafting and records each in `.state/approvals.json`
+with `by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo
+stops the task, removes its folder, worktree and branch, and records
+`cancelled`: the night never starts it again, while morning approval still can.
+With `tasks.auto: false` only morning approval starts them (the Host runs
+`co rem task run ID`). A task runs with full access, as the owner's own Codex
+runs do: it can read the web and use his accounts to do the job, and its prompt
+leaves pushing, merging, sending and posting to him. Tasks run side by side
+with no nightly count (D-104); the one gate is the Codex week: none starts once
+it reaches `limits.quota_floor_percent`, read live or, when the meter cannot be
+read, from the last reading a run recorded this week. A task that has to wait
+is written to `.state/tasks/waiting.json` and its Today card says "Queued:
+budget used up" with the reason.
 `co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
@@ -103,26 +97,20 @@ text that might contain credentials or private URLs.
 
 ## Obligation work
 
-Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
-`co rem task stop ID` to stop it. Each ID gets one Codex session with the
-configured work model, sealed. The prompt comes from mail, which is untrusted,
-so Codex runs its own seatbelt with a permission profile (`default_permissions =
-"rem_task"`, no `-s` flag: with codex 0.167 a `-s workspace-write` run ignored
-the profile, read canary credentials and reached the network). The profile reads
-the disk except the owner's credential paths (`sandbox_profile.CREDENTIAL_DIRS`
-and `CREDENTIAL_FILES`: `~/.co`, `~/.ssh`, `~/.config/gh`, `~/.aws`, `~/.gnupg`,
-`.netrc`, `.git-credentials` and more), writes only the task folder, its work
-directory and temp, and has no network. `--ignore-user-config` with apps,
-plugins, browser use and computer use off means none of the owner's MCP servers,
-connectors or hooks start (they run outside the sandbox); web search is off.
-Codex starts with no environment variable whose name matches
-KEY|TOKEN|SECRET|PASSWORD|API (it signs in from `CODEX_HOME`), and its shell tool
-inherits only Codex's core variables (`shell_environment_policy.inherit="core"`),
-so `env` cannot show what connectonion loaded from `keys.env`.
-So a task cannot push, merge into the owner's checkout, send mail or post, and
-cannot read keys. The cost: it cannot browse, search the web, install packages,
-call any API, or read notebook pages (they live under `~/.co`); it works from
-its prompt and what else is on disk, and names anything missing. When the
+Use `co rem task status` to find IDs, `co rem task run ID [--agent codex|claude]`
+to start one, and `co rem task stop ID` to stop it. The Host's
+`POST /rem/task {"action": "run", "key", "agent"}` does the same from Today's
+交给 Codex / 交给 Claude. Each ID gets one session, run through co's own
+integrations as `co ai --harness` runs them (`useful_tools/codex.py`,
+`useful_tools/claude_code.py`), with full access (owner decision D-100,
+2026-11-09): Codex with `danger-full-access`, Claude Code with
+`bypassPermissions`. Codex runs on the `task` stage's level, `models.level4`,
+with the configured effort. Claude Code keeps its own model and loads the
+owner's own Claude setup, as `co claude run` does: his user CLAUDE.md, skills
+and settings, with `--setting-sources user` instead of `--safe-mode`
+(context over control). Earlier 1.9.3 previews ran Codex sealed in a
+permission profile; that is gone. The prompt keeps pushing, merging, sending
+and posting for the owner's click. When the
 obligation's project page (or an explicit project link on its page) names one
 existing directory inside a git repository, REM creates a worktree of it at
 `.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,

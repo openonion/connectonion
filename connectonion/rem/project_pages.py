@@ -787,7 +787,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """Write pending messages, then optionally edit quotes; save only pages that pass review."""
     from .runner import RunFailed, _one_more_turn, promote_with_repairs, run_task
-    config = config or read_config(root)
+    from .inquiry import stage_config
+    config = stage_config(root, config or read_config(root), "projects")
     run = run or run_task
     workdir = root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)

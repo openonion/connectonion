@@ -70,13 +70,7 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             return None
         saved = read_json(state, {})
         if saved.get("address") != address or not _alive(saved):
-            process = _spawn(directory)
-            try:
-                write_json(state, {"address": address, "pid": process.pid, "port": _port(process.args),
-                                   "command": " ".join(process.args[1:])})
-            except (OSError, RemError):
-                _stop(process)
-                raise
+            process = _launch(directory, address)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
@@ -90,6 +84,52 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     if process is not None:
         _stop(process)
     return f"co ai did not become reachable within {timeout:g}s; see {log}. Retry with `co ai`"
+
+
+def _launch(directory: Path, address: str, *, background: bool = False):
+    """Start co ai and remember it, so the next open reuses it; the caller holds the lock."""
+    process = _spawn(directory)
+    try:
+        write_json(directory / "rem-live-host.json", {"address": address, "pid": process.pid,
+                                                      "port": _port(process.args),
+                                                      "command": " ".join(process.args[1:]),
+                                                      **({"started_at": time.time()} if background else {})})
+    except (OSError, RemError):
+        _stop(process)
+        raise
+    return process
+
+
+def saved_host_dead(address: str) -> bool:
+    """This identity's Host was started before and its process is gone."""
+    from ..project import selected_identity_dir
+    saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
+    return saved.get("address") == address and not _alive(saved)
+
+
+# A Host co rem open started in the background and found dead this soon after
+# most likely never came up: say so, with its log, instead of "starting" again.
+STARTUP_WINDOW = 600
+
+
+def start(address: str) -> str | None:
+    """Start this identity's Host unless ours is alive, and return without waiting:
+    `co rem open` shows the saved page meanwhile. Returns what to tell the owner
+    when the Host it started last time exited soon after."""
+    from ..cli.co_ai.main import _owner_invite_lock
+    from ..project import selected_identity_dir
+    directory = selected_identity_dir()
+    with _owner_invite_lock(directory):
+        saved = read_json(directory / "rem-live-host.json", {})
+        if saved.get("address") == address and _alive(saved):
+            return None
+        exited = (saved.get("address") == address and isinstance(saved.get("started_at"), (int, float))
+                  and time.time() - saved["started_at"] < STARTUP_WINDOW)
+        _launch(directory, address, background=True)
+    if exited:
+        return (f"co ai exited during startup; see {directory / 'rem-live-host.log'}. "
+                "Starting it again; retry with `co ai` to see the error")
+    return None
 
 
 # `co ai`'s own default port: a Host the owner started by hand is usually here.

@@ -205,7 +205,7 @@ def _waits(root, key):
     item = read_json(state_path(root, 'approvals.json'), {})[key]
     if item['kind'] != 'task' or item['status'] != 'queued':
         return None
-    return tasks.HOLD or tasks.gate(root, read_config(root), item['key'])
+    return tasks.gate(root, read_config(root), item['key'])
 
 
 def _release_one(root, key, at, dispatch):

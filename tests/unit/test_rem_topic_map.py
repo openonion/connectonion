@@ -425,7 +425,7 @@ def summary_model(tmp_path, monkeypatch, topics):
     from connectonion.rem.config import default_config
     from connectonion.rem.files import atomic_write
     settings = default_config()
-    settings['models']['summary'] = 'fictional-summary'
+    settings['models']['level1'] = 'fictional-summary'
     atomic_write(tmp_path / 'config.yaml', yaml.safe_dump(settings))
     calls = []
     def propose(directory, prompt, config, stage):

@@ -24,10 +24,12 @@ def _blocks(css: str) -> dict:
 
 
 def test_both_themes_define_every_colour_token():
-    blocks = _blocks(TEMPLATE.read_text(encoding="utf-8"))
-    faces = {"--display", "--text", "--ui", "--code", "--mono"}
-    colours = blocks["light"] - faces
-    assert len(colours) >= 20
+    css = TEMPLATE.read_text(encoding="utf-8")
+    blocks = _blocks(css)
+    light = re.search(r":root \{(.*?)\n  \}", css, re.S).group(1)
+    # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
+    colours = set(re.findall(r"(--[\w-]+): #[\da-f]{6};", light))
+    assert colours == {"--paper", "--ink", "--grey", "--rule", "--green", "--on-green", "--red", "--pencil"}
     assert blocks["dark-auto"] == colours
     assert blocks["dark-forced"] == colours
 
@@ -191,16 +193,48 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
         linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in rgb]
         return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
 
-    for surface in ['--paper', '--sheet', '--line-2']:
-        for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
+    # The Fuse sheet: one paper, and the hairline that still backs wells and tabs.
+    for surface in ['--paper', '--rule']:
+        for token, minimum in [('--grey', 4.5), ('--ink', 3)]:
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
 
-    assert colors['--act'] == ('#22d27a' if theme == 'light' else '#3be38f')
-    for surface, foreground in [('--act', '--act-ink'), ('--act-hover', '--act-ink'),
-                                ('--sheet', '--act-text'), ('--act-tint', '--ink')]:
+    assert colors['--green'] == ('#22d27a' if theme == 'light' else '#3be38f')
+    # Red is text (overdue, danger), so it must read on the paper it sits on in both themes.
+    # A focused Today card sits on --rule with its overdue age in red on top, so red must read there too.
+    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink'), ('--paper', '--red'),
+                                ('--rule', '--red')]:
         a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
+    # Pencil is REM's inference drawn as a dashed mark; at under 4.5:1 it never colours text.
+    assert not re.search(r'(?<![\w-])color:\s*var\(--pencil\)', css)
     button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
-    assert 'background: var(--act)' in button and 'color: var(--act-ink)' in button
-    assert '.btn-act:hover { background: var(--act-hover); }' in css
+    assert 'background: var(--green)' in button and 'color: var(--on-green)' in button
+    # Hover must change something: the primary key turns over, its label green on the dark green.
+    for selector in ['.btn-act:hover', '.projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover', '.gx-open:hover']:
+        hover = _rule(css, selector)
+        assert hover and 'background: var(--on-green)' in hover and 'color: var(--green)' in hover, selector
+    a, b = sorted([luminance(colors['--green']), luminance(colors['--on-green'])])
+    assert (b + .05) / (a + .05) >= 4.5, (theme, 'hovered primary label')
+
+
+def _rule(css, selector):
+    """The body of the rule whose selector list is exactly `selector` (first match)."""
+    match = re.search(r'(?:^|[}\n])\s*' + re.escape(selector) + r'\s*\{([^}]*)\}', css)
+    return match.group(1) if match else None
+
+
+def test_overdue_is_red_and_waiting_and_changed_keep_a_mark_of_their_own():
+    """Collapsing amber and indigo onto ink left overdue, waiting and changed looking like nothing."""
+    css = TEMPLATE.read_text(encoding="utf-8")
+    for selector in ['.overdue, .thread .when.overdue', '.next-exchanges .when.overdue', '.r4 .chip.late',
+                     '.ov-chip.late', '.brief-header .late, .qage.late']:
+        assert 'color: var(--red)' in (_rule(css, selector) or ''), selector
+    # An overdue chip is red on paper with a red edge, never a grey box.
+    late = _rule(css, '.r4 .chip.late')
+    assert 'var(--rule)' not in late and 'outline: var(--hair) solid var(--red)' in late
+    waiting, open_ = _rule(css, 'nav a .n.waiting'), _rule(css, 'nav a .n.open')
+    assert waiting and waiting.strip() != (open_ or '').strip()
+    changed, dt = _rule(css, '.person-insight dt.changed'), _rule(css, '.person-insight dt')
+    assert changed and 'color' not in changed and changed.strip() != dt.strip()
+    assert _rule(css, '.person-insight dt.at-stake') is None

@@ -145,7 +145,7 @@ def _page_excerpt(root, record, sections, limit=1800):
         if match:
             found[title.lower().replace(' ', '_')] = match.group(1).strip()[:limit]
             if title == 'Facts':
-                permission = re.search(r'^- Direct send: (partner|close|none)[ \t]*$', match.group(1), re.M)
+                permission = re.search(r'^- Direct send: (partner|close|none)\b', match.group(1), re.M)
                 found['direct_send'] = permission.group(1) if permission else 'none'
     return found
 
@@ -321,7 +321,8 @@ def _write_now(root, row, channel):
     """One drafting turn for one thread, the same path the night turn takes."""
     from . import runner
     from .config import read_config
-    config = read_config(root)
+    from .inquiry import stage_config
+    config = stage_config(root, read_config(root), 'reply-draft')
     state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
         task = prepare(root, {**row, 'channel': channel}, config, directory=Path(directory))

@@ -67,15 +67,15 @@ no fields and reads:
 
 | On screen | Source | When the source is missing |
 | --- | --- | --- |
-| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` | "还不清楚是什么机构" / "还没调查" |
+| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` (ISO dates in it shown as calendar dates in the sentence's own language: Sep 23 in an English sentence, 9月23日 in a Chinese one) | "还不清楚是什么机构" / "还没调查" |
 | Facts line | domain, roster size, unit count, first and latest dated History line, page last contact | the missing part is left out |
 | Recently in touch (3 people) | each person's last contact or newest dated History line, role in unit | the block is left out |
 | One link to Today | count of open `mine` obligations | no line |
 | X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units`; size = people you know there | no units: the people form the ring |
 | Ring around a unit | someone there in touch within 45 days | no ring |
 | Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey; legend says warmth is not known yet |
-| Time line and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once | no time line |
-| Units and people, who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no reply speed claimed |
+| The fuse (time line) and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once. A heavy line runs from the first dated exchange to today, linear in time, one tick per event; nothing on it is red | no fuse |
+| Units and people (the hierarchy), who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them`. Units step down and to the right on a heavy elbow; every unit and person is a link in reading order | role only; no reply speed claimed |
 | Unit crumb | the `parent` chain | top-level: 组织 › kind |
 
 Not drawn because REM does not record them yet: term weeks, settled agreements, a

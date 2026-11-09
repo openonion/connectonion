@@ -1,30 +1,38 @@
-"""One owner-owed obligation, one Codex process, one durable deliverable receipt."""
+"""One owner-owed obligation, one Codex or Claude Code run, one durable deliverable receipt."""
 
 import argparse
 import fcntl
 import hashlib
+import json
+import math
 import os
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from contextlib import contextmanager, suppress
-from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import codex_exec, service
+from . import codex_exec
 from .config import read_config
 from .files import RemError, read_json, state_path, write_json
 from .service import now
 
 
 ACTIVE = ('starting', 'running')
-# rc62 safety hold; rc63 removes it. Codex runs git outside its sandbox in the task's folder, so
-# a task is recorded and its prompt offered, but no Codex run starts: approved, automatic or CLI.
-HOLD = True
-HELD = 'Recorded. For safety this version does not run it; open it in Codex'
+# Who does the work: the owner's 交给 Codex / 交给 Claude. One runner, the agent as data:
+# each is co's own native integration, reached through co ai's harness by its harness name.
+HARNESSES = {'codex': 'codex', 'claude': 'claude-code'}
+AGENTS = tuple(HARNESSES)
+# D-100: full access, in each agent's own words -- Codex's sandbox, Claude Code's permission
+# mode. Pushing, merging and sending stay the owner's click, by the prompt.
+FULL_ACCESS = {'sandbox': 'danger-full-access', 'permission_mode': 'bypassPermissions'}
+# Set by the owner's Stop (SIGTERM). The providers turn an exception inside their run into an
+# error result after ending their process, so the worker reads the stop from here, not from it.
+_STOPPED = threading.Event()
 
 
 def identity(key):
@@ -46,14 +54,21 @@ def _lock(folder, name='control.lock'):
         yield
 
 
-def reserve(root, outcome, by='owner'):
+def _agent(agent):
+    if agent not in AGENTS:
+        raise RemError('agent must be codex or claude')
+    return agent
+
+
+def reserve(root, outcome, by='owner', agent='codex'):
     """Queue without a model call. Host and night share this idempotent claim."""
+    _agent(agent)
     task_id = identity(outcome.get('key') or outcome['keys'][0])
     folder = directory(root, task_id)
     with _lock(folder):
         if saved := read_json(folder / 'receipt.json', {}):
             return saved
-        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by,
+        receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by, 'agent': agent,
                    'key': outcome.get('key') or outcome['keys'][0], 'keys': outcome['keys'],
                    'record': outcome.get('record', ''), 'title': outcome['title'], 'text': outcome['text'],
                    'prompt': outcome.get('task', {}).get('prompt') or f"Prepare the work owed: {outcome['text']}",
@@ -115,8 +130,7 @@ def _prompt(receipt):
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
             'End with a one-line summary of the work. '
-            'Never push, merge, send mail or post. Commands have no network and cannot read credentials; '
-            'if the work needs the web or an account, say so as a missing input. '
+            'Never push, merge, send mail or post: those stay the owner\'s click. '
             'do not send anything to anyone; write the result and stop')
 
 
@@ -125,10 +139,9 @@ def _prepared(root, task_id):
     return next((row for row in listing(root) if row['kind'] == 'task' and identity(row['key']) == task_id), None)
 
 
-def start(root, task_id):
-    """Detach a worker, never a second worker for the same obligation."""
-    if HOLD:
-        raise RemError(HELD + '. co rem task status ID shows its prompt.')
+def start(root, task_id, agent=None):
+    """Detach a worker, never a second worker for the same obligation. `agent` changes who
+    runs a task that has not started yet; None keeps the receipt's."""
     from .runner import child_env
     root = Path(root).resolve()
     folder = directory(root, task_id)
@@ -142,6 +155,7 @@ def start(root, task_id):
         receipt = read_json(folder / 'receipt.json', {})
         if receipt['result'] != 'queued':
             return _project(receipt)
+        receipt['agent'] = _agent(agent or receipt.get('agent', 'codex'))
         command = [sys.executable, '-m', 'connectonion.rem.tasks', '--root', str(root), '--id', task_id]
         with (folder / 'worker.log').open('ab') as output:
             process = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
@@ -152,28 +166,48 @@ def start(root, task_id):
 
 
 def _interrupted(signum, frame):
-    raise InterruptedError('Task stopped by the owner')
+    # Only record it: an exception raised here lands wherever the worker is, and inside
+    # the Codex client's lock waits it hung the worker. The run polls _STOPPED instead.
+    _STOPPED.set()
 
 
-def _run(command, log, timeout, receipt):
-    with log.open('w') as output, subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
-                                                  stderr=subprocess.STDOUT, start_new_session=True,
-                                                  env={**codex_exec.sealed_environment(os.environ),
-                                                       'TMPDIR': str(Path(receipt['receipt']).parent / 'tmp')}) as process:
-        receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
-        write_json(Path(receipt['receipt']), receipt)
-        try:
-            return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return 124
-        finally:
-            if process.poll() is None:
-                try:
-                    codex_exec._terminate_descendants(process.pid)
-                finally:
-                    with suppress(ProcessLookupError):
-                        os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
+@contextmanager
+def _tmpdir(path):
+    """The agent's scratch files go in the task's own tmp/, removed with the task."""
+    previous = os.environ.get('TMPDIR')
+    os.environ['TMPDIR'] = str(path)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop('TMPDIR')
+        else:
+            os.environ['TMPDIR'] = previous
+
+
+def _delegate(receipt, folder, config, timeout):
+    """The agent's own run through co's native integration, in the task's workspace.
+    Returns the exit code the receipt keeps: 0 done, 124 out of time, 1 anything else."""
+    from ..cli.co_ai import harness
+    agent = receipt.get('agent', 'codex')
+    # REM's model names a Codex model; Claude Code keeps its own, and the owner's own
+    # Claude setup loads (context over control): user_setup.
+    model = config['model'] if agent == 'codex' and config['model'] != 'default' else ''
+    if _STOPPED.is_set():
+        raise InterruptedError('Task stopped by the owner')
+    with _tmpdir(folder / 'tmp'):
+        answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
+                             timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
+                             user_setup=True, cancelled=_STOPPED.is_set, **FULL_ACCESS)
+    if _STOPPED.is_set():
+        raise InterruptedError('Task stopped by the owner')
+    Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
+    if answer['result']:
+        Path(receipt['last_message']).write_text(answer['result'])
+    receipt['session_id'] = answer.get('session_id')  # resumable in the agent's own app
+    if answer['error']:
+        receipt['reason'] = answer['error']
+    return {'natural': 0, 'timeout': 124}.get(answer['outcome'], 1)
 
 
 def execute(root, task_id, *, timeout=None):
@@ -192,20 +226,18 @@ def execute(root, task_id, *, timeout=None):
 def _execute(root, folder, receipt, timeout):
     code, result = None, 'failed'
     try:
-        config = read_config(root)
+        from .inquiry import stage_config
+        config = stage_config(root, read_config(root), 'task')
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)
-        reads = [receipt[name] for name in ('repository', 'project') if receipt.get(name)]
-        command = codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                          prompt=_prompt(receipt), add_dirs=(folder,), sealed=True, reads=reads)
         write_json(folder / 'receipt.json', receipt)
-        code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt)
+        code = _delegate(receipt, folder, config, timeout or config['limits']['timeout_seconds'])
         deliverable = Path(receipt['deliverable'])
         present = deliverable.is_file() and not deliverable.is_symlink() and bool(deliverable.read_text().strip())
         result = 'completed' if code == 0 and present else 'timed-out' if code == 124 else 'failed'
         if code == 0 and not present:
-            receipt['reason'] = 'Codex exited successfully without a nonempty deliverable'
+            receipt['reason'] = f"{receipt.get('agent', 'codex').capitalize()} finished without a nonempty deliverable"
     except InterruptedError:
         code, result = 130, 'stopped'
     except (OSError, RemError) as error:
@@ -319,7 +351,7 @@ def stop(root, task_id):
 
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
-    if HOLD or not config['tasks']['auto']:
+    if not config['tasks']['auto']:
         _forget_unstarted(root)
         return []
     from .approvals import started, withdrawn
@@ -356,29 +388,12 @@ def gate(root, config, key):
 
 
 def _hold(root, config):
-    """Why REM starts no task now, or None: one at a time, a nightly cap, the week's floor."""
+    """Why REM starts no task now, or None. Only the Codex week's floor stops one (D-104): tasks
+    run side by side and a night has no count cap."""
     from . import quota
-    if any(_reconcile(path.parent).get('result') in ACTIVE for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json')):
-        return {'wait': 'later', 'reason': 'Another task is running; this one starts on a later tick tonight.'}
-    cap = config['limits']['tasks_per_night']
-    if _started_tonight(root, config) >= cap:
-        return {'wait': 'budget', 'reason': f'{cap} tasks already started tonight (limits.tasks_per_night).'}
-    if floor := quota.floor_block(quota.read(config), config['limits']):
+    if floor := quota.floor_block(quota.meter(root, config), config['limits']):
         return {'wait': 'budget', 'reason': floor[0].upper() + floor[1:] + '.'}
     return None
-
-
-def _night(moment, zone):
-    """The night a moment belongs to: noon to noon, so 22:00-06:00 is one night."""
-    return (moment.astimezone(zone) - timedelta(hours=12)).date()
-
-
-def _started_tonight(root, config):
-    zone = service.notebook_zone(config)
-    tonight = _night(service.now(), zone)
-    records = read_json(state_path(Path(root), 'approvals.json'), {}).values()
-    return sum(1 for record in records if record.get('kind') == 'task' and record.get('dispatched_at')
-               and _night(datetime.fromisoformat(record['dispatched_at']), zone) == tonight)
 
 
 def undo(root, task_id):
@@ -399,11 +414,21 @@ def undo(root, task_id):
     return record
 
 
-def host_dispatch(root, item):
+def dispatch(root, key, agent='codex'):
+    """The owner's 交给 Codex / 交给 Claude on any pending item: reserve its work and start it now."""
+    from .night import listing
+    _agent(agent)
+    row = next((row for row in listing(root) if key in row['keys']), None)
+    if row is None:
+        raise RemError('No pending item has this key; reload Today')
+    return start(root, reserve(root, row, agent=agent)['id'], agent)
+
+
+def host_dispatch(root, item, agent='codex'):
     """The Host runs the public deterministic CLI, never an extra agent turn."""
     from .runner import child_env
     command = [sys.executable, '-m', 'connectonion.cli.main', 'rem', '--root', str(root),
-               '--json', 'task', 'run', item['receipt_id']]
+               '--json', 'task', 'run', item['receipt_id'], '--agent', _agent(item.get('agent', agent))]
     try:
         result = subprocess.run(command, env=child_env(), capture_output=True, text=True, timeout=30)
     except (subprocess.TimeoutExpired, OSError) as error:
@@ -419,12 +444,4 @@ if __name__ == '__main__':
     parser.add_argument('--id', required=True)
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, _interrupted)
-    try:
-        execute(args.root, args.id)
-    except InterruptedError:
-        # A stop may arrive while this worker is still acquiring its launch lock.
-        folder = directory(args.root, args.id)
-        with _lock(folder):
-            saved = read_json(folder / 'receipt.json', {})
-            saved.update(result='stopped', exit_code=130, finished_at=now().isoformat())
-            write_json(folder / 'receipt.json', saved)
+    execute(args.root, args.id)

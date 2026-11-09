@@ -487,7 +487,8 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co rem open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
+| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. |
+| `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
@@ -531,9 +532,8 @@ Native scheduled rounds investigate pages before summarising sessions, with at
 most five summaries per round. Unwritten people, projects and other mapped
 pages stay in the scheduled queues until processed; your own page refresh is
 queued each day. Status and the reader show queued progress instead of asking
-you to copy a REM command for that work. Set `limits.jobs_per_round` (default 8 pages) and
-`limits.runner_calls_per_day` (default 200) in `config.yaml`, or use
-`co rem config set limits.jobs_per_round 8 limits.runner_calls_per_day 200`.
+you to copy a REM command for that work. A round takes every queued page; `limits.runner_calls_per_day` (default 200)
+is set in `config.yaml` or with `co rem config set limits.runner_calls_per_day 200`.
 The weekly quota safety floor remains 90% by default.
 
 Intermediate native investigation rounds keep private candidates. One final
@@ -654,9 +654,66 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 
-The local live reader reuses its rendered snapshot until notebook files change,
-including pages, retained sources, translations and state. Reload after an edit
-shows the updated notebook; repeated requests do not rebuild unchanged content.
+Opening is a file read. The reader keeps its last render outside the notebook,
+in a private per-user folder in the temporary directory (`co-rem-cache-<uid>`,
+mode 700, pages 600, a planted link refused), and serves it at once. Whether it
+is current is a handful of stat calls, never a listing of the notebook: every
+write REM makes touches `.state/reader-changed`; the category folders' times
+catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
+WAL hold committed rows; `reader.html` is part of the key, so an upgrade
+re-renders. The notebook's date is part of the key too, so the Today queue turns
+over at midnight. Every 10 minutes (`REBUILD_INTERVAL` in `reader.py`) the
+background build walks the whole notebook (on a 31,136-file notebook about
+17 s of stat calls, never on the request path), which catches edits other
+tools make in place without REM's writers, and rebuilds only if the walk
+differs. The walk leaves out the lock's own files (`maintenance-owner.json`,
+`maintenance.lock`), which the Host's minute tick rewrites, and the marker;
+otherwise every walk would differ while a Host runs. A page older than an hour (`STALE_SCHEDULE_SECONDS`) is rebuilt
+anyway, so **Next pass** and schedule text are at most an hour late; a quiet
+notebook with the page open costs a walk every 10 minutes, not a rebuild.
+When the key changed, the last page is still served at once and one detached process
+(`python -m connectonion.rem.reader`, one at a time, log in the same folder,
+trimmed to its last 200 lines) renders the new one. It writes the new page,
+details and file page under new names, then one manifest (`current.json`) that
+names that set, last; a crash midway leaves the previous set served whole, so a
+reload never pairs a new page with old details. The set it replaces is kept for
+a page still open on it. The offline page keeps one name per notebook
+(`<digest>-file.html` in the cache folder), replaced in place by each build, so
+the link `co rem open` prints stays valid and a tab open on it shows the newest
+render when reloaded. When the notebook's last render took under 2 seconds
+(`SYNC_RENDER_SECONDS`), an explicit `co rem open` renders it again before
+opening, so the page is never older than the notebook; a larger notebook opens
+the saved page at once and is rebuilt behind it. `CONNECTONION_REM_CACHE`
+names another cache folder; the test suite gives each test its own and fails a
+run that writes the real one.
+
+Rebuilds are at most one per 10 minutes, because one costs about 100 s of CPU
+on a large notebook and a night run keeps writing. The owner acting rebuilds
+at once: an explicit `co rem open`, and a change made in the reader (send,
+approve, mark a thread, choose a language, `/rem/translation-request`, stop or
+undo a task). Reading a task's status, and the on-page translation
+(`/rem/translate`, served straight from its own cache), do not. A build that
+is running passes again for an owner action made meanwhile. `co rem open` says
+a newer page is being built only when a build actually started.
+
+The open live page asks `/rem/version` every 30 seconds while visible. When a
+newer render has landed (only newer: an equal or older time is no reason) it
+reloads onto it and puts back the view, the scroll position and open sections
+(known by id, else by their heading); while you are typing it waits, and over a reply
+you have edited it does not reload but shows a quiet **有更新 · 刷新** (Newer
+page · Reload) link. After Stop or Undo on a task, the page waits for the
+render that carries it, then reloads; past two minutes it says the page has not
+updated yet. Refresh task progress reads the status in place.
+
+The footer says when the page was rendered: **Updated** (更新于) and the time.
+If the newest background build failed it adds "the newest rebuild failed", with
+the log path as a detail; `co rem open` says the same. A failing build is not
+started again within 10 minutes. If the cache folder exists but is not yours
+alone (a shared temporary directory), the reader renders now, as before saved
+pages, and says so; a Host that `co rem open` started and that exited soon
+after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
+rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
+and the render 35 s, plus 73 s for the details.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
@@ -692,8 +749,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
   notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
-  waiting on you, up to `limits.drafts_per_night` (default **30**) per notebook day,
-  with every capped or failed item named in status. Missing originals are fetched
+  waiting on you, with no nightly count (D-104), and every failed item named in status. Missing originals are fetched
   from already-consented mailboxes. Owner-last answers and promised work receive
   [morning outcomes](../rem-night-outcomes.md). Drafts use the `rem-reply-draft` skill: it reads who you both are (your page, their page,
   the relationship, how they write), decides on each ask in the latest message, and
@@ -716,6 +772,59 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   and rewriting work in the live reader on this computer only; a click is the
   approval, and nothing is sent without one. Labelled private material stays
   behind the reader's privacy toggle.
+- **Today is drawn as a fuse** (owner, 2026-11-09, D-108): the count of people
+  waiting is the page's one large number, with the most urgent person named
+  beside it (or, when nothing is overdue, whoever is first in line). Under it,
+  one lane per waiting person, in REM's urgency order: a line from their oldest
+  dated message to today, red for exactly the days past the due date. An item
+  with no due date has no red and says **No due date**. A row on your own page
+  belongs to the person it names (who asked, or who is owed); a row that names
+  nobody is your own note and is not counted as a person waiting, in the
+  headline, the lanes or the overnight names. The links beside the date count
+  *items* (**5 items waiting on you**, **22 items to approve in one go**), so
+  they never contradict the count of people. The cards lead with the first
+  person whose reply REM has ready, so its Send is on the first screen; a line
+  above the card says so (**Reply to Jiexuan Deng first: the reply is ready**),
+  the headline still names the most urgent person, and that person's lane is
+  the bold one. The open card is compact: the context is one line with
+  **More**, the letter scrolls in a short window, and **Why this reply** sits under
+  the reading in your language. It opens its draft in place with
+  To, CC (**No one** when nobody is copied) and Subject; REM's
+  `【需要你：…】` slot is a row to answer in, directly above Send and outside the
+  letter's scroll window (the letter keeps a marker that shows your answer):
+  buttons when REM wrote the alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a
+  text field otherwise; the date after the dash is never split into options.
+  Until every question is answered Send stays disabled, with *Choose above
+  before sending*. The lanes show the five most urgent people on a desktop and
+  three on a phone (always the open card's), then **N more people**; on a phone
+  the first screen holds To, Subject, the question and the Send bar, with the
+  context line and channel switch behind **More**. **Send** is the page's only
+  green control. On a desktop it sits under the letter in normal flow, inside
+  the first screen; on a phone it is a bar pinned to the bottom, and notices
+  rise above it. When the Host lists an approval for the draft, Send holds the
+  reply for 10 minutes: the person's card and lane close, the count steps down,
+  and the line **Sent to …** keeps one **Undo** until the hold ends, when the
+  Undo goes; without an approval the reply goes at once and the line says it
+  cannot be undone. A snapshot shows Send disabled and one plain line for the
+  page, *This is a snapshot: sending and handing work to an agent happen in the
+  live reader*. Today, **Waiting on you** and **Reader settings** never show a
+  command to copy (D-60).
+  **What REM did overnight** adds **Replied to N people for you** when REM sent
+  replies itself (`sent_by_rem`), and no row when it did not.
+- **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
+  quiet text buttons on every pending row, in Today and in **Waiting on you**.
+  A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  to `/rem/task`; the row then reads **Handed to Codex · in progress** and
+  follows the task's own status, **Stop** and **Undo**, the same for either
+  agent, and a finished card names the agent that ran it. A refused request
+  is said in words on the row, never in the Host's own English: a changed item
+  (409) asks you to reload, an expired session (401) to reload the page, and no
+  answer (5xx or no connection) to try again shortly. In a snapshot the buttons
+  are disabled and the page's one snapshot line says why. Nothing in the reader
+  says a task is recorded but not run.
+- **The sidebar** has no **Questions & connections** entry any more, as with
+  Activity; `#reviews=1` still opens it, and **Memory changes** carries its one
+  quiet link, beside **REM activity**.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -754,9 +863,36 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   changed-field underline draws in about 600 ms. Filtering or rerendering the
   same view does not replay them; reduced motion shows the final state immediately.
   A short legend lives in **Reader settings**.
-- **Between you** on a person's page lists what you owe and what they owe in
-  two quiet columns; each thread's age sits at its top right, amber for what
-  you owe, as on Home. Project and organisation pages show each date once,
+- **A person's page is their record** (owner, 2026-11-08): no list of what
+  you owe and no **Mark done** there; one quiet link, **N items in Today**,
+  when Today holds something of theirs. The name is the page's one large mark;
+  it carries its script as `lang` and hyphenates (where the browser has no
+  hyphenation dictionary and a word would overflow, the reader adds soft
+  hyphens at likely syllable joins; copying the name drops them). Under it
+  the first role is shown as a title (its value and any qualifier that is
+  part of it, "Events Coordinator (Entrepreneurship)"), then a neutral
+  **+N**, never cut inside brackets; where a value came from ("email
+  signature through …") is in the tooltip. Under that the **fuse** runs from the first exchange REM knows to today, one
+  tick per dated History line at its real date; when the record has no dated
+  lines it draws only the first contact and says so. The fuse turns red only
+  from their last mail, and only once that is past your own median reply time
+  in synced mail, and never while Today has her items handled, looking
+  handled or needing no reply; without that data it is never red. Then mails,
+  first exchange, your median reply and last contact; **Open topics**
+  (**还没结的话题**), the record's open threads as words and a date with
+  nothing to click (marking them happens in Today); **In their words**,
+  their own archived mail said to you personally: you on To or Cc (your
+  addresses from the map and mail archive; unknown addresses quote nothing),
+  at most eight recipients, not an auto-reply, cited by a public passage and
+  by no [personal]/[sensitive] one, the excerpt itself unlabelled, greeting
+  and signature block removed; the archive keeps no Auto-Submitted or List-Id
+  header, so these are what it judges by. Each carries its channel and source
+  mark; and
+  the dated exchanges. Contact, organisation, what REM is not sure of (dashed,
+  REM's pencil) and the local graph sit in the rail. On Today, a card REM
+  thinks your reply already handled offers **Not done yet** (**还没办完**)
+  beside **Mark done**; it is kept on this device, and the item stays in
+  Today and on the People list. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
@@ -821,14 +957,31 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   The rest is grouped by kind, people first, one snippet a page, never a
   local path.
 
-Design: cool blue-biased neutrals with one night blue for links and one lamp
-amber kept for what is owed; a dark palette of its own; Optima for titles,
-Charter for prose, the system face for chrome and the mono face for every
-date, count and id. Fonts are local faces, so the page makes no network
-request. Every view fits a 390 px phone without sideways scrolling, keyboard
-focus is visible, and the hypnogram line is visible immediately. Quotes use a
-warm tint in light mode and warm text with a faint underline in dark mode;
-search matches keep their distinct highlight. Motion respects `prefers-reduced-motion`.
+Design ("Fuse"): the whole reader is painted from one token sheet at the top of
+`reader.html`: one paper, one ink, one grey, one hairline; green only on the
+primary action, which turns over on hover (green label on dark green); red only
+for overdue and danger; and pencil, always dashed, for what REM inferred. Pencil
+never colours text: an inferred word is grey with a dashed pencil underline.
+Four type sizes: display (min(112px, 22vw)) is kept for the one thing a page is
+about, Today's count or an entity's name, then 24, 16 and 12; two weights (400
+and 700); square corners and no shadows. Rings that used to be shadows are
+hairline outlines, and keyboard focus is a 2 px ink outline that wins over them,
+except on `#main` and the Today cards, which are focused by script. Every CSS
+transition and animation takes its duration, delay and easing from the sheet, so
+`prefers-reduced-motion` zeroes all of them; the graph's zoom and the reader's
+smooth scrolling are script-driven and check reduced motion themselves. The
+graph tells kinds apart by shape (a session is a bar, a person a dot); a private
+record is its outline with a slash. Dark mode redefines the same colour names
+under `prefers-color-scheme` (unless the reader is set to Light) and under the
+Dark setting. `tests/unit/test_rem_reader_style_sheet.py` scans the whole page
+(styles, style and SVG attributes, url() data, the script's style writes and the
+strings it builds) and fails when a font size, weight, radius, shadow, colour,
+transition or animation timing is written outside the sheet, when a layout
+custom property holds anything but a length or a number, and when a sheet token
+is unused. A value that only exists at run time, such as a colour held in a
+script variable, is outside what it can see. One system face carries Latin and
+CJK and a mono face carries code; both are local, so the page makes no network
+request. Every view fits a 390 px phone without sideways scrolling.
 
 To see every view on an invented notebook, light and dark, desktop and phone:
 `python scripts/capture_rem_reader.py OUT_DIR` (the fixture is
@@ -1210,12 +1363,12 @@ investigate. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
-the run before and unfinished pages from the existing queues, up to
-`limits.jobs_per_round` pages (default 8). Both stop at the weekly budget or the floor and
+the run before and unfinished pages from the existing queues, all of them in
+the round. Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
-The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
+The UI is a static snapshot of the notebook as of its last render (the footer's **Updated** time); run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
 
@@ -1961,10 +2114,10 @@ as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 Every daily run works through all missing or stale translations. Opened pages
 requesting a translation and pages changed this round come first, then your own
 page, people by recent activity, organisations/projects, decisions/agenda, and
-sessions last. Current caches spend no budget. `limits.translations_per_day`
-defaults to **100**, independently of investigation's daily call budget; the
-weekly quota floor still stops translation. Follow-up slots keep the translation
-pass moving, including when an investigation is waiting on its next portion.
+sessions last. Current caches spend no budget. There is no daily translation count (D-104):
+after every 8 investigation turns translation gets a share sized from its
+backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
+on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
 The reader marks an untranslated page **Translation pending** while showing the
@@ -2009,9 +2162,9 @@ usage. `co rem logs --usage` includes these costs; daily translation summaries
 retain attempt counts without duplicating the per-page usage.
 
 Reader settings shows **Notebook languages: 中文 · English — detected** (or
-**— set**) with a copyable `config set languages` command. Reader commands keep
-the selected root, shortening a root under your home to `~/…` with shell-safe
-quoting. The home translation notice is a fallback based only on written pages.
+**— set**), read-only: REM detects them (D-103), and Reader settings carries no
+command to copy (D-60); `co rem config set languages` in a terminal still
+overrides detection. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
 

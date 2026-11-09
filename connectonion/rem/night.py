@@ -58,10 +58,7 @@ def listing(root, *, rows=None):
             from .tasks import identity, receipt_for
             receipt = receipt_for(root, row['key'])
             # A task not started yet, or approved and still queued, shows why it waits.
-            from . import tasks
-            if tasks.HOLD and (receipt or {}).get('result') == 'queued':
-                receipt = {**receipt, 'result': 'held'}
-            elif row['key'] in waiting and (receipt or {}).get('result', 'queued') == 'queued':
+            if row['key'] in waiting and (receipt or {}).get('result', 'queued') == 'queued':
                 receipt = {**(receipt or {}), 'result': 'waiting', **waiting[row['key']]}
             outcome = {**outcome, 'task': {**outcome['task'], 'id': identity(row['key']), **(receipt or {})}}
         result.append(outcome or _base(row, 'could_not_prepare', reason='Not prepared yet.'))
@@ -125,19 +122,17 @@ def _recover(root, fetches):
     return rows, errors
 
 
-def _select(candidate, selected, left, attempted, cap):
+def _select(candidate, selected, attempted):
     if not candidate:
         return 'No replyable original or usable owner words.'
     identity = candidate['id']
     if [identity, candidate['version']] in attempted:
         return 'Draft attempt did not produce an accepted reply.'
-    if identity not in selected and len(selected) >= left:
-        return f'Nightly draft cap ({cap}) reached.'
     selected[identity] = candidate
     return 'Reply preparation pending.'
 
 
-def _outcomes(root, rows, candidates, existing, *, left, cap, attempted, errors, stop):
+def _outcomes(root, rows, candidates, existing, *, attempted, errors, stop):
     selected, items = {}, {}
     for row in rows:
         outcome = _local_outcome(root, row)
@@ -146,7 +141,7 @@ def _outcomes(root, rows, candidates, existing, *, left, cap, attempted, errors,
         if not outcome:
             candidate = _draft_for(row, candidates) if row['reply']['state'] == 'queued' else None
             reason = errors.get(row['reply'].get('source')) or stop
-            reason = reason or _select(candidate, selected, left, attempted, cap)
+            reason = reason or _select(candidate, selected, attempted)
             outcome = _base(row, 'could_not_prepare', reason=reason)
         outcome.setdefault('prepared_at', service.now().isoformat())
         items[row['key']] = {'revision': _revision(row), 'outcome': outcome}
@@ -162,11 +157,8 @@ def prepare(root, config, *, attempted=(), fetches=None, stop=''):
         rows, errors = _owed(today.queue(root)), {}
     else:
         rows, errors = _recover(root, fetches)
-    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(config))
-    spent = sum(run.get('runner_attempts', 0) for run in runs if run.get('phase') == 'reply-draft')
-    cap = config['limits']['drafts_per_night']
     existing = {outcome['key']: outcome for outcome in listing(root, rows=rows)}
-    items, selected = _outcomes(root, rows, drafts.queue(root), existing, left=max(0, cap - spent), cap=cap,
+    items, selected = _outcomes(root, rows, drafts.queue(root), existing,
                                attempted=attempted, errors=errors, stop=stop)
     write_json(state_path(root, 'night.json'), {'date': service.notebook_today(root).isoformat(), 'items': items})
     return selected

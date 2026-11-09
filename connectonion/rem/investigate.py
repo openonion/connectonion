@@ -2419,9 +2419,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    from .inquiry import routing
+    from .inquiry import inquiry_routed
     original_material = None
-    if routing(root):
+    if inquiry_routed(root):
         import uuid
 
         original_material = directory / "originals.json" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}.json")
@@ -2480,7 +2480,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     items = with_local_times(items, notebook_zone(read_config(root, validated=False)))
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
-    synthesis_calls = 3 if routing(root) else 1
+    synthesis_calls = 3 if inquiry_routed(root) else 1
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()

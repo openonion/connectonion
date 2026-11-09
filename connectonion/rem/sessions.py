@@ -844,7 +844,8 @@ def _save_summaries(root: Path, summaries: list[dict], settings: dict) -> list[s
 def summarise_sessions(root: Path, *, limit: int = 40, batch: int = 8, run=None, say=None) -> dict:
     started = time.monotonic()
     settings = config.read_config(root)
-    settings = {**settings, "model": settings["models"]["summary"]}
+    from .inquiry import stage_config
+    settings = stage_config(root, settings, "sessions-summary")
     problem, fix = runner.ready(settings)
     report = {"summarised": 0, "failed": 0, "batches": 0, "dropped_quotes": 0,
               "usage": {}, "seconds": 0, "batch_seconds": []}

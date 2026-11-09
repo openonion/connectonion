@@ -125,7 +125,10 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
             for child in node.get('children', []):
                 yield from nodes(child)
     rendered = list(nodes(tree))
-    assert any(n['tag'] == 'h1' and n.get('text') == '1 person is waiting on you.' for n in rendered)
+    def words(node):
+        return node if isinstance(node, str) else node.get('text', '') + ''.join(words(child) for child in node.get('children', []))
+    # The headline is a poster (D-108): the count and its words are two spans of one h1.
+    assert any(n['tag'] == 'h1' and words(n) == '1 person is waiting on you.' for n in rendered)
     assert any(n['tag'] == 'b' and 'overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
     assert any(n.get('class') == 'words' and 'feedback' in n.get('text', '').lower() for n in nodes(card))

@@ -350,7 +350,8 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     # Execute the generated handlers with only the clipboard and footer DOM stubbed.
     command = re.search(r"function remCommand\(args\).*", page).group(0)
     copy = re.search(r"pathBtn.onclick = .*", page).group(0)
-    footer = next(line for line in page.splitlines() if "settings.appendChild" in line and "re-renders" in line)
+    # D-60 (build 3b review): Reader settings no longer prints a re-open command; only the path copy remains.
+    assert not [line for line in page.splitlines() if "settings.appendChild" in line and "remCommand(" in line]
     script = "\n".join([
         "const REM = " + json.dumps(data) + "; const r = " + json.dumps(record) + ";",
         "const location = {protocol: " + json.dumps(protocol) + "};",
@@ -358,7 +359,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         "const copyToClipboard = path => result.path = path;",
         "const el = (tag, attrs) => attrs.text;",
         "const settings = {appendChild: text => result.footer = text};",
-        command, copy, footer, "pathBtn.onclick(); console.log(JSON.stringify(result));",
+        command, copy, "pathBtn.onclick(); console.log(JSON.stringify(result));",
     ])
     node = shutil.which("node")
     if not node:
@@ -371,11 +372,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
-    quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
-    assert json.loads(result.stdout) == {
-        "path": str(root / record["path"]),
-        "footer": "Reload for latest" if protocol == "about:" else f"co rem --root {quoted_root} open re-renders",
-    }
+    assert json.loads(result.stdout) == {"path": str(root / record["path"])}
 
 
 def test_render_embeds_records_and_neutralizes_markup(tmp_path):
@@ -514,19 +511,6 @@ def test_summary_values_hide_only_empty_placeholders():
     assert result == [False] * 8 + [True] * 3
 
 
-def test_empty_between_you_keeps_one_calm_line_and_real_threads_remain():
-    page = TEMPLATE.read_text(encoding="utf-8")
-    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0) for name in ["owedCard", "byUrgency"])
-    result = _run_reader_js(functions + r"""
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      const isDone = () => false, looksDone = entry => entry.t.done, owedRow = (r, entry) => entry.t.name;
-      const threads = () => ({calm: ""}), emptyLine = () => ({tag: "p", class: "empty-line", text: "Nothing open."});
-      const entries = [{t: {dir: "theirs", name: "export"}}, {t: {dir: "mine", name: "replied", done: true}},
-        {t: {dir: "mine", name: "late", due: "2026-10-01"}}, {t: {dir: "mine", name: "plan", since: "2026-09-01"}}];
-      console.log(JSON.stringify([owedCard({}, []), owedCard({}, entries).children[1].children.filter(Boolean)]));
-    """)
-    assert result[0]["children"][1] == {"tag": "p", "class": "empty-line", "text": "Nothing open."}
-    assert result[1] == ["late", "plan", "replied", "export"]
 
 
 def test_source_focus_candidates_exclude_unreachable_controls():
@@ -1481,7 +1465,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    buttons = result['prepared']['children'][3]['children']
+    buttons = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1499,7 +1483,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
+                          for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
                                        'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
@@ -1515,6 +1499,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
       const contactFields = () => [], company = () => '', calendarDay = day => day;
       const href = r => '#r=' + r.path, threadWho = r => r.title, blockerTag = () => null, alsoOn = () => null;
       const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, approvalTask = () => null, overdueDays = () => 0;
+      const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const firstName = r => r.title.split(' ')[0], threadAge = () => 'due today', CHECK_ICON = '', roleSummary = text => text;
       const entry = {r: {path: 'people/avery.md', title: 'Avery Lin'}, t: {dir: 'mine', text: 'Review the pilot.'}};
       const group = {r: entry.r, entries: [entry]};
@@ -1528,14 +1513,17 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert mail['class'] == 'mailcard'
     assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
-    assert mail['children'][0]['children'][2] is None  # no CC row
+    # D-10: the CC row is always there, and says when nobody is copied.
+    assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
     assert mail['children'][0]['children'][3]['children'][1]['text'] == 'Re: Pilot'
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
     assert gist['class'] == 'mail-gist' and gist['children'][1]['text'] == '明天发出审阅意见。'
-    why = mail['children'][2]
-    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children']
-    assert mail['children'][3]['children'][0]['text'] == 'Send'
+    # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
+    why = gist['children'][2]
+    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
+    assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
+    assert mail['children'][4]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -1543,6 +1531,13 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert actions['children'][0]['class'] == 'btn-act'
     assert 'mailto:' not in json.dumps(actions)
     assert 'Copy prompt' not in json.dumps(result)
+
+
+def _words(node):
+    """The words a serialised reader node reads as, children in order (the poster splits its sentence)."""
+    if isinstance(node, str):
+        return node
+    return (node or {}).get('text', '') + ''.join(_words(child) for child in (node or {}).get('children', []))
 
 
 def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_find():
@@ -1560,14 +1555,17 @@ def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_fi
       const zh = briefHeader({mine: 4}, groups);
       console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
     })();''')
-    assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
-    assert result['header']['children'][1]['text'] == '2 people are waiting on you.'
+    # The date shares a kicker line with the quiet links; the headline is a poster, the count its own span (D-108).
+    assert result['header']['children'][0]['children'][0]['text'] == 'Tuesday, 20 October'
+    assert _words(result['header']['children'][1]) == '2 people are waiting on you.'
+    assert [child['text'] for child in result['header']['children'][1]['children'] if isinstance(child, dict)] == ['2', 'people are waiting on you.']
     lede = result['header']['children'][2]['children']
     assert lede[0] == 'Most urgent: Ada, ' and lede[1] == {'tag': 'b', 'class': 'late', 'text': '2 days overdue', 'children': []}
-    assert result['noDeadline']['children'][1]['text'] == '1 person is waiting on you.'
-    assert result['noDeadline']['children'][2] is None
+    assert _words(result['noDeadline']['children'][1]) == '1 person is waiting on you.'
+    # Nothing overdue still names who is first, without inventing a lateness (build 3b: "one sentence naming who is most urgent").
+    assert result['noDeadline']['children'][2]['text'] == 'First in line: Cy.'
     assert result['quiet']['children'][1]['text'] == 'Nobody is waiting on you today.'
-    assert result['zh']['children'][1]['text'] == '2 个人在等你。'
+    assert _words(result['zh']['children'][1]) == '2 个人在等你。'
     assert result['zh']['children'][2]['children'][1]['text'] == '逾期 2 天'
     assert result['find'] == '查找'
 
@@ -1599,10 +1597,11 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1].text}));
+        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert result == {'parsed': 7, 'merged': 7, 'today': 7, 'headline': '1 person is waiting on you.'}
+    assert _words(result.pop('headline')) == '1 person is waiting on you.'
+    assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -1650,7 +1649,8 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
       const contactFields = () => [], company = () => '', blockerTag = () => null;
       const threadDraft = () => null, draftNote = () => null;
-      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = '';
+      const handedLine = () => null, rowTask = () => null, handOff = () => null; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
       const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
       const dated = make('Review the pilot (2026-10-30) — due 2026-11-02, overdue; open as of 2026-10-30', '2026-11-02');
       console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
@@ -1671,7 +1671,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
 def test_claim_values_use_only_current_cached_facts_for_chinese_after():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['parseFacts', 'rawSection', 'factText', 'plainLine',
+                          for name in ['parseFacts', 'topLevelParts', 'rawSection', 'factText', 'plainLine',
                                        'originalMark', 'claimValue', 'overnightChange', 'changeCard'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
@@ -1714,7 +1714,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
 def test_unknown_is_localised_only_on_display_paths():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'rawSection'])
+                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'topLevelParts', 'rawSection'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Unknown: '未知'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
@@ -1751,20 +1751,90 @@ def test_summary_line_strips_only_leading_insight_labels():
     assert result['raw'] == 'Now: waiting on review'
 
 
+def test_dates_inside_a_sentence_use_the_pages_calendar_format():
+    """The org lede printed "allocated the teams on 2026-09-23" on a page that says 10月29日 everywhere else."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['datesInProse', 'calendarDate', 'calendarDay'])
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-11-09T10:00:00Z', status: {timezone: 'UTC'}};
+      uiLanguage = 'zh';
+      const english = datesInProse('The university allocated the teams on 2026-09-23 and met on 2025-11-29.');
+      const chinese = datesInProse('学校在 2026-09-23 分好了组。');
+      uiLanguage = 'en';
+      console.log(JSON.stringify([english, chinese, datesInProse('Allocated on 2026-11-08.')]));
+    ''')
+    # One language per line: the date speaks the sentence's language, whatever the interface is in.
+    assert result[0] == 'The university allocated the teams on Sep 23 and met on Nov 29, 2025.'
+    assert result[1] == '学校在 9月23日 分好了组。'
+    assert result[2] == 'Allocated on Nov 8.'  # a date in a sentence is never "Yesterday"
+
+
+def test_role_lede_is_the_title_and_parse_facts_splits_like_facts_py():
+    """The lede read "Events Coordinator (Entrepreneurship; email signature through 2026-10-29) +1"."""
+    from connectonion.rem.facts import values
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine'])
+    line = 'Events Coordinator (Entrepreneurship; email signature through 2026-10-29); Mentor [3]'
+    result = _run_reader_js(functions + r'''
+      const PARSED_FACTS = new Map(), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const rawSection = page => page.text, inline = text => text, youify = text => text, roleSummary = () => null;
+      const r = {path: 'people/tamsin.md', text: '- Role: ' + LINE + '\n'};
+      const items = parseFacts(r).get('Role');
+      console.log(JSON.stringify({items, lede: roleLede(items, LINE, r.path)}));
+    '''.replace('LINE + ', json.dumps(line) + ' + ').replace('items, LINE,', 'items, ' + json.dumps(line) + ','))
+    assert [{k: i[k] for k in ('value', 'qualifier')} for i in result['items']] == [{k: v[k] for k in ('value', 'qualifier')} for v in values(line)]
+    assert result['lede']['children'][0]['html'] == 'Events Coordinator (Entrepreneurship)'
+    assert result['lede']['children'][1]['text'] == ' +1'
+    assert 'email signature through 2026-10-29' in result['lede']['title']
+
+
+def test_role_lede_keeps_when_a_role_ended_or_started():
+    """"Product Owner (until 2025-06); Advisor" read "Product Owner +1": a past role as if current."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const inline = text => text, youify = text => text, roleSummary = () => null;
+      const lede = (value, qualifier) => roleLede([{value, qualifier}, {value: 'Advisor', qualifier: ''}], value, '').children[0].html;
+      console.log(JSON.stringify([lede('Product Owner', 'until 2025-06'), lede('Engineer', 'since 2024'), lede('Founder', 'former'),
+        lede('Mentor', '2019–2021'), lede('Events Coordinator', 'Entrepreneurship; email signature through 2026-10-29'), lede('Lead', 'observed in mail')]));
+    ''')
+    assert result == ['Product Owner (until 2025-06)', 'Engineer (since 2024)', 'Founder (former)', 'Mentor (2019–2021)',
+                      'Events Coordinator (Entrepreneurship)', 'Lead']
+
+
+def test_chinese_interface_never_assumes_a_single_persons_gender():
+    """"他说过的话" headed a woman's quotes. A single person is 对方 (or their name), never 他/她;
+    the words that only look gendered (其他, 他人, 他们 for a plural) are allowed."""
+    page = TEMPLATE.read_text()
+    table = page[page.index('const UI = {'):page.index('function t(')]
+    values = re.findall(r'"(?:[^"\\]|\\.)*":\s*"((?:[^"\\]|\\.)*)"', table)
+    allowed = re.compile(r'其他|他人|他们|她们')
+    gendered = [value for value in values if re.search(r'[他她]', allowed.sub('', value))]
+    assert gendered == [], gendered
+
+
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['roleSummary', 'plainLine'])
+                          for name in ['roleSummary', 'topLevelParts', 'plainLine'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const youify = text => text, inline = text => text, privateFallback = node => node;
       const roles = 'Head of Partnerships; Pilot lead; Research liaison';
       console.log(JSON.stringify([roleSummary(roles, ''), roleSummary('Pilot lead', ''),
-        roleSummary('Public role; Secret role [sensitive]', '')]));
+        roleSummary('Public role; Secret role [sensitive]', ''),
+        roleSummary('Events coordinator (Founders space; Startup week); Mentor; Judge; Panel host', '')]));
     ''')
     assert result[0]['title'] == 'Head of Partnerships; Pilot lead; Research liaison'
     assert result[0]['children'][0]['html'] == 'Head of Partnerships'
-    assert result[0]['children'][1]['text'] == ' +2'
+    assert result[0]['children'][1]['text'] == ' +2'  # neutral: no word in either language (one language per line)
+    # A semicolon inside brackets belongs to its role: the first role is shown whole, never cut mid-parenthesis.
+    assert result[3]['children'][0]['html'] == 'Events coordinator (Founders space; Startup week)'
+    assert result[3]['children'][1]['text'] == ' +3'
     assert result[0]['children'][1]['class'] == 'role-more'
     assert result[1]['children'][1] is None
     assert result[2]['title'] == ''  # No private words in a tooltip.
@@ -1804,7 +1874,7 @@ def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
 def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personSub', 'roleSummary', 'changedValue', 'factText', 'plainLine'])
+                          for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine'])
     result = _run_reader_js(functions + r"""
       const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
       const r = {path: 'people/mara-ostrowski.md'};
@@ -1873,8 +1943,8 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     mara['index'] = {'role': 'Old role', 'location': 'Old harbour town'}
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'personOrg', 'personProject',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
+        'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'personProject',
+        'factList', 'peopleCardMeta', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
@@ -2252,7 +2322,7 @@ def test_reader_exposes_language_origin_and_home_display_root(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize('origin', ['detected', 'set'])
-def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(origin):
+def test_reader_languages_setting_is_visible_inside_disclosure_and_read_only(origin):
     page = TEMPLATE.read_text()
     function = re.search(r'function notebookLanguages\(.*?\n\}', page, re.S).group(0)
     result = _run_reader_js('const REM = ' + json.dumps({'your_languages': ['zh', 'en'], 'languages_from': origin}) + ';\n'
@@ -2263,8 +2333,8 @@ def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(orig
         console.log(JSON.stringify(notebookLanguages()));
     ''')
     assert result['children'][0]['text'] == 'Notebook languages: 中文 · English — ' + origin
-    # The narrow sidebar copies the command from a button; the full command is its title.
-    assert result['children'][1]['title'] == 'co rem config set languages zh,en'
+    # D-60/D-103 (build 3b review): REM detects the languages; there is no command to copy beside them.
+    assert len(result['children']) == 1 and 'co rem' not in json.dumps(result)
     assert 'settings.appendChild(notebookLanguages())' in page
 
 
@@ -2326,18 +2396,16 @@ def test_chinese_interface_uses_the_owners_regional_cached_prose(tag):
     assert result == {'translated': '草稿。', 'notice': None}
 
 
-def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
+def test_settings_say_nightly_updates_are_off_without_a_command():
+    """D-60 (build 3b review): Reader settings states the schedule in words, never a command to type."""
     page = TEMPLATE.read_text()
-    command = re.search(r'function remCommand\(args\).*', page).group(0)
-    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'Background updates off' in line)
-    result = _run_reader_js('const REM = ' + json.dumps({'root_display': '~/.co/$&`book`/rem', 'default_root': False}) + ';\n'
-        + command + r'''
-        const s = {}, schedule = '', plainLine = value => value;
-        const scheduleState = () => 'Background updates off — run `co rem start` to enable';
+    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'nightlyUpdatesOff()' in line)
+    result = _run_reader_js(r'''
+        const schedule = 'Next pass 02:00', nightlyUpdatesOff = () => true;
         const el = (tag, attrs) => attrs.text;
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
-    assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+    assert result == 'Nightly updates are off.'
 
 
 def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
@@ -2712,7 +2780,9 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     ''')
     assert 'exit 124' in result
     assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
-    action = ('处理阻塞后运行 co rem start' if language == 'zh' else 'Resolve the blocker, then run co rem start') if code == 'blocked' else (
+    # D-60 (build 3b review): the next step is said in words, never as a command to type.
+    assert 'co rem' not in result
+    action = ('处理阻塞后重新启动 REM' if language == 'zh' else 'Resolve the blocker, then restart REM') if code == 'blocked' else (
         '已自动重试' if language == 'zh' else 'Retried automatically')
     assert action in result
 
@@ -2778,7 +2848,7 @@ def test_threads_use_current_original_and_preserve_translated_deadline():
 
 def test_reviewed_facts_use_updated_english_instead_of_saved_original():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['parseFacts', 'rawSection'])
+                          for name in ['parseFacts', 'topLevelParts', 'rawSection'])
     result = _run_reader_js(functions + r'''
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = {path: 'people/mara.md', original: '# Mara\n\n## Facts\n- Role: Old CEO\n',
@@ -2841,9 +2911,10 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;}});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
+        appendChild(node) {this.children.push(node);}});
       const mailbox = address => ({address, name: 'Fern'}), personByAddress = () => null;
       const remCommand = args => "co rem --root '/tmp/fictional notebook' " + args;
       const commandChip = command => ({tag: 'div', class: 'cmd', text: command});
@@ -2853,17 +2924,20 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       const nodes = [];
       function visit(node) { if (node && typeof node === 'object') {nodes.push(node); (node.children || []).forEach(visit);} }
       visit(card);
-      console.log(JSON.stringify({card, chips: nodes.filter(node => node.class === 'owner-slot'),
+      console.log(JSON.stringify({card, chips: nodes.filter(node => (node.class || '').split(' ').includes('owner-slot')),
         buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
         commands: nodes.filter(node => node.class === 'cmd')}));
     ''')
     assert len(result['chips']) == 2
-    assert all('Fill in' in chip['text'] for chip in result['chips'])
+    # Build 3b: the yellow "需要你填" box became a row to answer in, named by what REM needs.
+    assert [chip['aria-label'] for chip in result['chips']] == ['演示意见', '时间']
+    assert all(chip['role'] == 'group' and chip['children'][-1]['tag'] == 'input' for chip in result['chips'])
     if live:
         assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
     else:
-        assert result['buttons'] == ['Open in the live reader']
-        assert result['commands'][0]['text'] == "co rem --root '/tmp/fictional notebook' open"
+        # D-60 (build 3b review): a snapshot shows Send disabled and no command; the page says why once.
+        assert result['buttons'] == ['Send'] and result['card']['children'][-2]['children'][0]['disabled'] == ''
+        assert result['commands'] == []
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
@@ -2934,6 +3008,7 @@ def test_unresolved_mail_alias_opens_recorded_source_instead_of_a_guessed_provid
 
 
 APPROVAL_DOM = r'''
+let todaySent = null;  // the reply Today just sent; approvalUndoBar leaves its undo to Today's row
 class ApprovalNode {
   constructor(tag, attrs = {}, children = []) {
     this.tagName = tag; Object.assign(this, attrs); this.children = []; this.listeners = {};
@@ -3024,10 +3099,10 @@ def test_static_approval_cta_and_durable_failure_copy():
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
-      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code').textContent,
+      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code'),
         failures: header.querySelector('.approval-problems').textContent}));
     ''')
-    assert result['disabled'] is True and result['instruction'] == 'co rem open'
+    assert result['disabled'] is True and result.get('instruction') is None  # D-60: no command to copy
     assert 'Delivery not confirmed' in result['failures'] and 'Timed out' in result['failures']
 
 
@@ -3071,47 +3146,8 @@ def test_approval_request_freezes_all_controls_until_response():
     assert result == {'frozen': True, 'restored': True}
 
 
-def test_person_owed_row_says_looks_done_with_your_reply_and_offers_both_answers():
-    page = TEMPLATE.read_text()
-    ui = page[page.index('const UI = {'):page.index('function t(')].strip()
-    ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'owedRow', 'owedParts', 'owedState', 'owedEvidence', 'owedActions', 'quoteSpan', 'looksDone', 'overdueDays', 'queuedReply',
-        'firstName', 'fmtDate', 'calendarDay', 'plainLine', 'capFirst'])
-    result = _run_reader_js(ui + functions + r'''
-      uiLanguage = 'zh';
-      let notDoneKeys = new Set();
-      const REM = {as_of: '2026-11-08', today_queue: [{key: 'k1', reply: {state: 'replied', since: '2026-10-28', promise: 'Friday works.'}}]};
-      const doneKey = entry => entry.key, isDone = () => false, threadStates = {}, threadDraft = () => null;
-      const youify = text => text.replace(/^Mara asked the user/, 'Mara asked you'), withoutDateClutter = text => text;
-      const age = () => '3 天', daysSince = day => Math.round((new Date('2026-11-08') - new Date(day)) / 864e5);
-      const setDone = () => {}, CHECK_ICON = '', inline = text => text;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
-      const r = {title: 'Mara Ostrowski'};
-      const text = node => typeof node === 'string' ? node : (node.text || '') + (node.children || []).map(text).join('');
-      const done = owedRow(r, {key: 'k1', t: {dir: 'mine', since: '2026-10-26', text: 'Mara asked the user to choose a Friday slot — “Pick the best 30 minutes!” (2026-10-26) [19]'}});
-      const late = owedRow(r, {key: 'k2', t: {dir: 'mine', since: '2026-10-23', due: '2026-10-25', text: 'You owe Mara feedback on the demo — “I will watch it that week.” [18]'}});
-      notDoneKeys.add('k1');
-      const reopened = owedRow(r, {key: 'k1', t: {dir: 'mine', since: '2026-10-26', text: 'Mara asked the user to choose a Friday slot [19]'}});
-      console.log(JSON.stringify([text(done.children[0]), text(done.children[1]), done.children[2].children.map(text),
-        text(late.children[0]), text(late.children[1]), text(reopened.children[0])]));
-    ''')
-    assert result[0] == 'Mara asked you to choose a Friday slot看起来已办'
-    assert result[1].startswith('你10月28日回复：Friday works.')
-    assert result[2] == ['按这封邮件关闭', '还没办完']
-    assert result[3] == 'You owe Mara feedback on the demo逾期 14 天'
-    assert result[4].startswith('I will watch it that week.')
-    assert result[5].endswith('3 天')
 
 
-def test_person_owed_row_keeps_a_no_reply_reason():
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in ['owedEvidence'])
-    result = _run_reader_js(functions + r'''
-      const queuedReply = () => null, threadDraft = () => ({status: 'no_reply', gist: '需要你到场，已等3天。'});
-      const el = (tag, attrs = {}) => attrs;
-      console.log(JSON.stringify(owedEvidence({t: {}}, {})));
-    ''')
-    assert result['text'] == 'No reply needed: 需要你到场，已等3天。'
 
 
 def test_session_mentions_skip_regex_scans_for_absent_names(monkeypatch):
@@ -3169,7 +3205,7 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
 
 
 def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
-    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now."""
+    """Live: no "queued for tonight" beside Draft now. Static: say it waits, never with a command (D-60)."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['draftNote', 'draftNowButton'])
@@ -3184,7 +3220,7 @@ def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
       console.log(JSON.stringify({liveNote, staticNote: draftNote(null, entry)}));
     ''')
     assert result['liveNote'] is None
-    assert 'co rem open' in json.dumps(result['staticNote'])
+    assert result['staticNote']['class'] == 'quiet-line draft-reason' and 'co rem' not in json.dumps(result['staticNote'])
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
@@ -3245,30 +3281,11 @@ def test_a_queued_task_card_says_why_it_waits():
         assert not any(child.get('class') == 'task-controls' for child in card['children'])
 
 
-@pytest.mark.parametrize('language', ['en', 'zh'])
-def test_a_held_task_card_says_it_is_recorded_and_offers_only_undo(language):
-    """D-60, 2026-11-07: never ask the owner to copy a prompt or a command."""
+def test_no_task_card_says_this_version_does_not_run_it():
+    # D-100: tasks run. The rc62 "held" state, its copy and its Copy-the-prompt button are gone.
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
-    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js('UI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + functions + r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
-        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
-      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
-      const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
-        {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
-      const card = taskResult({key: 'fern'});
-      const controls = card.children.find(child => child.class === 'task-controls');
-      console.log(JSON.stringify({status: card.children[0].text, buttons: controls.children.map(child => child.text), card}));
-    ''')
-    if language == 'zh':
-        assert result['status'] == 'REM 已记下这件事；为了安全，本版本暂不自动去做'
-        assert result['buttons'] == ['撤销']
-    else:
-        assert result['status'] == 'Recorded. For safety this version does not run it yet'
-        assert result['buttons'] == ['Undo']
-    text = json.dumps(result['card'], ensure_ascii=False)
-    assert 'Codex' not in text and 'Prepare the Fernhill' not in text and 'Stop' not in text
+    assert 'this version does not run it' not in page and '本版本暂不自动去做' not in page
+    assert 'task.result === "held"' not in page
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -3363,3 +3380,470 @@ def test_all_records_remembers_graph_or_list_and_survives_blocked_storage(storag
         assert result['again'] == 'list' and list(result['saved'].values()) == ['list']
     else:  # this visit keeps the choice; nothing could be saved
         assert result['again'] == 'graph' and result['saved'] == {}
+
+
+# ---------- opening is instant: the last page from disk, rebuilt behind it (owner, 2026-11-09) ----------
+# Each open used to rebuild the whole notebook, and the cache key alone listed every
+# file: 17 s of stat calls and 35-73 s of rendering on a 31,136-file notebook.
+
+def _cached_reader(tmp_path, monkeypatch):
+    from connectonion.rem import reader
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr(reader, "_now", lambda: _Clock.seconds, raising=False)
+    # As on a large notebook: an explicit open does not re-render in place.
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0, raising=False)
+    _Clock.seconds = 1_794_000_000.0
+    return reader
+
+
+class _Clock:
+    """The render time the page shows, set by the test."""
+    from datetime import datetime as real
+    at = None
+    seconds = 0.0     # the reader's own clock (reader._now), for its intervals
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.at
+
+    @classmethod
+    def fromtimestamp(cls, *args, **kwargs):
+        return cls.real.fromtimestamp(*args, **kwargs)
+
+
+def test_a_second_open_of_a_large_notebook_lists_no_directory_and_is_instant(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    # Retained sources are most of a real notebook's files; the reader never shows them.
+    for folder in range(200):
+        directory = root / ".state" / "mail" / f"{folder:03}"
+        directory.mkdir(parents=True)
+        for item in range(100):
+            (directory / f"{item}.json").write_text("{}")
+    first = reader.open_snapshot(root, launch=False)
+
+    def listed(*args, **kwargs):
+        raise AssertionError("an unchanged notebook was listed again")
+    for name in ("walk", "scandir", "listdir"):
+        monkeypatch.setattr(os, name, listed)
+    import glob  # 3.13+: pathlib's rglob bound os.scandir when it was imported; earlier ones call it
+    if hasattr(glob, "_StringGlobber"):
+        monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt an unchanged notebook"),
+                        raising=False)
+    import time
+    started = time.monotonic()
+    second = reader.open_snapshot(root, launch=False)
+    assert time.monotonic() - started < 1.0
+    assert open(second["page"], encoding="utf-8").read() == open(first["page"], encoding="utf-8").read()
+    assert "Alice Example" in open(second["page"], encoding="utf-8").read()
+
+
+def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "datetime", _Clock)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    _Clock.at = datetime(2026, 11, 9, 8, 15, tzinfo=timezone.utc)
+    first = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
+    assert '"as_of": "2026-11-09T08:15:00+00:00"' in first
+
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    spawned = []
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root) or True, raising=False)
+    _Clock.seconds += 60
+    # An explicit open is the owner acting: a minute after the last render, it still rebuilds now.
+    stale = reader.open_snapshot(root, launch=False)
+    assert open(stale["page"], encoding="utf-8").read() == first      # the last page, at once
+    assert spawned == [root]                                         # and one rebuild behind it
+    assert "being built" in stale["note"]
+
+    _Clock.at = datetime(2026, 11, 9, 9, 40, tzinfo=timezone.utc)
+    reader.refresh(root)                                             # what the background process runs
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("a rebuild made itself stale"))
+    fresh = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
+    assert "Bruno Example" in fresh and '"as_of": "2026-11-09T09:40:00+00:00"' in fresh
+    # The page names the time it was rendered: «更新于 HH:MM».
+    assert 't("Updated") + " " + fmtTime(REM.as_of)' in fresh and '"Updated": "更新于"' in fresh
+
+
+def test_the_saved_page_is_private_and_a_planted_link_is_refused(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    page = reader.open_snapshot(root, launch=False)["page"]
+    assert tmp_path / "rem" not in __import__("pathlib").Path(page).parents
+    if os.name == "nt":
+        return
+    assert os.stat(page).st_mode & 0o777 == 0o600
+    folder = os.path.dirname(page)
+    assert os.stat(folder).st_mode & 0o777 == 0o700
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    os.unlink(page)
+    os.symlink(victim, page)
+    with pytest.raises(OSError):
+        reader.open_snapshot(root, launch=False)
+    assert victim.read_text() == "keep"
+
+
+def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, monkeypatch):
+    """The mocks above stand in for this: python -m connectonion.rem.reader ROOT full."""
+    import tempfile
+    import time
+    from connectonion.rem import reader
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))  # the child finds the same cache
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0)   # as on a large notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    reader.open_snapshot(root, launch=False)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    stale = reader.open_snapshot(root, launch=False)       # rendered just now: the rebuild waits
+    assert "Bruno Example" not in open(stale["page"], encoding="utf-8").read()
+    reader.owner_changed(root)                             # unless the owner acted
+    deadline = time.monotonic() + 90
+    while reader.saved(root, "full").get("version") != reader.reader_version(root):
+        assert time.monotonic() < deadline, open(reader._cached(root, "build.log")).read()
+        time.sleep(0.2)
+    assert "Bruno Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+
+
+def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path, monkeypatch):
+    """A request that finds a build running starts no second one, so the running one
+    checks again for the owner's own action; other writes wait for the interval."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    original, passes = reader._render, []
+
+    def build(root, which, *args):
+        passes.append(which)
+        rendered = original(root, which, *args)
+        if len(passes) == 1:
+            Notebook(root).write("people/bruno.md", "# Bruno Example\n")  # lands mid-build
+        return rendered
+    monkeypatch.setattr(reader, "_render", build)
+    reader.refresh(root, ["full"])
+    assert passes == ["full"]                                   # a night write: next interval
+    Notebook(root).write("people/carla.md", "# Carla Example\n")
+    passes.clear()
+
+    def owner_build(root, which, *args):
+        passes.append(which)
+        rendered = original(root, which, *args)
+        if len(passes) == 1:
+            Notebook(root).write("people/dara.md", "# Dara Example\n")
+            reader.owner_changed(root)                          # the owner, mid-build
+        return rendered
+    monkeypatch.setattr(reader, "_render", owner_build)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: None)
+    reader.refresh(root, ["full"])
+    assert passes == ["full", "full"]
+    assert reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert "Dara Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+
+
+
+def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: False)   # refused: a failing build backs off
+    assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
+
+
+def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tmp_path, monkeypatch):
+    """The Today queue, dates and "Next pass" depend on the clock, not only on files."""
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    from datetime import timedelta
+    from connectonion.rem.config import read_config
+    midnight = datetime(2026, 11, 10, tzinfo=service.notebook_zone(read_config(root)))
+    moment = [midnight - timedelta(minutes=2)]
+    monkeypatch.setattr(service, "now", lambda: moment[0])
+    reader.open_snapshot(root, launch=False)
+    key = reader.reader_version(root)
+    moment[0] = midnight + timedelta(minutes=1)
+    assert reader.reader_version(root) != key                     # the notebook's day is in the key
+    spawned = []
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(builds) or True)
+    reader.cached_page(root, "file.html")
+    assert spawned == []                                          # rendered three minutes ago: wait
+    reader.refresh(root, ["full"])
+    _Clock.seconds += reader.REBUILD_INTERVAL + 1                 # nothing changed, but it is old
+    reader.cached_page(root, "file.html")
+    assert spawned == [["full"]]
+
+
+def test_details_and_page_are_published_together(tmp_path, monkeypatch):
+    """A reload after an owner action must not get a new page over old details."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    before = reader.saved(root, "live")
+    original = reader.snapshot
+
+    def snapshot(root, **options):
+        if "today" not in options:  # the details are being built: nothing is published yet
+            assert reader.saved(root, "live") == before
+        return original(root, **options)
+    monkeypatch.setattr(reader, "snapshot", snapshot)
+    Notebook(root).write("people/fern-holt.md", "# Fern Holt\n")
+    _Clock.seconds += 1
+    reader.refresh(root)
+    assert reader.saved(root, "live")["version"] == reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert "Fern Holt" in open(reader.page_path(root, "data.json"), encoding="utf-8").read()
+
+
+def test_owner_actions_after_the_last_pass_are_not_dropped_and_a_corrupt_mark_is_now(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: False)
+    original, passes = reader.snapshot, []
+
+    def snapshot(root, **options):
+        passes.append(1)
+        data = original(root, **options)
+        if len(passes) <= 4:                                      # the owner, during four passes
+            Notebook(root).write(f"people/action-{len(passes)}.md", f"# Action {len(passes)}\n")
+            reader.owner_changed(root)
+        return data
+    monkeypatch.setattr(reader, "snapshot", snapshot)
+    Notebook(root).write("people/start.md", "# Start\n")
+    reader.refresh(root, ["full"])
+    assert len(passes) == 5
+    assert "Action 4" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    passes.clear()
+    monkeypatch.setattr(reader, "snapshot", lambda root, **options: passes.append(1) or original(root, **options))
+    reader._cached(root, "owner").write_text("not a time")
+    Notebook(root).write("people/later.md", "# Later\n")
+    reader.refresh(root, ["full"])                                # no error: the mark reads as now
+    assert len(passes) == 1 and float(reader._cached(root, "owner").read_text()) == _Clock.seconds
+
+
+def test_a_failed_rebuild_is_recorded_shown_and_backed_off(tmp_path, monkeypatch):
+    import subprocess
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    reader._cached(root, "build.log").write_text("".join(f"line {n}\n" for n in range(500)))
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
+    assert reader._spawn_refresh(root, ["full"]) is True
+    assert len(reader._cached(root, "build.log").read_text().splitlines()) <= 200
+    monkeypatch.setattr(reader, "snapshot", lambda root, **options: (_ for _ in ()).throw(RuntimeError("fictional failure")))
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    with pytest.raises(RuntimeError):
+        reader.main([str(root), "full"])                          # the detached process
+    failed = reader.failure(root)
+    assert failed and failed["log"] == str(reader._cached(root, "build.log"))
+    assert reader._spawn_refresh(root, ["full"]) is False and len(started) == 1   # backed off
+    note = reader.open_snapshot(root, launch=False)["note"]
+    assert "rebuild failed" in note and str(reader._cached(root, "build.log")) in note
+    _Clock.seconds += reader.REBUILD_INTERVAL + 1
+    assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 2
+
+
+def test_a_refused_cache_folder_renders_now_and_says_why(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    if os.name == "nt":
+        pytest.skip("POSIX ownership and modes")
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    folder = __import__("pathlib").Path(os.environ["CONNECTONION_REM_CACHE"])
+    folder.mkdir(mode=0o777)
+    os.chmod(folder, 0o777)                                       # as if someone else made it
+    result = reader.open_snapshot(root, launch=False)
+    assert "Alice Example" in open(result["page"], encoding="utf-8").read()
+    assert "rendered now" in result["note"] and str(folder) in result["note"]
+    text, _ = reader.cached_page(root, "live.html")
+    assert "Alice Example" in text
+
+
+def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
+    """After an action or a newer render: wait for the new render, keep scroll, open
+    details and the view, and never reload over a draft being written."""
+    page = TEMPLATE.read_text()
+    reloads = [m.start() for m in re.finditer(r"location\.reload\(\)", page)]
+    door = re.search(r"function reloadOnto\(.*?\n\}", page, re.S)
+    assert door and len(reloads) == 1 and door.start() < reloads[0] < door.end()
+    choice = re.search(r"function reloadChoice\(.*?\n\}", page, re.S).group(0)
+    result = _run_reader_js(choice + r'''
+      const base = {latest: {as_of: "2026-11-09T09:40:00+00:00"}, asOf: "2026-11-09T08:15:00+00:00", typing: false, unsaved: false};
+      console.log(JSON.stringify({
+        newer: reloadChoice(base),
+        same: reloadChoice({...base, asOf: base.latest.as_of}),
+        none: reloadChoice({...base, latest: null}),
+        typing: reloadChoice({...base, typing: true}),
+        draft: reloadChoice({...base, unsaved: true}),
+        older: reloadChoice({...base, latest: {as_of: "2026-11-09T07:00:00+00:00"}}),
+      }));''')
+    assert result == {"newer": "reload", "same": None, "none": None, "typing": None, "draft": "offer", "older": None}
+    # Open sections are known by their id, else their summary; never by position.
+    key = re.search(r"function detailsKey\(.*?\}\n", page, re.S).group(0)
+    keys = _run_reader_js(key + r'''
+      const summary = text => ({querySelector: () => ({textContent: text})});
+      console.log(JSON.stringify([detailsKey({id: "people-columns", ...summary("Columns")}),
+                                  detailsKey({id: "", ...summary("Review reply")})]));''')
+    assert keys == ["#people-columns", "Review reply"]
+    # Task Stop and Undo wait for the render that carries them; Refresh reads in place.
+    task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
+    assert "reloadWhenRendered(" in task
+    assert '"Newer page · Reload": "有更新 · 刷新"' in page
+
+
+def test_a_quiet_visible_page_is_walked_every_interval_and_rebuilt_only_when_needed(tmp_path, monkeypatch):
+    """A rebuild is ~100 s of CPU on a real notebook; the walk is ~17 s of stat calls."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import service
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    day = [datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)]
+    monkeypatch.setattr(service, "now", lambda: day[0])
+    reader.open_snapshot(root, launch=False)
+    walks, renders, original_walk, original = [], [], reader.tree_version, reader.snapshot
+    monkeypatch.setattr(reader, "tree_version", lambda root: walks.append(1) or original_walk(root), raising=False)
+    monkeypatch.setattr(reader, "snapshot", lambda root, **o: renders.append(1) or original(root, **o))
+    # The detached build, run here: what a visible page's poll starts.
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: reader.refresh(root, builds) or True)
+    start = _Clock.seconds
+    at = lambda minutes: setattr(_Clock, "seconds", start + minutes * 60 + 1) or reader.cached_page(root, "file.html")
+    at(10)                                       # the first walk records the tree (the first page was built without one)
+    renders.clear(), walks.clear()
+    start = _Clock.seconds
+    for minutes in (10, 20, 50):
+        at(minutes)
+    assert len(walks) == 3 and renders == []     # walked, nothing differed: no rebuild
+    at(60)
+    assert renders == [1]                        # "Next pass" may be at most STALE_SCHEDULE_SECONDS late
+    assert reader.STALE_SCHEDULE_SECONDS == 3600
+    renders.clear()
+    (root / "people/alice.md").write_text("# Alice Example, edited by another tool\n")
+    at(65)
+    assert renders == []                         # the open never walks; the interval has not passed
+    at(71)
+    assert renders == [1] and "edited by another tool" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    renders.clear()
+    day[0] += timedelta(days=1)
+    at(82)
+    assert renders == [1]                        # the notebook's day changed
+
+
+
+def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, monkeypatch):
+    """The page served, its details and /rem/version must agree, or the open page
+    reloads onto itself every second until the next good build."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    real, crash_at = reader._replace, 0
+    while True:
+        crash_at += 1
+        _Clock.seconds += 1
+        Notebook(root).write(f"people/person-{crash_at}.md", f"# Person {crash_at}\n")
+        writes = []
+
+        def failing(path, text):
+            writes.append(path)
+            if len(writes) == crash_at:
+                raise OSError("fictional disk full")
+            real(path, text)
+        monkeypatch.setattr(reader, "_replace", failing)
+        try:
+            reader.refresh(root)
+            crashed = False
+        except OSError:
+            crashed = True
+        monkeypatch.setattr(reader, "_replace", real)
+        page, _ = reader.cached_page(root, "live.html")
+        details, _ = reader.cached_page(root, "data.json")
+        served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+        assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"], crash_at
+        if not crashed:
+            break
+    assert crash_at > 2   # every write of a publish was tried
+
+
+
+def test_one_refresh_gives_the_page_and_its_details_one_time(tmp_path, monkeypatch):
+    """The live page and the snapshot's details are built one after the other; when
+    the second build crosses a second, they disagreed and an open page reloaded
+    itself every second (seen on a slow CI runner)."""
+    import json as _json
+    from datetime import datetime as real, timedelta, timezone
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    ticks = [real(2026, 11, 9, 8, 15, tzinfo=timezone.utc)]
+
+    class Ticking(_Clock):
+        @classmethod
+        def now(cls, tz=None):  # every reading is a second later, as on a slow machine
+            ticks.append(ticks[-1] + timedelta(seconds=1))
+            return ticks[-1]
+    monkeypatch.setattr(reader, "datetime", Ticking)
+    reader.refresh(root)
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+
+
+def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    link = reader.open_snapshot(root, launch=False)["link"]
+    for n in range(1, 4):                                         # three rebuilds behind it
+        Notebook(root).write(f"people/person-{n}.md", f"# Person Number {n}\n")
+        _Clock.seconds += 1
+        reader.refresh(root, ["full"])
+    page = __import__("urllib.parse").parse.unquote(link.removeprefix("file://"))
+    assert "Person Number 3" in open(page, encoding="utf-8").read()   # reload: the newest, never a missing file
+    assert reader.open_snapshot(root, launch=False)["link"] == link
+
+
+def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypatch):
+    """When the last render was quick, the page co rem open opens is never older than the notebook."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    first = reader.open_snapshot(root, launch=False)
+    (root / "people" / "bob.md").write_text("# Bob\nJoined yesterday.\n")   # in place, by another tool
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt behind instead"))
+    second = reader.open_snapshot(root, launch=False)
+    assert second["page"] == first["page"] and "being built" not in second["note"]
+    assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()

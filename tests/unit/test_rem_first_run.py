@@ -1372,7 +1372,7 @@ def test_init_translation_selects_only_listed_written_pages_without_daily_cap(tm
     from connectonion.rem import translate
     from connectonion.rem.service import run_logs
     prepare(tmp_path)
-    set_config(tmp_path, ['limits.translations_per_day', '1', 'limits.workers', '3'])
+    set_config(tmp_path, ['limits.workers', '3'])
     book = Notebook(tmp_path)
     records = ['people/avery-lin.md', 'orgs/northgate-university.md', 'projects/draft.md',
                'skills/catalog/weekly-brief.md', 'decisions/format.md', 'principles/simple.md']

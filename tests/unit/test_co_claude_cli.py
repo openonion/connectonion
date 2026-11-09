@@ -39,7 +39,29 @@ def test_co_claude_run_passes_a_bounded_workspace_and_resume_id(tmp_path, monkey
         "model": "",
         "timeout": 30,
         "workspace": tmp_path,
+        "permission_mode": "default",
     }]
+
+
+def test_co_claude_run_lets_the_operator_allow_edits(tmp_path, monkeypatch):
+    # Real run 2026-11-09: in the default mode a headless `co claude run`
+    # cannot change a file, because nobody is there to approve the edit.
+    claude = importlib.import_module("connectonion.useful_tools.claude_code")
+    calls = []
+    monkeypatch.setattr(claude, "run_co_claude", lambda **kwargs: calls.append(kwargs) or json.dumps(
+        {"status": "completed", "session_id": "session-1"}))
+    result = CliRunner().invoke(app, ["claude", "run", "Add a line", "--cwd", str(tmp_path),
+                                      "--permission-mode", "acceptEdits"])
+    assert result.exit_code == 0 and calls[0]["permission_mode"] == "acceptEdits"
+    refused = CliRunner().invoke(app, ["claude", "run", "Add a line", "--permission-mode", "yolo"])
+    assert refused.exit_code == 2 and not calls[1:]
+
+
+def test_co_claude_run_refuses_a_timeout_the_runner_would_refuse(tmp_path, monkeypatch):
+    claude = importlib.import_module("connectonion.useful_tools.claude_code")
+    monkeypatch.setattr(claude, "run_co_claude", lambda **kwargs: pytest.fail("must not start"))
+    result = CliRunner().invoke(app, ["claude", "run", "Fix", "--cwd", str(tmp_path), "--timeout", "3601"])
+    assert result.exit_code == 2
 
 
 def test_co_claude_run_exits_nonzero_on_provider_failure(tmp_path, monkeypatch):
