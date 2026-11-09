@@ -1,16 +1,17 @@
-"""One owner-owed obligation, one Codex process, one durable deliverable receipt."""
+"""One owner-owed obligation, one Codex or Claude Code run, one durable deliverable receipt."""
 
 import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
-import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -22,8 +23,16 @@ from .service import now
 
 
 ACTIVE = ('starting', 'running')
-# Who does the work: the owner's 交给 Codex / 交给 Claude. One runner, the agent as data.
-AGENTS = ('codex', 'claude')
+# Who does the work: the owner's 交给 Codex / 交给 Claude. One runner, the agent as data:
+# each is co's own native integration, reached through co ai's harness by its harness name.
+HARNESSES = {'codex': 'codex', 'claude': 'claude-code'}
+AGENTS = tuple(HARNESSES)
+# D-100: full access, in each agent's own words -- Codex's sandbox, Claude Code's permission
+# mode. Pushing, merging and sending stay the owner's click, by the prompt.
+FULL_ACCESS = {'sandbox': 'danger-full-access', 'permission_mode': 'bypassPermissions'}
+# Set by the owner's Stop (SIGTERM). The providers turn an exception inside their run into an
+# error result after ending their process, so the worker reads the stop from here, not from it.
+_STOPPED = threading.Event()
 
 
 def identity(key):
@@ -157,28 +166,44 @@ def start(root, task_id, agent=None):
 
 
 def _interrupted(signum, frame):
+    _STOPPED.set()
     raise InterruptedError('Task stopped by the owner')
 
 
-def _run(command, log, timeout, receipt, cwd):
-    with log.open('w') as output, subprocess.Popen(command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output,
-                                                  stderr=subprocess.STDOUT, start_new_session=True,
-                                                  env={**os.environ,
-                                                       'TMPDIR': str(Path(receipt['receipt']).parent / 'tmp')}) as process:
-        receipt.update(codex_pid=process.pid, codex_command=' '.join(command[:-1]))
-        write_json(Path(receipt['receipt']), receipt)
-        try:
-            return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return 124
-        finally:
-            if process.poll() is None:
-                try:
-                    codex_exec._terminate_descendants(process.pid)
-                finally:
-                    with suppress(ProcessLookupError):
-                        os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
+@contextmanager
+def _tmpdir(path):
+    """The agent's scratch files go in the task's own tmp/, removed with the task."""
+    previous = os.environ.get('TMPDIR')
+    os.environ['TMPDIR'] = str(path)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop('TMPDIR')
+        else:
+            os.environ['TMPDIR'] = previous
+
+
+def _delegate(receipt, folder, config, timeout):
+    """The agent's own run through co's native integration, in the task's workspace.
+    Returns the exit code the receipt keeps: 0 done, 124 out of time, 1 anything else."""
+    from ..cli.co_ai import harness
+    agent = receipt.get('agent', 'codex')
+    # REM's model names a Codex model; Claude Code keeps its own.
+    model = config['model'] if agent == 'codex' and config['model'] != 'default' else ''
+    with _tmpdir(folder / 'tmp'):
+        answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
+                             timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
+                             **FULL_ACCESS)
+    if _STOPPED.is_set():
+        raise InterruptedError('Task stopped by the owner')
+    Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
+    if answer['result']:
+        Path(receipt['last_message']).write_text(answer['result'])
+    receipt['session_id'] = answer.get('session_id')  # resumable in the agent's own app
+    if answer['error']:
+        receipt['reason'] = answer['error']
+    return {'natural': 0, 'timeout': 124}.get(answer['outcome'], 1)
 
 
 def execute(root, task_id, *, timeout=None):
@@ -197,20 +222,18 @@ def execute(root, task_id, *, timeout=None):
 def _execute(root, folder, receipt, timeout):
     code, result = None, 'failed'
     try:
-        config = read_config(root)
+        from .inquiry import stage_config
+        config = stage_config(root, read_config(root), 'task')
         work = workspace(root, receipt, folder)
         receipt['cwd'] = str(work)
         (folder / 'tmp').mkdir(exist_ok=True, mode=0o700)
-        command = _command(receipt.get('agent', 'codex'), work, folder, config, receipt)
         write_json(folder / 'receipt.json', receipt)
-        code = _run(command, Path(receipt['log']), timeout or config['limits']['timeout_seconds'], receipt, work)
-        if receipt.get('agent') == 'claude':
-            _claude_last_message(Path(receipt['log']), Path(receipt['last_message']))
+        code = _delegate(receipt, folder, config, timeout or config['limits']['timeout_seconds'])
         deliverable = Path(receipt['deliverable'])
         present = deliverable.is_file() and not deliverable.is_symlink() and bool(deliverable.read_text().strip())
         result = 'completed' if code == 0 and present else 'timed-out' if code == 124 else 'failed'
         if code == 0 and not present:
-            receipt['reason'] = 'Codex exited successfully without a nonempty deliverable'
+            receipt['reason'] = f"{receipt.get('agent', 'codex').capitalize()} finished without a nonempty deliverable"
     except InterruptedError:
         code, result = 130, 'stopped'
     except (OSError, RemError) as error:
@@ -222,26 +245,6 @@ def _execute(root, folder, receipt, timeout):
         receipt.update(result=result, exit_code=code, finished_at=now().isoformat())
         write_json(folder / 'receipt.json', receipt)
     return _project(receipt)
-
-
-def _command(agent, work, folder, config, receipt):
-    """The agent's own non-interactive run, with full access (D-100), in the task's workspace."""
-    if agent == 'codex':
-        return codex_exec.exec_command(work, config, last_message=Path(receipt['last_message']),
-                                       prompt=_prompt(receipt), add_dirs=(folder,), full_access=True)
-    claude = shlex.split(os.environ.get('CLAUDE_CMD', '')) or [shutil.which('claude')]
-    if not claude[0]:
-        raise RemError('Claude Code CLI not found; install it or set CLAUDE_CMD')
-    return [*claude, '-p', _prompt(receipt), '--dangerously-skip-permissions', '--output-format', 'json',
-            '--add-dir', str(folder)]
-
-
-def _claude_last_message(log, last):
-    """claude -p --output-format json prints one result object; its text is the run's last message."""
-    results = [json.loads(line) for line in log.read_text().splitlines() if line.startswith('{"type": "result"')
-               or line.startswith('{"type":"result"')]
-    if results and isinstance(results[-1].get('result'), str):
-        last.write_text(results[-1]['result'])
 
 
 def _neuter(work, gitdir):

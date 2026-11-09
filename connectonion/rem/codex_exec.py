@@ -44,25 +44,20 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=(),
-                 full_access=False) -> list[str]:
-    """full_access: an owed-work task (D-100). It runs as the owner's own Codex does, with the web
-    and his accounts; pushing, merging and sending stay his click, by the prompt."""
+def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
+    """The scheduled maintenance turn. Owed-work tasks run through co's own Codex
+    integration instead (tasks.py)."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
     codex = _codex_command()
-    access = ['-s', 'danger-full-access'] if full_access else [
-        '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
-        '--add-dir', str(selected_env_file().parent)]
     command = [*codex, 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
-               '-C', str(root), *access, '--skip-git-repo-check',
+               '-C', str(root), '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
+               '--add-dir', str(selected_env_file().parent), '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
-    for directory in add_dirs:
-        command += ['--add-dir', str(directory)]
-    return [*command, automation_prompt(root) if prompt is None else prompt]
+    return [*command, automation_prompt(root)]
 
 
 def _startup_timeout(signum, frame):

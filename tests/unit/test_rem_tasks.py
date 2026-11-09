@@ -25,52 +25,31 @@ def task_notebook(tmp_path, monkeypatch, rem_clock):
     return root
 
 
+NATIVE = Path(__file__).parents[1] / 'fixtures' / 'native_runners'
+
+
 @pytest.fixture
 def fake_codex(tmp_path, monkeypatch):
-    path = tmp_path / 'codex-fake'
-    path.write_text('''#!/usr/bin/env python3
-import json, os, pathlib, sys, time
-args = sys.argv[1:]
-last = pathlib.Path(args[args.index('-o') + 1])
-(last.parent / 'argv.json').write_text(json.dumps(args))
-(last.parent / 'env.json').write_text(json.dumps(sorted(os.environ)))
-(last.parent / 'tmpdir.txt').write_text(os.environ.get('TMPDIR', ''))
-last.write_text('Reviewed the Mara pilot.')
-os.chdir(args[args.index('-C') + 1])
-pathlib.Path('codex-was-here.md').write_text('Mara pilot notes')
-if os.environ.get('TASK_FAKE_PLANT') and pathlib.Path('.git').is_file():
-    pathlib.Path('.git').unlink()
-    pathlib.Path('.git').mkdir()
-    pathlib.Path('.git/config').write_text('[core]\\n\\tfsmonitor = touch planted\\n')
-if os.environ.get('TASK_FAKE_SLEEP'):
-    time.sleep(float(os.environ['TASK_FAKE_SLEEP']))
-if not os.environ.get('TASK_FAKE_MISSING'):
-    (last.parent / 'result.md').write_text('# Mara pilot review\\nReady for owner review.\\n')
-sys.exit(int(os.environ.get('TASK_FAKE_EXIT', '0')))
-''')
-    path.chmod(0o700)
-    monkeypatch.setenv('CODEX_CMD', str(path))
-    return path
+    """`codex app-server` answering from a recorded real turn; each request lands in requests.jsonl."""
+    record = tmp_path / 'codex-requests.jsonl'
+    monkeypatch.setenv('CODEX_CMD', str(NATIVE / 'fake_codex_app_server.py'))
+    monkeypatch.setenv('FAKE_CODEX_RECORD', str(record))
+    return record
+
+
+def _codex_requests(record):
+    """The last request of each method the task's Codex app-server received."""
+    return {row['method']: row['params'] for row in map(json.loads, record.read_text().splitlines())}
+
+
+def _turn_prompt(record):
+    return _codex_requests(record)['turn/start']['input'][0]['text']
 
 
 @pytest.fixture
-def fake_claude(tmp_path, monkeypatch):
-    """`claude -p` as Claude Code runs it: prompt in, one JSON result on stdout."""
-    path = tmp_path / 'claude-fake'
-    path.write_text('''#!/usr/bin/env python3
-import json, os, pathlib, re, sys
-args = sys.argv[1:]
-prompt = args[args.index('-p') + 1]
-deliverable = pathlib.Path(re.search(r'Deliverable: (\\S+)', prompt).group(1))
-(deliverable.parent / 'argv.json').write_text(json.dumps(args))
-(deliverable.parent / 'cwd.txt').write_text(os.getcwd())
-pathlib.Path('claude-was-here.md').write_text('Mara pilot notes')
-deliverable.write_text('# Mara pilot review\\nReady for owner review.\\n')
-print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'Reviewed the Mara pilot with Claude.'}))
-''')
-    path.chmod(0o700)
-    monkeypatch.setenv('CLAUDE_CMD', str(path))
-    return path
+def fake_claude(monkeypatch):
+    """`claude -p --output-format stream-json` replaying a recorded real run."""
+    monkeypatch.setenv('CLAUDE_CODE_CMD', str(NATIVE / 'fake_claude.py'))
 
 
 def test_native_cleanup_keeps_obligation_work_even_when_old(tmp_path):
@@ -86,34 +65,41 @@ def test_native_cleanup_keeps_obligation_work_even_when_old(tmp_path):
     assert (directory / 'receipt.json').is_file()
 
 
-@pytest.mark.parametrize('exit_code,missing,expected', [(0, False, 'completed'), (1, False, 'failed'), (0, True, 'failed')])
-def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_codex, monkeypatch, exit_code, missing, expected):
+@pytest.mark.parametrize('status,exit_code,missing,expected', [
+    ('', 0, False, 'completed'), ('failed', 1, False, 'failed'), ('', 0, True, 'failed')])
+def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_codex, monkeypatch, status, exit_code,
+                                                          missing, expected):
+    # Codex runs through co's own app-server integration (useful_tools/codex.py), not `codex exec`.
     from connectonion.rem import tasks
     root = task_notebook
-    monkeypatch.setenv('TASK_FAKE_EXIT', str(exit_code))
+    if status:
+        monkeypatch.setenv('FAKE_CODEX_STATUS', status)
     if missing:
-        monkeypatch.setenv('TASK_FAKE_MISSING', '1')
+        monkeypatch.setenv('FAKE_CODEX_MISSING', '1')
     outcome = night.listing(root)[0]
     receipt = tasks.reserve(root, outcome)
     tasks.execute(root, receipt['id'])
     saved = tasks.status(root, receipt['id'])
     assert saved['result'] == expected and saved['exit_code'] == exit_code
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
-    argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
-    assert argv[0] == 'exec' and argv[argv.index('-m') + 1] == default_config()['model']
-    assert argv[argv.index('-s') + 1] == 'danger-full-access' and '--add-dir' in argv
-    assert 'Done means:' in argv[-1] and 'Deliverable:' in argv[-1]
-    assert 'do not send anything to anyone; write the result and stop' in argv[-1]
-    assert saved['deliverable'] in argv[-1]
+    assert Path(saved['last_message']).read_text() == 'Hello!'  # the final answer, not the commentary before it
+    thread = _codex_requests(fake_codex)['thread/start']
+    assert thread['model'] == default_config()['model'] and thread['config']['model_reasoning_effort'] == 'medium'
+    assert thread['sandbox'] == 'danger-full-access' and thread['approvalPolicy'] == 'never'
+    prompt = _turn_prompt(fake_codex)
+    assert 'Done means:' in prompt and 'Deliverable:' in prompt
+    assert 'do not send anything to anyone; write the result and stop' in prompt
+    assert saved['deliverable'] in prompt
+    assert saved['session_id'] == '01a1bda7-ca66-7640-88ca-79eb9b66e649'
     assert saved.get('prepared_reply', '').startswith('REM 已经做完：') == (expected == 'completed')
     assert tasks.start(root, receipt['id'])['finished_at'] == saved['finished_at']
 
 
 def test_timeout_kills_work_and_keeps_receipt(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
-    tasks.execute(task_notebook, receipt['id'], timeout=0.1)
+    tasks.execute(task_notebook, receipt['id'], timeout=2)
     saved = tasks.status(task_notebook, receipt['id'])
     assert saved['result'] == 'timed-out' and saved['exit_code'] == 124
     assert not saved.get('prepared_reply') and saved['finished_at']
@@ -139,8 +125,8 @@ def _repository(path):
     return path
 
 
-def _writable(argv):
-    return [argv[index + 1] for index, arg in enumerate(argv) if arg == '--add-dir']
+def _writable(record):
+    return _codex_requests(record)['thread/start']['config']['sandbox_workspace_write']['writable_roots']
 
 
 def test_task_runs_with_full_access_in_its_own_worktree_and_leaves_the_project_alone(task_notebook, fake_codex, tmp_path, monkeypatch):
@@ -154,12 +140,11 @@ def test_task_runs_with_full_access_in_its_own_worktree_and_leaves_the_project_a
     tasks.execute(task_notebook, receipt['id'])
     saved = tasks.status(task_notebook, receipt['id'])
     folder = Path(saved['receipt']).parent
-    argv = read_json(folder / 'argv.json', [])
+    requests = _codex_requests(fake_codex)
     work = folder / 'work'
-    assert argv[argv.index('-C') + 1] == str(work) == saved['cwd'] and _writable(argv) == [str(folder)]
-    assert argv[argv.index('-s') + 1] == 'danger-full-access'
-    assert not any('rem_task' in arg or 'network.enabled=false' in arg for arg in argv)
-    assert '--ignore-user-config' not in argv and 'web_search="disabled"' not in argv
+    assert requests['turn/start']['cwd'] == str(work) == saved['cwd'] and _writable(fake_codex) == [str(folder)]
+    assert requests['thread/start']['sandbox'] == 'danger-full-access'
+    assert set(requests['thread/start']['config']) == {'model_reasoning_effort', 'sandbox_workspace_write'}
     assert 'FERNHILL_TOKEN' in read_json(folder / 'env.json', [])
     assert (folder / 'tmpdir.txt').read_text() == str(folder / 'tmp')
     # Its own branch: the owner's checkout keeps its branch and has no new files.
@@ -167,8 +152,9 @@ def test_task_runs_with_full_access_in_its_own_worktree_and_leaves_the_project_a
     assert (work / 'codex-was-here.md').is_file() and saved['project'] == str(repo)
     assert _git(repo, 'branch', '--show-current') == 'main' and _git(repo, 'status', '--porcelain') == ''
     # Pushing, merging and sending stay the owner's one irreversible click.
-    assert str(repo) in argv[-1] and 'Never push' in argv[-1]
-    assert 'no network' not in argv[-1] and 'cannot read credentials' not in argv[-1]
+    prompt = _turn_prompt(fake_codex)
+    assert str(repo) in prompt and 'Never push' in prompt
+    assert 'no network' not in prompt and 'cannot read credentials' not in prompt
     assert saved['result'] == 'completed'
 
 
@@ -177,7 +163,7 @@ def test_a_worktree_the_model_wrote_gets_its_git_pointer_back(task_notebook, fak
     from connectonion.rem import tasks
     repo = _repository(tmp_path / 'pilot-repository')
     _link_project(task_notebook, repo)
-    monkeypatch.setenv('TASK_FAKE_PLANT', '1')  # the model swaps work/.git for a repo with core.fsmonitor
+    monkeypatch.setenv('FAKE_CODEX_PLANT', '1')  # the model swaps work/.git for a repo with core.fsmonitor
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
     tasks.execute(task_notebook, receipt['id'])
     work = Path(receipt['receipt']).parent / 'work'
@@ -196,10 +182,10 @@ def test_task_without_a_repository_reads_the_project_and_writes_in_its_folder(ta
     tasks.execute(task_notebook, receipt['id'])
     saved = tasks.status(task_notebook, receipt['id'])
     folder = Path(saved['receipt']).parent
-    argv = read_json(folder / 'argv.json', [])
-    assert argv[argv.index('-C') + 1] == str(folder / 'work') and _writable(argv) == [str(folder)]
+    assert _codex_requests(fake_codex)['turn/start']['cwd'] == str(folder / 'work')
+    assert _writable(fake_codex) == [str(folder)]
     assert not (project / 'codex-was-here.md').exists() and 'branch' not in saved
-    assert str(project) in argv[-1]
+    assert str(project) in _turn_prompt(fake_codex)
 
 
 def _finished(root, task_id):
@@ -256,7 +242,7 @@ def _clock(monkeypatch, text):
 # D-104: tasks run side by side and a night has no count cap; only the week floor holds one.
 def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
     _second_task(task_notebook)
     started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     try:
@@ -270,7 +256,7 @@ def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, mon
 
 def test_an_approved_task_starts_beside_a_running_one(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import approvals, tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
     _second_task(task_notebook)
     set_config(task_notebook, ['tasks.auto', 'false'])
     first = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
@@ -338,17 +324,46 @@ def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(t
 
 def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
     started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
-    deadline = time.monotonic() + 10
-    while not read_json(Path(started['receipt']), {}).get('codex_pid') and time.monotonic() < deadline:
-        time.sleep(.05)
-    pid = read_json(Path(started['receipt']), {})['codex_pid']
+    pid = _provider_pid(Path(started['receipt']).parent)
     assert tasks.undo(task_notebook, started['id'])['status'] == 'cancelled'
     assert not Path(started['receipt']).parent.exists()
     import subprocess
     process = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True)
     assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived undo'
+
+
+def _provider_pid(folder):
+    """The Codex app-server's pid, written once its turn has started."""
+    deadline = time.monotonic() + 15
+    while not (folder / 'pid.txt').is_file() and time.monotonic() < deadline:
+        time.sleep(.05)
+    return int((folder / 'pid.txt').read_text())
+
+
+def _gone(pid):
+    import subprocess
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True).stdout.strip()
+        if not state or state.startswith('Z'):
+            return True
+        time.sleep(.05)
+    return False
+
+
+def test_stop_ends_a_running_task_as_stopped_and_its_provider_with_it(task_notebook, fake_codex, monkeypatch):
+    # The owner's Stop reaches the worker as SIGTERM. Codex's own error handling must not
+    # turn it into an ordinary failed run.
+    from connectonion.rem import tasks
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    started = tasks.start(task_notebook, tasks.status(task_notebook)[0]['id'])
+    pid = _provider_pid(Path(started['receipt']).parent)
+    assert _running(task_notebook, started['id']) == 'running'
+    saved = tasks.stop(task_notebook, started['id'])
+    assert saved['result'] == 'stopped' and saved['exit_code'] == 130
+    assert _gone(pid), 'Codex survived stop'
 
 
 def test_auto_is_on_by_default_and_the_owner_can_turn_it_off(task_notebook, monkeypatch):
@@ -457,25 +472,19 @@ def test_stop_reaps_codex_after_worker_crash(task_notebook, fake_codex, monkeypa
     from contextlib import suppress
     from connectonion.rem import tasks
     from connectonion.rem.live_host import _alive
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
     task_id = tasks.status(task_notebook)[0]['id']
     receipt = tasks.start(task_notebook, task_id)
     child = None
     try:
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            saved = read_json(Path(receipt['receipt']), {})
-            if saved.get('codex_pid') and (Path(receipt['receipt']).parent / 'argv.json').exists():
-                child = saved['codex_pid']
-                break
-            time.sleep(.05)
-        assert child is not None, saved
+        child = _provider_pid(Path(receipt['receipt']).parent)
         os.kill(receipt['pid'], signal.SIGKILL)
+        deadline = time.monotonic() + 10
         while _alive(receipt) and time.monotonic() < deadline:
             time.sleep(.05)
         assert tasks.stop(task_notebook, task_id)['result'] == 'stopped'
-        process = subprocess.run(['ps', '-p', str(child), '-o', 'stat='], capture_output=True, text=True)
-        assert not process.stdout.strip() or process.stdout.strip().startswith('Z'), 'Codex survived confirmed stop'
+        # The app-server's stdin closed with its worker; it ends itself, as the real one does.
+        assert _gone(child), 'Codex survived confirmed stop'
     finally:
         for pid in [receipt['pid'], child]:
             if pid:
@@ -529,10 +538,14 @@ def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(tas
     folder = Path(saved['receipt']).parent
     argv = read_json(folder / 'argv.json', [])
     assert saved['result'] == 'completed' and saved['agent'] == 'claude'
-    assert '--dangerously-skip-permissions' in argv and argv[argv.index('--add-dir') + 1] == str(folder)
+    # Through co's own Claude Code integration (useful_tools/claude_code.py), full access as a mode.
+    assert argv[argv.index('--permission-mode') + 1] == 'bypassPermissions'
+    assert argv[argv.index('--add-dir') + 1] == str(folder) and '--output-format' in argv
+    assert '--model' not in argv  # REM's model names a Codex model; Claude keeps its own
     assert (folder / 'cwd.txt').read_text() == str(folder / 'work') == saved['cwd']
-    assert 'Done means:' in argv[argv.index('-p') + 1] and 'Never push' in argv[argv.index('-p') + 1]
-    assert saved['prepared_reply'] == f"REM 已经做完：Reviewed the Mara pilot with Claude. · 附：{saved['deliverable']}"
+    assert 'Done means:' in argv[-1] and 'Never push' in argv[-1]
+    assert saved['session_id'] == 'bf1b715f-3272-4573-b78d-359571db650a'
+    assert saved['prepared_reply'] == f"REM 已经做完：Added to the end of README.md: · 附：{saved['deliverable']}"
 
 
 def test_dispatch_starts_any_pending_item_with_the_chosen_agent(task_notebook, fake_claude):
