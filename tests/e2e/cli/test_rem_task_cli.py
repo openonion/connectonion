@@ -11,7 +11,7 @@ from tests.unit.test_rem_tasks import task_notebook, fake_codex  # noqa: F401
 
 
 def test_task_run_status_stop_cli(task_notebook, fake_codex, monkeypatch):
-    monkeypatch.setenv('TASK_FAKE_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     from connectonion.rem import tasks
     from connectonion.rem.runner import child_env
     command = [sys.executable, '-m', 'connectonion.cli.main', 'rem', '--root', str(task_notebook), '--json', 'task']

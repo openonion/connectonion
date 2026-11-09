@@ -97,7 +97,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
 
 def test_timeout_kills_work_and_keeps_receipt(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
     tasks.execute(task_notebook, receipt['id'], timeout=2)
     saved = tasks.status(task_notebook, receipt['id'])
@@ -242,7 +242,7 @@ def _clock(monkeypatch, text):
 # D-104: tasks run side by side and a night has no count cap; only the week floor holds one.
 def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     _second_task(task_notebook)
     started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))
     try:
@@ -256,7 +256,7 @@ def test_the_night_starts_every_owed_task_at_once(task_notebook, fake_codex, mon
 
 def test_an_approved_task_starts_beside_a_running_one(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import approvals, tasks
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     _second_task(task_notebook)
     set_config(task_notebook, ['tasks.auto', 'false'])
     first = tasks.reserve(task_notebook, night.listing(task_notebook)[0])
@@ -324,7 +324,7 @@ def test_undo_discards_rem_work_returns_it_to_approval_and_the_night_leaves_it(t
 
 def test_undo_stops_a_running_task_first(task_notebook, fake_codex, monkeypatch):
     from connectonion.rem import tasks
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     started = tasks.auto_dispatch(task_notebook, read_config(task_notebook))[0]
     pid = _provider_pid(Path(started['receipt']).parent)
     assert tasks.undo(task_notebook, started['id'])['status'] == 'cancelled'
@@ -357,7 +357,7 @@ def test_stop_ends_a_running_task_as_stopped_and_its_provider_with_it(task_noteb
     # The owner's Stop reaches the worker as SIGTERM. Codex's own error handling must not
     # turn it into an ordinary failed run.
     from connectonion.rem import tasks
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     started = tasks.start(task_notebook, tasks.status(task_notebook)[0]['id'])
     pid = _provider_pid(Path(started['receipt']).parent)
     assert _running(task_notebook, started['id']) == 'running'
@@ -472,7 +472,7 @@ def test_stop_reaps_codex_after_worker_crash(task_notebook, fake_codex, monkeypa
     from contextlib import suppress
     from connectonion.rem import tasks
     from connectonion.rem.live_host import _alive
-    monkeypatch.setenv('FAKE_CODEX_SLEEP', '30')
+    monkeypatch.setenv('FAKE_CODEX_SLEEP', '120')
     task_id = tasks.status(task_notebook)[0]['id']
     receipt = tasks.start(task_notebook, task_id)
     child = None
