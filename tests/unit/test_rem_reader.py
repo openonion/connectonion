@@ -2009,7 +2009,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
         appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
       const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
       const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
-      const statusPill = () => null, originalMark = () => null, mappedContact = () => false;
+      const statusPill = () => null, originalMark = () => null, translationMark = () => null, mappedContact = () => false;
       const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
       const localPath = text => text;
       const facts = () => ({last: '2026-10-17', sessions: 4, repo: '/work/harbour', domain: 'fernhill.example'});
@@ -2563,7 +2563,7 @@ def test_omitted_status_leaves_no_empty_field_or_header_separator():
                           for name in ['recordEyebrow', 'sidePanels'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, append(...nodes) {this.children.push(...nodes);}});
-      const known = () => ({}), categoryHref = () => '#', categoryName = () => 'Projects', updatedMarker = () => null;
+      const known = () => ({}), categoryHref = () => '#', categoryName = () => 'Projects', updatedMarker = () => null, translationMark = () => null;
       const statusPill = () => null, factList = () => null, panel = (text, children) => el('section', {text}, children);
       const r = {category: 'projects', text: '# Example'};
       console.log(JSON.stringify({separators: recordEyebrow(r, false).children.filter(n => n?.class === 'sep').map(n => n.text),
@@ -2780,22 +2780,27 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     page = TEMPLATE.read_text()
     ui = page[page.index('const UI = {'):page.index('function t(')].strip()
     ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede', 'turnTrouble'])
     result = _run_reader_js(ui + function + r'''
       uiLanguage = ''' + json.dumps(language) + r''';
       const waitingMore = () => null, threadWho = r => r.title;
       const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
       const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
-      console.log(JSON.stringify(briefHeader({}, []).children[0].text));
+      const line = briefHeader({}, []).children[0];
+      console.log(JSON.stringify([line.text, line.title]));
     ''')
-    assert 'exit 124' in result
-    assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
+    text, title = result
+    # D-71 (polish): the runner's raw English stays out of the line, in the reader's language or not;
+    # it is kept on the title for whoever debugs it.
+    assert 'exit 124' not in text and title == 'exit 124'
     # D-60 (build 3b review): the next step is said in words, never as a command to type.
-    assert 'co rem' not in result
-    action = ('处理阻塞后重新启动 REM' if language == 'zh' else 'Resolve the blocker, then restart REM') if code == 'blocked' else (
-        '已自动重试' if language == 'zh' else 'Retried automatically')
-    assert action in result
+    assert 'co rem' not in text
+    expected = {('zh', 'blocked'): '上一轮定时任务被挡住了，没有跑完，正在等阻塞解除。',
+                ('en', 'blocked'): 'The last scheduled round could not finish and is waiting for its blocker to clear.',
+                ('zh', 'repeated_failure'): '最近两轮定时任务都没有跑完；REM 会自动重试。',
+                ('en', 'repeated_failure'): 'The last two scheduled rounds did not finish; REM retries them automatically.'}
+    assert text == expected[(language, code)]
 
 
 def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():
@@ -3323,7 +3328,7 @@ def test_no_task_card_says_this_version_does_not_run_it():
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_the_empty_topic_list_names_the_command_that_files_topics(language):
+def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
                           for name in ['topicList', 'graphT', 'commandChip'])
@@ -3341,10 +3346,10 @@ def test_the_empty_topic_list_names_the_command_that_files_topics(language):
     text = json.dumps(result, ensure_ascii=False)
     # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
     assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') in text
-    assert ('从已有记录里整理知识：' if language == 'zh' else 'To file them from what you already have:') in text
+    assert ('REM 会在夜里那一轮从已有记录里整理知识。' if language == 'zh' else 'REM files knowledge from your records on its night run.') in text
     assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
-    assert '"tag": "code", "text": "co rem backfill topics --propose"' in text
-    assert ('"复制"' if language == 'zh' else '"Copy"') in text
+    # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
+    assert 'co rem' not in text and '"code"' not in text and '"复制"' not in text and '"Copy"' not in text
 
 
 def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_sessions():

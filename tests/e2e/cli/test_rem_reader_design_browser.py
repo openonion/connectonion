@@ -293,9 +293,9 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # The statement counts people; the link under it carries the one total the sidebar also shows.
-    total = page.locator('.waiting-more a').inner_text().split()[0]
-    assert page.locator('#nav .n.waiting').inner_text() == total
+    # The statement counts people; the items total is the sidebar's, said once (TOP10 #9, polish).
+    total = page.locator('#nav .n.waiting').inner_text()
+    assert int(total) > 0 and f'{total} items waiting on you' not in page.locator('.brief-header').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert page.locator('.brief-header h1').text_content() == f'{len(whos)} people are waiting on you.'  # poster: count and words are two spans
@@ -1283,8 +1283,8 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert ' 0 ' not in primary.inner_text()
     header = page.locator('.brief-header')
     if mine or theirs:
-        parts = [f'{mine} items waiting on you' if mine else '', f'{theirs} on others' if theirs else '']  # items, not people (TOP10 #9)
-        assert header.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
+        # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish).
+        assert header.locator('.waiting-more').inner_text() == (f'{theirs} on others' if theirs else 'Everything open') + ' →'
     else:
         assert header.locator('.waiting-more').count() == 0
         assert header.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
@@ -4117,7 +4117,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
     assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
-    assert '7 items waiting on you' in page.locator('.waiting-more').inner_text()  # items, not people (TOP10 #9)
+    assert page.locator('#nav .n.waiting').inner_text() == '7'  # items, not people (TOP10 #9), said once: in the sidebar
+    assert 'items waiting on you' not in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
     assert page.locator('.category-cards').count() == 0

@@ -785,8 +785,15 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   belongs to the person it names (who asked, or who is owed); a row that names
   nobody is your own note and is not counted as a person waiting, in the
   headline, the lanes or the overnight names. The links beside the date count
-  *items* (**5 items waiting on you**, **22 items to approve in one go**), so
-  they never contradict the count of people. The cards lead with the first
+  *items* (**60 on others**, **22 items to approve in one go**), so they never
+  contradict the count of people. Your own items total is the sidebar's
+  **Waiting on you** number and is not said again on the first screen (one
+  number says one thing); with nothing on others the link reads **Everything
+  open**. A count of zero never shows: with nothing to approve there is no
+  approve link. A failed or stopped scheduled round shows one line above the
+  date in the reader's language (*One round last night ran too long and was
+  stopped; the next round continues.*), never the runner's own English, which
+  stays on the line's tooltip. The cards lead with the first
   person whose reply REM has ready, so its Send is on the first screen; a line
   above the card says so (**Reply to Jiexuan Deng first: the reply is ready**),
   the headline still names the most urgent person, and that person's lane is
@@ -851,6 +858,23 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
+- **Questions & connections** decides each pending review in place in the live
+  reader: **Yes** / **No** / **Not sure** on a link, an answer box with **Save
+  answer** / **Not sure** on a question. A click posts
+  `{"id": <review id>, "verdict": "yes" | "no" | "answer", "response"?: <text>}` to
+  `POST /rem/review` (owner cookie, like `/rem/task`), which calls
+  `reviews.decide(..., author="owner")` and returns the updated review; the row
+  then says **Recorded: Yes** in place, and the page rebuilds at once. A verdict
+  `decide` does not accept, or a missing id, is a 400; a review already decided
+  is a 409, said on the row as *Someone already decided this one*. **Not sure**
+  posts nothing, so the review stays pending and **Change my mind** brings the
+  choice back. These are quiet buttons, not green. A snapshot shows no buttons
+  and no command, only *This is a snapshot; decide these on the live page*.
+- **Waiting on you on a phone** puts each row's date under its title, so the
+  text uses the full width.
+- **Knowledge with no entries yet** says *REM files knowledge from your records
+  on its night run* (the round's `backfill_topics`), with no command to copy
+  (#2910).
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -930,7 +954,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   Investigated records omit the redundant status pill; mapped and partly
   investigated records keep it, and reviewed skills say **Source reviewed**.
   A missing page translation shows **Translation pending** with its queue or
-  background-off state; cached translations preserve the original Sources lines.
+  background-off state, or **Translating** once the live reader has asked for
+  it: one small grey mark in the crumb above the name, never a line of its own; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never

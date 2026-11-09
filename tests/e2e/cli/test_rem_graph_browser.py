@@ -139,8 +139,10 @@ def test_with_no_topics_the_rail_leaves_them_out_and_the_page_names_the_command(
             page.locator("#nav a").first.wait_for(state="attached")  # behind a menu at 390
             assert page.locator('#nav a[href="#c=knowledge"]').count() == 0
             page.goto(path.as_uri() + "#c=knowledge")
-            page.locator(".gx-filed code").wait_for()
-            assert page.locator(".gx-filed code").inner_text().endswith(" backfill topics --propose")  # --root: not the default notebook
+            page.locator(".gx-filed").wait_for()
+            # D-60 (#2910): REM files knowledge itself on its night run; no command to copy.
+            assert page.locator(".gx-filed").inner_text() == "REM files knowledge from your records on its night run."
+            assert page.locator("#main code, #main .cmd").count() == 0
             assert page.locator(".gx-topics .gx-rows").count() == 0  # no rule under an empty list
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()

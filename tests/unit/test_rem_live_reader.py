@@ -513,6 +513,73 @@ def test_rebuilds_wait_out_the_interval_unless_the_owner_acted_in_the_reader(hos
 
 
 
+def _review(root, kind="link"):
+    from connectonion.rem import reviews
+    (root / "people" / "noor-alvi.md").write_text("# Noor Alvi\n")
+    subjects = ["people/alice-chen.md", "people/noor-alvi.md"] if kind == "link" else ["people/alice-chen.md"]
+    return reviews.propose(root, kind, subjects, "Is Alice Chen the same person as Noor Alvi?", "Same phone in two signatures.")
+
+
+def test_a_review_is_decided_from_the_page_by_the_owner_only(host, cache, clock):
+    """问题与关联 decides in place: no terminal, no copied command (D-60)."""
+    from connectonion.rem import reviews
+    row = _review(host.root)
+    body = json.dumps({"id": row["id"], "verdict": "yes", "response": "Same phone."}).encode()
+    assert call(host.routes, "POST", "/rem/review", body=body)[0] == 401
+    assert reviews.listing(host.root)[0]["status"] == "pending"
+    call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
+    reader.refresh(host.root)
+    cache.clear()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 200
+    decided = json.loads(text)
+    assert decided["id"] == row["id"] and decided["status"] == "accepted" and decided["author"] == "owner"
+    saved = reviews.listing(host.root)[0]
+    assert saved["status"] == "accepted" and saved["response"] == "Same phone." and saved["author"] == "owner"
+    assert cache == [host.root]                                     # the page rebuilds now
+
+
+def test_a_question_is_answered_with_the_owners_words(host):
+    from connectonion.rem import reviews
+    row = _review(host.root, kind="question")
+    body = json.dumps({"id": row["id"], "verdict": "answer", "response": "Yes, she changed her name."}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 200 and json.loads(text)["status"] == "answered"
+    assert reviews.listing(host.root)[0]["response"] == "Yes, she changed her name."
+
+
+@pytest.mark.parametrize("bad", [{"verdict": "yes"}, {"id": "", "verdict": "yes"}, {"id": 7, "verdict": "no"},
+                                 {"id": "ID", "verdict": "maybe"}, {"id": "ID", "verdict": "unsure"},
+                                 {"id": "ID", "verdict": None}, {"id": "ID"},
+                                 {"id": "ID", "verdict": "yes", "response": ["Same phone."]}])
+def test_a_review_without_an_id_or_with_a_verdict_decide_refuses_is_a_400(host, bad):
+    from connectonion.rem import reviews
+    row = _review(host.root)
+    body = json.dumps({key: row["id"] if value == "ID" else value for key, value in bad.items()}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 400 and json.loads(text)["error"]
+    assert reviews.listing(host.root)[0]["status"] == "pending"
+
+
+def test_a_long_answer_is_recorded_whole(host):
+    from connectonion.rem import reviews
+    row = _review(host.root, kind="question")
+    answer = "她在两个团队都做过产品负责人。" * 120                     # ~5 KB of UTF-8, past the 4 KB action limit
+    body = json.dumps({"id": row["id"], "verdict": "answer", "response": answer}, ensure_ascii=False).encode()
+    assert call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)[0] == 200
+    assert reviews.listing(host.root)[0]["response"] == answer
+
+
+def test_a_review_already_decided_says_so_instead_of_deciding_twice(host):
+    row = _review(host.root)
+    cookie = f"co_rem={host.token}"
+    body = json.dumps({"id": row["id"], "verdict": "no"}).encode()
+    assert call(host.routes, "POST", "/rem/review", cookie=cookie, body=body)[0] == 200
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=cookie,
+                           body=json.dumps({"id": row["id"], "verdict": "yes"}).encode())
+    assert status == 409 and "already been decided" in json.loads(text)["error"]
+
+
 def test_a_status_read_is_not_an_owner_change(host, cache, clock):
     from connectonion.rem import tasks
     receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',

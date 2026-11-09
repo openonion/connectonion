@@ -155,8 +155,9 @@ def test_fuse_lanes_are_the_waiting_people_and_red_follows_the_days_overdue(toda
     assert page.locator('.fuse .lane[data-path="people/ines-halvorsen.md"] .late').inner_text() == "5 days overdue"
     undated = page.locator('.fuse .lane[data-path="projects/harbour.md"]')
     assert undated.locator(".burn").count() == 0 and undated.locator(".late").inner_text() == "No due date"
-    # One number says one thing (TOP10 #9): the other count names its unit.
-    assert "items waiting on you" in page.locator(".brief-header .waiting-more").inner_text()
+    # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
+    assert "items waiting on you" not in page.locator(".brief-header").inner_text()
+    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("on others →", "Everything open →"))
 
 
 def test_the_card_with_a_ready_reply_leads_while_the_lanes_keep_their_order(today):
@@ -306,7 +307,8 @@ def test_counts_name_their_unit(today):
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
     assert page.locator("#approve-all").inner_text() == "2 件可一键批准"
-    assert "件等你处理" in page.locator(".brief-header .waiting-more").inner_text()
+    assert "件等你处理" not in page.locator(".brief-header").inner_text()  # the sidebar's 等你处理 says it
+    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("项等对方回复 →", "全部未完成事项 →"))
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
