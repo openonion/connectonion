@@ -1738,20 +1738,40 @@ def test_summary_line_strips_only_leading_insight_labels():
     assert result['raw'] == 'Now: waiting on review'
 
 
+def test_dates_inside_a_sentence_use_the_pages_calendar_format():
+    """The org lede printed "allocated the teams on 2026-09-23" on a page that says 10月29日 everywhere else."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['datesInProse', 'calendarDate', 'calendarDay'])
+    result = _run_reader_js(functions + r'''
+      const REM = {as_of: '2026-11-09T10:00:00Z', status: {timezone: 'UTC'}};
+      uiLanguage = 'zh';
+      const zh = datesInProse('The university allocated the teams on 2026-09-23 and met on 2025-11-29.');
+      uiLanguage = 'en';
+      console.log(JSON.stringify([zh, datesInProse('Allocated on 2026-11-08.')]));
+    ''')
+    assert result[0] == 'The university allocated the teams on 9月23日 and met on 2025年11月29日.'
+    assert result[1] == 'Allocated on Nov 8.'  # a date in a sentence is never "Yesterday"
+
+
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['roleSummary', 'plainLine'])
+                          for name in ['roleSummary', 'topLevelParts', 'plainLine'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const youify = text => text, inline = text => text, privateFallback = node => node;
       const roles = 'Head of Partnerships; Pilot lead; Research liaison';
       console.log(JSON.stringify([roleSummary(roles, ''), roleSummary('Pilot lead', ''),
-        roleSummary('Public role; Secret role [sensitive]', '')]));
+        roleSummary('Public role; Secret role [sensitive]', ''),
+        roleSummary('Events coordinator (Founders space; Startup week); Mentor; Judge; Panel host', '')]));
     ''')
     assert result[0]['title'] == 'Head of Partnerships; Pilot lead; Research liaison'
     assert result[0]['children'][0]['html'] == 'Head of Partnerships'
-    assert result[0]['children'][1]['text'] == ' +2'
+    assert result[0]['children'][1]['text'] == ' +2 roles'
+    # A semicolon inside brackets belongs to its role: the first role is shown whole, never cut mid-parenthesis.
+    assert result[3]['children'][0]['html'] == 'Events coordinator (Founders space; Startup week)'
+    assert result[3]['children'][1]['text'] == ' +3 roles'
     assert result[0]['children'][1]['class'] == 'role-more'
     assert result[1]['children'][1] is None
     assert result[2]['title'] == ''  # No private words in a tooltip.
@@ -1791,7 +1811,7 @@ def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
 def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personSub', 'roleSummary', 'changedValue', 'factText', 'plainLine'])
+                          for name in ['personSub', 'roleSummary', 'topLevelParts', 'changedValue', 'factText', 'plainLine'])
     result = _run_reader_js(functions + r"""
       const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
       const r = {path: 'people/mara-ostrowski.md'};
@@ -1861,7 +1881,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'personOrg', 'personProject',
-        'factList', 'peopleCardMeta', 'roleSummary', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)

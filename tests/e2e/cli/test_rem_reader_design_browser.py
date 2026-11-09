@@ -240,7 +240,7 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     # The name heads the record; the domain follows it in the facts line, smaller.
-    assert page.locator('.ov-say .ov-name').inner_text() == 'ConnectOnion'
+    assert _name(page.locator('.ov-say .ov-name')) == 'ConnectOnion'
     domain = page.locator('.ov-say .ov-domain')
     assert domain.inner_text() == 'connectonion.com'
     assert domain.is_visible()
@@ -4563,14 +4563,14 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
         page.goto(uri + '#r=' + record.replace('/', '%2F'))
         if record.startswith('people/'):
             # A person's page is a record (D-30): nothing owed means no Today line and no empty ledger.
-            assert page.locator('.r4-person h1').inner_text() == 'Mia Chen'
+            assert _name(page.locator('.r4-person h1')) == 'Mia Chen'
             assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
             assert not page.get_by_role('heading', name=heading, exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
         if record.startswith('orgs/'):
             # Nothing owed: the record has no Today line and no ledger.
-            assert page.locator('.ov-say .ov-name').inner_text() == 'Northgate University'
+            assert _name(page.locator('.ov-say .ov-name')) == 'Northgate University'
             assert page.locator('.ov-today, .ov-owed').count() == 0
             assert not page.get_by_role('heading', name='Open threads', exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -4945,6 +4945,11 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         browser.close()
 
 
+def _name(locator):
+    """A display name as words: soft hyphens the reader adds where a word would not fit are layout, not text."""
+    return locator.inner_text().replace("\xad", "")
+
+
 def _green_primaries(page):
     """Visible elements filled with the Fresh green: the one primary per page."""
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
@@ -4971,7 +4976,7 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     page.evaluate("theme => { setTheme(theme); setInterfaceLanguage('zh'); }", theme, isolated_context=False)
-    assert page.locator(".r4-person h1").inner_text() == "Mara Ostrowski"
+    assert _name(page.locator(".r4-person h1")) == "Mara Ostrowski"
     assert "Fernhill Labs" in page.locator(".r4-sub").inner_text()
     # The person page is her record; what you owe her is done from Today (owner, 2026-11-08).
     assert _green_primaries(page) == []
@@ -5033,6 +5038,36 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     assert fuse.locator(".fuse-red").count() == 0 and page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
     assert page.evaluate(GREEN, isolated_context=False) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+# A word split across lines must end its line with a hyphen: a soft hyphen the page placed, or the browser's own.
+SPLIT_WORDS = r"""node => {
+  const text = node.firstChild, splits = [];
+  for (let i = 1; i < text.length; i++) {
+    // The last client rect: a range at the start of a line also reports an empty box at the end of the one before.
+    const top = (from, to) => { const r = document.createRange(); r.setStart(text, from); r.setEnd(text, to); return [...r.getClientRects()].at(-1)?.top ?? 0; };
+    const a = top(i - 1, i), b = top(i, i + 1);
+    if (b > a + 4 && /\S/.test(text.data[i - 1]) && /\S/.test(text.data[i])) splits.push(text.data[i - 1]);
+  }
+  return splits;
+}"""
+
+
+@pytest.mark.parametrize("name", ["Mara Ostrowski", "Tamsin Berryweather", "周泽凯"])
+def test_phone_display_name_hyphenates_and_never_widens_the_page(reader, name):
+    page, uri = reader
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate("name => { byPath('people/mara-ostrowski.md').title = name; render(); }", name, isolated_context=False)
+    h1 = page.locator(".r4-person h1")
+    style = h1.evaluate("node => [node.lang, getComputedStyle(node).hyphens, getComputedStyle(node).overflowWrap]")
+    assert style == ["zh" if name == "周泽凯" else "en", "auto", "normal"]
+    assert h1.get_attribute("aria-label") == name
+    assert h1.inner_text().replace("\xad", "") == name
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert h1.evaluate("node => node.scrollWidth <= node.clientWidth + 1")
+    if name != "周泽凯":
+        assert all(ch == "\xad" for ch in h1.evaluate(SPLIT_WORDS)), "a Latin word only breaks at a hyphen"
 
 
 def test_person_fuse_burns_red_only_past_the_owners_usual_reply_time(reader):
@@ -5498,7 +5533,7 @@ def test_org_page_answers_who_they_are_and_who_you_know(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, theme)
     # A record of the organisation: its name leads, what you owe is one quiet link to Today.
-    assert page.locator(".ov-say .ov-name").inner_text() == "Fernhill Labs"
+    assert _name(page.locator(".ov-say .ov-name")) == "Fernhill Labs"
     owed = page.evaluate("orgOwed(byPath('orgs/fernhill-labs.md')).length", isolated_context=False)
     today = page.locator(".ov-say .ov-today")
     assert today.inner_text() == f"{owed} things in Today involve Fernhill Labs →"
@@ -5688,7 +5723,7 @@ def _people_known(page):
 def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme):
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
-    assert name.inner_text() == "Fernhill University"
+    assert _name(name) == "Fernhill University"
     # The organisation's name is what the page is about: --s-display, min(112px, 22vw).
     assert name.evaluate("node => getComputedStyle(node).fontSize") == f"{min(112, .22 * width):g}px"
     facts = page.locator(".ov-say .ov-facts").inner_text()
@@ -5721,7 +5756,7 @@ def test_org_today_link_follows_the_data_and_there_is_no_green(org_reader):
     page.evaluate("""() => { for (const r of REM.records) if (r.category === 'orgs') r.obligations = r.obligations.filter(row => row.dir !== 'mine'); render(); }""",
                   isolated_context=False)
     assert page.locator(".ov-today").count() == 0
-    assert page.locator(".ov-say h1").inner_text() == "Fernhill University"
+    assert _name(page.locator(".ov-say h1")) == "Fernhill University"
     assert page.locator(".ov-xray .ov-node").count() == 13
 
 
@@ -5912,7 +5947,7 @@ def test_org_as_of_guard_and_unit_page_has_its_chain(org_reader):
     links = page.locator(".ov-crumb a")
     assert links.all_inner_texts() == ["Fernhill University", "Fieldwork studio"]
     assert links.nth(1).get_attribute("href") == "#r=orgs%2Ffieldwork-studio.md"
-    assert page.locator(".ov-say .ov-name").inner_text() == "Kestrel squad"
+    assert _name(page.locator(".ov-say .ov-name")) == "Kestrel squad"
 
 
 @pytest.mark.parametrize("width", [1440, 390])

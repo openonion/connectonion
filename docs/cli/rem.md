@@ -756,14 +756,20 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   A short legend lives in **Reader settings**.
 - **A person's page is their record** (owner, 2026-11-08): no list of what
   you owe and no **Mark done** there; one quiet link, **N items in Today**,
-  when Today holds something of theirs. The name is the page's one large mark.
-  Under it the **fuse** runs from the first exchange REM knows to today, one
+  when Today holds something of theirs. The name is the page's one large mark;
+  it carries its script as `lang` and hyphenates (where the browser has no
+  hyphenation dictionary and a word would overflow, the reader adds soft
+  hyphens at likely syllable joins). Under it the first role is shown whole,
+  then **+N roles**, never cut inside brackets. Under that the **fuse** runs from the first exchange REM knows to today, one
   tick per dated History line at its real date; when the record has no dated
   lines it draws only the first contact and says so. The fuse turns red only
   from their last mail, and only once that is past your own median reply time
   in synced mail; without that data it is never red. Then mails, first
   exchange, your median reply and last contact; **In their words**, their own
-  archived mail cited by the page, each with its channel and source mark; and
+  archived mail cited by a public passage of the page and said to you
+  personally (you on To or Cc, at most eight recipients, not an auto-reply;
+  the archive keeps no Auto-Submitted or List-Id header, so these are what it
+  judges by), each with its channel and source mark; and
   the dated exchanges. Contact, organisation, what REM is not sure of (dashed,
   REM's pencil) and the local graph sit in the rail. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last

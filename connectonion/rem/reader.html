@@ -1642,7 +1642,7 @@
   .r4.r4-person { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin: 0; }
   .r4-over { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
   .r4 .r4-over .r4-today { font-size: var(--s-meta); text-decoration-color: var(--rule); }
-  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: anywhere; hyphens: auto; }
+  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: normal; hyphens: auto; }
   .r4-sub { font-size: var(--s-head); line-height: 1.4; color: var(--ink); margin-top: var(--u4); max-width: var(--measure); }
   .r4-sub a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .r4-sub a.soft { color: var(--grey); }
@@ -2286,7 +2286,7 @@
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
   .ov-say { grid-column: 1 / span 5; align-self: center; position: relative; z-index: 2; padding: 24px 0; min-width: 0; }
-  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: anywhere; hyphens: auto; }
+  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: normal; hyphens: auto; }
   .ov-say .updated-label, .ov-say .fresh-label { font-size: var(--s-meta); }
   .ov.ov-r6 .ov-say .ov-sub { display: block; font-size: var(--s-body); line-height: 27px; color: var(--grey); margin: 16px 0 0; max-width: 460px; -webkit-line-clamp: unset; }
   .ov-facts { font-size: var(--s-body); line-height: 22px; color: var(--grey); margin: 20px 0 0; max-width: 460px; }
@@ -2411,7 +2411,7 @@
   @media (max-width: 719px) {
     /* The name must start right under the compact phone chrome; the crumb and sources row follow it. */
     .ov-stage { display: flex; flex-direction: column; min-height: 0; }
-    .ov-stage > .ov-say { order: 1; }
+    .ov-stage > .ov-say { order: 1; max-width: 100%; }
     .ov-stage > .ov-over { order: 2; margin-top: 12px; }
     .ov-stage > .ov-time { order: 3; } .ov-stage > .ov-xray { order: 4; }
     .ov-over .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; }
@@ -2708,6 +2708,7 @@ const UI = {
     "1 day overdue": "逾期 1 天",
     "Personal item": "个人事项",
     "open": "未结",
+    " +{n} roles": " +{n} 个角色",
     "{n} dated exchanges from {first} to today": "从 {first} 到今天，{n} 次有日期的往来",
     "{date} first exchange": "{date} 第一次往来",
     "{name} wrote last · {date}": "{name} 最后来信 · {date}",
@@ -3858,6 +3859,12 @@ function fmtDate(iso) {
   }
   return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
 }
+// The calendar date alone ("Oct 29", "10月29日"): for dates inside a sentence, where "3 days ago" would not read.
+function calendarDate(day) {
+  const d = new Date(day + "T00:00:00Z"), today = calendarDay(REM.as_of || new Date().toISOString());
+  return isNaN(d) ? day : d.toLocaleDateString(uiLocale(), { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
+}
+function datesInProse(text) { return String(text).replace(/\b\d{4}-\d{2}-\d{2}\b/g, calendarDate); }
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -5211,12 +5218,22 @@ function privateFallback(node) {
 function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
   title: hasPrivacy(v) ? "" : plainLine(v),
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
+// "A (x; y); B" -> ["A (x; y)", "B"]: a semicolon inside brackets is part of its role, never a cut.
+function topLevelParts(value) {
+  const parts = [""];
+  let depth = 0;
+  for (const ch of String(value)) {
+    depth += "([{（【".includes(ch) ? 1 : ")]}）】".includes(ch) && depth ? -1 : 0;
+    if (ch === ";" && !depth) parts.push(""); else parts[parts.length - 1] += ch;
+  }
+  return parts.map(part => part.trim()).filter(Boolean);
+}
 function roleSummary(value, from) {
   // Labelled passages retain their full privacy boundary.
-  const roles = hasPrivacy(value) ? [value] : value.split(/;\s+/);
+  const roles = hasPrivacy(value) ? [value] : topLevelParts(value);
   return privateFallback(el("span", { title: hasPrivacy(value) ? "" : plainLine(value) }, [
     el("span", { html: inline(roles[0].replace(/\s*\[W?\d{1,3}\]/g, ""), from) }),
-    roles.length > 1 ? el("span", { class: "role-more", text: " +" + (roles.length - 1) }) : null]));
+    roles.length > 1 ? el("span", { class: "role-more", text: t(" +{n} roles", { n: roles.length - 1 }) }) : null]));
 }
 function peopleCardMeta(r, f) {
   const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && roleSummary(f.role, r.path), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
@@ -6652,13 +6669,41 @@ function personSub(r) {
     org ? changedValue(org.org ? el("a", { href: href(org.org), text: org.name }) : el("span", { text: org.name }), r, "Company") : null].filter(Boolean);
   return parts.length ? privateFallback(el("div", { class: "r4-sub" }, parts.flatMap((part, i) => i ? [" · ", part] : [part]))) : null;
 }
+// A display name says which script it is in, so the browser hyphenates Latin names at its own syllables
+// and wraps CJK names between characters.
+function nameLang(text) { return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text) ? "zh" : /\p{Script=Latin}/u.test(text) ? "en" : ""; }
+// Where the browser has no hyphenation dictionary, a word wider than the screen would push the page sideways.
+// Then, and only then, it gets soft hyphens at likely syllable joins (VCV -> V-CV, VCCV -> VC-CV, three consonants split before an onset like "st", digraphs kept).
+function softSyllables(word) {
+  const vowel = ch => /[aeiouyàáâäãåèéêëìíîïòóôöõùúûüýÿ]/i.test(ch), out = [...word];
+  if (out.length < 7 || !/^\p{Script=Latin}+$/u.test(word)) return word;
+  const cuts = [];
+  for (let i = 1; i < out.length; i++) {
+    if (!vowel(out[i - 1])) continue;
+    let j = i; while (j < out.length && !vowel(out[j])) j++;
+    if (j === i || j >= out.length) continue;
+    const digraph = j - i >= 2 && /^(?:ch|sh|th|ph|wh|gh|ck)$/i.test(out[i] + out[i + 1]);
+    const onset = j - i >= 3 && /^(?:bl|br|cl|cr|dr|fl|fr|gl|gr|pl|pr|sc|sk|sl|sm|sn|sp|st|sw|tr|tw|wr|kn)$/i.test(out[j - 2] + out[j - 1]);
+    const at = j - i === 1 ? i : digraph ? (j - i === 2 ? i : i + 2) : j - i === 2 ? i + 1 : onset ? j - 2 : j - 1;
+    if (at >= 2 && out.length - at >= 3) cuts.push(at);
+    i = j - 1;
+  }
+  return out.map((ch, i) => (cuts.includes(i) ? "\u00ad" : "") + ch).join("");
+}
+function fitNames() {
+  for (const node of document.querySelectorAll("#main .r4-name, #main .ov-say h1.ov-name")) {
+    const name = node.dataset.name || (node.dataset.name = node.textContent);
+    node.textContent = name;
+    if (node.scrollWidth > node.clientWidth + 1) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
+  }
+}
 // Who: the name is the page's one big mark. The fuse and its numbers open the column under it.
 function personHead(r) {
   const org = personOrg(r);
   return el("header", { class: "r4-head person-head" }, [
     el("div", { class: "r4-over" }, [el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " · " + org.name }) : null, updatedMarker(r, true),
       uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark(true) : null]), personTodayLink(r)]),
-    el("h1", { class: "r4-name", text: r.title }), personSub(r)]);
+    el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]);
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
 // exchange in the record. Positions are the real dates; nothing is spaced for looks.
@@ -6692,7 +6737,25 @@ function personFuse(r) {
       : t("Each tick is a dated exchange in the record ({n}).", { n: d.days.length });
   return el("div", { class: "r4-fuse" }, [line, ends, el("p", { class: "fuse-note", text: note })]);
 }
-// What they wrote, in their own words: archived mail cited by the record, newest first, each with its source.
+// The archive keeps From, To, Cc and the subject, not Auto-Submitted, List-Id or Bcc: these are what it can judge by.
+function isAutoReply(text) {
+  return /^\s*(?:automatic reply|auto(?:matic)?[- ]?reply|auto:|out of (?:the )?office|自动回复)|\bthank(?:s| you) for your (?:e-?mail|message)\b[\s\S]{0,200}?\b(?:away from|out of (?:the )?office|on (?:annual )?leave|will (?:respond|reply|get back))|\b(?:I am|I'm) (?:currently )?(?:out of (?:the )?office|away from (?:my desk|the office)|on (?:annual )?leave)\b/i.test(String(text || ""));
+}
+function ownerAddresses() {
+  const owner = REM.owner && byPath(REM.owner);
+  if (!owner) return [];
+  const found = [...(String(facts(owner).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []), ...(owner.index?.emails || [])];
+  return [...new Set(found.map(a => a.toLowerCase()))];
+}
+// Said to you, personally: you are on To or Cc (not Bcc, not a list), at most eight people are, and it is not an auto-reply.
+function saidToYou(c, owner) {
+  if (!Array.isArray(c.participants?.to)) return false;
+  const addresses = list => [].concat(list || []).join(" ").toLowerCase().match(/[^\s<>(),;"']+@[^\s<>(),;"']+/g) || [];
+  const all = [...addresses(c.participants.to), ...addresses(c.participants.cc)];
+  if (!all.length || all.length > 8 || owner.length && !all.some(a => owner.includes(a))) return false;
+  return !isAutoReply(c.subject) && !isAutoReply(c.excerpt);
+}
+// What they wrote to you, in their own words: archived mail cited by the record, newest first, each with its source.
 function personQuotes(r) {
   const mails = (String(facts(r).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []).map(a => a.toLowerCase());
   const names = [r.title.toLowerCase(), firstName(r).toLowerCase()];
@@ -6700,10 +6763,10 @@ function personQuotes(r) {
   // Their words, not the envelope: greetings, quoted lines and "X reacted to your message" (which quotes you) are dropped.
   const said = text => String(text || "").split(/\n+/).map(line => line.trim())
     .filter(line => line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
-  const seen = new Set(), cited = new Set((unlabelled(r.text.split(/\n## Sources\b/)[0]).match(/[\[［]W?\d{1,3}[\]］]/g) || []).map(m => m.slice(1, -1)));
+  const seen = new Set(), owner = ownerAddresses(), cited = new Set((unlabelled(r.text.split(/\n## Sources\b/)[0]).match(/[\[［]W?\d{1,3}[\]］]/g) || []).map(m => m.slice(1, -1)));
   // Only sources a public passage cites: a mail cited by a [personal] passage stays as private as the passage.
   const rows = sourceList(r).filter(s => cited.has(s.n)).map(s => ({ s, c: REM.source_context?.[sourceId(s.text, s.plain)] }))
-    .filter(({ c }) => c?.excerpt && !c.body_empty && theirs(c.sender)).map(row => ({ ...row, words: said(row.c.excerpt) }))
+    .filter(({ c }) => c?.excerpt && !c.body_empty && theirs(c.sender) && saidToYou(c, owner)).map(row => ({ ...row, words: said(row.c.excerpt) }))
     .filter(({ words }) => [...words].length >= 12 && !/\breacted to your message\b/i.test(words) && !seen.has(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")) && seen.add(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")))
     .sort((a, b) => String(b.c.time).localeCompare(String(a.c.time)));
   if (!rows.length) return null;
@@ -7965,7 +8028,7 @@ function orgThing(entry) { return owedWords(entry).title.split(/\s+[—–]\s+|[
 function orgSub(r, people) {
   if (known(r).status === "Mapped") return [orgT("Not investigated yet") + " · " + orgT("REM only knows its domain and {n} people", { n: people.length })];
   if (orgUnknown(r) && !r.kind) return [[orgT("Not sure what this is yet"), people.length ? people.slice(0, 2).map(orgFirstName).join("、") + " " + orgT("writes from it") : ""].filter(Boolean).join(" · ")];
-  return [[orgKind(r), orgRelation(r)].filter(Boolean).join(" · ")];
+  return [[orgKind(r), datesInProse(orgRelation(r))].filter(Boolean).join(" · ")];
 }
 // A unit's crumb is its whole chain, so a team opens back up to its course and university.
 function orgCrumb(r) {
@@ -7982,7 +8045,7 @@ function orgOver(r) {
 function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
-    el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", text: orgName(r) }), updatedMarker(r, true),
+    el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }), updatedMarker(r, true),
       el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
     orgXray(v), el("div", { class: "ov-time" })]);
 }
@@ -9637,10 +9700,11 @@ function record(path, heading) {
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
-  if (person) main.appendChild(personPage(r));
+  if (person) { main.appendChild(personPage(r)); fitNames(); }
   else if (r.category === "orgs") {
     main.appendChild(orgPage(r));
     orgLayout();
+    fitNames();
     if (orgHidden(r)) return;
   } else if (r.category === "knowledge") main.appendChild(topicPage(r));
   else {
@@ -10977,6 +11041,7 @@ window.addEventListener("hashchange", () => {
 window.addEventListener("resize", evidenceLayout);
 // The organisation page's time line and diagonal follow the window; Esc turns its tree back.
 window.addEventListener("resize", () => orgLayout(true));
+window.addEventListener("resize", () => fitNames());
 // The projects directory's month labels are re-measured against Today after a resize.
 window.addEventListener("resize", () => requestAnimationFrame(() => { projectScaleFit(); projectAxisCollisions(); }));
 document.addEventListener("keydown", event => {

@@ -87,12 +87,14 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
 def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
     """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
     a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
-    result = run_js(['personQuotes', 'privatePassages', 'unlabelled'], r'''
+    result = run_js(['personQuotes', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
       const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
         text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
-      const REM = {source_context: {'gmail:a': {excerpt: 'Hi Avery,\nThe renewal can include a fourth seat.', sender: 'Mara', time: '2026-10-01'},
-        'gmail:b': {excerpt: 'My private news, please keep it to yourself.', sender: 'Mara', time: '2026-10-02'},
-        'gmail:c': {excerpt: 'Mara reacted to your message: Hi Mara, thanks!', sender: 'Mara', time: '2026-10-03'}}};
+      const to = {to: ['avery@lin.example'], cc: []};
+      const REM = {source_context: {'gmail:a': {excerpt: 'Hi Avery,\nThe renewal can include a fourth seat.', sender: 'Mara', time: '2026-10-01', participants: to},
+        'gmail:b': {excerpt: 'My private news, please keep it to yourself.', sender: 'Mara', time: '2026-10-02', participants: to},
+        'gmail:c': {excerpt: 'Mara reacted to your message: Hi Mara, thanks!', sender: 'Mara', time: '2026-10-03', participants: to}}};
+      const ownerAddresses = () => ['avery@lin.example'];
       const sourceList = () => [2, 3, 4].map(n => ({n: String(n), text: 'gmail:' + 'abc'[n - 2]}));
       const sourceId = text => text, facts = () => ({email: ''}), firstName = () => 'Mara', t = text => text;
       const fmtDate = day => day, calendarDay = day => day, inline = text => text;
@@ -100,6 +102,25 @@ def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
       console.log(JSON.stringify(personQuotes(r).children[1].children.map(li => li.children[1].text)));
     ''')
     assert result == ['The renewal can include a fourth seat.']
+
+
+def test_person_quotes_keep_only_mail_said_to_the_owner_personally():
+    """An auto-reply, a bulk send to a list, a Bcc and a thirty-person announcement are hers but not said to him."""
+    result = run_js(['saidToYou', 'isAutoReply'], r'''
+      const owner = ['avery@lin.example'], to = list => ({to: list, cc: []});
+      const mail = (subject, excerpt, participants) => ({subject, excerpt, participants});
+      const crowd = Array.from({length: 30}, (_, i) => 'member' + i + '@fieldwork.example');
+      console.log(JSON.stringify([
+        mail('Renewal', 'The renewal can include a fourth seat.', to(['Avery Lin <avery@lin.example>'])),
+        mail('Renewal', 'Copying the team so they know.', {to: ['kai@fernhill.example'], cc: ['avery@lin.example']}),
+        mail('Automatic reply: Renewal', 'I will be back on Monday.', to(['avery@lin.example'])),
+        mail('Re: Renewal', 'Thanks for your email! As a coordinator I am often away from my desk; I will respond soon.', to(['avery@lin.example'])),
+        mail('Quick reminder: shared kitchen', 'Please keep the kitchen clean.', to(['members@fieldwork.example'])),
+        mail('Calling founders', 'Workshop places are open.', to(crowd.concat(['avery@lin.example']))),
+        mail('Renewal', 'No recipients were kept for this one.', {}),
+      ].map(c => saidToYou(c, owner))));
+    ''')
+    assert result == [True, True, False, False, False, False, False]
 
 
 def test_owed_parts_drop_a_rest_that_is_only_punctuation_after_date_clutter():

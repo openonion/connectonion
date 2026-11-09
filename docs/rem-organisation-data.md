@@ -67,7 +67,7 @@ no fields and reads:
 
 | On screen | Source | When the source is missing |
 | --- | --- | --- |
-| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` | "还不清楚是什么机构" / "还没调查" |
+| Name, kind and what it is to you | title, `kind`/`unit_kind`, `to_you` (ISO dates in it shown in the page's calendar format, 9月23日 / Sep 23) | "还不清楚是什么机构" / "还没调查" |
 | Facts line | domain, roster size, unit count, first and latest dated History line, page last contact | the missing part is left out |
 | Recently in touch (3 people) | each person's last contact or newest dated History line, role in unit | the block is left out |
 | One link to Today | count of open `mine` obligations | no line |
