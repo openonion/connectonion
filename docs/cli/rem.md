@@ -772,6 +772,59 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   and rewriting work in the live reader on this computer only; a click is the
   approval, and nothing is sent without one. Labelled private material stays
   behind the reader's privacy toggle.
+- **Today is drawn as a fuse** (owner, 2026-11-09, D-108): the count of people
+  waiting is the page's one large number, with the most urgent person named
+  beside it (or, when nothing is overdue, whoever is first in line). Under it,
+  one lane per waiting person, in REM's urgency order: a line from their oldest
+  dated message to today, red for exactly the days past the due date. An item
+  with no due date has no red and says **No due date**. A row on your own page
+  belongs to the person it names (who asked, or who is owed); a row that names
+  nobody is your own note and is not counted as a person waiting, in the
+  headline, the lanes or the overnight names. The links beside the date count
+  *items* (**5 items waiting on you**, **22 items to approve in one go**), so
+  they never contradict the count of people. The cards lead with the first
+  person whose reply REM has ready, so its Send is on the first screen; a line
+  above the card says so (**Reply to Jiexuan Deng first: the reply is ready**),
+  the headline still names the most urgent person, and that person's lane is
+  the bold one. The open card is compact: the context is one line with
+  **More**, the letter scrolls in a short window, and **Why this reply** sits under
+  the reading in your language. It opens its draft in place with
+  To, CC (**No one** when nobody is copied) and Subject; REM's
+  `【需要你：…】` slot is a row to answer in, directly above Send and outside the
+  letter's scroll window (the letter keeps a marker that shows your answer):
+  buttons when REM wrote the alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a
+  text field otherwise; the date after the dash is never split into options.
+  Until every question is answered Send stays disabled, with *Choose above
+  before sending*. The lanes show the five most urgent people on a desktop and
+  three on a phone (always the open card's), then **N more people**; on a phone
+  the first screen holds To, Subject, the question and the Send bar, with the
+  context line and channel switch behind **More**. **Send** is the page's only
+  green control. On a desktop it sits under the letter in normal flow, inside
+  the first screen; on a phone it is a bar pinned to the bottom, and notices
+  rise above it. When the Host lists an approval for the draft, Send holds the
+  reply for 10 minutes: the person's card and lane close, the count steps down,
+  and the line **Sent to …** keeps one **Undo** until the hold ends, when the
+  Undo goes; without an approval the reply goes at once and the line says it
+  cannot be undone. A snapshot shows Send disabled and one plain line for the
+  page, *This is a snapshot: sending and handing work to an agent happen in the
+  live reader*. Today, **Waiting on you** and **Reader settings** never show a
+  command to copy (D-60).
+  **What REM did overnight** adds **Replied to N people for you** when REM sent
+  replies itself (`sent_by_rem`), and no row when it did not.
+- **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
+  quiet text buttons on every pending row, in Today and in **Waiting on you**.
+  A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  to `/rem/task`; the row then reads **Handed to Codex · in progress** and
+  follows the task's own status, **Stop** and **Undo**, the same for either
+  agent, and a finished card names the agent that ran it. A refused request
+  is said in words on the row, never in the Host's own English: a changed item
+  (409) asks you to reload, an expired session (401) to reload the page, and no
+  answer (5xx or no connection) to try again shortly. In a snapshot the buttons
+  are disabled and the page's one snapshot line says why. Nothing in the reader
+  says a task is recorded but not run.
+- **The sidebar** has no **Questions & connections** entry any more, as with
+  Activity; `#reviews=1` still opens it, and **Memory changes** carries its one
+  quiet link, beside **REM activity**.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -2109,9 +2162,9 @@ usage. `co rem logs --usage` includes these costs; daily translation summaries
 retain attempt counts without duplicating the per-page usage.
 
 Reader settings shows **Notebook languages: 中文 · English — detected** (or
-**— set**) with a copyable `config set languages` command. Reader commands keep
-the selected root, shortening a root under your home to `~/…` with shell-safe
-quoting. The home translation notice is a fallback based only on written pages.
+**— set**), read-only: REM detects them (D-103), and Reader settings carries no
+command to copy (D-60); `co rem config set languages` in a terminal still
+overrides detection. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
 

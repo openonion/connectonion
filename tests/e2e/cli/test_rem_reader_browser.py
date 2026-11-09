@@ -418,12 +418,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         page.evaluate('''() => {
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
-        # Setup-copy actions were removed from empty reading surfaces. The
-        # People review command in settings must still target this notebook.
+        # D-60 (build 3b review): Reader settings no longer carries the People review command.
         page.locator('.reader-settings > summary').click()
-        page.get_by_role('button', name='Copy the command', exact=True).click()
-        command = page.evaluate('window.copiedCommand', isolated_context=False)
-        assert shlex.split(command)==['co','rem','--root',str(root),'list','people','--review']
+        assert page.locator('.reader-settings .cmd').count() == 0
         browser.close()
 
 
@@ -537,7 +534,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             if 'open' not in card.get_attribute('class').split():
                 card.locator('.qage').click()
         assert letter.locator('.owner-slot').count() == 1
-        assert ('需要你填' if language == 'zh' else 'Fill in') in letter.locator('.owner-slot').inner_text()
+        # Build 3b: the "需要你填" box became a row to answer in, named by what REM needs.
+        assert letter.locator('.owner-slot').get_attribute('role') == 'group'
+        assert '演示反馈' in letter.locator('.owner-slot').inner_text()
         assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
         display_date = page.evaluate("fmtDate('2026-11-07')", isolated_context=False)
         assert display_date in task.locator('.draft-reason').inner_text()
@@ -560,17 +559,19 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert queued.locator('.draft-reason').count() == 0
         else:
             note = queued.locator('.draft-reason').inner_text()
-            assert ('今晚' if language == 'zh' else 'tonight') in note and 'open' in note
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
         open_card(letter)
         if live:
-            letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
-            assert letter.locator('.mail-status').inner_text() == ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first')
+            # Build 3b re-review: an unanswered question keeps Send disabled, with a plain hint, so nothing is sent.
+            assert letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
+            assert letter.locator('.choose-hint').inner_text() == ('先在上面选好，再发送。' if language == 'zh' else 'Choose above before sending.')
             assert page.evaluate('draftRequests.length', isolated_context=False) == 0
         else:
-            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['在实时阅读器里打开' if language == 'zh' else 'Open in the live reader']
-            letter.locator('.mail-actions .btn-act').click()
-            assert letter.locator('.cmd code').inner_text() == f"co rem --root '{root}' open"
-            assert letter.get_by_role('button', name='复制命令' if language == 'zh' else 'Copy the command').is_visible()
+            # D-60 (build 3b review): Send disabled, no command anywhere on the page, one plain line says why.
+            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['发送' if language == 'zh' else 'Send']
+            assert letter.locator('.mail-actions .btn-act').is_disabled()
+            assert page.locator('.cmd, code').count() == 0
+            assert page.locator('.snapshot-line').count() == 1
             assert letter.locator('.mail-channels button').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         evidence = Path('/tmp/rem-draft-coverage')
@@ -587,7 +588,12 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             # dialog.close() dispatches its removal through the close event.
             dialog.wait_for(state='detached')
             assert not dialog.count()
-            assert page.evaluate('draftRequests[0].body', isolated_context=False) == 'The demo is ready for release.'
+            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the Host lists an
+            # approval for this draft, so the edited text goes to /rem/approve under that approval's id.
+            request = page.evaluate('draftRequests[0]', isolated_context=False)
+            outcome = page.evaluate("REM.approval_pending.concat(REM.approval_outcomes).find(o => o.draft_id === REM.drafts.find(d => d.to === 'fern@example.test').id).id",
+                                    isolated_context=False)
+            assert request == {'ids': [outcome], 'bodies': {outcome: 'The demo is ready for release.'}}
             open_card(queued)
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
             assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'

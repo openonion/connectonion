@@ -350,7 +350,8 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     # Execute the generated handlers with only the clipboard and footer DOM stubbed.
     command = re.search(r"function remCommand\(args\).*", page).group(0)
     copy = re.search(r"pathBtn.onclick = .*", page).group(0)
-    footer = next(line for line in page.splitlines() if "settings.appendChild" in line and "re-renders" in line)
+    # D-60 (build 3b review): Reader settings no longer prints a re-open command; only the path copy remains.
+    assert not [line for line in page.splitlines() if "settings.appendChild" in line and "remCommand(" in line]
     script = "\n".join([
         "const REM = " + json.dumps(data) + "; const r = " + json.dumps(record) + ";",
         "const location = {protocol: " + json.dumps(protocol) + "};",
@@ -358,7 +359,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         "const copyToClipboard = path => result.path = path;",
         "const el = (tag, attrs) => attrs.text;",
         "const settings = {appendChild: text => result.footer = text};",
-        command, copy, footer, "pathBtn.onclick(); console.log(JSON.stringify(result));",
+        command, copy, "pathBtn.onclick(); console.log(JSON.stringify(result));",
     ])
     node = shutil.which("node")
     if not node:
@@ -371,11 +372,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
-    quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
-    assert json.loads(result.stdout) == {
-        "path": str(root / record["path"]),
-        "footer": "Reload for latest" if protocol == "about:" else f"co rem --root {quoted_root} open re-renders",
-    }
+    assert json.loads(result.stdout) == {"path": str(root / record["path"])}
 
 
 def test_render_embeds_records_and_neutralizes_markup(tmp_path):
@@ -1468,7 +1465,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    buttons = result['prepared']['children'][3]['children']
+    buttons = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1502,6 +1499,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
       const contactFields = () => [], company = () => '', calendarDay = day => day;
       const href = r => '#r=' + r.path, threadWho = r => r.title, blockerTag = () => null, alsoOn = () => null;
       const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, approvalTask = () => null, overdueDays = () => 0;
+      const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const firstName = r => r.title.split(' ')[0], threadAge = () => 'due today', CHECK_ICON = '', roleSummary = text => text;
       const entry = {r: {path: 'people/avery.md', title: 'Avery Lin'}, t: {dir: 'mine', text: 'Review the pilot.'}};
       const group = {r: entry.r, entries: [entry]};
@@ -1515,14 +1513,17 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert mail['class'] == 'mailcard'
     assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
-    assert mail['children'][0]['children'][2] is None  # no CC row
+    # D-10: the CC row is always there, and says when nobody is copied.
+    assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
     assert mail['children'][0]['children'][3]['children'][1]['text'] == 'Re: Pilot'
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
     assert gist['class'] == 'mail-gist' and gist['children'][1]['text'] == '明天发出审阅意见。'
-    why = mail['children'][2]
-    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children']
-    assert mail['children'][3]['children'][0]['text'] == 'Send'
+    # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
+    why = gist['children'][2]
+    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
+    assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
+    assert mail['children'][4]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -1530,6 +1531,13 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert actions['children'][0]['class'] == 'btn-act'
     assert 'mailto:' not in json.dumps(actions)
     assert 'Copy prompt' not in json.dumps(result)
+
+
+def _words(node):
+    """The words a serialised reader node reads as, children in order (the poster splits its sentence)."""
+    if isinstance(node, str):
+        return node
+    return (node or {}).get('text', '') + ''.join(_words(child) for child in (node or {}).get('children', []))
 
 
 def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_find():
@@ -1547,14 +1555,17 @@ def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_fi
       const zh = briefHeader({mine: 4}, groups);
       console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
     })();''')
-    assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
-    assert result['header']['children'][1]['text'] == '2 people are waiting on you.'
+    # The date shares a kicker line with the quiet links; the headline is a poster, the count its own span (D-108).
+    assert result['header']['children'][0]['children'][0]['text'] == 'Tuesday, 20 October'
+    assert _words(result['header']['children'][1]) == '2 people are waiting on you.'
+    assert [child['text'] for child in result['header']['children'][1]['children'] if isinstance(child, dict)] == ['2', 'people are waiting on you.']
     lede = result['header']['children'][2]['children']
     assert lede[0] == 'Most urgent: Ada, ' and lede[1] == {'tag': 'b', 'class': 'late', 'text': '2 days overdue', 'children': []}
-    assert result['noDeadline']['children'][1]['text'] == '1 person is waiting on you.'
-    assert result['noDeadline']['children'][2] is None
+    assert _words(result['noDeadline']['children'][1]) == '1 person is waiting on you.'
+    # Nothing overdue still names who is first, without inventing a lateness (build 3b: "one sentence naming who is most urgent").
+    assert result['noDeadline']['children'][2]['text'] == 'First in line: Cy.'
     assert result['quiet']['children'][1]['text'] == 'Nobody is waiting on you today.'
-    assert result['zh']['children'][1]['text'] == '2 个人在等你。'
+    assert _words(result['zh']['children'][1]) == '2 个人在等你。'
     assert result['zh']['children'][2]['children'][1]['text'] == '逾期 2 天'
     assert result['find'] == '查找'
 
@@ -1586,10 +1597,11 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1].text}));
+        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert result == {'parsed': 7, 'merged': 7, 'today': 7, 'headline': '1 person is waiting on you.'}
+    assert _words(result.pop('headline')) == '1 person is waiting on you.'
+    assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -1637,7 +1649,8 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
       const contactFields = () => [], company = () => '', blockerTag = () => null;
       const threadDraft = () => null, draftNote = () => null;
-      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = '';
+      const handedLine = () => null, rowTask = () => null, handOff = () => null; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
       const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
       const dated = make('Review the pilot (2026-10-30) — due 2026-11-02, overdue; open as of 2026-10-30', '2026-11-02');
       console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
@@ -2309,7 +2322,7 @@ def test_reader_exposes_language_origin_and_home_display_root(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize('origin', ['detected', 'set'])
-def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(origin):
+def test_reader_languages_setting_is_visible_inside_disclosure_and_read_only(origin):
     page = TEMPLATE.read_text()
     function = re.search(r'function notebookLanguages\(.*?\n\}', page, re.S).group(0)
     result = _run_reader_js('const REM = ' + json.dumps({'your_languages': ['zh', 'en'], 'languages_from': origin}) + ';\n'
@@ -2320,8 +2333,8 @@ def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(orig
         console.log(JSON.stringify(notebookLanguages()));
     ''')
     assert result['children'][0]['text'] == 'Notebook languages: 中文 · English — ' + origin
-    # The narrow sidebar copies the command from a button; the full command is its title.
-    assert result['children'][1]['title'] == 'co rem config set languages zh,en'
+    # D-60/D-103 (build 3b review): REM detects the languages; there is no command to copy beside them.
+    assert len(result['children']) == 1 and 'co rem' not in json.dumps(result)
     assert 'settings.appendChild(notebookLanguages())' in page
 
 
@@ -2383,18 +2396,16 @@ def test_chinese_interface_uses_the_owners_regional_cached_prose(tag):
     assert result == {'translated': '草稿。', 'notice': None}
 
 
-def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
+def test_settings_say_nightly_updates_are_off_without_a_command():
+    """D-60 (build 3b review): Reader settings states the schedule in words, never a command to type."""
     page = TEMPLATE.read_text()
-    command = re.search(r'function remCommand\(args\).*', page).group(0)
-    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'Background updates off' in line)
-    result = _run_reader_js('const REM = ' + json.dumps({'root_display': '~/.co/$&`book`/rem', 'default_root': False}) + ';\n'
-        + command + r'''
-        const s = {}, schedule = '', plainLine = value => value;
-        const scheduleState = () => 'Background updates off — run `co rem start` to enable';
+    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'nightlyUpdatesOff()' in line)
+    result = _run_reader_js(r'''
+        const schedule = 'Next pass 02:00', nightlyUpdatesOff = () => true;
         const el = (tag, attrs) => attrs.text;
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
-    assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+    assert result == 'Nightly updates are off.'
 
 
 def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
@@ -2769,7 +2780,9 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     ''')
     assert 'exit 124' in result
     assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
-    action = ('处理阻塞后运行 co rem start' if language == 'zh' else 'Resolve the blocker, then run co rem start') if code == 'blocked' else (
+    # D-60 (build 3b review): the next step is said in words, never as a command to type.
+    assert 'co rem' not in result
+    action = ('处理阻塞后重新启动 REM' if language == 'zh' else 'Resolve the blocker, then restart REM') if code == 'blocked' else (
         '已自动重试' if language == 'zh' else 'Retried automatically')
     assert action in result
 
@@ -2898,9 +2911,10 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;}});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
+        appendChild(node) {this.children.push(node);}});
       const mailbox = address => ({address, name: 'Fern'}), personByAddress = () => null;
       const remCommand = args => "co rem --root '/tmp/fictional notebook' " + args;
       const commandChip = command => ({tag: 'div', class: 'cmd', text: command});
@@ -2910,17 +2924,20 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       const nodes = [];
       function visit(node) { if (node && typeof node === 'object') {nodes.push(node); (node.children || []).forEach(visit);} }
       visit(card);
-      console.log(JSON.stringify({card, chips: nodes.filter(node => node.class === 'owner-slot'),
+      console.log(JSON.stringify({card, chips: nodes.filter(node => (node.class || '').split(' ').includes('owner-slot')),
         buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
         commands: nodes.filter(node => node.class === 'cmd')}));
     ''')
     assert len(result['chips']) == 2
-    assert all('Fill in' in chip['text'] for chip in result['chips'])
+    # Build 3b: the yellow "需要你填" box became a row to answer in, named by what REM needs.
+    assert [chip['aria-label'] for chip in result['chips']] == ['演示意见', '时间']
+    assert all(chip['role'] == 'group' and chip['children'][-1]['tag'] == 'input' for chip in result['chips'])
     if live:
         assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
     else:
-        assert result['buttons'] == ['Open in the live reader']
-        assert result['commands'][0]['text'] == "co rem --root '/tmp/fictional notebook' open"
+        # D-60 (build 3b review): a snapshot shows Send disabled and no command; the page says why once.
+        assert result['buttons'] == ['Send'] and result['card']['children'][-2]['children'][0]['disabled'] == ''
+        assert result['commands'] == []
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
@@ -2991,6 +3008,7 @@ def test_unresolved_mail_alias_opens_recorded_source_instead_of_a_guessed_provid
 
 
 APPROVAL_DOM = r'''
+let todaySent = null;  // the reply Today just sent; approvalUndoBar leaves its undo to Today's row
 class ApprovalNode {
   constructor(tag, attrs = {}, children = []) {
     this.tagName = tag; Object.assign(this, attrs); this.children = []; this.listeners = {};
@@ -3081,10 +3099,10 @@ def test_static_approval_cta_and_durable_failure_copy():
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
-      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code').textContent,
+      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code'),
         failures: header.querySelector('.approval-problems').textContent}));
     ''')
-    assert result['disabled'] is True and result['instruction'] == 'co rem open'
+    assert result['disabled'] is True and result.get('instruction') is None  # D-60: no command to copy
     assert 'Delivery not confirmed' in result['failures'] and 'Timed out' in result['failures']
 
 
@@ -3187,7 +3205,7 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
 
 
 def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
-    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now."""
+    """Live: no "queued for tonight" beside Draft now. Static: say it waits, never with a command (D-60)."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['draftNote', 'draftNowButton'])
@@ -3202,7 +3220,7 @@ def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
       console.log(JSON.stringify({liveNote, staticNote: draftNote(null, entry)}));
     ''')
     assert result['liveNote'] is None
-    assert 'co rem open' in json.dumps(result['staticNote'])
+    assert result['staticNote']['class'] == 'quiet-line draft-reason' and 'co rem' not in json.dumps(result['staticNote'])
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():

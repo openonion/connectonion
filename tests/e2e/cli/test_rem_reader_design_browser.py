@@ -57,8 +57,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             if width < 720:
                 page.locator(".nav-toggle").click()
             page.locator(".reader-settings > summary").click()
-            assert "investigate 'projects/journal.md'" in page.locator(".reader-settings .cmd").inner_text()
-            assert page.get_by_role("button", name="Copy the command", exact=True).is_visible()
+            assert page.locator(".reader-settings .cmd, .reader-settings code").count() == 0  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
         browser.close()
@@ -113,12 +112,12 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page.locator('.nav-toggle').click()
     page.locator('.reader-settings > summary').click()
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
-    assert 'start to enable' in page.locator('.reader-settings').inner_text()
+    assert 'Nightly updates are off.' in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
     page.locator('.reader-settings > summary').click()
-    assert 'Background updates off' in page.locator('#foot').inner_text()
+    assert 'Nightly updates are off.' in page.locator('#foot').inner_text()  # D-60: words, no command
     assert 'Not started' not in page.locator('#foot').inner_text()
     assert '`' not in page.locator('#foot').inner_text()
 
@@ -299,7 +298,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('#nav .n.waiting').inner_text() == total
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.brief-header h1').inner_text() == f'{len(whos)} people are waiting on you.'
+    assert page.locator('.brief-header h1').text_content() == f'{len(whos)} people are waiting on you.'  # poster: count and words are two spans
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -607,7 +606,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert page.locator(".first-map-actions button, .first-map-actions code").count() == 0
     page.locator(".nav-toggle").click()
     page.locator(".reader-settings > summary").click()
-    assert "Background updates off" in page.locator(".reader-settings").inner_text()
+    assert "Nightly updates are off." in page.locator(".reader-settings").inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.locator(".nav-toggle").click()
     page.locator(".first-map-actions a").click()
     assert "1 possible contact" in page.locator(".held-note").inner_text()
@@ -1031,12 +1030,11 @@ def test_investigation_command_targets_the_notebook_being_viewed(reader):
       r.original = r.text; KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     root = page.evaluate('REM.root', isolated_context=False)
-    # Private investigation commands now live in Reader settings.
+    # D-60 (build 3b review): no investigation command anywhere, neither on the page nor in Reader settings.
     assert page.locator('.missing .cmd').count() == 0
     page.locator('.reader-settings > summary').click()
-    command = page.locator('.reader-settings .cmd code').inner_text()
-    assert '--root' in command and root in command
-    assert "investigate 'projects/harbour.md'" in command
+    assert page.locator('.reader-settings .cmd, .reader-settings code').count() == 0
+    assert root not in page.locator('.reader-settings').inner_text()
 
 
 def test_private_mode_hides_raw_sources_and_conversations_already_open(reader):
@@ -1280,12 +1278,12 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
-    heading = page.locator('.brief-header h1').inner_text()
+    heading = page.locator('.brief-header h1').text_content()  # poster: count and words are two spans
     assert heading == ('1 person is waiting on you.' if mine else 'Nobody is waiting on you today.')
     assert ' 0 ' not in primary.inner_text()
     header = page.locator('.brief-header')
     if mine or theirs:
-        parts = [f'{mine} waiting on you' if mine else '', f'{theirs} on others' if theirs else '']
+        parts = [f'{mine} items waiting on you' if mine else '', f'{theirs} on others' if theirs else '']  # items, not people (TOP10 #9)
         assert header.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
     else:
         assert header.locator('.waiting-more').count() == 0
@@ -2805,12 +2803,9 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     settings.locator('summary').click()
-    assert settings.locator('code').count() == 1
-    assert ' open re-renders' in settings.locator('code').inner_text()
+    assert settings.locator('code, .cmd').count() == 0  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     assert page.locator('#privacy-toggle').is_visible()
-    assert 'Background updates off' in settings.inner_text()
-    page.evaluate("document.querySelector('.reader-settings code').textContent = 'co rem --root /' + 'longpath'.repeat(60) + ' open'")
-    assert settings.locator('code').evaluate('node => node.scrollWidth <= node.clientWidth')
+    assert 'Nightly updates are off.' in settings.inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4047,7 +4042,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.brief-header h1').inner_text() == '1 person is waiting on you.'
+    assert page.locator('.brief-header h1').text_content() == '1 person is waiting on you.'  # a poster: count and words are two spans
     assert '2 days overdue' in page.locator('.brief-header .lede').inner_text()
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4057,7 +4052,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
     assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
-    assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
+    assert '7 items waiting on you' in page.locator('.waiting-more').inner_text()  # items, not people (TOP10 #9)
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
     assert page.locator('.category-cards').count() == 0
@@ -4473,7 +4468,8 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
         else 'Your notebook was just built. Overnight changes appear here after the next update.')
     assert page.locator('.overnight .cmd').count() == 0  # commands left the primary surface
     page.locator('.reader-settings > summary').click()
-    assert 'co rem start' in page.locator('.reader-settings').inner_text()
+    assert ('夜间更新已关闭。' if language == 'zh' else 'Nightly updates are off.') in page.locator('.reader-settings').inner_text()
+    assert 'co rem' not in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.locator('.reader-settings > summary').click()
     notice = page.locator('#main > .translation-note')
     if language == 'zh':
@@ -4532,9 +4528,10 @@ def test_round10_owner_is_your_page_in_today_waiting_and_open_threads(reader, la
       setInterfaceLanguage(language);
     }''', language, isolated_context=False)
     who = '你的页面' if language == 'zh' else 'Your page'
-    assert page.locator('.today-who').first.inner_text() == who
-    assert page.locator('.qhead .meta').count() == 0
-    assert page.locator('.today-who').first.get_attribute('href').endswith('people%2Favery-lin.md')
+    # Build 3b review (PM): rows on your own page that name nobody are your notes, not a person waiting on you,
+    # so Today leaves them out; Waiting on you still lists them under Your page.
+    assert page.locator('.today-who').filter(has_text=who).count() == 0
+    assert page.locator('.fuse .lane[data-path="people/avery-lin.md"]').count() == 0
     page.goto(uri + '#view=open')
     assert all(text == who for text in page.locator('.thread .who a').all_inner_texts())
     assert page.locator('.thread .who a').count() == 2
@@ -4711,8 +4708,8 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
     assert not settings.locator('.notebook-languages').is_visible()
     settings.locator('summary').click()
     assert settings.locator('.notebook-languages').inner_text().startswith('Notebook languages: 中文 · English — detected')
-    settings.locator('.notebook-languages button').click()
-    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' config set languages zh,en"
+    # D-60/D-103 (build 3b review): REM detects the languages; settings shows them read-only, no command, no copy.
+    assert settings.locator('.notebook-languages button, .notebook-languages code').count() == 0
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
     if width < 600:
         page.locator('.nav-toggle').click()
