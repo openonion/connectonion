@@ -144,6 +144,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
+    from .tasks import receipt_for
     from .sessions import mentions, reader_fields
     from .reader_model import (session_detail, organisation_fields, organisation_members,
                                organisation_obligations, PRIVATE)
@@ -188,6 +189,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record["written"] = written(record["text"])
         if record["category"] == "projects" and not today:
             record["private_project"] = private(record["path"], record["text"])
+            # 让 Codex 查 (#2909): the run the owner asked for on this page, followed in place.
+            if local and record["private_project"] and (receipt := receipt_for(root, record["path"])):
+                record["task"] = receipt
             from .project_material import page_state
             record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
         if record["category"] == "sessions":
@@ -297,7 +301,6 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     outcomes = {row['key']: row for row in data['night_outcomes']}
-    from .tasks import receipt_for
     for row in data['today_queue']:
         if row['key'] in outcomes:
             row['outcome'] = outcomes[row['key']]

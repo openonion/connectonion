@@ -255,10 +255,6 @@
   .task-result p { margin: 6px 0 12px; overflow-wrap: anywhere; }
   .task-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; }
   .task-result textarea { box-sizing: border-box; display: block; width: 100%; min-height: 100px; margin: 12px 0; padding: 10px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); font: var(--s-body)/1.6 var(--font); resize: vertical; }
-  .mail-actions .cmd { min-width: 0; max-width: 100%; flex-basis: 100%; }
-  .mail-actions .cmd:not([hidden]) { display: flex; align-items: center; gap: 8px; }
-  .mail-actions .cmd code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .mail-actions .cmd button { min-height: 44px; }
   .today-threads { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   .btn-act { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font: var(--w-bold) var(--s-body) var(--font); text-decoration: none !important; white-space: nowrap; transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
   /* The primary key turns over on hover: green label on the dark green, both from the sheet. */
@@ -592,22 +588,16 @@
   .reply-draft button:first-child { border: 1px solid var(--grey); border-radius: var(--radius); color: var(--ink); background: var(--paper); text-decoration: none; }
 
   .translation-note { margin: 16px 0; color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
-  .translation-note .cmd { margin-top: 8px; }
   .missing .lead, .empty .lead { display: block; font: var(--w-bold) var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--ink); margin-bottom: 4px; }
   .missing:not(.primary):not(.cite) { padding: 8px 0; background: transparent; font-size: var(--s-meta); }
   .missing:not(.primary) .names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--grey); }
-  .missing:not(.primary) .cmd { margin-top: 6px; }
   .missing.primary { margin: 0 0 24px; border-top: 1px solid var(--rule); background: transparent; padding: 16px 0; }
   .missing.primary .lead { font-size: var(--s-meta); color: var(--grey); }
   .missing.primary .why { margin: 4px 0 8px; font: var(--s-body)/1.5 var(--font); color: var(--ink); }
   .missing.primary .names { color: var(--grey); font-size: var(--s-meta); }
   .btn-primary { min-height: 44px; font: var(--w-bold) var(--s-meta) var(--font); color: var(--paper); background: var(--ink); border: 0; border-radius: var(--radius); padding: 7px 14px; cursor: pointer; }
   .btn-primary:hover { filter: brightness(1.1); }
-  .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
-  .missing.primary .cmd { margin: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .missing.primary .cmd code { white-space: pre-wrap; }
-  .missing .cmd button, .activity-more { min-height: 44px; }
-  @media (max-width: 600px) { .missing.primary .cmd { grid-template-columns: minmax(0, 1fr); justify-items: start; } }
+  .activity-more { min-height: 44px; }
   .missing code, .empty code { font: var(--s-meta) var(--font); color: var(--ink); background: var(--rule); border-radius: var(--radius); padding: 3px 8px; overflow-wrap: anywhere; }
   .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--rule); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: var(--s-body); }
   .aside .k { font: var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding-top: 4px; }
@@ -1222,7 +1212,7 @@
   .lang-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: var(--s-meta) var(--font); color: var(--grey); }
   .lang-bar select { padding: 4px 8px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); min-height: 24px; }
   /* Storage paths and commands keep a code face; prose keeps its own voice. */
-  .note pre, .run-trace pre, pre, kbd, .missing code, .empty code, .cmd code, .note code, .night code, .eyebrow-path, .path-hint,
+  .note pre, .run-trace pre, pre, kbd, .missing code, .empty code, .note code, .night code, .eyebrow-path, .path-hint,
   .directory-action code, .evidence-source-id code { font-family: var(--mono); }
   .name-cell .nm a, .hits .t a, .relation-card strong { font-family: var(--font); }
   .hits .hit, .focus-statement, .relation-basis { font-family: var(--font); }
@@ -1376,9 +1366,6 @@
   :is(.timeline, .activity-list) .cite-full { display: inline; }
   :is(.timeline, .activity-list) .cite-short { display: none; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { border: 0; border-radius: var(--radius); padding: 0 2px; background: transparent; color: var(--grey); font: var(--w-regular) var(--s-meta)/1 var(--font); }
-  .missing .cmd, .missing.primary .cmd, .empty .cmd, .translation-note .cmd, .gx-filed .cmd { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; min-width: 0; margin: 8px 0; }
-  .missing .cmd code, .missing.primary .cmd code, .empty .cmd code, .translation-note .cmd code, .gx-filed .cmd code { display: block; min-width: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; font: var(--s-meta)/1.5 var(--mono); }
-  .cmd .btn-action { flex: 0 0 auto; min-height: 32px; background: transparent; border-color: transparent; }
   .task-band .thread.grouped { grid-template-columns: minmax(0, 1fr) auto; }
   .task-band .thread.grouped .when { order: 0; }
   /* On a phone the date column squeezed the body to ~230px: the date goes under the title instead, and
@@ -2184,6 +2171,9 @@
 
   /* 交给 Codex / 交给 Claude: two quiet text buttons on every pending row, never green. */
   .handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); margin-top: var(--u2); }
+  /* 有更新: a draft held a redraw back; quiet, fixed, so nothing moves under the cursor. */
+  .updates-waiting { position: fixed; right: 16px; bottom: 16px; z-index: 5; min-height: 32px; padding: 0 12px; border: 1px solid var(--rule); border-radius: var(--round); background: var(--paper); color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); cursor: pointer; }
+  .updates-waiting:hover { color: var(--ink); }
   .handoff .btn-quiet { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .handoff .btn-quiet:hover:not(:disabled) { color: var(--ink); text-decoration-color: var(--ink); }
   .handoff .btn-quiet:disabled { cursor: default; text-decoration: none; }
@@ -3041,9 +3031,6 @@ const UI = {
     "Wrote {n} pages": "撰写了 {n} 页",
     "Pages in your new notebook": "新笔记本中的页面",
     "Pages written": "已撰写页面",
-    "Copy import command": "复制导入命令",
-    "Copy setup command": "复制初始化命令",
-    "Copy update command": "复制更新命令",
     "Built today: read {n} items · wrote {m} pages": "今天建立：读取 {n} 条内容 · 撰写 {m} 页",
     // Today (round 6) and the command palette
     "1 person is waiting on you.": "1 个人在等你。",
@@ -3066,6 +3053,11 @@ const UI = {
     "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
     "It went out now and cannot be undone.": "已直接发出，无法撤回。",
     "Hand to {agent}": "交给 {agent}",
+    "Updates waiting": "有更新",
+    "Shows when you finish writing. Click to show it now.": "写完就显示；点一下现在就看。",
+    "Ask {agent} to look": "让 {agent} 查",
+    "This private project waits for your request.": "这个私人项目等你请它查。",
+    "This is a snapshot: ask Codex to look from the live reader.": "这是快照：让 Codex 查要在实时页面里。",
     "Handing to {agent}…": "正在交给 {agent}…",
     "{agent} is working": "{agent} 正在做",
     "{agent} finished": "{agent} 做完了",
@@ -3344,7 +3336,6 @@ const UI = {
     "Related pages": "相关页面",
     "Full memory and sources": "完整记忆与来源",
     "Only mapped so far": "仅已映射",
-    "Copy the command": "复制命令",
     "Copy": "复制",
     "Mapped": "待了解",
     "Mapped only": "待了解",
@@ -3496,7 +3487,6 @@ const UI = {
     "Not investigated yet: ": "尚未调查：",
     "Still unknown: ": "仍不明确：",
     "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.": "co rem 根据来源的元数据映射了此页，尚未阅读内容。发起一次调查即可阅读材料并补全。",
-    "Automatic investigation skips this private project. To request a write, run the command for this page.": "自动调查会跳过此私有项目。如需撰写，请运行此页的命令。",
     "Pages linked from or mentioning this one.": "与此页互相链接或提到它的页面。",
     "Linked from this page": "本页链接",
     "Links here": "链接到此页",
@@ -3557,7 +3547,7 @@ const UI = {
     "Details: {path}": "详情：{path}",
     "Next pass": "下次更新",
     "Rebuild snapshot": "重新生成快照",
-    "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
+    "Background updates off": "后台更新未开启",
     "What you worked on with your coding agents": "和编程 agent 一起做的事",
     "Not summarised": "尚未总结",
     "All {n} sessions": "全部 {n} 个会话",
@@ -3634,7 +3624,6 @@ const UI = {
     "Prepare in terminal": "在终端中准备",
     "No contact matches this search.": "没有匹配的联系人。",
     "Not mapped yet": "尚未映射",
-    "Copy review list command": "复制待审核列表命令",
     "What is between you now": "目前双方的待办",
     "Read the context": "阅读背景",
     "source {n}": "来源 {n}",
@@ -3741,13 +3730,11 @@ const UI = {
     "Documents": "文档",
     "Archived conversation": "存档对话",
     "Archived messages are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them.": "存档消息尚未完成隐私分类，已隐藏。在菜单中选择「显示标记段落」即可阅读。",
-    "Copy investigation preview": "复制调查预览命令",
     "Source map": "来源映射",
     "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings.": "可以浏览人物、项目、组织与技能了。这些是元数据线索，尚未经过调查。",
     "Review failed runs →": "查看失败的运行 →",
     "Maintenance": "维护",
     "Activity →": "动态 →",
-    "Copy command": "复制命令",
     "Run this in a terminal, then follow the next investigation command:": "在终端中运行，再按提示执行调查命令：",
     "blocker": "阻碍",
     "Mail": "邮件",
@@ -3784,7 +3771,6 @@ const UI = {
     "Filter activity": "筛选动态",
     "Other contacts table": "其他联系人表格",
     "Direct link to section": "此章节的直接链接",
-    "Copied — paste in a terminal": "已复制 — 请粘贴到终端",
     "Linked in {name}'s page": "在 {name} 的页面中关联",
     "{n} records mapped": "已映射 {n} 条记录",
     "0 memories written": "尚未撰写记忆",
@@ -3945,7 +3931,7 @@ const UI = {
     "Current project work is unconfirmed in the supplied evidence.": "现有材料尚未确认项目当前进展。",
     "Mapped from source metadata. REM has not investigated this record yet.": "由来源元数据映射，REM 尚未调查此记录。",
     "No supported summary yet.": "尚无来源支持的摘要。",
-    "Automatic investigations skip this private project. Name this page to request a write.": "自动调查跳过此私密项目。请指定此页面以请求撰写。",
+    "Automatic investigations skip this private project. Ask for one on this page.": "自动调查跳过此私密项目，在这一页请它查。",
     "Missing section: {detail}": "缺少章节：{detail}",
     "Section must occur once: {detail}": "章节应仅出现一次：{detail}",
     "Duplicate section: {detail}": "重复章节：{detail}",
@@ -4051,8 +4037,6 @@ function peopleExclusions() {
     service: people.filter(r => r.service && !r.needs_review).length };
 }
 // The default notebook needs no --root; another shows `~/` for home, which only expands unquoted.
-function remCommand(args) { if (REM.default_root) return "co rem " + args; const root = String(REM.root_display || REM.root), quote = value => "'" + value.replace(/'/g, "'\\''") + "'", rest = root.slice(2); const shown = root === "~" ? "~" : root.startsWith("~/") ? "~/" + (/^[a-zA-Z0-9_@%+=:,./-]+$/.test(rest) ? rest : quote(rest)) : quote(root); return "co rem --root " + shown + " " + args; }
-function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
@@ -5862,13 +5846,13 @@ function railActive() {
 }
 function scheduleState(s) {
   const state = s.state || "";
-  if (/^(?:Not started|Stopped|Not scheduled here)/.test(state)) return "Background updates off — run `co rem start` to enable";
+  if (/^(?:Not started|Stopped|Not scheduled here)/.test(state)) return "Background updates off";
   if (/^Running in background/.test(state)) return "Nightly updates are on";
   if (/^Background needs attention/.test(state)) return "Background needs attention";
   return state;
 }
 function nightlyUpdatesOff() {
-  return scheduleState(REM.status || {}) === "Background updates off — run `co rem start` to enable";
+  return scheduleState(REM.status || {}) === "Background updates off";
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -6388,6 +6372,7 @@ function sentNote() {
 // and full access. The row then says where the work is, in place: working (Stop, Undo), then See result.
 const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];
 function todayRow(entry) {
+  if (entry.row) return entry.row;
   const key = doneKey(entry);
   return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(key));
 }
@@ -6420,7 +6405,7 @@ function dotted(nodes) {
 function handButtons(entry, show, panel) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
-    const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t("Hand to {agent}", { agent: name }) });
+    const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }) });
     button.disabled = !liveHere();
     button.onclick = async () => {
       buttons.forEach(other => { other.disabled = true; });
@@ -6440,7 +6425,7 @@ function handButtons(entry, show, panel) {
     };
     return button;
   });
-  return [...dotted([...buttons, talkMenu(entry, panel)]), status];
+  return [...dotted([...buttons, entry.ask ? null : talkMenu(entry, panel)]), status];
 }
 // Codex is working · Stop · Undo, then Codex finished · See result · Undo; it follows the run by itself.
 function handState(entry, show, panel) {
@@ -6463,7 +6448,14 @@ function handState(entry, show, panel) {
   const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
   const actions = liveHere() ? [active ? act("stop", "Stop") : see, act("undo", "Undo")] : [];
-  return [...dotted([status, reason, by, ...actions, talkMenu(entry, panel)]), output].filter(Boolean);
+  return [...dotted([status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel)]), output].filter(Boolean);
+}
+// 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
+// /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
+function investigateRequest(r) {
+  if (!REM.live) return liveReaderLine("This is a snapshot: ask Codex to look from the live reader.");
+  r.investigation ||= { keys: [r.path], task: r.task || null };
+  return handOff({ key: r.path, row: r.investigation, ask: true });
 }
 function followTask(entry, task, status, show) {
   setTimeout(async () => {
@@ -9951,11 +9943,6 @@ function connectedContext(r) {
       el("p", { class: "relation-description", text: t("Name matches help navigate the notebook. A mention alone does not establish a relationship.") }),
       el("div", { class: "relation-list" }, mentions.map(link => relationCard(link, r.path)))]) : null]);
 }
-function commandChip(command) {
-  const copy = el("button", { class: "btn-action", type: "button", text: t("Copy"), "aria-label": t("Copy the command") });
-  copy.onclick = () => copyToClipboard(command, copy);
-  return el("div", { class: "cmd" }, [el("code", { text: command, title: command, tabindex: "0" }), copy]);
-}
 // Who they are and how to reach them, first on a person (#2104): the owner
 // asked to see email, phone, what to call them and the company at a glance.
 function knownValue(value) {
@@ -10026,7 +10013,7 @@ function recordFocus(r) {
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line, true)) || "" : "";
   const finding = plainLine(findingLine, true);
-  const statement = privateMapped ? t("Automatic investigations skip this private project. Name this page to request a write.")
+  const statement = privateMapped ? t("Automatic investigations skip this private project. Ask for one on this page.")
     : projectMapped ? mappedProjectLine(r)
     : projectNeedsContext ? projectDescription || t("Current project work is unconfirmed in the supplied evidence.")
     : finding || plainLine(purpose?.text || "", true) || memoryStatement(r) || facts(r).what || k.summary;
@@ -10405,6 +10392,7 @@ function record(path, heading) {
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: t(r.private_project ? "Private project — waiting for your request" : !REM.status?.worker?.enabled ? "Page pending — background updates off" : mapped ? "Page queued for tonight" : "Unresolved sections queued for a future pass") }),
       r.private_project ? el("p", { text: t("This private project waits for your request.") }) : null,
+      r.private_project ? investigateRequest(r) : null,
       el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.join(", ")) + "." })]);
     if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
@@ -10595,7 +10583,7 @@ function reviewPage() {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Review") })]));
   main.appendChild(el("h1", { text: t("Questions & connections") }));
   main.appendChild(el("p", { class: "lede", text: t("Evidence-linked suggestions, not established facts.") }));
-  if (!REM.live) main.appendChild(el("p", { class: "quiet-line", text: t("This is a snapshot; decide these on the live page.") }));
+  if (!REM.live) main.appendChild(liveReaderLine("This is a snapshot; decide these on the live page."));
   for (const row of REM.reviews || []) {
     if (row.subjects.some(path => privateTopicHidden(byPath(path) || {}))) continue;
     const box = el("section", { class: "review" });
@@ -11939,8 +11927,8 @@ async function readIn(r, tag, status, select) {
 }
 function askHost(body) {
   return fetch("/rem/translate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
-    .then(response => response.status === 401 ? { state: "failed", error: "this tab is no longer signed in; run " + remCommand("open") + " again" } : response.json())
-    .catch(error => ({ state: "failed", error: "co ai is not answering (" + error.message + "); run " + remCommand("open") + " again" }));
+    .then(response => response.status === 401 ? { state: "failed", error: t("Your session expired. Reload the page.") } : response.json())
+    .catch(() => ({ state: "failed", error: t("REM is not answering right now. Try again in a moment.") }));
 }
 function swapLanguage(r, tag) {
   const shown = tag && r.translations?.[tag] ? tag : "";
@@ -11987,12 +11975,33 @@ function viewState() {
 }
 // A redraw after a sync keeps what the reader opened and where they were. It waits while
 // they type or hold unsent words: threadStates is current, and the next render shows it.
+// A wait leaves the page behind the notebook, so one quiet mark says 有更新 until it draws.
+let redrawSkipped = false;
 function redraw() {
-  if (typingIn(document.activeElement) || unsavedDraft()) return;
+  if (typingIn(document.activeElement) || unsavedDraft()) { redrawSkipped = true; markUpdatesWaiting(); return; }
+  drawKeepingView();
+}
+function drawKeepingView() {
+  redrawSkipped = false;
+  document.getElementById("updates-waiting")?.remove();
   const state = viewState();
   render();
   restoreView(state);
 }
+// Clicking it is the owner's choice to draw now, as Newer page · Reload is.
+function markUpdatesWaiting() {
+  if (document.getElementById("updates-waiting")) return;
+  const mark = el("button", { id: "updates-waiting", type: "button", class: "updates-waiting", text: t("Updates waiting"),
+    title: t("Shows when you finish writing. Click to show it now.") });
+  mark.onclick = drawKeepingView;
+  document.body.appendChild(mark);
+}
+// Leaving the field, or the draft being sent or cleared, draws what waited.
+function settleRedraw() {
+  if (redrawSkipped) setTimeout(redraw, 0);
+}
+document.addEventListener("focusout", settleRedraw);
+setInterval(settleRedraw, 3000);
 function reloadOnto() {
   try {
     sessionStorage.setItem(RELOAD_STATE, JSON.stringify(viewState()));

@@ -340,7 +340,7 @@ def test_org_company_name_uses_the_most_common_linked_company_fact():
 
 
 @pytest.mark.parametrize("protocol", ["file:", "about:"])
-def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol):
+def test_copy_path_keeps_the_notebook_root(tmp_path, protocol):
     root = tmp_path / "owner's notebook"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice\n")
@@ -348,7 +348,6 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     data = json.loads(re.search(r"const REM = (.*);", page).group(1))
     record = next(r for r in data["records"] if r["path"] == "people/alice.md")
     # Execute the generated handlers with only the clipboard and footer DOM stubbed.
-    command = re.search(r"function remCommand\(args\).*", page).group(0)
     copy = re.search(r"pathBtn.onclick = .*", page).group(0)
     # D-60 (build 3b review): Reader settings no longer prints a re-open command; only the path copy remains.
     assert not [line for line in page.splitlines() if "settings.appendChild" in line and "remCommand(" in line]
@@ -359,7 +358,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         "const copyToClipboard = path => result.path = path;",
         "const el = (tag, attrs) => attrs.text;",
         "const settings = {appendChild: text => result.footer = text};",
-        command, copy, "pathBtn.onclick(); console.log(JSON.stringify(result));",
+        copy, "pathBtn.onclick(); console.log(JSON.stringify(result));",
     ])
     node = shutil.which("node")
     if not node:
@@ -682,30 +681,6 @@ def test_reader_preferences_survive_unavailable_or_throwing_storage(storage):
         'await readerStorage("co-rem-ui-language", "zh")])); })();',
     ]))
     assert result == [None, None]
-
-
-def test_display_commands_use_short_form_only_for_the_default_notebook(tmp_path, monkeypatch):
-    import sys
-    from datetime import datetime, timezone
-    from pathlib import Path
-    from connectonion.rem.reader import snapshot
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
-    from rem_reader_notebook import build
-
-    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    root = build(tmp_path / '.co' / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc))
-    data = snapshot(root)
-    assert data['default_root'] is True
-    function = re.search(r'function remCommand\(args\).*', TEMPLATE.read_text()).group(0)
-    result = _run_reader_js('\n'.join([
-        'const REM = ' + json.dumps(data) + ';', function,
-        'const commands = [remCommand("sources"), remCommand("import sessions")];',
-        'REM.default_root = false; REM.root = REM.root_display = "/tmp/avery\'s notebook";',
-        'commands.push(remCommand("import sessions")); console.log(JSON.stringify(commands));',
-    ]))
-    assert result[:2] == ['co rem sources', 'co rem import sessions']
-    assert result[2] == "co rem --root '/tmp/avery'\\''s notebook' import sessions"
 
 
 def test_dynamic_reader_chrome_translates_without_changing_english():
@@ -2251,7 +2226,7 @@ def test_schedule_reader_states_are_short_and_translated():
         'Not scheduled here — another notebook', 'Running in background (launchd); next slot unknown',
         'Background needs attention — last pass failed'].map(state => t(scheduleState({state})))));
     ''')
-    assert result[:3] == ['后台更新未开启 — 运行 `co rem start` 即可启用'] * 3
+    assert result[:3] == ['后台更新未开启'] * 3
     assert result[3:] == ['夜间更新已开启', '后台更新需要处理']
 
 
@@ -2287,22 +2262,6 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     head = result['counterpart']['today']['children']
     assert head[1]['text'] == 'Mia Chen'
     assert head[2]['children'] == ['Northgate University', ' · ', 'Pilot lead']
-
-
-@pytest.mark.parametrize('root,default,expected', [
-    ('~/.co/rem', True, 'co rem start'),
-    ('~/.co/rem-trials/x/rem', False, 'co rem --root ~/.co/rem-trials/x/rem start'),
-    ('~/.co/owner notebook/rem', False, "co rem --root ~/'.co/owner notebook/rem' start"),
-    ("~/.co/owner's $notebook/rem", False, "co rem --root ~/'.co/owner'\\''s $notebook/rem' start"),
-    ('/var/folders/trial/rem', False, "co rem --root '/var/folders/trial/rem' start")])
-def test_rem_commands_use_expandable_home_roots(root, default, expected):
-    import shlex
-    command = re.search(r'function remCommand\(args\).*', TEMPLATE.read_text()).group(0)
-    actual = _run_reader_js('const REM = ' + json.dumps({'root_display': root, 'default_root': default}) + ';\n'
-                            + command + '\nconsole.log(JSON.stringify(remCommand("start")));')
-    assert actual == expected
-    if not default:
-        assert shlex.split(actual)[3] == root
 
 
 @pytest.mark.parametrize('configured', [True, False])
@@ -3338,7 +3297,7 @@ def test_no_task_card_says_this_version_does_not_run_it():
 def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
-                          for name in ['topicList', 'graphT', 'commandChip'])
+                          for name in ['topicList', 'graphT'])
     zh = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(zh + '\n' + functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
@@ -4083,3 +4042,115 @@ def test_with_no_saved_page_at_all_open_renders_once_and_says_so_every_few_secon
     result = reader.open_snapshot(root, launch=False, say=lines.append)
     assert "Alice Example" in open(result["page"], encoding="utf-8").read()
     assert len(lines) >= 4 and "first" in lines[0], lines        # a line at once, then one per tick
+
+
+def test_no_view_offers_a_command_to_copy():
+    """D-60 (#2910): the reader never hands the owner a command; REM or the live reader does the work."""
+    page = TEMPLATE.read_text()
+    assert 'function commandChip' not in page and 'remCommand(' not in page and 'initCommand(' not in page
+    assert not re.search(r'class: "cmd"|\.cmd\b', page)
+    assert not re.search(r'run `?co rem |paste (?:it )?in a terminal', page, re.I)
+    assert not re.search(r'"Copy (?:the )?(?:\w+ )?(?:command|preview)"', page)
+
+
+@pytest.mark.parametrize('link', ['http://127.0.0.1:8000/rem?token=fictional', ''])
+def test_the_review_snapshot_says_one_sentence_and_links_the_live_reader(link):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in ['reviewPage', 'liveReaderLine'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(c => c != null),
+        appendChild(child) { this.children.push(child); }});
+      const nodes = [], main = {set textContent(_) {}, appendChild: node => nodes.push(node)};
+      const document = {getElementById: () => main}, byPath = () => null, emptyState = text => ({text});
+      const REM = {live: false, live_link: ''' + json.dumps(link) + r''', reviews: [{id: 'a', status: 'pending', kind: 'link',
+        question: 'Is Fern Vale at Harbour Studio?', basis: 'two mails', subjects: []}]};
+      reviewPage();
+      console.log(JSON.stringify(nodes));
+    ''')
+    text = json.dumps(result)
+    line = next(node for node in result if node.get('class') == 'snapshot-line')
+    links = [child for child in line['children'] if isinstance(child, dict) and child.get('tag') == 'a']
+    assert [a['href'] for a in links] == ([link] if link else [])
+    assert 'review-acts' not in text and 'co rem' not in text
+
+
+INVESTIGATE = HAND + ['investigateRequest', 'liveReaderLine']
+
+
+def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
+    """#2909: the private project's own page is the key; the same /rem/task run as 交给 Codex, followed in place."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in INVESTIGATE)
+    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n'
+                            + functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
+      const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
+      const words = node => node.children[0].children.map(child => child.text).filter(text => text && text !== '·');
+      const REM = {live: true, today_queue: []};
+      globalThis.fetch = async (url, options) => { requests.push({url, body: JSON.parse(options.body)});
+        return {ok: true, status: 200, json: async () => ({id: 'f'.repeat(32), result: 'starting', agent: 'codex'})}; };
+      const r = {path: 'projects/private-notes-ab12.md', private_project: true};
+      const node = investigateRequest(r), before = words(node);
+      node.children[0].children.find(child => child['data-agent'] === 'codex').onclick().then(() => {
+        const after = words(node);
+        REM.live = false;
+        const snapshot = investigateRequest({path: 'projects/private-notes-ab12.md', private_project: true});
+        REM.live = true;
+        const reopened = words(investigateRequest({path: 'projects/private-notes-ab12.md', private_project: true,
+          task: {id: 'f'.repeat(32), agent: 'codex', result: 'completed'}}));
+        console.log(JSON.stringify({before, after, requests, snapshot, reopened, kept: r.investigation.task.result}));
+      });
+    ''')
+    assert result['before'] == ['Ask Codex to look', 'Ask Claude to look']
+    assert result['requests'] == [{'url': '/rem/task', 'body': {'action': 'run', 'key': 'projects/private-notes-ab12.md', 'agent': 'codex'}}]
+    assert result['after'] == ['Codex is working', 'Stop', 'Undo'] and result['kept'] == 'starting'
+    assert result['reopened'] == ['Codex finished', 'See result', 'Undo']
+    # A snapshot cannot start it: one sentence, never a command.
+    assert result['snapshot']['class'] == 'snapshot-line' and 'co rem' not in json.dumps(result['snapshot'])
+
+
+def test_ask_codex_to_look_reads_in_chinese():
+    page = TEMPLATE.read_text()
+    assert '"Ask {agent} to look": "让 {agent} 查"' in page
+    assert '"This is a snapshot: ask Codex to look from the live reader.": ' in page
+
+
+STALE = ['redraw', 'drawKeepingView', 'markUpdatesWaiting', 'settleRedraw']
+
+
+def test_a_skipped_redraw_says_updates_are_waiting_and_draws_them_when_the_draft_is_done():
+    """A draft holds Today still; a quiet 有更新 says it is behind, and leaving the field or clicking draws it."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in STALE)
+    result = _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
+      let typing = true, unsaved = false, renders = 0, restored = [];
+      const typingIn = () => typing, unsavedDraft = () => unsaved, render = () => { renders++; };
+      const viewState = () => ({open: ['#processing']}), restoreView = state => restored.push(state);
+      const setTimeout = fn => fn(), shown = {};
+      const body = {children: [], appendChild(node) { node.remove = () => { this.children = this.children.filter(n => n !== node); }; this.children.push(node); }};
+      const document = {activeElement: {}, body, getElementById: id => body.children.find(n => n.id === id) || null};
+      const el = (tag, attrs = {}) => ({tag, ...attrs});
+      redraw(); redraw();
+      shown.typing = {renders, marks: body.children.map(n => n.text)};
+      typing = false; settleRedraw();
+      shown.left = {renders, marks: body.children.length, restored: [...restored]};
+      unsaved = true; redraw(); settleRedraw();
+      shown.draft = {renders, marks: body.children.length};
+      body.children[0].onclick();
+      shown.clicked = {renders, marks: body.children.length, restored: restored.length};
+      unsaved = false; settleRedraw();
+      shown.quiet = renders;
+      console.log(JSON.stringify(shown));
+    ''')
+    assert result['typing'] == {'renders': 0, 'marks': ['Updates waiting']}
+    assert result['left'] == {'renders': 1, 'marks': 0, 'restored': [{'open': ['#processing']}]}
+    assert result['draft'] == {'renders': 1, 'marks': 1}
+    assert result['clicked'] == {'renders': 2, 'marks': 0, 'restored': 2}
+    assert result['quiet'] == 2           # nothing was skipped since: no extra draw
+
+
+def test_updates_waiting_reads_in_chinese_and_is_painted_from_the_sheet():
+    page = TEMPLATE.read_text()
+    assert '"Updates waiting": "有更新"' in page
+    assert re.search(r'\.updates-waiting \{[^}]*var\(--grey\)', page)
