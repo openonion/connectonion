@@ -41,7 +41,7 @@ def test_every_pull_request_runs_the_test_workflow():
 
 
 def test_pytest_jobs_install_the_declared_dev_extra():
-    pytest_jobs = ("test", "cli-help-audit", "remote-browser-egress", "windows-browser")
+    pytest_jobs = ("test", "cli-help-audit", "cli-help-audit-tree", "remote-browser-egress", "windows-browser")
     lines = TESTS.splitlines()
     for job in pytest_jobs:
         start = lines.index(f"  {job}:")
@@ -51,9 +51,9 @@ def test_pytest_jobs_install_the_declared_dev_extra():
                 break
             job_lines.append(line)
         job_body = "\n".join(job_lines)
-        assert 'pip install -e ".[dev]"' in job_body
+        assert 'uv pip install --system -e ".[dev]"' in job_body
 
-    assert TESTS.count('pip install -e ".[dev]"') == len(pytest_jobs)
+    assert TESTS.count('pip install --system -e ".[dev]"') == len(pytest_jobs)
     assert "pip install pytest" not in TESTS
 
 

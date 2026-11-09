@@ -8,7 +8,7 @@ Files, not single tests, are split: each shard collects only its own files
 keeps a file's tests on one worker as before. The longest file goes to the
 least-loaded shard first. Weights come from tests/ci_durations.json; a file
 that is not in it yet weighs the median. Refresh the weights from the
-`junit-3.11-*` artifacts of any CI run with --record.
+`junit-*` artifacts of any CI run with --record.
 """
 
 import json

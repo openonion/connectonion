@@ -38,15 +38,17 @@ jobs:
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \
             --disable-pip --strict --progress-spinner off
 
-  # The offline suite is ~9 minutes of tests on a two-worker runner (over 15
-  # traced for coverage), so each Python runs it as six parallel shards.
-  # scripts/ci_test_shard.py splits by file, balanced by tests/ci_durations.json:
-  # a 50-line script instead of pytest-split, because that plugin splits single
-  # tests (breaking loadfile grouping) and still makes every shard collect the
-  # whole suite. Six because a shard's fixed cost (checkout, install) is about
-  # a minute, and the free plan runs 20 jobs at once: 18 shards already fill it.
+  # The offline suite is ~9 minutes of tests on one two-worker runner, so each
+  # Python runs it in parallel shards. scripts/ci_test_shard.py splits by
+  # file, balanced by tests/ci_durations.json: a 50-line script instead of
+  # pytest-split, because that plugin makes every shard collect the whole suite.
+  # Inside a shard, -n logical starts one worker per vCPU (auto counted physical
+  # cores: two of four) and --dist worksteal hands out single tests, as
+  # `make test` always has; --dist loadfile pinned the largest file
+  # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
+  # shards than needed: the free plan runs 20 jobs at once across the whole org.
   test:
-    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/6
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
     # pytest.ini has already named the culprit, and this is the backstop for a
@@ -56,7 +58,14 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        # 3.12 (traced) and 3.13 run their tests ~40% slower than 3.11, so they
+        # take eight shards to 3.11's six to stay near two minutes a shard.
+        exclude:
+          - python-version: "3.11"
+            shard: 7
+          - python-version: "3.11"
+            shard: 8
 
     steps:
       - name: Checkout
@@ -67,10 +76,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # uv installs the same dev extra in seconds where pip took 25-90. Its
+      # cache stays off for the reason at the top of this file.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: false
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run this shard's test files
         env:
@@ -83,10 +98,13 @@ jobs:
           # all of them and tracing slows the run. Each 3.12 shard writes its
           # own data file; the coverage job combines them and gates the total.
           COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+          # sys.monitoring (coverage 7.4+, Python 3.12+) instead of a trace
+          # function: line coverage, measured the same, at a fraction of the cost.
+          COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
         run: |
-          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} 6) \
-            -n auto --dist loadfile --tb=short \
+          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} ${{ matrix.python-version == '3.11' && 6 || 8 }}) \
+            -n logical --dist worksteal --tb=short \
             -m "not slow and not real_api and not network" \
             -o junit_family=xunit1 --junitxml=junit.xml \
             $COVERAGE_ARGS
@@ -100,10 +118,12 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
-      # Per-test times, for refreshing tests/ci_durations.json:
-      # python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml
+      # Per-test times, only for refreshing tests/ci_durations.json
+      # (python scripts/ci_test_shard.py --record junit-*/junit.xml), so a
+      # flaky upload (ECONNRESET in run 42656357103) does not fail the shard.
       - name: Upload this shard's test times
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: junit-${{ matrix.python-version }}-${{ matrix.shard }}
@@ -152,7 +172,7 @@ jobs:
   # One stable check name for every shard and the coverage gate. A shard that
   # failed, was cancelled or was skipped makes this red, never green.
   tests-passed:
-    needs: [test, coverage]
+    needs: [test, coverage, cli-help-audit, cli-help-audit-tree]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -161,11 +181,64 @@ jobs:
         env:
           TEST_RESULT: ${{ needs.test.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
+          AUDIT_RESULT: ${{ needs.cli-help-audit.result }}
+          TREE_RESULT: ${{ needs.cli-help-audit-tree.result }}
         run: |
-          echo "test shards: $TEST_RESULT, coverage: $COVERAGE_RESULT"
-          [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ]
+          echo "test shards: $TEST_RESULT, coverage: $COVERAGE_RESULT, help audit shards: $AUDIT_RESULT, help audit tree: $TREE_RESULT"
+          [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ] \
+            && [ "$AUDIT_RESULT" = success ] && [ "$TREE_RESULT" = success ]
 
+  # Each `co ... --help` is a process start, and the audit runs about 800 of
+  # them (~870 process-seconds). Each shard walks and audits the top-level commands that fall to it
+  # (see tests/unit/test_cli_help_contract.py); cli-help-audit-tree then
+  # checks the whole tree once over every shard's list of pages.
   cli-help-audit:
+    name: cli-help-audit ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      # uv installs the same dev extra in seconds where pip took 25-90. Its
+      # cache stays off for the reason at the top of this file.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Audit this shard's co help pages
+        env:
+          OPENONION_API_KEY: test-key
+          CO_AUDIT_SHARD: ${{ matrix.shard }}/4
+          CO_AUDIT_PAGES_DIR: audit-pages
+        run: |
+          mkdir audit-pages
+          pytest -q tests/unit/test_cli_help_contract.py::test_co_meets_the_contract_and_its_house_style \
+            -m slow --tb=short -rP
+
+      - name: Upload the pages this shard audited
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audit-pages-${{ matrix.shard }}
+          path: audit-pages
+          if-no-files-found: error
+
+  cli-help-audit-tree:
+    needs: cli-help-audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -177,22 +250,38 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      # uv installs the same dev extra in seconds where pip took 25-90. Its
+      # cache stays off for the reason at the top of this file.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: false
 
-      - name: Audit every co help page once
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Download every shard's list of pages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: audit-pages-*
+          path: audit-pages
+          merge-multiple: true
+
+      - name: Every page audited once, every listed command reachable
         env:
           OPENONION_API_KEY: test-key
+          CO_AUDIT_PAGES_DIR: audit-pages
         run: |
-          pytest -q tests/unit/test_cli_help_contract.py::test_co_meets_the_contract_and_its_house_style \
+          pytest -q tests/unit/test_cli_help_contract.py::test_the_shards_together_audit_every_page_once \
             -m slow --tb=short
 
   # The Remote Browser gateway is a security boundary built directly on each
   # platform's asyncio/TCP implementation. Keep its small focused suite on every
   # supported Python and OS instead of treating one green Linux socket as proof
-  # for Proactor Windows or Darwin close/shutdown behavior.
+  # for Proactor Windows or Darwin close/shutdown behavior. On Linux the test
+  # shards already run these five files on every Python (324 tests, none
+  # skipped), so this job covers the other two systems.
   remote-browser-egress:
     runs-on: ${{ matrix.os }}
     # Backstop for hangs outside a test (installation, shutdown); the per-test watchdog catches the rest.
@@ -200,7 +289,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
@@ -212,10 +301,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # uv installs the same dev extra in seconds where pip took 25-90. Its
+      # cache stays off for the reason at the top of this file.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: false
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run destination, gateway, and private runtime contracts
         # A thread watchdog can terminate blocked native IPC on every OS.
@@ -242,10 +337,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # uv installs the same dev extra in seconds where pip took 25-90. Its
+      # cache stays off for the reason at the top of this file.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: false
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run browser transport + daemon tests (native Windows named pipes)
         run: |
