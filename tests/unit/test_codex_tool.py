@@ -1367,3 +1367,13 @@ def test_refused_approvals_are_counted_not_hidden():
     result = _run(prompt="inspect", approval="deny")
     assert result["approvals_denied"] == 1
     assert _run(prompt="inspect", approval="manual", agent=_Agent(_IO(approve=True)))["approvals_denied"] == 0
+
+
+def test_with_nobody_to_approve_the_default_writes_inside_the_sandbox(tmp_path, monkeypatch):
+    # #2904, real run 2026-11-09: codex(prompt, cwd=...) with no Work Room asked
+    # before every patch under "untrusted", nobody answered, and nothing changed.
+    _, alone = _replayed(tmp_path, monkeypatch)
+    assert alone["thread/start"]["approvalPolicy"] == "on-request"
+    assert alone["thread/start"]["sandbox"] == "workspace-write"
+    _, watched = _replayed(tmp_path, monkeypatch, agent=_Agent(_IO()))
+    assert watched["thread/start"]["approvalPolicy"] == "untrusted"

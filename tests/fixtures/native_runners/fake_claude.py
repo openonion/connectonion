@@ -22,6 +22,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 args = sys.argv[1:]
 RECORDED_SESSION = 'bf1b715f-3272-4573-b78d-359571db650a'
+DENIED_SESSION = 'f376add1-10e8-4a3a-b319-8b84207fb28d'
+manual = args[args.index('--permission-mode') + 1] == 'manual'
 resumed = args[args.index('--resume') + 1] if '--resume' in args else None
 if '--settings' in args:
     # `co claude run` passes scoped Hooks; Claude Code fires SessionStart first.
@@ -29,11 +31,11 @@ if '--settings' in args:
     hook = settings['hooks']['SessionStart'][0]['hooks'][0]
     # A resumed run starts the session it was given, as the real `claude --resume <id>` does.
     subprocess.run([hook['command'], *hook['args']], text=True, check=True, input=json.dumps({
-        'hook_event_name': 'SessionStart', 'session_id': resumed or RECORDED_SESSION,
+        'hook_event_name': 'SessionStart', 'session_id': resumed or (DENIED_SESSION if manual else RECORDED_SESSION),
         'transcript_path': str(pathlib.Path.cwd() / 'transcript.jsonl'), 'cwd': os.getcwd(),
         'source': 'resume' if resumed else 'startup'}))
 prompt = args[args.index('--') + 1]
-if args[args.index('--permission-mode') + 1] == 'manual':
+if manual:
     sys.stdout.write((HERE / 'claude_stream_default_denied.jsonl').read_text())
     sys.exit(0)
 pathlib.Path('claude-was-here.md').write_text('Pilot notes\n')

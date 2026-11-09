@@ -588,10 +588,17 @@ def claude_run(
     session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
     model: str = typer.Option("", "--model", help="Claude model override"),
     timeout: int = typer.Option(600, "--timeout", min=1, max=3600, help="Maximum run time in seconds"),
+    # acceptEdits by default (#2904): the person who typed the command is the
+    # only one who could approve, and nobody is asked mid-run, so "default"
+    # (ask, then refuse) changed nothing while reporting success. acceptEdits
+    # lets Claude change files inside --cwd and still refuses other commands,
+    # which are listed in permission_denials; bypassPermissions stays opt-in.
     permission_mode: str = typer.Option(
-        "default", "--permission-mode", metavar="default|acceptEdits|plan|...",
-        help="default asks before each edit or command, and with nobody to ask refuses them; "
-             "acceptEdits lets Claude change files in --cwd. Refused tools are listed in permission_denials."),
+        "acceptEdits", "--permission-mode", metavar="acceptEdits|default|plan|...",
+        help="acceptEdits (the default) lets Claude change files in --cwd but not run other commands; "
+             "default asks before each edit or command and, with nobody to ask, refuses them; "
+             "plan only reads; bypassPermissions runs anything, so opt in only when you mean it. "
+             "Refused tools are listed in permission_denials."),
 ):
     """Experimental: send one prompt to Claude Code and print the result as JSON (reply, status, cost, session ID). Runs Claude Code in --cwd; --session resumes an earlier session."""
     from ..useful_tools.claude_code import PERMISSION_MODES, run_co_claude
