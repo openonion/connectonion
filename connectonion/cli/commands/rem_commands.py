@@ -2273,6 +2273,8 @@ def make_rem_app(factory):
             typer.echo(value["plan"])
             if value["message"]:
                 typer.echo(value["message"])
+            if value["file"]:
+                typer.echo("Mail preview: " + value["file"])
         else:
             _emit(ctx, value, ["open"])
 

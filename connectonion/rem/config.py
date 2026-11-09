@@ -154,9 +154,9 @@ def validate(config: dict) -> dict:
         raise RemError("tasks.auto must be true or false")
     notify = config["notify"]
     if (not isinstance(notify, dict) or set(notify) != {"channel", "target"}
-            or notify["channel"] not in ("none", "telegram", "lark", "whatsapp", "email")
+            or notify["channel"] not in ("none", "outlook", "telegram", "lark", "whatsapp", "email")
             or not isinstance(notify["target"], str)):
-        raise RemError("notify.channel must be none, telegram, lark, whatsapp or email; notify.target must be text")
+        raise RemError("notify.channel must be none, outlook, telegram, lark, whatsapp or email; notify.target must be text")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
             or any(not isinstance(name, str) or not name.strip() for name in models.values())):
