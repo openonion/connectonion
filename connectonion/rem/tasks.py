@@ -274,6 +274,18 @@ def _project(receipt):
     return value
 
 
+def result(root, task_id):
+    """The owner's See result: what the agent wrote, from the deliverable or else its last message."""
+    receipt = status(root, task_id)
+    if receipt['result'] in (*ACTIVE, 'queued', 'ready'):
+        raise RemError('The agent is still working; its result shows when it finishes')
+    files = [Path(receipt[name]) for name in ('deliverable', 'last_message')]
+    text = next((path.read_text() for path in files if path.is_file() and not path.is_symlink()
+                 and path.read_text().strip()), '')
+    return {'id': receipt['id'], 'result': receipt['result'], 'agent': receipt.get('agent', 'codex'),
+            'reason': receipt.get('reason', ''), 'text': text}
+
+
 def receipt_for(root, key):
     receipt = read_json(directory(root, identity(key)) / 'receipt.json', {})
     return _project(receipt) if receipt else None
@@ -414,14 +426,38 @@ def undo(root, task_id):
     return record
 
 
-def dispatch(root, key, agent='codex'):
-    """The owner's 交给 Codex / 交给 Claude on any pending item: reserve its work and start it now."""
+class UnknownItem(RemError):
+    """The key names no unfinished row: the page is older than the notebook."""
+
+
+# Who the open item waits on, in the words the agent's prompt gives it.
+WAITS_ON = {'mine': 'The owner owes this.',
+            'theirs': 'Someone else owes the owner this: prepare what moves it forward, such as a follow-up the owner can send.',
+            'plain': 'An open item in the owner\'s notebook.'}
+
+
+def unfinished(root, key):
+    """The unfinished row the reader shows for `key` (any of its copies), as reserve takes it.
+    The night's own outcome when it prepared one; otherwise built here from the row itself."""
     from .night import listing
-    _agent(agent)
-    row = next((row for row in listing(root) if key in row['keys']), None)
+    from .today import queue
+    row = next((row for row in queue(root) if key in row['keys'] and not row['closed']), None)
     if row is None:
-        raise RemError('No pending item has this key; reload Today')
-    return start(root, reserve(root, row, agent=agent)['id'], agent)
+        raise UnknownItem('This item is no longer open in your notebook. Reload the page to see what is.')
+    prepared = next(iter(listing(root, rows=[row])), {})
+    if prepared.get('task', {}).get('prompt'):
+        return prepared
+    prompt = (f"Prepare the work for this open item.\nNotebook page: {row['record']}\n"
+              f"Item: {row['text']}\n{WAITS_ON[row['dir']]}\n"
+              f"Source: {row['reply'].get('source') or 'the notebook item'}\n"
+              'Produce a reviewable result with evidence. State any missing inputs; do not invent completion.')
+    return {**{field: row[field] for field in ('key', 'keys', 'record', 'title', 'text')}, 'task': {'prompt': prompt}}
+
+
+def dispatch(root, key, agent='codex'):
+    """The owner's 交给 Codex / 交给 Claude on any unfinished row: reserve its work and start it now."""
+    _agent(agent)
+    return start(root, reserve(root, unfinished(root, key), agent=agent)['id'], agent)
 
 
 def host_dispatch(root, item, agent='codex'):

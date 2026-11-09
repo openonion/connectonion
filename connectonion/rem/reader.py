@@ -293,9 +293,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     outcomes = {row['key']: row for row in data['night_outcomes']}
+    from .tasks import receipt_for
     for row in data['today_queue']:
         if row['key'] in outcomes:
             row['outcome'] = outcomes[row['key']]
+        # A row the owner handed to an agent from any list carries its run, prepared by the night or not.
+        if local and row.get('outcome', {}).get('kind') != 'task' and (receipt := receipt_for(root, row['key'])):
+            row['task'] = receipt
     from . import approvals
     data['approval_outcomes'] = approvals.outcomes(root, rows=data['today_queue'], prepared=data['drafts']) if local else []
     data['approval_pending'] = approvals.pending(root) if local else []
@@ -392,7 +396,10 @@ def render(root: Path, *, live: bool = False, local: bool = False) -> str:
 
 def _page(full: dict, *, live: bool) -> str:
     shell = full if live else _today_data(full)
-    data = _script_json({**shell, "live": live, "deferred_details": True,
+    from .live_host import live_link
+    # Only the owner's own snapshot of the notebook a live reader serves links to it.
+    link = live_link() if not live and full.get("default_root") and not full.get("shared") else ""
+    data = _script_json({**shell, "live": live, "live_link": link, "deferred_details": True,
                          "detail_url": "/rem/data.json" if live else ""})
     detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")

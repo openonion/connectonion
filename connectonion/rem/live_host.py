@@ -182,3 +182,16 @@ def reader_token(directory: Path) -> str:
         with os.fdopen(fd, "w") as output:
             output.write(secrets.token_urlsafe(32))
     return path.read_text().strip()
+
+
+def live_link() -> str:
+    """The live reader on this computer, for a snapshot's one sentence (D-60: a link, never a
+    command); "" without an identity. The file page that carries it is the owner's own (mode
+    600), as private as the token beside the Host's key. Served by co ai, which `co rem open` starts."""
+    from ..address import load
+    from ..project import selected_identity_dir
+    directory = selected_identity_dir()
+    if not load(directory):
+        return ""
+    port = read_json(directory / "rem-live-host.json", {}).get("port") or DEFAULT_PORT
+    return f"http://127.0.0.1:{port}/rem?token={reader_token(directory)}"

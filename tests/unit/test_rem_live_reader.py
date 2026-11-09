@@ -342,6 +342,57 @@ def test_a_hand_to_codex_or_claude_button_dispatches_any_pending_item(host, monk
         assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=json.dumps(bad).encode())[0] == 400
 
 
+def test_a_key_no_unfinished_row_has_is_a_400_in_plain_words(host):
+    body = json.dumps({'key': 'people/nobody.md\nNothing.', 'action': 'run', 'agent': 'codex'}).encode()
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 400 and 'no longer open' in json.loads(text)['error']
+
+
+def test_see_result_reads_what_the_agent_wrote(host):
+    from connectonion.rem import tasks
+    from connectonion.rem.files import write_json
+    from pathlib import Path
+    receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
+        'keys': ['people/fern.md\nReview the pilot.'], 'record': 'people/fern.md',
+        'title': 'Fern Vale', 'text': 'Review the pilot.', 'task': {'prompt': 'Review it.'}})
+    body = json.dumps({'id': receipt['id'], 'action': 'result'}).encode()
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 409  # still queued
+    Path(receipt['deliverable']).write_text('# Pilot review\nFern can sign on Friday.\n')
+    write_json(Path(receipt['receipt']), {**receipt, 'result': 'completed', 'exit_code': 0})
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 200 and 'Fern can sign on Friday.' in json.loads(text)['text']
+
+
+def test_talk_routes_are_owner_only_and_reach_the_conversation(host, monkeypatch):
+    from connectonion.rem import conversations
+    calls = []
+    monkeypatch.setattr(conversations, 'begin', lambda root, agent, key=None, session=None:
+                        calls.append(('begin', agent, key, session)) or {'id': 'a' * 32, 'state': 'working'})
+    monkeypatch.setattr(conversations, 'say', lambda root, talk_id, text: calls.append(('say', talk_id, text)) or {'state': 'working'})
+    monkeypatch.setattr(conversations, 'read', lambda root, talk_id: calls.append(('read', talk_id)) or {'state': 'idle'})
+    for body in ({'action': 'begin', 'agent': 'claude', 'key': 'people/fern.md\nReview the pilot.'},
+                 {'action': 'begin', 'session': 'sessions/fern.md'},
+                 {'action': 'say', 'id': 'a' * 32, 'text': 'Draft it.'}, {'action': 'read', 'id': 'a' * 32}):
+        raw = json.dumps(body).encode()
+        assert call(host.routes, 'POST', '/rem/talk', body=raw)[0] == 401
+        assert call(host.routes, 'POST', '/rem/talk', cookie=f'co_rem={host.token}', body=raw)[0] == 200
+    assert calls == [('begin', 'claude', 'people/fern.md\nReview the pilot.', None), ('begin', 'codex', None, 'sessions/fern.md'),
+                     ('say', 'a' * 32, 'Draft it.'), ('read', 'a' * 32)]
+    for bad in ({'action': 'begin', 'agent': 'gemini', 'key': 'k'}, {'action': 'say', 'id': 'a' * 32}, {'action': 'push'}):
+        assert call(host.routes, 'POST', '/rem/talk', cookie=f'co_rem={host.token}', body=json.dumps(bad).encode())[0] == 400
+
+
+def test_a_snapshot_links_to_this_computers_live_reader_only_with_an_identity(host, monkeypatch):
+    from connectonion import address
+    identity = host.routes["identity_dir"]
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
+    assert live_host.live_link() == ""                        # no key here: no live reader to link to
+    address.save(address.generate(), identity)
+    assert live_host.live_link() == f"http://127.0.0.1:8000/rem?token={host.token}"
+    live_host.write_json(identity / "rem-live-host.json", {"port": 9125})
+    assert live_host.live_link() == f"http://127.0.0.1:9125/rem?token={host.token}"
+
+
 @pytest.fixture
 def clock(monkeypatch):
     """The reader's own clock, moved by the test: [seconds since the epoch]."""
@@ -522,7 +573,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     from connectonion.rem import night, tasks
     from connectonion.rem.config import read_config
     from connectonion.rem.files import Notebook, read_json
-    from tests.unit.test_rem_reader import TEMPLATE, _run_reader_js
+    from tests.unit.test_rem_reader import HAND, TEMPLATE, _run_reader_js
     book = Notebook(host.root)
     book.stub_project('projects/pilot.md', 'Mara pilot', [])
     book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
@@ -531,19 +582,19 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     row = night.listing(host.root)[0]
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayRow', 'obligationKey', 'rowTask', 'handedLine', 'handOff'])
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" };\n' + functions + r'''
+                          for name in HAND)
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
-      const doneKey = entry => entry.key, taskControls = () => null, requests = [];
+      const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
       const REM = {live: true, today_queue: [''' + json.dumps({'key': row['keys'][0], 'keys': row['keys']}) + r''']};
       globalThis.fetch = async (url, options) => { requests.push({url, ...options});
         return {ok: true, status: 200, json: async () => ({result: 'starting', agent: 'claude'})}; };
-      const node = handOff({key: REM.today_queue[0].key});
-      node.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
-        console.log(JSON.stringify({request: requests[0], shown: node.children[0].text})));
+      const line = handOff({key: REM.today_queue[0].key}).children[0];
+      line.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
+        console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text)})));
     ''')
-    assert sent['request']['url'] == '/rem/task' and sent['shown'] == 'Handed to Claude · in progress'
+    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Undo']
     started = []
     monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
                         {'id': task_id, 'agent': agent, 'result': 'starting'})

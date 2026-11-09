@@ -1550,9 +1550,6 @@
   .session-composer { margin: 0 26px 26px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); }
   .session-composer textarea { display: block; resize: vertical; width: 100%; min-height: 64px; padding: 0; border: 0; color: var(--ink); background: transparent; font: var(--s-body)/1.6 var(--font); }
   .session-composer textarea::placeholder { color: var(--grey); opacity: 1; }
-  .session-resume { display: flex; align-items: center; gap: 14px; padding-top: 14px; border-top: 1px solid var(--rule); }
-  .session-resume code { flex: 1; min-width: 0; color: var(--grey); user-select: all; }
-  .session-page .session-resume button { color: var(--paper); background: var(--ink); border-color: var(--ink); border-radius: var(--radius); }
   .session-composer-note { color: var(--grey); font: var(--s-meta)/1.6 var(--font); margin: 10px 0 0; }
   .session-home-indicator { display: none; }
   @media (max-width: 719px) {
@@ -1574,9 +1571,6 @@
     .session-turn-label { font-size: var(--s-meta); }
     .session-composer { margin: 0 10px 12px; padding: 12px; }
     .session-composer textarea { font-size: var(--s-body); }
-    .session-resume { flex-wrap: wrap; gap: 10px; }
-    .session-resume code { flex-basis: 100%; }
-    .session-page .session-resume button { width: 100%; min-height: 44px; }
     .session-home-indicator { display: block; width: 72px; height: 4px; border-radius: var(--radius); background: var(--grey); margin: 18px auto 9px; opacity: .5; }
   }
 
@@ -2180,6 +2174,28 @@
   .handoff-status, .handed { font-size: var(--s-meta); color: var(--grey); }
   .handed { margin: var(--u2) 0 0; color: var(--ink); font-weight: var(--w-bold); }
   .handoff-status:empty { display: none; }
+  .handoff { flex-direction: column; align-items: stretch; gap: var(--u1); }
+  .handoff-line, .talk-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
+  .handoff .handed { margin: 0; font-size: var(--s-body); }
+  .task-output, .talk-context pre { margin: 0; flex-basis: 100%; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--s-meta)/1.6 var(--mono); }
+  .task-output[hidden] { display: none; }
+  /* 和 Codex 聊这件事: the conversation under its row, in the reader's own type; quiet until it speaks. */
+  .talk { margin-top: var(--u2); padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); }
+  .talk-turns { display: flex; flex-direction: column; gap: var(--u3); }
+  .talk-turn p { margin: var(--u1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--lh-body); }
+  .talk-turn.owner { padding-left: var(--u3); border-left: var(--rule-heavy) solid var(--ink); }
+  .talk-who, .talk-context summary, .talk-status { font-size: var(--s-meta); color: var(--grey); }
+  .talk-who { font-weight: var(--w-bold); }
+  .talk-context summary { cursor: pointer; min-height: 32px; }
+  .talk-status { margin: var(--u3) 0 var(--u2); }
+  .talk-status:empty { display: none; }
+  .talk-form { display: flex; gap: var(--u2); align-items: flex-end; margin-top: var(--u2); }
+  .talk-form textarea { flex: 1; min-width: 0; min-height: 64px; padding: var(--u2); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-body)/1.6 var(--font); resize: vertical; }
+  .talk-form textarea:focus { outline: var(--rule-heavy) solid var(--ink); outline-offset: -2px; }
+  .session-composer .talk { margin: 0; border: 0; padding: 0; }
+  .talk-form .btn-line, .session-composer > .btn-line { min-height: 40px; padding: 0 18px; border: var(--hair) solid var(--grey); background: none; color: var(--ink); font: var(--w-bold) var(--s-body) var(--font); cursor: pointer; }
+  .talk-form .btn-line:hover:not(:disabled), .session-composer > .btn-line:hover { border-color: var(--ink); }
+  .talk-form .btn-line:disabled { color: var(--grey); border-color: var(--rule); cursor: default; }
   @media (max-width: 720px) {
     .brief-header { column-gap: var(--u3); }
     .brief-header .poster ~ .lede { font-size: var(--s-body); line-height: var(--lh-body); }
@@ -2901,20 +2917,12 @@ const UI = {
     "Held for 10 minutes": "等待 10 分钟后发送",
     "Task result": "任务结果",
     "Awaiting approval": "等待批准",
-    "Refresh task progress": "刷新任务进度",
-    "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
+    "Deliverable": "交付物",
     "Queued: later tonight": "排队：今晚稍后",
     "Queued: budget used up": "排队：预算用完",
-    "Open the deliverable": "打开交付物",
     "Stop": "停止",
     "Could not do that. Try again.": "没能完成，请重试。",
-    "Awaiting Host": "等待 Host 派发",
-    "Starting": "正在启动",
-    "Task failed": "任务失败",
-    "Task timed out": "任务超时",
-    "Task stopped": "任务已停止",
-    "Deliverable": "交付物",
     "Prepared reply": "已备好回信",
     "Copy prepared reply": "复制回信",
     "Task queued": "任务已排队",
@@ -2965,17 +2973,13 @@ const UI = {
     "Median reply time · all indexed history; consecutive turns in the same thread": "全部收录邮件的回复时间中位数；按同一话题中双方相邻的回复统计",
     "Daily message rate: last 30 days vs prior 90 days": "每日邮件频率：最近30天与此前90天相比",
     "Open session transcript →": "打开会话记录 →",
-    "Continue this session…": "继续这个会话…",
-    "Copy resume command": "复制继续命令",
     "Session id not archived": "未归档会话 ID",
-    "Resume in your project folder, then paste your message.": "在项目文件夹中恢复会话，然后粘贴你的消息。",
     "SESSION ARCHIVE": "会话档案",
     "session transcript": "会话记录",
     "Duration not archived": "时长未归档",
     "Time not archived": "时间未归档",
     "At least {duration}": "至少 {duration}",
     "Outcome not recorded": "结果未记录",
-    "Running": "进行中",
     "Assistant activity · not archived": "助手活动 · 未归档",
     "This archive keeps your turns and the final reply. Intermediate replies and tool results were not retained.": "本档案保留了你的发言和最终回复，中间回复及工具结果未被保留。",
     "Archived commands · execution order not retained": "已归档命令 · 执行顺序未保留",
@@ -3024,8 +3028,20 @@ const UI = {
     "It went out now and cannot be undone.": "已直接发出，无法撤回。",
     "Hand to {agent}": "交给 {agent}",
     "Handing to {agent}…": "正在交给 {agent}…",
-    "Handed to {agent} · in progress": "已交给 {agent} · 进行中",
-    "{agent} ran this": "由 {agent} 完成",
+    "{agent} is working": "{agent} 正在做",
+    "{agent} finished": "{agent} 做完了",
+    "{agent} stopped before finishing": "{agent} 没做完就停了",
+    "See result": "看结果",
+    "{agent} wrote nothing.": "{agent} 没有写下结果。",
+    "Talk with {agent} about this": "和 {agent} 聊这件事",
+    "What {agent} was given": "交给 {agent} 的背景",
+    "Opening the conversation…": "正在打开对话…",
+    "{agent} is answering…": "{agent} 正在回复…",
+    "Write to {agent}…": "写给 {agent}…",
+    "Your message": "你的消息",
+    "Continue with {agent}": "和 {agent} 继续这个会话",
+    "Continuing this session with its agent happens in the live reader.": "和 agent 继续这个会话要在实时阅读器里进行。",
+    "Open the live reader": "打开实时阅读器",
     "REM did not recognise this item. Reload the page and try again.": "REM 认不出这件事。请刷新页面再试。",
     "Questions & connections →": "问题与关联 →",
     "Reply to {name} first: the reply is ready": "先回 {name}：回信已写好",
@@ -3498,8 +3514,6 @@ const UI = {
     "Newer page · Reload": "有更新 · 刷新",
     "the newest rebuild failed": "最新一次重建失败",
     "Details: {path}": "详情：{path}",
-    "Updating the page…": "正在更新页面…",
-    "Saved. The page has not updated yet; reload in a minute.": "已保存。页面还没更新，过一分钟再刷新。",
     "Next pass": "下次更新",
     "Rebuild snapshot": "重新生成快照",
     "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
@@ -6114,14 +6128,15 @@ function dueLabel(thread) {
 }
 
 function taskResult(entry) {
-  const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
-  const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
+  const task = rowTask(entry);
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  // A run shows on the row itself (handOff): here only a task that waits, and a finished one's reply to send.
+  if (handed(task) && !(task.result === "completed" && task.prepared_reply)) return null;
+  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", completed: "Completed"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
-  if (task.result === "completed" && task.prepared_reply) {
+  if (task.result === "completed") {
     result.appendChild(el("p", {}, [el("span", {text: t("Deliverable") + ": "}), el("code", {text: task.deliverable})]));
     const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
     reply.value = task.prepared_reply;
@@ -6129,42 +6144,7 @@ function taskResult(entry) {
     copy.onclick = () => copyToClipboard(task.prepared_reply);
     result.append(reply, copy);
   }
-  if (REM.live && location.protocol !== "file:") {
-    const refresh = el("button", {type: "button", class: "btn-quiet", text: t("Refresh task progress")});
-    refresh.onclick = async () => {
-      refresh.disabled = true;
-      const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id})}).catch(() => null);
-      // A status read changes nothing in the notebook: show it here, no reload.
-      const latest = response?.ok ? await response.json().catch(() => null) : null;
-      if (latest) { Object.assign(task, latest); const y = scrollY; render(); scrollTo(0, y); }
-      else {refresh.disabled = false; refresh.textContent = t("Could not refresh. Try again.");}
-    };
-    result.appendChild(refresh);
-  }
-  const controls = taskControls(task);
-  if (controls) result.appendChild(controls);
   return result;
-}
-// Who started a task, its deliverable, and the owner's Stop and Undo (Undo removes the work).
-function taskControls(task) {
-  if (!task.result || ["ready", "waiting"].includes(task.result)) return null;
-  const live = REM.live && location.protocol !== "file:";
-  const act = (action, label) => {
-    const button = el("button", {type: "button", class: "btn-quiet", text: t(label)});
-    button.onclick = async () => {
-      button.disabled = true;
-      const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id, action})}).catch(() => null);
-      if (response?.ok) { button.textContent = t("Updating the page…"); reloadWhenRendered(button); }
-      else {button.disabled = false; button.textContent = t("Could not do that. Try again.");}
-    };
-    return button;
-  };
-  const file = task.result === "completed" && task.deliverable;
-  return el("div", {class: "task-controls"}, [
-    task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
-    file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,
-    live && ["queued", "starting", "running"].includes(task.result) ? act("stop", "Stop") : null,
-    live ? act("undo", "Undo") : null]);
 }
 
 // ---- Today: one card per person ----------------------------------------------
@@ -6293,7 +6273,7 @@ function cardItem(entry, many, seen = new Set(), more = null) {
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry), more]),
-      alsoOn(entry.also), own ? null : draftNote(draft, entry), handedLine(rowTask(entry)), taskResult(entry),
+      alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
 }
 function cardDraft(draft, group) {
@@ -6312,7 +6292,12 @@ function cardDraft(draft, group) {
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
-  return REM.live ? null : el("p", { class: "snapshot-line", text: t("This is a snapshot: sending and handing work to an agent happen in the live reader.") });
+  return REM.live ? null : liveReaderLine("This is a snapshot: sending and handing work to an agent happen in the live reader.");
+}
+// One sentence and, when this computer has a live reader, the link to it.
+function liveReaderLine(words) {
+  return el("p", { class: "snapshot-line" }, [t(words), REM.live_link ? " " : null,
+    REM.live_link ? el("a", { href: REM.live_link, text: t("Open the live reader") }) : null]);
 }
 // After Send: who it went to and, while the 10-minute hold lasts, the one Undo.
 let todaySent = null, shownCount = 0;
@@ -6341,50 +6326,145 @@ function sentNote() {
     el("p", { class: "meta" }, held ? [t("Held until {time}; you can still undo it.", { time: fmtTime(todaySent.release_at) }), " ", undo, " ", status]
       : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
 }
-// 交给 Codex / 交给 Claude (D-100): REM starts the owed work now, with that agent and full access.
-// The row then follows the task like any other: its state, Stop and Undo, whoever runs it.
-const AGENT_NAMES = { codex: "Codex", claude: "Claude" };
+// 交给 Codex / 交给 Claude (D-100) on every unfinished row: REM starts the work now, with that agent
+// and full access. The row then says where the work is, in place: working (Stop, Undo), then See result.
+const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];
 function todayRow(entry) {
   const key = doneKey(entry);
   return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(key));
 }
 function obligationKey(entry) { return todayRow(entry)?.keys?.[0] || doneKey(entry); }
-function rowTask(entry) { const outcome = todayRow(entry)?.outcome; return outcome?.kind === "task" ? outcome.task : null; }
-function handedLine(task) {
-  if (!task?.agent || !task.result || ["ready", "waiting"].includes(task.result)) return null;
-  const agent = AGENT_NAMES[task.agent] || task.agent;
-  return el("p", { class: "handed", text: t(["queued", "starting", "running"].includes(task.result) ? "Handed to {agent} · in progress" : "{agent} ran this", { agent }) });
+// The night's prepared task, or the run the owner started from any list (reader.py puts it on the row).
+function rowTask(entry) { const row = todayRow(entry); return row?.outcome?.kind === "task" ? row.outcome.task : row?.task || null; }
+function keepTask(entry, task) {
+  const row = todayRow(entry);
+  if (!row) return;
+  if (row.outcome?.kind === "task") row.outcome = { ...row.outcome, task: task || { id: row.outcome.task.id, prompt: row.outcome.task.prompt, result: "ready" } };
+  else row.task = task;
 }
+function handed(task) { return !!task?.result && !["ready", "waiting"].includes(task.result); }
+function hostPost(url, body) {
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(async response => ({ ...await response.json().catch(() => ({})), ok: response.ok, code: response.status }))
+    .catch(() => ({ ok: false, code: 0 }));
+}
+function liveHere() { return REM.live && location.protocol !== "file:"; }
 function handOff(entry) {
-  if (handedLine(rowTask(entry))) return null;  // already with an agent: its state shows instead
-  const live = REM.live;
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show) : handButtons(entry, show);
+  const show = () => line.replaceChildren(...parts());
+  const line = el("div", { class: "handoff-line" }, parts()), panel = el("div", { class: "talk-slot" });
+  return el("div", { class: "handoff" }, [line, talkLinks(entry, panel), panel]);
+}
+function handButtons(entry, show) {
   const status = el("span", { class: "handoff-status", role: "status" });
-  const node = el("div", { class: "handoff" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t("Hand to {agent}", { agent: name }) });
-    button.disabled = !live;
+    button.disabled = !liveHere();
     button.onclick = async () => {
       buttons.forEach(other => { other.disabled = true; });
       status.textContent = t("Handing to {agent}…", { agent: name });
-      const response = await fetch("/rem/task", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "run", key: obligationKey(entry), agent }) }).catch(() => null);
-      const result = response?.ok ? await response.json().catch(() => ({})) : {};
-      if (!response?.ok) {
+      const reply = await hostPost("/rem/task", { action: "run", key: obligationKey(entry), agent });
+      if (!reply.ok) {
         buttons.forEach(other => { other.disabled = false; });
-        status.textContent = t(response?.status === 400 ? "REM did not recognise this item. Reload the page and try again."
-          : response?.status === 401 ? "Your session expired. Reload the page."
-          : response?.status === 409 ? "This item has changed. Reload and try again."
+        status.textContent = t(reply.code === 400 ? "REM did not recognise this item. Reload the page and try again."
+          : reply.code === 401 ? "Your session expired. Reload the page."
+          : reply.code === 409 ? "This item has changed. Reload and try again."
           : "REM is not answering right now. Try again in a moment.");
         return;
       }
-      const task = { ...result, agent: result.agent || agent }, row = todayRow(entry);
-      if (row) row.outcome = { ...(row.outcome || {}), kind: "task", task };
-      node.replaceChildren(...[handedLine(task), taskControls(task)].filter(Boolean));
+      const { ok, code, ...task } = reply;
+      keepTask(entry, { ...task, agent: task.agent || agent });
+      show();
     };
     return button;
   });
-  node.append(...buttons, status);
-  return node;
+  return [...buttons, status];
+}
+// Codex is working · Stop · Undo, then Codex finished · See result · Undo; it follows the run by itself.
+function handState(entry, show) {
+  const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
+  const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
+  const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
+  const act = (action, label) => {
+    const button = el("button", { type: "button", class: "btn-quiet", text: t(label) });
+    button.onclick = async () => {
+      button.disabled = true;
+      const { ok, code, ...reply } = await hostPost("/rem/task", { id: task.id, action });
+      if (!ok) { button.disabled = false; button.textContent = t("Could not do that. Try again."); return; }
+      keepTask(entry, action === "undo" ? null : { ...task, ...reply });
+      show();
+    };
+    return button;
+  };
+  const reason = !active && task.result !== "completed" && task.reason ? el("span", { class: "handoff-status", text: task.reason }) : null;
+  if (liveHere() && active) followTask(entry, task, status, show);
+  const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
+  const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
+  return [status, reason, by, ...(liveHere() ? [active ? act("stop", "Stop") : see, act("undo", "Undo"), output] : [])].filter(Boolean);
+}
+function followTask(entry, task, status, show) {
+  setTimeout(async () => {
+    if (!status.isConnected) return;
+    const { ok, code, ...latest } = await hostPost("/rem/task", { id: task.id });
+    if (ok && latest.result !== task.result) { keepTask(entry, { ...task, ...latest }); show(); }
+    else followTask(entry, task, status, show);
+  }, 4000);
+}
+// See result: what the agent wrote, read from its deliverable through the Host, shown under the row.
+function seeResult(task) {
+  const output = el("pre", { class: "task-output", hidden: "" });
+  const button = el("button", { type: "button", class: "btn-quiet", "aria-expanded": "false", text: t("See result") });
+  button.onclick = async () => {
+    if (!output.textContent) {
+      const reply = await hostPost("/rem/task", { id: task.id, action: "result" });
+      output.textContent = reply.ok ? reply.text || reply.reason || t("{agent} wrote nothing.", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent })
+        : reply.error || t("REM is not answering right now. Try again in a moment.");
+    }
+    output.hidden = !output.hidden;
+    button.setAttribute("aria-expanded", String(!output.hidden));
+  };
+  return [button, output];
+}
+// 和 Codex 聊这件事: a real conversation with the agent about this row, under it, in this page.
+function talkLinks(entry, panel) {
+  return el("div", { class: "talk-links" }, Object.entries(AGENT_NAMES).map(([agent, name]) => {
+    const button = el("button", { type: "button", class: "btn-quiet", "data-talk": agent, text: t("Talk with {agent} about this", { agent: name }) });
+    button.disabled = !liveHere();
+    button.onclick = () => panel.replaceChildren(talkPanel({ action: "begin", agent, key: obligationKey(entry) }));
+    return button;
+  }));
+}
+function talkTurn(turn, name) {
+  if (turn.role === "context") return el("details", { class: "talk-context" }, [el("summary", { text: t("What {agent} was given", { agent: name }) }), el("pre", { text: turn.text })]);
+  return el("div", { class: "talk-turn " + turn.role }, [el("span", { class: "talk-who", text: turn.role === "owner" ? t("You") : name }), el("p", { text: turn.text })]);
+}
+// One conversation: each message is a turn of the same agent session; the page follows it while it answers.
+function talkPanel(begin) {
+  const turns = el("div", { class: "talk-turns" }), status = el("p", { class: "talk-status", role: "status", text: t("Opening the conversation…") });
+  const input = el("textarea", { rows: "2", "aria-label": t("Your message") });
+  const send = el("button", { type: "submit", class: "btn-line", text: t("Send"), disabled: "" });
+  const form = el("form", { class: "talk-form" }, [input, send]), box = el("section", { class: "talk", "aria-live": "polite" }, [turns, status, form]);
+  let talk = null;
+  const paint = ({ ok, code, error, ...value }) => {
+    if (!ok) { status.textContent = error || t("REM is not answering right now. Try again in a moment."); send.disabled = !talk; return; }
+    talk = value;
+    const name = AGENT_NAMES[talk.agent] || talk.agent, working = talk.state === "working";
+    turns.replaceChildren(...talk.turns.map(turn => talkTurn(turn, name)));
+    status.textContent = working ? t("{agent} is answering…", { agent: name }) : talk.reason || "";
+    input.placeholder = t("Write to {agent}…", { agent: name });
+    send.disabled = working;
+    if (working) setTimeout(() => box.isConnected && hostPost("/rem/talk", { action: "read", id: talk.id }).then(paint), 2500);
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (!talk || !input.value.trim()) return;
+    send.disabled = true;
+    const reply = await hostPost("/rem/talk", { action: "say", id: talk.id, text: input.value });
+    if (reply.ok) input.value = "";
+    paint(reply);
+  };
+  hostPost("/rem/talk", begin).then(paint);
+  return box;
 }
 // The first card is open and carries the page's one green action; the others
 // show who and what, and reveal their action on hover, focus or tap.
@@ -6465,7 +6545,7 @@ function taskView(kind) {
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
     const rowFor = row => {
       const node = threadRow(row.r, row.t, true, row.also, true);
-      if (dir === "mine") node.firstElementChild.append(...[handedLine(rowTask(row)), handOff(row)].filter(Boolean));
+      node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
       return node;
     };
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
@@ -9009,12 +9089,6 @@ function sessionToolMark(r) {
   return el("span", { class: "session-tool-mark " + kind, "aria-hidden": "true", html:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>' });
 }
-function sessionResumeCommand(r) {
-  const { kind } = sessionTool(r), id = r.session_id || (/^- Session: (.+)$/m.exec(sessionSection(r, "Facts")) || [])[1];
-  if (!id || !["codex", "claude-code"].includes(kind)) return "";
-  const quoted = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id) ? id : "'" + id.replaceAll("'", "'\\''") + "'";
-  return (kind === "codex" ? "codex resume " : "claude --resume ") + quoted;
-}
 function sessionDuration(r) {
   const messages = sessionMessages(r), first = messages[0]?.time, last = r.session_ended || messages.at(-1)?.time;
   const date = stamp => !stamp ? NaN : Date.parse((stamp.length <= 5 ? r.session_date + " " + stamp : stamp).replace(" ", "T") + ":00Z");
@@ -9023,19 +9097,19 @@ function sessionDuration(r) {
   const duration = minutes >= 60 ? Math.floor(minutes / 60) + "h " + minutes % 60 + "m" : minutes + "m";
   return r.session_ended ? duration : t("At least {duration}", { duration });
 }
+// Continue the session with its own agent, here (D-60: never a command to copy): the agent
+// resumes its session in the folder it ran in, and the reply shows in this page.
 function sessionComposer(r) {
-  const command = sessionResumeCommand(r);
-  const input = el("textarea", { rows: "2", placeholder: t("Continue this session…"), "aria-label": t("Continue this session…") });
-  const copy = sessionButton("Copy resume command", () => copyToClipboard(command, copy));
-  copy.disabled = !command;
-  copy.setAttribute("aria-live", "polite");
-  const form = el("form", { class: "session-composer", id: "session-continue", "data-session-id": r.session_id || "" }, [input,
-    el("div", { class: "session-resume" }, [el("code", { text: command || t("Session id not archived") }), copy]),
-    el("p", { class: "session-composer-note", text: t("Resume in your project folder, then paste your message.") })]);
-  // Future run adapters can consume this event. No dispatch is enabled in this snapshot.
-  form.sessionContinuation = () => ({ sessionId: r.session_id, kind: sessionTool(r).kind, message: input.value, command, cwd: r.session_folder });
-  form.onsubmit = event => { event.preventDefault(); form.dispatchEvent(new CustomEvent("rem:session-continue", { bubbles: true, detail: form.sessionContinuation() })); };
-  return form;
+  const box = el("div", { class: "session-composer", id: "session-continue" });
+  const { kind, name } = sessionTool(r);
+  if (!liveHere()) box.append(liveReaderLine("Continuing this session with its agent happens in the live reader."));
+  else if (!r.session_id || !["codex", "claude-code"].includes(kind)) box.append(el("p", { class: "session-composer-note", text: t("Session id not archived") }));
+  else {
+    const start = el("button", { type: "button", class: "btn-line", text: t("Continue with {agent}", { agent: name }) });
+    start.onclick = () => box.replaceChildren(talkPanel({ action: "begin", session: r.path }));
+    box.append(start);
+  }
+  return box;
 }
 function sessionArchivedTools(r) {
   const artifacts = sessionSection(r, "Artifacts"), notable = /; notable: (.+)/.exec(artifacts)?.[1] || "";
@@ -11831,16 +11905,6 @@ async function checkForNewerRender() {
     typing: !!document.activeElement?.matches("input, select") });
   if (choice === "reload") reloadOnto();
   else if (choice === "offer") offerReload();
-}
-// After the owner's own action: the Host rebuilds now; reload once that render lands.
-async function reloadWhenRendered(status) {
-  const before = REM.as_of, deadline = Date.now() + 120000;
-  while (Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const latest = await readVersion();
-    if (latest?.as_of && latest.as_of !== before) return unsavedDraft() ? offerReload() : reloadOnto();
-  }
-  status.textContent = t("Saved. The page has not updated yet; reload in a minute.");
 }
 if (REM?.live) {
   setTimeout(checkForNewerRender, 1000);

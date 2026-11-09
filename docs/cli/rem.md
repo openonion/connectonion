@@ -812,16 +812,31 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   **What REM did overnight** adds **Replied to N people for you** when REM sent
   replies itself (`sent_by_rem`), and no row when it did not.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
-  quiet text buttons on every pending row, in Today and in **Waiting on you**.
-  A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
-  to `/rem/task`; the row then reads **Handed to Codex · in progress** and
-  follows the task's own status, **Stop** and **Undo**, the same for either
-  agent, and a finished card names the agent that ran it. A refused request
-  is said in words on the row, never in the Host's own English: a changed item
-  (409) asks you to reload, an expired session (401) to reload the page, and no
-  answer (5xx or no connection) to try again shortly. In a snapshot the buttons
-  are disabled and the page's one snapshot line says why. Nothing in the reader
-  says a task is recorded but not run.
+  quiet text buttons on every unfinished row: Today, and all three bands of
+  **Waiting on you** (yours, on others, other open context), whether or not the
+  night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  to `/rem/task`; a row the night did not prepare gets its task reserved on the
+  spot from the row itself (its page, its text, its source), with the same
+  receipt, prompt shape, Stop, Undo and status as a prepared one. The row then
+  says where the work is, in place, and follows it by itself: **Codex is
+  working · Stop · Undo**, then **Codex finished · See result · Undo**; **See
+  result** opens what the agent wrote (its deliverable, else its last message,
+  `{"action": "result", "id"}`) under the row, and **Undo** removes the work and
+  brings the two buttons back. A refused request is said in words on the row,
+  never in the Host's own English: an item no longer open (400) asks you to
+  reload, a changed item (409) too, an expired session (401) to reload the page,
+  and no answer to try again shortly. In a snapshot the buttons are disabled and
+  the page's one snapshot line says why, with a link to the live reader on this
+  computer when it has one. Nothing in the reader says a task is recorded but not run.
+- **Talk with Codex / Talk with Claude about this** (和 Codex 聊这件事) sit under
+  the same buttons. A click opens a conversation under the row: REM gives the
+  agent the item (page, text, project folder, a work folder of its own), its
+  first answer shows in the page, and the box under it sends the next message as
+  one more turn of the same agent session (`POST /rem/talk`, actions `begin`,
+  `say`, `read`; the page polls while the agent answers). Each turn runs through
+  co ai's harness like a task, with the same access and the same "never push,
+  merge, send or post" line; the transcript is kept at `.state/talks/ID/talk.json`.
+  Opening it again returns the same conversation.
 - **The sidebar** has no **Questions & connections** entry any more, as with
   Activity; `#reviews=1` still opens it, and **Memory changes** carries its one
   quiet link, beside **REM activity**.
@@ -850,8 +865,12 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   by decisions, follow-ups and artifacts. The transcript retains your turns
   and the complete final reply; missing intermediate activity is disclosed.
   Find searches the retained text, and source links land on the corresponding
-  turn when it is archived. Other source rows open under **Details**. The
-  continuation box provides a resume command to use in the project folder.
+  turn when it is archived. Other source rows open under **Details**.
+  **Continue with Codex / Claude Code** goes on with the session itself, in the
+  page: the agent resumes its own session id in the folder it ran in and its
+  reply shows below, with a box for the next message (the same `/rem/talk`
+  conversation as above). No resume command to copy (D-60); a snapshot says the
+  live reader does this, with its link.
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.

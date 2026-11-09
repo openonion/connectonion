@@ -581,7 +581,7 @@ def test_dispatch_starts_any_pending_item_with_the_chosen_agent(task_notebook, f
     assert _finished(task_notebook, started['id'])['result'] == 'completed'
     with pytest.raises(RemError, match='codex or claude'):
         tasks.dispatch(task_notebook, row['keys'][0], agent='gemini')
-    with pytest.raises(RemError, match='No pending item'):
+    with pytest.raises(RemError, match='no longer open'):
         tasks.dispatch(task_notebook, 'people/nobody.md\nNothing.', agent='codex')
 
 
@@ -594,3 +594,35 @@ def test_a_queued_task_takes_the_agent_the_owner_picks_and_the_host_passes_it(ta
                         type('Done', (), {'returncode': 0})())
     tasks.host_dispatch(task_notebook, {'receipt_id': receipt['id'], 'agent': 'claude'})
     assert seen[0][-3:] == [receipt['id'], '--agent', 'claude']
+
+
+def _waiting_row(root):
+    """A row the reader shows under Waiting that the night never prepared: Fern owes the owner."""
+    book = Notebook(root)
+    book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
+        '## Open threads\n', '## Open threads\n- Fern owes you the Fernhill Labs contract draft.\n'))
+    from connectonion.rem import today
+    row = next(row for row in today.queue(root) if 'Fernhill' in row['text'])
+    assert row['dir'] == 'theirs' and all(row['key'] not in o['keys'] for o in night.listing(root))
+    return row
+
+
+def test_any_unfinished_row_the_reader_shows_can_be_handed_to_an_agent(task_notebook, fake_codex):
+    from connectonion.rem import tasks
+    row = _waiting_row(task_notebook)
+    started = tasks.dispatch(task_notebook, row['keys'][0], agent='codex')
+    assert started['by'] == 'owner' and started['record'] == 'projects/pilot.md'
+    saved = _finished(task_notebook, started['id'])
+    assert saved['result'] == 'completed', saved.get('reason')
+    prompt = _turn_prompt(fake_codex)
+    assert 'Fernhill Labs contract draft' in prompt and 'projects/pilot.md' in prompt
+    assert 'Never push, merge, send mail or post' in prompt
+    assert tasks.receipt_for(task_notebook, row['key'])['id'] == started['id']
+    tasks.undo(task_notebook, started['id'])
+    assert tasks.receipt_for(task_notebook, row['key']) is None
+
+
+def test_a_key_that_matches_no_unfinished_row_is_unknown(task_notebook):
+    from connectonion.rem import tasks
+    with pytest.raises(tasks.UnknownItem, match='no longer open'):
+        tasks.dispatch(task_notebook, 'people/nobody.md\nNothing.', agent='codex')
