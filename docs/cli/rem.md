@@ -487,7 +487,8 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co rem open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
+| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. |
+| `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
@@ -653,9 +654,66 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 
 ### What the reader shows
 
-The local live reader reuses its rendered snapshot until notebook files change,
-including pages, retained sources, translations and state. Reload after an edit
-shows the updated notebook; repeated requests do not rebuild unchanged content.
+Opening is a file read. The reader keeps its last render outside the notebook,
+in a private per-user folder in the temporary directory (`co-rem-cache-<uid>`,
+mode 700, pages 600, a planted link refused), and serves it at once. Whether it
+is current is a handful of stat calls, never a listing of the notebook: every
+write REM makes touches `.state/reader-changed`; the category folders' times
+catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
+WAL hold committed rows; `reader.html` is part of the key, so an upgrade
+re-renders. The notebook's date is part of the key too, so the Today queue turns
+over at midnight. Every 10 minutes (`REBUILD_INTERVAL` in `reader.py`) the
+background build walks the whole notebook (on a 31,136-file notebook about
+17 s of stat calls, never on the request path), which catches edits other
+tools make in place without REM's writers, and rebuilds only if the walk
+differs. The walk leaves out the lock's own files (`maintenance-owner.json`,
+`maintenance.lock`), which the Host's minute tick rewrites, and the marker;
+otherwise every walk would differ while a Host runs. A page older than an hour (`STALE_SCHEDULE_SECONDS`) is rebuilt
+anyway, so **Next pass** and schedule text are at most an hour late; a quiet
+notebook with the page open costs a walk every 10 minutes, not a rebuild.
+When the key changed, the last page is still served at once and one detached process
+(`python -m connectonion.rem.reader`, one at a time, log in the same folder,
+trimmed to its last 200 lines) renders the new one. It writes the new page,
+details and file page under new names, then one manifest (`current.json`) that
+names that set, last; a crash midway leaves the previous set served whole, so a
+reload never pairs a new page with old details. The set it replaces is kept for
+a page still open on it. The offline page keeps one name per notebook
+(`<digest>-file.html` in the cache folder), replaced in place by each build, so
+the link `co rem open` prints stays valid and a tab open on it shows the newest
+render when reloaded. When the notebook's last render took under 2 seconds
+(`SYNC_RENDER_SECONDS`), an explicit `co rem open` renders it again before
+opening, so the page is never older than the notebook; a larger notebook opens
+the saved page at once and is rebuilt behind it. `CONNECTONION_REM_CACHE`
+names another cache folder; the test suite gives each test its own and fails a
+run that writes the real one.
+
+Rebuilds are at most one per 10 minutes, because one costs about 100 s of CPU
+on a large notebook and a night run keeps writing. The owner acting rebuilds
+at once: an explicit `co rem open`, and a change made in the reader (send,
+approve, mark a thread, choose a language, `/rem/translation-request`, stop or
+undo a task). Reading a task's status, and the on-page translation
+(`/rem/translate`, served straight from its own cache), do not. A build that
+is running passes again for an owner action made meanwhile. `co rem open` says
+a newer page is being built only when a build actually started.
+
+The open live page asks `/rem/version` every 30 seconds while visible. When a
+newer render has landed (only newer: an equal or older time is no reason) it
+reloads onto it and puts back the view, the scroll position and open sections
+(known by id, else by their heading); while you are typing it waits, and over a reply
+you have edited it does not reload but shows a quiet **有更新 · 刷新** (Newer
+page · Reload) link. After Stop or Undo on a task, the page waits for the
+render that carries it, then reloads; past two minutes it says the page has not
+updated yet. Refresh task progress reads the status in place.
+
+The footer says when the page was rendered: **Updated** (更新于) and the time.
+If the newest background build failed it adds "the newest rebuild failed", with
+the log path as a detail; `co rem open` says the same. A failing build is not
+started again within 10 minutes. If the cache folder exists but is not yours
+alone (a shared temporary directory), the reader renders now, as before saved
+pages, and says so; a Host that `co rem open` started and that exited soon
+after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
+rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
+and the render 35 s, plus 73 s for the details.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
@@ -1257,7 +1315,7 @@ the round. Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
-The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
+The UI is a static snapshot of the notebook as of its last render (the footer's **Updated** time); run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
 

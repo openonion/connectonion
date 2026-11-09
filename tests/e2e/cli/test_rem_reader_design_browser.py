@@ -112,7 +112,7 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     page.locator('.nav-toggle').click()
     page.locator('.reader-settings > summary').click()
-    assert 'Snapshot ' in page.locator('#foot').inner_text()
+    assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'start to enable' in page.locator('.reader-settings').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
@@ -2802,7 +2802,7 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
     settings = page.locator('.reader-settings')
     assert not settings.evaluate('node => node.open')
     assert not page.locator('#privacy-toggle').is_visible()
-    assert 'Snapshot ' in page.locator('#foot').inner_text()
+    assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     settings.locator('summary').click()
     assert settings.locator('code').count() == 1

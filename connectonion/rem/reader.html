@@ -3346,7 +3346,12 @@ const UI = {
     "{n} matching sessions →": "查看全部 {n} 个匹配的会话 →",
     "{n} pages match — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
     "{n} page matches — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
-    "Snapshot": "快照",
+    "Updated": "更新于",
+    "Newer page · Reload": "有更新 · 刷新",
+    "the newest rebuild failed": "最新一次重建失败",
+    "Details: {path}": "详情：{path}",
+    "Updating the page…": "正在更新页面…",
+    "Saved. The page has not updated yet; reload in a minute.": "已保存。页面还没更新，过一分钟再刷新。",
     "Next pass": "下次更新",
     "Rebuild snapshot": "重新生成快照",
     "Background updates off — run `co rem start` to enable": "后台更新未开启 — 运行 `co rem start` 即可启用",
@@ -5654,7 +5659,7 @@ function renderRail(active) {
   const settingsRecord = byPath(route().record);
   if (settingsRecord?.private_project) settings.appendChild(commandChip(investigateCommand(settingsRecord)));
   if (route().category === "people") settings.appendChild(commandChip(remCommand("list people --review")));
-  foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
+  foot.appendChild(el("div", { id: "rendered-at", text: t("Updated") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
     : t(scheduleState(s) || "No pass scheduled");
@@ -5932,7 +5937,9 @@ function taskResult(entry) {
     refresh.onclick = async () => {
       refresh.disabled = true;
       const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id})}).catch(() => null);
-      if (response?.ok) location.reload();
+      // A status read changes nothing in the notebook: show it here, no reload.
+      const latest = response?.ok ? await response.json().catch(() => null) : null;
+      if (latest) { Object.assign(task, latest); const y = scrollY; render(); scrollTo(0, y); }
       else {refresh.disabled = false; refresh.textContent = t("Could not refresh. Try again.");}
     };
     result.appendChild(refresh);
@@ -5950,7 +5957,7 @@ function taskControls(task) {
     button.onclick = async () => {
       button.disabled = true;
       const response = await fetch("/rem/task", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: task.id, action})}).catch(() => null);
-      if (response?.ok) location.reload();
+      if (response?.ok) { button.textContent = t("Updating the page…"); reloadWhenRendered(button); }
       else {button.disabled = false; button.textContent = t("Could not do that. Try again.");}
     };
     return button;
@@ -10824,6 +10831,7 @@ function render() {
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
   entranceView = viewKey;
   refreshFocusExpansion();
+  restoreAfterReload();
 }
 
 function sourceFind(excerpt, quote) {
@@ -11413,6 +11421,91 @@ function showLanguage(r, tag) {
   render();
 }
 
+// ---------- a newer render (2026-11-09) ----------
+// The Host answers with the page it saved at once and renders a newer one behind
+// it. The page reloads onto that through one door, which keeps the view, the
+// scroll and open sections; it never reloads over a draft being written, and
+// offers a quiet link instead.
+const RELOAD_STATE = "co-rem-reload";
+const editedFields = new WeakSet();
+document.addEventListener("input", event => {
+  if (event.target.matches?.("textarea, [contenteditable]")) editedFields.add(event.target);
+}, true);
+function unsavedDraft() {
+  return [...document.querySelectorAll("textarea, [contenteditable]")]
+    .some(node => editedFields.has(node) && (node.value ?? node.textContent).trim());
+}
+// Only a newer render: an older or equal one (a build that crashed midway) is no reason to reload.
+function reloadChoice({ latest, asOf, typing, unsaved }) {
+  if (!latest?.as_of || !(new Date(latest.as_of) > new Date(asOf)) || typing) return null;
+  return unsaved ? "offer" : "reload";
+}
+// A section is known by its id, else by its summary; positions move when a render adds rows.
+function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
+function reloadOnto() {
+  try {
+    sessionStorage.setItem(RELOAD_STATE, JSON.stringify({ hash: location.hash, y: scrollY,
+      open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) }));
+  } catch (error) {
+    // Blocked storage: the reload still lands on the same view, at the top.
+  }
+  location.reload();
+}
+let pendingRestore = (() => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(RELOAD_STATE) || "null");
+    sessionStorage.removeItem(RELOAD_STATE);
+    return saved;
+  } catch (error) {
+    return null;
+  }
+})();
+function restoreAfterReload() {
+  if (!pendingRestore || pendingRestore.hash !== location.hash) return;
+  const open = new Set(pendingRestore.open || []);
+  document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) node.open = true; });
+  scrollTo(0, pendingRestore.y || 0);
+  pendingRestore = null;
+}
+function offerReload() {
+  if (document.getElementById("newer-render")) return;
+  const link = el("button", { id: "newer-render", type: "button", class: "btn-quiet", text: t("Newer page · Reload") });
+  link.onclick = reloadOnto;
+  document.getElementById("main").prepend(el("p", { class: "quiet-line", role: "status" }, [link]));
+}
+function readVersion() {
+  return fetch("/rem/version").then(response => response.ok ? response.json() : null, () => null);
+}
+function showRebuildState(latest) {
+  const line = document.getElementById("rendered-at");
+  if (!line || !latest) return;
+  line.textContent = t("Updated") + " " + fmtTime(REM.as_of) + (latest.failed ? " · " + t("the newest rebuild failed") : "");
+  if (latest.failed) line.title = t("Details: {path}", { path: latest.failed.log });
+  else line.removeAttribute("title");
+}
+async function checkForNewerRender() {
+  if (document.hidden) return;
+  const latest = await readVersion();
+  showRebuildState(latest);
+  const choice = reloadChoice({ latest, asOf: REM.as_of, unsaved: unsavedDraft(),
+    typing: !!document.activeElement?.matches("input, select") });
+  if (choice === "reload") reloadOnto();
+  else if (choice === "offer") offerReload();
+}
+// After the owner's own action: the Host rebuilds now; reload once that render lands.
+async function reloadWhenRendered(status) {
+  const before = REM.as_of, deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const latest = await readVersion();
+    if (latest?.as_of && latest.as_of !== before) return unsavedDraft() ? offerReload() : reloadOnto();
+  }
+  status.textContent = t("Saved. The page has not updated yet; reload in a minute.");
+}
+if (REM?.live) {
+  setTimeout(checkForNewerRender, 1000);
+  setInterval(checkForNewerRender, 30000);
+}
 window.addEventListener("focus", () => reconcileThreads().then(render));
 window.addEventListener("online", () => reconcileThreads().then(render));
 window.addEventListener("hashchange", render);

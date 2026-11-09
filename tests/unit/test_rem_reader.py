@@ -3362,3 +3362,443 @@ def test_all_records_remembers_graph_or_list_and_survives_blocked_storage(storag
         assert result['again'] == 'list' and list(result['saved'].values()) == ['list']
     else:  # this visit keeps the choice; nothing could be saved
         assert result['again'] == 'graph' and result['saved'] == {}
+
+
+# ---------- opening is instant: the last page from disk, rebuilt behind it (owner, 2026-11-09) ----------
+# Each open used to rebuild the whole notebook, and the cache key alone listed every
+# file: 17 s of stat calls and 35-73 s of rendering on a 31,136-file notebook.
+
+def _cached_reader(tmp_path, monkeypatch):
+    from connectonion.rem import reader
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr(reader, "_now", lambda: _Clock.seconds, raising=False)
+    # As on a large notebook: an explicit open does not re-render in place.
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0, raising=False)
+    _Clock.seconds = 1_794_000_000.0
+    return reader
+
+
+class _Clock:
+    """The render time the page shows, set by the test."""
+    from datetime import datetime as real
+    at = None
+    seconds = 0.0     # the reader's own clock (reader._now), for its intervals
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.at
+
+    @classmethod
+    def fromtimestamp(cls, *args, **kwargs):
+        return cls.real.fromtimestamp(*args, **kwargs)
+
+
+def test_a_second_open_of_a_large_notebook_lists_no_directory_and_is_instant(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    # Retained sources are most of a real notebook's files; the reader never shows them.
+    for folder in range(200):
+        directory = root / ".state" / "mail" / f"{folder:03}"
+        directory.mkdir(parents=True)
+        for item in range(100):
+            (directory / f"{item}.json").write_text("{}")
+    first = reader.open_snapshot(root, launch=False)
+
+    def listed(*args, **kwargs):
+        raise AssertionError("an unchanged notebook was listed again")
+    for name in ("walk", "scandir", "listdir"):
+        monkeypatch.setattr(os, name, listed)
+    import glob  # pathlib's rglob bound os.scandir when it was imported
+    monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt an unchanged notebook"),
+                        raising=False)
+    import time
+    started = time.monotonic()
+    second = reader.open_snapshot(root, launch=False)
+    assert time.monotonic() - started < 1.0
+    assert open(second["page"], encoding="utf-8").read() == open(first["page"], encoding="utf-8").read()
+    assert "Alice Example" in open(second["page"], encoding="utf-8").read()
+
+
+def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "datetime", _Clock)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    _Clock.at = datetime(2026, 11, 9, 8, 15, tzinfo=timezone.utc)
+    first = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
+    assert '"as_of": "2026-11-09T08:15:00+00:00"' in first
+
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    spawned = []
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root) or True, raising=False)
+    _Clock.seconds += 60
+    # An explicit open is the owner acting: a minute after the last render, it still rebuilds now.
+    stale = reader.open_snapshot(root, launch=False)
+    assert open(stale["page"], encoding="utf-8").read() == first      # the last page, at once
+    assert spawned == [root]                                         # and one rebuild behind it
+    assert "being built" in stale["note"]
+
+    _Clock.at = datetime(2026, 11, 9, 9, 40, tzinfo=timezone.utc)
+    reader.refresh(root)                                             # what the background process runs
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("a rebuild made itself stale"))
+    fresh = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
+    assert "Bruno Example" in fresh and '"as_of": "2026-11-09T09:40:00+00:00"' in fresh
+    # The page names the time it was rendered: «更新于 HH:MM».
+    assert 't("Updated") + " " + fmtTime(REM.as_of)' in fresh and '"Updated": "更新于"' in fresh
+
+
+def test_the_saved_page_is_private_and_a_planted_link_is_refused(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    page = reader.open_snapshot(root, launch=False)["page"]
+    assert tmp_path / "rem" not in __import__("pathlib").Path(page).parents
+    if os.name == "nt":
+        return
+    assert os.stat(page).st_mode & 0o777 == 0o600
+    folder = os.path.dirname(page)
+    assert os.stat(folder).st_mode & 0o777 == 0o700
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    os.unlink(page)
+    os.symlink(victim, page)
+    with pytest.raises(OSError):
+        reader.open_snapshot(root, launch=False)
+    assert victim.read_text() == "keep"
+
+
+def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, monkeypatch):
+    """The mocks above stand in for this: python -m connectonion.rem.reader ROOT full."""
+    import tempfile
+    import time
+    from connectonion.rem import reader
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))  # the child finds the same cache
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0)   # as on a large notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    reader.open_snapshot(root, launch=False)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    stale = reader.open_snapshot(root, launch=False)       # rendered just now: the rebuild waits
+    assert "Bruno Example" not in open(stale["page"], encoding="utf-8").read()
+    reader.owner_changed(root)                             # unless the owner acted
+    deadline = time.monotonic() + 90
+    while reader.saved(root, "full").get("version") != reader.reader_version(root):
+        assert time.monotonic() < deadline, open(reader._cached(root, "build.log")).read()
+        time.sleep(0.2)
+    assert "Bruno Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+
+
+def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path, monkeypatch):
+    """A request that finds a build running starts no second one, so the running one
+    checks again for the owner's own action; other writes wait for the interval."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    original, passes = reader._render, []
+
+    def build(root, which, *args):
+        passes.append(which)
+        rendered = original(root, which, *args)
+        if len(passes) == 1:
+            Notebook(root).write("people/bruno.md", "# Bruno Example\n")  # lands mid-build
+        return rendered
+    monkeypatch.setattr(reader, "_render", build)
+    reader.refresh(root, ["full"])
+    assert passes == ["full"]                                   # a night write: next interval
+    Notebook(root).write("people/carla.md", "# Carla Example\n")
+    passes.clear()
+
+    def owner_build(root, which, *args):
+        passes.append(which)
+        rendered = original(root, which, *args)
+        if len(passes) == 1:
+            Notebook(root).write("people/dara.md", "# Dara Example\n")
+            reader.owner_changed(root)                          # the owner, mid-build
+        return rendered
+    monkeypatch.setattr(reader, "_render", owner_build)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: None)
+    reader.refresh(root, ["full"])
+    assert passes == ["full", "full"]
+    assert reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert "Dara Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+
+
+
+def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: False)   # refused: a failing build backs off
+    assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
+
+
+def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tmp_path, monkeypatch):
+    """The Today queue, dates and "Next pass" depend on the clock, not only on files."""
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    from datetime import timedelta
+    from connectonion.rem.config import read_config
+    midnight = datetime(2026, 11, 10, tzinfo=service.notebook_zone(read_config(root)))
+    moment = [midnight - timedelta(minutes=2)]
+    monkeypatch.setattr(service, "now", lambda: moment[0])
+    reader.open_snapshot(root, launch=False)
+    key = reader.reader_version(root)
+    moment[0] = midnight + timedelta(minutes=1)
+    assert reader.reader_version(root) != key                     # the notebook's day is in the key
+    spawned = []
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(builds) or True)
+    reader.cached_page(root, "file.html")
+    assert spawned == []                                          # rendered three minutes ago: wait
+    reader.refresh(root, ["full"])
+    _Clock.seconds += reader.REBUILD_INTERVAL + 1                 # nothing changed, but it is old
+    reader.cached_page(root, "file.html")
+    assert spawned == [["full"]]
+
+
+def test_details_and_page_are_published_together(tmp_path, monkeypatch):
+    """A reload after an owner action must not get a new page over old details."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    before = reader.saved(root, "live")
+    original = reader.snapshot
+
+    def snapshot(root, **options):
+        if "today" not in options:  # the details are being built: nothing is published yet
+            assert reader.saved(root, "live") == before
+        return original(root, **options)
+    monkeypatch.setattr(reader, "snapshot", snapshot)
+    Notebook(root).write("people/fern-holt.md", "# Fern Holt\n")
+    _Clock.seconds += 1
+    reader.refresh(root)
+    assert reader.saved(root, "live")["version"] == reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert "Fern Holt" in open(reader.page_path(root, "data.json"), encoding="utf-8").read()
+
+
+def test_owner_actions_after_the_last_pass_are_not_dropped_and_a_corrupt_mark_is_now(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: False)
+    original, passes = reader.snapshot, []
+
+    def snapshot(root, **options):
+        passes.append(1)
+        data = original(root, **options)
+        if len(passes) <= 4:                                      # the owner, during four passes
+            Notebook(root).write(f"people/action-{len(passes)}.md", f"# Action {len(passes)}\n")
+            reader.owner_changed(root)
+        return data
+    monkeypatch.setattr(reader, "snapshot", snapshot)
+    Notebook(root).write("people/start.md", "# Start\n")
+    reader.refresh(root, ["full"])
+    assert len(passes) == 5
+    assert "Action 4" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    passes.clear()
+    monkeypatch.setattr(reader, "snapshot", lambda root, **options: passes.append(1) or original(root, **options))
+    reader._cached(root, "owner").write_text("not a time")
+    Notebook(root).write("people/later.md", "# Later\n")
+    reader.refresh(root, ["full"])                                # no error: the mark reads as now
+    assert len(passes) == 1 and float(reader._cached(root, "owner").read_text()) == _Clock.seconds
+
+
+def test_a_failed_rebuild_is_recorded_shown_and_backed_off(tmp_path, monkeypatch):
+    import subprocess
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    reader._cached(root, "build.log").write_text("".join(f"line {n}\n" for n in range(500)))
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
+    assert reader._spawn_refresh(root, ["full"]) is True
+    assert len(reader._cached(root, "build.log").read_text().splitlines()) <= 200
+    monkeypatch.setattr(reader, "snapshot", lambda root, **options: (_ for _ in ()).throw(RuntimeError("fictional failure")))
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    with pytest.raises(RuntimeError):
+        reader.main([str(root), "full"])                          # the detached process
+    failed = reader.failure(root)
+    assert failed and failed["log"] == str(reader._cached(root, "build.log"))
+    assert reader._spawn_refresh(root, ["full"]) is False and len(started) == 1   # backed off
+    note = reader.open_snapshot(root, launch=False)["note"]
+    assert "rebuild failed" in note and str(reader._cached(root, "build.log")) in note
+    _Clock.seconds += reader.REBUILD_INTERVAL + 1
+    assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 2
+
+
+def test_a_refused_cache_folder_renders_now_and_says_why(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    if os.name == "nt":
+        pytest.skip("POSIX ownership and modes")
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    folder = __import__("pathlib").Path(os.environ["CONNECTONION_REM_CACHE"])
+    folder.mkdir(mode=0o777)
+    os.chmod(folder, 0o777)                                       # as if someone else made it
+    result = reader.open_snapshot(root, launch=False)
+    assert "Alice Example" in open(result["page"], encoding="utf-8").read()
+    assert "rendered now" in result["note"] and str(folder) in result["note"]
+    text, _ = reader.cached_page(root, "live.html")
+    assert "Alice Example" in text
+
+
+def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
+    """After an action or a newer render: wait for the new render, keep scroll, open
+    details and the view, and never reload over a draft being written."""
+    page = TEMPLATE.read_text()
+    reloads = [m.start() for m in re.finditer(r"location\.reload\(\)", page)]
+    door = re.search(r"function reloadOnto\(.*?\n\}", page, re.S)
+    assert door and len(reloads) == 1 and door.start() < reloads[0] < door.end()
+    choice = re.search(r"function reloadChoice\(.*?\n\}", page, re.S).group(0)
+    result = _run_reader_js(choice + r'''
+      const base = {latest: {as_of: "2026-11-09T09:40:00+00:00"}, asOf: "2026-11-09T08:15:00+00:00", typing: false, unsaved: false};
+      console.log(JSON.stringify({
+        newer: reloadChoice(base),
+        same: reloadChoice({...base, asOf: base.latest.as_of}),
+        none: reloadChoice({...base, latest: null}),
+        typing: reloadChoice({...base, typing: true}),
+        draft: reloadChoice({...base, unsaved: true}),
+        older: reloadChoice({...base, latest: {as_of: "2026-11-09T07:00:00+00:00"}}),
+      }));''')
+    assert result == {"newer": "reload", "same": None, "none": None, "typing": None, "draft": "offer", "older": None}
+    # Open sections are known by their id, else their summary; never by position.
+    key = re.search(r"function detailsKey\(.*?\}\n", page, re.S).group(0)
+    keys = _run_reader_js(key + r'''
+      const summary = text => ({querySelector: () => ({textContent: text})});
+      console.log(JSON.stringify([detailsKey({id: "people-columns", ...summary("Columns")}),
+                                  detailsKey({id: "", ...summary("Review reply")})]));''')
+    assert keys == ["#people-columns", "Review reply"]
+    # Task Stop and Undo wait for the render that carries them; Refresh reads in place.
+    task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
+    assert "reloadWhenRendered(" in task
+    assert '"Newer page · Reload": "有更新 · 刷新"' in page
+
+
+def test_a_quiet_visible_page_is_walked_every_interval_and_rebuilt_only_when_needed(tmp_path, monkeypatch):
+    """A rebuild is ~100 s of CPU on a real notebook; the walk is ~17 s of stat calls."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import service
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    day = [datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)]
+    monkeypatch.setattr(service, "now", lambda: day[0])
+    reader.open_snapshot(root, launch=False)
+    walks, renders, original_walk, original = [], [], reader.tree_version, reader.snapshot
+    monkeypatch.setattr(reader, "tree_version", lambda root: walks.append(1) or original_walk(root), raising=False)
+    monkeypatch.setattr(reader, "snapshot", lambda root, **o: renders.append(1) or original(root, **o))
+    # The detached build, run here: what a visible page's poll starts.
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: reader.refresh(root, builds) or True)
+    start = _Clock.seconds
+    at = lambda minutes: setattr(_Clock, "seconds", start + minutes * 60 + 1) or reader.cached_page(root, "file.html")
+    at(10)                                       # the first walk records the tree (the first page was built without one)
+    renders.clear(), walks.clear()
+    start = _Clock.seconds
+    for minutes in (10, 20, 50):
+        at(minutes)
+    assert len(walks) == 3 and renders == []     # walked, nothing differed: no rebuild
+    at(60)
+    assert renders == [1]                        # "Next pass" may be at most STALE_SCHEDULE_SECONDS late
+    assert reader.STALE_SCHEDULE_SECONDS == 3600
+    renders.clear()
+    (root / "people/alice.md").write_text("# Alice Example, edited by another tool\n")
+    at(65)
+    assert renders == []                         # the open never walks; the interval has not passed
+    at(71)
+    assert renders == [1] and "edited by another tool" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    renders.clear()
+    day[0] += timedelta(days=1)
+    at(82)
+    assert renders == [1]                        # the notebook's day changed
+
+
+
+def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, monkeypatch):
+    """The page served, its details and /rem/version must agree, or the open page
+    reloads onto itself every second until the next good build."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    real, crash_at = reader._replace, 0
+    while True:
+        crash_at += 1
+        _Clock.seconds += 1
+        Notebook(root).write(f"people/person-{crash_at}.md", f"# Person {crash_at}\n")
+        writes = []
+
+        def failing(path, text):
+            writes.append(path)
+            if len(writes) == crash_at:
+                raise OSError("fictional disk full")
+            real(path, text)
+        monkeypatch.setattr(reader, "_replace", failing)
+        try:
+            reader.refresh(root)
+            crashed = False
+        except OSError:
+            crashed = True
+        monkeypatch.setattr(reader, "_replace", real)
+        page, _ = reader.cached_page(root, "live.html")
+        details, _ = reader.cached_page(root, "data.json")
+        served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+        assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"], crash_at
+        if not crashed:
+            break
+    assert crash_at > 2   # every write of a publish was tried
+
+
+
+def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    link = reader.open_snapshot(root, launch=False)["link"]
+    for n in range(1, 4):                                         # three rebuilds behind it
+        Notebook(root).write(f"people/person-{n}.md", f"# Person Number {n}\n")
+        _Clock.seconds += 1
+        reader.refresh(root, ["full"])
+    page = __import__("urllib.parse").parse.unquote(link.removeprefix("file://"))
+    assert "Person Number 3" in open(page, encoding="utf-8").read()   # reload: the newest, never a missing file
+    assert reader.open_snapshot(root, launch=False)["link"] == link
+
+
+def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypatch):
+    """When the last render was quick, the page co rem open opens is never older than the notebook."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    first = reader.open_snapshot(root, launch=False)
+    (root / "people" / "bob.md").write_text("# Bob\nJoined yesterday.\n")   # in place, by another tool
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt behind instead"))
+    second = reader.open_snapshot(root, launch=False)
+    assert second["page"] == first["page"] and "being built" not in second["note"]
+    assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()
