@@ -91,14 +91,14 @@ def _parts(html=None):
     """(sheet, css, js, markup, inline): every place a style can be written, comments removed."""
     html = _html() if html is None else html
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
-    # Tags in any case, closers with spaces: the lint must not be bypassed by <STYLE>.
-    styles = re.findall(r'<style[^>]*>(.*?)</style\s*>', html, re.S | re.I)
+    # Tags in any case, closers with anything before '>' (as browsers accept): the lint must not be bypassed by <STYLE>.
+    styles = re.findall(r'<style[^>]*>(.*?)</style\b[^>]*>', html, re.S | re.I)
     first = styles[0] if styles else ''
     sheet = first.split(START, 1)[1].split(END, 1)[0] if START in first and END in first else ''
     css = _strip_css_comments('\n'.join([first.replace(sheet, '')] + styles[1:]))
-    scripts = re.findall(r'<script(?![^>]*application/json)[^>]*>(.*?)</script\s*>', html, re.S | re.I)
+    scripts = re.findall(r'<script(?![^>]*application/json)[^>]*>(.*?)</script\b[^>]*>', html, re.S | re.I)
     js = _strip_js_comments('\n'.join(s for s in scripts if s.strip() != '/*__D3__*/'))
-    markup = re.sub(r'<(style|script)[^>]*>.*?</\1\s*>', '', html, flags=re.S | re.I)
+    markup = re.sub(r'<(style|script)[^>]*>.*?</\1\b[^>]*>', '', html, flags=re.S | re.I)
     inline = ' ; '.join(a or b or c for a, b, c in re.findall(
         r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>"\']+))', markup, re.I))
     return sheet, css, js, markup, inline
