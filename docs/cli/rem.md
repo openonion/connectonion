@@ -2100,9 +2100,9 @@ usage. `co rem logs --usage` includes these costs; daily translation summaries
 retain attempt counts without duplicating the per-page usage.
 
 Reader settings shows **Notebook languages: 中文 · English — detected** (or
-**— set**) with a copyable `config set languages` command. Reader commands keep
-the selected root, shortening a root under your home to `~/…` with shell-safe
-quoting. The home translation notice is a fallback based only on written pages.
+**— set**), read-only: REM detects them (D-103), and Reader settings carries no
+command to copy (D-60); `co rem config set languages` in a terminal still
+overrides detection. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers a copyable `translate --all` command.
 

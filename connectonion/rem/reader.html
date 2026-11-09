@@ -3220,7 +3220,6 @@ const UI = {
     "You": "你",
     "Reader settings": "阅读设置",
     "Notebook languages": "笔记语言",
-    "Copy the command to change them": "复制修改命令",
     "detected": "自动检测",
     "set": "已设置",
     "{n} page could not be translated.": "{n} 个页面未能翻译。",
@@ -3693,7 +3692,6 @@ const UI = {
     "Filter activity": "筛选动态",
     "Other contacts table": "其他联系人表格",
     "Direct link to section": "此章节的直接链接",
-    "Copied — paste it in a terminal": "已复制 — 请粘贴到终端",
     "Copied — paste in a terminal": "已复制 — 请粘贴到终端",
     "Select and copy the command below": "请选中并复制下方命令",
     "Copied — edit your name and response": "已复制 — 请填写你的姓名与回复",
@@ -6703,13 +6701,9 @@ function passSummary() {
 }
 function notebookLanguages() {
   const languages = REM.your_languages || [];
-  // The sidebar is narrow: a button copies the whole command instead of showing a wrapped path.
-  const command = remCommand("config set languages " + (languages.join(",") || "en"));
-  const changeLanguages = el("button", { type: "button", class: "theme-btn", title: command, text: t("Copy the command to change them") });
-  changeLanguages.onclick = () => copyToClipboard(command, changeLanguages, t("Copied — paste it in a terminal"));
+  // REM detects the languages you write (D-103); settings shows them, with no command to change them (D-60).
   return el("div", { class: "notebook-languages" }, [
-    el("div", { text: t("Notebook languages") + (uiLanguage === "zh" ? "：" : ": ") + (languages.map(nativeName).join(" · ") || t("Unknown")) + " — " + t(REM.languages_from || "detected") }),
-    changeLanguages]);
+    el("div", { text: t("Notebook languages") + (uiLanguage === "zh" ? "：" : ": ") + (languages.map(nativeName).join(" · ") || t("Unknown")) + " — " + t(REM.languages_from || "detected") })]);
 }
 // A page without a Chinese version keeps its original words everywhere; opening
 // it in the live reader queues the translation once and says so under the title.

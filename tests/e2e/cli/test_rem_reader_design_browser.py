@@ -4708,8 +4708,8 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
     assert not settings.locator('.notebook-languages').is_visible()
     settings.locator('summary').click()
     assert settings.locator('.notebook-languages').inner_text().startswith('Notebook languages: 中文 · English — detected')
-    settings.locator('.notebook-languages button').click()
-    assert page.evaluate('window.copiedCommand', isolated_context=False) == "co rem --root ~/'.co/invented notebook/rem' config set languages zh,en"
+    # D-60/D-103 (build 3b review): REM detects the languages; settings shows them read-only, no command, no copy.
+    assert settings.locator('.notebook-languages button, .notebook-languages code').count() == 0
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
     if width < 600:
         page.locator('.nav-toggle').click()

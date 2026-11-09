@@ -2321,7 +2321,7 @@ def test_reader_exposes_language_origin_and_home_display_root(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize('origin', ['detected', 'set'])
-def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(origin):
+def test_reader_languages_setting_is_visible_inside_disclosure_and_read_only(origin):
     page = TEMPLATE.read_text()
     function = re.search(r'function notebookLanguages\(.*?\n\}', page, re.S).group(0)
     result = _run_reader_js('const REM = ' + json.dumps({'your_languages': ['zh', 'en'], 'languages_from': origin}) + ';\n'
@@ -2332,8 +2332,8 @@ def test_reader_languages_setting_is_visible_inside_disclosure_and_copyable(orig
         console.log(JSON.stringify(notebookLanguages()));
     ''')
     assert result['children'][0]['text'] == 'Notebook languages: 中文 · English — ' + origin
-    # The narrow sidebar copies the command from a button; the full command is its title.
-    assert result['children'][1]['title'] == 'co rem config set languages zh,en'
+    # D-60/D-103 (build 3b review): REM detects the languages; there is no command to copy beside them.
+    assert len(result['children']) == 1 and 'co rem' not in json.dumps(result)
     assert 'settings.appendChild(notebookLanguages())' in page
 
 
