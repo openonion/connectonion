@@ -66,7 +66,8 @@ def test_the_token_is_traded_for_a_strict_cookie_and_leaves_the_address_bar(host
 ])
 def test_without_the_owner_token_nothing_is_read(host, kwargs):
     status, _, body = call(host.routes, "GET", "/rem", **kwargs)
-    assert status == 401 and "Alice" not in body and "co rem open" in body
+    # D-60: the Host's own 401 page names no command either; it has no language, so English.
+    assert status == 401 and "Alice" not in body and body == "This page's session has ended. Open REM again from your computer."
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -660,7 +661,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in HAND)
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n' + functions + r'''
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
       const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
@@ -701,3 +702,40 @@ def test_a_host_this_open_just_started_is_called_starting_not_someone_elses(tmp_
     monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, live_host.STARTING))
     note = reader.local_or_snapshot(tmp_path / "rem", "owner", launch=False)["live"]
     assert note == live_host.STARTING                               # said plainly, not as "unavailable"
+
+
+def test_ask_codex_to_look_starts_a_private_project_investigation_through_the_task_route(host, monkeypatch):
+    """让 Codex 查 (#2909): the private project's page is the key of the same /rem/task run; nothing else is."""
+    from connectonion.rem import tasks
+    from connectonion.rem.files import Notebook
+    book = Notebook(host.root)
+    book.stub_project('projects/private-notes-ab12.md', 'Private notes', [])
+    book.stub_project('projects/harbour-ab12.md', 'Harbour Studio', [])
+    started = []
+    monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
+                        {'id': task_id, 'agent': agent, 'result': 'starting'})
+    body = json.dumps({'action': 'run', 'key': 'projects/private-notes-ab12.md', 'agent': 'codex'}).encode()
+    assert call(host.routes, 'POST', '/rem/task', body=body)[0] == 401
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)
+    assert status == 200 and started == ['codex']
+    receipt = tasks.receipt_for(host.root, 'projects/private-notes-ab12.md')
+    assert receipt['record'] == 'projects/private-notes-ab12.md' and receipt['by'] == 'owner'
+    assert 'projects/private-notes-ab12.md' in receipt['prompt'] and 'Private notes' in receipt['text']
+    # Only a private project page this notebook holds: anything else is the same plain 400.
+    for key in ('projects/harbour-ab12.md', 'projects/private-gone-ab12.md', 'people/alice-chen.md', '../projects/private-notes-ab12.md'):
+        raw = json.dumps({'action': 'run', 'key': key, 'agent': 'claude'}).encode()
+        status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=raw)
+        assert status == 400 and json.loads(text)['error'], key
+    assert started == ['codex']
+
+
+def test_a_private_projects_investigation_rides_on_its_page_in_the_live_reader(host, monkeypatch):
+    from connectonion.rem import tasks
+    from connectonion.rem.files import Notebook
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    Notebook(host.root).stub_project('projects/private-notes-ab12.md', 'Private notes', [])
+    receipt = tasks.reserve(host.root, tasks.investigation(host.root, 'projects/private-notes-ab12.md'))
+    live = {r['path']: r for r in reader.snapshot(host.root, local=True)['records']}
+    shared = {r['path']: r for r in reader.snapshot(host.root)['records']}
+    assert live['projects/private-notes-ab12.md']['task']['id'] == receipt['id']
+    assert 'task' not in shared['projects/private-notes-ab12.md']

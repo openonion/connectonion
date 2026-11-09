@@ -47,7 +47,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             page.goto(path.as_uri() + "#r=projects%2Fjournal.md")
             statement = page.locator(".focus-statement").inner_text()
             assert "Automatic investigations skip this private project." in statement
-            assert "Name this page to request a write." in statement
+            assert "Ask for one on this page." in statement
             assert "clamped" not in page.locator(".focus-statement").get_attribute("class")
             assert "/work/journal" not in statement
             assert "Needs your explicit request" in page.locator(".focus-kicker").inner_text()

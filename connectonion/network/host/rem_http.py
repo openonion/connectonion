@@ -73,7 +73,8 @@ async def handle_rem_http(scope, receive, send, routes):
         return
     jar = SimpleCookie(headers.get("cookie", ""))
     if not _same(jar[COOKIE].value if COOKIE in jar else "", token):
-        await _reply(send, 401, "Open co rem with `co rem open` on this computer.")
+        # D-60: no command here either. The page has no language of its own, so English.
+        await _reply(send, 401, "This page's session has ended. Open REM again from your computer.")
         return
     if scope["method"] == "GET" and scope["path"] in ("/rem", "/rem/data.json"):
         from ...rem.reader import cached_page

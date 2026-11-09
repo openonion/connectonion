@@ -447,3 +447,38 @@ def test_the_phone_menu_opens_above_today_and_send_keeps_the_bottom(today):
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
     assert _box_inside(page, send, 16)
+
+
+def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
+    """Clicking 有更新 redraws Today and puts typed words back: the reply slot, the talk box, caret and focus."""
+    page, _, answers = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(r"""() => { REM.live = true;
+      REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+      REM.drafts = [{id: 'ines-receipts', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'prepared',
+        to: 'Ines Halvorsen <ines@example.test>', from: 'avery@example.test', subject: 'Re: Q3 receipts',
+        body: 'Hi Ines,\n\nI can send the receipts 【需要你：the day you can send them — by Friday】.\n\nAvery'}];
+      render(); }""", isolated_context=False)
+    answers["/rem/talk"] = [(200, {"id": "a" * 32, "agent": "codex", "state": "idle", "about": {"key": "people/ines-halvorsen.md"}, "turns": []})] * 3
+    card = page.locator(".today-brief .qcard.open")
+    slot = card.locator(".owner-slot input")
+    slot.fill("Thursday afternoon")
+    row = card.locator(".qitem").first
+    row.locator(".talk-menu > summary").click()
+    row.locator('[data-talk="codex"]').click()
+    talk = page.get_by_role("textbox", name="Your message")
+    talk.fill("Draft it short")
+    talk.evaluate("node => node.setSelectionRange(6, 8)")
+    page.evaluate("() => { document.querySelector('.today-brief').dataset.before = '1'; redraw(); }", isolated_context=False)
+    mark = page.get_by_role("button", name="Updates waiting")
+    assert page.locator(".today-brief[data-before]").count() == 1      # held back while words are typed
+    mark.click()
+    mark.wait_for(state="detached")
+    assert page.locator(".today-brief[data-before]").count() == 0      # Today was drawn again
+    assert page.locator(".today-brief .qcard.open .owner-slot input").input_value() == "Thursday afternoon"
+    assert page.locator(".today-brief .qcard.open .mail-actions .btn-act").is_enabled()   # the slot's answer is in the reply
+    talk = page.get_by_role("textbox", name="Your message")
+    assert talk.input_value() == "Draft it short"
+    assert talk.evaluate("node => [node === document.activeElement, node.selectionStart, node.selectionEnd]") == [True, 6, 8]
+    if os.environ.get("CO_REM_SHOTS"):
+        page.locator(".today-brief .qcard.open").screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / "updates-kept-words.png"))

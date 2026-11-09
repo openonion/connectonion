@@ -454,10 +454,28 @@ def unfinished(root, key):
     return {**{field: row[field] for field in ('key', 'keys', 'record', 'title', 'text')}, 'task': {'prompt': prompt}}
 
 
+def investigation(root, record):
+    """让 Codex 查 (#2909): the owner's request to investigate one private project page, as reserve takes it.
+    Automatic investigations skip a private project, so this request is the only way one starts."""
+    from .files import Notebook
+    from .project_pages import private
+    book = Notebook(root)
+    if record not in book.list('projects') or not private(record, book.read(record)):
+        raise UnknownItem('This private project is no longer in your notebook. Reload the page to see what is.')
+    title = book.read(record).split('\n', 1)[0].lstrip('# ').strip()
+    prompt = (f"The owner asked you to investigate this private project.\nNotebook page: {record}\n"
+              'Read the project itself and say what it is, where the work stands and what is still open, '
+              'each with its evidence (files, commits, sessions). Do not edit the notebook page.')
+    return {'key': record, 'keys': [record], 'record': record, 'title': title,
+            'text': f'Investigate {title}', 'task': {'prompt': prompt}}
+
+
 def dispatch(root, key, agent='codex'):
-    """The owner's 交给 Codex / 交给 Claude on any unfinished row: reserve its work and start it now."""
+    """The owner's 交给 Codex / 交给 Claude on any unfinished row, or 让 Codex 查 on a private project page
+    (a row key always holds a newline; a page path never does): reserve its work and start it now."""
     _agent(agent)
-    return start(root, reserve(root, unfinished(root, key), agent=agent)['id'], agent)
+    work = unfinished(root, key) if '\n' in key else investigation(root, key)
+    return start(root, reserve(root, work, agent=agent)['id'], agent)
 
 
 def host_dispatch(root, item, agent='codex'):
