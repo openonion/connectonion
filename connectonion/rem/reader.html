@@ -11979,10 +11979,19 @@ function reloadChoice({ latest, asOf, typing, unsaved }) {
 }
 // A section is known by its id, else by its summary; positions move when a render adds rows.
 function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
+function viewState() {
+  return { hash: location.hash, y: scrollY,
+    open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
+}
+// A redraw after a sync keeps what the reader opened and where they were.
+function redraw() {
+  const state = viewState();
+  render();
+  restoreView(state);
+}
 function reloadOnto() {
   try {
-    sessionStorage.setItem(RELOAD_STATE, JSON.stringify({ hash: location.hash, y: scrollY,
-      open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) }));
+    sessionStorage.setItem(RELOAD_STATE, JSON.stringify(viewState()));
   } catch (error) {
     // Blocked storage: the reload still lands on the same view, at the top.
   }
@@ -11997,12 +12006,15 @@ let pendingRestore = (() => {
     return null;
   }
 })();
-function restoreAfterReload() {
-  if (!pendingRestore || pendingRestore.hash !== location.hash) return;
-  const open = new Set(pendingRestore.open || []);
+function restoreView(state) {
+  if (!state || state.hash !== location.hash) return false;
+  const open = new Set(state.open || []);
   document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) node.open = true; });
-  scrollTo(0, pendingRestore.y || 0);
-  pendingRestore = null;
+  scrollTo(0, state.y || 0);
+  return true;
+}
+function restoreAfterReload() {
+  if (restoreView(pendingRestore)) pendingRestore = null;
 }
 function offerReload() {
   if (document.getElementById("newer-render")) return;
@@ -12033,8 +12045,8 @@ if (REM?.live) {
   setTimeout(checkForNewerRender, 1000);
   setInterval(checkForNewerRender, 30000);
 }
-window.addEventListener("focus", () => reconcileThreads().then(render));
-window.addEventListener("online", () => reconcileThreads().then(render));
+window.addEventListener("focus", () => reconcileThreads().then(redraw));
+window.addEventListener("online", () => reconcileThreads().then(redraw));
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
@@ -12057,7 +12069,7 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
     await loadDetails();
     render();
   }
-  reconcileThreads().then(() => render());
+  reconcileThreads().then(redraw);
 });
 </script>
 <script id="rem-detail" type="application/json">/*__REM_DETAIL__*/</script>

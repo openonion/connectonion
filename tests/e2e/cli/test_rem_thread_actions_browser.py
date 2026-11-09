@@ -111,3 +111,58 @@ def test_done_skip_undo_and_offline_reconciliation(tmp_path, monkeypatch, width)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
         assert not page_errors
         browser.close()
+
+
+@pytest.mark.parametrize('width', [1280, 375])
+def test_a_section_opened_before_the_sync_lands_stays_open(tmp_path, monkeypatch, width):
+    """The redraw after reconcileThreads keeps what the reader opened (1.9.3 blocker):
+    a done saved offline shows at once after reload; a slow GET /rem/thread then
+    redrew the page and closed 'Done or skipped', hiding its Undo."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.live_host import reader_token
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root, identity = tmp_path / 'rem', tmp_path / 'identity'
+    prepare(root)
+    identity.mkdir()
+    mail_thread(root)
+    routes = {'rem_root': root, 'identity_dir': identity}
+    cookie = 'co_rem=' + reader_token(identity)
+    offline = False
+
+    def serve(route):
+        request = route.request
+        if offline and request.url.endswith('/rem/thread'):
+            route.abort()
+            return
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            status, headers, body = worker.submit(
+                call, routes, request.method, request.url.split(':8123')[-1].split('#')[0],
+                cookie=cookie, body=(request.post_data or '').encode()).result()
+        route.fulfill(status=status, headers=headers, body=body)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': width, 'height': 900})
+        # A loaded machine: the reconcile's read is held until the reader has opened the section.
+        context.add_init_script("""(() => { const real = window.fetch; let release;
+          const held = new Promise(resolve => { release = resolve; });
+          window.releaseSync = () => { sessionStorage.removeItem('hold-sync'); release(); };
+          window.fetch = (url, options) => sessionStorage.getItem('hold-sync') && url === '/rem/thread' && !options
+            ? held.then(() => real(url, options)) : real(url, options); })()""")
+        context.route('http://127.0.0.1:8123/**', serve)
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        offline = True
+        page.get_by_role('button', name='Mark done', exact=True).first.click()
+        page.locator('#thread-save-status').get_by_text('Saved on this device — sync pending', exact=True).wait_for()
+        offline = False
+        page.evaluate("sessionStorage.setItem('hold-sync', '1')", isolated_context=False)
+        page.reload()
+        page.locator('.done-details summary').click()
+        page.evaluate('releaseSync()', isolated_context=False)
+        # Only the redraw after the sync replaces the pending line.
+        page.locator('.done-details .quiet-line', has_text='Saved in your notebook').wait_for(state='attached')
+        assert page.locator('.done-details').evaluate('node => node.open', isolated_context=False)
+        assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).is_visible()
+        assert next(iter(threads.listing(root).values()))['state'] == 'done'
+        browser.close()
