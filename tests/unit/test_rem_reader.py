@@ -3599,6 +3599,18 @@ def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path,
     assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
 
 
+def test_a_new_install_changes_the_saved_pages_key_even_with_the_same_template(tmp_path, monkeypatch):
+    """The page shows the package version, and a release can change Python without touching reader.html."""
+    import connectonion
+    from connectonion.rem import reader
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    key = reader.reader_version(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.4")
+    assert reader.reader_version(root) != key
+
+
 def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tmp_path, monkeypatch):
     """The Today queue, dates and "Next pass" depend on the clock, not only on files."""
     from datetime import datetime, timezone
@@ -3878,3 +3890,103 @@ def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypat
     second = reader.open_snapshot(root, launch=False)
     assert second["page"] == first["page"] and "being built" not in second["note"]
     assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()
+
+
+def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
+    """The live page is built on the first request; its details later, in the
+    background. Rendered apart they named different seconds, and the page's
+    details disagreed with /rem/version. Every saved build is rendered together."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")                         # the first request: the page alone
+    reader.refresh(root)                                          # then its details, behind it
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+    assert served == re.search(r'"as_of": "([^"]+)"', offline).group(1)
+
+
+def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp_path, monkeypatch):
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    link = reader.page_path(root, "file.html")
+    real = reader._replace
+
+    def stops_at_the_link(path, text):
+        if path == link:
+            raise OSError("fictional stop")
+        real(path, text)
+    monkeypatch.setattr(reader, "_replace", stops_at_the_link)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    _Clock.seconds += 1
+    with pytest.raises(OSError):
+        reader.refresh(root)
+    monkeypatch.setattr(reader, "_replace", real)
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.page_path(root, "file.html") == link
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == _json.loads(details)["as_of"]
+    assert "Bruno Example" in offline
+
+
+class _Ticking:
+    """A wall clock that moves a second each time it is read: a loaded CI runner."""
+    from datetime import datetime as real, timezone
+    at = real(2026, 11, 9, 8, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def now(cls, tz=None):
+        from datetime import timedelta
+        cls.at += timedelta(seconds=1)
+        return cls.at
+
+    @classmethod
+    def fromtimestamp(cls, *args, **kwargs):
+        return cls.real.fromtimestamp(*args, **kwargs)
+
+
+def test_a_quick_explicit_open_stamps_the_page_and_its_details_with_one_time(tmp_path, monkeypatch):
+    """A small notebook re-renders live and full during co rem open; they must name one time."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.open_snapshot(root, launch=False)                      # renders both, in place
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.saved(root, "live")["as_of"] == reader.saved(root, "full")["as_of"]
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == reader.saved(root, "live")["as_of"]
+
+
+def test_a_planted_link_at_the_stable_page_is_neither_followed_nor_returned(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    if os.name == "nt":
+        pytest.skip("symlinks need privileges on Windows")
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    link = reader._cached(root, "file.html")
+    victim = tmp_path / "victim.html"
+    victim.write_text("planted")
+    os.utime(victim, ns=(4_000_000_000 * 10**9, 4_000_000_000 * 10**9))   # newer than any build
+    link.unlink()
+    os.symlink(victim, link)
+    with pytest.raises(OSError):
+        reader.page_path(root, "file.html")
+    assert victim.read_text() == "planted"

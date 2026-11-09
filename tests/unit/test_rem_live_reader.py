@@ -227,8 +227,9 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     page = get()
     assert get() == page and builds == [{'local': True, 'today': True}]
-    reader.refresh(host.root)                       # the details the first request left behind it
-    assert builds[1:] == [{'local': True}]
+    reader.refresh(host.root)                       # the details the first request left behind it,
+    assert builds[1:] == [{'local': True, 'today': True}, {'local': True}]   # with the page: one render
+    page = get()
     changes = [
         ('Alice Chen-Vale', lambda: (host.root / 'people/alice-chen.md').write_text(PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
         ('Alice Chen-Vale', lambda: state_path(host.root, 'map.json').write_text('{"owner": {}}')),
@@ -455,7 +456,7 @@ def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkey
     result = reader.local_or_snapshot(host.root, "owner", launch=False)
     assert time.monotonic() - started < 1.0
     assert result["link"].startswith("file://") and "Alice Chen" in open(result["page"], encoding="utf-8").read()
-    assert started_hosts == [identity] and "co ai is starting" in result["live"]
+    assert started_hosts == [identity] and result["live"] == live_host.STARTING
     assert live_host.read_json(identity / "rem-live-host.json", {})["pid"] == 4242
 
 
@@ -469,8 +470,9 @@ def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cach
         for item in range(100):
             (directory / f"{item}.json").write_text("{}")
     get = lambda: call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
-    first = get()[2]
+    get()
     reader.refresh(host.root)                      # the details it left to the background
+    first = get()[2]
 
     def listed(*args, **kwargs):
         raise AssertionError("an unchanged notebook was listed again")
@@ -543,9 +545,9 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     monkeypatch.setattr(live_host, "_spawn", lambda directory: SimpleNamespace(
         pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
     first = reader.local_or_snapshot(host.root, "owner", launch=False)
-    assert "co ai is starting" in first["live"]
+    assert first["live"] == live_host.STARTING
     again = reader.local_or_snapshot(host.root, "owner", launch=False)  # that pid never ran
-    assert "rem-live-host.log" in again["live"] and "co ai is starting" not in again["live"]
+    assert "rem-live-host.log" in again["live"] and again["live"] != live_host.STARTING
 
 
 
@@ -603,3 +605,24 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     assert status == 200 and json.loads(text)['agent'] == 'claude' and started == ['claude']
     receipt = read_json(tasks.directory(host.root, json.loads(text)['id']) / 'receipt.json', {})
     assert receipt['agent'] == 'claude' and receipt['result'] == 'queued'
+
+
+def test_a_host_this_open_just_started_is_called_starting_not_someone_elses(tmp_path, monkeypatch):
+    """Seen on a real laptop: the relay saw the new Host before its port answered, and
+    the open blamed "a co ai not on a port co rem knows" for REM's own Host."""
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
+
+    def online(address):  # starts ours, then the relay sees it
+        live_host.write_json(tmp_path / "rem-live-host.json",
+                             {"address": address, "pid": 4242, "port": 9128, "command": "-m connectonion.cli.main ai"})
+    monkeypatch.setattr(live_host, "ensure_online", online)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)   # its port is not up yet
+    monkeypatch.setattr(live_host, "_alive", lambda saved: saved.get("pid") == 4242)
+    monkeypatch.setattr(live_host, "LOCAL_WAIT", 0.05, raising=False)
+    url, failure = live_host.ensure_local("owner")
+    assert url is None and failure == live_host.STARTING
+    assert "port co rem knows" not in failure and "`" not in failure and "co rem open" not in failure
+    prepare(tmp_path / "rem")
+    monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, live_host.STARTING))
+    note = reader.local_or_snapshot(tmp_path / "rem", "owner", launch=False)["live"]
+    assert note == live_host.STARTING                               # said plainly, not as "unavailable"
