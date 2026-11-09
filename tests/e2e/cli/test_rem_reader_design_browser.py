@@ -3670,11 +3670,14 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
         assert '等你处理' in page.locator('.lede').inner_text()
         assert 'Newest' not in page.locator('.lede').inner_text()
         assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
-    assert page.locator('.task-band .thread').first.evaluate(r'''node => {
+    # The date sits beside the body on a desktop; on a phone it goes under the title so the body
+    # keeps the full width (polish, 1.9.3).
+    assert page.locator('.task-band .thread').first.evaluate(r'''(node, wide) => {
       const body = node.querySelector('.what').getBoundingClientRect();
       const date = node.querySelector('.when').getBoundingClientRect();
-      return body.right <= date.left && getComputedStyle(node.querySelector('.when')).order === '0';
-    }''')
+      return wide ? body.right <= date.left && getComputedStyle(node.querySelector('.when')).order === '0'
+        : date.top >= body.bottom - 1 && body.width >= 320;
+    }''', width > 600)
     page.goto(uri + '#q=pilot')
     assert page.locator('.search-group h2').first.evaluate(r'''node => {
       const title = node.firstElementChild.getBoundingClientRect(), count = node.lastElementChild.getBoundingClientRect();
