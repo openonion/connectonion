@@ -592,7 +592,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
         return {ok: true, status: 200, json: async () => ({result: 'starting', agent: 'claude'})}; };
       const line = handOff({key: REM.today_queue[0].key}).children[0];
       line.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
-        console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text)})));
+        console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text).filter(text => text && text !== '·')})));
     ''')
     assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Undo']
     started = []

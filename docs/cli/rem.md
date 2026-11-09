@@ -828,14 +828,17 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   and no answer to try again shortly. In a snapshot the buttons are disabled and
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
-- **Talk with Codex / Talk with Claude about this** (和 Codex 聊这件事) sit under
-  the same buttons. A click opens a conversation under the row: REM gives the
+- **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
+  Talk it over ▾*, and opens the agent choice (**With Codex**, **With Claude**;
+  和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
   one more turn of the same agent session (`POST /rem/talk`, actions `begin`,
   `say`, `read`; the page polls while the agent answers). Each turn runs through
   co ai's harness like a task, with the same access and the same "never push,
-  merge, send or post" line; the transcript is kept at `.state/talks/ID/talk.json`.
+  merge, send or post" line. Replies, and **See result**, render as the
+  notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
+  block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
   Opening it again returns the same conversation.
 - **The sidebar** has no **Questions & connections** entry any more, as with
   Activity; `#reviews=1` still opens it, and **Memory changes** carries its one

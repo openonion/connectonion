@@ -3239,7 +3239,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handState', 'followTask', 'seeResult', 'talkLinks']
+        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu']
 
 
 def _hand_js(body):
@@ -3250,7 +3250,8 @@ def _hand_js(body):
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
       const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {};
-      const texts = node => node.children[0].children.map(child => child.text).filter(Boolean);
+      const texts = node => node.children[0].children.filter(child => child.class !== 'sep').map(child => child.text).filter(Boolean);
+      const line = node => node.children[0].children.map(child => child.class === 'talk-menu' ? 'menu' : child.text).filter(Boolean);
       const row = (key, task) => ({key, keys: [key], task});
 ''' + body)
 
@@ -3264,6 +3265,9 @@ def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
       const shown = Object.fromEntries(['run', 'done', 'fail', 'open'].map(key => [key, texts(handOff({key}))]));
       REM.live = false;
       shown.snapshot = texts(handOff({key: 'run'}));
+      REM.live = true;
+      shown.line = line(handOff({key: 'open'}));
+      shown.runLine = line(handOff({key: 'run'}));
       console.log(JSON.stringify(shown));
     ''')
     assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Undo']
@@ -3271,6 +3275,9 @@ def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
     assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Undo']
     assert result['open'] == ['Hand to Codex', 'Hand to Claude']
     assert result['snapshot'] == ['Codex is working', 'REM started this']
+    # One line, a dot between each action, the conversation behind one quiet menu.
+    assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude', '·', 'menu']
+    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Undo', '·', 'menu']
 
 
 def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
