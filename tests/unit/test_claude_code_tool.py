@@ -1059,3 +1059,24 @@ def test_extra_directories_and_bypass_reach_the_cli(tmp_path):
 def test_the_child_keeps_its_temporary_directory(monkeypatch, tmp_path):
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     assert claude_module._claude_environment()["TMPDIR"] == str(tmp_path)
+
+
+def test_proxy_gateway_bedrock_and_vertex_settings_reach_the_child(monkeypatch):
+    # #2905: `claude` worked in the terminal behind a proxy or on Bedrock, but
+    # the child co started had none of the settings and could not reach the API.
+    routing = {
+        "HTTPS_PROXY": "http://proxy.example:3128", "http_proxy": "http://proxy.example:3128",
+        "NO_PROXY": "localhost", "all_proxy": "socks5://proxy.example:1080",
+        "ANTHROPIC_BASE_URL": "https://gateway.example", "ANTHROPIC_AUTH_TOKEN": "gateway-token",
+        "CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "pilot", "AWS_REGION": "us-west-2",
+        "CLAUDE_CODE_USE_VERTEX": "1", "ANTHROPIC_VERTEX_PROJECT_ID": "pilot-project",
+        "CLOUD_ML_REGION": "us-east5", "GOOGLE_APPLICATION_CREDENTIALS": "/keys/pilot.json",
+        "VERTEX_REGION_CLAUDE_HAIKU_4_5": "europe-west1",
+    }
+    for key, value in routing.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-cross")
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-cross")
+    environment = claude_module._claude_environment()
+    assert {key: environment.get(key) for key in routing} == routing
+    assert "OPENAI_API_KEY" not in environment and "GITHUB_TOKEN" not in environment

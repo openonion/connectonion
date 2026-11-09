@@ -39,7 +39,7 @@ def test_co_claude_run_passes_a_bounded_workspace_and_resume_id(tmp_path, monkey
         "model": "",
         "timeout": 30,
         "workspace": tmp_path,
-        "permission_mode": "default",
+        "permission_mode": "acceptEdits",
     }]
 
 
@@ -55,6 +55,20 @@ def test_co_claude_run_lets_the_operator_allow_edits(tmp_path, monkeypatch):
     assert result.exit_code == 0 and calls[0]["permission_mode"] == "acceptEdits"
     refused = CliRunner().invoke(app, ["claude", "run", "Add a line", "--permission-mode", "yolo"])
     assert refused.exit_code == 2 and not calls[1:]
+
+
+def test_a_bare_co_claude_run_edits_files_and_says_bypass_is_opt_in(tmp_path, monkeypatch):
+    # #2904, real run 2026-11-09: a bare `co claude run` could not edit,
+    # because nobody is there to approve, and still exited 0. The person who
+    # typed it is the only approver, so the default allows edits inside --cwd.
+    fixtures = Path(__file__).parents[1] / "fixtures" / "native_runners"
+    monkeypatch.setenv("CLAUDE_CODE_CMD", str(fixtures / "fake_claude.py"))
+    result = CliRunner().invoke(app, ["claude", "run", "Add a line", "--cwd", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["permission_denials"] == []
+    assert (tmp_path / "claude-was-here.md").is_file()
+    help_text = " ".join(CliRunner().invoke(app, ["claude", "run", "--help"]).output.split())
+    assert "acceptEdits" in help_text and "opt in" in help_text
 
 
 def test_co_claude_run_refuses_a_timeout_the_runner_would_refuse(tmp_path, monkeypatch):

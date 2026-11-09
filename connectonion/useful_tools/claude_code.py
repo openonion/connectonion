@@ -81,17 +81,24 @@ _SENSITIVE_KEY_PARTS = (
     "token",
 )
 _CLAUDE_ENVIRONMENT_KEYS = (
-    "ANTHROPIC_API_KEY",
+    "ALL_PROXY",
     "APPDATA",
-    "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CONFIG_DIR",
+    "CLOUD_ML_REGION",
+    "CLOUDSDK_CONFIG",
     "COMSPEC",
+    "GCLOUD_PROJECT",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT",
     "HOMEDRIVE",
     "HOMEPATH",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
     "LOCALAPPDATA",
+    "NO_PROXY",
     "NODE_EXTRA_CA_CERTS",
     "PATHEXT",
     "PROGRAMDATA",
@@ -103,7 +110,17 @@ _CLAUDE_ENVIRONMENT_KEYS = (
     "USER",
     "USERPROFILE",
     "WINDIR",
+    "all_proxy",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
 )
+# Claude Code's own configuration families: API keys and gateways
+# (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_VERTEX_PROJECT_ID),
+# CLAUDE_CODE_USE_BEDROCK / _VERTEX and the OAuth token, the AWS settings
+# Bedrock signs with, and Vertex's per-model regions. A `claude` that works in
+# the terminal through a proxy, a gateway, Bedrock or Vertex must work here too.
+_CLAUDE_ENVIRONMENT_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_", "AWS_", "VERTEX_REGION_")
 
 
 def claude_code(
@@ -116,9 +133,12 @@ def claude_code(
 ) -> str:
     """Run Claude Code in manual mode and return one stable JSON envelope.
 
-    The permission policy is deliberately absent from this Agent-facing
-    signature. Use ``ClaudeCode(permission_mode=...)`` when an operator needs
-    to bind a different mode before registering the tool.
+    Manual mode with nobody to approve is read-only: Claude asks before each
+    edit or command, the ask is refused, and the refused tools are listed in
+    the envelope's ``permission_denials``. The permission policy is
+    deliberately absent from this Agent-facing signature, so a model cannot
+    widen its own access. Use ``ClaudeCode(permission_mode="acceptEdits")``
+    when an operator wants edits allowed before registering the tool.
     """
     return _run_claude_code(
         prompt=prompt,
@@ -1314,9 +1334,9 @@ def _claude_environment() -> dict[str, str]:
         for key in ("PATH", "HOME", "SHELL")
         if (value := os.environ.get(key)) and not value.startswith("()")
     }
-    for key in _CLAUDE_ENVIRONMENT_KEYS:
-        value = os.environ.get(key)
-        if value and not value.startswith("()"):
+    for key, value in os.environ.items():
+        wanted = key in _CLAUDE_ENVIRONMENT_KEYS or key.startswith(_CLAUDE_ENVIRONMENT_PREFIXES)
+        if wanted and value and not value.startswith("()"):
             environment[key] = value
     return environment
 
