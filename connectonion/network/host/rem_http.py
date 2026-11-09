@@ -11,7 +11,8 @@ cookie and redirects to the bare /rem, so the token leaves the address bar.
 
 POST /rem/task hands any unfinished row to Codex or Claude and follows it
 (run, status, stop, undo, result); POST /rem/talk is a conversation with the
-agent about a row or an archived session (begin, say, read).
+agent about a row or an archived session (begin, say, read); POST /rem/review
+records the owner's verdict on a review in 问题与关联 (reviews.decide).
 
 Only loopback clients, and only a Host header naming loopback (a rebound DNS
 name gets nothing), are answered. A translation runs in a worker thread; the
@@ -89,7 +90,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -100,7 +101,7 @@ async def _action(scope, receive, send, root, headers):
         await _reply(send, 415, "application/json required")
         return
     try:
-        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve", "/rem/talk") else 4096) or b"{}")
+        body = json.loads(await read_body(receive, 65536 if scope["path"] in ("/rem/thread", "/rem/approve", "/rem/talk", "/rem/review") else 4096) or b"{}")
     except (ValueError, UnicodeDecodeError):
         await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
         return
@@ -123,6 +124,18 @@ async def _action(scope, receive, send, root, headers):
             return
         else:
             operation = lambda: getattr(tasks, action)(root, body['id'])
+    elif scope["path"] == "/rem/review":
+        from ...rem import reviews
+        # Exactly the verdicts reviews.decide accepts; it then checks the verdict fits the row's kind.
+        if (not isinstance(body.get("id"), str) or not body["id"] or body.get("verdict") not in ("yes", "no", "answer")
+                or not isinstance(body.get("response", ""), str)):
+            await _reply(send, 400, json.dumps({"error": "Expected the review id and verdict yes, no or answer"}), "application/json")
+            return
+        # An id the notebook no longer holds is its own answer, not "already decided".
+        if not any(row["id"] == body["id"] for row in await asyncio.to_thread(reviews.listing, root)):
+            await _reply(send, 404, json.dumps({"error": "No such review"}), "application/json")
+            return
+        operation = lambda: reviews.decide(root, body["id"], body["verdict"], author="owner", response=body.get("response", ""))
     elif scope["path"] == "/rem/talk":
         operation = _talk(root, body)
         if operation is None:
