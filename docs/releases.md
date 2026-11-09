@@ -23,6 +23,17 @@ waits on a build; a saved page opens at once marked "Updating…". See
 python -m pip install --upgrade 'connectonion==1.9.4'
 ```
 
+## Current preview
+
+Release candidate **1.9.5rc1**: nothing in the reader asks you to copy a command any more; a page that
+waited while you typed says "Updates waiting" and keeps your words; a headless `co claude run`
+edits files in its folder by default. Stable remains **1.9.4**. See
+[1.9.5rc1 notes](releases/1.9.5rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.5rc1'
+```
+
 ## Previous stable
 
 Stable **1.9.3** is the default production channel. REM does the work: overnight it reads new
