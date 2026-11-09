@@ -3565,6 +3565,18 @@ def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path,
     assert "being built" not in reader.open_snapshot(root, launch=False)["note"]
 
 
+def test_a_new_install_changes_the_saved_pages_key_even_with_the_same_template(tmp_path, monkeypatch):
+    """The page shows the package version, and a release can change Python without touching reader.html."""
+    import connectonion
+    from connectonion.rem import reader
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    key = reader.reader_version(root)
+    monkeypatch.setattr(connectonion, "__version__", "1.9.4")
+    assert reader.reader_version(root) != key
+
+
 def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tmp_path, monkeypatch):
     """The Today queue, dates and "Next pass" depend on the clock, not only on files."""
     from datetime import datetime, timezone
