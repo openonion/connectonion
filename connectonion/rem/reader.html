@@ -1642,11 +1642,12 @@
   .r4.r4-person { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin: 0; }
   .r4-over { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
   .r4 .r4-over .r4-today { font-size: var(--s-meta); text-decoration-color: var(--rule); }
-  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: normal; hyphens: auto; }
+  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: break-word; hyphens: auto; }
   .r4-sub { font-size: var(--s-head); line-height: 1.4; color: var(--ink); margin-top: var(--u4); max-width: var(--measure); }
   .r4-sub a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .r4-sub a.soft { color: var(--grey); }
   .r4-fuse { max-width: var(--measure); }
+  .r4 .r4-name.name-measure, .ov.ov-r6 .ov-say h1.name-measure { overflow-wrap: normal; }
   .fuse-line { position: relative; height: calc(var(--u5) + var(--fuse)); }
   .fuse-line::after, .fuse-line::before { content: ""; position: absolute; bottom: 0; background: var(--ink); }
   .fuse-line::after { left: 0; right: 0; height: var(--fuse); }
@@ -1671,6 +1672,9 @@
   .said-src a.cite { align-self: flex-start; }
   .said-q { font-size: var(--s-body); line-height: var(--lh-body); quotes: "「" "」"; overflow-wrap: anywhere; }
   :root[lang="en"] .said-q { quotes: "“" "”"; }
+  .r4-topics ul { list-style: none; margin: 0; padding: 0; }
+  .r4-topics li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: var(--u4); padding: var(--u2) 0; border-top: var(--hair) solid var(--rule); line-height: var(--lh-body); }
+  .r4-topics .d { font-size: var(--s-meta); color: var(--grey); }
   .r4 .empty-line { color: var(--grey); font: var(--s-body)/20px var(--font); margin: 0; border: 0; }
   .tl { list-style: none; margin: 4px 0 0; padding: 0; }
   .tl .later { display: none; }
@@ -1746,7 +1750,7 @@
     .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .r4-rail h4:first-child { margin-top: 32px; }
     .r4-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .r4-said li { grid-template-columns: minmax(0, 1fr); gap: var(--u2); }
+    .r4-said li, .r4-topics li { grid-template-columns: minmax(0, 1fr); gap: var(--u1); }
     .said-src { flex-direction: row; gap: var(--u2); }
     .tl-m { padding-left: 0; }
     .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
@@ -2286,7 +2290,7 @@
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
   .ov-say { grid-column: 1 / span 5; align-self: center; position: relative; z-index: 2; padding: 24px 0; min-width: 0; }
-  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: normal; hyphens: auto; }
+  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: break-word; hyphens: auto; }
   .ov-say .updated-label, .ov-say .fresh-label { font-size: var(--s-meta); }
   .ov.ov-r6 .ov-say .ov-sub { display: block; font-size: var(--s-body); line-height: 27px; color: var(--grey); margin: 16px 0 0; max-width: 460px; -webkit-line-clamp: unset; }
   .ov-facts { font-size: var(--s-body); line-height: 22px; color: var(--grey); margin: 20px 0 0; max-width: 460px; }
@@ -2708,7 +2712,6 @@ const UI = {
     "1 day overdue": "逾期 1 天",
     "Personal item": "个人事项",
     "open": "未结",
-    " +{n} roles": " +{n} 个角色",
     "{n} dated exchanges from {first} to today": "从 {first} 到今天，{n} 次有日期的往来",
     "{date} first exchange": "{date} 第一次往来",
     "{name} wrote last · {date}": "{name} 最后来信 · {date}",
@@ -2716,6 +2719,8 @@ const UI = {
     "Each tick is a dated exchange in the record ({n}); the other mails have no dates here.": "每条竖线是记录里一次有日期的往来（{n} 次）；其余邮件这里没有日期。",
     "Each tick is a dated exchange in the record ({n}).": "每条竖线是记录里一次有日期的往来（{n} 次）。",
     "In their words": "他说过的话",
+    "Open topics": "还没结的话题",
+    "Not done yet": "还没办完",
     "Original · newest first": "原文 · 最新在前",
     "Review REM's draft": "看 REM 起草的回信",
     "Write to {name}": "给 {name} 回信",
@@ -3860,11 +3865,15 @@ function fmtDate(iso) {
   return d.toLocaleDateString(uiLocale(), { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
 }
 // The calendar date alone ("Oct 29", "10月29日"): for dates inside a sentence, where "3 days ago" would not read.
-function calendarDate(day) {
+function calendarDate(day, locale = uiLocale()) {
   const d = new Date(day + "T00:00:00Z"), today = calendarDay(REM.as_of || new Date().toISOString());
-  return isNaN(d) ? day : d.toLocaleDateString(uiLocale(), { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
+  return isNaN(d) ? day : d.toLocaleDateString(locale, { timeZone: "UTC", ...(day.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}), month: "short", day: "numeric" });
 }
-function datesInProse(text) { return String(text).replace(/\b\d{4}-\d{2}-\d{2}\b/g, calendarDate); }
+// One language per line: a date takes the language of the sentence around it, not the interface's.
+function datesInProse(text) {
+  const locale = /\p{Script=Han}/u.test(text) ? "zh-CN" : "en-US";
+  return String(text).replace(/\b\d{4}-\d{2}-\d{2}\b/g, day => calendarDate(day, locale));
+}
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -5045,6 +5054,16 @@ const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "
 // Mirrors facts.parse(): {label: [{value, qualifier, citations}]}, [] when Unknown.
 // Values split on "; ", a trailing "(work)" is a qualifier, trailing [n] / [W1] are citations.
 const PARSED_FACTS = new Map();
+// "A (x; y); B" -> ["A (x; y)", "B"]: a semicolon inside brackets is part of its role, never a cut.
+function topLevelParts(value) {
+  const parts = [""];
+  let depth = 0;
+  for (const ch of String(value)) {
+    depth += "([{（【".includes(ch) ? 1 : ")]}）】".includes(ch) && depth ? -1 : 0;
+    if (ch === ";" && !depth) parts.push(""); else parts[parts.length - 1] += ch;
+  }
+  return parts.map(part => part.trim()).filter(Boolean);
+}
 function parseFacts(r) {
   const language = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
   const text = r.translations?.[language] ?? (r.shown ? r.original ?? r.text : r.text);
@@ -5058,11 +5077,12 @@ function parseFacts(r) {
     const value = m[2].trim();
     const items = [];
     if (value && !/^(unknown|not known)\b/i.test(value)) {
-      for (const part of value.split(/;\s+|；\s*/)) {
+      // Split and qualify as facts.py values() does: ";" outside brackets, a trailing "(qualifier)".
+      for (const part of topLevelParts(value.replace(/；\s*/g, "; "))) {
         const cites = /((?:\s*[\[［]W?\d{1,3}[\]］])+)\s*$/.exec(part);
         let v = cites ? part.slice(0, cites.index) : part;
-        // "(mobile)" after a space is a qualifier; "[UNSW](../orgs/unsw.md)" is a link, not one.
-        const q = /(?:\s+\(([^()]{1,30})\)|（([^（）]{1,30})）)\s*$/.exec(v);
+        // "(mobile)" is a qualifier; "[UNSW](../orgs/unsw.md)" is a link, not one.
+        const q = /(?:(?<!\])\s*\(([^()]+)\)|（([^（）]+)）)\s*$/.exec(v);
         if (q) v = v.slice(0, q.index);
         if (v.trim()) items.push({ value: v.trim(), qualifier: q ? q[1] || q[2] : "", citations: cites ? cites[1].match(/W?\d{1,3}/g) : [] });
       }
@@ -5218,22 +5238,12 @@ function privateFallback(node) {
 function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
   title: hasPrivacy(v) ? "" : plainLine(v),
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
-// "A (x; y); B" -> ["A (x; y)", "B"]: a semicolon inside brackets is part of its role, never a cut.
-function topLevelParts(value) {
-  const parts = [""];
-  let depth = 0;
-  for (const ch of String(value)) {
-    depth += "([{（【".includes(ch) ? 1 : ")]}）】".includes(ch) && depth ? -1 : 0;
-    if (ch === ";" && !depth) parts.push(""); else parts[parts.length - 1] += ch;
-  }
-  return parts.map(part => part.trim()).filter(Boolean);
-}
 function roleSummary(value, from) {
   // Labelled passages retain their full privacy boundary.
   const roles = hasPrivacy(value) ? [value] : topLevelParts(value);
   return privateFallback(el("span", { title: hasPrivacy(value) ? "" : plainLine(value) }, [
     el("span", { html: inline(roles[0].replace(/\s*\[W?\d{1,3}\]/g, ""), from) }),
-    roles.length > 1 ? el("span", { class: "role-more", text: t(" +{n} roles", { n: roles.length - 1 }) }) : null]));
+    roles.length > 1 ? el("span", { class: "role-more", text: " +" + (roles.length - 1) }) : null]));
 }
 function peopleCardMeta(r, f) {
   const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && roleSummary(f.role, r.path), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
@@ -6018,6 +6028,21 @@ function liveReaderAction(cls) {
   open.onclick = () => { command.hidden = false; };
   return el("span", { class: "live-action" }, [open, command]);
 }
+// "Not done yet": REM decided the item looks handled by your reply; you say it is not. Kept on this device,
+// it stays in Today and on the People list until it is marked done.
+function keepOpen(entry) {
+  notDoneKeys.add(doneKey(entry));
+  readerStorage(notDoneStorageKey(), JSON.stringify([...notDoneKeys]));
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
+}
+function notDoneAction({ entry, step }) {
+  if (step !== "done" || !looksDone(entry)) return null;
+  const button = el("button", { type: "button", class: "btn-quiet", text: t("Not done yet") });
+  button.onclick = () => keepOpen(entry);
+  return button;
+}
 // A handled card slides right and fades, then the page re-renders with an Undo.
 function closeEntries(node, entries) {
   if (!entries.length) return;
@@ -6067,7 +6092,7 @@ function personCard(group, focal) {
   const card = el("li", { class: "qcard" + (focal ? " open" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1, seen))),
     draft ? cardDraft(draft, group) : null,
-    el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), mailboxLink(next.entry)])]);
+    el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
   card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, .mailcard")) card.classList.toggle("open"); };
@@ -6662,9 +6687,20 @@ function personProject(r) {
   const link = /\]\((?:\.\.\/)?(projects\/[^)]+\.md)\)/.exec(known(r).intro + "\n" + r.text);
   return link && byPath(link[1]);
 }
+// The lede names the first role as a title: its value and any qualifier that is part of the title
+// ("Events Coordinator (Entrepreneurship)"); provenance ("email signature through …") stays in the tooltip.
+function roleLede(items, full, from) {
+  if (hasPrivacy(full)) return roleSummary(full, from);
+  const provenance = /\b(?:signature|through|as of|since|until|according|observed|confirmed|unverified|from (?:email|mail|domain)|per\s)\b|\d{4}-\d{2}-\d{2}/i;
+  const first = items[0], kept = topLevelParts(first.qualifier || "").filter(part => !provenance.test(part));
+  const title = first.value + (kept.length ? " (" + kept.join("; ") + ")" : "");
+  return el("span", { title: plainLine(full) }, [el("span", { html: inline(title, from) }),
+    items.length > 1 ? el("span", { class: "role-more", text: " +" + (items.length - 1) }) : null]);
+}
 function personSub(r) {
-  const role = String(facts(r).role || ""), org = personOrg(r), project = personProject(r);
-  const parts = [knownValue(role) ? changedValue(el("span", {}, [roleSummary(role, r.path)]), r, "Role") : null,
+  const role = String(facts(r).role || ""), items = (parseFacts(r).get("Role") || []).filter(item => knownValue(item.value));
+  const org = personOrg(r), project = personProject(r);
+  const parts = [knownValue(role) && items.length ? changedValue(el("span", {}, [roleLede(items, role, r.path)]), r, "Role") : null,
     project ? el("a", { class: "soft", href: href(project), text: project.title }) : null,
     org ? changedValue(org.org ? el("a", { href: href(org.org), text: org.name }) : el("span", { text: org.name }), r, "Company") : null].filter(Boolean);
   return parts.length ? privateFallback(el("div", { class: "r4-sub" }, parts.flatMap((part, i) => i ? [" · ", part] : [part]))) : null;
@@ -6675,6 +6711,8 @@ function nameLang(text) { return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=K
 // Where the browser has no hyphenation dictionary, a word wider than the screen would push the page sideways.
 // Then, and only then, it gets soft hyphens at likely syllable joins (VCV -> V-CV, VCCV -> VC-CV, three consonants split before an onset like "st", digraphs kept).
 function softSyllables(word) {
+  // "Ostrowski-Berryweather2026": each run of letters gets its own syllables; the hyphen and digits stay as they are.
+  if (/[^\p{L}]/u.test(word)) return word.split(/([^\p{L}]+)/u).map((part, i) => i % 2 ? part : softSyllables(part)).join("");
   const vowel = ch => /[aeiouyàáâäãåèéêëìíîïòóôöõùúûüýÿ]/i.test(ch), out = [...word];
   if (out.length < 7 || !/^\p{Script=Latin}+$/u.test(word)) return word;
   const cuts = [];
@@ -6694,7 +6732,11 @@ function fitNames() {
   for (const node of document.querySelectorAll("#main .r4-name, #main .ov-say h1.ov-name")) {
     const name = node.dataset.name || (node.dataset.name = node.textContent);
     node.textContent = name;
-    if (node.scrollWidth > node.clientWidth + 1) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
+    // Measured without the break-word fallback, which would otherwise hide the overflow it is there to catch.
+    node.classList.add("name-measure");
+    const overflows = node.scrollWidth > node.clientWidth + 1;
+    node.classList.remove("name-measure");
+    if (overflows) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
   }
 }
 // Who: the name is the page's one big mark. The fuse and its numbers open the column under it.
@@ -6717,6 +6759,9 @@ function personFuseData(r) {
 function personWait(r, today) {
   const rel = r.index?.relationship;
   if (rel?.last_from_you !== false || !rel.last_mail || rel.reply_seconds_owner == null) return "";
+  // Today has the last word on what is owed: handled, looks handled or needs no reply means nothing is burning.
+  const entries = personEntries(r).filter(entry => entry.t.dir === "mine" && !entry.t.quiet);
+  if (entries.length && entries.every(entry => isDone(entry) || looksDone(entry) || threadDraft(entry)?.status === "no_reply")) return "";
   const waited = (Date.parse(REM.as_of || new Date().toISOString()) - Date.parse(rel.last_mail)) / 1000;
   return waited > rel.reply_seconds_owner && calendarDay(rel.last_mail) <= today ? calendarDay(rel.last_mail) : "";
 }
@@ -6741,10 +6786,10 @@ function personFuse(r) {
 function isAutoReply(text) {
   return /^\s*(?:automatic reply|auto(?:matic)?[- ]?reply|auto:|out of (?:the )?office|自动回复)|\bthank(?:s| you) for your (?:e-?mail|message)\b[\s\S]{0,200}?\b(?:away from|out of (?:the )?office|on (?:annual )?leave|will (?:respond|reply|get back))|\b(?:I am|I'm) (?:currently )?(?:out of (?:the )?office|away from (?:my desk|the office)|on (?:annual )?leave)\b/i.test(String(text || ""));
 }
+// The owner's own addresses: the map's and the mail archive's (snapshot owner_addresses), then the owner page's.
 function ownerAddresses() {
   const owner = REM.owner && byPath(REM.owner);
-  if (!owner) return [];
-  const found = [...(String(facts(owner).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []), ...(owner.index?.emails || [])];
+  const found = [...(REM.owner_addresses || []), ...(owner ? String(facts(owner).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || [] : []), ...(owner?.index?.emails || [])];
   return [...new Set(found.map(a => a.toLowerCase()))];
 }
 // Said to you, personally: you are on To or Cc (not Bcc, not a list), at most eight people are, and it is not an auto-reply.
@@ -6752,22 +6797,40 @@ function saidToYou(c, owner) {
   if (!Array.isArray(c.participants?.to)) return false;
   const addresses = list => [].concat(list || []).join(" ").toLowerCase().match(/[^\s<>(),;"']+@[^\s<>(),;"']+/g) || [];
   const all = [...addresses(c.participants.to), ...addresses(c.participants.cc)];
-  if (!all.length || all.length > 8 || owner.length && !all.some(a => owner.includes(a))) return false;
+  // Without the owner's addresses nothing can show it was said to him, so nothing is quoted.
+  if (!owner.length || !all.length || all.length > 8 || !all.some(a => owner.includes(a))) return false;
   return !isAutoReply(c.subject) && !isAutoReply(c.excerpt);
 }
 // What they wrote to you, in their own words: archived mail cited by the record, newest first, each with its source.
+// Their words, not the envelope: quoted lines, greetings (on their own line or before the first sentence)
+// and the signature block (a sign-off, or a phone number and everything after it) are dropped.
+function saidWords(text) {
+  const lines = [];
+  for (const raw of String(text || "").split(/\n+/)) {
+    const line = raw.trim();
+    if (/^--\s*$/.test(line) || /^(?:kind|best|warm|many)?\s*(?:regards|thanks|cheers|sincerely)[,!.]?$/i.test(line)) break;
+    if (line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)) lines.push(line);
+  }
+  return lines.join(" ").replace(/\s+/g, " ")
+    .replace(/^(?:hi|hello|hey|dear)\s+[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?\s*[,，!！]\s*/iu, "")
+    .replace(/\s*\b(?:kind|best|warm|many)\s+(?:regards|thanks)\b[\s\S]*$/i, "")
+    .replace(/\s*(?:\b(?:T|M|P|Tel|Ph|Phone|Mobile)\s*[:.]?\s*\+?|\+)\d[\d ().-]{7,}\d[\s\S]*$/, "").trim();
+}
+// Sources a public passage cites and no private passage does: a mail cited by a [personal] passage
+// stays as private as the passage, even when a public sentence cites it too.
+function publicOnlyCites(r) {
+  const body = r.text.split(/\n## Sources\b/)[0], cite = /[\[［](W?\d{1,3})[\]］]/g, hidden = new Set();
+  const visible = privatePassages(body, passage => { for (const m of passage.matchAll(cite)) hidden.add(m[1]); return ""; });
+  return new Set([...visible.matchAll(cite)].map(m => m[1]).filter(n => !hidden.has(n)));
+}
 function personQuotes(r) {
   const mails = (String(facts(r).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []).map(a => a.toLowerCase());
   const names = [r.title.toLowerCase(), firstName(r).toLowerCase()];
   const theirs = sender => { const s = String(sender || "").toLowerCase(); return mails.some(a => s.includes(a)) || names.some(n => n && (s === n || s.startsWith(n + " "))); };
-  // Their words, not the envelope: greetings, quoted lines and "X reacted to your message" (which quotes you) are dropped.
-  const said = text => String(text || "").split(/\n+/).map(line => line.trim())
-    .filter(line => line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
-  const seen = new Set(), owner = ownerAddresses(), cited = new Set((unlabelled(r.text.split(/\n## Sources\b/)[0]).match(/[\[［]W?\d{1,3}[\]］]/g) || []).map(m => m.slice(1, -1)));
-  // Only sources a public passage cites: a mail cited by a [personal] passage stays as private as the passage.
+  const seen = new Set(), owner = ownerAddresses(), cited = publicOnlyCites(r), key = words => words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
   const rows = sourceList(r).filter(s => cited.has(s.n)).map(s => ({ s, c: REM.source_context?.[sourceId(s.text, s.plain)] }))
-    .filter(({ c }) => c?.excerpt && !c.body_empty && theirs(c.sender) && saidToYou(c, owner)).map(row => ({ ...row, words: said(row.c.excerpt) }))
-    .filter(({ words }) => [...words].length >= 12 && !/\breacted to your message\b/i.test(words) && !seen.has(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")) && seen.add(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")))
+    .filter(({ c }) => c?.excerpt && !c.body_empty && !hasPrivacy(c.excerpt) && theirs(c.sender) && saidToYou(c, owner)).map(row => ({ ...row, words: saidWords(row.c.excerpt) }))
+    .filter(({ words }) => [...words].length >= 12 && !/\breacted to your message\b/i.test(words) && !seen.has(key(words)) && seen.add(key(words)))
     .sort((a, b) => String(b.c.time).localeCompare(String(a.c.time)));
   if (!rows.length) return null;
   const kind = s => ({ gmail: "Gmail", outlook: "Outlook", imap: "Mail" })[sourceId(s.text).split(":")[0]] || "";
@@ -6813,12 +6876,14 @@ function personTimeline(r) {
 }
 function railContact(r) {
   const parsed = parseFacts(r), f = facts(r);
-  const values = label => (parsed.get(label) || []).map(item => item.value).filter(knownValue);
+  const values = label => (parsed.get(label) || []).filter(item => knownValue(item.value));
+  // A qualifier ("shown in her 2026-10-29 signature") is where the value came from: a tooltip, not the value.
+  const shown = item => el("span", { text: plainLine(item.value), title: item.qualifier ? plainLine(item.qualifier) : "" });
   const mails = (f.email.match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
-  const handles = values("Handles").filter(value => !value.includes("@"));
+  const handles = values("Handles").filter(item => !item.value.includes("@"));
   const rows = [...mails.slice(0, 2).map(address => ["Email", el("a", { href: "mailto:" + address, text: address })]),
-    ...values("Phone").slice(0, 1).map(phone => ["Phone", el("span", { text: plainLine(phone) })]),
-    ...handles.slice(0, 1).map(handle => ["Handle", el("span", { text: plainLine(handle) })]),
+    ...values("Phone").slice(0, 1).map(phone => ["Phone", shown(phone)]),
+    ...handles.slice(0, 1).map(handle => ["Handle", shown(handle)]),
     knownValue(f.language) ? ["Language", el("span", { text: plainLine(f.language) })] : null,
     knownValue(f.location) ? ["Location", el("span", { text: plainLine(f.location) })] : null].filter(Boolean);
   return rows.length ? [el("h4", { text: t("Contact") }), privateFallback(el("dl", { class: "r4-kv" }, rows.flatMap(([label, value]) => [el("dt", { text: t(label) }), el("dd", {}, [value])])))] : [];
@@ -6856,11 +6921,22 @@ function personSessions(r) {
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
     sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
 }
+// What is still open between you, as facts of the record (D-30: no to-do UI here; D-36: not folded).
+// The words and the date only; marking, replying and closing happen in Today.
+function personTopics(r) {
+  const items = threads(r).items.filter(item => item.dir !== "third");
+  const rows = items.map(item => {
+    const content = historyRowContent(withoutDateClutter(youify(item.text), item), r.path);
+    return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
+      el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
+  }).filter(Boolean);
+  return rows.length ? el("section", { class: "r4-sec r4-topics" }, [el("h2", { text: t("Open topics") }), el("ul", {}, rows)]) : null;
+}
 // A person's page is their record (owner, 2026-11-08, D-30): what you owe them lives in Today.
 function personPage(r) {
   const rail = el("aside", { class: "r4-rail", "aria-label": t("About this person") }, [...railContact(r), ...railOrg(r), ...railUnsure(r), ...railSources(r)]);
   return el("div", { class: "r4 r4-person" }, [personHead(r),
-    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personFuse(r), personStats(r), personQuotes(r), personTimeline(r), personSessions(r)]), rail])]);
+    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personFuse(r), personStats(r), personTopics(r), personQuotes(r), personTimeline(r), personSessions(r)]), rail])]);
 }
 
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
@@ -11042,6 +11118,13 @@ window.addEventListener("resize", evidenceLayout);
 // The organisation page's time line and diagonal follow the window; Esc turns its tree back.
 window.addEventListener("resize", () => orgLayout(true));
 window.addEventListener("resize", () => fitNames());
+// Soft hyphens are layout: a copied name is the name.
+document.addEventListener("copy", event => {
+  const text = String(getSelection());
+  if (!text.includes("\u00ad") || !event.clipboardData) return;
+  event.clipboardData.setData("text/plain", text.replace(/\u00ad/g, ""));
+  event.preventDefault();
+});
 // The projects directory's month labels are re-measured against Today after a resize.
 window.addEventListener("resize", () => requestAnimationFrame(() => { projectScaleFit(); projectAxisCollisions(); }));
 document.addEventListener("keydown", event => {

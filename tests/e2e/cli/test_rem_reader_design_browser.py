@@ -4601,8 +4601,10 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
     # A thread that names no debtor is not Today's, and her page has no ledger (D-30): the record
     # keeps it as written in its full memory, so it is never lost.
     assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
-    page.locator('details.deep-note > summary').click()
-    assert 'Discuss the pilot review with Theo Park' in page.locator('.deep-note .person-threads').inner_text()
+    # Unfolded, as a fact of the record (D-36), with nothing to click (D-30).
+    topics = page.locator('.r4-person .r4-topics')
+    assert 'Discuss the pilot review with Theo Park' in topics.inner_text()
+    assert topics.locator('button, a.btn-act, .chip').count() == 0
 
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
@@ -5053,7 +5055,7 @@ SPLIT_WORDS = r"""node => {
 }"""
 
 
-@pytest.mark.parametrize("name", ["Mara Ostrowski", "Tamsin Berryweather", "周泽凯"])
+@pytest.mark.parametrize("name", ["Mara Ostrowski", "Tamsin Berryweather", "周泽凯", "Northgate-Universitätsverbund", "Ostrowski-Berryweather2026"])
 def test_phone_display_name_hyphenates_and_never_widens_the_page(reader, name):
     page, uri = reader
     page.set_viewport_size({"width": 390, "height": 844})
@@ -5061,13 +5063,19 @@ def test_phone_display_name_hyphenates_and_never_widens_the_page(reader, name):
     page.evaluate("name => { byPath('people/mara-ostrowski.md').title = name; render(); }", name, isolated_context=False)
     h1 = page.locator(".r4-person h1")
     style = h1.evaluate("node => [node.lang, getComputedStyle(node).hyphens, getComputedStyle(node).overflowWrap]")
-    assert style == ["zh" if name == "周泽凯" else "en", "auto", "normal"]
+    assert style == ["zh" if name == "周泽凯" else "en", "auto", "break-word"]  # break-word only as the last resort
     assert h1.get_attribute("aria-label") == name
     assert h1.inner_text().replace("\xad", "") == name
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert h1.evaluate("node => node.scrollWidth <= node.clientWidth + 1")
     if name != "周泽凯":
-        assert all(ch == "\xad" for ch in h1.evaluate(SPLIT_WORDS)), "a Latin word only breaks at a hyphen"
+        assert all(ch in "\xad-" for ch in h1.evaluate(SPLIT_WORDS)), "a Latin word only breaks at a hyphen"
+    # A copied name is the name: the soft hyphens are layout.
+    copied = h1.evaluate("""node => { const range = document.createRange(); range.selectNodeContents(node);
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+      const data = new DataTransfer(); document.dispatchEvent(new ClipboardEvent('copy', {clipboardData: data, bubbles: true, cancelable: true}));
+      return data.getData('text/plain') || String(getSelection()); }""")
+    assert "\xad" not in copied and copied.replace("\n", " ").strip() == name
 
 
 def test_person_fuse_burns_red_only_past_the_owners_usual_reply_time(reader):
@@ -5101,6 +5109,58 @@ def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
     assert fuse.locator(".fuse-tick").count() == 0
     assert "no dated exchanges" in fuse.locator(".fuse-note").inner_text()
     assert fuse.locator(".fuse-ends").inner_text().startswith("Aug 21")
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_person_open_topics_are_facts_without_actions(reader, language):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate("language => setInterfaceLanguage(language)", language, isolated_context=False)
+    topics = page.locator(".r4-person .r4-topics")
+    assert topics.locator("h2").inner_text() == ("还没结的话题" if language == "zh" else "Open topics")
+    rows = topics.locator("li")
+    assert rows.count() == 2
+    assert "Data-sharing addendum" in topics.inner_text() and "Usage export" in topics.inner_text()
+    assert rows.first.locator(".d").inner_text().strip()
+    assert topics.locator("button, .chip, a.btn-act, input").count() == 0
+    assert page.evaluate(GREEN, isolated_context=False) == 0
+
+
+def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(reader):
+    page, uri = reader
+    page.goto(uri + "#")
+    page.evaluate("""() => {
+      // Your later mail looks like it settled her ask: REM would call it handled.
+      const row = REM.today_queue.find(row => row.record === 'people/mara-ostrowski.md' && row.dir === 'mine');
+      row.reply = {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'};
+      threadEntries.cached = null; render();
+    }""", isolated_context=False)
+    card = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
+    assert card.get_attribute("data-step") == "done"
+    card.click(position={"x": 8, "y": 8})  # a card opens its actions when chosen
+    card.get_by_role("button", name="Not done yet", exact=True).click()
+    assert page.evaluate("notDoneKeys.size", isolated_context=False) == 1
+    assert page.evaluate("readerStorage(notDoneStorageKey())", isolated_context=False)
+    card = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
+    assert card.get_attribute("data-step") != "done" and card.get_by_role("button", name="Not done yet").count() == 0
+    page.goto(uri + "#c=people")
+    row = page.locator(".r4 .row").filter(has_text="Mara Ostrowski")
+    assert row.locator(".chip, .dot").count() >= 1, "still waiting on you in the People list"
+
+
+def test_person_fuse_does_not_burn_once_today_has_it_handled(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate("""() => { const r = byPath('people/mara-ostrowski.md');
+      r.index = {...(r.index || {}), relationship: {last_mail: '2026-09-28T09:00:00Z', last_from_you: false, reply_seconds_owner: 3600, weekly_messages: Array(52).fill(1)}};
+      render(); }""", isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 1
+    page.evaluate("""() => { for (const e of personEntries(byPath('people/mara-ostrowski.md'))) threadStates[doneKey(e)] = {state: 'done', at: REM.as_of}; render(); }""",
+                  isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 0, "handled in Today"
+    page.evaluate("""() => { for (const key of Object.keys(threadStates)) delete threadStates[key];
+      window.threadDraft = () => ({status: 'no_reply', gist: 'Nothing to answer.'}); render(); }""", isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 0, "no reply needed"
 
 
 def test_person_quotes_carry_their_source_and_open_the_original(reader):

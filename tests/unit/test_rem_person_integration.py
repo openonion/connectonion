@@ -87,7 +87,7 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
 def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
     """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
     a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
-    result = run_js(['personQuotes', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
+    result = run_js(['personQuotes', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
       const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
         text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
       const to = {to: ['avery@lin.example'], cc: []};
@@ -121,6 +121,52 @@ def test_person_quotes_keep_only_mail_said_to_the_owner_personally():
       ].map(c => saidToYou(c, owner))));
     ''')
     assert result == [True, True, False, False, False, False, False]
+
+
+QUOTE_HARNESS = r'''
+  const to = {to: ['avery@lin.example'], cc: []};
+  const sourceId = text => text, facts = () => ({email: ''}), firstName = () => 'Mara', t = text => text;
+  const fmtDate = day => day, calendarDay = day => day, inline = text => text;
+  const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children).filter(Boolean)});
+  const sourceList = () => [{n: '3', text: 'gmail:b'}];
+  const ownerAddresses = () => OWNER;
+'''
+QUOTE_NAMES = ['personQuotes', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'hasPrivacy']
+
+
+def _quotes(text, excerpt, participants="to", owner="['avery@lin.example']"):
+    return run_js(QUOTE_NAMES, QUOTE_HARNESS.replace('OWNER', owner) + f'''
+      const r = {{title: 'Mara Ostrowski', path: 'people/mara.md', text: {text!r}}};
+      const REM = {{source_context: {{'gmail:b': {{excerpt: {excerpt!r}, sender: 'Mara', time: '2026-10-02', participants: {participants}}}}}}};
+      const out = personQuotes(r);
+      console.log(JSON.stringify(out ? out.children[1].children.map(li => li.children[1].text) : []));
+    ''')
+
+
+def test_a_mail_any_private_passage_cites_is_never_quoted():
+    """A public sentence citing the same mail does not make it public: the private one decides."""
+    sources = '\n\n## Sources\n- [3] gmail:b\n'
+    excerpt = 'The clinic round failed again, so I need to move our call.'
+    assert _quotes('Moved the call [3]. Going through IVF [personal] [3].' + sources, excerpt) == []
+    assert _quotes('Moved the call [3].' + sources, excerpt) == [excerpt]
+
+
+def test_quotes_need_known_owner_addresses_and_an_unlabelled_excerpt():
+    sources = '\n\n## Sources\n- [3] gmail:b\n'
+    plain = 'The renewal can include a fourth seat.'
+    assert _quotes('Renewal [3].' + sources, plain, owner='[]') == [], "no owner addresses: nothing shows it was said to him"
+    assert _quotes('Renewal [3].' + sources, 'Health update [sensitive]: the surgery is booked.') == []
+    assert _quotes('Renewal [3].' + sources, plain) == [plain]
+
+
+def test_quoted_words_drop_greeting_and_signature_block():
+    result = run_js(['saidWords'], r'''
+      console.log(JSON.stringify([
+        saidWords('Hi Avery,Good news! The pass is ready at Gate 2.Kind Regards, Mara Ostrowski (she/her) Head of Partnerships T +64 21 555 0100'),
+        saidWords('Dear Avery,\nThe renewal can include a fourth seat from 2026-11-01.\n--\nMara\n+64 21 555 0100'),
+        saidWords('Thanks for the notes.\nBest regards\nKai Rennick\nM: 021 555 0199')]));
+    ''')
+    assert result == ['Good news! The pass is ready at Gate 2.', 'The renewal can include a fourth seat from 2026-11-01.', 'Thanks for the notes.']
 
 
 def test_owed_parts_drop_a_rest_that_is_only_punctuation_after_date_clutter():
