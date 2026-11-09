@@ -731,7 +731,7 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   above the card says so (**Reply to Jiexuan Deng first: the reply is ready**),
   the headline still names the most urgent person, and that person's lane is
   the bold one. The open card is compact: the context is one line with
-  **More**, the letter shows its first lines, and **Why this reply** sits under
+  **More**, the letter scrolls in a short window, and **Why this reply** sits under
   the reading in your language. It opens its draft in place with
   To, CC (**No one** when nobody is copied) and Subject; REM's
   `【需要你：…】` slot is a row to answer in: buttons when REM wrote the

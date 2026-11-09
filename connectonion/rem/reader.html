@@ -2101,10 +2101,10 @@
 
   /* The fuse: a lane per person, ending at the heavy line that is today. Ink = time that passed
      fairly, red = time past due. A sent reply burns its lane out before the page redraws. */
-  .fuse { max-width: 760px; margin: 0 0 var(--u4); font-family: var(--font); }
+  .fuse { max-width: 760px; margin: 0 0 var(--u3); font-family: var(--font); }
   .fuse ol { list-style: none; margin: 0; padding: 0; }
   .fuse .lane, .fuse .axis { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 7.5rem; align-items: center; column-gap: var(--u3); }
-  .fuse .lane { min-height: 24px; transition: opacity var(--t-state) var(--ease-out); }
+  .fuse .lane { min-height: 22px; transition: opacity var(--t-state) var(--ease-out); }
   .fuse .lane .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); text-decoration: none; }
   .fuse .lane.current .who { color: var(--ink); font-weight: var(--w-bold); }
   .fuse .late { text-align: right; white-space: nowrap; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--red); }
@@ -2117,13 +2117,13 @@
   .fuse .seg.wait { height: var(--rule-heavy); background: var(--ink); }
   .fuse .lane.done { opacity: 0; }
   .fuse .lane.done .seg { transform: translateY(-50%) scaleX(0); }
-  .fuse .axis { margin-top: var(--u2); font-size: var(--s-meta); color: var(--grey); }
+  .fuse .axis { margin-top: var(--u1); font-size: var(--s-meta); color: var(--grey); }
   .fuse .scale { position: relative; height: 1.6em; }
   .fuse .scale span { position: absolute; white-space: nowrap; }
   .fuse .scale .l { left: 0; }
   .fuse .scale .m { left: 50%; transform: translateX(-50%); }
   .fuse .scale .r { right: 0; color: var(--ink); font-weight: var(--w-bold); }
-  .fuse .sketch { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
+  .fuse .sketch { margin: var(--u1) 0 0; font-size: var(--s-meta); color: var(--grey); }
   @keyframes fuse-draw { from { transform: translateY(-50%) scaleX(0); } }
 
   /* The draft, open in place: To, CC, Subject; REM's question as a row of choices; Send stays in reach. */
@@ -2137,20 +2137,27 @@
   .owner-slot.choose input:focus { outline: 0; border-bottom-color: var(--ink); }
   /* With a draft open the card is compact, so Send sits in normal flow on the first screen: the context is
      two lines with More, and the English original waits behind More too. */
-  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; max-height: 1.7em; }
   .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
-  .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: 11em; overflow: hidden; }
+  /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
+     screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
+  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: 6.5em; overflow: auto; overscroll-behavior: contain; }
+  .qcard.focal.open .mail-head .mail-row { line-height: 1.35; }
   .mail-gist .mail-why { margin: var(--u3) 0 0; padding: 0; border: 0; }
   .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
   .qcard .qkind .handoff { margin: 0; }
+  .qcard .qkind .handoff .btn-quiet { min-height: 28px; }
+  .today-brief .qcard.focal.open { padding-top: var(--u2); }
   .qcard.focal.open .qdraft { margin-top: var(--u2); }
-  .qcard.focal.open .mail-head { position: relative; }
-  .qcard.focal.open .mail-head .mail-channels { position: absolute; top: var(--u2); right: var(--u3); margin: 0; }
-  .qcard.focal.open .mail-head .mail-row:nth-child(2) .v { padding-right: 14rem; }
+  @media (min-width: 721px) {
+    .qcard.focal.open .mail-head { position: relative; }
+    .qcard.focal.open .mail-head .mail-channels { position: absolute; top: var(--u2); right: var(--u3); margin: 0; }
+    .qcard.focal.open .mail-head .mail-row:nth-child(2) .v { padding-right: 14rem; }
+  }
   .qcard .qfull { display: none; }
   .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
-  .snapshot-line, .lead-why { margin: 0 0 var(--u3); font-size: var(--s-meta); color: var(--grey); }
+  .snapshot-line, .lead-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
   .lead-why { color: var(--ink); font-weight: var(--w-bold); }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
   .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
@@ -2860,7 +2867,7 @@ const UI = {
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "一键批准这 {n} 件", "{n} items to approve in one go": "{n} 件可一键批准",
+    "Approve all {n}": "一键批准这 {n} 件", "{n} items to approve in one go": "{n} 件可一键批准", "1 item to approve in one go": "1 件可一键批准",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -6526,7 +6533,7 @@ function approvalProblems() {
 function approvalHeader() {
   const items = REM.approval_outcomes || [];
   if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
-  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t("{n} items to approve in one go", {n: items.length})});
+  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t(items.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: items.length})});
   button.disabled = !REM.live || !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
   return el("div", {class: "approval-header"}, [button, approvalProblems()]);
@@ -6649,7 +6656,7 @@ function approvalUndoBar() {
     }
     undoFailure = reply.results.filter(value => value.status === "error").map(approvalStatus).join(" · ");
     const cta = document.getElementById("approve-all");
-    if (cta) {cta.textContent = t("{n} items to approve in one go", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length;}
+    if (cta) {cta.textContent = t(REM.approval_outcomes.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length;}
     held = held.filter(item => !reply.results.some(value => value.id === item.id && value.status === "cancelled"));
     undo.disabled = !held.length;
     if (!held.length) clearInterval(approvalTimer);

@@ -418,12 +418,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         page.evaluate('''() => {
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
-        # Setup-copy actions were removed from empty reading surfaces. The
-        # People review command in settings must still target this notebook.
+        # D-60 (build 3b review): Reader settings no longer carries the People review command.
         page.locator('.reader-settings > summary').click()
-        page.get_by_role('button', name='Copy the command', exact=True).click()
-        command = page.evaluate('window.copiedCommand', isolated_context=False)
-        assert shlex.split(command)==['co','rem','--root',str(root),'list','people','--review']
+        assert page.locator('.reader-settings .cmd').count() == 0
         browser.close()
 
 
@@ -562,7 +559,7 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert queued.locator('.draft-reason').count() == 0
         else:
             note = queued.locator('.draft-reason').inner_text()
-            assert ('今晚' if language == 'zh' else 'tonight') in note and 'open' in note
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
         open_card(letter)
         if live:
             letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
