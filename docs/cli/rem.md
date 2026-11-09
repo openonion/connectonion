@@ -716,6 +716,37 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   and rewriting work in the live reader on this computer only; a click is the
   approval, and nothing is sent without one. Labelled private material stays
   behind the reader's privacy toggle.
+- **Today is drawn as a fuse** (owner, 2026-11-09, D-108): the count of people
+  waiting is the page's one large number, with the most urgent person named
+  beside it (or, when nothing is overdue, whoever is first in line). Under it,
+  one lane per waiting person, in the same order as the cards: a line from
+  their oldest dated message to today, red for exactly the days past the due
+  date. An item with no due date has no red and says **No due date**. The link
+  beside the date counts *items* (**5 items waiting on you**), so it never
+  contradicts the count of people. The first card opens its draft in place with
+  To, CC (**No one** when nobody is copied) and Subject; REM's
+  `【需要你：…】` slot is a row to answer in: buttons when REM wrote the
+  alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a text field otherwise; the
+  date after the dash is never split into options. **Send** is the page's only
+  green control, and it stays on screen at the bottom of the draft on a desktop
+  and a phone. When the Host lists an approval for the draft, Send holds the
+  reply for 10 minutes: the person's card and lane close, the count steps down,
+  and the line **Sent to …** keeps one **Undo** until the hold ends; without an
+  approval the reply goes at once and the line says it cannot be undone.
+  **What REM did overnight** adds **Replied to N people for you** when REM sent
+  replies itself (`sent_by_rem`), and no row when it did not.
+- **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
+  quiet text buttons on every pending row, in Today and in **Waiting on you**.
+  A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  to `/rem/task`; the row then reads **Handed to Codex · in progress** and
+  follows the task's own status, **Stop** and **Undo**, the same for either
+  agent, and a finished card names the agent that ran it. A refused request
+  is said in words on the row. A snapshot shows the buttons disabled with one
+  line, *Only the live reader can hand work to an agent*, never a command to
+  copy. Nothing in the reader says a task is recorded but not run.
+- **The sidebar** has no **Questions & connections** entry any more, as with
+  Activity; `#reviews=1` still opens it, and **Memory changes** carries its one
+  quiet link, beside **REM activity**.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or

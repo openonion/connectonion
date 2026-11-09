@@ -227,6 +227,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
       const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0;
       const kindBadge = () => null, alsoOn = () => null, isDone = () => false, setDone = () => {}, fmtDate = day => day;
       const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '';
+      const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const replyDraftCard = draft => ({sendable:true, body:draft.body});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       const card = personCard({r: entry.r, entries: [entry]}, true);

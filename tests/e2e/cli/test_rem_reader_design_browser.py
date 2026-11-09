@@ -299,7 +299,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator('#nav .n.waiting').inner_text() == total
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.brief-header h1').inner_text() == f'{len(whos)} people are waiting on you.'
+    assert page.locator('.brief-header h1').text_content() == f'{len(whos)} people are waiting on you.'  # poster: count and words are two spans
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -1280,12 +1280,12 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
-    heading = page.locator('.brief-header h1').inner_text()
+    heading = page.locator('.brief-header h1').text_content()  # poster: count and words are two spans
     assert heading == ('1 person is waiting on you.' if mine else 'Nobody is waiting on you today.')
     assert ' 0 ' not in primary.inner_text()
     header = page.locator('.brief-header')
     if mine or theirs:
-        parts = [f'{mine} waiting on you' if mine else '', f'{theirs} on others' if theirs else '']
+        parts = [f'{mine} items waiting on you' if mine else '', f'{theirs} on others' if theirs else '']  # items, not people (TOP10 #9)
         assert header.locator('.waiting-more').inner_text() == ' · '.join(p for p in parts if p) + ' →'
     else:
         assert header.locator('.waiting-more').count() == 0
@@ -4047,7 +4047,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.brief-header h1').inner_text() == '1 person is waiting on you.'
+    assert page.locator('.brief-header h1').text_content() == '1 person is waiting on you.'  # a poster: count and words are two spans
     assert '2 days overdue' in page.locator('.brief-header .lede').inner_text()
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4057,7 +4057,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
     assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
-    assert '7 waiting on you' in page.locator('.waiting-more').inner_text()
+    assert '7 items waiting on you' in page.locator('.waiting-more').inner_text()  # items, not people (TOP10 #9)
     assert page.locator('.week-details').get_attribute('open') is None
     assert page.locator('.night-details').get_attribute('open') is None
     assert page.locator('.category-cards').count() == 0

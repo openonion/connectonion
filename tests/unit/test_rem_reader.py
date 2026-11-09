@@ -1502,6 +1502,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
       const contactFields = () => [], company = () => '', calendarDay = day => day;
       const href = r => '#r=' + r.path, threadWho = r => r.title, blockerTag = () => null, alsoOn = () => null;
       const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, approvalTask = () => null, overdueDays = () => 0;
+      const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const firstName = r => r.title.split(' ')[0], threadAge = () => 'due today', CHECK_ICON = '', roleSummary = text => text;
       const entry = {r: {path: 'people/avery.md', title: 'Avery Lin'}, t: {dir: 'mine', text: 'Review the pilot.'}};
       const group = {r: entry.r, entries: [entry]};
@@ -1515,7 +1516,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert mail['class'] == 'mailcard'
     assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
-    assert mail['children'][0]['children'][2] is None  # no CC row
+    # D-10: the CC row is always there, and says when nobody is copied.
+    assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
     assert mail['children'][0]['children'][3]['children'][1]['text'] == 'Re: Pilot'
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
@@ -1530,6 +1532,13 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert actions['children'][0]['class'] == 'btn-act'
     assert 'mailto:' not in json.dumps(actions)
     assert 'Copy prompt' not in json.dumps(result)
+
+
+def _words(node):
+    """The words a serialised reader node reads as, children in order (the poster splits its sentence)."""
+    if isinstance(node, str):
+        return node
+    return (node or {}).get('text', '') + ''.join(_words(child) for child in (node or {}).get('children', []))
 
 
 def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_find():
@@ -1547,14 +1556,17 @@ def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_fi
       const zh = briefHeader({mine: 4}, groups);
       console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
     })();''')
-    assert result['header']['children'][0]['text'] == 'Tuesday, 20 October'
-    assert result['header']['children'][1]['text'] == '2 people are waiting on you.'
+    # The date shares a kicker line with the quiet links; the headline is a poster, the count its own span (D-108).
+    assert result['header']['children'][0]['children'][0]['text'] == 'Tuesday, 20 October'
+    assert _words(result['header']['children'][1]) == '2 people are waiting on you.'
+    assert [child['text'] for child in result['header']['children'][1]['children'] if isinstance(child, dict)] == ['2', 'people are waiting on you.']
     lede = result['header']['children'][2]['children']
     assert lede[0] == 'Most urgent: Ada, ' and lede[1] == {'tag': 'b', 'class': 'late', 'text': '2 days overdue', 'children': []}
-    assert result['noDeadline']['children'][1]['text'] == '1 person is waiting on you.'
-    assert result['noDeadline']['children'][2] is None
+    assert _words(result['noDeadline']['children'][1]) == '1 person is waiting on you.'
+    # Nothing overdue still names who is first, without inventing a lateness (build 3b: "one sentence naming who is most urgent").
+    assert result['noDeadline']['children'][2]['text'] == 'First in line: Cy.'
     assert result['quiet']['children'][1]['text'] == 'Nobody is waiting on you today.'
-    assert result['zh']['children'][1]['text'] == '2 个人在等你。'
+    assert _words(result['zh']['children'][1]) == '2 个人在等你。'
     assert result['zh']['children'][2]['children'][1]['text'] == '逾期 2 天'
     assert result['find'] == '查找'
 
@@ -1586,10 +1598,11 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1].text}));
+        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert result == {'parsed': 7, 'merged': 7, 'today': 7, 'headline': '1 person is waiting on you.'}
+    assert _words(result.pop('headline')) == '1 person is waiting on you.'
+    assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -1637,7 +1650,8 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
       const privateFallback = node => node, inline = text => text, threadActions = () => null;
       const contactFields = () => [], company = () => '', blockerTag = () => null;
       const threadDraft = () => null, draftNote = () => null;
-      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = ''; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
+      const age = () => '', taskResult = () => null, roleSummary = text => text, CHECK_ICON = '';
+      const handedLine = () => null, rowTask = () => null, handOff = () => null; const dueLabel = thread => 'due ' + thread.due, alsoOn = pages => ({also: pages});
       const quoted = make('You owe Theo a Letter of Support draft; “Please include the contribution details.” [4].', '2026-11-02');
       const dated = make('Review the pilot (2026-10-30) — due 2026-11-02, overdue; open as of 2026-10-30', '2026-11-02');
       console.log(JSON.stringify({selected: todayEntries(entries).map(entry => entry.t.text),
@@ -2898,9 +2912,10 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['replyDraftCard'])
+                          for name in ['slotChoices', 'replyDraftCard'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;}});
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
+        appendChild(node) {this.children.push(node);}});
       const mailbox = address => ({address, name: 'Fern'}), personByAddress = () => null;
       const remCommand = args => "co rem --root '/tmp/fictional notebook' " + args;
       const commandChip = command => ({tag: 'div', class: 'cmd', text: command});
@@ -2910,12 +2925,14 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       const nodes = [];
       function visit(node) { if (node && typeof node === 'object') {nodes.push(node); (node.children || []).forEach(visit);} }
       visit(card);
-      console.log(JSON.stringify({card, chips: nodes.filter(node => node.class === 'owner-slot'),
+      console.log(JSON.stringify({card, chips: nodes.filter(node => (node.class || '').split(' ').includes('owner-slot')),
         buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
         commands: nodes.filter(node => node.class === 'cmd')}));
     ''')
     assert len(result['chips']) == 2
-    assert all('Fill in' in chip['text'] for chip in result['chips'])
+    # Build 3b: the yellow "需要你填" box became a row to answer in, named by what REM needs.
+    assert [chip['aria-label'] for chip in result['chips']] == ['演示意见', '时间']
+    assert all(chip['role'] == 'group' and chip['children'][-1]['tag'] == 'input' for chip in result['chips'])
     if live:
         assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
     else:
@@ -2991,6 +3008,7 @@ def test_unresolved_mail_alias_opens_recorded_source_instead_of_a_guessed_provid
 
 
 APPROVAL_DOM = r'''
+let todaySent = null;  // the reply Today just sent; approvalUndoBar leaves its undo to Today's row
 class ApprovalNode {
   constructor(tag, attrs = {}, children = []) {
     this.tagName = tag; Object.assign(this, attrs); this.children = []; this.listeners = {};
@@ -3263,30 +3281,11 @@ def test_a_queued_task_card_says_why_it_waits():
         assert not any(child.get('class') == 'task-controls' for child in card['children'])
 
 
-@pytest.mark.parametrize('language', ['en', 'zh'])
-def test_a_held_task_card_says_it_is_recorded_and_offers_only_undo(language):
-    """D-60, 2026-11-07: never ask the owner to copy a prompt or a command."""
+def test_no_task_card_says_this_version_does_not_run_it():
+    # D-100: tasks run. The rc62 "held" state, its copy and its Copy-the-prompt button are gone.
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
-    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js('UI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + functions + r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
-        appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
-      const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
-      const REM = {live: true, today_queue: [{key: 'fern', outcome: {kind: 'task', task:
-        {id: 'a', result: 'held', prompt: 'Prepare the Fernhill onboarding notes.'}}}]};
-      const card = taskResult({key: 'fern'});
-      const controls = card.children.find(child => child.class === 'task-controls');
-      console.log(JSON.stringify({status: card.children[0].text, buttons: controls.children.map(child => child.text), card}));
-    ''')
-    if language == 'zh':
-        assert result['status'] == 'REM 已记下这件事；为了安全，本版本暂不自动去做'
-        assert result['buttons'] == ['撤销']
-    else:
-        assert result['status'] == 'Recorded. For safety this version does not run it yet'
-        assert result['buttons'] == ['Undo']
-    text = json.dumps(result['card'], ensure_ascii=False)
-    assert 'Codex' not in text and 'Prepare the Fernhill' not in text and 'Stop' not in text
+    assert 'this version does not run it' not in page and '本版本暂不自动去做' not in page
+    assert 'task.result === "held"' not in page
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])

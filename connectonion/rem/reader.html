@@ -2082,6 +2082,89 @@
   .card-acts .btn-line:hover { border-color: var(--ink); }
   .card-acts .btn-quiet { min-height: 0; padding: 0; font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .card-acts .draft-now { display: inline-flex; align-items: center; gap: 12px; }
+  /* Today as a fuse (D-108). The poster: the count at the display size, its words and the most urgent
+     person beside it at the head size; the date and the quiet links sit on one kicker line above. */
+  .brief-header { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr auto; column-gap: var(--u4); margin-bottom: var(--u4); }
+  .brief-header > * { grid-column: 1 / -1; }
+  .brief-header .kicker { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
+  .brief-header .kicker .waiting-more { margin-left: auto; }
+  .brief-header .kicker .waiting-more, .brief-header .kicker .waiting-more a, .brief-header .kicker #approve-all { font-size: var(--s-meta); line-height: var(--lh-body); }
+  .brief-header .kicker .approval-header { margin: 0; }
+  .brief-header h1.poster { display: contents; }
+  .brief-header .poster .count { grid-column: 1; grid-row: 2 / 4; align-self: end; margin: var(--u3) 0 0; font-weight: var(--w-bold); font-size: var(--s-display);
+    line-height: var(--lh-tight); letter-spacing: var(--track-display); font-variant-numeric: tabular-nums; animation: today-rise var(--t-draw) var(--ease-out) both; }
+  .brief-header .poster .count.ticked { animation: count-tick var(--t-state) var(--ease-out) both; }
+  .brief-header .poster .words { grid-column: 2; grid-row: 2; align-self: end; font-weight: var(--w-bold); font-size: var(--s-head); line-height: var(--lh-tight); letter-spacing: 0; }
+  .brief-header .poster ~ .lede { grid-column: 2; grid-row: 3; align-self: end; margin: var(--u1) 0 var(--u2); font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
+  #main:has(.first-map) .brief-header .poster .count { font-size: var(--s-head); letter-spacing: 0; }
+  @keyframes count-tick { from { opacity: 0; transform: translateY(-0.25em); } }
+
+  /* The fuse: a lane per person, ending at the heavy line that is today. Ink = time that passed
+     fairly, red = time past due. A sent reply burns its lane out before the page redraws. */
+  .fuse { max-width: 760px; margin: 0 0 var(--u5); font-family: var(--font); }
+  .fuse ol { list-style: none; margin: 0; padding: 0; }
+  .fuse .lane, .fuse .axis { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 7.5rem; align-items: center; column-gap: var(--u3); }
+  .fuse .lane { min-height: 32px; transition: opacity var(--t-state) var(--ease-out); }
+  .fuse .lane .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); text-decoration: none; }
+  .fuse .lane.current .who { color: var(--ink); font-weight: var(--w-bold); }
+  .fuse .late { text-align: right; white-space: nowrap; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--red); }
+  .fuse .late.ok { font-weight: var(--w-regular); color: var(--grey); }
+  .fuse .track { position: relative; height: var(--u3); }
+  .fuse .track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: var(--hair) solid var(--rule); }
+  .fuse .now { position: absolute; right: 0; top: calc(-1 * var(--u2)); bottom: calc(-1 * var(--u2)); border-right: var(--rule-heavy) solid var(--ink); }
+  .fuse .seg { position: absolute; top: 50%; right: 0; transform: translateY(-50%); transform-origin: right; animation: fuse-draw var(--t-draw) var(--ease-out) both; transition: transform var(--t-state) var(--ease-out); }
+  .fuse .seg.burn { height: var(--fuse); background: var(--red); }
+  .fuse .seg.wait { height: var(--rule-heavy); background: var(--ink); }
+  .fuse .lane.done { opacity: 0; }
+  .fuse .lane.done .seg { transform: translateY(-50%) scaleX(0); }
+  .fuse .axis { margin-top: var(--u2); font-size: var(--s-meta); color: var(--grey); }
+  .fuse .scale { position: relative; height: 1.6em; }
+  .fuse .scale span { position: absolute; white-space: nowrap; }
+  .fuse .scale .l { left: 0; }
+  .fuse .scale .m { left: 50%; transform: translateX(-50%); }
+  .fuse .scale .r { right: 0; color: var(--ink); font-weight: var(--w-bold); }
+  .fuse .sketch { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
+  @keyframes fuse-draw { from { transform: translateY(-50%) scaleX(0); } }
+
+  /* The draft, open in place: To, CC, Subject; REM's question as a row of choices; Send stays in reach. */
+  .owner-slot.choose { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u2) var(--u4); margin: var(--u2) 0; padding: var(--u2) 0; border: 0;
+    border-top: var(--hair) dashed var(--pencil); border-bottom: var(--hair) dashed var(--pencil); background: none; white-space: normal; }
+  .owner-slot.choose .k { color: var(--grey); }
+  .owner-slot.choose button { min-height: 32px; padding: 0 0 var(--u1); border: 0; border-bottom: var(--rule-heavy) solid var(--rule); background: none; color: var(--ink); font: inherit; cursor: pointer; transition: border-color var(--t-press) var(--ease-out); }
+  .owner-slot.choose button:hover, .owner-slot.choose button[aria-pressed="true"] { border-bottom-color: var(--ink); }
+  .owner-slot.choose button[aria-pressed="true"] { font-weight: var(--w-bold); }
+  .owner-slot.choose input { flex: 1 1 12em; min-width: 0; padding: var(--u1) 0; border: 0; border-bottom: var(--rule-heavy) solid var(--rule); background: none; color: var(--ink); font: inherit; }
+  .owner-slot.choose input:focus { outline: 0; border-bottom-color: var(--ink); }
+  /* overflow: clip, not hidden: a hidden overflow is a scroll box, and Send could not stick to the screen. */
+  .qcard.open .mailcard { overflow: clip; }
+  .qcard.open .mail-actions { position: sticky; bottom: var(--u4); z-index: 2; }
+  .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
+  .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
+  .qsent .meta { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
+  .qsent .btn-quiet { min-height: 0; font-size: var(--s-meta); }
+
+  /* 交给 Codex / 交给 Claude: two quiet text buttons on every pending row, never green. */
+  .handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); margin-top: var(--u2); }
+  .handoff .btn-quiet { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .handoff .btn-quiet:hover:not(:disabled) { color: var(--ink); text-decoration-color: var(--ink); }
+  .handoff .btn-quiet:disabled { cursor: default; text-decoration: none; }
+  .handoff-status, .handed { font-size: var(--s-meta); color: var(--grey); }
+  .handed { margin: var(--u2) 0 0; color: var(--ink); font-weight: var(--w-bold); }
+  .handoff-status:empty { display: none; }
+  @media (max-width: 720px) {
+    .brief-header { column-gap: var(--u3); }
+    .brief-header .poster ~ .lede { font-size: var(--s-body); line-height: var(--lh-body); }
+    .fuse .lane, .fuse .axis { grid-template-columns: 7.5rem minmax(0, 1fr) 6rem; column-gap: var(--u2); }
+    .fuse .scale .m { display: none; }
+    /* On a phone the open draft's Send is a bar pinned above the bottom edge, however far down the draft starts. */
+    .today-threads > .qcard.open:first-child .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
+    #main:has(.today-threads > .qcard.open:first-child .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
+    .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
+    /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
+    .qcard.open .mail-actions { flex-wrap: nowrap; }
+    .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
+    .handoff .btn-quiet { min-height: 44px; }
+  }
   @keyframes today-rise { from { opacity: 0; transform: translateY(14px); } }
   @keyframes today-slide { from { opacity: 0; transform: translateX(12px); } }
   @media (max-width: 720px) {
@@ -2116,7 +2199,7 @@
     .palette li[role="option"] { min-height: 44px; align-items: center; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .brief-header h1, .brief-header .lede, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
+    .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
     .today-brief .qcard, .qitem { transition: none; }
   }
 </style>
@@ -2778,7 +2861,6 @@ const UI = {
     "Could not refresh. Try again.": "未能刷新，请重试。",
     "REM started this": "REM 自己开始的",
     "Queued: later tonight": "排队：今晚稍后",
-    "Recorded. For safety this version does not run it yet": "REM 已记下这件事；为了安全，本版本暂不自动去做",
     "Queued: budget used up": "排队：预算用完",
     "Open the deliverable": "打开交付物",
     "Stop": "停止",
@@ -2811,7 +2893,6 @@ const UI = {
     "You replied on {since}: “{promise}” — the promise is still open.": "你 {since} 回复过：“{promise}”——但这件事还没了结。",
     "message text unavailable": "消息正文未存档",
     "Fill the marked part first": "先填好标出的部分",
-    "Fill in": "需要你填",
     "Open in the live reader": "在实时阅读器里打开", "Draft in the live reader": "在实时阅读器里起草",
     "date not agreed": "日期未约定",
     "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start.": "上次定时任务未完成：{evidence} · 处理阻塞后运行 co rem start。",
@@ -2882,6 +2963,27 @@ const UI = {
     "{n} people are waiting on you.": "{n} 个人在等你。",
     "Nobody is waiting on you today.": "今天没有人在等你。",
     "Most urgent: {name}, ": "最急的是 {name}，",
+    "First in line: {name}.": "排在最前的是 {name}。",
+    "{n} items waiting on you": "{n} 件等你处理",
+    "{n} waiting on you": "{n} 件等你处理",
+    "Who is waiting, and how late": "谁在等你，晚了多久",
+    "No due date": "没有约定日期",
+    "{n} days ago": "{n} 天前",
+    "Red = days past the due date · ink starts at the oldest dated message": "红线 = 逾期天数 · 黑线从最早一封有日期的信开始",
+    "No one": "无",
+    "Type your answer": "写下你的回答",
+    "Your call": "我这边",
+    "Sent to {name}.": "已发给 {name}。",
+    "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
+    "It went out now and cannot be undone.": "已直接发出，无法撤回。",
+    "Hand to {agent}": "交给 {agent}",
+    "Handing to {agent}…": "正在交给 {agent}…",
+    "Handed to {agent} · in progress": "已交给 {agent} · 进行中",
+    "{agent} ran this": "由 {agent} 完成",
+    "Only the live reader can hand work to an agent.": "只有实时阅读器能把事交给智能体。",
+    "REM did not recognise this item. Reload the page and try again.": "REM 认不出这件事。请刷新页面再试。",
+    "Could not hand this to {agent}: {error}": "没能交给 {agent}：{error}",
+    "Could not reach REM. Check the connection and try again.": "连不上 REM。请检查连接后再试。",
     "Questions & connections →": "问题与关联 →",
     "Review the reply to {name}": "看给 {name} 的回信",
     "Approve": "批准",
@@ -2913,7 +3015,7 @@ const UI = {
     "Find": "查找",
     "Overnight": "昨夜",
     "REM drafted: ": "REM 已起草：",
-    "What REM did overnight": "昨夜 REM 替你做了", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
+    "What REM did overnight": "昨夜 REM 替你做了", "Replied to 1 person for you": "替你回了 1 个人", "Replied to {n} people for you": "替你回了 {n} 个人", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
     "Prepared 1 task": "准备好 1 件任务", "Prepared {n} tasks": "准备好 {n} 件任务", "1 thing needs no reply": "1 件不用回", "{n} things need no reply": "{n} 件不用回",
     "1 thing was already handled": "1 件已经办完", "{n} things were already handled": "{n} 件已经办完",
     "Could not draft for 1 person": "有 1 个人没能起草", "Could not draft for {n} people": "有 {n} 个人没能起草",
@@ -3499,7 +3601,6 @@ const UI = {
     "{n} people you write to have no page yet": "你写信的对象中，{n} 位尚无页面",
     "The pass may have refreshed pages; that alone is not a new memory.": "本次可能更新了页面措辞，这不代表新增了记忆。",
     "No supported open loop is in this snapshot.": "此快照中没有来源支持的未完成事项。",
-    "{n} waiting on you": "{n} 件等你处理",
     "{n} on someone else": "{n} 件等对方处理",
     "{n} other open context": "{n} 项其他未结背景",
     ". Newest and due first.": "。最新与即将到期的事项在前。",
@@ -4894,12 +4995,37 @@ function draftNote(draft, entry) {
 }
 // A reply is shown as the mail it will become: who it goes to, the subject, the
 // words, and beside them the owner's-language reading. One button sends it.
+// REM's owner slot, 【需要你：<what> — <by when>】, becomes a row to choose from. The options are
+// the slot's own words, split only where REM wrote alternatives ("邮件附件 / 共享文件夹", "A 还是 B");
+// the part after the dash is a date and is never split. One option means a field to type into.
+function slotChoices(part, fills, i, onChange) {
+  const what = part.replace(/^[\[［【]|[\]］】]$/g, "").replace(/^需要你[:：]\s*/, "").split(/\s+—\s+/)[0];
+  const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
+  const label = choices.length > 1 ? t("Your call") : what;
+  const row = el("span", { class: "owner-slot choose", role: "group", "aria-label": label }, [el("span", { class: "k", text: label + (uiLanguage === "zh" ? "：" : ": ") })]);
+  if (choices.length > 1) for (const choice of choices) {
+    const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
+    button.onclick = () => {
+      fills[i] = choice;
+      for (const other of row.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === button));
+      onChange();
+    };
+    row.appendChild(button);
+  } else {
+    const input = el("input", { type: "text", "aria-label": what, placeholder: t("Type your answer") });
+    input.oninput = () => { fills[i] = input.value.trim() || undefined; onChange(); };
+    row.appendChild(input);
+  }
+  return row;
+}
 function replyDraftCard(draft, onSent) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
+  const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
+    ? parts.map((part, i) => fills[i] ?? part).join("") : null;
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
-  const edit = el("button", { type: "button", class: "btn-quiet", text: t("Edit in {provider}", { provider }) });
+  const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip") });
   const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
@@ -4915,14 +5041,14 @@ function replyDraftCard(draft, onSent) {
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
         who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }), el("span", { class: "addr", text: " <" + to.address + ">" })])]),
-      draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
+      el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v" + (draft.cc ? "" : " addr"), text: draft.cc || t("No one") })]),
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]
       : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
           el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
     el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
       el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
-        parts.length > 1 ? parts.map(part =>
-          /^(?:\[|［|【)/.test(part) ? el("mark", {class: "owner-slot", text: t("Fill in") + " · " + part}) : part) : []),
+        parts.length > 1 ? parts.map((part, i) =>
+          /^(?:\[|［|【)/.test(part) ? slotChoices(part, fills, i, () => { status.textContent = ""; }) : part) : []),
       draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist })]) : null]),
     draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null,
     actions, status]);
@@ -4959,11 +5085,32 @@ function replyDraftCard(draft, onSent) {
     if (next === "sent") onSent?.();
   };
   const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); status.textContent = t("Could not update draft. Check the connection and try again."); });
-  send.onclick = () => {
-    if (/[\[\]［］【】]/.test(draft.body)) {status.textContent = t("Fill the marked part first"); return;}
-    run("send");
+  // Send is the approval: the reply waits 10 minutes with Undo (D-101). Without an approval
+  // outcome for this draft the Host sends at once, and the note after it says it cannot be undone.
+  const deliver = async body => {
+    const item = (REM.approval_outcomes || []).find(item => item.kind === "reply" && item.draft_id === draft.id);
+    if (!item) return run("send", body);
+    busy(true);
+    status.textContent = t("Working…");
+    const reply = await approvalRequest({ ids: [item.id], bodies: body ? { [item.id]: body } : {} }).catch(error => ({ error: error.message }));
+    const value = (reply.results || []).find(value => value.id === item.id);
+    busy(false);
+    if (reply.error || !value || value.status === "error") { status.textContent = reply.error || (value ? approvalStatus(value) : t("Could not update draft")); return; }
+    REM.approval_outcomes = (REM.approval_outcomes || []).filter(other => other.id !== item.id);
+    REM.approval_pending = [...(REM.approval_pending || []).filter(other => other.id !== item.id), { ...item, ...value }];
+    REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: value.status } : d);
+    card.replaceChildren(el("p", { class: "mail-done", text: t("Sent to {name}", { name: who?.title || to.name }) }));
+    onSent?.(value.status === "held" ? { ids: [item.id], release_at: value.release_at || reply.release_at } : null);
   };
-  write.onclick = () => openWriter(draft, who, body => run("send", body));
+  send.onclick = () => {
+    const body = filled();
+    if (body === null) {status.textContent = t("Fill the marked part first"); return;}
+    deliver(body === draft.body ? undefined : body);
+  };
+  write.onclick = () => {
+    const base = filled() ?? draft.body;
+    openWriter({ ...draft, body: base }, who, body => deliver(body ?? (base === draft.body ? undefined : base)));
+  };
   edit.onclick = () => run("open");
   skip.onclick = () => {
     const entries = threadEntries().filter(entry => obligationEvidence(entry).ids.has("thread:" + draft.provider + ":" + draft.thread));
@@ -5825,6 +5972,10 @@ function nightDone() {
     const n = kind === "prepared" || kind === "could_not_prepare" ? records.length : outcomes.filter(o => o.kind === kind).length;
     return n ? el("li", { "data-kind": kind }, [el("b", { text: t(n === 1 ? one : many, { n }) }), nightNames(records)]) : null;
   }).filter(Boolean);
+  // Replies REM sent itself after the 10-minute hold (direct send), named first.
+  const sent = [...new Set((REM.sent_by_rem || []).map(row => row.title).filter(Boolean))];
+  if (sent.length) rows.unshift(el("li", { "data-kind": "sent" }, [el("b", { text: t(sent.length === 1 ? "Replied to 1 person for you" : "Replied to {n} people for you", { n: sent.length }) }),
+    el("span", { class: "who", text: sent.join(uiLanguage === "zh" ? "、" : ", ") })]));
   if (!rows.length) return null;
   return el("section", { class: "night-done", "aria-label": t("What REM did overnight") }, [el("h2", { text: t("What REM did overnight") }), el("ul", {}, rows)]);
 }
@@ -5912,7 +6063,7 @@ function taskResult(entry) {
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
   const task = row?.outcome?.kind === "task" ? row.outcome.task : null;
   if (!task || (!task.result && !REM.live)) return null;
-  const labels = {ready: "Awaiting approval", held: "Recorded. For safety this version does not run it yet", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
+  const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", queued: "Awaiting Host", starting: "Starting", running: "Running", completed: "Completed", failed: "Task failed", "timed-out": "Task timed out", stopped: "Task stopped"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
@@ -5953,7 +6104,6 @@ function taskControls(task) {
     return button;
   };
   const file = task.result === "completed" && task.deliverable;
-  if (task.result === "held") return el("div", {class: "task-controls"}, [live ? act("undo", "Undo") : null]);
   return el("div", {class: "task-controls"}, [
     task.by === "rem" ? el("span", {class: "quiet-line", text: t("REM started this")}) : null,
     file ? el("a", {href: "file://" + task.deliverable.split("/").map(encodeURIComponent).join("/"), text: t("Open the deliverable")}) : null,
@@ -5973,6 +6123,8 @@ function personGroups(entries) {
   return [...groups.values()];
 }
 function todayGroups(entries) {
+  // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
+  entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status));
   const today = todayEntries(entries), shown = new Set(today.slice(0, 5).map(doneKey));
   return personGroups([...today.slice(0, 5), ...morningEntries(entries.filter(entry => !shown.has(doneKey(entry))))]);
 }
@@ -6074,13 +6226,89 @@ function cardItem(entry, many, seen = new Set()) {
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
-      alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry), own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
+      alsoOn(entry.also), own ? null : draftNote(draft, entry), handedLine(rowTask(entry)), taskResult(entry), handOff(entry),
+      own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
 }
 function cardDraft(draft, group) {
   const n = group.entries.length;
-  const sent = () => setDone(group.entries[0], true, "done", group.entries);
+  const sent = held => {
+    // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
+    if (!held && n > 1) setDone(group.entries[0], true, "done", group.entries);
+    todaySent = { name: threadWho(group.r), ...(held || {}) };
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches, selector = '[data-path="' + CSS.escape(group.r.path) + '"]';
+    document.querySelector(".qcard" + selector)?.classList.add("leaving");
+    document.querySelector(".fuse .lane" + selector)?.classList.add("done");
+    setTimeout(render, still ? 0 : 320);
+  };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, n > 1 ? sent : undefined)]);
+    replyDraftCard(draft, sent)]);
+}
+// After Send: who it went to and, while the 10-minute hold lasts, the one Undo.
+let todaySent = null, shownCount = 0;
+function sentNote() {
+  if (!todaySent) return null;
+  const held = todaySent.ids && Date.parse(todaySent.release_at) > Date.now();
+  const status = el("span", { role: "status" }), undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
+  undo.onclick = async () => {
+    undo.disabled = true;
+    const reply = await approvalRequest({ action: "undo", ids: todaySent.ids }).catch(error => ({ error: error.message }));
+    const cancelled = (reply.results || []).filter(value => value.status === "cancelled").map(value => value.id);
+    if (!cancelled.length) { status.textContent = reply.error || (reply.results || []).map(approvalStatus).join(" · "); undo.disabled = false; return; }
+    for (const item of (REM.approval_pending || []).filter(item => cancelled.includes(item.id))) {
+      REM.approval_outcomes = [...(REM.approval_outcomes || []), item];
+      if (item.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === item.draft_id ? { ...d, status: "prepared" } : d);
+    }
+    REM.approval_pending = (REM.approval_pending || []).filter(item => !cancelled.includes(item.id));
+    todaySent = null;
+    render();
+  };
+  return el("li", { class: "qsent" }, [el("p", { class: "lede", text: t("Sent to {name}.", { name: todaySent.name }) }),
+    el("p", { class: "meta" }, held ? [t("Held until {time}; you can still undo it.", { time: fmtTime(todaySent.release_at) }), " ", undo, " ", status]
+      : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
+}
+// 交给 Codex / 交给 Claude (D-100): REM starts the owed work now, with that agent and full access.
+// The row then follows the task like any other: its state, Stop and Undo, whoever runs it.
+const AGENT_NAMES = { codex: "Codex", claude: "Claude" };
+function todayRow(entry) {
+  const key = doneKey(entry);
+  return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(key));
+}
+function obligationKey(entry) { return todayRow(entry)?.keys?.[0] || doneKey(entry); }
+function rowTask(entry) { const outcome = todayRow(entry)?.outcome; return outcome?.kind === "task" ? outcome.task : null; }
+function handedLine(task) {
+  if (!task?.agent || !task.result || ["ready", "waiting"].includes(task.result)) return null;
+  const agent = AGENT_NAMES[task.agent] || task.agent;
+  return el("p", { class: "handed", text: t(["queued", "starting", "running"].includes(task.result) ? "Handed to {agent} · in progress" : "{agent} ran this", { agent }) });
+}
+function handOff(entry) {
+  if (handedLine(rowTask(entry))) return null;  // already with an agent: its state shows instead
+  const live = REM.live && location.protocol !== "file:";
+  const status = el("span", { class: "handoff-status", role: "status", text: live ? "" : t("Only the live reader can hand work to an agent.") });
+  const node = el("div", { class: "handoff" });
+  const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
+    const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t("Hand to {agent}", { agent: name }) });
+    button.disabled = !live;
+    button.onclick = async () => {
+      buttons.forEach(other => { other.disabled = true; });
+      status.textContent = t("Handing to {agent}…", { agent: name });
+      const response = await fetch("/rem/task", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run", key: obligationKey(entry), agent }) }).catch(() => null);
+      const result = response ? await response.json().catch(() => ({})) : {};
+      if (!response?.ok) {
+        buttons.forEach(other => { other.disabled = false; });
+        status.textContent = !response ? t("Could not reach REM. Check the connection and try again.")
+          : response.status === 400 ? t("REM did not recognise this item. Reload the page and try again.")
+          : t("Could not hand this to {agent}: {error}", { agent: name, error: result.error || response.status });
+        return;
+      }
+      const task = { ...result, agent: result.agent || agent }, row = todayRow(entry);
+      if (row) row.outcome = { ...(row.outcome || {}), kind: "task", task };
+      node.replaceChildren(...[handedLine(task), taskControls(task)].filter(Boolean));
+    };
+    return button;
+  });
+  node.append(...buttons, status);
+  return node;
 }
 // The first card is open and carries the page's one green action; the others
 // show who and what, and reveal their action on hover, focus or tap.
@@ -6154,8 +6382,13 @@ function taskView(kind) {
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
     const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
+    const rowFor = row => {
+      const node = threadRow(row.r, row.t, true, row.also, true);
+      if (dir === "mine") node.firstElementChild.append(...[handedLine(rowTask(row)), handOff(row)].filter(Boolean));
+      return node;
+    };
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true, row.also, true)))]));
+      el("ul", { class: "threads" }, items.map(rowFor))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);
@@ -6200,7 +6433,8 @@ function connectionReview() {
 function waitingMore(counts) {
   if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: t("Nothing is open between you and anyone right now.") });
   // Only nonzero counts: "0 waiting on you" reads as a task.
-  const parts = [counts.mine ? t("{n} waiting on you", { n: counts.mine }) : "", counts.theirs ? t("{n} on others", { n: counts.theirs }) : ""];
+  // Items, not people: the headline counts people, and one number says one thing (TOP10 #9).
+  const parts = [counts.mine ? t("{n} items waiting on you", { n: counts.mine }) : "", counts.theirs ? t("{n} on others", { n: counts.theirs }) : ""];
   return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: parts.filter(Boolean).join(" · ") + " →" })]);
 }
 function todayEntries(entries, section = "today") {
@@ -6212,9 +6446,35 @@ function todayEntries(entries, section = "today") {
 }
 
 function todayCards(groups) {
-  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length
-    ? el("ol", { class: "today-threads" }, groups.map((group, i) => personCard(group, i === 0)))
+  const sent = sentNote();
+  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length || sent
+    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0))])
     : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
+}
+// The fuse: one lane per person waiting. Ink runs from their oldest dated message to the due
+// date, red from the due date to today, so red is exactly the days overdue. No due date, no red,
+// and the label says so; no dated message, no ink. The lanes are the headline's people, in order.
+function fuseLanes(groups, current) {
+  if (!groups.length) return null;
+  const rows = groups.map(group => {
+    const items = group.entries.map(entry => entry.t);
+    const late = Math.max(0, ...items.map(overdueDays));
+    const age = Math.max(late, ...items.map(item => item.since ? daysSince(item.since) || 0 : 0));
+    return { group, late, age, due: items.map(item => item.due).filter(Boolean).sort()[0] };
+  });
+  const span = Math.max(7, ...rows.map(row => row.age)), at = days => (days / span * 100).toFixed(2) + "%";
+  const lane = ({ group, late, age, due }) => el("li", { class: "lane" + (group.r.path === current ? " current" : ""), "data-path": group.r.path }, [
+    el("a", { class: "who", href: href(group.r), text: threadWho(group.r) }),
+    el("span", { class: "track", "aria-hidden": "true" }, [
+      age > late ? el("i", { class: "seg wait", style: "right: " + at(late) + "; width: " + at(age - late) }) : null,
+      late ? el("i", { class: "seg burn", style: "width: " + at(late) }) : null, el("i", { class: "now" })]),
+    el("span", { class: "late" + (late ? "" : " ok"), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late })
+      : due ? t("due ") + threadDate(due) : t("No due date") })]);
+  return el("section", { class: "fuse", "aria-label": t("Who is waiting, and how late") }, [el("ol", {}, rows.map(lane)),
+    el("div", { class: "axis", "aria-hidden": "true" }, [el("span"), el("span", { class: "scale" }, [
+      el("span", { class: "l", text: t("{n} days ago", { n: span }) }), el("span", { class: "m", text: t("{n} days ago", { n: Math.round(span / 2) }) }),
+      el("span", { class: "r", text: t("Today") })]), el("span")]),
+    el("p", { class: "sketch", text: t("Red = days past the due date · ink starts at the oldest dated message") })]);
 }
 async function approvalRequest(payload) {
   const response = await fetch("/rem/approve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
@@ -6332,7 +6592,7 @@ function approvalUndoBar() {
   clearInterval(approvalTimer);
   document.getElementById("approval-undo")?.remove();
   if (!REM.live) return;
-  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now());
+  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now() && !todaySent?.ids?.includes(item.id));
   if (!held.length) return;
   const status = el("span", {role: "status"});
   let undoFailure = "";
@@ -6369,16 +6629,20 @@ function approvalUndoBar() {
 
 // The page's one statement is a fact with a number: how many people wait on you.
 // The lede names the most overdue of them; red marks only the days late.
-function briefHeader(counts, groups) {
+function briefHeader(counts, groups, approval = null) {
   const day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
   const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
   const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
   const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
   const n = groups.length;
-  const header = el("header", { class: "brief-header" }, [el("div", { class: "eyebrow", text:
-    uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }),
-    el("h1", { text: n ? t(n === 1 ? "1 person is waiting on you." : "{n} people are waiting on you.", { n }) : t("Nobody is waiting on you today.") }),
-    urgentLede(groups, day), waitingMore(counts)]);
+  const sentence = n ? t(n === 1 ? "1 person is waiting on you." : "{n} people are waiting on you.", { n }) : t("Nobody is waiting on you today.");
+  // The poster: the count at the display size, its words beside it at the head size.
+  const at = n ? sentence.indexOf(String(n)) : -1;
+  const h1 = at < 0 ? el("h1", { text: sentence }) : el("h1", { class: "poster" }, [sentence.slice(0, at).trim() || null,
+    el("span", { class: "count", text: String(n) }), " ", el("span", { class: "words", text: sentence.slice(at + String(n).length).trim() })]);
+  const header = el("header", { class: "brief-header" }, [el("div", { class: "kicker" }, [el("div", { class: "eyebrow", text:
+    uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }), waitingMore(counts), approval]),
+    h1, urgentLede(groups, day)]);
   if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: t(REM.status.schedule_failure.code === "blocked"
     ? "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start."
     : "Last scheduled turn did not finish: {evidence} · Retried automatically.", REM.status.schedule_failure) }));
@@ -6387,7 +6651,8 @@ function briefHeader(counts, groups) {
 function urgentLede(groups, day) {
   const late = groups.flatMap(group => group.entries.filter(entry => entry.t.due && entry.t.due < day).map(entry => ({ r: group.r, due: entry.t.due })))
     .sort((a, b) => a.due.localeCompare(b.due))[0];
-  if (!late) return null;
+  // Nothing overdue: Python's first is still the most urgent, named without inventing a lateness.
+  if (!late) return groups.length ? el("p", { class: "lede", text: t("First in line: {name}.", { name: threadWho(groups[0].r) }) }) : null;
   const days = Math.round((new Date(day + "T00:00:00Z") - new Date(late.due + "T00:00:00Z")) / 86400000);
   return el("p", { class: "lede" }, [t("Most urgent: {name}, ", { name: threadWho(late.r) }),
     el("b", { class: "late", text: t(days === 1 ? "1 day overdue" : "{n} days overdue", { n: days }) }), uiLanguage === "zh" ? "。" : "."]);
@@ -6433,13 +6698,18 @@ function overview() {
   const main = document.getElementById("main");
   main.textContent = "";
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
-  const header = briefHeader(counts, groups);
-  header.appendChild(approvalHeader());
-  main.append(header);
+  const header = briefHeader(counts, groups, approvalHeader());
   approvalUndoBar();
   // Who needs you on the left; on a wide screen, what REM did for you sits beside it, front-page style.
   // Narrow, one column in one order: who needs you, what REM did, what changed, what is worth remembering.
-  const primary = el("div", { class: "morning-primary" }, [firstMapBrief(), todayCards(groups)]);
+  // The count ticks down when a send took someone off it.
+  if (groups.length < shownCount) header.querySelector(".count")?.classList.add("ticked");
+  shownCount = groups.length;
+  // The lanes keep Python's urgency order. The cards lead with the first reply REM has ready, so its
+  // Send is on the first screen; everyone else keeps their place, and that person's lane is the bold one.
+  const ready = groups.findIndex(group => groupStep(group.entries).step === "send"), cards = [...groups];
+  if (ready > 0) cards.unshift(...cards.splice(ready, 1));
+  const primary = el("div", { class: "morning-primary" }, [header, firstMapBrief(), fuseLanes(groups, cards[0]?.r.path), todayCards(cards)]);
   const aside = el("div", { class: "morning-aside" }, [nightDone(), morningBrief(), recallPrompt(), connectionReview()].filter(Boolean));
   main.appendChild(el("div", { class: "morning-layout" }, [primary, aside, quietThreads(entries, counts.quiet, true)]));
 

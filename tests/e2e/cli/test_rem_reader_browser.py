@@ -537,7 +537,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             if 'open' not in card.get_attribute('class').split():
                 card.locator('.qage').click()
         assert letter.locator('.owner-slot').count() == 1
-        assert ('需要你填' if language == 'zh' else 'Fill in') in letter.locator('.owner-slot').inner_text()
+        # Build 3b: the "需要你填" box became a row to answer in, named by what REM needs.
+        assert letter.locator('.owner-slot').get_attribute('role') == 'group'
+        assert '演示反馈' in letter.locator('.owner-slot').inner_text()
         assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
         display_date = page.evaluate("fmtDate('2026-11-07')", isolated_context=False)
         assert display_date in task.locator('.draft-reason').inner_text()
@@ -587,7 +589,10 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             # dialog.close() dispatches its removal through the close event.
             dialog.wait_for(state='detached')
             assert not dialog.count()
-            assert page.evaluate('draftRequests[0].body', isolated_context=False) == 'The demo is ready for release.'
+            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the edited text
+            # travels with the approval when the Host lists one for this draft, else with the direct send.
+            request = page.evaluate('draftRequests[0]', isolated_context=False)
+            assert (request.get('body') or next(iter(request.get('bodies', {}).values()), None)) == 'The demo is ready for release.'
             open_card(queued)
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
             assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
