@@ -131,6 +131,10 @@ async def _action(scope, receive, send, root, headers):
                 or not isinstance(body.get("response", ""), str)):
             await _reply(send, 400, json.dumps({"error": "Expected the review id and verdict yes, no or answer"}), "application/json")
             return
+        # An id the notebook no longer holds is its own answer, not "already decided".
+        if not any(row["id"] == body["id"] for row in await asyncio.to_thread(reviews.listing, root)):
+            await _reply(send, 404, json.dumps({"error": "No such review"}), "application/json")
+            return
         operation = lambda: reviews.decide(root, body["id"], body["verdict"], author="owner", response=body.get("response", ""))
     elif scope["path"] == "/rem/talk":
         operation = _talk(root, body)

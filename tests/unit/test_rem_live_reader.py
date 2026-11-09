@@ -561,6 +561,13 @@ def test_a_review_without_an_id_or_with_a_verdict_decide_refuses_is_a_400(host, 
     assert reviews.listing(host.root)[0]["status"] == "pending"
 
 
+def test_an_unknown_review_is_a_404_not_already_decided(host):
+    _review(host.root)
+    body = json.dumps({"id": "f" * 32, "verdict": "yes"}).encode()
+    status, _, text = call(host.routes, "POST", "/rem/review", cookie=f"co_rem={host.token}", body=body)
+    assert status == 404 and "already been decided" not in json.loads(text)["error"]
+
+
 def test_a_long_answer_is_recorded_whole(host):
     from connectonion.rem import reviews
     row = _review(host.root, kind="question")

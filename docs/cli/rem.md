@@ -866,7 +866,9 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   `reviews.decide(..., author="owner")` and returns the updated review; the row
   then says **Recorded: Yes** in place, and the page rebuilds at once. A verdict
   `decide` does not accept, or a missing id, is a 400; a review already decided
-  is a 409, said on the row as *Someone already decided this one*. **Not sure**
+  is a 409, said on the row as *Someone already decided this one*, and an id the
+  notebook no longer holds is a 404 (*This one is no longer here*). A decided
+  review names you as **You** (你), not by the stored author `owner`. **Not sure**
   posts nothing, so the review stays pending and **Change my mind** brings the
   choice back. These are quiet buttons, not green. A snapshot shows no buttons
   and no command, only *This is a snapshot; decide these on the live page*.

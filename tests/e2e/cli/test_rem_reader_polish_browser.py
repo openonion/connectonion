@@ -119,7 +119,16 @@ def test_a_question_takes_the_owners_answer_and_not_sure_posts_nothing(reader):
     assert "The innovation fund." in box.inner_text()
 
 
-@pytest.mark.parametrize("status, words", [(409, "这条已经有人判断过了，刷新看看。"), (401, "登录过期，刷新页面。"),
+@pytest.mark.parametrize("language, line", [("zh", "你：The innovation fund."), ("en", "You: The innovation fund.")])
+def test_a_decided_review_names_the_owner_in_the_readers_language(reader, language, line):
+    page, _, _ = reader
+    page.evaluate(REVIEWS.replace("render();\n}", "REM.reviews[1] = {...REM.reviews[1], status: 'answered', author: 'owner', response: 'The innovation fund.'}; render();\n}"),
+                  [False, language], isolated_context=False)
+    response = page.locator(".review .response")
+    assert response.inner_text() == line and "owner" not in response.inner_text()
+
+
+@pytest.mark.parametrize("status, words", [(409, "这条已经有人判断过了，刷新看看。"), (404, "这条已经不在了，刷新一下。"), (401, "登录过期，刷新页面。"),
                                            (400, "这条判断没能记下，刷新后再试。"), (500, "REM 暂时没回应，过会儿再试。")])
 def test_a_refused_decision_is_said_in_plain_words(reader, status, words):
     page, _, answers = reader
@@ -209,6 +218,7 @@ def test_the_translation_mark_is_small_and_sits_in_the_crumb(reader, path, crumb
     assert marks.count() == 1
     mark = marks.first
     assert mark.inner_text() == "翻译中"
+    assert mark.get_attribute("role") is None                       # not announced again on every render
     assert mark.evaluate("(n, crumb) => !!n.closest(crumb)", crumb)
     meta = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
     assert mark.evaluate("n => getComputedStyle(n).fontSize") == meta

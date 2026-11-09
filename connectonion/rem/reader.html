@@ -3743,6 +3743,7 @@ const UI = {
     "Your answer is recorded: {answer}": "已记下你的回答：{answer}",
     "Someone already decided this one. Reload to see it.": "这条已经有人判断过了，刷新看看。",
     "REM could not record that. Reload and try again.": "这条判断没能记下，刷新后再试。",
+    "This one is no longer here. Reload the page.": "这条已经不在了，刷新一下。", "{who}: {text}": "{who}：{text}",
     "No review candidates yet. No new connection is better than an invented one.": "暂无待审核建议；没有可靠线索时不推测关联。",
     "Translating with co ai… this takes a minute or two.": "正在用 co ai 翻译…约需一两分钟。",
     "Not translated: ": "未能翻译：",
@@ -6008,7 +6009,7 @@ function memoryConnection(records) {
 // for it, else 翻译待处理. Meta size, grey, beside the crumb; never a line of its own above the name.
 function translationMark(r) {
   if (uiLanguage === "en" || r.translations?.[uiLanguage]) return null;
-  return translationQueued(r) ? el("span", { class: "lang-status", role: "status", text: t("Translating") }) : originalMark(true);
+  return translationQueued(r) ? el("span", { class: "lang-status", text: t("Translating") }) : originalMark(true);
 }
 function originalMark(pending = false) {
   return el("span", { class: "lang-status", text: t(pending ? "Translation pending" : "Original"), title: t(pending ? REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off" : "No Chinese translation yet; showing original") });
@@ -10560,7 +10561,7 @@ function reviewPage() {
     box.appendChild(el("h2", { text: row.question }));
     box.appendChild(el("p", { class: "basis", text: t(row.status) + " · " + row.basis }));
     box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path }))));
-    if (row.response) box.appendChild(el("p", { class: "response", text: row.author + ": " + row.response }));
+    if (row.response) box.appendChild(el("p", { class: "response", text: t("{who}: {text}", { who: row.author === "owner" ? t("You") : row.author, text: row.response }) }));
     if (row.status === "pending" && REM.live) box.appendChild(reviewActions(row, box));
     main.appendChild(box);
   }
@@ -10602,7 +10603,7 @@ function reviewActions(row, box) {
 async function reviewRequest(body) {
   const response = await fetch("/rem/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   const words = !response ? "REM is not answering right now. Try again in a moment." : response.ok ? ""
-    : { 401: "Your session expired. Reload the page.", 409: "Someone already decided this one. Reload to see it.",
+    : { 401: "Your session expired. Reload the page.", 409: "Someone already decided this one. Reload to see it.", 404: "This one is no longer here. Reload the page.",
         400: "REM could not record that. Reload and try again." }[response.status] || "REM is not answering right now. Try again in a moment.";
   return words ? { error: t(words) } : response.json();
 }
