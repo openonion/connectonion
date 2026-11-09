@@ -136,6 +136,10 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     a marker, and they are deselected from the default run — so they keep the
     real HOME while every other test is isolated.
     """
+    # The REM reader saves pages outside HOME, in the temporary directory: every
+    # test, real_api too, gets its own folder (tests/real_home_guard.py fails a
+    # run that writes the owner's real one). Inherited by the detached rebuild.
+    monkeypatch.setenv("CONNECTONION_REM_CACHE", str(tmp_path_factory.mktemp("rem-cache") / "cache"))
     if request.node.get_closest_marker("real_api"):
         return
 

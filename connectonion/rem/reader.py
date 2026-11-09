@@ -486,8 +486,10 @@ class CacheRefused(OSError):
 
 
 def _cache_dir() -> Path:
-    """One private folder per user in the temporary directory, never in the notebook."""
-    path = Path(tempfile.gettempdir()) / f"co-rem-cache-{os.getuid() if os.name != 'nt' else 'user'}"
+    """One private folder per user in the temporary directory, never in the notebook.
+    CONNECTONION_REM_CACHE names another folder (each test gets its own)."""
+    path = Path(os.environ.get("CONNECTONION_REM_CACHE") or
+                Path(tempfile.gettempdir()) / f"co-rem-cache-{os.getuid() if os.name != 'nt' else 'user'}")
     path.mkdir(mode=0o700, exist_ok=True)
     info = path.lstat()
     if (path.is_symlink() or not path.is_dir()

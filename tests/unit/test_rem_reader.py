@@ -3651,7 +3651,7 @@ def test_a_refused_cache_folder_renders_now_and_says_why(tmp_path, monkeypatch):
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
-    folder = tmp_path / "tmp" / f"co-rem-cache-{os.getuid()}"
+    folder = __import__("pathlib").Path(os.environ["CONNECTONION_REM_CACHE"])
     folder.mkdir(mode=0o777)
     os.chmod(folder, 0o777)                                       # as if someone else made it
     result = reader.open_snapshot(root, launch=False)
