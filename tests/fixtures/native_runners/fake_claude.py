@@ -21,13 +21,17 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 args = sys.argv[1:]
+RECORDED_SESSION = 'bf1b715f-3272-4573-b78d-359571db650a'
+resumed = args[args.index('--resume') + 1] if '--resume' in args else None
 if '--settings' in args:
     # `co claude run` passes scoped Hooks; Claude Code fires SessionStart first.
     settings = json.loads(pathlib.Path(args[args.index('--settings') + 1]).read_text())
     hook = settings['hooks']['SessionStart'][0]['hooks'][0]
+    # A resumed run starts the session it was given, as the real `claude --resume <id>` does.
     subprocess.run([hook['command'], *hook['args']], text=True, check=True, input=json.dumps({
-        'hook_event_name': 'SessionStart', 'session_id': 'bf1b715f-3272-4573-b78d-359571db650a',
-        'transcript_path': str(pathlib.Path.cwd() / 'transcript.jsonl'), 'cwd': os.getcwd(), 'source': 'startup'}))
+        'hook_event_name': 'SessionStart', 'session_id': resumed or RECORDED_SESSION,
+        'transcript_path': str(pathlib.Path.cwd() / 'transcript.jsonl'), 'cwd': os.getcwd(),
+        'source': 'resume' if resumed else 'startup'}))
 prompt = args[args.index('--') + 1]
 if args[args.index('--permission-mode') + 1] == 'manual':
     sys.stdout.write((HERE / 'claude_stream_default_denied.jsonl').read_text())
@@ -39,4 +43,4 @@ if found:
     (deliverable.parent / 'argv.json').write_text(json.dumps(args))
     (deliverable.parent / 'cwd.txt').write_text(os.getcwd())
     deliverable.write_text('# Pilot review\nReady for owner review.\n')
-sys.stdout.write((HERE / 'claude_stream_accept_edits.jsonl').read_text())
+sys.stdout.write((HERE / 'claude_stream_accept_edits.jsonl').read_text().replace(RECORDED_SESSION, resumed or RECORDED_SESSION))

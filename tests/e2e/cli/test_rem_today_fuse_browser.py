@@ -180,13 +180,14 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     rows = page.locator(".today-brief .qitem")
     assert rows.count() >= 4
     for i in range(rows.count()):
-        names = rows.nth(i).locator(".handoff button").all_text_contents()
+        names = rows.nth(i).locator(".handoff-line button").all_text_contents()
         assert names == ["Hand to Codex", "Hand to Claude"]
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert mine.nth(i).locator(".handoff-line button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert mine.nth(i).locator(".talk-links button").all_text_contents() == ["Talk with Codex about this", "Talk with Claude about this"]
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -199,7 +200,7 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     key = page.evaluate("obligationKey(todayGroups(threadEntries().filter(e => !isDone(e)))[0].entries[0])", isolated_context=False)
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".handoff").get_by_role("button", name="交给 Claude").click()
-    card.get_by_text("已交给 Claude · 进行中").wait_for()
+    card.get_by_text("Claude 正在做").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
     assert card.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]

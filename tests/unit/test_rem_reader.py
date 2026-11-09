@@ -3238,32 +3238,55 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     ''')
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
-def test_task_controls_say_rem_started_it_and_offer_stop_or_undo():
+HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
+        'handButtons', 'handState', 'followTask', 'seeResult', 'talkLinks']
+
+
+def _hand_js(body):
     page = TEMPLATE.read_text()
-    function = re.search(r'function taskControls\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js(function + r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
-      const REM = {live: true}, location = {protocol: 'http:'};
-      const running = taskControls({id: 'a', by: 'rem', result: 'running'});
-      const done = taskControls({id: 'a', by: 'rem', result: 'completed', deliverable: '/fern hill/result.md'});
-      const failed = taskControls({id: 'a', result: 'failed', reason: 'Codex CLI not found'});
-      const ready = taskControls({id: 'a', result: 'ready'});
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
+    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];\n'
+                          + functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
+      const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {};
+      const texts = node => node.children[0].children.map(child => child.text).filter(Boolean);
+      const row = (key, task) => ({key, keys: [key], task});
+''' + body)
+
+
+def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
+    result = _hand_js(r'''
+      const REM = {live: true, today_queue: [row('run', {id: 'a', by: 'rem', agent: 'codex', result: 'running'}),
+        row('done', {id: 'b', agent: 'claude', result: 'completed'}),
+        row('fail', {id: 'c', agent: 'codex', result: 'failed', reason: 'codex CLI not found'}),
+        row('open', null)]};
+      const shown = Object.fromEntries(['run', 'done', 'fail', 'open'].map(key => [key, texts(handOff({key}))]));
       REM.live = false;
-      const snapshot = taskControls({id: 'a', by: 'rem', result: 'running'});
-      console.log(JSON.stringify({running, done, failed, ready, snapshot}));
+      shown.snapshot = texts(handOff({key: 'run'}));
+      console.log(JSON.stringify(shown));
     ''')
-    texts = lambda node: [child.get('text') for child in node['children']]
-    assert texts(result['running']) == ['REM started this', 'Stop', 'Undo']
-    assert texts(result['done']) == ['REM started this', 'Open the deliverable', 'Undo']
-    assert result['done']['children'][1]['href'] == 'file:///fern%20hill/result.md'
-    assert texts(result['failed']) == ['Undo']
-    assert result['ready'] is None
-    assert texts(result['snapshot']) == ['REM started this']
+    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Undo']
+    assert result['done'] == ['Claude finished', 'See result', 'Undo']
+    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Undo']
+    assert result['open'] == ['Hand to Codex', 'Hand to Claude']
+    assert result['snapshot'] == ['Codex is working', 'REM started this']
+
+
+def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
+    result = _hand_js(r'''
+      const REM = {live: true, today_queue: [row('done', {id: 'b', agent: 'codex', result: 'completed'})]};
+      globalThis.fetch = async (url, options) => ({ok: true, status: 200, json: async () => ({status: 'cancelled'})});
+      const node = handOff({key: 'done'});
+      node.children[0].children.find(child => child.text === 'Undo').onclick().then(() =>
+        console.log(JSON.stringify({after: texts(node), task: REM.today_queue[0].task})));
+    ''')
+    assert result == {'after': ['Hand to Codex', 'Hand to Claude'], 'task': None}
 
 
 def test_a_queued_task_card_says_why_it_waits():
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'taskControls'])
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['taskResult', 'todayRow', 'rowTask', 'handed'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
@@ -3708,9 +3731,6 @@ def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
       console.log(JSON.stringify([detailsKey({id: "people-columns", ...summary("Columns")}),
                                   detailsKey({id: "", ...summary("Review reply")})]));''')
     assert keys == ["#people-columns", "Review reply"]
-    # Task Stop and Undo wait for the render that carries them; Refresh reads in place.
-    task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
-    assert "reloadWhenRendered(" in task
     assert '"Newer page · Reload": "有更新 · 刷新"' in page
 
 
