@@ -99,12 +99,13 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         timeout: Seconds before timeout (default: 600)
         speed: "fast" selects the priority service tier; "standard" (default)
             leaves the user's configured tier unchanged
-        approval: "manual" asks the operator when Codex requests permission;
-            "auto" runs without prompts inside the selected sandbox and fails
-            closed on unexpected approval callbacks; "deny" also refuses every
-            unexpected permission request. With no frontend, or in a hosted
-            session whose requester is not an admin, manual fails closed. The
-            policy is reapplied on resume.
+        approval: "manual" asks the operator before each change Codex makes;
+            with no frontend to ask, it works inside the sandbox without
+            asking and refuses only requests to leave it. "auto" runs without
+            prompts inside the selected sandbox and fails closed on unexpected
+            approval callbacks; "deny" also refuses every unexpected
+            permission request. In a hosted session whose requester is not an
+            admin, manual fails closed. The policy is reapplied on resume.
 
     Returns:
         JSON string with provider, session_id, resumed, last_message (Codex's
@@ -185,7 +186,7 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
     turn = {}
     try:
         has_prompt = bool(prompt.strip())
-        approval_policy = "untrusted" if approval == "manual" else "never"
+        approval_policy = _approval_policy(approval, agent)
         if session_id and has_prompt:
             client = _take_open_thread(
                 session_id,
@@ -312,6 +313,22 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
     return _envelope(sid, resumed=resumed, last_message=last_message(),
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}",
                      approvals_denied=len(denied))
+
+
+def _approval_policy(approval, agent):
+    """Codex's approvalPolicy for our approval mode.
+
+    "manual" asks before every patch ("untrusted") only when someone can
+    answer: an agent with io. With nobody there each ask was refused and a
+    headless run changed nothing yet reported success (#2904), so it becomes
+    "on-request": edits and commands inside the sandbox go ahead, and only a
+    request to leave it is asked, refused and counted in approvals_denied.
+    """
+    if approval != "manual":
+        return "never"
+    if getattr(agent, "io", None) is None:
+        return "on-request"
+    return "untrusted"
 
 
 def _thread_config(cwd, sandbox, model, approval_policy, speed):
