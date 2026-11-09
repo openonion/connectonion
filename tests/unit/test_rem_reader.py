@@ -3652,6 +3652,9 @@ def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tm
 def test_details_and_page_are_published_together(tmp_path, monkeypatch):
     """A reload after an owner action must not get a new page over old details."""
     reader = _cached_reader(tmp_path, monkeypatch)
+    # No detached build: one still holding the build lock made this test's refresh a
+    # no-op, and the saved page stayed behind the new person (CI 3.11 and 3.12).
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     root = tmp_path / "rem"
     prepare(root)
     reader.cached_page(root, "live.html")
