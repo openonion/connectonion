@@ -329,3 +329,16 @@ def test_today_card_speaks_chinese_where_rem_already_wrote_it():
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {"zh": "REM 已起草：草稿回答了两个问题，未发送。", "noReply": "不用回：对方已确认，不用回。",
                                          "english": None, "secret": None, "pending": None, "none": None, "en": None}
+
+
+def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
+    """Build 3b re-review: an owner row that names nobody is dropped before the five places are counted."""
+    result = _run_reader_js(reader_functions('personGroups', 'todayGroups') + r'''
+      const REM = {owner: 'people/owner.md'};
+      const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
+      const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];
+      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null;
+      const doneKey = entry => entry.r.path + '\n' + entry.t.text;
+      console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
+    ''')
+    assert result == ['people/p1.md', 'people/p2.md', 'people/p3.md', 'people/p4.md', 'people/p5.md']

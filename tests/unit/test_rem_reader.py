@@ -1465,7 +1465,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    buttons = result['prepared']['children'][3]['children']
+    buttons = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1522,7 +1522,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
     why = gist['children'][2]
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
-    assert mail['children'][3]['children'][0]['text'] == 'Send'
+    assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
+    assert mail['children'][4]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -2910,7 +2911,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotChoices', 'replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});

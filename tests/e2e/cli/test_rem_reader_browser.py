@@ -562,8 +562,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
         open_card(letter)
         if live:
-            letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
-            assert letter.locator('.mail-status').inner_text() == ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first')
+            # Build 3b re-review: an unanswered question keeps Send disabled, with a plain hint, so nothing is sent.
+            assert letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
+            assert letter.locator('.choose-hint').inner_text() == ('先在上面选好，再发送。' if language == 'zh' else 'Choose above before sending.')
             assert page.evaluate('draftRequests.length', isolated_context=False) == 0
         else:
             # D-60 (build 3b review): Send disabled, no command anywhere on the page, one plain line says why.

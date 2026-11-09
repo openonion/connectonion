@@ -2141,9 +2141,17 @@
   .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
   /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
      screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
-  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: 6.5em; overflow: auto; overscroll-behavior: contain; }
+  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: 4.5em; overflow: auto; overscroll-behavior: contain; }
   .qcard.focal.open .mail-head .mail-row { line-height: 1.35; }
   .mail-gist .mail-why { margin: var(--u3) 0 0; padding: 0; border: 0; }
+  .mail-choices { padding: 0 var(--u3); border-top: var(--hair) solid var(--rule); background: var(--paper); }
+  .mail-choices .owner-slot.choose { margin: 0; border-top: 0; }
+  .mail-choices .owner-slot.choose + .owner-slot.choose { border-top: var(--hair) dashed var(--pencil); }
+  .slot-ref { color: var(--grey); border-bottom: var(--hair) dashed var(--pencil); }
+  .choose-hint { font-size: var(--s-meta); color: var(--grey); }
+  .choose-hint[hidden] { display: none; }
+  .fuse .lanes-more { margin: 0 0 calc(-1 * var(--u4)); font-size: var(--s-meta); line-height: var(--u4); color: var(--grey); }
+  .fuse .lanes-more.narrow, .fuse .lane.extra-wide { display: none; }
   .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
   .qcard .qkind .handoff { margin: 0; }
   .qcard .qkind .handoff .btn-quiet { min-height: 28px; }
@@ -2177,6 +2185,20 @@
     .brief-header .poster ~ .lede { font-size: var(--s-body); line-height: var(--lh-body); }
     .fuse .lane, .fuse .axis { grid-template-columns: 7.5rem minmax(0, 1fr) 6rem; column-gap: var(--u2); }
     .fuse .scale .m { display: none; }
+    .fuse .lane.extra { display: none; }
+    .fuse .lanes-more.narrow { display: block; }
+    .fuse .lanes-more.wide { display: none; }
+    .fuse .sketch { display: none; }
+    /* The first phone screen holds To, Subject, REM's question and Send: the question comes before the
+       letter, and the context line and channel switch wait behind More. */
+    .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 1; border-top: 0; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; max-height: 3.4em; }
+    .qcard.focal[data-step="send"]:not(.full) :is(.mail-why, .mail-status) { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
+    .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
+    .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
+    .qcard.focal[data-step="send"]:not(.full) .qitem .qdone { display: none; }
     /* On a phone the open draft's Send is a bar pinned above the bottom edge, however far down the draft starts. */
     .qcard.focal.open .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
     #main:has(.qcard.focal.open .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
@@ -2995,6 +3017,8 @@ const UI = {
     "No one": "无",
     "Type your answer": "写下你的回答",
     "Your call": "我这边",
+    "Choose above before sending.": "先在上面选好，再发送。",
+    "1 more person": "还有 1 人", "{n} more people": "还有 {n} 人",
     "Sent to {name}.": "已发给 {name}。",
     "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
     "It went out now and cannot be undone.": "已直接发出，无法撤回。",
@@ -5014,8 +5038,11 @@ function draftNote(draft, entry) {
 // REM's owner slot, 【需要你：<what> — <by when>】, becomes a row to choose from. The options are
 // the slot's own words, split only where REM wrote alternatives ("邮件附件 / 共享文件夹", "A 还是 B");
 // the part after the dash is a date and is never split. One option means a field to type into.
+function slotWhat(part) {
+  return part.replace(/^[\[［【]|[\]］】]$/g, "").replace(/^需要你[:：]\s*/, "").split(/\s+—\s+/)[0];
+}
 function slotChoices(part, fills, i, onChange) {
-  const what = part.replace(/^[\[［【]|[\]］】]$/g, "").replace(/^需要你[:：]\s*/, "").split(/\s+—\s+/)[0];
+  const what = slotWhat(part);
   const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
   const label = choices.length > 1 ? t("Your call") : what;
   const row = el("span", { class: "owner-slot choose", role: "group", "aria-label": label }, [el("span", { class: "k", text: label + (uiLanguage === "zh" ? "：" : ": ") })]);
@@ -5038,6 +5065,17 @@ function replyDraftCard(draft, onSent) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
     ? parts.map((part, i) => fills[i] ?? part).join("") : null;
+  // REM's questions sit above Send, outside the letter's scroll window, so the choice is never out of sight;
+  // the letter keeps a marker in their place that shows the answer once it is chosen.
+  const isSlot = part => /^(?:\[|［|【)/.test(part), markers = {};
+  const syncChoices = () => {
+    for (const [i, marker] of Object.entries(markers)) marker.textContent = fills[i] || slotWhat(parts[i]);
+    status.textContent = "";
+    if (REM.live) send.disabled = filled() === null;
+    hint.hidden = filled() !== null;
+  };
+  const choiceRows = parts.map((part, i) => isSlot(part) ? slotChoices(part, fills, i, () => syncChoices()) : null).filter(Boolean);
+  const hint = el("span", { class: "choose-hint", text: t("Choose above before sending.") });
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
@@ -5050,7 +5088,7 @@ function replyDraftCard(draft, onSent) {
     if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
     return pill;
   }));
-  const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip,
+  const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
@@ -5065,18 +5103,18 @@ function replyDraftCard(draft, onSent) {
     el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
       el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
         // The choice row is a block of its own, so the blank lines around it would only add height.
-        parts.length > 1 ? parts.map((part, i) => /^(?:\[|［|【)/.test(part) ? slotChoices(part, fills, i, () => { status.textContent = ""; })
-          : part.replace(/\n+$/, /^(?:\[|［|【)/.test(parts[i + 1] || "") ? "" : "$&").replace(/^\n+/, /^(?:\[|［|【)/.test(parts[i - 1] || "") ? "" : "$&")) : []),
+        parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
       // Why this reply sits under the owner's-language reading, beside the letter, not under it.
       draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist }), why]) : null]),
-    draft.gist ? null : why, actions, status]);
+    draft.gist ? null : why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
   if (!REM.live) {
     // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
     actions.replaceChildren(el("button", {type: "button", class: "btn-act", disabled: "", text: t("Send")}));
     channels.replaceChildren(el("span", {text: t({mail: "Mail", lark: "Lark", whatsapp: "WhatsApp"}[channel])}));
     return draft.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [card])])) : card;
   }
-  const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; };
+  const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; if (!on) syncChoices(); };
+  syncChoices();
   const act = async (action, body, channel) => {
     busy(true);
     status.textContent = t(action === "redraft" ? "Rewriting for {channel}…" : "Working…", { channel: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[channel] || "") });
@@ -6137,9 +6175,10 @@ function personGroups(entries) {
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status));
-  const today = todayEntries(entries), shown = new Set(today.slice(0, 5).map(doneKey));
-  return personGroups([...today.slice(0, 5), ...morningEntries(entries.filter(entry => !shown.has(doneKey(entry))))]
-    .map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean));
+  // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
+  const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
+  const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
+  return personGroups([...today.slice(0, 5), ...home(morningEntries(entries.filter(entry => !shown.has(doneKey(entry)))))]);
 }
 // A row on your own page is waiting on whoever it names: the person who asked or is owed. When it
 // names nobody it is your own note, and it is not a person waiting on you (build 3b review).
@@ -6499,14 +6538,18 @@ function fuseLanes(groups, current) {
     return { group, late, age, due: items.map(item => item.due).filter(Boolean).sort()[0] };
   });
   const span = Math.max(7, ...rows.map(row => row.age)), at = days => (days / span * 100).toFixed(2) + "%";
-  const lane = ({ group, late, age, due }) => el("li", { class: "lane" + (group.r.path === current ? " current" : ""), "data-path": group.r.path }, [
+  const lane = ({ group, late, age, due }, i) => el("li", { class: "lane" + (group.r.path === current ? " current" : "") + (i > 2 && group.r.path !== current ? " extra" : "") + (i > 4 && group.r.path !== current ? " extra-wide" : ""), "data-path": group.r.path }, [
     el("a", { class: "who", href: href(group.r), text: threadWho(group.r) }),
     el("span", { class: "track", "aria-hidden": "true" }, [
       age > late ? el("i", { class: "seg wait", style: "right: " + at(late) + "; width: " + at(age - late) }) : null,
       late ? el("i", { class: "seg burn", style: "width: " + at(late) }) : null, el("i", { class: "now" })]),
     el("span", { class: "late" + (late ? "" : " ok"), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late })
       : due ? t("due ") + threadDate(due) : t("No due date") })]);
+  // The most urgent lanes (five on a desk, three on a phone, always the open card's), then how many more wait.
+  const more = after => rows.filter((row, i) => i > after && row.group.r.path !== current).length;
+  const moreLine = (n, cls) => n ? el("p", { class: "lanes-more " + cls, text: t(n === 1 ? "1 more person" : "{n} more people", { n }) }) : null;
   return el("section", { class: "fuse", "aria-label": t("Who is waiting, and how late") }, [el("ol", {}, rows.map(lane)),
+    moreLine(more(4), "wide"), moreLine(more(2), "narrow"),
     el("div", { class: "axis", "aria-hidden": "true" }, [el("span"), el("span", { class: "scale" }, [
       el("span", { class: "l", text: t("{n} days ago", { n: span }) }), el("span", { class: "m", text: t("{n} days ago", { n: Math.round(span / 2) }) }),
       el("span", { class: "r", text: t("Today") })]), el("span")]),

@@ -126,11 +126,17 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
     assert send.is_visible()
     assert _box_inside(page, send, 16), (send.bounding_box(), size)
-    assert _greens(page) == ["Send"]
-    # The fill-in box is a row of choices now, built from the slot's own words.
-    choose = page.locator(".qcard.open .owner-slot")
-    assert choose.get_attribute("role") == "group"
+    # The fill-in box is a row of choices above Send, outside the letter's scroll window, built from the slot's
+    # own words; until it is answered Send waits, with a plain hint (build 3b re-review).
+    choose = page.locator(".qcard.open .mail-choices .owner-slot")
+    assert choose.get_attribute("role") == "group" and _box_inside(page, choose, 0)
     assert choose.get_by_role("button").all_inner_texts() == ["邮件附件", "共享文件夹"]
+    assert send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
+    assert _greens(page) == []
+    choose.get_by_role("button", name="邮件附件").click()
+    assert send.is_enabled() and not page.locator(".qcard.open .choose-hint").is_visible()
+    assert "邮件附件" in page.locator(".qcard.open .mail-text .slot-ref").inner_text()
+    assert _greens(page) == ["Send"]
     assert page.locator(".qcard.open .mail-row").filter(has_text="CC").count() == 1
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
@@ -251,15 +257,11 @@ def test_send_never_covers_the_draft_head_or_the_choice_row(today, size):
     bar = card.locator(".mail-actions")
     rows = [card.locator(".mail-row").filter(has_text=name).first for name in ("To", "Subject")]
     overlap = lambda a, b: not (a["y"] + a["height"] <= b["y"] or b["y"] + b["height"] <= a["y"])
-    if size[0] > 400:
-        assert _box_inside(page, send, 40), send.bounding_box()
-        for row in rows:
-            assert _box_inside(page, row, 0) and not overlap(row.bounding_box(), bar.bounding_box())
-    else:
-        assert _box_inside(page, send, 16)
-        for target in [*rows, card.locator(".owner-slot")]:
-            target.evaluate("node => node.scrollIntoView({block: 'center'})")
-            assert not overlap(target.bounding_box(), bar.bounding_box()), target
+    # Measured without scrolling: the first screen holds To, Subject, REM's question and Send, none covered.
+    assert page.evaluate("scrollY", isolated_context=False) == 0
+    assert _box_inside(page, send, 40 if size[0] > 400 else 16), send.bounding_box()
+    for target in [*rows, card.locator(".mail-choices .owner-slot")]:
+        assert _box_inside(page, target, 0) and not overlap(target.bounding_box(), bar.bounding_box()), target
 
 
 def test_the_owner_is_never_a_person_waiting(today):

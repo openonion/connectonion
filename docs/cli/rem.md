@@ -734,9 +734,15 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   **More**, the letter scrolls in a short window, and **Why this reply** sits under
   the reading in your language. It opens its draft in place with
   To, CC (**No one** when nobody is copied) and Subject; REM's
-  `【需要你：…】` slot is a row to answer in: buttons when REM wrote the
-  alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a text field otherwise; the
-  date after the dash is never split into options. **Send** is the page's only
+  `【需要你：…】` slot is a row to answer in, directly above Send and outside the
+  letter's scroll window (the letter keeps a marker that shows your answer):
+  buttons when REM wrote the alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a
+  text field otherwise; the date after the dash is never split into options.
+  Until every question is answered Send stays disabled, with *Choose above
+  before sending*. The lanes show the five most urgent people on a desktop and
+  three on a phone (always the open card's), then **N more people**; on a phone
+  the first screen holds To, Subject, the question and the Send bar, with the
+  context line and channel switch behind **More**. **Send** is the page's only
   green control. On a desktop it sits under the letter in normal flow, inside
   the first screen; on a phone it is a bar pinned to the bottom, and notices
   rise above it. When the Host lists an approval for the draft, Send holds the
