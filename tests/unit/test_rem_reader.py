@@ -388,6 +388,17 @@ def test_render_embeds_records_and_neutralizes_markup(tmp_path):
     assert "as_of" in page
 
 
+def test_the_snapshot_carries_the_package_version_for_the_sidebar_footer(tmp_path, monkeypatch):
+    """The sidebar footer reads "co 1.9.3" from the page's own data, in the live reader and the file snapshot alike."""
+    import connectonion
+    prepare(tmp_path)
+    monkeypatch.setattr(connectonion, "__version__", "9.8.7")
+    for live in (False, True):
+        page = render(tmp_path, live=live, local=True)
+        data = json.loads(re.search(r"const REM = (.*?);\nwindow\.REM", page, re.S).group(1))
+        assert data["version"] == "9.8.7"
+
+
 def test_render_does_not_export_uncited_session_window_text(tmp_path):
     from connectonion.rem.files import state_path, write_json
 

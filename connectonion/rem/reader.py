@@ -138,6 +138,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     `local`: this machine's own reader (the file snapshot, the loopback live
     reader). Labelled excerpts are added only then; the O Chat view never has them.
     """
+    import connectonion
     from .store_messages import owner_addresses
     from .map import needs_review
     from .project_pages import private
@@ -269,6 +270,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "your_languages": languages["languages"],
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
+            "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records, "graph": graph,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,

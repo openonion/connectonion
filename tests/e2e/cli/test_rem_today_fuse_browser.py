@@ -404,3 +404,44 @@ def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(tod
     assert door.count() == 1 and door.evaluate("a => !!a.closest('#main')")
     door.click()
     page.get_by_role("heading", name="Questions & connections", exact=True).wait_for()
+
+
+def test_the_phone_menu_opens_above_today_and_send_keeps_the_bottom(today):
+    """Owner, 2026-11-09: the sidebar «现在看起来不是很好». On a phone the native-looking "Browse notebook"
+    box became a quiet Menu button in the header row; it opens a sheet below the header. A bottom tab bar
+    was the art director's first idea, but Today's Send bar already owns the bottom edge (D-10)."""
+    page, _, _ = today
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("scrollTo(0, 0)", isolated_context=False)
+    assert page.locator("select").count() == 0
+    toggle = page.locator(".nav-toggle")
+    assert toggle.inner_text() == "Menu" and toggle.get_attribute("aria-expanded") == "false"
+    send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
+    # One header row: the brand, search and Menu share it, so the first screen keeps its room.
+    boxes = [page.locator(selector).bounding_box() for selector in (".brand", ".search", ".nav-toggle")]
+    assert max(box["y"] for box in boxes) < min(box["y"] + box["height"] for box in boxes)
+    assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
+    assert toggle.bounding_box()["height"] >= 44
+    toggle.click()
+    assert toggle.get_attribute("aria-expanded") == "true"
+    links = page.locator("#nav a")
+    assert links.first.is_visible() and page.locator(".rail .foot .version").is_visible()
+    # The open sheet sits above the pinned Send bar: every link it shows answers its own centre.
+    assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
+      const box = link.getBoundingClientRect();
+      if (box.bottom <= 0 || box.top >= innerHeight) return true;
+      const y = Math.min(Math.max(box.top + box.height / 2, 0), innerHeight - 1);
+      return link.contains(document.elementFromPoint(box.left + box.width / 2, y));
+    })""", isolated_context=False)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
+    page.locator("#nav").get_by_role("link", name="People", exact=True).click()
+    assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
+    assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
+    page.goto(BASE)
+    page.locator(".brief-header h1").wait_for()
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("scrollTo(0, 0)", isolated_context=False)
+    assert _box_inside(page, send, 16)
