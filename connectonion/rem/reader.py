@@ -544,10 +544,19 @@ def page_path(root: Path, name: str):
 
     The file page keeps one name per notebook: `co rem open` prints that link, and
     a tab already open on it reaches the newest render on reload."""
-    if name == "file.html":
-        return _cached(root, name) if _cached(root, name).exists() else None
     file = _manifest(root)["files"].get(name)
+    if name == "file.html":
+        return _link(root, _cache_dir() / file) if file else None
     return _cache_dir() / file if file else None
+
+
+def _link(root: Path, current: Path) -> Path:
+    """The stable file page, brought up to the manifest's set when a build stopped
+    between naming that set and copying it here (comparing two files' times)."""
+    link = _cached(root, "file.html")
+    if not link.exists() or link.stat().st_mtime_ns < current.stat().st_mtime_ns:
+        _replace(link, current.read_text(encoding="utf-8"))
+    return link
 
 
 def _read_page(root: Path, name: str):
@@ -599,16 +608,15 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     prefix = _cached(root, "").name
     for build, (texts, as_of, took) in rendered.items():
         for name, text in texts.items():
-            if name != "file.html":
-                files[name] = f"{prefix}{generation}-{name}"
-                _replace(_cache_dir() / files[name], text)
+            files[name] = f"{prefix}{generation}-{name}"
+            _replace(_cache_dir() / files[name], text)
         rows[build] = {"version": version, "tree": tree, "as_of": as_of, "took": took,
                        "built_at": _now(), "checked_at": _now()}
     _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
-    # The file page is self-contained: replaced in place, after the set it belongs to.
-    for texts, _, _ in rendered.values():
-        if "file.html" in texts:
-            _replace(_cached(root, "file.html"), texts["file.html"])
+    # Then the stable link, copied from the set the manifest now names; page_path
+    # repairs it if a build stops between the two.
+    if "file.html" in files:
+        _link(root, _cache_dir() / files["file.html"])
     keep = {*files.values(), *manifest["files"].values(), _cached(root, "file.html").name}
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
@@ -707,7 +715,7 @@ def _refresh_once(root: Path, builds):
                         _checked(root, build, started)
             if not stale:
                 return started
-            stale = [build for build in wanted if build in stale]
+            stale = wanted  # every saved build together, so they name one render and one time
             # Walked before rendering, so the page carries the tree it was built from
             # and the next check does not rebuild it again (+17 s on a 100 s build).
             tree = tree or tree_version(root)
@@ -773,7 +781,8 @@ def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, boo
     if text is None or quick:
         with _building(root, wait=True):
             if quick or (text := _read_page(root, name)) is None:
-                _publish(root, {build: _render(root, build)}, version)
+                together = [b for b in ("live", "full") if b == build or saved(root, b)]
+                _publish(root, {b: _render(root, b) for b in together}, version)
                 text = _read_page(root, name)
     return text, _rebuild_stale(root, name, version, owner=owner)
 

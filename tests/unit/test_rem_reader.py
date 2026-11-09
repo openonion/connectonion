@@ -3859,3 +3859,69 @@ def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypat
     second = reader.open_snapshot(root, launch=False)
     assert second["page"] == first["page"] and "being built" not in second["note"]
     assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()
+
+
+def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
+    """The live page is built on the first request; its details later, in the
+    background. Rendered apart they named different seconds, and the page's
+    details disagreed with /rem/version. Every saved build is rendered together."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")                         # the first request: the page alone
+    reader.refresh(root)                                          # then its details, behind it
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+    assert served == re.search(r'"as_of": "([^"]+)"', offline).group(1)
+
+
+def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp_path, monkeypatch):
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    monkeypatch.setattr(reader, "datetime", _Ticking)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    link = reader.page_path(root, "file.html")
+    real = reader._replace
+
+    def stops_at_the_link(path, text):
+        if path == link:
+            raise OSError("fictional stop")
+        real(path, text)
+    monkeypatch.setattr(reader, "_replace", stops_at_the_link)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    _Clock.seconds += 1
+    with pytest.raises(OSError):
+        reader.refresh(root)
+    monkeypatch.setattr(reader, "_replace", real)
+    details, _ = reader.cached_page(root, "data.json")
+    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
+    assert reader.page_path(root, "file.html") == link
+    assert re.search(r'"as_of": "([^"]+)"', offline).group(1) == _json.loads(details)["as_of"]
+    assert "Bruno Example" in offline
+
+
+class _Ticking:
+    """A wall clock that moves a second each time it is read: a loaded CI runner."""
+    from datetime import datetime as real, timezone
+    at = real(2026, 11, 9, 8, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def now(cls, tz=None):
+        from datetime import timedelta
+        cls.at += timedelta(seconds=1)
+        return cls.at
+
+    @classmethod
+    def fromtimestamp(cls, *args, **kwargs):
+        return cls.real.fromtimestamp(*args, **kwargs)
