@@ -75,10 +75,16 @@ each as six parallel shards with a 15 minute timeout per shard.
 `scripts/ci_test_shard.py` splits the test files between shards, balanced by
 `tests/ci_durations.json`; a new file weighs the median until the weights are
 refreshed with `python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml`
-from a run's `junit-*` artifacts. The 3.12 shards trace coverage; the
-`coverage` job combines them and fails below the floor set there (raise it as
-coverage rises, never lower it to pass). `tests-passed` is green only when
-every shard and the coverage gate succeeded. The workflow also runs the
+from a run's `junit-*` artifacts. Inside a shard, `--dist worksteal` hands out
+single tests, as `make test` does. The 3.12 shards trace coverage through
+`COVERAGE_CORE=sysmon`; the `coverage` job combines them and fails below the
+floor set there (raise it as coverage rises, never lower it to pass).
+
+The `co --help` audit (`tests/unit/test_cli_help_contract.py`) runs as six
+`cli-help-audit` shards, each walking and auditing the top-level commands
+that fall to it; `cli-help-audit-tree` then checks the whole tree once over
+every shard's list of pages. `tests-passed` is green only when every shard,
+the coverage gate and both audit jobs succeeded. The workflow also runs the
 platform-specific browser and transport suites on Windows and macOS.
 
 Background-task termination also reaps the owned shell process tree and joins

@@ -19,6 +19,7 @@ run does all of it.
 
 import os
 import re
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -142,13 +143,23 @@ def with_references(found: dict, within: dict, runner=audit.help_page) -> dict:
     return found
 
 
-def audit_shard(shard: int, shards: int, listed: set, runner=audit.help_page) -> tuple:
+def audit_shard(shard: int, shards: int, listed: set, runner=audit.help_page, output=audit.run) -> tuple:
     """audit.audit(["co"]) for one shard's share of the tree: (findings, pages audited)."""
     found = walk(shard_groups(runner(["co"]), listed, shard, shards), runner)
     within = {path: page for path, page in found.items() if path != "co" or shard == 1}
     resolvable = with_references(found, within, runner)
     findings = [f for path, page in within.items() for f in audit.check(path, page, resolvable)]
-    return findings + audit.looks(within, findings, runner), within
+    return findings + audit.looks(within, findings, runner, output), within
+
+
+def timed(run, spent: list):
+    """`run`, appending (top-level command, seconds) to `spent` for each process it starts."""
+    def wrapper(argv, terminal=False):
+        start = time.monotonic()
+        page = run(argv, terminal)
+        spent.append((" ".join(argv[:2]), time.monotonic() - start))
+        return page
+    return wrapper
 
 
 def page_problems(findings: list, within: dict) -> list:
@@ -177,7 +188,13 @@ def tree_problems(audited: set, listed: set) -> list:
 def test_co_meets_the_contract_and_its_house_style():
     shard, shards = map(int, SHARD.split("/"))
     listed = registered()
-    findings, within = audit_shard(shard, shards, listed)
+    spent = []
+    findings, within = audit_shard(shard, shards, listed, timed(audit.help_page, spent), timed(audit.run, spent))
+    seconds = Counter()
+    for group, took in spent:
+        seconds[group] += took
+    print(f"{len(spent)} processes, {sum(seconds.values()):.0f} s; slowest commands:",
+          ", ".join(f"{group} {took:.0f} s" for group, took in seconds.most_common(8)))
     problems = page_problems(findings, within)
     if shards == 1:
         problems += tree_problems(set(within), listed)
