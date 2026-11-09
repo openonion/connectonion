@@ -79,7 +79,7 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json")
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
-        await _reply(send, 200, json.dumps({"as_of": await asyncio.to_thread(latest, root)}), "application/json")
+        await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
@@ -157,7 +157,9 @@ async def _action(scope, receive, send, root, headers):
         return
     from ...rem.reader import owner_changed
     # The owner's own change shows now, not at the reader's next rebuild interval.
-    await asyncio.to_thread(owner_changed, root)
+    # A task status read changes nothing.
+    if not (scope["path"] == "/rem/task" and body.get("action", "status") == "status"):
+        await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 

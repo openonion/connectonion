@@ -288,7 +288,7 @@ def test_lazy_notebook_data_is_authenticated_cached_and_invalidated(host, cache,
     (host.root / 'people/alice-chen.md').write_text(PAGE + '\nChanged.')   # in place, not by REM
     cache.clear()
     assert get()[2] == body and cache == []          # the open never walks the notebook to see it
-    clock[0] += reader.FULL_CHECK_SECONDS + 1
+    clock[0] += reader.REBUILD_INTERVAL + 1
     assert get()[2] == body and cache == [host.root]  # the background full check is due
     reader.refresh(host.root, ['full'])
     assert len(calls) == 2 and 'Changed.' in get()[2]
@@ -341,7 +341,7 @@ def cache(tmp_path, monkeypatch, clock):
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     spawned = []
-    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root), raising=False)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(root) or True, raising=False)
     return spawned
 
 
@@ -440,3 +440,39 @@ def test_rebuilds_wait_out_the_interval_unless_the_owner_acted_in_the_reader(hos
     payload = json.dumps({"key": "people/alice-chen.md\nA promise", "state": "done"}).encode()
     assert call(host.routes, "POST", "/rem/thread", cookie=cookie, body=payload)[0] == 200
     assert cache == [host.root]                                     # the owner's own action: now
+
+
+
+def test_a_status_read_is_not_an_owner_change(host, cache, clock):
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(host.root, {'key': 'people/fern.md\nReview the pilot.',
+        'keys': ['people/fern.md\nReview the pilot.'], 'record': 'people/fern.md',
+        'title': 'Fern Vale', 'text': 'Review the pilot.', 'task': {'prompt': 'Review it.'}})
+    call(host.routes, "GET", "/rem", cookie=f"co_rem={host.token}")
+    reader.refresh(host.root)
+    cache.clear()
+    body = json.dumps({'id': receipt['id']}).encode()
+    assert call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}', body=body)[0] == 200
+    assert cache == []
+
+
+def test_version_names_a_failed_rebuild(host, cache, clock):
+    cookie = f"co_rem={host.token}"
+    call(host.routes, "GET", "/rem", cookie=cookie)
+    assert json.loads(call(host.routes, "GET", "/rem/version", cookie=cookie)[2]).get("failed") is None
+    reader._keep_failure(host.root)
+    failed = json.loads(call(host.routes, "GET", "/rem/version", cookie=cookie)[2])["failed"]
+    assert failed["log"].endswith("build.log") and failed["at"]
+
+
+def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, monkeypatch):
+    identity = host.routes["identity_dir"]
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
+    reader.open_snapshot(host.root, launch=False)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory: SimpleNamespace(
+        pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
+    first = reader.local_or_snapshot(host.root, "owner", launch=False)
+    assert "co ai is starting" in first["live"]
+    again = reader.local_or_snapshot(host.root, "owner", launch=False)  # that pid never ran
+    assert "rem-live-host.log" in again["live"] and "co ai is starting" not in again["live"]

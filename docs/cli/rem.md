@@ -662,20 +662,39 @@ is current is a handful of stat calls, never a listing of the notebook: every
 write REM makes touches `.state/reader-changed`; the category folders' times
 catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
 WAL hold committed rows; `reader.html` is part of the key, so an upgrade
-re-renders. When any of these changed, the last page is still served at once
-and one detached process (`python -m connectonion.rem.reader`, one at a time,
-log in the same folder) renders the new one. Rebuilds are at most one per
-10 minutes (`REBUILD_INTERVAL` in `reader.py`), because one costs about 100 s
-of CPU on a large notebook and a night run keeps writing; a change you make in
-the reader itself (send, approve, mark a thread, ask for a translation)
-rebuilds at once. Files edited by other tools, such as an agent editing a page
-in place, touch no marker: once the saved page is 10 minutes past its last
-full check (`FULL_CHECK_SECONDS`), the background build walks the whole
-notebook first and rebuilds if anything differs. The open itself never walks.
-The open live page asks `/rem/version` every 30 seconds while visible and
-reloads onto the newer render when it lands, never while you are typing. The
-page footer says when it was rendered: **Updated** (更新于) and the time.
-Before this (1.9.3rc62) every open
+re-renders. The notebook's date is part of the key too, so the Today queue turns
+over at midnight. When the key changed, or the page is older than 10 minutes
+(`REBUILD_INTERVAL` in `reader.py`; clock-dependent parts such as **Next pass**
+and edits other tools make in place without REM's writers are caught this way),
+the last page is still served at once and one detached process
+(`python -m connectonion.rem.reader`, one at a time, log in the same folder,
+trimmed to its last 200 lines) renders the new one. It publishes the page and
+its details together, so a reload never pairs a new page with old details.
+
+Rebuilds are at most one per 10 minutes, because one costs about 100 s of CPU
+on a large notebook and a night run keeps writing. The owner acting rebuilds
+at once: an explicit `co rem open`, and a change made in the reader (send,
+approve, mark a thread, choose a language, `/rem/translation-request`, stop or
+undo a task). Reading a task's status, and the on-page translation
+(`/rem/translate`, served straight from its own cache), do not. A build that
+is running passes again for an owner action made meanwhile. `co rem open` says
+a newer page is being built only when a build actually started.
+
+The open live page asks `/rem/version` every 30 seconds while visible. When a
+newer render has landed it reloads onto it and puts back the view, the scroll
+position and open sections; while you are typing it waits, and over a reply
+you have edited it does not reload but shows a quiet **有更新 · 刷新** (Newer
+page · Reload) link. After Stop or Undo on a task, the page waits for the
+render that carries it, then reloads; past two minutes it says the page has not
+updated yet. Refresh task progress reads the status in place.
+
+The footer says when the page was rendered: **Updated** (更新于) and the time.
+If the newest background build failed it adds "the newest rebuild failed", with
+the log path as a detail; `co rem open` says the same. A failing build is not
+started again within 10 minutes. If the cache folder exists but is not yours
+alone (a shared temporary directory), the reader renders now, as before saved
+pages, and says so; a Host that `co rem open` started and that exited soon
+after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
 rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
 and the render 35 s, plus 73 s for the details.
 
