@@ -548,6 +548,19 @@ def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(tas
     assert saved['prepared_reply'] == f"REM 已经做完：Added to the end of README.md: · 附：{saved['deliverable']}"
 
 
+def test_a_claude_task_loads_the_owners_own_claude_setup(task_notebook, fake_claude):
+    # Context over control: his user CLAUDE.md, skills and settings load, not --safe-mode.
+    from connectonion.rem import tasks
+    receipt = tasks.reserve(task_notebook, night.listing(task_notebook)[0], agent='claude')
+    tasks.execute(task_notebook, receipt['id'])
+    saved = tasks.status(task_notebook, receipt['id'])
+    argv = read_json(Path(saved['receipt']).parent / 'argv.json', [])
+    assert saved['result'] == 'completed', saved.get('reason')
+    assert '--safe-mode' not in argv
+    assert argv[argv.index('--setting-sources') + 1] == 'user'
+    assert argv[argv.index('--permission-mode') + 1] == 'bypassPermissions'
+
+
 def test_dispatch_starts_any_pending_item_with_the_chosen_agent(task_notebook, fake_claude):
     from connectonion.rem import tasks
     row = night.listing(task_notebook)[0]

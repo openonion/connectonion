@@ -276,8 +276,12 @@ def run_co_claude(
     timeout: int = 600,
     agent=None,
     workspace: str | Path | None = None,
+    add_dirs: tuple[str, ...] | list[str] = (),
 ) -> str:
-    """Run one owned Claude turn with a scoped session-identity Hook."""
+    """Run one owned Claude turn with a scoped session-identity Hook.
+
+    It loads the user's own settings (his CLAUDE.md, skills, settings), not
+    --safe-mode; see _stream_command."""
     approval = None
     if agent is not None and workspace is not None:
         def approval(event):
@@ -294,6 +298,7 @@ def run_co_claude(
             workspace=workspace,
             bridge_settings=settings,
             bridge_events=events,
+            add_dirs=add_dirs,
         )
         outcome = json.loads(result)
         if outcome["status"] != "completed":

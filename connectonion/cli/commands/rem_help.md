@@ -1164,7 +1164,7 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Codex runs on the configured work model, Claude Code on its own; both with full
+Codex runs on models.level4, Claude Code on its own model; both with full
 access, as co ai --harness runs them: the web and your accounts. The prompt keeps pushing, merging,
 sending and posting for your click. It works in .state/tasks/do-ID/: a git
 worktree of the project page's repository on branch rem/task-ID when there is
@@ -1198,7 +1198,9 @@ Arguments:
 Options:
   --agent       codex or claude: who runs a task that has not started.
 
-Codex uses the configured work model; both run with full access. Work happens in
+Codex uses models.level4 and the configured effort. Claude Code keeps its own
+model and loads your own Claude setup (user CLAUDE.md, skills, settings).
+Both run with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there
 is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
 .state/tasks/do-ID/result.md as the reviewable deliverable.

@@ -138,11 +138,14 @@ def expand_skill(prompt: str) -> str:
 
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
         sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard",
-        session_id: str = "", effort: str = "", add_dirs: tuple[str, ...] = ()) -> dict:
+        session_id: str = "", effort: str = "", add_dirs: tuple[str, ...] = (),
+        user_setup: bool = False) -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
 
     effort (Codex only) and add_dirs, further directories the delegate may
     write beside cwd, are for operator callers such as co rem's owed tasks.
+    user_setup (Claude only) runs as `co claude run` does, with the user's own
+    CLAUDE.md, skills and settings instead of --safe-mode.
 
     Each delegate answers in its own JSON shape and with its own idea of what
     "finished" means — Codex reports `exit_code`, Claude Code does not, and
@@ -161,10 +164,10 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
                          timeout=timeout, approval="auto", speed=speed, session_id=session_id,
                          effort=effort, writable_roots=add_dirs)
     else:
-        from ...useful_tools.claude_code import _run_claude_code
-        raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout,
-                               permission_mode=permission_mode, session_id=session_id,
-                               add_dirs=add_dirs)
+        from ...useful_tools.claude_code import _run_claude_code, run_co_claude
+        claude = run_co_claude if user_setup else _run_claude_code
+        raw = claude(prompt=text, cwd=cwd, model=model, timeout=timeout,
+                     permission_mode=permission_mode, session_id=session_id, add_dirs=add_dirs)
 
     try:
         answer = json.loads(raw)

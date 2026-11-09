@@ -189,12 +189,13 @@ def _delegate(receipt, folder, config, timeout):
     Returns the exit code the receipt keeps: 0 done, 124 out of time, 1 anything else."""
     from ..cli.co_ai import harness
     agent = receipt.get('agent', 'codex')
-    # REM's model names a Codex model; Claude Code keeps its own.
+    # REM's model names a Codex model; Claude Code keeps its own, and the owner's own
+    # Claude setup loads (context over control): user_setup.
     model = config['model'] if agent == 'codex' and config['model'] != 'default' else ''
     with _tmpdir(folder / 'tmp'):
         answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
                              timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
-                             **FULL_ACCESS)
+                             user_setup=True, **FULL_ACCESS)
     if _STOPPED.is_set():
         raise InterruptedError('Task stopped by the owner')
     Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
