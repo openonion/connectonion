@@ -4025,3 +4025,93 @@ def test_co_rem_open_runs_where_there_is_no_fcntl(tmp_path):
                             text=True, cwd=os.getcwd(), timeout=50)
     assert result.returncode == 0, result.stderr[-2000:]
     assert "Not started" in open(result.stdout.strip(), encoding="utf-8").read()
+
+
+# ---------- an open never waits on a build (1.9.4 hotfix) ----------
+# The first co rem open after upgrading to 1.9.3 took 1025 s and printed one line.
+# 1.9.3rc64 kept the file page out of the saved set's manifest, so 1.9.3 found "no
+# page", took the build lock (waiting out the rebuild the upgrade had started) and
+# rendered the whole notebook again in the foreground. A small notebook took the
+# same road through "the last render took under 2 s".
+
+def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
+    import connectonion
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0, raising=False)   # the shipped default
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    if shape == "rc64-manifest":   # its _publish wrote the file page beside the set, never into it
+        manifest = json.loads(reader._cached(root, "current.json").read_text())
+        (reader._cache_dir() / manifest["files"].pop("file.html")).unlink()
+        reader._cached(root, "current.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(connectonion, "__version__", "1.9.4")                # the upgrade
+    return reader, root
+
+
+@pytest.mark.parametrize("shape", ["upgrade", "rc64-manifest", "build-running"])
+def test_after_an_upgrade_open_shows_the_saved_page_at_once_while_a_slow_build_runs(tmp_path, monkeypatch, shape):
+    import threading
+    import time
+    from connectonion.rem import files
+    reader, root = _saved_under_an_older_release(tmp_path, monkeypatch, shape)
+    release, original = threading.Event(), reader._render
+    monkeypatch.setattr(reader, "_render", lambda *args: (release.wait(30), original(*args))[1])
+    lock = None
+    if shape == "build-running":   # the rebuild the upgrade started holds the build lock
+        lock = os.open(reader._cached(root, "build.lock"), os.O_CREAT | os.O_RDWR, 0o600)
+        files._try_lock(lock)
+    result = {}
+    opener = threading.Thread(target=lambda: result.update(reader.open_snapshot(root, launch=False)), daemon=True)
+    began = time.monotonic()
+    opener.start()
+    opener.join(2.0)
+    took = time.monotonic() - began
+    release.set()
+    if lock is not None:
+        os.close(lock)
+    opener.join(60)
+    assert took < 2.0, f"co rem open waited {took:.1f} s on a build"
+    page = open(result["page"], encoding="utf-8").read()
+    assert "Alice Example" in page and 'id="rem-updating"' in page
+    assert "being built" in result["note"]
+
+
+def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_does_not(tmp_path, monkeypatch):
+    reader, root = _saved_under_an_older_release(tmp_path, monkeypatch, "upgrade")
+    served, building = reader.cached_page(root, "live.html")      # what GET /rem answers
+    assert building and 'id="rem-updating"' in served
+    mark = re.search(r'<script>(\(\(\) => \{[^<]*?rem-updating.*?)</script>', served, re.S).group(1)
+    shown = {}
+    for languages, browser in ((["zh", "en"], "en-AU"), (["en"], "zh-CN"), (["en"], "en-AU")):
+        shown[f"{languages[0]}/{browser}"] = _run_reader_js(
+            "const node = {}; const document = {getElementById: () => node};"
+            f"const window = {{REM: {{your_languages: {json.dumps(languages)}}}}};"
+            f"const navigator = {{language: {json.dumps(browser)}}};" + mark
+            + "\nconsole.log(JSON.stringify(node.textContent));")
+    assert shown == {"zh/en-AU": "正在更新…", "en/zh-CN": "正在更新…", "en/en-AU": "Updating…"}
+    reader.refresh(root)                                           # the rebuild lands
+    fresh, building = reader.cached_page(root, "live.html")
+    assert not building and "rem-updating" not in fresh
+    opened = reader.open_snapshot(root, launch=False)
+    assert "rem-updating" not in open(opened["page"], encoding="utf-8").read()
+
+
+def test_with_no_saved_page_at_all_open_renders_once_and_says_so_every_few_seconds(tmp_path, monkeypatch):
+    import time
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "PROGRESS_SECONDS", 0.05, raising=False)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    original = reader._render
+    monkeypatch.setattr(reader, "_render", lambda *args: (time.sleep(0.5), original(*args))[1])
+    lines = []
+    result = reader.open_snapshot(root, launch=False, say=lines.append)
+    assert "Alice Example" in open(result["page"], encoding="utf-8").read()
+    assert len(lines) >= 4 and "first" in lines[0], lines        # a line at once, then one per tick
