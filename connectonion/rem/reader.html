@@ -49,11 +49,19 @@
     --w-regular: 400;
     --w-bold: 700;
     --lh-tight: 1.04;
+    --lh-body: 1.6;
     --track-display: -0.03em;
+
+    /* grid: one measure, one gap, one rail (the art director's sheet; added with the person and org records) */
+    --measure: 720px;
+    --gap: 64px;
+    --rail: 320px;
+    --u1: 4px; --u2: 8px; --u3: 16px; --u4: 24px; --u5: 40px; --u6: 64px;
 
     /* lines: the fuse is the system's only heavy mark */
     --hair: 1px;
     --rule-heavy: 2px;
+    --fuse: 6px;
 
     /* shape */
     --radius: 0; /* everything is square */
@@ -1600,8 +1608,7 @@
   }
   .r4 a { color: inherit; text-decoration: none; }
   .r4 h1 { font: var(--w-bold) var(--s-head)/36px var(--font); letter-spacing: -.022em; margin: 6px 0 0; color: var(--ink); }
-  .r4 .r4-headrow h1, .page-head h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); overflow-wrap: anywhere; }
-  .r4 .r4-headrow h1 .soft { font-size: var(--s-head); letter-spacing: 0; }
+  .page-head h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); overflow-wrap: anywhere; }
   .r4 h1 .soft { color: var(--grey); font-weight: var(--w-regular); }
   .r4 h1 .soft::before { content: " · "; }
   .r4 h2 { font: var(--w-bold) var(--s-meta)/18px var(--font); color: var(--grey); display: flex; align-items: center; gap: 8px; margin: 40px 0 12px; letter-spacing: 0; text-transform: none; border: 0; padding: 0; }
@@ -1619,7 +1626,6 @@
   .r4 .dot { width: 7px; height: 7px; border-radius: var(--round); flex: none; display: inline-block; }
   .r4 .dot.lamp { background: var(--ink); }
   .r4 .face { width: 32px; height: 32px; border-radius: var(--round); display: grid; place-items: center; font: var(--w-bold) var(--s-meta) var(--font); flex: none; color: var(--paper); background: var(--grey); letter-spacing: .02em; }
-  .r4 .face.lg { width: 56px; height: 56px; font-size: var(--s-body); }
   .r4-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius); font: var(--w-bold) var(--s-meta) var(--font); white-space: nowrap; outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); background: var(--paper); color: var(--ink); cursor: pointer; transition: background var(--t-press) var(--ease-out); }
   .r4-btn:hover { background: var(--rule); }
   .r4-btn.sm { height: 28px; padding: 0 10px; font-size: var(--s-meta); }
@@ -1632,28 +1638,40 @@
   .r4-crumb a:hover { color: var(--ink); }
   .r4-crumb .updated-label { margin-left: 10px; color: var(--ink); }
   .r4-crumb .fresh-dot { margin: 0 4px 0 0; color: var(--ink); }
-  .r4-headrow { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
-  .r4-headrow .body { flex: 1; min-width: 0; }
-  .r4-headrow h1 { margin: 0; }
-  .r4-sub { font-size: var(--s-body); color: var(--grey); margin-top: 2px; }
-  .r4-sub a { color: var(--ink); font-weight: var(--w-bold); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .r4-sub a.soft { color: var(--grey); font-weight: var(--w-regular); }
-  .r4-grid { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 48px; margin-top: 8px; }
-  .r4-stats { display: flex; gap: 28px; margin-top: 22px; padding: 14px 0; border-block: var(--hair) solid var(--rule); }
+  /* The person record (Fuse): the name is the one big mark, the fuse is the one heavy line. */
+  .r4.r4-person { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin: 0; }
+  .r4-over { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
+  .r4 .r4-over .r4-today { font-size: var(--s-meta); text-decoration-color: var(--rule); }
+  .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: break-word; hyphens: auto; }
+  .r4-sub { font-size: var(--s-head); line-height: 1.4; color: var(--ink); margin-top: var(--u4); max-width: var(--measure); }
+  .r4-sub a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .r4-sub a.soft { color: var(--grey); }
+  .r4-fuse { max-width: var(--measure); }
+  .fuse-line { position: relative; height: calc(var(--u5) + var(--fuse)); }
+  .fuse-line::after, .fuse-line::before { content: ""; position: absolute; bottom: 0; background: var(--ink); }
+  .fuse-line::after { left: 0; right: 0; height: var(--fuse); }
+  .fuse-line::before { right: 0; width: var(--rule-heavy); height: calc(100% + var(--u2)); }
+  .fuse-tick { position: absolute; bottom: 0; width: var(--rule-heavy); height: 100%; background: var(--ink); }
+  .fuse-red { position: absolute; right: 0; bottom: 0; min-width: var(--u2); height: var(--fuse); background: var(--red); z-index: 1; }
+  .fuse-ends { display: flex; justify-content: space-between; gap: var(--u3); margin-top: var(--u2); font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .fuse-ends b { color: var(--ink); font-weight: var(--w-bold); white-space: nowrap; }
+  .fuse-ends .fuse-wait { color: var(--red); margin-left: auto; }
+  .fuse-note { margin: var(--u1) 0 0; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  /* An honest limit of the data: REM's pencil, dashed, never solid. */
+  .fuse-note::before { content: ""; display: inline-block; width: var(--u4); margin-right: var(--u2); vertical-align: middle; border-top: var(--hair) dashed var(--pencil); }
+  .r4-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); margin-top: var(--u5); }
+  .r4-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--u4); max-width: var(--measure); margin-top: var(--u5); }
   .r4-stats div { font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); min-width: 0; }
-  .r4-stats b { display: block; font: var(--w-bold) var(--s-body)/23px var(--font); color: var(--ink); letter-spacing: -.01em; margin-bottom: 1px; white-space: nowrap; }
-  .owe { padding: 16px 18px; }
-  .owe + .owe { border-top: var(--hair) solid var(--rule); }
-  .owe-t { display: flex; align-items: flex-start; gap: 12px; font: var(--w-bold) var(--s-body)/22px var(--font); }
-  .owe-t > span:first-child { flex: 1; min-width: 0; }
-  .owe-t .chip { margin-top: 1px; }
-  .owe.theirs .owe-t, .owe.closed .owe-t { font-weight: var(--w-regular); color: var(--grey); }
-  .owe-s { font-size: var(--s-meta); color: var(--grey); margin-top: 4px; line-height: 21px; }
-  .owe-acts { display: flex; gap: 8px; margin-top: 10px; }
-  .owe-acts .ghost { margin-left: -10px; }
-  .owe-acts .r4-btn:not(.ghost) + .ghost { margin-left: 0; }
+  .r4-stats b { display: block; font: var(--w-bold) var(--s-head)/32px var(--font); color: var(--ink); margin-bottom: var(--u1); white-space: nowrap; }
+  .r4-person h2 { font-size: var(--s-body); color: var(--ink); }
+  .r4-said ol { list-style: none; margin: 0; padding: 0; }
+  .r4-said li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: var(--u4); padding: var(--u4) 0; border-top: var(--hair) solid var(--rule); }
+  .r4-said li:last-child { border-bottom: var(--hair) solid var(--rule); }
+  .said-src { display: flex; flex-direction: column; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .said-src a.cite { align-self: flex-start; }
+  .said-q { font-size: var(--s-body); line-height: var(--lh-body); quotes: "「" "」"; overflow-wrap: anywhere; }
+  :root[lang="en"] .said-q { quotes: "“" "”"; }
   .r4 .empty-line { color: var(--grey); font: var(--s-body)/20px var(--font); margin: 0; border: 0; }
-  .owe-more { display: block; width: 100%; border: 0; background: none; color: var(--grey); font: var(--s-meta) var(--font); text-align: center; cursor: pointer; padding: 12px; }
   .tl { list-style: none; margin: 4px 0 0; padding: 0; }
   .tl .later { display: none; }
   .tl.all .later { display: grid; }
@@ -1677,11 +1695,11 @@
   .r4-card.mini b { font-weight: var(--w-bold); }
   .r4-card.mini small { display: block; color: var(--grey); font-size: var(--s-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
   .r4-unsure { list-style: none; margin: 0; padding: 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
-  .r4-unsure li { padding-left: 14px; position: relative; margin-bottom: 6px; }
-  .r4-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--grey); font-weight: var(--w-bold); }
+  /* REM's open questions are its inference: pencil, a dashed rule. */
+  .r4-unsure li { padding-left: var(--u3); border-left: var(--hair) dashed var(--pencil); margin-bottom: var(--u2); }
   .r4-src { margin-top: 24px; padding: 0; border: 0; background: none; font: var(--s-meta) var(--font); color: var(--grey); cursor: pointer; }
   .r4-src:hover { color: var(--ink); }
-  .r4-person + .deep-note, .r4-person ~ .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
+  .r4-person + .deep-note, .r4-person ~ .deep-note { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin-left: 0; margin-right: 0; }
   /* The People list */
   .r4-people { max-width: 720px; }
   .r4-people.wide { max-width: none; }
@@ -1717,29 +1735,21 @@
   .r4-foot .contact-directory { margin: 0; padding: 0; border: 0; }
   .r4-foot .contact-directory > summary { font: var(--w-regular) var(--s-meta)/20px var(--font); color: var(--grey); cursor: pointer; }
   .r4 .said { font: inherit; color: var(--grey); background: none; padding: 0; border: 0; text-decoration: none; }
-  .owe-acts .r4-btn.ghost { color: var(--grey); font-weight: var(--w-regular); }
-  /* A plain open row shows its one quiet action when you point at the row or tab to it (always shown on touch). */
-  @media (hover: hover) {
-    .owe { position: relative; }
-    .owe .owe-acts.quiet { position: absolute; right: 12px; bottom: 10px; margin: 0; opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
-    .owe .owe-acts.quiet .r4-btn { margin: 0; background: var(--paper); }
-    .owe:hover .owe-acts.quiet, .owe:focus-within .owe-acts.quiet { opacity: 1; }
-  }
   @media (max-width: 719px) {
     .r4 h1 { font-size: var(--s-head); line-height: 31px; }
     .r4 h1 .soft { display: block; font-size: var(--s-body); line-height: 22px; margin-top: 2px; }
     .r4 h1 .soft::before { content: none; }
     .r4 h2 { margin-top: 32px; }
-    .r4-headrow { flex-wrap: wrap; gap: 14px; margin-top: 10px; }
-    .r4 .face.lg { width: 48px; height: 48px; font-size: var(--s-body); }
+    .r4 .r4-name { margin-top: var(--u5); }
+    .r4-sub { font-size: var(--s-body); margin-top: var(--u3); }
     .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .r4-rail h4:first-child { margin-top: 32px; }
-    .r4-stats { gap: 18px; overflow: hidden; }
-    .r4-stats div:nth-child(4) { display: none; }
+    .r4-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .r4-said li { grid-template-columns: minmax(0, 1fr); gap: var(--u2); }
+    .said-src { flex-direction: row; gap: var(--u2); }
     .tl-m { padding-left: 0; }
     .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
     .tl-more { margin-left: 0; }
-    .owe { padding: 14px; }
     .r4-bar { flex-wrap: wrap; margin-top: 28px; }
     .r4-find { flex-basis: 100%; }
     .r4-tabs button:nth-child(n+3) { display: none; }
@@ -2275,7 +2285,7 @@
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
   .ov-say { grid-column: 1 / span 5; align-self: center; position: relative; z-index: 2; padding: 24px 0; min-width: 0; }
-  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+  .ov.ov-r6 .ov-say h1 { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: 0; color: var(--ink); overflow-wrap: break-word; hyphens: auto; }
   .ov-say .updated-label, .ov-say .fresh-label { font-size: var(--s-meta); }
   .ov.ov-r6 .ov-say .ov-sub { display: block; font-size: var(--s-body); line-height: 27px; color: var(--grey); margin: 16px 0 0; max-width: 460px; -webkit-line-clamp: unset; }
   .ov-facts { font-size: var(--s-body); line-height: 22px; color: var(--grey); margin: 20px 0 0; max-width: 460px; }
@@ -2292,16 +2302,21 @@
   .ov-legend { display: flex; gap: 18px; align-items: center; justify-content: flex-end; }
   .ov-legend span { display: inline-flex; align-items: center; gap: 5px; }
   .ov-sw { width: 12px; height: 12px; overflow: visible; }
-  .ov-outline { columns: 2; column-gap: 48px; padding-top: 4px; }
-  .ov-r6 .ov-unit { break-inside: avoid; padding-left: calc(var(--depth) * 20px); }
-  .ov-outline .ov-tn { display: flex; gap: 10px; align-items: baseline; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); font-size: var(--s-body); font-weight: var(--w-bold); margin: 0; }
+  /* The hierarchy steps down and to the right; each unit hangs from the one above it on a heavy elbow. */
+  .ov-outline { max-width: var(--measure); padding-top: var(--u1); }
+  .ov-r6 .ov-unit { position: relative; margin-left: var(--u5); padding-left: var(--u5); border-left: var(--rule-heavy) solid var(--ink); }
+  .ov-outline > .ov-unit { margin-left: 0; }
+  .ov-r6 .ov-unit:last-of-type { border-left-color: transparent; }
+  .ov-r6 .ov-unit::before { content: ""; position: absolute; left: calc(-1 * var(--rule-heavy)); top: 0; width: var(--u4); height: calc(var(--u4) + var(--u1)); border-left: var(--rule-heavy) solid var(--ink); border-bottom: var(--rule-heavy) solid var(--ink); }
+  .ov-outline .ov-tn { display: flex; flex-wrap: wrap; gap: 0 var(--u2); align-items: baseline; padding: var(--u3) 0 var(--u1); font-size: var(--s-body); font-weight: var(--w-bold); margin: 0; }
+  .ov-outline > .ov-unit > .ov-tn { font-size: var(--s-head); }
   .ov-r6 .ov-tn small { font-size: var(--s-meta); color: var(--grey); font-weight: var(--w-regular); }
-  .ov-outline .ov-m { display: flex; gap: 10px; align-items: baseline; padding: 6px 0 6px 16px; font-size: var(--s-body); line-height: 22px; break-inside: avoid; }
+  .ov-outline .ov-m { display: flex; flex-wrap: wrap; gap: 0 var(--u2); align-items: baseline; padding: var(--u1) 0; font-size: var(--s-body); line-height: 22px; }
   .ov-outline .ov-m small { font-size: var(--s-meta); color: var(--grey); }
   .ov-outline .ov-m .ov-role { margin-left: 0; max-width: none; flex: 0 1 auto; }
   .ov-facts .ov-nb { white-space: nowrap; }
   .ov-outline .ov-m .ov-when { margin-left: auto; width: auto; white-space: nowrap; }
-  .ov-outline > .ov-meta { column-span: all; margin-top: 16px; }
+  .ov-outline > .ov-meta { margin-top: var(--u3); }
   /* X-ray marks */
   .ov-link { fill: none; stroke: var(--pencil); stroke-width: 1; }
   .ov-link.b { stroke: var(--ink); stroke-width: 1.5; }
@@ -2327,12 +2342,10 @@
   .ov-time { grid-column: 1 / -1; height: 118px; position: relative; }
   .ov-tsvg { width: 100%; height: 100%; overflow: visible; display: block; }
   .ov-tsvg text { font-family: inherit; font-size: var(--s-meta); }
-  .ov-axis { stroke: var(--ink); stroke-width: 1.5; }
-  .ov-fut { stroke: var(--grey); stroke-width: 1.5; stroke-dasharray: 3 7; }
-  .ov-ev { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
-  .ov-ev.me { fill: var(--ink); stroke: none; }
+  .ov-axis { stroke: var(--ink); stroke-width: var(--fuse); }
+  .ov-tsvg .ov-ev { fill: var(--ink); }
   .ov-tlab { fill: var(--grey); font-weight: var(--w-regular); } .ov-tlab.b { fill: var(--ink); font-weight: var(--w-bold); }
-  .ov-now-l { stroke: var(--ink); stroke-width: 1.5; } .ov-now-w { fill: var(--ink); }
+  .ov-now-l { stroke: var(--ink); stroke-width: var(--rule-heavy); }
   .ov-xray, .ov-time { z-index: 1; }
   /* the unit panel: slides in when a unit is clicked */
   .ov-np { position: absolute; top: 40px; right: 40px; width: 280px; background: var(--paper); padding: 4px 24px 4px 20px; border-left: 2px solid var(--ink); transform: translateX(-12px); opacity: 0; visibility: hidden; transition: transform var(--t-state) var(--ease-out), opacity var(--t-press), visibility 0s var(--t-state); z-index: 3; box-sizing: border-box; }
@@ -2399,7 +2412,7 @@
     .ov-stage { display: flex; flex-direction: column; min-height: 0; }
     .ov-stage > .ov-say { order: 1; }
     .ov-stage > .ov-over { order: 2; margin-top: 12px; }
-    .ov-stage > .ov-xray { order: 3; } .ov-stage > .ov-time { order: 4; }
+    .ov-stage > .ov-time { order: 3; } .ov-stage > .ov-xray { order: 4; }
     .ov-over .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; }
     .ov-say { padding: 0; }
     .ov.ov-r6 .ov-say h1 { margin-top: 10px; }
@@ -2409,7 +2422,9 @@
     .ov-today { margin-top: 16px; }
     .ov-xray { margin: 16px 0 0; }
     .ov-xsvg { height: auto; max-height: none; min-height: 0; aspect-ratio: 680 / 540; }
-    .ov-outline { columns: 1; }
+    .ov-r6 .ov-unit { margin-left: var(--u3); padding-left: var(--u4); }
+    .ov-outline > .ov-unit { margin-left: 0; }
+    .ov-r6 .ov-unit::before { width: var(--u3); }
     .ov-outline .ov-m .ov-role { display: inline; }
     .ov-legend { padding: 4px 16px 0; gap: 14px; flex-wrap: wrap; }
     .ov-time { margin: 12px -16px 0; }
@@ -2435,15 +2450,6 @@
   .ov-key li { display: block; }
   .ov-key li + li { margin-top: 10px; }
   .ov-key li .ov-meta { display: block; margin: 0; font-size: var(--s-meta); line-height: 18px; }
-  /* Person page: what is still open is a list on hairlines, not a card of cards. */
-  .r4-card.owed { background: none; outline: 0; border-radius: var(--radius); border-top: 1.5px solid var(--ink); }
-  .r4-card.owed .owe { padding: 14px 0; }
-  .r4-card.owed .owe-t { font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--ink); }
-  .r4-card.owed .owe.theirs .owe-t, .r4-card.owed .owe.closed .owe-t { color: var(--grey); }
-  .r4-card.owed .owe-s { font: var(--w-regular) var(--s-meta)/18px var(--font); }
-  .r4-card.owed .owe .owe-acts.quiet { right: 0; }
-  .r4-card.owed .owe .owe-acts.quiet .r4-btn { background: var(--paper); }
-  .r4-card.owed .owe-more { text-align: left; padding: 12px 0; }
   /* Today as a front page: who needs you on the left, what REM did for you on the right.
      One sans, sizes 17 · 14 · 12, weights 400/700, rows on hairlines, no boxes. */
   .morning-layout { font-family: var(--font); }
@@ -2699,14 +2705,16 @@ const UI = {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
     "1 day overdue": "逾期 1 天",
-    "Looks done": "看起来已办",
-    "open": "未结",
-    "You replied on {date}: ": "你{date}回复：",
-    "Close by this mail": "按这封邮件关闭",
-    "Not done yet": "还没办完",
     "Personal item": "个人事项",
-    "{name} owes you: {what}": "{name} 欠你：{what}",
-    "Still open between you": "你们之间还没结的事",
+    "open": "未结",
+    "{n} dated exchanges from {first} to today": "从 {first} 到今天，{n} 次有日期的往来",
+    "{date} first exchange": "{date} 第一次往来",
+    "{name} wrote last · {date}": "{name} 最后来信 · {date}",
+    "REM has no dated exchanges in this record yet, only the first contact.": "记录里还没有带日期的往来，只知道第一次联系。",
+    "Each tick is a dated exchange in the record ({n}); the other mails have no dates here.": "每条竖线是记录里一次有日期的往来（{n} 次）；其余邮件这里没有日期。",
+    "Each tick is a dated exchange in the record ({n}).": "每条竖线是记录里一次有日期的往来（{n} 次）。",
+    "In their words": "他说过的话",
+    "Original · newest first": "原文 · 最新在前",
     "Review REM's draft": "看 REM 起草的回信",
     "Write to {name}": "给 {name} 回信",
     "See what you owe": "看你欠的事",
@@ -6581,14 +6589,6 @@ function face(name, size = "") {
 }
 function firstName(r) { return r.title.replace(/\(.*?\)/g, "").trim().split(/\s+/)[0]; }
 function notDoneStorageKey() { return "co-rem-not-done:" + shortHash(REM.root || ""); }
-// "Not done yet" keeps the thread open and stops calling it handled, on this device.
-function keepOpen(entry) {
-  notDoneKeys.add(doneKey(entry));
-  readerStorage(notDoneStorageKey(), JSON.stringify([...notDoneKeys]));
-  const scroll = window.scrollY;
-  render();
-  window.scrollTo(0, scroll);
-}
 function queuedReply(entry) { return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply; }
 function overdueDays(thread) { return thread.due && thread.due < calendarDay(REM.as_of) ? daysSince(thread.due) : 0; }
 // Your later mail looks like it settled the ask; an overdue promise is never settled by it.
@@ -6605,19 +6605,6 @@ function personEntries(r) {
 function byUrgency(a, b) {
   return (a.t.due || "9999").localeCompare(b.t.due || "9999") || (a.t.since || "").localeCompare(b.t.since || "");
 }
-function urgentEntry(entries) {
-  return entries.filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency)[0];
-}
-function owedState(entry) {
-  const state = threadStates[doneKey(entry)]?.state;
-  if (isDone(entry)) return { cls: state === "skipped" ? "mute" : "ok", text: t(state === "skipped" ? "Skipped" : "Marked done") };
-  const late = overdueDays(entry.t);
-  if (late) return { cls: "late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) };
-  if (looksDone(entry)) return { cls: "ok", text: t("Looks done") };
-  if (entry.t.due) return { cls: "lamp", text: dueLabel(entry.t) };
-  if (entry.t.quiet) return { cls: "mute", text: [age(entry.t.since), t("gone quiet")].filter(Boolean).join(", ") };
-  return { cls: "mute", text: age(entry.t.since) || t("open") };
-}
 // "You owe Alyssa feedback on the demo — “I'll watch…” (date) [18]" -> a title and its evidence.
 function owedParts(entry) {
   const text = unlabelled(entry.t.text).replaceAll("**", "");
@@ -6626,54 +6613,6 @@ function owedParts(entry) {
   const clean = words => withoutDateClutter(plainLine(words), entry.t).replace(/[:：;,，\s]+$/, "");
   const after = quote ? "" : clean(rest.join(" — "));
   return { head: capFirst(clean(head)), quote: quote ? (quote[1] || quote[2] || quote[3]).trim() : "", rest: /[\p{L}\p{N}]/u.test(after) ? after : "" };
-}
-function quoteSpan(words, day) {
-  return [el("span", { class: "q", text: words }), day ? el("sup", { class: "c", text: fmtDate(day) }) : null];
-}
-function owedEvidence(entry, parts) {
-  const reply = queuedReply(entry), draft = threadDraft(entry);
-  if (draft?.status === "no_reply") return el("div", { class: "owe-s", text: t("No reply needed: ") + (draft.gist || draft.why || "") });
-  if (looksDone(entry) && reply.promise) return el("div", { class: "owe-s" }, [t("You replied on {date}: ", { date: fmtDate(reply.since) }), ...quoteSpan(reply.promise, reply.since)]);
-  if (parts.quote) return el("div", { class: "owe-s" }, quoteSpan(parts.quote, entry.t.since));
-  return parts.rest ? el("div", { class: "owe-s", text: parts.rest }) : null;
-}
-function owedActions(entry) {
-  if (isDone(entry)) {
-    const undo = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Undo") });
-    undo.onclick = () => setDone(entry, false);
-    return el("div", { class: "owe-acts" }, [undo]);
-  }
-  if (looksDone(entry)) {
-    const close = el("button", { type: "button", class: "r4-btn sm", html: CHECK_ICON }, [t("Close by this mail")]);
-    const open = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Not done yet") });
-    close.onclick = () => setDone(entry, true);
-    open.onclick = () => keepOpen(entry);
-    return el("div", { class: "owe-acts" }, [close, open]);
-  }
-  const done = el("button", { type: "button", class: "r4-btn sm ghost", text: t("Mark done") });
-  done.onclick = () => setDone(entry, true);
-  return el("div", { class: "owe-acts quiet" }, [done]);
-}
-function owedRow(r, entry) {
-  const parts = owedParts(entry), state = owedState(entry), theirs = entry.t.dir === "theirs";
-  const named = parts.head.startsWith(firstName(r));
-  const title = !parts.head ? t("Personal item") : theirs && !named ? t("{name} owes you: {what}", { name: firstName(r), what: parts.head }) : parts.head;
-  const sources = [...new Set(unlabelled(entry.t.originalText || entry.t.text).match(/[\[［]W?\d{1,3}[\]］]/g) || [])].join(" ");
-  return el("div", { class: "owe" + (theirs ? " theirs" : "") + (isDone(entry) ? " closed" : "") }, [
-    el("div", { class: "owe-t" }, [el("span", { text: title }), el("span", { class: "chip " + state.cls, text: state.text })]),
-    parts.head ? owedEvidence(entry, parts) : null, owedActions(entry),
-    entry.t.returnedAt ? el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) }) : null,
-    sources ? el("span", {class: "r4-owed-sources", html: inline(sources, entry.r?.path || r.path)}) : null]);
-}
-function owedCard(r, entries) {
-  const order = entry => isDone(entry) ? 3 : entry.t.dir === "mine" ? (looksDone(entry) ? 1 : 0) : 2;
-  const rows = [...entries].sort((a, b) => order(a) - order(b) || byUrgency(a, b)).map(entry => owedRow(r, entry));
-  rows.slice(5).forEach(row => { row.hidden = true; });
-  const more = rows.length > 5 ? el("button", { type: "button", class: "owe owe-more", text: t("{n} more items", { n: rows.length - 5 }) }) : null;
-  if (more) more.onclick = () => { rows.forEach(row => { row.hidden = false; }); more.remove(); };
-  return el("section", { class: "r4-sec", id: "open-threads" }, [el("h2", { text: t("Still open between you") }),
-    rows.length ? el("div", { class: "r4-card owed" }, [...rows, more])
-      : emptyLine(threads(r))]);
 }
 function replyDuration(seconds) {
   return seconds < 3600 ? t("{n} min", { n: Math.max(1, Math.round(seconds / 60)) })
@@ -6712,12 +6651,65 @@ function personSub(r) {
     org ? changedValue(org.org ? el("a", { href: href(org.org), text: org.name }) : el("span", { text: org.name }), r, "Company") : null].filter(Boolean);
   return parts.length ? privateFallback(el("div", { class: "r4-sub" }, parts.flatMap((part, i) => i ? [" · ", part] : [part]))) : null;
 }
-function personHead(r, entry) {
+// Who: the name is the page's one big mark. The fuse and its numbers open the column under it.
+function personHead(r) {
   const org = personOrg(r);
   return el("header", { class: "r4-head person-head" }, [
-    el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " › " + org.name }) : null, updatedMarker(r, true),
-      uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark(true) : null]),
-    el("div", { class: "r4-headrow" }, [face(r.title, "lg"), el("div", { class: "body" }, [el("h1", { text: r.title }), personSub(r)]), personTodayLink(r)])]);
+    el("div", { class: "r4-over" }, [el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " · " + org.name }) : null, updatedMarker(r, true),
+      uiLanguage !== "en" && !r.translations?.[uiLanguage] ? originalMark(true) : null]), personTodayLink(r)]),
+    el("h1", { class: "r4-name", text: r.title }), personSub(r)]);
+}
+// The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
+// exchange in the record. Positions are the real dates; nothing is spaced for looks.
+function personFuseData(r) {
+  const today = calendarDay(REM.as_of || new Date().toISOString()), day = text => /\d{4}-\d{2}-\d{2}/.exec(String(text || ""))?.[0] || "";
+  const days = historyItems(section(r, "history")?.text || "").map(item => day(item.day)).filter(d => d && d <= today).sort();
+  const first = [day(facts(r).first), days[0]].filter(Boolean).sort()[0];
+  return first ? { first, today, days, wait: personWait(r, today) } : null;
+}
+// Red only from their last mail, and only once it is past your own usual reply time (synced mail).
+function personWait(r, today) {
+  const rel = r.index?.relationship;
+  if (rel?.last_from_you !== false || !rel.last_mail || rel.reply_seconds_owner == null) return "";
+  const waited = (Date.parse(REM.as_of || new Date().toISOString()) - Date.parse(rel.last_mail)) / 1000;
+  return waited > rel.reply_seconds_owner && calendarDay(rel.last_mail) <= today ? calendarDay(rel.last_mail) : "";
+}
+function personFuse(r) {
+  const d = personFuseData(r);
+  if (!d) return null;
+  const ms = text => Date.parse(text + "T00:00:00Z"), span = Math.max(DAY_MS, ms(d.today) - ms(d.first));
+  const at = text => (Math.min(1, Math.max(0, (ms(text) - ms(d.first)) / span)) * 100).toFixed(3) + "%";
+  const line = el("div", { class: "fuse-line", role: "img", "aria-label": t("{n} dated exchanges from {first} to today", { n: d.days.length, first: fmtDate(d.first) }) },
+    [...d.days.map(day => el("i", { class: "fuse-tick", style: "left:" + at(day), title: fmtDate(day) })),
+      d.wait ? el("b", { class: "fuse-red", "data-mark": "overdue", style: "left:" + at(d.wait) }) : null]);
+  const ends = el("div", { class: "fuse-ends" }, [el("span", { text: t("{date} first exchange", { date: fmtDate(d.first) }) }),
+    d.wait ? el("span", { class: "fuse-wait", text: t("{name} wrote last · {date}", { name: firstName(r), date: fmtDate(d.wait) }) }) : null,
+    el("b", { text: t("Today") })]);
+  const mails = facts(r).mails;
+  const note = !d.days.length ? t("REM has no dated exchanges in this record yet, only the first contact.")
+    : mails > d.days.length ? t("Each tick is a dated exchange in the record ({n}); the other mails have no dates here.", { n: d.days.length })
+      : t("Each tick is a dated exchange in the record ({n}).", { n: d.days.length });
+  return el("div", { class: "r4-fuse" }, [line, ends, el("p", { class: "fuse-note", text: note })]);
+}
+// What they wrote, in their own words: archived mail cited by the record, newest first, each with its source.
+function personQuotes(r) {
+  const mails = (String(facts(r).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []).map(a => a.toLowerCase());
+  const names = [r.title.toLowerCase(), firstName(r).toLowerCase()];
+  const theirs = sender => { const s = String(sender || "").toLowerCase(); return mails.some(a => s.includes(a)) || names.some(n => n && (s === n || s.startsWith(n + " "))); };
+  // Their words, not the envelope: greetings, quoted lines and "X reacted to your message" (which quotes you) are dropped.
+  const said = text => String(text || "").split(/\n+/).map(line => line.trim())
+    .filter(line => line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
+  const seen = new Set();
+  const rows = sourceList(r).map(s => ({ s, c: REM.source_context?.[sourceId(s.text, s.plain)] }))
+    .filter(({ c }) => c?.excerpt && !c.body_empty && theirs(c.sender)).map(row => ({ ...row, words: said(row.c.excerpt) }))
+    .filter(({ words }) => [...words].length >= 12 && !/\breacted to your message\b/i.test(words) && !seen.has(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")) && seen.add(words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")))
+    .sort((a, b) => String(b.c.time).localeCompare(String(a.c.time)));
+  if (!rows.length) return null;
+  const kind = s => ({ gmail: "Gmail", outlook: "Outlook", imap: "Mail" })[sourceId(s.text).split(":")[0]] || "";
+  return el("section", { class: "r4-sec r4-said" }, [el("h2", {}, [t("In their words"), el("span", { class: "more", text: t("Original · newest first") })]),
+    el("ol", {}, rows.slice(0, 6).map(({ s, words }) => el("li", {}, [
+      el("span", { class: "said-src" }, [el("span", { text: kind(s) }), el("span", { html: inline("[" + s.n + "]", r.path) })]),
+      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])))]);
 }
 // A person's page is their record; what you owe them is done from Today
 // (owner, 2026-11-08). One quiet link there, never a reply button here.
@@ -6799,11 +6791,11 @@ function personSessions(r) {
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
     sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
 }
+// A person's page is their record (owner, 2026-11-08, D-30): what you owe them lives in Today.
 function personPage(r) {
-  const entries = personEntries(r), urgent = urgentEntry(entries);
   const rail = el("aside", { class: "r4-rail", "aria-label": t("About this person") }, [...railContact(r), ...railOrg(r), ...railUnsure(r), ...railSources(r)]);
-  return el("div", { class: "r4 r4-person" }, [personHead(r, urgent),
-    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personStats(r), owedCard(r, entries), personTimeline(r), personSessions(r)]), rail])]);
+  return el("div", { class: "r4 r4-person" }, [personHead(r),
+    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personFuse(r), personStats(r), personQuotes(r), personTimeline(r), personSessions(r)]), rail])]);
 }
 
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
@@ -8194,38 +8186,28 @@ function orgEvents(r, people) {
   return orgHistory(r, people).map(item => ({ day: item.day, words: item.words, kind: /^you\b/i.test(item.words) ? "me" : "them" }))
     .sort((a, b) => a.day.localeCompare(b.day));
 }
+// Linear from the first dated exchange to today: every tick sits at its real date, nothing is spaced for looks.
 function orgScale(events, today, left, width) {
-  const day = text => new Date(text + "T00:00:00Z").getTime(), now = day(today), recent = now - 70 * DAY_MS;
-  const first = Math.min(recent, ...events.map(e => day(e.day))), last = now + 30 * DAY_MS;
-  const stops = first < recent ? [[first, 0], [recent, .45], [now, .9], [last, 1]] : [[first, 0], [now, .9], [last, 1]];
-  return text => {
-    const x = day(text);
-    for (let i = 1; i < stops.length; i++) if (x <= stops[i][0]) {
-      const [a, pa] = stops[i - 1], [b, pb] = stops[i];
-      return left + width * (pa + (pb - pa) * (x - a) / (b - a || 1));
-    }
-    return left + width;
-  };
+  const day = text => new Date(text + "T00:00:00Z").getTime(), now = day(today);
+  const first = Math.min(now, ...events.map(e => day(e.day))), span = Math.max(DAY_MS, now - first);
+  return text => left + width * Math.min(1, Math.max(0, (day(text) - first) / span));
 }
+// The organisation's fuse: one heavy line to today, a tick per dated exchange (History only).
 function orgTime(v, box, still) {
   if (!v.events.length) { box.replaceChildren(); box.hidden = true; return; }
-  const phone = innerWidth < 720, left = phone ? 16 : 0, width = box.clientWidth - (phone ? 32 : 0), Y = 64;
+  const phone = innerWidth < 720, left = phone ? 16 : 0, width = box.clientWidth - (phone ? 32 : 0), Y = 52;
   const today = calendarDay(REM.as_of || new Date().toISOString()), x = orgScale(v.events, today, left, width), now = x(today);
   const svg = svgEl("svg", { class: "ov-tsvg" + (still ? " ov-still" : ""), role: "img", "aria-label": orgT("When you were in touch") }, [
-    svgEl("line", { class: "ov-axis", pathLength: 1, x1: left, x2: now, y1: Y, y2: Y }),
-    svgEl("line", { class: "ov-fut", x1: now, x2: left + width, y1: Y, y2: Y })]);
-  for (const e of v.events) svg.append(e.kind === "me" ? svgEl("rect", { class: "ov-ev me", x: x(e.day) - 4, y: Y - 4, width: 8, height: 8 }, [svgEl("title", {}, [fmtDate(e.day) + " · " + e.words])])
-    : svgEl("circle", { class: "ov-ev", cx: x(e.day), cy: Y, r: 4 }, [svgEl("title", {}, [fmtDate(e.day) + " · " + e.words])]));
-  const first = v.events[0], latest = v.events.at(-1), spots = [[first, "First contact"]];
-  if (latest !== first && x(latest.day) - x(first.day) > 140) spots.push([latest, "Latest contact"]);
-  for (const [e, words] of spots) {
-    const at = x(e.day), anchor = at < left + 60 ? "start" : at > now - 70 ? "end" : "middle";
-    svg.append(svgEl("text", { class: "ov-tlab b", x: at, y: Y + 30, "text-anchor": anchor }, [orgT(words)]),
-      svgEl("text", { class: "ov-tlab q", x: at, y: Y + 45, "text-anchor": anchor }, [fmtDate(e.day)]));
-  }
+    svgEl("line", { class: "ov-axis", pathLength: 1, x1: left, x2: now, y1: Y, y2: Y })]);
+  for (const e of v.events) svg.append(svgEl("rect", { class: "ov-ev" + (e.kind === "me" ? " me" : ""), x: x(e.day) - 1, y: Y - 40, width: 2, height: 40 },
+    [svgEl("title", {}, [fmtDate(e.day) + " · " + e.words])]));
+  const first = v.events[0], latest = v.events.at(-1), row = Y + 28;
+  svg.append(svgEl("text", { class: "ov-tlab b", x: left, y: row, "text-anchor": "start" }, [orgT("First contact")]),
+    svgEl("text", { class: "ov-tlab q", x: left, y: row + 15, "text-anchor": "start" }, [fmtDate(first.day)]));
+  if (latest !== first && latest.day < today) svg.append(svgEl("text", { class: "ov-tlab q", x: now - 6, y: row + 15, "text-anchor": "end" }, [orgT("Latest contact") + " · " + fmtDate(latest.day)]));
   svg.append(svgEl("g", { class: "ov-now", "data-x": Math.round(now), style: `transform:translateX(${now}px);--from:${x(new Date(new Date(today + "T00:00:00Z").getTime() - 70 * DAY_MS).toISOString().slice(0, 10))}px` }, [
-    svgEl("line", { x1: 0, x2: 0, y1: 14, y2: Y + 12, class: "ov-now-l" }), svgEl("path", { d: "M-9,0 L9,0 L0,14 Z", class: "ov-now-w" }),
-    svgEl("text", { class: "ov-tlab b", x: -12, y: 12, "text-anchor": "end" }, [orgT("Today")])]));
+    svgEl("line", { x1: 0, x2: 0, y1: Y - 48, y2: Y + 3, class: "ov-now-l" }),
+    svgEl("text", { class: "ov-tlab b", x: -6, y: row, "text-anchor": "end" }, [orgT("Today")])]));
   box.hidden = false;
   box.replaceChildren(svg);
 }
@@ -9017,6 +8999,8 @@ function sectionBody(r, s) {
     }
   }
   if (name === "open threads" || name === "more open threads") {
+    // A person's record keeps its threads as written: what to do about them is Today's (D-30).
+    if (r.category === "people") return el("div", { class: "person-threads", html: markdown(s.text, r.path) });
     const all = threads(r);
     const state = name === "more open threads" ? { items: all.items.slice(3), calm: "" } : all;
     const box = el("div", { class: "block-threads" });
@@ -9682,7 +9666,6 @@ function record(path, heading) {
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
     if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
-    if (person && s.title.toLowerCase() === "open threads") continue;
     if (["people", "projects", "orgs"].includes(r.category) && s.title.toLowerCase() === "open threads" && listItems(s.text).every(isCalm)) continue;
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&

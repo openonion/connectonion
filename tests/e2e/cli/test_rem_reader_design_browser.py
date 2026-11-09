@@ -614,15 +614,14 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_a_person_opens_on_the_relationship_ledger_with_facts_disclosed(reader):
+# The ledger that opened this page is retired (owner, 2026-11-08, D-30): the record opens on who she is.
+def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
     assert page.locator('.r4-stats').inner_text().count('\n') >= 3
-    rows = page.locator('#open-threads .owe')
-    assert rows.count() == 2
-    assert rows.first.locator('.owe-t span').first.inner_text() == 'Data-sharing addendum'
-    assert rows.first.locator('.chip').inner_text() == '9 days'
+    assert page.locator('#open-threads, .owe').count() == 0
+    assert page.locator('.r4-fuse .fuse-tick').count() == 5
     assert page.locator('details.deep-note').get_attribute('open') is None
     assert not page.locator('.factlist').is_visible()
     page.locator('details.deep-note > summary').click()
@@ -1454,10 +1453,11 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
       REM.source_context['outlook:77c09ad1e3f0'].time = '2026-10-01T10:00:00Z';
       KNOWN.clear(); render();
     }""", isolated_context=False)
-    row = page.locator('#open-threads .owe').first
-    assert row.locator('.chip').inner_text() == 'due Today'
+    # The person page no longer lists it (D-30); the dates Today labels it by still come from the notebook calendar.
+    first = "threads(byPath('people/mara-ostrowski.md')).items[0]"
+    assert page.evaluate(f"dueLabel({first})", isolated_context=False) == 'due Today'
     page.evaluate("REM.as_of = '2026-10-03T14:30:00Z'; render()", isolated_context=False)
-    assert page.locator('#open-threads .owe .chip').first.inner_text() == '1 day overdue'
+    assert page.evaluate(f"overdueDays({first})", isolated_context=False) == 1
     dates = page.evaluate("threads(byPath('people/mara-ostrowski.md')).items[0]", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == '2026-10-03'
     dates = page.evaluate(r"""() => {
@@ -1480,9 +1480,10 @@ def test_phone_open_preview_names_elapsed_age_and_keeps_the_full_thread(reader):
       REM.source_context['outlook:77c09ad1e3f0'].time = '2026-09-29T10:00:00Z';
       KNOWN.clear(); render();
     }""", isolated_context=False)
-    ledger = page.locator('#open-threads .owe').first
-    assert ledger.locator('.chip').inner_text() == '5 days'
-    assert 'exact due day still needs confirmation' in ledger.inner_text()
+    item = page.evaluate("(() => { const t = threads(byPath('people/mara-ostrowski.md')).items[0]; return {age: age(t.since), text: t.text}; })()",
+                         isolated_context=False)
+    assert item['age'] == '5 days'
+    assert 'exact due day still needs confirmation' in item['text']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -2249,7 +2250,9 @@ def test_supporting_span_preserves_words_and_never_invents_a_match(reader):
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("width", [375, 390, 1400])
-def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme, width):
+def test_person_threads_keep_their_dates_off_the_record_and_deep_hash_targets(reader, theme, width):
+    """The rows left the person page (owner, 2026-11-08, D-30): what you owe her is one Today link.
+    The thread data Today reads still parses her page: direction, due, age, quiet, and no third parties."""
     page, uri = reader
     page.emulate_media(color_scheme=theme)
     page.set_viewport_size({"width": width, "height": 844})
@@ -2271,16 +2274,19 @@ def test_person_ledger_discloses_extra_rows_and_deep_hash_targets(reader, theme,
       REM.source_context['gmail:0f9be4c12a55'].time = '2026-07-22T10:00:00Z';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    rows = page.locator('#open-threads .owe')
-    mine = rows.filter(has_text='You owe Mara')
-    assert mine.count() == 4
-    assert page.locator('#open-threads .owe:visible').count() == 5
-    assert page.locator('#open-threads .owe-more').count() == 0  # five rows fit before "N more"
-    assert mine.filter(has_text='scope decision').locator('.chip').inner_text() == 'due Oct 22'
-    assert mine.filter(has_text='signed draft').locator('.chip').inner_text() == '7 days'
-    assert mine.filter(has_text='old receipt').locator('.chip').inner_text() == '85 days, gone quiet'
-    assert rows.filter(has_text='usage export').count() == 1
-    assert 'Quinn owes Tomás' not in page.locator('#open-threads').inner_text()
+    assert page.locator('#open-threads, .owe').count() == 0
+    rows = page.evaluate("""() => personEntries(byPath('people/mara-ostrowski.md')).map(({t}) =>
+      ({text: t.text, dir: t.dir, due: t.due ? dueLabel(t) : '', age: age(t.since), quiet: t.quiet}))""", isolated_context=False)
+    mine = [row for row in rows if row['dir'] == 'mine']
+    assert len(mine) == 4 and len(rows) == 5
+    pick = lambda words: next(row for row in mine if words in row['text'])  # noqa: E731
+    assert pick('scope decision')['due'] == 'due Oct 22'
+    assert pick('signed draft')['age'] == '7 days'
+    assert pick('old receipt')['age'] == '85 days' and pick('old receipt')['quiet']
+    assert sum('usage export' in row['text'] for row in rows) == 1
+    assert not any('Quinn owes Tomás' in row['text'] for row in rows)
+    # Four things owed, one quiet: three in Today, and the record says so once.
+    assert page.locator('.r4-today').inner_text() == '3 items in Today'
     assert page.locator('.tl .tl-e').count() <= 12
     page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator('.block-insight li.ins-at-stake').count() == 1
@@ -2825,7 +2831,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
       KNOWN.clear(); FACTS.clear(); render();
       document.documentElement.classList.add('hide-private');
     }''', labelled, isolated_context=False)
-    assert page.locator('#open-threads .empty-line').inner_text() == 'Nothing open.'
+    assert page.locator('#open-threads').count() == 0 and page.locator('.r4-today').count() == 0
     assert page.locator('.tl > li.tl-e:visible').count() == 0
     assert page.locator('#history-timeline .private-history-notice').inner_text() == '1 private entry hidden'
     assert page.locator('.r4-kv dt').filter(has_text='Phone').count() == 0
@@ -3334,7 +3340,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     }'''
     page.locator('details.deep-note').evaluate('d => d.open = true')
     original = page.locator('.deep-note .note > p').first.evaluate(prose)
-    assert page.locator('#open-threads h2').inner_text() == '你们之间还没结的事'
+    assert page.locator('.r4-said h2').inner_text().startswith('他说过的话')
     page.locator('.language-switch').get_by_role('button', name='EN', exact=True).click()
     assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('People')
     page.locator('details.deep-note').evaluate('d => d.open = true')
@@ -4088,11 +4094,14 @@ def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
     page.locator('.done-details summary').click()
     assert 'sync pending' in page.locator('.done-details').inner_text()
     assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
+    # Her record follows the decision without a ledger of its own (D-30): nothing of hers is left in Today.
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    row = page.locator('.owe').filter(has_text='Data-sharing addendum')
-    assert row.locator('.chip').inner_text() == 'Marked done'
-    row.get_by_role('button', name='Undo', exact=True).click()
-    assert row.locator('.chip').inner_text() != 'Marked done'
+    assert page.locator('.owe').count() == 0 and page.locator('.r4-today').count() == 0
+    page.goto(uri + '#view=open')
+    page.locator('.done-details summary').click()
+    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    assert page.locator('.r4-today').inner_text() == '1 item in Today'
     page.goto(uri)
     assert 'Data-sharing addendum' in page.locator('.today-brief').inner_text()
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before
@@ -4251,14 +4260,8 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
     }''', {'theme': theme, 'language': language}, isolated_context=False)
     waiting_colour = page.locator('.qage').first.evaluate(r'''node => getComputedStyle(node).color''')
     page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
-    # Each open row: the chip sits at the right edge, level with the title.
-    rows = page.locator('#open-threads .owe:visible')
-    assert rows.count() == 2
-    for row in rows.all():
-        assert row.evaluate(r'''row => {
-          const chip = row.querySelector('.chip').getBoundingClientRect(), title = row.querySelector('.owe-t span').getBoundingClientRect();
-          return Math.abs(row.getBoundingClientRect().right - chip.right) <= 20 && Math.abs(title.top - chip.top) <= 4;
-        }''')
+    # The person page is a record with no open rows to align (owner, 2026-11-08, D-30).
+    assert page.locator('#open-threads .owe').count() == 0
     assert waiting_colour
     for record in ['projects/harbour.md', 'orgs/fernhill-labs.md']:
         page.goto(path.as_uri() + '#r=' + record.replace('/', '%2F'))
@@ -4558,6 +4561,13 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
     for record, heading in [('projects/quiet-pilot.md', 'Open threads'), ('people/mia-chen.md', 'Still open between you'),
                             ('orgs/northgate-university.md', 'Open threads')]:
         page.goto(uri + '#r=' + record.replace('/', '%2F'))
+        if record.startswith('people/'):
+            # A person's page is a record (D-30): nothing owed means no Today line and no empty ledger.
+            assert page.locator('.r4-person h1').inner_text() == 'Mia Chen'
+            assert page.locator('#open-threads, .r4-today').count() == 0
+            assert not page.get_by_role('heading', name=heading, exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            continue
         if record.startswith('orgs/'):
             # Nothing owed: the record has no Today line and no ledger.
             assert page.locator('.ov-say .ov-name').inner_text() == 'Northgate University'
@@ -4572,10 +4582,7 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
           const s = getComputedStyle(node);
           return [s.fontFamily, s.fontSize, s.color, s.borderTopWidth, s.marginTop];
         }'''))
-        if record.startswith('people/'):
-            assert page.locator('.empty-line').inner_text() == 'Nothing open.'
-        else:
-            assert page.locator('.empty-line').inner_text() == 'Nothing open.'
+        assert page.locator('.empty-line').inner_text() == 'Nothing open.'
         if record.startswith('projects/'):
             assert page.locator('.focus-head .deep-note-limit, .focus-limit').count() == 0
             assert page.locator('.deep-note-limit').count() == 1
@@ -4583,17 +4590,20 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
             assert page.locator('.deep-note-limit').is_visible()
             assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '12px'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    # Both compact quiet lines remain readable without adding a card border.
+    # The compact quiet line remains readable without adding a card border.
     assert styles[0][1:] == ['16px', styles[0][2], '0px', '8px']
-    assert styles[1][1] == '16px' and styles[1][3] == '0px'
     page.goto(uri + '#r=people%2Fmia-chen.md')
     page.evaluate(r'''() => {
       const r = byPath('people/mia-chen.md');
       r.text = '# Mia Chen\n\n## Open threads\n- Discuss the pilot review with Theo Park.\n';
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
-    assert page.locator('#open-threads .empty-line').count() == 0
-    assert 'Discuss the pilot review with Theo Park' in page.locator('#open-threads .owe').inner_text()
+    # Something owed is one quiet link to Today, never a row on her record (D-30); the record keeps
+    # the thread as written in its full memory.
+    assert page.locator('#open-threads').count() == 0
+    assert page.locator('.r4-today').inner_text() == '1 item in Today'
+    page.locator('details.deep-note > summary').click()
+    assert 'Discuss the pilot review with Theo Park' in page.locator('.deep-note .person-threads').inner_text()
 
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
@@ -4625,7 +4635,7 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page.goto(uri)
     page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
     for route, selectors in [('#c=people', '.brand .sub, nav a .n, .r4 .row .s, .r4 .row .when, .r4 .grp, .r4 .chip, .r4-tabs i'),
-                             ('#r=people%2Fmara-ostrowski.md', '.brand .sub, .r4-crumb, .r4-stats div, .owe-s, .r4 .chip, .tl-e .d, .r4-kv dt, .r4-rail h4'),
+                             ('#r=people%2Fmara-ostrowski.md', '.brand .sub, .r4-crumb, .r4-stats div, .fuse-ends span, .fuse-note, .said-src, .tl-e .d, .r4-kv dt, .r4-rail h4'),
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
         page.goto(uri + route)
         if page.locator('details.deep-note').count():
@@ -4957,7 +4967,7 @@ def _org_view(page, uri, hash_, width, theme):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_person_page_leads_with_one_next_step_owed_rows_timeline_and_rail(reader, width, theme):
+def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(reader, width, theme):
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
@@ -4970,10 +4980,7 @@ def test_person_page_leads_with_one_next_step_owed_rows_timeline_and_rail(reader
     assert re.fullmatch(r"今天里有 \d+ 件", today.inner_text()) and today.get_attribute("href") == "#"
     assert today.bounding_box()["y"] + today.bounding_box()["height"] <= 844, "the Today link is on the first screen"
     assert page.locator(".r4-stats > div").count() >= 3
-    assert page.locator("#open-threads h2").inner_text() == "你们之间还没结的事"
-    titles = page.locator(".owe-t").all_inner_texts()
-    assert any(title.startswith("Data-sharing addendum") for title in titles)
-    assert any("欠你" in title or "owes you" in title for title in titles)
+    assert page.locator("#open-threads, .owe").count() == 0
     assert page.locator(".tl .tl-e .w i").count() >= 3
     assert page.locator(".r4-rail h4").all_inner_texts()[:2] == ["联系", "组织"]
     assert "REM 还不确定" in page.locator(".r4-rail").inner_text()
@@ -4982,33 +4989,100 @@ def test_person_page_leads_with_one_next_step_owed_rows_timeline_and_rail(reader
     if width == 390:
         assert rail["y"] > timeline["y"], "the rail sits under the timeline on a phone"
     else:
-        assert rail["width"] == 248 and rail["x"] > timeline["x"]
+        assert rail["width"] == 320 and rail["x"] > timeline["x"]  # --rail
     assert page.locator(".person-lead, .between-you, .relationship-stats").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_person_looks_done_row_closes_by_mail_or_stays_open(reader):
+# The sheet's red, light and dark: on a record it may mean only "past due".
+RED = ("rgb(192, 42, 23)", "rgb(255, 85, 61)")
+RED_MARKS = r"""red => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && (() => {
+  const s = getComputedStyle(node);
+  return [s.color, s.backgroundColor, s.fill, s.stroke].some(c => red.includes(c));
+})()).map(node => node.className.baseVal ?? node.className)"""
+
+
+# Owner, 2026-11-08 (D-30): a person's page is their record. The fuse runs from the first
+# exchange to today, one tick per dated exchange the record holds; nothing on it is a to-do.
+@pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 844})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate("theme => setTheme(theme)", theme, isolated_context=False)
+    main = page.locator("#main")
+    assert page.locator("#open-threads, .owe").count() == 0
+    assert "Mark done" not in main.inner_text() and "Still open between you" not in main.inner_text()
+    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
+    assert "标为完成" not in main.inner_text()
+    assert page.locator("#main a").filter(has_text=re.compile("今天里有")).count() == 1
+    name = page.locator(".r4-person h1")
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == f"{min(112, .22 * width):g}px"
+    fuse = page.locator(".r4-fuse")
+    dated = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10).length",
+                          isolated_context=False)
+    assert dated == 5 and fuse.locator(".fuse-tick").count() == dated
+    # Ticks sit at their real dates on a line from first contact (mail map: Aug 21) to today (Oct 1).
+    xs = fuse.locator(".fuse-tick").evaluate_all("ticks => ticks.map(t => t.getBoundingClientRect().x)")
+    line = fuse.locator(".fuse-line").bounding_box()
+    assert xs == sorted(xs)
+    assert abs(xs[0] - (line["x"] + line["width"] * 1 / 41)) <= 3 and abs(xs[-1] - (line["x"] + line["width"] * 40 / 41)) <= 3
+    # Name and fuse lead the page, on the first screen of a phone too.
+    box = fuse.bounding_box()
+    assert box["y"] + box["height"] <= 844
+    assert fuse.locator(".fuse-red").count() == 0 and page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
+    assert page.evaluate(GREEN, isolated_context=False) == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_person_fuse_burns_red_only_past_the_owners_usual_reply_time(reader):
     page, uri = reader
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    page.evaluate("""() => {
-      const r = byPath('people/mara-ostrowski.md');
-      const entry = personEntries(r).find(e => e.t.dir === 'mine');
-      REM.today_queue = [{key: doneKey(entry), keys: [doneKey(entry)], dir: 'mine', since: entry.t.since, due: '', quiet: false,
-        reply: {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'}}];
-      render();
-    }""", isolated_context=False)
-    row = page.locator(".owe").filter(has_text="Data-sharing addendum")
-    assert row.locator(".chip").inner_text() == "Looks done"
-    assert "Signed and attached." in row.locator(".owe-s").inner_text()
-    assert _green_primaries(page) == [], "nothing else is owed, so no primary"
-    row.get_by_role("button", name="Not done yet").click()
-    row = page.locator(".owe").filter(has_text="Data-sharing addendum")
-    assert row.locator(".chip").inner_text() != "Looks done"
-    assert _green_primaries(page) == [] and page.locator(".r4-today").inner_text() == "1 item in Today"
-    page.evaluate("() => { notDoneKeys.clear(); render(); }", isolated_context=False)
-    page.locator(".owe").filter(has_text="Data-sharing addendum").get_by_role("button", name="Close by this mail").click()
-    assert page.locator(".owe").filter(has_text="Data-sharing addendum").locator(".chip").inner_text() == "Marked done"
-    assert page.locator("#done-notice").is_visible()
+    rel = """([fromYou, replySeconds]) => { const r = byPath('people/mara-ostrowski.md');
+      r.index = {...(r.index || {}), relationship: {last_mail: '2026-09-28T09:00:00Z', last_from_you: fromYou, reply_seconds_owner: replySeconds,
+        weekly_messages: Array(52).fill(1)}}; render(); }"""
+    page.evaluate(rel, [False, 3600], isolated_context=False)
+    red = page.locator(".r4-fuse .fuse-red")
+    assert red.count() == 1
+    assert page.locator(".r4-fuse .fuse-wait").inner_text() == "Mara wrote last · " + page.evaluate("fmtDate('2026-09-28')", isolated_context=False)
+    box, line = red.bounding_box(), page.locator(".r4-fuse .fuse-line").bounding_box()
+    assert abs(box["x"] + box["width"] - (line["x"] + line["width"])) <= 1, "the red runs up to today"
+    assert red.evaluate("node => getComputedStyle(node).backgroundColor") in RED
+    page.evaluate(rel, [True, 3600], isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 0, "you wrote last: nothing is burning"
+    page.evaluate(rel, [False, 10 * 86400], isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 0, "still inside your usual reply time"
+    page.evaluate(rel, [False, None], isolated_context=False)
+    assert page.locator(".r4-fuse .fuse-red").count() == 0, "no reply-time data, no red"
+
+
+def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate(r"""() => { const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/## History[\s\S]*?(?=\n## )/, '## History\n- Met at a meetup.\n'); KNOWN.clear(); FACTS.clear(); render(); }""",
+                  isolated_context=False)
+    fuse = page.locator(".r4-fuse")
+    assert fuse.locator(".fuse-tick").count() == 0
+    assert "no dated exchanges" in fuse.locator(".fuse-note").inner_text()
+    assert fuse.locator(".fuse-ends").inner_text().startswith("Aug 21")
+
+
+def test_person_quotes_carry_their_source_and_open_the_original(reader):
+    from patchright.sync_api import expect
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    quotes = page.locator(".r4-said li")
+    assert quotes.count() == 3
+    assert "Could the renewal include a fourth seat?" in quotes.first.inner_text()
+    assert "Gmail" in quotes.first.locator(".said-src").inner_text()
+    cite = quotes.first.locator("a.cite")
+    expect(cite).to_be_visible()
+    assert "h=src-" in cite.get_attribute("href")
+    cite.click()
+    expect(page.locator("#evidence-panel")).to_be_visible()
+    assert page.locator("details.deep-note").get_attribute("open") is None
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -5531,7 +5605,7 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
 
 # ---------- Organisation page, round 6 ("Bauhaus lightness") on an invented university ----------
 ORG_TREE = "#r=orgs%2Ffernhill-university.md"
-LATE = ("rgb(196, 54, 44)", "rgb(240, 103, 92)")
+LATE = RED  # the sheet's red; the old literals had drifted from it, so this audit could not see red
 # What competes on the first screen of #main (the art-direction audit, ported).
 FIRST_SCREEN = r"""() => {
   const H = innerHeight, main = document.getElementById('main');
@@ -5731,6 +5805,30 @@ OVERLAPS = r"""() => {
 }"""
 
 
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_fuse_ticks_real_dates_and_the_hierarchy_steps_down_for_the_keyboard(org_reader, width):
+    page = org_reader(width, language="en")
+    events = page.evaluate("orgCurrent.events.map(e => e.day)", isolated_context=False)
+    ticks = page.locator(".ov-time .ov-ev")
+    assert len(events) >= 6 and ticks.count() == len(events)
+    # Linear in time from the first exchange to today: later is never further left.
+    xs = ticks.evaluate_all("ticks => ticks.map(t => t.getBoundingClientRect().x)")
+    assert xs == sorted(xs)
+    assert page.locator(".ov-time .ov-axis").evaluate("node => getComputedStyle(node).strokeWidth") == "6px"
+    assert page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
+    # Each unit starts to the right of the unit it sits under.
+    steps = page.evaluate("""() => [...document.querySelectorAll('.ov-outline .ov-unit .ov-unit')].map(unit => [
+      unit.querySelector('.ov-tn').getBoundingClientRect().x, unit.parentElement.closest('.ov-unit').querySelector('.ov-tn').getBoundingClientRect().x])""",
+                          isolated_context=False)
+    assert steps and all(child > parent for child, parent in steps), steps
+    # Every unit and person in it is a link, in reading order for Tab.
+    links = page.locator(".ov-outline a")
+    links.first.focus()
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement === document.querySelectorAll('.ov-outline a')[1]", isolated_context=False)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def test_org_enter_on_a_unit_keeps_keyboard_focus_and_space_works(org_reader):
     page = org_reader(1440, motion="no-preference")
     page.wait_for_timeout(2200)
@@ -5839,19 +5937,6 @@ def test_org_full_page_reads_cleanly_to_the_bottom(org_reader, width, theme):
     assert page.locator(".ov-tsvg .ov-ev:visible").count() >= 6
     assert page.evaluate(OVERLAPS, isolated_context=False) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-
-
-def test_person_owed_item_opens_its_cited_original_without_searching_full_memory(reader):
-    from patchright.sync_api import expect
-    page, uri = reader
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    cite = page.locator('.owe .r4-owed-sources a.cite').first
-    expect(cite).to_be_visible()
-    source = cite.get_attribute('href')
-    assert 'h=src-' in source
-    cite.click()
-    expect(page.locator('#evidence-panel')).to_be_visible()
-    assert page.locator('details.deep-note').get_attribute('open') is None
 
 
 @pytest.mark.parametrize("width", [1440, 390])

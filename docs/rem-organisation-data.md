@@ -74,8 +74,8 @@ no fields and reads:
 | X-ray rings | `children`/`parent` (two rings; deeper units fold into their ring-2 ancestor), person `units`; size = people you know there | no units: the people form the ring |
 | Ring around a unit | someone there in touch within 45 days | no ring |
 | Node fill (warmth) | members' `index.relationship` mail metadata: `quiet` → cold, `trend: cooling` → cooling, `warming`/`steady`/`new` → in touch | neutral grey; legend says warmth is not known yet |
-| Time line and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once | no time line |
-| Units and people, who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them` | role only; no reply speed claimed |
+| The fuse (time line) and 最近往来 | dated `History` lines of the org and its people; one event written on two pages is shown once. A heavy line runs from the first dated exchange to today, linear in time, one tick per event; nothing on it is red | no fuse |
+| Units and people (the hierarchy), who to ask | Unit, Role in unit / Role, `index.relationship.reply_seconds_them`. Units step down and to the right on a heavy elbow; every unit and person is a link in reading order | role only; no reply speed claimed |
 | Unit crumb | the `parent` chain | top-level: 组织 › kind |
 
 Not drawn because REM does not record them yet: term weeks, settled agreements, a

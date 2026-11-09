@@ -514,19 +514,6 @@ def test_summary_values_hide_only_empty_placeholders():
     assert result == [False] * 8 + [True] * 3
 
 
-def test_empty_between_you_keeps_one_calm_line_and_real_threads_remain():
-    page = TEMPLATE.read_text(encoding="utf-8")
-    functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0) for name in ["owedCard", "byUrgency"])
-    result = _run_reader_js(functions + r"""
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      const isDone = () => false, looksDone = entry => entry.t.done, owedRow = (r, entry) => entry.t.name;
-      const threads = () => ({calm: ""}), emptyLine = () => ({tag: "p", class: "empty-line", text: "Nothing open."});
-      const entries = [{t: {dir: "theirs", name: "export"}}, {t: {dir: "mine", name: "replied", done: true}},
-        {t: {dir: "mine", name: "late", due: "2026-10-01"}}, {t: {dir: "mine", name: "plan", since: "2026-09-01"}}];
-      console.log(JSON.stringify([owedCard({}, []), owedCard({}, entries).children[1].children.filter(Boolean)]));
-    """)
-    assert result[0]["children"][1] == {"tag": "p", "class": "empty-line", "text": "Nothing open."}
-    assert result[1] == ["late", "plan", "replied", "export"]
 
 
 def test_source_focus_candidates_exclude_unreachable_controls():
@@ -3071,47 +3058,8 @@ def test_approval_request_freezes_all_controls_until_response():
     assert result == {'frozen': True, 'restored': True}
 
 
-def test_person_owed_row_says_looks_done_with_your_reply_and_offers_both_answers():
-    page = TEMPLATE.read_text()
-    ui = page[page.index('const UI = {'):page.index('function t(')].strip()
-    ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'owedRow', 'owedParts', 'owedState', 'owedEvidence', 'owedActions', 'quoteSpan', 'looksDone', 'overdueDays', 'queuedReply',
-        'firstName', 'fmtDate', 'calendarDay', 'plainLine', 'capFirst'])
-    result = _run_reader_js(ui + functions + r'''
-      uiLanguage = 'zh';
-      let notDoneKeys = new Set();
-      const REM = {as_of: '2026-11-08', today_queue: [{key: 'k1', reply: {state: 'replied', since: '2026-10-28', promise: 'Friday works.'}}]};
-      const doneKey = entry => entry.key, isDone = () => false, threadStates = {}, threadDraft = () => null;
-      const youify = text => text.replace(/^Mara asked the user/, 'Mara asked you'), withoutDateClutter = text => text;
-      const age = () => '3 天', daysSince = day => Math.round((new Date('2026-11-08') - new Date(day)) / 864e5);
-      const setDone = () => {}, CHECK_ICON = '', inline = text => text;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
-      const r = {title: 'Mara Ostrowski'};
-      const text = node => typeof node === 'string' ? node : (node.text || '') + (node.children || []).map(text).join('');
-      const done = owedRow(r, {key: 'k1', t: {dir: 'mine', since: '2026-10-26', text: 'Mara asked the user to choose a Friday slot — “Pick the best 30 minutes!” (2026-10-26) [19]'}});
-      const late = owedRow(r, {key: 'k2', t: {dir: 'mine', since: '2026-10-23', due: '2026-10-25', text: 'You owe Mara feedback on the demo — “I will watch it that week.” [18]'}});
-      notDoneKeys.add('k1');
-      const reopened = owedRow(r, {key: 'k1', t: {dir: 'mine', since: '2026-10-26', text: 'Mara asked the user to choose a Friday slot [19]'}});
-      console.log(JSON.stringify([text(done.children[0]), text(done.children[1]), done.children[2].children.map(text),
-        text(late.children[0]), text(late.children[1]), text(reopened.children[0])]));
-    ''')
-    assert result[0] == 'Mara asked you to choose a Friday slot看起来已办'
-    assert result[1].startswith('你10月28日回复：Friday works.')
-    assert result[2] == ['按这封邮件关闭', '还没办完']
-    assert result[3] == 'You owe Mara feedback on the demo逾期 14 天'
-    assert result[4].startswith('I will watch it that week.')
-    assert result[5].endswith('3 天')
 
 
-def test_person_owed_row_keeps_a_no_reply_reason():
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in ['owedEvidence'])
-    result = _run_reader_js(functions + r'''
-      const queuedReply = () => null, threadDraft = () => ({status: 'no_reply', gist: '需要你到场，已等3天。'});
-      const el = (tag, attrs = {}) => attrs;
-      console.log(JSON.stringify(owedEvidence({t: {}}, {})));
-    ''')
-    assert result['text'] == 'No reply needed: 需要你到场，已等3天。'
 
 
 def test_session_mentions_skip_regex_scans_for_absent_names(monkeypatch):

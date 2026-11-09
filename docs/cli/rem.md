@@ -754,9 +754,18 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   changed-field underline draws in about 600 ms. Filtering or rerendering the
   same view does not replay them; reduced motion shows the final state immediately.
   A short legend lives in **Reader settings**.
-- **Between you** on a person's page lists what you owe and what they owe in
-  two quiet columns; each thread's age sits at its top right, amber for what
-  you owe, as on Home. Project and organisation pages show each date once,
+- **A person's page is their record** (owner, 2026-11-08): no list of what
+  you owe and no **Mark done** there; one quiet link, **N items in Today**,
+  when Today holds something of theirs. The name is the page's one large mark.
+  Under it the **fuse** runs from the first exchange REM knows to today, one
+  tick per dated History line at its real date; when the record has no dated
+  lines it draws only the first contact and says so. The fuse turns red only
+  from their last mail, and only once that is past your own median reply time
+  in synced mail; without that data it is never red. Then mails, first
+  exchange, your median reply and last contact; **In their words**, their own
+  archived mail cited by the page, each with its channel and source mark; and
+  the dated exchanges. Contact, organisation, what REM is not sure of (dashed,
+  REM's pencil) and the local graph sit in the rail. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
