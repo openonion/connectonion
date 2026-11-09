@@ -3794,6 +3794,30 @@ def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, mon
 
 
 
+def test_one_refresh_gives_the_page_and_its_details_one_render_time(tmp_path, monkeypatch):
+    """Two builds rendered across a second boundary (a loaded CI runner) disagreed on
+    as_of, and the page and its details no longer matched /rem/version."""
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    ticks = iter(range(1000))
+
+    class Ticking(datetime):
+        @classmethod
+        def now(cls, tz=None):  # every reading of the clock is a second later
+            return datetime(2026, 11, 9, 3, 19, tzinfo=timezone.utc) + timedelta(seconds=next(ticks))
+    monkeypatch.setattr(reader, "datetime", Ticking)
+    reader.refresh(root)
+    page, _ = reader.cached_page(root, "live.html")
+    details, _ = reader.cached_page(root, "data.json")
+    served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+    assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
+
+
 def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp_path, monkeypatch):
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"
