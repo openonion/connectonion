@@ -4212,9 +4212,16 @@ function plural(verb) {
 // asked" (1.9.2b1). Only verbs that are never plural nouns: "invoices and receipts" stays.
 const CLAUSE_START = /(?:^|[.;:!?(—–,>。！？；：，（]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
 const ALSO_VERBS = new Set([...Object.keys(YOU_VERBS), "owes", "says", "asks", "wants", "expects", "prefers", "agrees", "replies", "writes", "thinks", "knows", "seems"]);
+// A question puts the verb before "the user", and it agrees too: "Has the user
+// collected the card?" reads "Have you collected the card?" (#2908). Only at a
+// clause or question-word start: "The signer is the user." stays "is".
 function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
   return String(text)
+    .replace(/\b(has|is|was|does|hasn['’]t|isn['’]t|wasn['’]t|doesn['’]t)(?= the user\b(?!['’-]))/gi, (m, verb, at, all) => {
+      const before = all.slice(0, at), agreed = YOU_VERBS[verb.toLowerCase().replace("’", "'")].replace("'", verb.includes("’") ? "’" : "'");
+      return CLAUSE_START.test(before) || /\b(?:what|when|where|why|how|who|whom|which)\s+$/i.test(before) ? cap(verb[0] === verb[0].toUpperCase() ? "T" : "t", agreed) : m;
+    })
     .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
     .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word, at, all) => {
       const verb = plural(word.replace("’", "'"));

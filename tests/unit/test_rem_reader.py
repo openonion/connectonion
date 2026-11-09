@@ -4083,3 +4083,36 @@ def test_with_no_saved_page_at_all_open_renders_once_and_says_so_every_few_secon
     result = reader.open_snapshot(root, launch=False, say=lines.append)
     assert "Alice Example" in open(result["page"], encoding="utf-8").read()
     assert len(lines) >= 4 and "first" in lines[0], lines        # a line at once, then one per tick
+
+
+def _youify(lines):
+    """The reader's own youify over `lines`, as the owner reads them."""
+    source = TEMPLATE.read_text()
+    parts = [re.search(r"^const " + name + r" = .*?;$", source, re.M).group(0)
+             for name in ["YOU_VERBS", "NOT_VERBS", "CLAUSE_START", "ALSO_VERBS"]]
+    parts += [re.search(r"function " + name + r"\(.*?\n\}", source, re.S).group(0) for name in ["plural", "youify"]]
+    return _run_reader_js("\n".join(parts) + f"\nconsole.log(JSON.stringify({json.dumps(lines)}.map(youify)));")
+
+
+def test_a_question_to_the_owner_agrees_when_the_verb_comes_first():
+    # #2908: "Has the user collected …?" on the page read "Has you collected …?".
+    cases = {
+        "Has the user collected the replacement card since 2026-10-01? [3]": "Have you collected the replacement card since 2026-10-01? [3]",
+        "Does the user have the signed copy?": "Do you have the signed copy?",
+        "Is the user still waiting on the quote?": "Are you still waiting on the quote?",
+        "Was the user told about the move?": "Were you told about the move?",
+        "Hasn't the user replied?": "Haven't you replied?",
+        "When does the user expect the deposit?": "When do you expect the deposit?",
+        "Did Mara accept, and has the user replied?": "Did Mara accept, and have you replied?",
+    }
+    assert _youify(list(cases)) == list(cases.values())
+
+
+def test_a_verb_before_the_user_as_object_or_possessive_is_left_alone():
+    cases = {
+        "The signer is the user.": "The signer is you.",
+        "Mara has the user's deck.": "Mara has your deck.",
+        "Did the user send it?": "Did you send it?",
+        "Has Mara replied to the user?": "Has Mara replied to you?",
+    }
+    assert _youify(list(cases)) == list(cases.values())
