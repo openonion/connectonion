@@ -479,6 +479,10 @@ STALE_SCHEDULE_SECONDS = 3600
 # The live page asks for its details as soon as it loads, so it keeps both current.
 NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
 LOG_LINES = 200
+# A notebook whose last render took less than this is rendered again during an
+# explicit co rem open, so the page it opens is current; a larger one opens the
+# saved page at once and is rebuilt behind it.
+SYNC_RENDER_SECONDS = 2.0
 
 
 class CacheRefused(OSError):
@@ -526,7 +530,12 @@ def saved(root: Path, build: str) -> dict:
 
 
 def page_path(root: Path, name: str):
-    """The saved live.html, data.json or file.html of the current set; None before."""
+    """The saved live.html or data.json of the current set, or the file page; None before.
+
+    The file page keeps one name per notebook: `co rem open` prints that link, and
+    a tab already open on it reaches the newest render on reload."""
+    if name == "file.html":
+        return _cached(root, name) if _cached(root, name).exists() else None
     file = _manifest(root)["files"].get(name)
     return _cache_dir() / file if file else None
 
@@ -558,14 +567,15 @@ def tree_version(root: Path) -> str:
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
-def _render(root: Path, build: str) -> tuple[dict, str]:
-    """({file name: text}, as_of) of one build; nothing is written."""
+def _render(root: Path, build: str) -> tuple[dict, str, float]:
+    """({file name: text}, as_of, seconds it took) of one build; nothing is written."""
+    began = time.monotonic()
     if build == "live":
         shell = snapshot(root, local=True, today=True)
-        return {"live.html": _page(shell, live=True)}, shell["as_of"]
+        return {"live.html": _page(shell, live=True)}, shell["as_of"], time.monotonic() - began
     full = snapshot(root, local=True)
-    return {"data.json": json.dumps(full, ensure_ascii=False, default=str),
-            "file.html": _page(full, live=False)}, full["as_of"]
+    return ({"data.json": json.dumps(full, ensure_ascii=False, default=str), "file.html": _page(full, live=False)},
+            full["as_of"], time.monotonic() - began)
 
 
 def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
@@ -574,13 +584,19 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     manifest, generation = _manifest(root), f"{time.time_ns():x}"
     files, rows = dict(manifest["files"]), dict(manifest["rows"])
     prefix = _cached(root, "").name
-    for build, (texts, as_of) in rendered.items():
+    for build, (texts, as_of, took) in rendered.items():
         for name, text in texts.items():
-            files[name] = f"{prefix}{generation}-{name}"
-            _replace(_cache_dir() / files[name], text)
-        rows[build] = {"version": version, "tree": tree, "as_of": as_of, "built_at": _now(), "checked_at": _now()}
+            if name != "file.html":
+                files[name] = f"{prefix}{generation}-{name}"
+                _replace(_cache_dir() / files[name], text)
+        rows[build] = {"version": version, "tree": tree, "as_of": as_of, "took": took,
+                       "built_at": _now(), "checked_at": _now()}
     _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
-    keep = {*files.values(), *manifest["files"].values()}
+    # The file page is self-contained: replaced in place, after the set it belongs to.
+    for texts, _, _ in rendered.values():
+        if "file.html" in texts:
+            _replace(_cached(root, "file.html"), texts["file.html"])
+    keep = {*files.values(), *manifest["files"].values(), _cached(root, "file.html").name}
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
             (_cache_dir() / old).unlink(missing_ok=True)
@@ -738,10 +754,12 @@ def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, boo
         text = _read_page(root, name)
     except CacheRefused:
         return _render(root, BUILDS[name])[0][name], False
-    if text is None:
+    build = BUILDS[name]
+    quick = owner and saved(root, build).get("took", SYNC_RENDER_SECONDS) < SYNC_RENDER_SECONDS
+    if text is None or quick:
         with _building(root, wait=True):
-            if (text := _read_page(root, name)) is None:
-                _publish(root, {BUILDS[name]: _render(root, BUILDS[name])}, version)
+            if quick or (text := _read_page(root, name)) is None:
+                _publish(root, {build: _render(root, build)}, version)
                 text = _read_page(root, name)
     return text, _rebuild_stale(root, name, version, owner=owner)
 
@@ -862,7 +880,8 @@ def local_or_snapshot(root: Path, address, *, launch: bool) -> dict:
         return open_snapshot(root, launch=launch, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
     from .live_host import ensure_local, local_reader, start
-    if _has_saved_page(root) and not local_reader(address):
+    from .live_host import saved_host_dead
+    if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
         # No Host answers: the saved page now, co ai starting behind it. Waiting
         # for it (up to 20 s) before the first paint was most of a cold open.
         try:

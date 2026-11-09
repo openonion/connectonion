@@ -100,6 +100,13 @@ def _launch(directory: Path, address: str, *, background: bool = False):
     return process
 
 
+def saved_host_dead(address: str) -> bool:
+    """This identity's Host was started before and its process is gone."""
+    from ..project import selected_identity_dir
+    saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
+    return saved.get("address") == address and not _alive(saved)
+
+
 # A Host co rem open started in the background and found dead this soon after
 # most likely never came up: say so, with its log, instead of "starting" again.
 STARTUP_WINDOW = 600

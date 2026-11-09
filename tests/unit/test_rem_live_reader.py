@@ -469,6 +469,8 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     identity = host.routes["identity_dir"]
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
     reader.open_snapshot(host.root, launch=False)
+    live_host.write_json(identity / "rem-live-host.json", {                 # a Host ran here before
+        "address": "owner", "pid": 2 ** 22 + 7, "port": 9125, "command": "-m connectonion.cli.main ai"})
     monkeypatch.setattr(live_host, "answers", lambda port, address: False)
     monkeypatch.setattr(live_host, "_spawn", lambda directory: SimpleNamespace(
         pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))

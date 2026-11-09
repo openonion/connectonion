@@ -3375,6 +3375,8 @@ def _cached_reader(tmp_path, monkeypatch):
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path / "tmp"))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     monkeypatch.setattr(reader, "_now", lambda: _Clock.seconds, raising=False)
+    # As on a large notebook: an explicit open does not re-render in place.
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0, raising=False)
     _Clock.seconds = 1_794_000_000.0
     return reader
 
@@ -3481,6 +3483,7 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     (tmp_path / "tmp").mkdir()
     monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))  # the child finds the same cache
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 0.0)   # as on a large notebook
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
@@ -3770,3 +3773,33 @@ def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, mon
         if not crashed:
             break
     assert crash_at > 2   # every write of a publish was tried
+
+
+
+def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp_path, monkeypatch):
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    link = reader.open_snapshot(root, launch=False)["link"]
+    for n in range(1, 4):                                         # three rebuilds behind it
+        Notebook(root).write(f"people/person-{n}.md", f"# Person Number {n}\n")
+        _Clock.seconds += 1
+        reader.refresh(root, ["full"])
+    page = __import__("urllib.parse").parse.unquote(link.removeprefix("file://"))
+    assert "Person Number 3" in open(page, encoding="utf-8").read()   # reload: the newest, never a missing file
+    assert reader.open_snapshot(root, launch=False)["link"] == link
+
+
+def test_an_explicit_open_of_a_small_notebook_renders_it_now(tmp_path, monkeypatch):
+    """When the last render was quick, the page co rem open opens is never older than the notebook."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    monkeypatch.setattr(reader, "SYNC_RENDER_SECONDS", 2.0)
+    root = tmp_path / "rem"
+    prepare(root)
+    first = reader.open_snapshot(root, launch=False)
+    (root / "people" / "bob.md").write_text("# Bob\nJoined yesterday.\n")   # in place, by another tool
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt behind instead"))
+    second = reader.open_snapshot(root, launch=False)
+    assert second["page"] == first["page"] and "being built" not in second["note"]
+    assert "Joined yesterday" in open(second["page"], encoding="utf-8").read()

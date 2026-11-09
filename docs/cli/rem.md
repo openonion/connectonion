@@ -678,7 +678,15 @@ trimmed to its last 200 lines) renders the new one. It writes the new page,
 details and file page under new names, then one manifest (`current.json`) that
 names that set, last; a crash midway leaves the previous set served whole, so a
 reload never pairs a new page with old details. The set it replaces is kept for
-a page still open on it.
+a page still open on it. The offline page keeps one name per notebook
+(`<digest>-file.html` in the cache folder), replaced in place by each build, so
+the link `co rem open` prints stays valid and a tab open on it shows the newest
+render when reloaded. When the notebook's last render took under 2 seconds
+(`SYNC_RENDER_SECONDS`), an explicit `co rem open` renders it again before
+opening, so the page is never older than the notebook; a larger notebook opens
+the saved page at once and is rebuilt behind it. `CONNECTONION_REM_CACHE`
+names another cache folder; the test suite gives each test its own and fails a
+run that writes the real one.
 
 Rebuilds are at most one per 10 minutes, because one costs about 100 s of CPU
 on a large notebook and a night run keeps writing. The owner acting rebuilds
