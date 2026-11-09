@@ -3412,8 +3412,9 @@ def test_a_second_open_of_a_large_notebook_lists_no_directory_and_is_instant(tmp
         raise AssertionError("an unchanged notebook was listed again")
     for name in ("walk", "scandir", "listdir"):
         monkeypatch.setattr(os, name, listed)
-    import glob  # pathlib's rglob bound os.scandir when it was imported
-    monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
+    import glob  # 3.13+: pathlib's rglob bound os.scandir when it was imported; earlier ones call it
+    if hasattr(glob, "_StringGlobber"):
+        monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("rebuilt an unchanged notebook"),
                         raising=False)
     import time

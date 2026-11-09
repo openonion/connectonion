@@ -424,7 +424,8 @@ def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cach
         raise AssertionError("an unchanged notebook was listed again")
     for name in ("walk", "scandir", "listdir"):
         monkeypatch.setattr(os, name, listed)
-    monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))
+    if hasattr(glob, "_StringGlobber"):  # 3.13+: pathlib's rglob bound os.scandir at import;
+        monkeypatch.setattr(glob._StringGlobber, "scandir", staticmethod(listed))  # earlier calls os.scandir
     cache.clear()
     started = time.monotonic()
     status, _, second = get()
