@@ -39,16 +39,16 @@ jobs:
             --disable-pip --strict --progress-spinner off
 
   # The offline suite is ~9 minutes of tests on one two-worker runner, so each
-  # Python runs it as six parallel shards. scripts/ci_test_shard.py splits by
+  # Python runs it in parallel shards. scripts/ci_test_shard.py splits by
   # file, balanced by tests/ci_durations.json: a 50-line script instead of
   # pytest-split, because that plugin makes every shard collect the whole suite.
   # Inside a shard, -n logical starts one worker per vCPU (auto counted physical
   # cores: two of four) and --dist worksteal hands out single tests, as
   # `make test` always has; --dist loadfile pinned the largest file
-  # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. Six,
-  # because the free plan runs 20 jobs at once across the whole org.
+  # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
+  # shards than needed: the free plan runs 20 jobs at once across the whole org.
   test:
-    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/6
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
     # pytest.ini has already named the culprit, and this is the backstop for a
@@ -58,7 +58,14 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        # 3.12 (traced) and 3.13 run their tests ~40% slower than 3.11, so they
+        # take eight shards to 3.11's six to stay near two minutes a shard.
+        exclude:
+          - python-version: "3.11"
+            shard: 7
+          - python-version: "3.11"
+            shard: 8
 
     steps:
       - name: Checkout
@@ -96,7 +103,7 @@ jobs:
           COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
         run: |
-          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} 6) \
+          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} ${{ matrix.python-version == '3.11' && 6 || 8 }}) \
             -n logical --dist worksteal --tb=short \
             -m "not slow and not real_api and not network" \
             -o junit_family=xunit1 --junitxml=junit.xml \
@@ -112,7 +119,7 @@ jobs:
           if-no-files-found: error
 
       # Per-test times, for refreshing tests/ci_durations.json:
-      # python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml
+      # python scripts/ci_test_shard.py --record junit-*/junit.xml
       - name: Upload this shard's test times
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -179,18 +186,18 @@ jobs:
           [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ] \
             && [ "$AUDIT_RESULT" = success ] && [ "$TREE_RESULT" = success ]
 
-  # Each `co ... --help` is a process start, and the audit runs over 800 of
-  # them. Each shard walks and audits the top-level commands that fall to it
+  # Each `co ... --help` is a process start, and the audit runs about 800 of
+  # them (~870 process-seconds). Each shard walks and audits the top-level commands that fall to it
   # (see tests/unit/test_cli_help_contract.py); cli-help-audit-tree then
   # checks the whole tree once over every shard's list of pages.
   cli-help-audit:
-    name: cli-help-audit ${{ matrix.shard }}/6
+    name: cli-help-audit ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -214,7 +221,7 @@ jobs:
       - name: Audit this shard's co help pages
         env:
           OPENONION_API_KEY: test-key
-          CO_AUDIT_SHARD: ${{ matrix.shard }}/6
+          CO_AUDIT_SHARD: ${{ matrix.shard }}/4
           CO_AUDIT_PAGES_DIR: audit-pages
         run: |
           mkdir audit-pages

@@ -71,16 +71,17 @@ backend URL resolution requests the `default_backend_url` fixture.
 ## CI
 
 `.github/workflows/tests.yml` runs `pytest -n auto` on Python 3.11 to 3.13,
-each as six parallel shards with a 15 minute timeout per shard.
+in parallel shards (six for 3.11, eight for 3.12 and 3.13) with a 15 minute
+timeout per shard.
 `scripts/ci_test_shard.py` splits the test files between shards, balanced by
 `tests/ci_durations.json`; a new file weighs the median until the weights are
-refreshed with `python scripts/ci_test_shard.py --record junit-3.11-*/junit.xml`
+refreshed with `python scripts/ci_test_shard.py --record junit-*/junit.xml`
 from a run's `junit-*` artifacts. Inside a shard, `--dist worksteal` hands out
 single tests, as `make test` does. The 3.12 shards trace coverage through
 `COVERAGE_CORE=sysmon`; the `coverage` job combines them and fails below the
 floor set there (raise it as coverage rises, never lower it to pass).
 
-The `co --help` audit (`tests/unit/test_cli_help_contract.py`) runs as six
+The `co --help` audit (`tests/unit/test_cli_help_contract.py`) runs as four
 `cli-help-audit` shards, each walking and auditing the top-level commands
 that fall to it; `cli-help-audit-tree` then checks the whole tree once over
 every shard's list of pages. `tests-passed` is green only when every shard,
