@@ -13,17 +13,23 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
+Stable **1.9.5** is the default production channel. The reader no longer asks you to copy a
+command anywhere; a page that waited while you typed says "Updates waiting" and keeps your words;
+a headless `co claude run` edits files in its folder by default. See
+[1.9.5 notes](releases/1.9.5.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.5).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.5'
+```
+
+## Previous stable
+
 Stable **1.9.4** is the default production channel: a hotfix on 1.9.3, in which the first
 `co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
 waits on a build; a saved page opens at once marked "Updating…". See
 [1.9.4 notes](releases/1.9.4.md) and the
 [GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.4'
-```
-
-## Previous stable
 
 Stable **1.9.3** is the default production channel. REM does the work: overnight it reads new
 mail, drafts the replies you owe and runs the tasks you approved through `co claude` or Codex; in
