@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc63
+## Current Version: 1.9.3rc64
+
+The candidate for stable 1.9.3. REM does the work: owed tasks run through `co claude` or Codex with
+Hand to Codex / Hand to Claude on every pending item; direct send for people you trust; no count
+caps; translation into the languages you write; four model levels; a designed morning email; the
+reader opens at once and moves to the Fuse design (Today, people and organisations as records).
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc64.md).
+
+- 1.9.3rc64 (tasks run, Hand to Codex/Claude, model levels, morning email, fast open, Fuse design).
+
+### Previous candidate: 1.9.3rc63
 
 1.9.3rc62 republished. rc62 was merged and tagged but never published: its release workflow's
 coverage leg (test 3.12) outran the 15-minute backstop at 98% with no failure, so publish was

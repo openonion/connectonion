@@ -3,6 +3,7 @@ loopback-only, and able to ask co ai for a translation it then polls."""
 
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -514,3 +515,40 @@ def test_the_hosts_minute_tick_does_not_make_a_quiet_hour_rebuild(host, cache, c
         approvals.release(host.root)                         # the Host's minute clock
         call(host.routes, "GET", "/rem/version", cookie=cookie)
     assert renders == []
+
+
+def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatch):
+    """The real button builds the request; the real Host route and tasks.dispatch take it."""
+    from connectonion.rem import night, tasks
+    from connectonion.rem.config import read_config
+    from connectonion.rem.files import Notebook, read_json
+    from tests.unit.test_rem_reader import TEMPLATE, _run_reader_js
+    book = Notebook(host.root)
+    book.stub_project('projects/pilot.md', 'Mara pilot', [])
+    book.write('projects/pilot.md', book.read('projects/pilot.md').replace(
+        '## Open threads\n', '## Open threads\n- You owe Mara a pilot review.\n'))
+    night.prepare(host.root, read_config(host.root))
+    row = night.listing(host.root)[0]
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['todayRow', 'obligationKey', 'rowTask', 'handedLine', 'handOff'])
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" };\n' + functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
+      const doneKey = entry => entry.key, taskControls = () => null, requests = [];
+      const REM = {live: true, today_queue: [''' + json.dumps({'key': row['keys'][0], 'keys': row['keys']}) + r''']};
+      globalThis.fetch = async (url, options) => { requests.push({url, ...options});
+        return {ok: true, status: 200, json: async () => ({result: 'starting', agent: 'claude'})}; };
+      const node = handOff({key: REM.today_queue[0].key});
+      node.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
+        console.log(JSON.stringify({request: requests[0], shown: node.children[0].text})));
+    ''')
+    assert sent['request']['url'] == '/rem/task' and sent['shown'] == 'Handed to Claude · in progress'
+    started = []
+    monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
+                        {'id': task_id, 'agent': agent, 'result': 'starting'})
+    status, _, text = call(host.routes, 'POST', '/rem/task', cookie=f'co_rem={host.token}',
+                           body=sent['request']['body'].encode())
+    assert status == 200 and json.loads(text)['agent'] == 'claude' and started == ['claude']
+    receipt = read_json(tasks.directory(host.root, json.loads(text)['id']) / 'receipt.json', {})
+    assert receipt['agent'] == 'claude' and receipt['result'] == 'queued'
