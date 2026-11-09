@@ -2101,10 +2101,10 @@
 
   /* The fuse: a lane per person, ending at the heavy line that is today. Ink = time that passed
      fairly, red = time past due. A sent reply burns its lane out before the page redraws. */
-  .fuse { max-width: 760px; margin: 0 0 var(--u5); font-family: var(--font); }
+  .fuse { max-width: 760px; margin: 0 0 var(--u4); font-family: var(--font); }
   .fuse ol { list-style: none; margin: 0; padding: 0; }
   .fuse .lane, .fuse .axis { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 7.5rem; align-items: center; column-gap: var(--u3); }
-  .fuse .lane { min-height: 32px; transition: opacity var(--t-state) var(--ease-out); }
+  .fuse .lane { min-height: 24px; transition: opacity var(--t-state) var(--ease-out); }
   .fuse .lane .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); text-decoration: none; }
   .fuse .lane.current .who { color: var(--ink); font-weight: var(--w-bold); }
   .fuse .late { text-align: right; white-space: nowrap; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--red); }
@@ -2135,9 +2135,23 @@
   .owner-slot.choose button[aria-pressed="true"] { font-weight: var(--w-bold); }
   .owner-slot.choose input { flex: 1 1 12em; min-width: 0; padding: var(--u1) 0; border: 0; border-bottom: var(--rule-heavy) solid var(--rule); background: none; color: var(--ink); font: inherit; }
   .owner-slot.choose input:focus { outline: 0; border-bottom-color: var(--ink); }
-  /* overflow: clip, not hidden: a hidden overflow is a scroll box, and Send could not stick to the screen. */
-  .qcard.open .mailcard { overflow: clip; }
-  .qcard.open .mail-actions { position: sticky; bottom: var(--u4); z-index: 2; }
+  /* With a draft open the card is compact, so Send sits in normal flow on the first screen: the context is
+     two lines with More, and the English original waits behind More too. */
+  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
+  .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: 11em; overflow: hidden; }
+  .mail-gist .mail-why { margin: var(--u3) 0 0; padding: 0; border: 0; }
+  .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
+  .qcard .qkind .handoff { margin: 0; }
+  .qcard.focal.open .qdraft { margin-top: var(--u2); }
+  .qcard.focal.open .mail-head { position: relative; }
+  .qcard.focal.open .mail-head .mail-channels { position: absolute; top: var(--u2); right: var(--u3); margin: 0; }
+  .qcard.focal.open .mail-head .mail-row:nth-child(2) .v { padding-right: 14rem; }
+  .qcard .qfull { display: none; }
+  .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
+  .snapshot-line, .lead-why { margin: 0 0 var(--u3); font-size: var(--s-meta); color: var(--grey); }
+  .lead-why { color: var(--ink); font-weight: var(--w-bold); }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
   .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
   .qsent .meta { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
@@ -2157,8 +2171,10 @@
     .fuse .lane, .fuse .axis { grid-template-columns: 7.5rem minmax(0, 1fr) 6rem; column-gap: var(--u2); }
     .fuse .scale .m { display: none; }
     /* On a phone the open draft's Send is a bar pinned above the bottom edge, however far down the draft starts. */
-    .today-threads > .qcard.open:first-child .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
-    #main:has(.today-threads > .qcard.open:first-child .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
+    .qcard.focal.open .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
+    #main:has(.qcard.focal.open .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
+    /* Notices rise above the Send bar instead of covering it. */
+    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: calc(var(--u6) + var(--u4)); }
     .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
     /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
     .qcard.open .mail-actions { flex-wrap: nowrap; }
@@ -2844,8 +2860,7 @@ const UI = {
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "批准全部 {n} 项",
-    "Open the live reader to approve: ": "在实时阅读器中批准：",
+    "Approve all {n}": "一键批准这 {n} 件", "{n} items to approve in one go": "{n} 件可一键批准",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -2893,9 +2908,9 @@ const UI = {
     "You replied on {since}: “{promise}” — the promise is still open.": "你 {since} 回复过：“{promise}”——但这件事还没了结。",
     "message text unavailable": "消息正文未存档",
     "Fill the marked part first": "先填好标出的部分",
-    "Open in the live reader": "在实时阅读器里打开", "Draft in the live reader": "在实时阅读器里起草",
+    "Draft in the live reader": "在实时阅读器里起草",
     "date not agreed": "日期未约定",
-    "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start.": "上次定时任务未完成：{evidence} · 处理阻塞后运行 co rem start。",
+    "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then restart REM.": "上次定时任务未完成：{evidence} · 处理阻塞后重新启动 REM。",
     "Last scheduled turn did not finish: {evidence} · Retried automatically.": "上次定时任务未完成：{evidence} · 已自动重试。",
     "Translating": "翻译中",
     "Pages are translated when you open them.": "打开页面时会翻译成中文。",
@@ -2980,11 +2995,13 @@ const UI = {
     "Handing to {agent}…": "正在交给 {agent}…",
     "Handed to {agent} · in progress": "已交给 {agent} · 进行中",
     "{agent} ran this": "由 {agent} 完成",
-    "Only the live reader can hand work to an agent.": "只有实时阅读器能把事交给智能体。",
     "REM did not recognise this item. Reload the page and try again.": "REM 认不出这件事。请刷新页面再试。",
-    "Could not hand this to {agent}: {error}": "没能交给 {agent}：{error}",
-    "Could not reach REM. Check the connection and try again.": "连不上 REM。请检查连接后再试。",
     "Questions & connections →": "问题与关联 →",
+    "Reply to {name} first: the reply is ready": "先回 {name}：回信已写好",
+    "This is a snapshot: sending and handing work to an agent happen in the live reader.": "这是快照：发送和交给智能体都要在实时页面里。",
+    "Your session expired. Reload the page.": "登录过期，刷新页面。",
+    "This item has changed. Reload and try again.": "这件事已经变了，刷新后再试。",
+    "REM is not answering right now. Try again in a moment.": "REM 暂时没回应，过会儿再试。",
     "Review the reply to {name}": "看给 {name} 的回信",
     "Approve": "批准",
     "Reply to {name}": "回复 {name}",
@@ -3026,7 +3043,6 @@ const UI = {
     "Translation pending — queued for tonight": "翻译待处理，已排入今晚队列",
     "Prepared reply draft": "已准备回复草稿",
     "Reply draft queued for tonight": "回复草稿已排入今晚队列",
-    "To draft it now: ": "要现在起草：",
     "Open in {provider} drafts": "在 {provider} 草稿箱打开",
     "Continue in {provider} drafts": "前往 {provider} 草稿箱",
     "Discard": "丢弃",
@@ -3427,7 +3443,6 @@ const UI = {
     "Read in": "阅读语言",
     "As written": "原文",
     "Other…": "其他…",
-    "Reload for latest": "重新加载以查看最新内容",
     "No pass scheduled": "尚未安排更新",
     "Explore": "探索",
     "Contents": "目录",
@@ -3470,7 +3485,6 @@ const UI = {
     "No page contains that. Try a related term, a person's first name, or a project name.": "没有包含此内容的页面。试试相关词、人名或项目名。",
     "{n} more": "另有 {n} 项",
     "Open the memory": "打开记忆",
-    "re-renders": "重新生成快照",
     "Show {n} more cited conversations": "再显示 {n} 个引用对话",
     "Match {n} of {m} in the archived excerpt": "存档摘录中的匹配 {n} / {m}",
     "Find a word or phrase in this source": "在此来源中查找词语",
@@ -4984,9 +4998,6 @@ function draftNote(draft, entry) {
       : reply.state === "queued" && REM.live ? null
       : t(REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off");
     if (!text) return null;
-    if (reply.state === "queued" && !REM.live) {
-      return el("p", {class: "quiet-line draft-reason"}, [text + " · " + t("To draft it now: "), el("code", {text: remCommand("open")})]);
-    }
     return el("p", {class: "quiet-line draft-reason", text});
   }
   if (!draft) return null;
@@ -5037,6 +5048,7 @@ function replyDraftCard(draft, onSent) {
   const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]);
+  const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -5047,17 +5059,15 @@ function replyDraftCard(draft, onSent) {
           el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
     el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
       el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
-        parts.length > 1 ? parts.map((part, i) =>
-          /^(?:\[|［|【)/.test(part) ? slotChoices(part, fills, i, () => { status.textContent = ""; }) : part) : []),
-      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist })]) : null]),
-    draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null,
-    actions, status]);
+        // The choice row is a block of its own, so the blank lines around it would only add height.
+        parts.length > 1 ? parts.map((part, i) => /^(?:\[|［|【)/.test(part) ? slotChoices(part, fills, i, () => { status.textContent = ""; })
+          : part.replace(/\n+$/, /^(?:\[|［|【)/.test(parts[i + 1] || "") ? "" : "$&").replace(/^\n+/, /^(?:\[|［|【)/.test(parts[i - 1] || "") ? "" : "$&")) : []),
+      // Why this reply sits under the owner's-language reading, beside the letter, not under it.
+      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist }), why]) : null]),
+    draft.gist ? null : why, actions, status]);
   if (!REM.live) {
-    const open = el("button", {type: "button", class: "btn-act", text: t("Open in the live reader")});
-    const command = commandChip(remCommand("open"));
-    command.hidden = true;
-    open.onclick = () => {command.hidden = false;};
-    actions.replaceChildren(open, command);
+    // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
+    actions.replaceChildren(el("button", {type: "button", class: "btn-act", disabled: "", text: t("Send")}));
     channels.replaceChildren(el("span", {text: t({mail: "Mail", lark: "Lark", whatsapp: "WhatsApp"}[channel])}));
     return draft.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [card])])) : card;
   }
@@ -5799,15 +5809,11 @@ function renderRail(active) {
   const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
     el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
   settings.appendChild(notebookLanguages());
-  const settingsRecord = byPath(route().record);
-  if (settingsRecord?.private_project) settings.appendChild(commandChip(investigateCommand(settingsRecord)));
-  if (route().category === "people") settings.appendChild(commandChip(remCommand("list people --review")));
   foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
     : t(scheduleState(s) || "No pass scheduled");
-  settings.appendChild(el("div", { text: (plainLine(scheduleState(s)).startsWith("Background updates off") ? t("Background updates off — run `co rem start` to enable") : t(schedule)).replace(/`/g, "").replace("co rem start", () => remCommand("start")) }));
-  settings.appendChild(el("code", { text: location.protocol === "about:" ? t("Reload for latest") : remCommand("open") + " " + t("re-renders") }));
+  settings.appendChild(el("div", { text: nightlyUpdatesOff() ? t("Nightly updates are off.") : t(schedule).replace(/`/g, "") }));
   settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
     el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
   foot.appendChild(settings);
@@ -5968,7 +5974,7 @@ const NIGHT_DONE = [["prepared", "Drafted a reply for 1 person", "Drafted replie
 function nightDone() {
   const outcomes = [...new Map((REM.night_outcomes || []).map(o => [o.key, o])).values()].filter(o => byPath(o.record) && !byPath(o.record).private);
   const rows = NIGHT_DONE.map(([kind, one, many]) => {
-    const records = [...new Set(outcomes.filter(o => o.kind === kind).map(o => o.record))].map(byPath);
+    const records = [...new Set(outcomes.filter(o => o.kind === kind).map(o => o.record))].filter(path => path !== REM.owner).map(byPath);
     const n = kind === "prepared" || kind === "could_not_prepare" ? records.length : outcomes.filter(o => o.kind === kind).length;
     return n ? el("li", { "data-kind": kind }, [el("b", { text: t(n === 1 ? one : many, { n }) }), nightNames(records)]) : null;
   }).filter(Boolean);
@@ -6117,8 +6123,9 @@ function taskControls(task) {
 function personGroups(entries) {
   const groups = new Map();
   for (const entry of entries) {
-    if (!groups.has(entry.r.path)) groups.set(entry.r.path, { r: entry.r, entries: [] });
-    groups.get(entry.r.path).entries.push(entry);
+    const r = entry.who || entry.r;
+    if (!groups.has(r.path)) groups.set(r.path, { r, entries: [] });
+    groups.get(r.path).entries.push(entry);
   }
   return [...groups.values()];
 }
@@ -6126,7 +6133,20 @@ function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status));
   const today = todayEntries(entries), shown = new Set(today.slice(0, 5).map(doneKey));
-  return personGroups([...today.slice(0, 5), ...morningEntries(entries.filter(entry => !shown.has(doneKey(entry))))]);
+  return personGroups([...today.slice(0, 5), ...morningEntries(entries.filter(entry => !shown.has(doneKey(entry))))]
+    .map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean));
+}
+// A row on your own page is waiting on whoever it names: the person who asked or is owed. When it
+// names nobody it is your own note, and it is not a person waiting on you (build 3b review).
+function ownerCounterpart(entry) {
+  const people = (REM.records || []).filter(r => r.category === "people" && r.path !== REM.owner && !r.private);
+  const named = people.find(person => threadCounterpart(entry, person));
+  if (named) return named;
+  const text = " " + obligationWords(entry.t.originalText || entry.t.text) + " ";
+  const full = people.filter(person => person.title.includes(" ") && text.includes(" " + obligationWords(person.title) + " "));
+  if (full.length === 1) return full[0];
+  const first = people.filter(person => text.includes(" " + obligationWords(person.title.split(/\s+/)[0]) + " "));
+  return first.length === 1 ? first[0] : null;
 }
 function entryKeys(entry) { return (entry.members || [entry]).map(doneKey); }
 // A yes/no the night prepared: an agent task waiting for the owner's approval.
@@ -6170,13 +6190,9 @@ function stepAction({ entry, step }, group, cls) {
   };
   return button;
 }
-// A snapshot cannot draft; the live reader can, with one command.
+// A snapshot cannot draft: the step is named and disabled; the page's one snapshot line says why (D-60).
 function liveReaderAction(cls) {
-  const open = el("button", { type: "button", class: cls, text: t("Draft in the live reader") });
-  const command = commandChip(remCommand("open"));
-  command.hidden = true;
-  open.onclick = () => { command.hidden = false; };
-  return el("span", { class: "live-action" }, [open, command]);
+  return el("button", { type: "button", class: cls, disabled: "", text: t("Draft in the live reader") });
 }
 // "Not done yet": REM decided the item looks handled by your reply; you say it is not. Kept on this device,
 // it stays in Today and on the People list until it is marked done.
@@ -6215,7 +6231,7 @@ function ownerLine(draft) {
   if (uiLanguage === "en" || draft?.private || !["prepared", "no_reply"].includes(draft?.status) || !/\p{Script=Han}/u.test(draft.gist || "")) return null;
   return t(draft.status === "no_reply" ? "No reply needed: " : "REM drafted: ") + draft.gist;
 }
-function cardItem(entry, many, seen = new Set()) {
+function cardItem(entry, many, seen = new Set(), more = null) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
@@ -6225,8 +6241,8 @@ function cardItem(entry, many, seen = new Set()) {
   return el("li", { class: "qitem" }, [
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [el("span", { class: "qkind" }, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]),
-      alsoOn(entry.also), own ? null : draftNote(draft, entry), handedLine(rowTask(entry)), taskResult(entry), handOff(entry),
+    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry), more]),
+      alsoOn(entry.also), own ? null : draftNote(draft, entry), handedLine(rowTask(entry)), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
 }
 function cardDraft(draft, group) {
@@ -6242,6 +6258,10 @@ function cardDraft(draft, group) {
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
     replyDraftCard(draft, sent)]);
+}
+// A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
+function snapshotLine() {
+  return REM.live ? null : el("p", { class: "snapshot-line", text: t("This is a snapshot: sending and handing work to an agent happen in the live reader.") });
 }
 // After Send: who it went to and, while the 10-minute hold lasts, the one Undo.
 let todaySent = null, shownCount = 0;
@@ -6262,6 +6282,10 @@ function sentNote() {
     todaySent = null;
     render();
   };
+  if (held) {
+    clearTimeout(sentNote.timer);
+    sentNote.timer = setTimeout(() => document.querySelector(".qsent")?.replaceWith(sentNote() || ""), Date.parse(todaySent.release_at) - Date.now() + 50);
+  }
   return el("li", { class: "qsent" }, [el("p", { class: "lede", text: t("Sent to {name}.", { name: todaySent.name }) }),
     el("p", { class: "meta" }, held ? [t("Held until {time}; you can still undo it.", { time: fmtTime(todaySent.release_at) }), " ", undo, " ", status]
       : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
@@ -6282,8 +6306,8 @@ function handedLine(task) {
 }
 function handOff(entry) {
   if (handedLine(rowTask(entry))) return null;  // already with an agent: its state shows instead
-  const live = REM.live && location.protocol !== "file:";
-  const status = el("span", { class: "handoff-status", role: "status", text: live ? "" : t("Only the live reader can hand work to an agent.") });
+  const live = REM.live;
+  const status = el("span", { class: "handoff-status", role: "status" });
   const node = el("div", { class: "handoff" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t("Hand to {agent}", { agent: name }) });
@@ -6293,12 +6317,13 @@ function handOff(entry) {
       status.textContent = t("Handing to {agent}…", { agent: name });
       const response = await fetch("/rem/task", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "run", key: obligationKey(entry), agent }) }).catch(() => null);
-      const result = response ? await response.json().catch(() => ({})) : {};
+      const result = response?.ok ? await response.json().catch(() => ({})) : {};
       if (!response?.ok) {
         buttons.forEach(other => { other.disabled = false; });
-        status.textContent = !response ? t("Could not reach REM. Check the connection and try again.")
-          : response.status === 400 ? t("REM did not recognise this item. Reload the page and try again.")
-          : t("Could not hand this to {agent}: {error}", { agent: name, error: result.error || response.status });
+        status.textContent = t(response?.status === 400 ? "REM did not recognise this item. Reload the page and try again."
+          : response?.status === 401 ? "Your session expired. Reload the page."
+          : response?.status === 409 ? "This item has changed. Reload and try again."
+          : "REM is not answering right now. Try again in a moment.");
         return;
       }
       const task = { ...result, agent: result.agent || agent }, row = todayRow(entry);
@@ -6315,12 +6340,15 @@ function handOff(entry) {
 function personCard(group, focal) {
   const { r, entries } = group, next = groupStep(entries), late = overdueDays(entries[0].t);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
-  const card = el("li", { class: "qcard" + (focal ? " open" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1, seen))),
+  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More") }) : null;
+  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
+    cardHead(group, late), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
+  // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
+  if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
   card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, .mailcard")) card.classList.toggle("open"); };
   return card;
 }
@@ -6369,6 +6397,8 @@ function taskView(kind) {
     return;
   }
   main.appendChild(el("h1", { text: t("Open threads") }));
+  const snapshot = snapshotLine();
+  if (snapshot) main.appendChild(snapshot);
   const all = threadEntries(), entries = all.filter(entry => !isDone(entry)), counts = threadCounts();
   if (!entries.length) {
     main.appendChild(emptyState("Nothing open"));
@@ -6445,9 +6475,10 @@ function todayEntries(entries, section = "today") {
     .filter((entry, i, rows) => entry && !isDone(entry) && rows.indexOf(entry) === i);
 }
 
-function todayCards(groups) {
+function todayCards(groups, lead = null) {
   const sent = sentNote();
-  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length || sent
+  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [
+    lead ? el("p", { class: "lead-why", text: t("Reply to {name} first: the reply is ready", { name: threadWho(lead.r) }) }) : null, groups.length || sent
     ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0))])
     : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
 }
@@ -6495,10 +6526,10 @@ function approvalProblems() {
 function approvalHeader() {
   const items = REM.approval_outcomes || [];
   if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
-  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t("Approve all {n}", {n: items.length})});
+  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t("{n} items to approve in one go", {n: items.length})});
   button.disabled = !REM.live || !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
-  return el("div", {class: "approval-header"}, [button, approvalProblems(), !REM.live ? el("p", {class: "quiet-line"}, [t("Open the live reader to approve: "), el("code", {text: remCommand("open")})]) : null]);
+  return el("div", {class: "approval-header"}, [button, approvalProblems()]);
 }
 function approvalStatus(value) {
   return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
@@ -6618,7 +6649,7 @@ function approvalUndoBar() {
     }
     undoFailure = reply.results.filter(value => value.status === "error").map(approvalStatus).join(" · ");
     const cta = document.getElementById("approve-all");
-    if (cta) {cta.textContent = t("Approve all {n}", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length;}
+    if (cta) {cta.textContent = t("{n} items to approve in one go", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length;}
     held = held.filter(item => !reply.results.some(value => value.id === item.id && value.status === "cancelled"));
     undo.disabled = !held.length;
     if (!held.length) clearInterval(approvalTimer);
@@ -6644,7 +6675,7 @@ function briefHeader(counts, groups, approval = null) {
     uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }), waitingMore(counts), approval]),
     h1, urgentLede(groups, day)]);
   if (REM.status?.schedule_failure) header.prepend(el("p", { class: "schedule-failure", role: "status", text: t(REM.status.schedule_failure.code === "blocked"
-    ? "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then run co rem start."
+    ? "Last scheduled turn did not finish: {evidence} · Resolve the blocker, then restart REM."
     : "Last scheduled turn did not finish: {evidence} · Retried automatically.", REM.status.schedule_failure) }));
   return header;
 }
@@ -6709,7 +6740,7 @@ function overview() {
   // Send is on the first screen; everyone else keeps their place, and that person's lane is the bold one.
   const ready = groups.findIndex(group => groupStep(group.entries).step === "send"), cards = [...groups];
   if (ready > 0) cards.unshift(...cards.splice(ready, 1));
-  const primary = el("div", { class: "morning-primary" }, [header, firstMapBrief(), fuseLanes(groups, cards[0]?.r.path), todayCards(cards)]);
+  const primary = el("div", { class: "morning-primary" }, [header, snapshotLine(), firstMapBrief(), fuseLanes(groups, cards[0]?.r.path), todayCards(cards, ready > 0 ? cards[0] : null)]);
   const aside = el("div", { class: "morning-aside" }, [nightDone(), morningBrief(), recallPrompt(), connectionReview()].filter(Boolean));
   main.appendChild(el("div", { class: "morning-layout" }, [primary, aside, quietThreads(entries, counts.quiet, true)]));
 
@@ -9704,9 +9735,6 @@ function connectedContext(r) {
       el("summary", { text: t("Pages that mention it") + " · " + mentions.length }),
       el("p", { class: "relation-description", text: t("Name matches help navigate the notebook. A mention alone does not establish a relationship.") }),
       el("div", { class: "relation-list" }, mentions.map(link => relationCard(link, r.path)))]) : null]);
-}
-function investigateCommand(r) {
-  return remCommand("investigate '" + r.path.replace(/'/g, "'\\''") + "'");
 }
 function commandChip(command) {
   const copy = el("button", { class: "btn-action", type: "button", text: t("Copy"), "aria-label": t("Copy the command") });

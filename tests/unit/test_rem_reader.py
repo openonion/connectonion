@@ -350,7 +350,8 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     # Execute the generated handlers with only the clipboard and footer DOM stubbed.
     command = re.search(r"function remCommand\(args\).*", page).group(0)
     copy = re.search(r"pathBtn.onclick = .*", page).group(0)
-    footer = next(line for line in page.splitlines() if "settings.appendChild" in line and "re-renders" in line)
+    # D-60 (build 3b review): Reader settings no longer prints a re-open command; only the path copy remains.
+    assert not [line for line in page.splitlines() if "settings.appendChild" in line and "remCommand(" in line]
     script = "\n".join([
         "const REM = " + json.dumps(data) + "; const r = " + json.dumps(record) + ";",
         "const location = {protocol: " + json.dumps(protocol) + "};",
@@ -358,7 +359,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
         "const copyToClipboard = path => result.path = path;",
         "const el = (tag, attrs) => attrs.text;",
         "const settings = {appendChild: text => result.footer = text};",
-        command, copy, footer, "pathBtn.onclick(); console.log(JSON.stringify(result));",
+        command, copy, "pathBtn.onclick(); console.log(JSON.stringify(result));",
     ])
     node = shutil.which("node")
     if not node:
@@ -371,11 +372,7 @@ def test_copy_path_and_reopen_command_keep_the_notebook_root(tmp_path, protocol)
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
-    quoted_root = "'" + str(root).replace("'", "'\\''") + "'"
-    assert json.loads(result.stdout) == {
-        "path": str(root / record["path"]),
-        "footer": "Reload for latest" if protocol == "about:" else f"co rem --root {quoted_root} open re-renders",
-    }
+    assert json.loads(result.stdout) == {"path": str(root / record["path"])}
 
 
 def test_render_embeds_records_and_neutralizes_markup(tmp_path):
@@ -1522,8 +1519,9 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
     assert gist['class'] == 'mail-gist' and gist['children'][1]['text'] == '明天发出审阅意见。'
-    why = mail['children'][2]
-    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children']
+    # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
+    why = gist['children'][2]
+    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
     assert mail['children'][3]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
@@ -2397,18 +2395,16 @@ def test_chinese_interface_uses_the_owners_regional_cached_prose(tag):
     assert result == {'translated': '草稿。', 'notice': None}
 
 
-def test_settings_start_guidance_preserves_literal_shell_characters_in_root():
+def test_settings_say_nightly_updates_are_off_without_a_command():
+    """D-60 (build 3b review): Reader settings states the schedule in words, never a command to type."""
     page = TEMPLATE.read_text()
-    command = re.search(r'function remCommand\(args\).*', page).group(0)
-    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'Background updates off' in line)
-    result = _run_reader_js('const REM = ' + json.dumps({'root_display': '~/.co/$&`book`/rem', 'default_root': False}) + ';\n'
-        + command + r'''
-        const s = {}, schedule = '', plainLine = value => value;
-        const scheduleState = () => 'Background updates off — run `co rem start` to enable';
+    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'nightlyUpdatesOff()' in line)
+    result = _run_reader_js(r'''
+        const schedule = 'Next pass 02:00', nightlyUpdatesOff = () => true;
         const el = (tag, attrs) => attrs.text;
         const settings = {appendChild: value => console.log(JSON.stringify(value))};
     ''' + guidance)
-    assert result == "Background updates off — run co rem --root ~/'.co/$&`book`/rem' start to enable"
+    assert result == 'Nightly updates are off.'
 
 
 def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
@@ -2783,7 +2779,9 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     ''')
     assert 'exit 124' in result
     assert result.startswith('上次定时任务未完成：' if language == 'zh' else 'Last scheduled turn did not finish:')
-    action = ('处理阻塞后运行 co rem start' if language == 'zh' else 'Resolve the blocker, then run co rem start') if code == 'blocked' else (
+    # D-60 (build 3b review): the next step is said in words, never as a command to type.
+    assert 'co rem' not in result
+    action = ('处理阻塞后重新启动 REM' if language == 'zh' else 'Resolve the blocker, then restart REM') if code == 'blocked' else (
         '已自动重试' if language == 'zh' else 'Retried automatically')
     assert action in result
 
@@ -2936,8 +2934,9 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
     if live:
         assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
     else:
-        assert result['buttons'] == ['Open in the live reader']
-        assert result['commands'][0]['text'] == "co rem --root '/tmp/fictional notebook' open"
+        # D-60 (build 3b review): a snapshot shows Send disabled and no command; the page says why once.
+        assert result['buttons'] == ['Send'] and result['card']['children'][-2]['children'][0]['disabled'] == ''
+        assert result['commands'] == []
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
@@ -3099,10 +3098,10 @@ def test_static_approval_cta_and_durable_failure_copy():
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
-      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code').textContent,
+      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code'),
         failures: header.querySelector('.approval-problems').textContent}));
     ''')
-    assert result['disabled'] is True and result['instruction'] == 'co rem open'
+    assert result['disabled'] is True and result.get('instruction') is None  # D-60: no command to copy
     assert 'Delivery not confirmed' in result['failures'] and 'Timed out' in result['failures']
 
 
@@ -3205,7 +3204,7 @@ def test_session_mentions_prefilter_preserves_unicode_case_matching():
 
 
 def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
-    """Live: no "queued for tonight" beside Draft now. Static: say how to draft now."""
+    """Live: no "queued for tonight" beside Draft now. Static: say it waits, never with a command (D-60)."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['draftNote', 'draftNowButton'])
@@ -3220,7 +3219,7 @@ def test_a_waiting_reply_is_drafted_now_and_answered_inside_its_thread():
       console.log(JSON.stringify({liveNote, staticNote: draftNote(null, entry)}));
     ''')
     assert result['liveNote'] is None
-    assert 'co rem open' in json.dumps(result['staticNote'])
+    assert result['staticNote']['class'] == 'quiet-line draft-reason' and 'co rem' not in json.dumps(result['staticNote'])
 
 
 def test_today_card_never_answers_an_existing_thread_with_a_new_mail():

@@ -9,7 +9,7 @@ The notebook is the invented one in tests/fixtures/rem_reader_notebook.py.
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -205,15 +205,146 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     assert "Expected the item key" not in second.inner_text()
 
 
-def test_a_snapshot_cannot_hand_off_and_never_offers_a_command(today):
+SNAPSHOT_LINE = "This is a snapshot: sending and handing work to an agent happen in the live reader."
+NO_COMMAND = r"""() => {
+  const text = document.body.innerText;
+  // "co rem" alone is the product's name in the sidebar; a command is the name followed by flags or a verb.
+  const found = text.match(/\bco (?:rem|ai)(?: --?[a-z][\w-]*(?: \S+)?)* (?:open|start|list|investigate|backfill|config|task|run)\b/g) || [];
+  return {cmd: document.querySelectorAll('.cmd, code').length, words: found};
+}"""
+
+
+@pytest.mark.parametrize("route", ["", "#view=open"])
+def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
+    """D-60: never ask the owner to copy a command. A snapshot shows the work, disabled, with one plain line."""
     page, _, _ = today
-    page.locator(".today-brief .qcard").first.locator(".handoff").wait_for(state="attached")
-    handoff = page.locator(".today-brief .qcard").first.locator(".handoff")
-    assert handoff.locator("button:disabled").count() == 2
-    assert "Only the live reader can hand work to an agent." in handoff.inner_text()
-    assert handoff.locator("code, .cmd").count() == 0
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, False, isolated_context=False)
+    page.evaluate("""() => { REM.status.schedule_failure = {code: 'blocked', evidence: 'mailbox locked'};
+      REM.records.find(r => r.category === 'people').private_project = true; render(); }""", isolated_context=False)
+    if route:
+        page.goto(BASE + route)
+    page.locator(".handoff").first.wait_for(state="attached")
+    page.locator(".reader-settings > summary").click()
+    assert page.evaluate(NO_COMMAND, isolated_context=False) == {"cmd": 0, "words": []}
+    assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
+    assert page.locator(".handoff button:not(:disabled)").count() == 0
+    assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
+    if not route:
+        send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
+        assert send.is_disabled()
+        assert not set(_greens(page)) & {"Send"}
     html = page.content()
     assert "does not run" not in html and "暂不自动" not in html
+
+
+@pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
+def test_send_never_covers_the_draft_head_or_the_choice_row(today, size):
+    """D-10: To, Subject and Send all readable at once; on a phone the pinned Send bar covers neither."""
+    page, _, _ = today
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("scrollTo(0, 0)", isolated_context=False)
+    card = page.locator(".qcard.open")
+    send = card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
+    bar = card.locator(".mail-actions")
+    rows = [card.locator(".mail-row").filter(has_text=name).first for name in ("To", "Subject")]
+    overlap = lambda a, b: not (a["y"] + a["height"] <= b["y"] or b["y"] + b["height"] <= a["y"])
+    if size[0] > 400:
+        assert _box_inside(page, send, 40), send.bounding_box()
+        for row in rows:
+            assert _box_inside(page, row, 0) and not overlap(row.bounding_box(), bar.bounding_box())
+    else:
+        assert _box_inside(page, send, 16)
+        for target in [*rows, card.locator(".owner-slot")]:
+            target.evaluate("node => node.scrollIntoView({block: 'center'})")
+            assert not overlap(target.bounding_box(), bar.bounding_box()), target
+
+
+def test_the_owner_is_never_a_person_waiting(today):
+    """Build 3b review: a row on your own page belongs to the person it names, or to nobody."""
+    page, _, _ = today
+    page.evaluate(r"""async () => {
+      const owner = byPath(REM.owner);
+      owner.original = undefined;
+      const rows = '- Tomás Reyes asked the user for a review of the pilot notes; due 2026-10-02 [1].\n- Water the office plants; due 2026-10-02 [1].\n';
+      owner.text = /^## Open threads/mi.test(owner.text) ? owner.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1' + rows)
+        : owner.text + '\n\n## Open threads\n' + rows;
+      REM.night_outcomes = [{key: 'o', record: REM.owner, title: owner.title, kind: 'could_not_prepare'},
+        {key: 'm', record: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', kind: 'could_not_prepare'}];
+      KNOWN.clear(); FACTS.clear(); OWING = null; await refreshTodayQueue(); render();
+    }""", isolated_context=False)
+    owner = page.evaluate("REM.owner", isolated_context=False)
+    paths = page.locator(".fuse .lane").evaluate_all("lanes => lanes.map(lane => lane.dataset.path)")
+    assert owner not in paths and "people/tomas-reyes.md" in paths
+    assert page.locator(f'.qcard[data-path="{owner}"]').count() == 0
+    assert int(page.locator(".brief-header h1 .count").inner_text()) == len(paths)
+    assert "Your page" not in page.locator(".fuse").inner_text()
+    assert page.locator('.night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
+
+
+def test_the_ready_reply_says_why_it_leads(today):
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
+      REM.drafts = [{id: 'mara', version: 'v1', provider: 'outlook', thread: 'mail:fixture:harbour-renewal', status: 'prepared',
+        to: 'Mara Ostrowski <mara@example.test>', from: 'avery@example.test', subject: 'Re: Addendum', body: 'Signed today.'}];
+      render(); }""", isolated_context=False)
+    assert "最急的是 Inès Halvorsen" in page.locator(".brief-header .lede").inner_text()
+    why = page.locator(".today-brief .lead-why")
+    assert why.inner_text() == "先回 Mara Ostrowski：回信已写好"
+    assert why.bounding_box()["y"] < page.locator(".qcard.open").bounding_box()["y"]
+
+
+def test_counts_name_their_unit(today):
+    page, _, _ = today
+    page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
+      REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
+                  isolated_context=False)
+    assert page.locator("#approve-all").inner_text() == "2 件可一键批准"
+    assert "件等你处理" in page.locator(".brief-header .waiting-more").inner_text()
+
+
+@pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
+                                           (500, "REM 暂时没回应，过会儿再试。"), (None, "REM 暂时没回应，过会儿再试。")])
+def test_hand_off_failures_are_plain_words(today, status, words):
+    page, _, answers = today
+    page.evaluate("() => { REM.live = true; setInterfaceLanguage('zh'); render(); }", isolated_context=False)
+    if status is None:
+        page.context.route(BASE + "rem/task", lambda route: route.abort())
+    else:
+        answers["/rem/task"] = [(status, {"error": "Traceback: KeyError 'key' in tasks.dispatch"})]
+    card = page.locator(".today-brief .qcard").first
+    card.locator(".handoff").get_by_role("button", name="交给 Codex").click()
+    card.get_by_text(words).wait_for()
+    assert "Traceback" not in card.inner_text() and "KeyError" not in card.inner_text()
+
+
+def test_the_undo_leaves_when_the_hold_ends_and_the_phone_bar_stays_clear(today):
+    page, _, answers = today
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("""() => { REM.drafts.push({...REM.drafts[0], id: 'mara', thread: 'mail:fixture:harbour-renewal', to: 'Mara <mara@example.test>',
+      body: 'Signed today.'}); REM.approval_outcomes.push({...REM.approval_outcomes[0], id: 'reply:mara', draft_id: 'mara', blocked: false}); render(); }""",
+                  isolated_context=False)
+    soon = lambda: (datetime.now(timezone.utc) + timedelta(seconds=2.5)).isoformat()
+    answers["/rem/approve"] = lambda body: (200, {"release_at": soon(), "results": [
+        {"id": i, "status": "held", "release_at": soon()} for i in body["ids"]]})
+    card = page.locator(".qcard.open")
+    card.locator(".owner-slot").get_by_role("button", name="共享文件夹").click()
+    card.get_by_role("button", name="Send", exact=True).click()
+    note = page.locator(".qsent")
+    note.get_by_role("button", name="Undo", exact=True).wait_for()
+    # The next ready reply is open; its Send bar is still pinned though the sent line now leads the list.
+    bar = page.locator(".qcard.open .mail-actions")
+    assert bar.evaluate("node => getComputedStyle(node).position") == "fixed"
+    page.evaluate("() => setDone(threadEntries().find(e => e.r.path === 'orgs/fernhill-labs.md'), true)", isolated_context=False)
+    notice = page.locator("#done-notice").bounding_box()
+    assert notice["y"] + notice["height"] <= bar.bounding_box()["y"]
+    page.wait_for_timeout(3000)
+    assert note.get_by_role("button", name="Undo", exact=True).count() == 0
 
 
 @pytest.mark.parametrize("width", [1440, 390])

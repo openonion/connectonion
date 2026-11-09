@@ -569,10 +569,11 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert letter.locator('.mail-status').inner_text() == ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first')
             assert page.evaluate('draftRequests.length', isolated_context=False) == 0
         else:
-            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['在实时阅读器里打开' if language == 'zh' else 'Open in the live reader']
-            letter.locator('.mail-actions .btn-act').click()
-            assert letter.locator('.cmd code').inner_text() == f"co rem --root '{root}' open"
-            assert letter.get_by_role('button', name='复制命令' if language == 'zh' else 'Copy the command').is_visible()
+            # D-60 (build 3b review): Send disabled, no command anywhere on the page, one plain line says why.
+            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['发送' if language == 'zh' else 'Send']
+            assert letter.locator('.mail-actions .btn-act').is_disabled()
+            assert page.locator('.cmd, code').count() == 0
+            assert page.locator('.snapshot-line').count() == 1
             assert letter.locator('.mail-channels button').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         evidence = Path('/tmp/rem-draft-coverage')
@@ -589,10 +590,12 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             # dialog.close() dispatches its removal through the close event.
             dialog.wait_for(state='detached')
             assert not dialog.count()
-            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the edited text
-            # travels with the approval when the Host lists one for this draft, else with the direct send.
+            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the Host lists an
+            # approval for this draft, so the edited text goes to /rem/approve under that approval's id.
             request = page.evaluate('draftRequests[0]', isolated_context=False)
-            assert (request.get('body') or next(iter(request.get('bodies', {}).values()), None)) == 'The demo is ready for release.'
+            outcome = page.evaluate("REM.approval_pending.concat(REM.approval_outcomes).find(o => o.draft_id === REM.drafts.find(d => d.to === 'fern@example.test').id).id",
+                                    isolated_context=False)
+            assert request == {'ids': [outcome], 'bodies': {outcome: 'The demo is ready for release.'}}
             open_card(queued)
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
             assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
