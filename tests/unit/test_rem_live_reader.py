@@ -476,3 +476,23 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     assert "co ai is starting" in first["live"]
     again = reader.local_or_snapshot(host.root, "owner", launch=False)  # that pid never ran
     assert "rem-live-host.log" in again["live"] and "co ai is starting" not in again["live"]
+
+
+
+def test_the_hosts_minute_tick_does_not_make_a_quiet_hour_rebuild(host, cache, clock, monkeypatch):
+    """approvals.release takes the lock each minute and rewrites its owner file."""
+    from connectonion.rem import approvals
+    cookie = f"co_rem={host.token}"
+    renders, original = [], reader.snapshot
+    monkeypatch.setattr(reader, "snapshot", lambda root, **o: renders.append(1) or original(root, **o))
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: reader.refresh(root, builds) or True)
+    call(host.routes, "GET", "/rem", cookie=cookie)
+    reader.refresh(host.root)
+    clock[0] += reader.REBUILD_INTERVAL + 1
+    call(host.routes, "GET", "/rem/version", cookie=cookie)   # the first walk records the tree
+    renders.clear()
+    for minute in range(11, 60):                             # the rest of the hour since the build
+        clock[0] += 60
+        approvals.release(host.root)                         # the Host's minute clock
+        call(host.routes, "GET", "/rem/version", cookie=cookie)
+    assert renders == []

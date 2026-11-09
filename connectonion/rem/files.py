@@ -113,10 +113,10 @@ def atomic_write(path: Path, text: str) -> None:
 
 # The reader's cache key reads this one file instead of listing the notebook
 # (31,136 files took 17 s of stat calls per open). atomic_write and
-# Notebook.delete touch it; the lock's own owner file, rewritten on every Host
-# minute tick, is bookkeeping and does not.
+# Notebook.delete touch it; the lock's own files, rewritten or created by every
+# Host minute tick, are bookkeeping and do not (nor does the reader's full walk).
 CHANGED = "reader-changed"
-QUIET_STATE = {"maintenance-owner.json", CHANGED}
+QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED}
 
 
 def _changed(path: Path) -> None:

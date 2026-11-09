@@ -667,13 +667,18 @@ over at midnight. Every 10 minutes (`REBUILD_INTERVAL` in `reader.py`) the
 background build walks the whole notebook (on a 31,136-file notebook about
 17 s of stat calls, never on the request path), which catches edits other
 tools make in place without REM's writers, and rebuilds only if the walk
-differs. A page older than an hour (`STALE_SCHEDULE_SECONDS`) is rebuilt
+differs. The walk leaves out the lock's own files (`maintenance-owner.json`,
+`maintenance.lock`), which the Host's minute tick rewrites, and the marker;
+otherwise every walk would differ while a Host runs. A page older than an hour (`STALE_SCHEDULE_SECONDS`) is rebuilt
 anyway, so **Next pass** and schedule text are at most an hour late; a quiet
 notebook with the page open costs a walk every 10 minutes, not a rebuild.
 When the key changed, the last page is still served at once and one detached process
 (`python -m connectonion.rem.reader`, one at a time, log in the same folder,
-trimmed to its last 200 lines) renders the new one. It publishes the page and
-its details together, so a reload never pairs a new page with old details.
+trimmed to its last 200 lines) renders the new one. It writes the new page,
+details and file page under new names, then one manifest (`current.json`) that
+names that set, last; a crash midway leaves the previous set served whole, so a
+reload never pairs a new page with old details. The set it replaces is kept for
+a page still open on it.
 
 Rebuilds are at most one per 10 minutes, because one costs about 100 s of CPU
 on a large notebook and a night run keeps writing. The owner acting rebuilds
@@ -685,8 +690,9 @@ is running passes again for an owner action made meanwhile. `co rem open` says
 a newer page is being built only when a build actually started.
 
 The open live page asks `/rem/version` every 30 seconds while visible. When a
-newer render has landed it reloads onto it and puts back the view, the scroll
-position and open sections; while you are typing it waits, and over a reply
+newer render has landed (only newer: an equal or older time is no reason) it
+reloads onto it and puts back the view, the scroll position and open sections
+(known by id, else by their heading); while you are typing it waits, and over a reply
 you have edited it does not reload but shows a quiet **有更新 · 刷新** (Newer
 page · Reload) link. After Stop or Undo on a task, the page waits for the
 render that carries it, then reloads; past two minutes it says the page has not

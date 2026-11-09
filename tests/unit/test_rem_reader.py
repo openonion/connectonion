@@ -3493,7 +3493,7 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     while reader.saved(root, "full").get("version") != reader.reader_version(root):
         assert time.monotonic() < deadline, open(reader._cached(root, "build.log")).read()
         time.sleep(0.2)
-    assert "Bruno Example" in open(stale["page"], encoding="utf-8").read()
+    assert "Bruno Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
 
 
 def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(tmp_path, monkeypatch):
@@ -3530,7 +3530,7 @@ def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(t
     reader.refresh(root, ["full"])
     assert passes == ["full", "full"]
     assert reader.saved(root, "full")["version"] == reader.reader_version(root)
-    assert "Dara Example" in open(reader._cached(root, "file.html"), encoding="utf-8").read()
+    assert "Dara Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
 
 
 
@@ -3589,7 +3589,7 @@ def test_details_and_page_are_published_together(tmp_path, monkeypatch):
     _Clock.seconds += 1
     reader.refresh(root)
     assert reader.saved(root, "live")["version"] == reader.saved(root, "full")["version"] == reader.reader_version(root)
-    assert "Fern Holt" in open(reader._cached(root, "data.json"), encoding="utf-8").read()
+    assert "Fern Holt" in open(reader.page_path(root, "data.json"), encoding="utf-8").read()
 
 
 def test_owner_actions_after_the_last_pass_are_not_dropped_and_a_corrupt_mark_is_now(tmp_path, monkeypatch):
@@ -3611,7 +3611,7 @@ def test_owner_actions_after_the_last_pass_are_not_dropped_and_a_corrupt_mark_is
     Notebook(root).write("people/start.md", "# Start\n")
     reader.refresh(root, ["full"])
     assert len(passes) == 5
-    assert "Action 4" in open(reader._cached(root, "file.html"), encoding="utf-8").read()
+    assert "Action 4" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
     passes.clear()
     monkeypatch.setattr(reader, "snapshot", lambda root, **options: passes.append(1) or original(root, **options))
     reader._cached(root, "owner").write_text("not a time")
@@ -3677,8 +3677,16 @@ def test_the_page_reloads_only_through_one_door_that_keeps_the_owners_place():
         none: reloadChoice({...base, latest: null}),
         typing: reloadChoice({...base, typing: true}),
         draft: reloadChoice({...base, unsaved: true}),
+        older: reloadChoice({...base, latest: {as_of: "2026-11-09T07:00:00+00:00"}}),
       }));''')
-    assert result == {"newer": "reload", "same": None, "none": None, "typing": None, "draft": "offer"}
+    assert result == {"newer": "reload", "same": None, "none": None, "typing": None, "draft": "offer", "older": None}
+    # Open sections are known by their id, else their summary; never by position.
+    key = re.search(r"function detailsKey\(.*?\}\n", page, re.S).group(0)
+    keys = _run_reader_js(key + r'''
+      const summary = text => ({querySelector: () => ({textContent: text})});
+      console.log(JSON.stringify([detailsKey({id: "people-columns", ...summary("Columns")}),
+                                  detailsKey({id: "", ...summary("Review reply")})]));''')
+    assert keys == ["#people-columns", "Review reply"]
     # Task Stop and Undo wait for the render that carries them; Refresh reads in place.
     task = re.search(r"function taskControls\(.*?\n\}", page, re.S).group(0)
     assert "reloadWhenRendered(" in task
@@ -3717,8 +3725,48 @@ def test_a_quiet_visible_page_is_walked_every_interval_and_rebuilt_only_when_nee
     at(65)
     assert renders == []                         # the open never walks; the interval has not passed
     at(71)
-    assert renders == [1] and "edited by another tool" in open(reader._cached(root, "file.html"), encoding="utf-8").read()
+    assert renders == [1] and "edited by another tool" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
     renders.clear()
     day[0] += timedelta(days=1)
     at(82)
     assert renders == [1]                        # the notebook's day changed
+
+
+
+def test_a_crash_at_any_write_of_a_publish_leaves_a_consistent_set(tmp_path, monkeypatch):
+    """The page served, its details and /rem/version must agree, or the open page
+    reloads onto itself every second until the next good build."""
+    import json as _json
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    real, crash_at = reader._replace, 0
+    while True:
+        crash_at += 1
+        _Clock.seconds += 1
+        Notebook(root).write(f"people/person-{crash_at}.md", f"# Person {crash_at}\n")
+        writes = []
+
+        def failing(path, text):
+            writes.append(path)
+            if len(writes) == crash_at:
+                raise OSError("fictional disk full")
+            real(path, text)
+        monkeypatch.setattr(reader, "_replace", failing)
+        try:
+            reader.refresh(root)
+            crashed = False
+        except OSError:
+            crashed = True
+        monkeypatch.setattr(reader, "_replace", real)
+        page, _ = reader.cached_page(root, "live.html")
+        details, _ = reader.cached_page(root, "data.json")
+        served = re.search(r'"as_of": "([^"]+)"', page).group(1)
+        assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"], crash_at
+        if not crashed:
+            break
+    assert crash_at > 2   # every write of a publish was tried

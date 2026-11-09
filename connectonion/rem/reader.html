@@ -11366,15 +11366,17 @@ function unsavedDraft() {
   return [...document.querySelectorAll("textarea, [contenteditable]")]
     .some(node => editedFields.has(node) && (node.value ?? node.textContent).trim());
 }
+// Only a newer render: an older or equal one (a build that crashed midway) is no reason to reload.
 function reloadChoice({ latest, asOf, typing, unsaved }) {
-  if (!latest?.as_of || latest.as_of === asOf || typing) return null;
+  if (!latest?.as_of || !(new Date(latest.as_of) > new Date(asOf)) || typing) return null;
   return unsaved ? "offer" : "reload";
 }
-function detailsKey(node, index) { return index + ":" + (node.querySelector("summary")?.textContent || ""); }
+// A section is known by its id, else by its summary; positions move when a render adds rows.
+function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
 function reloadOnto() {
   try {
     sessionStorage.setItem(RELOAD_STATE, JSON.stringify({ hash: location.hash, y: scrollY,
-      open: [...document.querySelectorAll("details")].map((node, i) => node.open ? detailsKey(node, i) : "").filter(Boolean) }));
+      open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) }));
   } catch (error) {
     // Blocked storage: the reload still lands on the same view, at the top.
   }
@@ -11392,7 +11394,7 @@ let pendingRestore = (() => {
 function restoreAfterReload() {
   if (!pendingRestore || pendingRestore.hash !== location.hash) return;
   const open = new Set(pendingRestore.open || []);
-  document.querySelectorAll("details").forEach((node, i) => { if (open.has(detailsKey(node, i))) node.open = true; });
+  document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) node.open = true; });
   scrollTo(0, pendingRestore.y || 0);
   pendingRestore = null;
 }

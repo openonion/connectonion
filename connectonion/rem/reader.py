@@ -510,10 +510,28 @@ def _read(path: Path):
         return None
 
 
+def _manifest(root: Path) -> dict:
+    """{files: {name: file}, rows: {build: row}}: the one file that says which saved
+    pages belong together. It is written last, so a crash midway leaves the
+    previous set whole."""
+    text = _read(_cached(root, "current.json"))
+    return json.loads(text) if text else {"files": {}, "rows": {}}
+
+
 def saved(root: Path, build: str) -> dict:
     """{version, tree, as_of, built_at, checked_at} of a build's saved pages; {} before the first."""
-    text = _read(_cached(root, build + ".json"))
-    return json.loads(text) if text else {}
+    return _manifest(root)["rows"].get(build, {})
+
+
+def page_path(root: Path, name: str):
+    """The saved live.html, data.json or file.html of the current set; None before."""
+    file = _manifest(root)["files"].get(name)
+    return _cache_dir() / file if file else None
+
+
+def _read_page(root: Path, name: str):
+    path = page_path(root, name)
+    return _read(path) if path else None
 
 
 def _now() -> float:
@@ -522,15 +540,17 @@ def _now() -> float:
 
 def tree_version(root: Path) -> str:
     """Every file's name, time and size, hashed: the background build's check for
-    edits that touch no marker. SQLite's shared memory changes on reads; an empty
-    WAL has no committed frames."""
+    edits that touch no marker. Left out, as from the marker: the lock's owner
+    file, rewritten by the Host's minute tick, and the marker itself. SQLite's
+    shared memory changes on reads; an empty WAL has no committed frames."""
+    from .files import QUIET_STATE
     files = []
     for directory, dirs, names in os.walk(root):
         dirs[:] = sorted(name for name in dirs if name != ".git")
         for name in sorted(names):
             path = Path(directory) / name
             stat = path.lstat()
-            if name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
+            if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not stat.st_size:
                 continue
             files.append((str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size))
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
@@ -547,15 +567,27 @@ def _render(root: Path, build: str) -> tuple[dict, str]:
 
 
 def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
-    """Every page first, then every key: a reload that sees the new version gets the
-    new page and the new details together."""
-    for files, _ in rendered.values():
-        for name, text in files.items():
-            _replace(_cached(root, name), text)
-    for build, (_, as_of) in rendered.items():
-        _replace(_cached(root, build + ".json"),
-                 json.dumps({"version": version, "tree": tree, "as_of": as_of,
-                             "built_at": _now(), "checked_at": _now()}))
+    """New files under a new generation's names, then the manifest naming them. The
+    set it replaces is kept for a page still open on it; older ones are removed."""
+    manifest, generation = _manifest(root), f"{time.time_ns():x}"
+    files, rows = dict(manifest["files"]), dict(manifest["rows"])
+    prefix = _cached(root, "").name
+    for build, (texts, as_of) in rendered.items():
+        for name, text in texts.items():
+            files[name] = f"{prefix}{generation}-{name}"
+            _replace(_cache_dir() / files[name], text)
+        rows[build] = {"version": version, "tree": tree, "as_of": as_of, "built_at": _now(), "checked_at": _now()}
+    _replace(_cached(root, "current.json"), json.dumps({"files": files, "rows": rows}))
+    keep = {*files.values(), *manifest["files"].values()}
+    for old in os.listdir(_cache_dir()):
+        if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
+            (_cache_dir() / old).unlink(missing_ok=True)
+
+
+def _checked(root: Path, build: str, moment: float) -> None:
+    manifest = _manifest(root)
+    manifest["rows"][build] = {**manifest["rows"][build], "checked_at": moment}
+    _replace(_cached(root, "current.json"), json.dumps(manifest))
 
 
 def owner_changed(root: Path) -> bool:
@@ -641,7 +673,7 @@ def _refresh_once(root: Path, builds):
                     if rows[build].get("tree") != tree:
                         stale.append(build)
                     else:
-                        _replace(_cached(root, build + ".json"), json.dumps({**rows[build], "checked_at": started}))
+                        _checked(root, build, started)
             if not stale:
                 return started
             stale = [build for build in wanted if build in stale]
@@ -701,15 +733,14 @@ def cached_page(root: Path, name: str, *, owner: bool = False) -> tuple[str, boo
     used: the page is rendered now, as before saved pages."""
     try:
         version = reader_version(root)
-        path = _cached(root, name)
+        text = _read_page(root, name)
     except CacheRefused:
         return _render(root, BUILDS[name])[0][name], False
-    text = _read(path)
     if text is None:
         with _building(root, wait=True):
-            if (text := _read(path)) is None:
+            if (text := _read_page(root, name)) is None:
                 _publish(root, {BUILDS[name]: _render(root, BUILDS[name])}, version)
-                text = _read(path)
+                text = _read_page(root, name)
     return text, _rebuild_stale(root, name, version, owner=owner)
 
 
@@ -796,7 +827,7 @@ def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
     stale one starts its rebuild now."""
     try:
         _, building = cached_page(root, "file.html", owner=True)
-        path, failed = _cached(root, "file.html"), failure(root)
+        path, failed = page_path(root, "file.html"), failure(root)
     except CacheRefused as refused:
         path = write_reader(root)
         return {"page": str(path), "link": path.as_uri(), "launched": _launch(path, launch),
@@ -817,7 +848,7 @@ def _launch(path: Path, launch: bool) -> bool:
 
 def _has_saved_page(root: Path) -> bool:
     try:
-        return _read(_cached(root, "file.html")) is not None
+        return _read_page(root, "file.html") is not None
     except CacheRefused:
         return False
 
