@@ -166,7 +166,22 @@ def test_quoted_words_drop_greeting_and_signature_block():
         saidWords('Dear Avery,\nThe renewal can include a fourth seat from 2026-11-01.\n--\nMara\n+64 21 555 0100'),
         saidWords('Thanks for the notes.\nBest regards\nKai Rennick\nM: 021 555 0199')]));
     ''')
-    assert result == ['Good news! The pass is ready at Gate 2.', 'The renewal can include a fourth seat from 2026-11-01.', 'Thanks for the notes.']
+    # A sign-off inside the line cuts there and says so with an ellipsis; one on its own line ends the mail.
+    assert result == ['Good news! The pass is ready at Gate 2.…', 'The renewal can include a fourth seat from 2026-11-01.', 'Thanks for the notes.']
+
+
+def test_quoted_words_keep_a_body_that_starts_with_thanks_and_a_phone_inside_a_sentence():
+    result = run_js(['saidWords'], r'''
+      console.log(JSON.stringify([
+        saidWords('Many thanks\nThe slides are attached for Thursday.'),
+        saidWords('Call me on +64 21 555 0100 if the gate fails again.'),
+        saidWords('The gate works now.\nT +64 21 555 0100\nFernhill Labs'),
+        saidWords('The pass is ready at Gate 2. Kind regards, Mara Ostrowski, Head of Partnerships')]));
+    ''')
+    assert result[0] == 'Many thanks The slides are attached for Thursday.', "a sign-off counts only after a body line"
+    assert result[1] == 'Call me on +64 21 555 0100 if the gate fails again.', "a number inside a sentence is not a signature"
+    assert result[2] == 'The gate works now.', "a phone line on its own starts the signature"
+    assert result[3] == 'The pass is ready at Gate 2.…', "a cut inside a line says so"
 
 
 def test_owed_parts_drop_a_rest_that_is_only_punctuation_after_date_clutter():

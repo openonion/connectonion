@@ -1777,6 +1777,22 @@ def test_role_lede_is_the_title_and_parse_facts_splits_like_facts_py():
     assert 'email signature through 2026-10-29' in result['lede']['title']
 
 
+def test_role_lede_keeps_when_a_role_ended_or_started():
+    """"Product Owner (until 2025-06); Advisor" read "Product Owner +1": a past role as if current."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const inline = text => text, youify = text => text, roleSummary = () => null;
+      const lede = (value, qualifier) => roleLede([{value, qualifier}, {value: 'Advisor', qualifier: ''}], value, '').children[0].html;
+      console.log(JSON.stringify([lede('Product Owner', 'until 2025-06'), lede('Engineer', 'since 2024'), lede('Founder', 'former'),
+        lede('Mentor', '2019–2021'), lede('Events Coordinator', 'Entrepreneurship; email signature through 2026-10-29'), lede('Lead', 'observed in mail')]));
+    ''')
+    assert result == ['Product Owner (until 2025-06)', 'Engineer (since 2024)', 'Founder (former)', 'Mentor (2019–2021)',
+                      'Events Coordinator (Entrepreneurship)', 'Lead']
+
+
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)

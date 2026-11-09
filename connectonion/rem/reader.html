@@ -6691,7 +6691,8 @@ function personProject(r) {
 // ("Events Coordinator (Entrepreneurship)"); provenance ("email signature through …") stays in the tooltip.
 function roleLede(items, full, from) {
   if (hasPrivacy(full)) return roleSummary(full, from);
-  const provenance = /\b(?:signature|through|as of|since|until|according|observed|confirmed|unverified|from (?:email|mail|domain)|per\s)\b|\d{4}-\d{2}-\d{2}/i;
+  // Only notes on where the value came from leave the lede; when a role started or ended ("until 2025-06", "former") stays.
+  const provenance = /\b(?:signature|observed|according to|unverified|per\s|from (?:email|mail|domain))\b|\bemail\b.*\bthrough\b/i;
   const first = items[0], kept = topLevelParts(first.qualifier || "").filter(part => !provenance.test(part));
   const title = first.value + (kept.length ? " (" + kept.join("; ") + ")" : "");
   return el("span", { title: plainLine(full) }, [el("span", { html: inline(title, from) }),
@@ -6808,13 +6809,16 @@ function saidWords(text) {
   const lines = [];
   for (const raw of String(text || "").split(/\n+/)) {
     const line = raw.trim();
-    if (/^--\s*$/.test(line) || /^(?:kind|best|warm|many)?\s*(?:regards|thanks|cheers|sincerely)[,!.]?$/i.test(line)) break;
+    // A sign-off, "--" or a phone line on its own ends the mail, but only once there is a body above it.
+    const signature = /^--\s*$/.test(line) || /^(?:kind|best|warm|many)?\s*(?:regards|thanks|cheers|sincerely)[,!.]?$/i.test(line)
+      || /^(?:(?:T|M|P|Tel|Ph|Phone|Mobile)\s*[:.]?\s*)?\+?\d[\d ().-]{7,}\d$/i.test(line);
+    if (signature && lines.length) break;
     if (line && !/^>/.test(line) && !/^(?:hi|hello|hey|dear)\b[^.!?。]{0,40}[,，!！]?$/i.test(line)) lines.push(line);
   }
-  return lines.join(" ").replace(/\s+/g, " ")
-    .replace(/^(?:hi|hello|hey|dear)\s+[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?\s*[,，!！]\s*/iu, "")
-    .replace(/\s*\b(?:kind|best|warm|many)\s+(?:regards|thanks)\b[\s\S]*$/i, "")
-    .replace(/\s*(?:\b(?:T|M|P|Tel|Ph|Phone|Mobile)\s*[:.]?\s*\+?|\+)\d[\d ().-]{7,}\d[\s\S]*$/, "").trim();
+  const words = lines.join(" ").replace(/\s+/g, " ").replace(/^(?:hi|hello|hey|dear)\s+[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?\s*[,，!！]\s*/iu, "");
+  // A sign-off inside a line ("…card.Kind Regards, Tamara …") cuts there, and the cut says so.
+  const cut = words.search(/\s*\b(?:kind|best|warm)\s+regards\b/i);
+  return cut > 0 ? words.slice(0, cut).trim() + "…" : words.trim();
 }
 // Sources a public passage cites and no private passage does: a mail cited by a [personal] passage
 // stays as private as the passage, even when a public sentence cites it too.
