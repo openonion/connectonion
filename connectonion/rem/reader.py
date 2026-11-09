@@ -410,16 +410,19 @@ def reader_version(root: Path) -> list:
     folders' times catch a page added, renamed or removed by hand; the database
     and a nonempty WAL hold committed rows; the notebook's day turns the Today
     queue over. A page edited in place by another tool is caught by the
-    background walk (tree_version) each REBUILD_INTERVAL. The template is part of the key, so a new
-    install re-renders.
+    background walk (tree_version) each REBUILD_INTERVAL. The template and the package
+    version are part of the key, so a new install re-renders even when a release
+    changed only Python and left reader.html as it was.
     """
+    import connectonion
     from .files import CHANGED
     state = root / ".state"
     paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
              state / "rem.db", state / "rem.db-wal", TEMPLATE]
     from .service import notebook_today
     # The Today queue and every "overdue" turn over at the notebook's midnight.
-    key = [str(root.resolve()), str(TEMPLATE), str(notebook_today(root)) if root.is_dir() else None]
+    key = [str(root.resolve()), str(TEMPLATE), connectonion.__version__,
+           str(notebook_today(root)) if root.is_dir() else None]
     for path in paths:
         try:
             info = path.stat()
