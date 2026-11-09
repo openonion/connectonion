@@ -2718,7 +2718,7 @@ const UI = {
     "REM has no dated exchanges in this record yet, only the first contact.": "记录里还没有带日期的往来，只知道第一次联系。",
     "Each tick is a dated exchange in the record ({n}); the other mails have no dates here.": "每条竖线是记录里一次有日期的往来（{n} 次）；其余邮件这里没有日期。",
     "Each tick is a dated exchange in the record ({n}).": "每条竖线是记录里一次有日期的往来（{n} 次）。",
-    "In their words": "他说过的话",
+    "In their words": "对方说过的话",
     "Open topics": "还没结的话题",
     "Not done yet": "还没办完",
     "Original · newest first": "原文 · 最新在前",
@@ -2882,6 +2882,7 @@ const UI = {
     "{n} people are waiting on you.": "{n} 个人在等你。",
     "Nobody is waiting on you today.": "今天没有人在等你。",
     "Most urgent: {name}, ": "最急的是 {name}，",
+    "Questions & connections →": "问题与关联 →",
     "Review the reply to {name}": "看给 {name} 的回信",
     "Approve": "批准",
     "Reply to {name}": "回复 {name}",
@@ -5623,9 +5624,6 @@ function renderRail(active) {
   }
   nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("div", { class: "gap" }));
-  const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
-  if ((REM.reviews || []).length || active === "reviews") nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
-    [el("span", { text: t("Questions & connections") }), el("span", { class: "n" + (pending ? " open" : " zero"), text: String(pending) })]));
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
@@ -6138,6 +6136,8 @@ function taskView(kind) {
       el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
     // REM's own run history stays out of the sidebar (D-03); this is its only door.
     main.appendChild(el("a", { class: "rem-activity", href: "#view=activity", text: t("REM activity →") }));
+    // Questions & connections left the sidebar too (2026-11-09); its route stays and this is its door.
+    main.appendChild(el("a", { class: "rem-activity", href: "#reviews=1", text: t("Questions & connections →") }));
     return;
   }
   main.appendChild(el("h1", { text: t("Open threads") }));
@@ -6881,7 +6881,7 @@ function personTimeline(r) {
 function railContact(r) {
   const parsed = parseFacts(r), f = facts(r);
   const values = label => (parsed.get(label) || []).filter(item => knownValue(item.value));
-  // A qualifier ("shown in her 2026-10-29 signature") is where the value came from: a tooltip, not the value.
+  // A qualifier ("shown in the 2026-10-29 signature") is where the value came from: a tooltip, not the value.
   const shown = item => el("span", { text: plainLine(item.value), title: item.qualifier ? plainLine(item.qualifier) : "" });
   const mails = (f.email.match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
   const handles = values("Handles").filter(item => !item.value.includes("@"));

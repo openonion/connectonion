@@ -1793,6 +1793,17 @@ def test_role_lede_keeps_when_a_role_ended_or_started():
                       'Events Coordinator (Entrepreneurship)', 'Lead']
 
 
+def test_chinese_interface_never_assumes_a_single_persons_gender():
+    """"他说过的话" headed a woman's quotes. A single person is 对方 (or their name), never 他/她;
+    the words that only look gendered (其他, 他人, 他们 for a plural) are allowed."""
+    page = TEMPLATE.read_text()
+    table = page[page.index('const UI = {'):page.index('function t(')]
+    values = re.findall(r'"(?:[^"\\]|\\.)*":\s*"((?:[^"\\]|\\.)*)"', table)
+    allowed = re.compile(r'其他|他人|他们|她们')
+    gendered = [value for value in values if re.search(r'[他她]', allowed.sub('', value))]
+    assert gendered == [], gendered
+
+
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)

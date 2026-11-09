@@ -3340,7 +3340,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     }'''
     page.locator('details.deep-note').evaluate('d => d.open = true')
     original = page.locator('.deep-note .note > p').first.evaluate(prose)
-    assert page.locator('.r4-said h2').inner_text().startswith('他说过的话')
+    assert page.locator('.r4-said h2').inner_text().startswith('对方说过的话')  # never assumes the person's gender
     page.locator('.language-switch').get_by_role('button', name='EN', exact=True).click()
     assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('People')
     page.locator('details.deep-note').evaluate('d => d.open = true')
@@ -5161,6 +5161,20 @@ def test_person_fuse_does_not_burn_once_today_has_it_handled(reader):
     page.evaluate("""() => { for (const key of Object.keys(threadStates)) delete threadStates[key];
       window.threadDraft = () => ({status: 'no_reply', gist: 'Nothing to answer.'}); render(); }""", isolated_context=False)
     assert page.locator(".r4-fuse .fuse-red").count() == 0, "no reply needed"
+
+
+def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(reader):
+    """Same change and test as sprint12/fuse-today 7b371a427, on this branch's fixture."""
+    page, uri = reader
+    page.evaluate("""() => { REM.reviews = [{id: 'r1', status: 'pending', kind: 'link', question: 'Is Mara at Fernhill Labs?',
+      basis: 'Two cited mails.', subjects: ['people/mara-ostrowski.md']}]; render(); }""", isolated_context=False)
+    assert page.locator('#nav a[href="#reviews=1"]').count() == 0
+    assert "Questions & connections" not in page.locator("#nav").inner_text()
+    page.goto(uri + "#view=changes")
+    door = page.locator('#main a[href="#reviews=1"]')
+    assert door.count() == 1 and door.evaluate("a => !!a.closest('#main')")
+    door.click()
+    page.get_by_role("heading", name="Questions & connections", exact=True).wait_for()
 
 
 def test_person_quotes_carry_their_source_and_open_the_original(reader):
