@@ -752,9 +752,36 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   changed-field underline draws in about 600 ms. Filtering or rerendering the
   same view does not replay them; reduced motion shows the final state immediately.
   A short legend lives in **Reader settings**.
-- **Between you** on a person's page lists what you owe and what they owe in
-  two quiet columns; each thread's age sits at its top right, amber for what
-  you owe, as on Home. Project and organisation pages show each date once,
+- **A person's page is their record** (owner, 2026-11-08): no list of what
+  you owe and no **Mark done** there; one quiet link, **N items in Today**,
+  when Today holds something of theirs. The name is the page's one large mark;
+  it carries its script as `lang` and hyphenates (where the browser has no
+  hyphenation dictionary and a word would overflow, the reader adds soft
+  hyphens at likely syllable joins; copying the name drops them). Under it
+  the first role is shown as a title (its value and any qualifier that is
+  part of it, "Events Coordinator (Entrepreneurship)"), then a neutral
+  **+N**, never cut inside brackets; where a value came from ("email
+  signature through …") is in the tooltip. Under that the **fuse** runs from the first exchange REM knows to today, one
+  tick per dated History line at its real date; when the record has no dated
+  lines it draws only the first contact and says so. The fuse turns red only
+  from their last mail, and only once that is past your own median reply time
+  in synced mail, and never while Today has her items handled, looking
+  handled or needing no reply; without that data it is never red. Then mails,
+  first exchange, your median reply and last contact; **Open topics**
+  (**还没结的话题**), the record's open threads as words and a date with
+  nothing to click (marking them happens in Today); **In their words**,
+  their own archived mail said to you personally: you on To or Cc (your
+  addresses from the map and mail archive; unknown addresses quote nothing),
+  at most eight recipients, not an auto-reply, cited by a public passage and
+  by no [personal]/[sensitive] one, the excerpt itself unlabelled, greeting
+  and signature block removed; the archive keeps no Auto-Submitted or List-Id
+  header, so these are what it judges by. Each carries its channel and source
+  mark; and
+  the dated exchanges. Contact, organisation, what REM is not sure of (dashed,
+  REM's pencil) and the local graph sit in the rail. On Today, a card REM
+  thinks your reply already handled offers **Not done yet** (**还没办完**)
+  beside **Mark done**; it is kept on this device, and the item stays in
+  Today and on the People list. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
@@ -819,14 +846,31 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   The rest is grouped by kind, people first, one snippet a page, never a
   local path.
 
-Design: cool blue-biased neutrals with one night blue for links and one lamp
-amber kept for what is owed; a dark palette of its own; Optima for titles,
-Charter for prose, the system face for chrome and the mono face for every
-date, count and id. Fonts are local faces, so the page makes no network
-request. Every view fits a 390 px phone without sideways scrolling, keyboard
-focus is visible, and the hypnogram line is visible immediately. Quotes use a
-warm tint in light mode and warm text with a faint underline in dark mode;
-search matches keep their distinct highlight. Motion respects `prefers-reduced-motion`.
+Design ("Fuse"): the whole reader is painted from one token sheet at the top of
+`reader.html`: one paper, one ink, one grey, one hairline; green only on the
+primary action, which turns over on hover (green label on dark green); red only
+for overdue and danger; and pencil, always dashed, for what REM inferred. Pencil
+never colours text: an inferred word is grey with a dashed pencil underline.
+Four type sizes: display (min(112px, 22vw)) is kept for the one thing a page is
+about, Today's count or an entity's name, then 24, 16 and 12; two weights (400
+and 700); square corners and no shadows. Rings that used to be shadows are
+hairline outlines, and keyboard focus is a 2 px ink outline that wins over them,
+except on `#main` and the Today cards, which are focused by script. Every CSS
+transition and animation takes its duration, delay and easing from the sheet, so
+`prefers-reduced-motion` zeroes all of them; the graph's zoom and the reader's
+smooth scrolling are script-driven and check reduced motion themselves. The
+graph tells kinds apart by shape (a session is a bar, a person a dot); a private
+record is its outline with a slash. Dark mode redefines the same colour names
+under `prefers-color-scheme` (unless the reader is set to Light) and under the
+Dark setting. `tests/unit/test_rem_reader_style_sheet.py` scans the whole page
+(styles, style and SVG attributes, url() data, the script's style writes and the
+strings it builds) and fails when a font size, weight, radius, shadow, colour,
+transition or animation timing is written outside the sheet, when a layout
+custom property holds anything but a length or a number, and when a sheet token
+is unused. A value that only exists at run time, such as a colour held in a
+script variable, is outside what it can see. One system face carries Latin and
+CJK and a mono face carries code; both are local, so the page makes no network
+request. Every view fits a 390 px phone without sideways scrolling.
 
 To see every view on an invented notebook, light and dark, desktop and phone:
 `python scripts/capture_rem_reader.py OUT_DIR` (the fixture is

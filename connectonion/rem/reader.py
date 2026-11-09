@@ -134,6 +134,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     `local`: this machine's own reader (the file snapshot, the loopback live
     reader). Labelled excerpts are added only then; the O Chat view never has them.
     """
+    from .store_messages import owner_addresses
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
@@ -278,7 +279,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
-            "owner": owner}
+            "owner": owner,
+            # The owner's own addresses, so the reader can tell mail said to him from a list or Bcc copy.
+            "owner_addresses": sorted(owner_addresses(root)) if local else []}
     from .project_data import enrich_records
     data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
     from .today import queue as today_queue
