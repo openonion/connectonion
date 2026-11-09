@@ -663,13 +663,17 @@ older page before showing its answer. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
-Status, theme and privacy controls live in the sidebar’s **Reader settings**
-disclosure. **EN | 中文** beside the theme controls switches interface labels
-and dates. Your saved choice comes first; otherwise Chinese is preferred when
+The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
+the installed package and the same in both languages) and the snapshot time,
+then **EN · 中文** and **Auto · Light · Dark**, each a control. Status and
+privacy controls live under it in **Reader settings**. **EN · 中文** switches
+interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
-languages still take precedence. Page prose stays as written. On phones, a compact brand and search header keeps Browse within reach.
+languages still take precedence. Page prose stays as written. On phones, the brand, search and **Menu** share
+one header row; **Menu** opens the sidebar as a sheet under it. It is not a
+bottom tab bar because Today's Send bar already holds the bottom edge.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
   sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
@@ -766,9 +770,16 @@ languages still take precedence. Page prose stays as written. On phones, a compa
   answer (5xx or no connection) to try again shortly. In a snapshot the buttons
   are disabled and the page's one snapshot line says why. Nothing in the reader
   says a task is recorded but not run.
-- **The sidebar** has no **Questions & connections** entry any more, as with
-  Activity; `#reviews=1` still opens it, and **Memory changes** carries its one
-  quiet link, beside **REM activity**.
+- **The sidebar** is three groups: **Your day** (Today, Waiting on you,
+  Memory changes), **Explore memory** (People, Organisations, Projects, Skills,
+  Knowledge, Decisions, Principles, Agenda, Agent sessions, and Opportunities
+  or Works when they hold pages; any other empty one is left out, but People,
+  Organisations and Projects always show), and **All records** last. Only **Waiting on you** carries a
+  number; a category's size is not something to do. Rows share one size, grey,
+  with the current page in ink and the fuse mark, and nothing boxed. There is
+  no **Questions & connections** entry any more, as with Activity;
+  `#reviews=1` still opens it, and **Memory changes** carries its one quiet
+  link, beside **REM activity**.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or

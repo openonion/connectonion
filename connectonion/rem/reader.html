@@ -124,40 +124,49 @@
   .app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
 
   /* ---- rail: quiet chrome, the notebook's spine ---- */
-  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; padding: 22px 16px 18px 20px; border-right: 1px solid var(--rule); background: var(--paper); display: flex; flex-direction: column; gap: 18px; }
+  /* Owner, 2026-11-09: «侧边栏…现在看起来不是很好». Fuse's nav: no boxes, one row size, grey rows, the
+     current page in ink with the fuse mark, one number (Waiting on you), and one quiet footer line. */
+  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; padding: 32px var(--u4) var(--u4); border-right: var(--hair) solid var(--rule); background: var(--paper); display: flex; flex-direction: column; gap: var(--u4); }
+  .rail-menu { display: flex; flex-direction: column; gap: var(--u4); flex: 1 0 auto; }
   .brand { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: center; color: var(--ink); text-decoration: none !important; }
   .brand svg { grid-row: span 2; width: 34px; height: 18px; }
   .brand .name { letter-spacing: 0; font: var(--w-bold) var(--s-body)/1 var(--font); }
-  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--s-meta)/1.4 var(--font); color: var(--grey); margin-top: 3px; }
+  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--s-meta)/1.5 var(--font); color: var(--grey); margin-top: 3px; }
 
   .search { position: relative; }
-  .search input { width: 100%; padding: 8px 30px 8px 32px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
+  .search input { width: 100%; padding: 6px 28px 6px 22px; border: 0; border-bottom: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
   .search input::-webkit-search-decoration,
   .search input::-webkit-search-cancel-button,
   .search input::-webkit-search-results-button,
   .search input::-webkit-search-results-decoration { display: none; -webkit-appearance: none; }
-  .search input:focus { border-color: var(--ink); outline: var(--rule-heavy) solid var(--ink); }
+  .search input:focus { border-color: var(--ink); outline: none; }
   .search input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .search input::placeholder { color: var(--grey); }
-  .search .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: none; stroke: var(--grey); stroke-width: 2; pointer-events: none; }
-  .search .kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font: var(--s-meta) var(--font); color: var(--grey); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 5px; pointer-events: none; }
+  .search .search-icon { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: none; stroke: var(--grey); stroke-width: 2; pointer-events: none; }
+  .search .kbd { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font: var(--s-meta) var(--font); color: var(--grey); border: 0; border-radius: var(--radius); padding: 0 5px; pointer-events: none; }
   .search input:not(:placeholder-shown) ~ .kbd { display: none; }
   .search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 2px 6px; font-size: var(--s-meta); color: var(--grey); cursor: pointer; border-radius: var(--radius); display: none; line-height: 1; }
   .search-clear:hover { color: var(--ink); background: var(--rule); }
   .search input:not(:placeholder-shown) + .search-clear { display: block; }
 
-  nav { display: flex; flex-direction: column; gap: 1px; }
-  nav .label { letter-spacing: 0; text-transform: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.5 var(--font); margin: 8px 0 4px 10px; }
-  nav a { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-radius: var(--radius); color: var(--grey); position: relative; font-size: var(--s-body); padding: 6px 10px; }
-  nav a:hover { background: var(--rule); color: var(--ink); text-decoration: none; }
-  nav a.active { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); border-left: var(--rule-heavy) solid var(--ink); padding-left: calc(10px - var(--rule-heavy)); }
-  nav a .n { color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); }
-  nav a .n.zero { color: var(--grey); }
-  nav a .n.open { color: var(--ink); }
-  nav .gap { height: 10px; }
+  nav { display: flex; flex-direction: column; }
+  nav .label { letter-spacing: 0; text-transform: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.5 var(--font); margin: var(--u4) 0 var(--u1) var(--u3); }
+  nav a { display: flex; justify-content: space-between; align-items: baseline; gap: var(--u2); color: var(--grey); position: relative; font: var(--w-regular) var(--s-body)/1.5 var(--font); padding: var(--u1) 0 var(--u1) var(--u3); }
+  nav a:hover { color: var(--ink); text-decoration: none; }
+  nav a.active { color: var(--ink); font-weight: var(--w-bold); }
+  nav a.active::before { content: ""; position: absolute; left: 0; top: 50%; width: var(--fuse); height: var(--fuse); transform: translateY(-50%); background: var(--ink); }
+  nav a .n { color: var(--ink); font: var(--w-bold) var(--s-body)/1.5 var(--font); }
+  nav .gap { height: var(--u3); }
 
   .rail > * { flex-shrink: 0; }
-  .rail .foot { margin-top: auto; color: var(--grey); display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--rule); font: var(--s-meta)/1.5 var(--font); }
+  .rail .foot { margin-top: auto; color: var(--grey); display: flex; flex-direction: column; gap: var(--u1); font: var(--s-meta)/1.5 var(--font); }
+  .rail .foot-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--u3); }
+  .rail .foot-line .foot-facts { flex-basis: 100%; }
+  .rail .foot-line .foot-facts > * + *::before, .rail .foot-line .theme-btn + .theme-btn::before { content: "·" / ""; margin: 0 var(--u1); color: var(--grey); font-weight: var(--w-regular); }
+  .rail .foot-line .theme-switch { display: inline-flex; align-items: baseline; background: none; padding: 0; gap: 0; }
+  .rail .foot-line .theme-btn { background: none; padding: 0; min-height: 0; font: inherit; color: var(--grey); }
+  .rail .foot-line .theme-btn:hover { color: var(--ink); }
+  .rail .foot-line .theme-btn.active { background: none; color: var(--ink); font-weight: var(--w-bold); }
   .reader-settings { min-width: 0; overflow-wrap: anywhere; }
   .reader-settings summary { cursor: pointer; padding: 4px 0; }
   .reader-settings > :not(summary) { margin-top: 8px; }
@@ -165,7 +174,6 @@
   .reader-settings .theme-btn { min-height: 44px; text-align: left; }
   .theme-switch { display: inline-flex; background: var(--rule); border-radius: var(--radius); padding: 2px; gap: 2px; align-self: flex-start; }
   .theme-btn { background: none; border: none; padding: 3px 9px; font: var(--s-meta) var(--font); color: var(--grey); border-radius: var(--radius); cursor: pointer; min-height: 24px; }
-  .rail .foot > .theme-btn { min-height: 44px; text-align: left; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); }
   .rail .foot :is(button, summary):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -630,9 +638,9 @@
   .best-open .dir { flex-shrink: 0; color: var(--grey); }
   .search-group { max-width: 80ch; }
   h2.section.group { font-size: var(--s-body); margin: 28px 0 8px; }
-  nav a.you { margin-bottom: 10px; background: var(--paper); outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); font-weight: var(--w-bold); color: var(--ink); }
-  nav a.you > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
-  nav a.you .n { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--w-regular) var(--s-meta) var(--font); }
+  nav a.you { font-size: var(--s-meta); align-items: center; }
+  nav a.you > span:first-child { display: inline-flex; align-items: center; gap: var(--u1); }
+  nav a.you .who { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 820px) { .best-facts { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: 96px minmax(0, 1fr); } }
 
   /* questions & connections */
@@ -1114,28 +1122,24 @@
     .deep-hint { display: block; margin-top: 3px; }
     .evidence-dialog { padding: 18px; }
     .app { grid-template-columns: 1fr; align-content: start; }
-    .rail { display: grid; grid-template-columns: 108px minmax(0, 1fr); padding: 6px 16px; gap: 4px 12px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); }
+    /* One header row: brand, search, Menu. The menu opens as a sheet under it; the bottom edge stays Send's (D-10). */
+    .rail { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 0 var(--u3); gap: 0 var(--u3); position: static; height: auto; overflow: visible; border-right: 0; border-bottom: var(--hair) solid var(--rule); }
     .brand { min-height: 44px; }
     .brand svg { width: 22px; height: 22px; }
     .brand .sub { display: none; }
     .brand svg { grid-row: auto; }
-    .nav-toggle, #nav, .rail .foot { grid-column: 1 / -1; }
     main:has(.page-head) > .mobile-back { display: none; }
     .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
-    .rail .foot { display: none; }
-    .rail[data-open="true"] .foot { display: flex; padding: 0 0 12px; }
-    .rail[data-open="true"] .foot > .theme-btn { min-height: 44px; text-align: left; }
-    .rail[data-open="true"] #nav { padding-bottom: 0; }
+    .rail-menu { display: none; }
+    .rail[data-open="true"] .rail-menu { display: flex; position: fixed; left: 0; right: 0; top: var(--sheet-top, 0px); bottom: 0; z-index: 45; overflow-y: auto; overscroll-behavior: contain; padding: var(--u2) var(--u3) var(--u5); background: var(--paper); border-top: var(--hair) solid var(--rule); }
+    .rail .foot-line .theme-btn { min-height: 44px; min-width: 44px; }
     .rail[data-open="true"] .reader-settings summary { min-height: 44px; }
     .rail[data-open="true"] #privacy-toggle { width: 100%; min-height: 44px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); text-align: center; }
-    .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); font: var(--s-body) var(--font); cursor: pointer; }
-    .nav-toggle::after { content: "▾"; color: var(--grey); }
-    .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
-    #nav { display: none; }
-    .rail[data-open="true"] #nav { display: flex; }
+    .nav-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0; color: var(--ink); background: none; border: 0; font: var(--w-regular) var(--s-body) var(--font); cursor: pointer; }
+    .nav-toggle[aria-expanded="true"] { font-weight: var(--w-bold); }
     nav a { min-height: 44px; align-items: center; }
-    .search input { font-size: var(--s-body); min-height: 44px; padding-right: 44px; }
+    .search input { font-size: var(--s-body); min-height: 44px; padding-right: 44px; border-bottom: 0; }
     .search-clear { right: 0; min-width: 44px; min-height: 44px; }
     h1 { font-size: var(--s-head); }
     .standfirst { font-size: var(--s-body); }
@@ -1215,7 +1219,7 @@
   .lang-bar select { padding: 4px 8px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); min-height: 24px; }
   /* Storage paths and commands keep a code face; prose keeps its own voice. */
   .note pre, .run-trace pre, pre, kbd, .missing code, .empty code, .cmd code, .note code, .night code, .eyebrow-path, .path-hint,
-  .brand .sub, .directory-action code, .evidence-source-id code { font-family: var(--mono); }
+  .directory-action code, .evidence-source-id code { font-family: var(--mono); }
   .name-cell .nm a, .hits .t a, .relation-card strong { font-family: var(--font); }
   .hits .hit, .focus-statement, .relation-basis { font-family: var(--font); }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) { color: var(--grey); }
@@ -1458,8 +1462,6 @@
     .people-sheet .sheet td:is(.c-contact, .c-trend, .c-starts, .c-replies)::before { content: attr(data-label) " "; color: var(--grey); font: var(--s-meta) var(--font); }
     .people-sheet .sheet tr.people-group { padding-bottom: 0; }
   }
-  .reader-switches { display: flex; flex-wrap: wrap; gap: 6px; }
-  .reader-switches .theme-btn { padding-inline: 6px; }
   .rem-activity { display: inline-block; margin-top: 28px; font: var(--s-meta) var(--font); color: var(--grey); }
   .rem-activity:hover { color: var(--ink); }
   .all-switch { margin: 0 0 22px; }
@@ -2810,9 +2812,11 @@
       <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
       <span class="kbd" aria-hidden="true">/</span>
     </div>
-    <button class="nav-toggle" aria-expanded="false" aria-controls="nav" type="button">Browse notebook</button>
-    <nav id="nav" aria-label="Categories"></nav>
-    <div class="foot" id="foot"></div>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button>
+    <div class="rail-menu" id="rail-menu">
+      <nav id="nav" aria-label="Categories"></nav>
+      <div class="foot" id="foot"></div>
+    </div>
   </aside>
   <main id="main" tabindex="-1"></main>
 </div>
@@ -3252,7 +3256,7 @@ const UI = {
     "Auto": "自动",
     "Light": "浅色",
     "Dark": "深色",
-    "Browse notebook": "浏览笔记库",
+    "Menu": "菜单",
     "Show labelled passages": "显示已标记段落",
     "Hide labelled passages": "隐藏已标记段落",
     "Also hides raw excerpts; other details stay visible.": "也会隐藏原始摘录，其他信息仍可见。",
@@ -5810,20 +5814,21 @@ function renderRail(active) {
   nav.textContent = "";
   const owner = REM.owner && byPath(REM.owner);
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
-    el("span", {}, [moon(known(owner).status), " " + t("You")]), el("span", { class: "n", text: owner.title })]));
+    el("span", {}, [moon(known(owner).status), " " + t("You")]), el("span", { class: "who", text: owner.title })]));
   nav.appendChild(el("div", { class: "label", text: t("Your day") }));
   for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"],
     ["changes", "Memory changes", "#view=changes"]])
     nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
+  // Owner, 2026-11-09: sixteen right-aligned counts were the loudest thing on screen. Only Waiting on you
+  // keeps its number; a category's size is not something to do. An empty category still stays out.
   nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
   for (const c of memoryCategories()) {
-    const n = !detailReady && c === "sessions" ? null : inCategory(c).length;
-    if (n === 0 && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
-    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
-      [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: n === null ? "" : String(n) })]));
+    const empty = (detailReady || c !== "sessions") && !inCategory(c).length;
+    if (empty && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
+    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" }, [el("span", { text: label(c) })]));
   }
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") }), el("span", { class: "n", text: detailReady ? String(listedRecords().length) : "" })]));
   nav.appendChild(el("div", { class: "gap" }));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") })]));
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
@@ -5843,7 +5848,12 @@ function renderRail(active) {
     button.onclick = () => setInterfaceLanguage(tag);
     languageSwitch.appendChild(button);
   }
-  foot.appendChild(el("div", { class: "reader-switches" }, [themeSwitch, languageSwitch]));
+  // One quiet footer: the release and the snapshot time, then language and theme, each part still a control.
+  // The 224px nav cannot carry all four on one row, so it breaks between the facts and the switches.
+  const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
+  foot.appendChild(el("div", { class: "foot-line" }, [
+    el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
+      el("span", { class: "as-of", text: t("Snapshot") + " " + asOf })]), languageSwitch, themeSwitch]));
   const hidden = document.documentElement.classList.contains("hide-private");
   const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: t(hidden ? "Show labelled passages" : "Hide labelled passages"),
@@ -5852,7 +5862,6 @@ function renderRail(active) {
   const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
     el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
   settings.appendChild(notebookLanguages());
-  foot.appendChild(el("div", { text: t("Snapshot") + " " + fmtTime(REM.as_of) }));
   const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
     : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
     : t(scheduleState(s) || "No pass scheduled");
@@ -11141,7 +11150,7 @@ function render() {
   document.getElementById("q").placeholder = t("Search");
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".skip").textContent = t("Skip to content");
-  document.querySelector(".nav-toggle").textContent = t("Browse notebook");
+  document.querySelector(".nav-toggle").textContent = t("Menu");
   const { record: r, category: c, query, related, heading, view, reviews } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
@@ -11520,6 +11529,8 @@ const toggle = document.querySelector(".nav-toggle");
 function closeNav() { rail.dataset.open = "false"; toggle.setAttribute("aria-expanded", "false"); }
 toggle.addEventListener("click", () => {
   const open = toggle.getAttribute("aria-expanded") !== "true";
+  // The sheet starts under the header row, wherever the page has scrolled it.
+  document.getElementById("rail-menu").style.setProperty("--sheet-top", Math.max(0, rail.getBoundingClientRect().bottom) + "px");
   rail.dataset.open = String(open); toggle.setAttribute("aria-expanded", String(open));
 });
 document.querySelector(".skip").addEventListener("click", e => { e.preventDefault(); document.getElementById("main").focus(); });
@@ -11533,7 +11544,7 @@ document.addEventListener("keydown", e => {
       return;
     }
     closeNav();
-    if (document.activeElement.closest("#nav")) toggle.focus();
+    if (document.activeElement.closest("#rail-menu")) toggle.focus();
   }
   if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
     e.preventDefault(); qInput.focus();

@@ -2060,6 +2060,70 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
     assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1
 
 
+# Owner, 2026-11-09: «我们的版本号是不是可以在侧边栏显示一下？顺便把侧边栏优化一下，现在看起来不是很好。»
+# The sidebar keeps one number, the one that asks for action, and names the release in its footer.
+SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organisations', 'Projects', 'Skills',
+                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions', 'All records']
+
+
+def test_the_sidebar_counts_only_what_waits_on_you_in_three_groups(reader):
+    page, _ = reader
+    rows = page.locator('#nav a:not(.you)')
+    names = [text.split('\n')[0].strip() for text in rows.all_inner_texts()]
+    assert names[:3] == ['Today', 'Waiting on you', 'Memory changes']
+    assert names[-1] == 'All records'  # D-01: the catch-all goes last
+    assert names == [name for name in SIDEBAR_ORDER if name in names]
+    assert not {'Graph', 'Activity', 'Questions & connections'} & set(names)  # D-02, D-03
+    assert page.locator('#nav .label').all_inner_texts() == ['Your day', 'Explore memory']
+    # Only Waiting on you carries a number; a category's size is not a task.
+    counted = rows.evaluate_all("rows => rows.filter(row => /\\d/.test(row.textContent)).map(row => row.getAttribute('href'))")
+    assert counted == ['#view=open']
+    assert int(page.locator('#nav a[href="#view=open"] .n.waiting').inner_text()) > 0
+    style = rows.evaluate_all("""rows => rows.map(row => {
+      const s = getComputedStyle(row), mark = getComputedStyle(row, '::before');
+      return {current: row.getAttribute('aria-current'), size: s.fontSize, color: s.color, background: s.backgroundColor,
+              border: s.borderLeftWidth, outline: s.outlineStyle, mark: mark.content !== 'none' ? mark.width : ''};
+    })""")
+    tokens = page.evaluate("""() => { const s = getComputedStyle(document.documentElement);
+      const paint = name => { const probe = document.createElement('i'); probe.style.color = 'var(' + name + ')';
+        document.body.append(probe); const value = getComputedStyle(probe).color; probe.remove(); return value; };
+      return {ink: paint('--ink'), grey: paint('--grey'), body: s.getPropertyValue('--s-body').trim(), fuse: s.getPropertyValue('--fuse').trim()}; }""")
+    assert {row['size'] for row in style} == {tokens['body']}  # one type size for rows
+    assert all(row['background'] == 'rgba(0, 0, 0, 0)' and row['border'] == '0px' and row['outline'] == 'none' for row in style)
+    current = [row for row in style if row['current'] == 'page']
+    assert len(current) == 1 and current[0]['color'] == tokens['ink'] and current[0]['mark'] == tokens['fuse']
+    assert all(row['color'] == tokens['grey'] and not row['mark'] for row in style if row['current'] != 'page')
+
+
+def test_the_sidebar_footer_names_the_release_and_keeps_every_switch(reader):
+    from connectonion import __version__
+    page, _ = reader
+    assert page.evaluate('REM.version', isolated_context=False) == __version__
+    foot = page.locator('.rail .foot')
+    version = foot.locator('.version')
+    assert version.inner_text() == 'co ' + __version__
+    assert version.evaluate("""node => { const s = getComputedStyle(node), root = getComputedStyle(document.documentElement);
+      const probe = document.createElement('i'); probe.style.color = 'var(--grey)'; document.body.append(probe);
+      const grey = getComputedStyle(probe).color; probe.remove();
+      return s.fontSize === root.getPropertyValue('--s-meta').trim() && s.color === grey; }""")
+    # One quiet line: the version, the snapshot time and both switches share a row at 1440.
+    line = foot.locator('.foot-line')
+    assert line.locator('.version, .as-of, .language-switch, [role=radiogroup]').count() == 4
+    assert 'Snapshot ' in line.inner_text()
+    for mode in ('dark', 'light', 'auto'):
+        foot.locator('[role=radiogroup]').get_by_role('radio', name={'dark': 'Dark', 'light': 'Light', 'auto': 'Auto'}[mode]).click()
+        assert page.evaluate('document.documentElement.dataset.theme || "auto"') == mode
+    foot.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
+    page.wait_for_function('document.documentElement.lang === "zh"')
+    assert page.locator('.rail .foot .version').inner_text() == 'co ' + __version__  # en and zh the same
+    assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
+    page.locator('.rail .foot .language-switch').get_by_role('button', name='EN', exact=True).click()
+    page.wait_for_function('document.documentElement.lang === "en"')
+    page.locator('.reader-settings > summary').click()
+    assert page.get_by_role('button', name='Hide labelled passages').is_visible()
+    page.evaluate("() => localStorage.removeItem('co-rem-ui-language')")
+
+
 def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, tmp_path, monkeypatch):
     """Owner, 2026-10-15: "Run logs" and "AI notes" read as the same thing twice."""
     from connectonion.rem import reader as rem_reader
@@ -2081,7 +2145,8 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
-    assert page.locator('#nav a[href="#c=all"] .n').inner_text() == str(len(listed))
+    # Owner, 2026-11-09 (sidebar in Fuse): All records keeps no count in the rail; only Waiting on you does.
+    assert page.locator('#nav a[href="#c=all"] .n').count() == 0
     assert page.locator('.category-cards').count() == 0
     assert page.locator('.task-links').count() == 0  # the Find section is gone; the rail is the only navigation
     page.goto(path.as_uri() + '#q=coverage')
@@ -3327,7 +3392,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
     page.wait_for_function(r'document.documentElement.lang === "zh"')
     if width < 600:
-        page.get_by_role('button', name='浏览笔记库').click()
+        page.get_by_role('button', name='菜单').click()  # 2026-11-09: the phone's Browse box became Menu
     assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('人物')
     prose = r'''node => {
       const copy = node.cloneNode(true); copy.querySelectorAll('.cite').forEach(n => n.remove());
@@ -3345,7 +3410,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.reload()
     page.wait_for_function(r'document.documentElement.lang === "en"')
     if width < 600:
-        page.get_by_role('button', name='Browse notebook').click()
+        page.get_by_role('button', name='Menu', exact=True).click()
     page.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
     page.locator('#nav a[href="#c=people"]').click()
@@ -5321,8 +5386,9 @@ def test_project_directory_opens_on_one_rem_sentence_with_no_green_and_no_overfl
     page = _project_page(reader, view, width, theme)
     expect(page.locator(".pd")).to_have_attribute("data-view", view)
     total = page.evaluate("inCategory('projects').length", isolated_context=False)
-    expect(page.locator(".pd-count")).to_have_text(str(total))  # sub-projects count: the title agrees with the rail
-    expect(page.locator('#nav a[href="#c=projects"] .n')).to_have_text(str(total))
+    expect(page.locator(".pd-count")).to_have_text(str(total))  # sub-projects count
+    # Owner, 2026-11-09 (sidebar in Fuse): the rail carries no category counts; the title is the count's home.
+    expect(page.locator('#nav a[href="#c=projects"] .n')).to_have_count(0)
     expect(page.locator(".pd-views [aria-current='page']")).to_have_text({"timeline": "Timeline", "list": "List", "board": "Board"}[view])
     lede = page.locator(".pd-lede")
     expect(lede).to_contain_text(f"{total} projects on record")
