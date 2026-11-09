@@ -70,10 +70,13 @@ def _nights(value):
     """Per night, measured: what the schedule bought (D-104); schedules are compared on these."""
     lines = []
     for row in value.get('nights') or []:
-        lines.append(rem_look.section('Night ' + row['night'][5:], (
-            f"{row['turns']} turns · {row['tasks_accepted']} accepted · {row['tasks_parked']} parked · "
-            f"{row['tasks_failed']} failed · {row['drafts']} drafts · {row['mail_read']} mail · "
-            f"{row['minutes_busy']} min busy · {row['minutes_idle']} min idle 22–07 · {row['profile']}")))
+        # Three short lines: status stays within 80 columns.
+        lines += [rem_look.section('Night ' + row['night'][5:], (
+                      f"{row['turns']} turns · {row['tasks_accepted']} accepted · {row['tasks_parked']} parked · "
+                      f"{row['tasks_failed']} failed")),
+                  rem_look.follow(highlight(f"{row['drafts']} drafts · {row['mail_read']} mail"), glyph=''),
+                  rem_look.follow(highlight(f"{row['minutes_busy']} min busy · {row['minutes_idle']} min idle 22–07 · "
+                                            f"{row['profile']}"), glyph='')]
     return [*lines, ''] if lines else []
 
 
