@@ -56,7 +56,7 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
             assert page.locator(".missing .cmd").count() == 0
             if width < 720:
                 page.locator(".nav-toggle").click()
-            page.locator(".reader-settings > summary").click()
+            page.locator(".settings-open").click()
             assert page.locator(".reader-settings .cmd, .reader-settings code").count() == 0  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
@@ -103,57 +103,45 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('#mobile-status').count() == 0
     for selector in ('#q', '.nav-toggle'):
         assert page.locator(selector).bounding_box()['height'] >= 44
-    assert page.locator('.r4-crumb a').first.is_visible()
+    assert page.locator('#crumb a').first.is_visible()
     assert page.get_by_role('heading', name='Full memory and sources').is_visible()
     assert page.locator('details.deep-note').get_attribute('open') is None
     page.locator('details.deep-note > summary').click()
     assert page.locator('.deep-note .note').is_visible()
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     page.locator('.nav-toggle').click()
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Nightly updates are off.' in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     assert 'Nightly updates are off.' in page.locator('#foot').inner_text()  # D-60: words, no command
     assert 'Not started' not in page.locator('#foot').inner_text()
     assert '`' not in page.locator('#foot').inner_text()
 
 
-@pytest.mark.parametrize('settings_open', [False, True])
-def test_short_desktop_scrolls_the_whole_rail_without_clipping_links(reader, settings_open):
+def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
+    """N3 (D-123): a 72px icon rail; every place, 更多, settings and you fit a short window, none overlapping."""
     page, uri = reader
     page.set_viewport_size({'width': 960, 'height': 540})
     page.goto(uri)
-    if settings_open:
-        page.locator('.reader-settings > summary').click()
-    assert page.locator('.rail').evaluate("""rail => {
-      const style = getComputedStyle(rail);
-      const nav = rail.querySelector('#nav');
-      const footerTop = rail.querySelector('.foot').getBoundingClientRect().top;
-      const railTop = rail.getBoundingClientRect().top;
-      const scrollable = style.overflowY === 'auto' && rail.scrollHeight > rail.clientHeight;
-      return style.position === 'sticky' && style.top === '0px' && rail.clientHeight === 540
-        && scrollable && getComputedStyle(nav).overflowY === 'visible'
-        && [...nav.querySelectorAll('a')].every(link => {
-          const box = link.getBoundingClientRect();
-          return (box.bottom <= footerTop || scrollable)
-            && box.bottom - railTop + rail.scrollTop <= rail.scrollHeight;
-        });
-    }""")
-    for link in page.locator('#nav a').all():
-        link.scroll_into_view_if_needed()
-        assert link.evaluate("""link => {
-          const box = link.getBoundingClientRect();
-          const rail = link.closest('.rail').getBoundingClientRect();
-          const footer = document.querySelector('.rail .foot').getBoundingClientRect();
-          return box.top >= rail.top && box.bottom <= rail.bottom && box.bottom <= footer.top;
-        }""")
-    page.locator('.rail').evaluate('rail => rail.scrollTop = rail.scrollHeight')
-    footer = page.locator('.rail .foot').bounding_box()
-    assert footer['y'] + footer['height'] <= 540
+    boxes = page.locator('.rail .nav').evaluate_all("nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })")
+    assert len(boxes) >= 8 and all(top >= 0 and bottom <= 540 and width == 44 for top, bottom, width in boxes)
+    assert all(a[1] <= b[0] for a, b in zip(boxes, boxes[1:])), boxes
+    assert page.locator('.rail').bounding_box()['width'] == 72
+    # Each icon names its place on hover; the name is in the link, so it reads the same to a screen reader.
+    people = page.locator('#nav a[href="#c=people"]')
+    assert people.get_attribute('aria-label') == 'People' and people.locator('.tip').inner_text() == 'People'
+    people.hover()
+    assert people.locator('.tip').evaluate('n => getComputedStyle(n).opacity') == '1'
+    page.locator('.nav.more').click()
+    assert page.locator('#rail-more a[href="#view=changes"]').is_visible()
+    page.mouse.click(600, 300)
+    assert not page.locator('#rail-more').is_visible()
+    page.locator('.settings-open').click()
+    assert page.locator('#settings').evaluate('d => d.open') and 'Updated ' in page.locator('#foot').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -162,9 +150,9 @@ def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.locator('.nav-toggle').click()
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     page.locator('#privacy-toggle').scroll_into_view_if_needed()
-    privacy = page.get_by_role('button', name='Hide labelled passages')
+    privacy = page.get_by_role('switch', name='Hide labelled passages')
     box = privacy.bounding_box()
     assert box['height'] >= 44 and box['width'] >= 44
     assert box['y'] >= 0 and box['y'] + box['height'] <= 812
@@ -605,7 +593,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert page.locator(".first-map-actions span").evaluate("e => e.getBoundingClientRect().bottom <= innerHeight")
     assert page.locator(".first-map-actions button, .first-map-actions code").count() == 0
     page.locator(".nav-toggle").click()
-    page.locator(".reader-settings > summary").click()
+    page.locator(".settings-open").click()
     assert "Nightly updates are off." in page.locator(".reader-settings").inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.locator(".nav-toggle").click()
     page.locator(".first-map-actions a").click()
@@ -620,7 +608,7 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
     assert page.locator('.r4-stats').inner_text().count('\n') >= 3
     assert page.locator('.r4-person #open-threads, .owe').count() == 0
-    assert page.locator('.r4-fuse .fuse-tick').count() == 5
+    assert page.locator('.r4-fuse .rhythm').locator('i.l1, i.l2, i.l3').count() == 5  # one dark day per dated exchange
     assert page.locator('details.deep-note').get_attribute('open') is None
     assert not page.locator('.factlist').is_visible()
     page.locator('details.deep-note > summary').click()
@@ -1032,7 +1020,7 @@ def test_investigation_command_targets_the_notebook_being_viewed(reader):
     root = page.evaluate('REM.root', isolated_context=False)
     # D-60 (build 3b review): no investigation command anywhere, neither on the page nor in Reader settings.
     assert page.locator('.missing .cmd').count() == 0
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     assert page.locator('.reader-settings .cmd, .reader-settings code').count() == 0
     assert root not in page.locator('.reader-settings').inner_text()
 
@@ -1518,8 +1506,7 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.tl-e .d').all_inner_texts() == ['4', '3', '2', '1']
-    assert page.locator('.tl-m').all_inner_texts() == ['September']
+    assert page.locator('.tl-e .d').all_inner_texts() == ['9/4', '9/3', '9/2', '9/1']  # N3: month and day on each row
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.tl-e .x').all_inner_texts())
     assert page.locator('.tl').evaluate('e => e.scrollHeight <= e.clientHeight')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -2066,61 +2053,57 @@ SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organis
                  'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions', 'All records']
 
 
-def test_the_sidebar_counts_only_what_waits_on_you_in_three_groups(reader):
+def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(reader):
+    """N3 (D-123): six places as icons (today, waiting, people, orgs, projects, all records), the rest one 更多 away."""
     page, _ = reader
-    rows = page.locator('#nav a:not(.you)')
+    rows = page.locator('#nav > a')
     names = [text.split('\n')[0].strip() for text in rows.all_inner_texts()]
-    assert names[:3] == ['Today', 'Waiting on you', 'Memory changes']
-    assert names[-1] == 'All records'  # D-01: the catch-all goes last
-    assert names == [name for name in SIDEBAR_ORDER if name in names]
-    assert not {'Graph', 'Activity', 'Questions & connections'} & set(names)  # D-02, D-03
-    assert page.locator('#nav .label').all_inner_texts() == ['Your day', 'Explore memory']
+    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'All records']  # D-01: the catch-all last
+    more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
+    assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
+    assert not {'Graph', 'Activity', 'Questions & connections'} & set(names + more)  # D-02, D-03
     # Only Waiting on you carries a number; a category's size is not a task.
-    counted = rows.evaluate_all("rows => rows.filter(row => /\\d/.test(row.textContent)).map(row => row.getAttribute('href'))")
+    counted = page.locator('#nav a').evaluate_all("rows => rows.filter(row => row.querySelector('.n')).map(row => row.getAttribute('href'))")
     assert counted == ['#view=open']
     assert int(page.locator('#nav a[href="#view=open"] .n.waiting').inner_text()) > 0
     style = rows.evaluate_all("""rows => rows.map(row => {
-      const s = getComputedStyle(row), mark = getComputedStyle(row, '::before');
-      return {current: row.getAttribute('aria-current'), size: s.fontSize, color: s.color, background: s.backgroundColor,
-              border: s.borderLeftWidth, outline: s.outlineStyle, mark: mark.content !== 'none' ? mark.width : ''};
+      const s = getComputedStyle(row);
+      return {current: row.getAttribute('aria-current'), color: s.color, shadow: s.boxShadow, width: row.getBoundingClientRect().width};
     })""")
-    tokens = page.evaluate("""() => { const s = getComputedStyle(document.documentElement);
-      const paint = name => { const probe = document.createElement('i'); probe.style.color = 'var(' + name + ')';
+    tokens = page.evaluate("""() => { const paint = name => { const probe = document.createElement('i'); probe.style.color = 'var(' + name + ')';
         document.body.append(probe); const value = getComputedStyle(probe).color; probe.remove(); return value; };
-      return {ink: paint('--ink'), grey: paint('--grey'), body: s.getPropertyValue('--s-body').trim(), fuse: s.getPropertyValue('--fuse').trim()}; }""")
-    assert {row['size'] for row in style} == {tokens['body']}  # one type size for rows
-    assert all(row['background'] == 'rgba(0, 0, 0, 0)' and row['border'] == '0px' and row['outline'] == 'none' for row in style)
+      return {ink: paint('--ink'), grey: paint('--grey')}; }""")
+    assert {row['width'] for row in style} == {44}
     current = [row for row in style if row['current'] == 'page']
-    assert len(current) == 1 and current[0]['color'] == tokens['ink'] and current[0]['mark'] == tokens['fuse']
-    assert all(row['color'] == tokens['grey'] and not row['mark'] for row in style if row['current'] != 'page')
+    assert len(current) == 1 and current[0]['color'] == tokens['ink'] and current[0]['shadow'] != 'none'  # the raised one
+    assert all(row['color'] == tokens['grey'] and row['shadow'] == 'none' for row in style if row['current'] != 'page')
 
 
-def test_the_sidebar_footer_names_the_release_and_keeps_every_switch(reader):
+def test_the_settings_sheet_names_the_release_and_keeps_every_switch(reader):
     from connectonion import __version__
     page, _ = reader
     assert page.evaluate('REM.version', isolated_context=False) == __version__
-    foot = page.locator('.rail .foot')
+    page.locator('.settings-open').click()
+    foot = page.locator('#foot')
     version = foot.locator('.version')
     assert version.inner_text() == 'co ' + __version__
-    assert version.evaluate("""node => { const s = getComputedStyle(node), root = getComputedStyle(document.documentElement);
-      const probe = document.createElement('i'); probe.style.color = 'var(--grey)'; document.body.append(probe);
-      const grey = getComputedStyle(probe).color; probe.remove();
-      return s.fontSize === root.getPropertyValue('--s-meta').trim() && s.color === grey; }""")
-    # One quiet line: the version, the snapshot time and both switches share a row at 1440.
-    line = foot.locator('.foot-line')
-    assert line.locator('.version, .as-of, .language-switch, [role=radiogroup]').count() == 4
-    assert 'Updated ' in line.inner_text()  # the render time (fast-open), in the sidebar's one footer line
+    assert 'Updated ' in foot.locator('.foot-line').inner_text()  # the render time (fast-open)
     for mode in ('dark', 'light', 'auto'):
         foot.locator('[role=radiogroup]').get_by_role('radio', name={'dark': 'Dark', 'light': 'Light', 'auto': 'Auto'}[mode]).click()
         assert page.evaluate('document.documentElement.dataset.theme || "auto"') == mode
+    motion = foot.get_by_role('switch', name='Reduce motion')
+    motion.click()
+    assert page.evaluate('document.documentElement.classList.contains("calm")')
+    foot.get_by_role('switch', name='Reduce motion').click()
     foot.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
     page.wait_for_function('document.documentElement.lang === "zh"')
-    assert page.locator('.rail .foot .version').inner_text() == 'co ' + __version__  # en and zh the same
+    assert page.locator('#foot .version').inner_text() == 'co ' + __version__  # en and zh the same
     assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
-    page.locator('.rail .foot .language-switch').get_by_role('button', name='EN', exact=True).click()
+    page.locator('#foot .language-switch').get_by_role('button', name='EN', exact=True).click()
     page.wait_for_function('document.documentElement.lang === "en"')
-    page.locator('.reader-settings > summary').click()
-    assert page.get_by_role('button', name='Hide labelled passages').is_visible()
+    assert page.get_by_role('switch', name='Hide labelled passages').is_visible()
+    page.keyboard.press('Escape')
+    assert not page.locator('#settings').evaluate('d => d.open')
     page.evaluate("() => localStorage.removeItem('co-rem-ui-language')")
 
 
@@ -2784,7 +2767,7 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     page.evaluate("location.hash = '#r=people%2Favery.md'", isolated_context=False)
     mentions = page.locator(".person-sessions")  # under the timeline, not inside the full note
     expect(mentions.get_by_role("heading", name="Mentioned in sessions")).to_be_visible()
-    expect(mentions.locator(".session-context-row")).to_have_count(5)
+    expect(mentions.locator(".session-context-row")).to_have_count(3)  # a widget: three rows, then All 15 sessions
     expect(mentions.get_by_role("link", name="All 15 sessions", exact=True)).to_have_attribute("href", "#c=sessions&person=people%2Favery.md")
     mentions.locator(".session-context-row a").first.click()
     expect(page.get_by_role("searchbox", name="Find in this conversation")).to_have_value("Avery")
@@ -2894,7 +2877,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
     assert page.locator('.r4-person #open-threads').count() == 0 and page.locator('.r4-today').count() == 0
     assert page.locator('.tl > li.tl-e:visible').count() == 0
     assert page.locator('#history-timeline .private-history-notice').inner_text() == '1 private entry hidden'
-    assert page.locator('.r4-kv dt').filter(has_text='Phone').count() == 0
+    assert page.locator('.hero-acts .round[aria-label^="Phone"]').count() == 0
     assert page.locator('.r4-sub').count() == 0  # Role "—" and no company: no invented subtitle
     assert page.locator('.r4-stats > div').count() == 1  # no mail and unknown dates: only the first dated exchange
     page.locator('details.deep-note > summary').click()
@@ -3392,7 +3375,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
     page.wait_for_function(r'document.documentElement.lang === "zh"')
     if width < 600:
-        page.get_by_role('button', name='菜单').click()  # 2026-11-09: the phone's Browse box became Menu
+        page.locator('.nav-toggle').click()  # N3: the phone's 更多 tab opens every place
     assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('人物')
     prose = r'''node => {
       const copy = node.cloneNode(true); copy.querySelectorAll('.cite').forEach(n => n.remove());
@@ -3401,7 +3384,9 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.locator('details.deep-note').evaluate('d => d.open = true')
     original = page.locator('.deep-note .note > p').first.evaluate(prose)
     assert page.locator('.r4-said h2').inner_text().startswith('对方说过的话')  # never assumes the person's gender
+    page.locator('.settings-open').click()
     page.locator('.language-switch').get_by_role('button', name='EN', exact=True).click()
+    page.keyboard.press('Escape')
     assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('People')
     page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator('.deep-note .note > p').first.inner_text() != ''
@@ -3410,8 +3395,10 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.reload()
     page.wait_for_function(r'document.documentElement.lang === "en"')
     if width < 600:
-        page.get_by_role('button', name='Menu', exact=True).click()
+        page.locator('.nav-toggle').click()
+    page.locator('.settings-open').click()
     page.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
+    page.keyboard.press('Escape')
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
     page.locator('#nav a[href="#c=people"]').click()
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
@@ -3514,7 +3501,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''language => setInterfaceLanguage(language)''', language, isolated_context=False)
     label = '昨夜更新' if language == 'zh' else 'updated last night'
-    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label').inner_text() == '●' + label
+    assert page.locator('.eyebrow .updated-label, .hero-marks .updated-label').inner_text() == '●' + label
     role = page.locator('.page-head .changed-value, .r4-sub .changed-value').filter(has_text='Head of Partnerships')
     assert 'Head of Partnerships' in role.inner_text()
     assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
@@ -3529,7 +3516,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert marker.evaluate(r'''node => node.nextSibling.textContent === '\u200a' ''')
     assert marker.evaluate(r'''node => getComputedStyle(node).fontSize === '12px' ''')
     page.goto(uri + '#r=people%2Ftomas-reyes.md')
-    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label, .changed-value').count() == 0
+    assert page.locator('.eyebrow .updated-label, .hero-marks .updated-label, .changed-value').count() == 0
     page.goto(uri + '#c=people')
     page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     fresh = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.fresh-label')
@@ -3734,7 +3721,7 @@ def test_memory_markers_enter_once_per_page_view_and_respect_reduced_motion(read
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     field = page.locator('.page-head .changed-value, .r4-sub .changed-value').filter(has_text='Head of Partnerships')
     assert field.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-underline')
-    assert page.locator('.eyebrow .updated-label, .r4-crumb .updated-label').evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
+    assert page.locator('.eyebrow .updated-label, .hero-marks .updated-label').evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
     page.evaluate(r'() => render()', isolated_context=False)
     assert field.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
     page.goto(uri + '#c=people')
@@ -3784,8 +3771,8 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
-    assert page.locator('.r4-crumb .lang-status').inner_text() == '翻译待处理'
-    assert page.locator('.r4-crumb .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
+    assert page.locator('.hero-marks .lang-status').inner_text() == '翻译待处理'
+    assert page.locator('.hero-marks .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4075,7 +4062,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.search-group').count() == 0
         page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
-        assert page.locator('.r4-crumb .lang-status').inner_text() == '翻译待处理'
+        assert page.locator('.hero-marks .lang-status').inner_text() == '翻译待处理'
         assert not errors, errors
         browser.close()
 
@@ -4536,10 +4523,10 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
         '笔记本刚刚建立。下次更新后，这里会显示夜间变化。' if language == 'zh'
         else 'Your notebook was just built. Overnight changes appear here after the next update.')
     assert page.locator('.overnight .cmd').count() == 0  # commands left the primary surface
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     assert ('夜间更新已关闭。' if language == 'zh' else 'Nightly updates are off.') in page.locator('.reader-settings').inner_text()
     assert 'co rem' not in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
-    page.locator('.reader-settings > summary').click()
+    page.locator('.settings-open').click()
     notice = page.locator('#main > .translation-note')
     if language == 'zh':
         assert notice.inner_text() == '打开页面时会翻译成中文。'
@@ -4702,7 +4689,7 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page.goto(uri)
     page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
     for route, selectors in [('#c=people', '.brand .sub, nav a .n, .r4 .row .s, .r4 .row .when, .r4 .grp, .r4 .chip, .r4-tabs i'),
-                             ('#r=people%2Fmara-ostrowski.md', '.brand .sub, .r4-crumb, .r4-stats div, .fuse-ends span, .fuse-note, .said-src, .tl-e .d, .r4-kv dt, .r4-rail h4'),
+                             ('#r=people%2Fmara-ostrowski.md', '.hero-marks, .r4-stats div, .fuse-ends span, .said-src, .tl-e .d, .wt h2'),
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
         page.goto(uri + route)
         if page.locator('details.deep-note').count():
@@ -4895,7 +4882,7 @@ def test_reader_copy_uses_one_local_date_format_and_omits_owner_and_redundant_ba
     page, uri = reader
     page.goto(uri + '#c=people')
     assert page.locator('main a[href="#r=people%2Favery-lin.md"]').count() == 0
-    assert page.locator('#nav a[href="#r=people%2Favery-lin.md"]').count() == 1
+    assert page.locator('.rail a.you[href="#r=people%2Favery-lin.md"]').count() == 1
     assert not page.locator('main .pill.status').filter(has_text=re.compile('^Investigated$')).count()
     values = page.evaluate("""() => {
       REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-28T00:00:00Z';
@@ -5054,20 +5041,18 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
     assert page.locator(".r4-stats > div").count() >= 3
     assert page.locator(".r4-person #open-threads, .owe").count() == 0
     assert page.locator(".tl .tl-e .w i").count() >= 3
-    assert page.locator(".r4-rail h4").all_inner_texts()[:2] == ["联系", "组织"]
-    assert "REM 还不确定" in page.locator(".r4-rail").inner_text()
-    assert page.locator(".r4-src").inner_text() == "6 个来源"
-    rail, timeline = page.locator(".r4-rail").bounding_box(), page.locator(".tl").bounding_box()
-    if width == 390:
-        assert rail["y"] > timeline["y"], "the rail sits under the timeline on a phone"
-    else:
-        assert rail["width"] == 320 and rail["x"] > timeline["x"]  # --rail
+    # N3: how to reach her is the hero's round buttons; what REM is unsure of and the sources are cards that open more.
+    assert page.locator(".hero-acts .round").count() >= 2
+    assert "REM 还不确定" in page.locator(".unsure-open").inner_text()
+    assert page.locator(".r4-src").inner_text().split() == ["6", "来源"]
+    hero, rhythm = page.locator(".hero").bounding_box(), page.locator(".r4-fuse").bounding_box()
+    assert hero["y"] + hero["height"] <= rhythm["y"], "the record's widgets sit under the hero"
     assert page.locator(".person-lead, .between-you, .relationship-stats").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 # The sheet's red, light and dark: on a record it may mean only "past due".
-RED = ("rgb(192, 42, 23)", "rgb(255, 85, 61)")
+RED = ("rgb(192, 42, 23)", "rgb(255, 90, 60)")
 RED_MARKS = r"""red => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && (() => {
   const s = getComputedStyle(node);
   return [s.color, s.backgroundColor, s.fill, s.stroke].some(c => red.includes(c));
@@ -5090,20 +5075,18 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     assert "标为完成" not in main.inner_text()
     assert page.locator("#main a").filter(has_text=re.compile("今天里有")).count() == 1
     name = page.locator(".r4-person h1")
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == f"{min(112, .22 * width):g}px"
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")  # N3's one display size
     fuse = page.locator(".r4-fuse")
     dated = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10).length",
                           isolated_context=False)
-    assert dated == 5 and fuse.locator(".fuse-tick").count() == dated
-    # Ticks sit at their real dates on a line from first contact (mail map: Aug 21) to today (Oct 1).
-    xs = fuse.locator(".fuse-tick").evaluate_all("ticks => ticks.map(t => t.getBoundingClientRect().x)")
-    line = fuse.locator(".fuse-line").bounding_box()
-    assert xs == sorted(xs)
-    assert abs(xs[0] - (line["x"] + line["width"] * 1 / 41)) <= 3 and abs(xs[-1] - (line["x"] + line["width"] * 40 / 41)) <= 3
+    assert dated == 5 and fuse.locator("i.l1, i.l2, i.l3").count() == dated
+    # One cell per day from first contact (mail map: Aug 21) to today (Oct 1): the dark cells are the real dates, in order.
+    days = fuse.locator("i.l1, i.l2, i.l3").evaluate_all("cells => cells.map(c => c.title)")
+    assert len(days) == 5 and fuse.locator(".rhythm i.today").count() == 1
     # Name and fuse lead the page, on the first screen of a phone too.
     box = fuse.bounding_box()
     assert box["y"] + box["height"] <= 844
-    assert fuse.locator(".fuse-red").count() == 0 and page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
+    assert page.locator(".r4-stats .late").count() == 0 and page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
     assert page.evaluate(GREEN, isolated_context=False) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -5151,18 +5134,16 @@ def test_person_fuse_burns_red_only_past_the_owners_usual_reply_time(reader):
       r.index = {...(r.index || {}), relationship: {last_mail: '2026-09-28T09:00:00Z', last_from_you: fromYou, reply_seconds_owner: replySeconds,
         weekly_messages: Array(52).fill(1)}}; render(); }"""
     page.evaluate(rel, [False, 3600], isolated_context=False)
-    red = page.locator(".r4-fuse .fuse-red")
+    red = page.locator(".r4-stats .late")
     assert red.count() == 1
-    assert page.locator(".r4-fuse .fuse-wait").inner_text() == "Mara wrote last · " + page.evaluate("fmtDate('2026-09-28')", isolated_context=False)
-    box, line = red.bounding_box(), page.locator(".r4-fuse .fuse-line").bounding_box()
-    assert abs(box["x"] + box["width"] - (line["x"] + line["width"])) <= 1, "the red runs up to today"
-    assert red.evaluate("node => getComputedStyle(node).backgroundColor") in RED
+    assert red.inner_text().split("\n")[1] == "Mara wrote last"
+    assert red.locator(".big").evaluate("node => getComputedStyle(node).color") in RED
     page.evaluate(rel, [True, 3600], isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 0, "you wrote last: nothing is burning"
+    assert page.locator(".r4-stats .late").count() == 0, "you wrote last: nothing is burning"
     page.evaluate(rel, [False, 10 * 86400], isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 0, "still inside your usual reply time"
+    assert page.locator(".r4-stats .late").count() == 0, "still inside your usual reply time"
     page.evaluate(rel, [False, None], isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 0, "no reply-time data, no red"
+    assert page.locator(".r4-stats .late").count() == 0, "no reply-time data, no red"
 
 
 def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
@@ -5172,8 +5153,8 @@ def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
       r.text = r.text.replace(/## History[\s\S]*?(?=\n## )/, '## History\n- Met at a meetup.\n'); KNOWN.clear(); FACTS.clear(); render(); }""",
                   isolated_context=False)
     fuse = page.locator(".r4-fuse")
-    assert fuse.locator(".fuse-tick").count() == 0
-    assert "no dated exchanges" in fuse.locator(".fuse-note").inner_text()
+    assert fuse.locator("i.l1, i.l2, i.l3").count() == 0
+    assert "no dated exchanges" in fuse.locator(".rhythm").get_attribute("title")
     assert fuse.locator(".fuse-ends").inner_text().startswith("Aug 21")
 
 
@@ -5220,13 +5201,13 @@ def test_person_fuse_does_not_burn_once_today_has_it_handled(reader):
     page.evaluate("""() => { const r = byPath('people/mara-ostrowski.md');
       r.index = {...(r.index || {}), relationship: {last_mail: '2026-09-28T09:00:00Z', last_from_you: false, reply_seconds_owner: 3600, weekly_messages: Array(52).fill(1)}};
       render(); }""", isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 1
+    assert page.locator(".r4-stats .late").count() == 1
     page.evaluate("""() => { for (const e of personEntries(byPath('people/mara-ostrowski.md'))) threadStates[doneKey(e)] = {state: 'done', at: REM.as_of}; render(); }""",
                   isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 0, "handled in Today"
+    assert page.locator(".r4-stats .late").count() == 0, "handled in Today"
     page.evaluate("""() => { for (const key of Object.keys(threadStates)) delete threadStates[key];
       window.threadDraft = () => ({status: 'no_reply', gist: 'Nothing to answer.'}); render(); }""", isolated_context=False)
-    assert page.locator(".r4-fuse .fuse-red").count() == 0, "no reply needed"
+    assert page.locator(".r4-stats .late").count() == 0, "no reply needed"
 
 
 def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(reader):
@@ -5774,7 +5755,7 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
     assert 'department not known yet' not in page.locator('.ov-outline').inner_text()
     direct.click()
     page.locator('.r4-person').wait_for()
-    expect(page.locator('.r4-rail a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
+    expect(page.locator('.r4-sub a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -5865,8 +5846,8 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert _name(name) == "Fernhill University"
-    # The organisation's name is what the page is about: --s-display, min(112px, 22vw).
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == f"{min(112, .22 * width):g}px"
+    # The organisation's name is what the page is about: --s-display (N3: 44, 36 on a phone).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
     owed = page.evaluate("orgOwed(byPath('orgs/fernhill-university.md')).length", isolated_context=False)

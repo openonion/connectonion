@@ -1,4 +1,4 @@
-"""Today drawn as a fuse, with 交给 Codex / 交给 Claude on every pending row (opt in).
+"""Today as N3's card desk (D-123; the fuse of D-108 lives on as the ring on each face), with 交给 Codex / 交给 Claude on every pending row (opt in).
 
 Owner, 2026-11-09: «我还是现在倾向于导火索这个方向» (D-108), and «所有待处理的事项，我觉得都应该增加
 一个按钮，就是发送给 Codex 去解决，或者发送给 Claude 去解决». The page is served over http from a
@@ -95,7 +95,7 @@ def today(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".brief-header h1").wait_for()
+        page.locator(".night-card .count").wait_for()
         yield page, calls, answers
         browser.close()
     assert not errors, errors
@@ -141,38 +141,61 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
 
-def test_fuse_lanes_are_the_waiting_people_and_red_follows_the_days_overdue(today):
+FACES = "faces => faces.map(face => face.dataset.path)"
+
+
+def _burn(page, path):
+    """How much of a face's fuse ring is burnt, as a share of the circle (dasharray's first number / 314.16)."""
+    burn = page.locator(f'.deal[data-path="{path}"] .ring .burn')
+    return float(burn.get_attribute("stroke-dasharray").split()[0]) / 314.16 if burn.count() else 0
+
+
+def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(today):
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
-    lanes = page.locator(".fuse .lane")
-    headline = page.locator(".brief-header h1 .count").inner_text()
+    faces = page.locator(".deal")
+    headline = page.locator(".night-card .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
-    assert lanes.evaluate_all("lanes => lanes.map(lane => lane.dataset.path)") == people  # no draft: one order
-    assert int(headline) == len(people) == lanes.count()
-    assert page.locator(".fuse .lane.current").get_attribute("data-path") == people[0]
-    ines, mara = (page.locator(f'.fuse .lane[data-path="people/{name}.md"] .burn') for name in ("ines-halvorsen", "mara-ostrowski"))
-    assert abs(ines.bounding_box()["width"] / mara.bounding_box()["width"] - 5 / 2) < 0.05
-    assert page.locator('.fuse .lane[data-path="people/ines-halvorsen.md"] .late').inner_text() == "5 days overdue"
-    undated = page.locator('.fuse .lane[data-path="projects/harbour.md"]')
-    assert undated.locator(".burn").count() == 0 and undated.locator(".late").inner_text() == "No due date"
+    assert faces.evaluate_all(FACES) == people  # no draft: one order
+    assert int(headline) == len(people) == faces.count()
+    assert page.locator(".deal.on").get_attribute("data-path") == people[0]
+    # One raised card: only the dealt card is shown; the others wait behind their faces.
+    assert page.locator(".today-brief .qcard:visible").count() == 1
+    assert abs(_burn(page, "people/ines-halvorsen.md") / _burn(page, "people/mara-ostrowski.md") - 5 / 2) < 0.05
+    assert page.locator('.deal[data-path="people/ines-halvorsen.md"] .dd').inner_text() == "5 d"
+    undated = page.locator('.deal[data-path="projects/harbour.md"]')
+    assert _burn(page, "projects/harbour.md") == 0 and "late" not in undated.locator(".dd").get_attribute("class")
     # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
-    assert "items waiting on you" not in page.locator(".brief-header").inner_text()
-    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("on others →", "Everything open →"))
+    assert "items waiting on you" not in page.locator(".night-card").inner_text()
+    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others")
 
 
-def test_the_card_with_a_ready_reply_leads_while_the_lanes_keep_their_order(today):
+def test_a_face_deals_its_card_and_skip_deals_the_next(today):
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    order = page.locator(".deal").evaluate_all(FACES)
+    page.locator(f'.deal[data-path="{order[2]}"]').click()
+    assert page.locator(".qcard.focal").get_attribute("data-path") == order[2]
+    assert page.locator(".deal.on").get_attribute("data-path") == order[2]
+    page.keyboard.press("s")
+    assert page.locator(".qcard.focal").get_attribute("data-path") == order[3 % len(order)]
+    page.keyboard.press("k")
+    assert page.locator(".qcard.focal").get_attribute("data-path") == order[2]
+
+
+def test_the_card_with_a_ready_reply_leads_while_the_faces_keep_their_order(today):
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate("""() => { REM.live = true;
       REM.drafts = [{id: 'mara', version: 'v1', provider: 'outlook', thread: 'mail:fixture:harbour-renewal', status: 'prepared',
         to: 'Mara Ostrowski <mara@example.test>', from: 'avery@example.test', subject: 'Re: Addendum', body: 'Signed today.'}];
       render(); }""", isolated_context=False)
-    lanes = page.locator(".fuse .lane").evaluate_all("lanes => lanes.map(lane => lane.dataset.path)")
+    faces = page.locator(".deal").evaluate_all(FACES)
     cards = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
-    assert cards[0] == "people/mara-ostrowski.md" and lanes[0] == "people/ines-halvorsen.md"
-    assert sorted(lanes) == sorted(cards) and cards[1:] == [path for path in lanes if path != cards[0]]
-    assert page.locator(".fuse .lane.current").get_attribute("data-path") == cards[0]
-    assert page.locator(".qcard.open").get_attribute("data-path") == cards[0]
+    assert cards[0] == "people/mara-ostrowski.md" and faces[0] == "people/ines-halvorsen.md"
+    assert sorted(faces) == sorted(cards)
+    assert page.locator(".deal.on").get_attribute("data-path") == cards[0]
+    assert page.locator(".qcard.open.focal").get_attribute("data-path") == cards[0]
 
 
 def test_every_pending_row_offers_codex_and_claude_quietly(today):
@@ -200,14 +223,17 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     card = page.locator(".today-brief .qcard").first
     key = page.evaluate("obligationKey(todayGroups(threadEntries().filter(e => !isDone(e)))[0].entries[0])", isolated_context=False)
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
-    card.locator(".handoff").get_by_role("button", name="交给 Claude").click()
+    card.locator(".qitem").first.hover()  # the row's actions are its second level (D-120)
+    card.locator(".handoff").first.get_by_role("button", name="交给 Claude").click()
     card.get_by_text("Claude 正在做").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
     assert card.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
-    second = page.locator(".today-brief .qcard").nth(1)
-    second.click()
-    second.locator(".handoff").get_by_role("button", name="交给 Codex").click()
+    other = page.locator(".deal").evaluate_all(FACES)[1]
+    page.locator(f'.deal[data-path="{other}"]').click()
+    second = page.locator(".today-brief .qcard.focal")
+    second.locator(".qitem").first.hover()
+    second.locator(".handoff").first.get_by_role("button", name="交给 Codex").click()
     second.get_by_text("REM 认不出这件事。请刷新页面再试。").wait_for()
     assert calls[-1][1]["agent"] == "codex"
     assert "Expected the item key" not in second.inner_text()
@@ -233,7 +259,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     if route:
         page.goto(BASE + route)
     page.locator(".handoff").first.wait_for(state="attached")
-    page.locator(".reader-settings > summary").click()
+    page.locator(".settings-open").click()
     assert page.evaluate(NO_COMMAND, isolated_context=False) == {"cmd": 0, "words": []}
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
     assert page.locator(".handoff button:not(:disabled)").count() == 0
@@ -280,25 +306,27 @@ def test_the_owner_is_never_a_person_waiting(today):
       KNOWN.clear(); FACTS.clear(); OWING = null; await refreshTodayQueue(); render();
     }""", isolated_context=False)
     owner = page.evaluate("REM.owner", isolated_context=False)
-    paths = page.locator(".fuse .lane").evaluate_all("lanes => lanes.map(lane => lane.dataset.path)")
+    paths = page.locator(".deal").evaluate_all(FACES)
     assert owner not in paths and "people/tomas-reyes.md" in paths
     assert page.locator(f'.qcard[data-path="{owner}"]').count() == 0
-    assert int(page.locator(".brief-header h1 .count").inner_text()) == len(paths)
-    assert "Your page" not in page.locator(".fuse").inner_text()
-    assert page.locator('.night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
+    assert int(page.locator(".night-card .count").inner_text()) == len(paths)
+    assert "Your page" not in page.locator(".night-card").inner_text()
+    page.locator(".closed .link-btn").click()  # 看: what REM did overnight, every name
+    assert page.locator('#night-sheet .night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
 
 
-def test_the_ready_reply_says_why_it_leads(today):
+def test_the_ready_reply_is_the_raised_card_and_its_face_is_marked(today):
+    """N3: the card with a ready reply is dealt first; its face is the selected one, the most overdue still burns reddest."""
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.drafts = [{id: 'mara', version: 'v1', provider: 'outlook', thread: 'mail:fixture:harbour-renewal', status: 'prepared',
         to: 'Mara Ostrowski <mara@example.test>', from: 'avery@example.test', subject: 'Re: Addendum', body: 'Signed today.'}];
       render(); }""", isolated_context=False)
-    assert "最急的是 Inès Halvorsen" in page.locator(".brief-header .lede").inner_text()
-    why = page.locator(".today-brief .lead-why")
-    assert why.inner_text() == "先回 Mara Ostrowski：回信已写好"
-    assert why.bounding_box()["y"] < page.locator(".qcard.open").bounding_box()["y"]
+    assert page.locator(".qcard.focal").get_attribute("data-path") == "people/mara-ostrowski.md"
+    assert page.locator(".deal.on").get_attribute("data-path") == "people/mara-ostrowski.md"
+    assert page.locator('.deal[data-path="people/ines-halvorsen.md"] .dd').inner_text() == "5 天"
+    assert _burn(page, "people/ines-halvorsen.md") > _burn(page, "people/mara-ostrowski.md")
 
 
 def test_counts_name_their_unit(today):
@@ -306,9 +334,9 @@ def test_counts_name_their_unit(today):
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
-    assert page.locator("#approve-all").inner_text() == "2 件可一键批准"
-    assert "件等你处理" not in page.locator(".brief-header").inner_text()  # the sidebar's 等你处理 says it
-    assert page.locator(".brief-header .waiting-more").inner_text().endswith(("项等对方回复 →", "全部未完成事项 →"))
+    assert page.locator("#approve-all").inner_text().split() == ["2", "可一键批准"]
+    assert "件等你处理" not in page.locator(".night-card").inner_text()  # the sidebar's 等你处理 says it
+    assert page.locator(".others .waiting-more").inner_text().split()[1] == "等对方回"
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
@@ -321,7 +349,8 @@ def test_hand_off_failures_are_plain_words(today, status, words):
     else:
         answers["/rem/task"] = [(status, {"error": "Traceback: KeyError 'key' in tasks.dispatch"})]
     card = page.locator(".today-brief .qcard").first
-    card.locator(".handoff").get_by_role("button", name="交给 Codex").click()
+    card.locator(".qitem").first.hover()
+    card.locator(".handoff").first.get_by_role("button", name="交给 Codex").click()
     card.get_by_text(words).wait_for()
     assert "Traceback" not in card.inner_text() and "KeyError" not in card.inner_text()
 
@@ -358,7 +387,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
-    before = int(page.locator(".brief-header h1 .count").inner_text())
+    before = int(page.locator(".night-card .count").inner_text())
     release = "2099-01-01T00:10:00Z"
     answers["/rem/approve"] = lambda body: (200, {"release_at": release, "results": [
         {"id": i, "status": "cancelled" if body.get("action") == "undo" else "held", "release_at": release} for i in body["ids"]]})
@@ -369,8 +398,8 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     path, body = calls[-1]
     assert path == "/rem/approve" and body["ids"] == ["reply:ines"]
     assert "共享文件夹" in body["bodies"]["reply:ines"] and "【" not in body["bodies"]["reply:ines"]
-    assert int(page.locator(".brief-header h1 .count").inner_text()) == before - 1
-    assert page.locator('.fuse .lane[data-path="people/ines-halvorsen.md"]').count() == 0
+    assert int(page.locator(".night-card .count").inner_text()) == before - 1
+    assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
     assert "Sent to Inès Halvorsen." in note.inner_text() and "undo" in note.inner_text()
@@ -378,20 +407,26 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
     assert calls[-1][1] == {"action": "undo", "ids": ["reply:ines"]}
-    assert int(page.locator(".brief-header h1 .count").inner_text()) == before
+    assert int(page.locator(".night-card .count").inner_text()) == before
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
 
 def test_the_overnight_rail_says_who_rem_replied_to_only_when_it_did(today):
     page, _, _ = today
-    rail = page.locator(".night-done")
+    rail = page.locator("#night-sheet .night-done")
     page.evaluate("""() => { REM.sent_by_rem = [{title: 'Ines Halvorsen'}, {title: 'Tomás Reyes'}, {title: 'Ines Halvorsen'}];
       REM.night_outcomes = [{key: 'x', record: 'people/mara-ostrowski.md', title: 'Mara Ostrowski', kind: 'prepared'}]; render(); }""",
                   isolated_context=False)
+    assert page.locator(".closed").inner_text().startswith("REM handled 3 things overnight")
+    page.locator(".closed .link-btn").click()
     assert rail.locator('li[data-kind="sent"] b').inner_text() == "Replied to 2 people for you"
+    page.keyboard.press("Escape")
     page.evaluate("() => { setInterfaceLanguage('zh'); }", isolated_context=False)
+    page.locator(".closed .link-btn").click()
     assert rail.locator('li[data-kind="sent"] b').inner_text() == "替你回了 2 个人"
+    page.keyboard.press("Escape")
     page.evaluate("() => { REM.sent_by_rem = []; render(); }", isolated_context=False)
+    page.locator(".closed .link-btn").click()
     assert rail.locator('li[data-kind="sent"]').count() == 0
 
 
@@ -408,32 +443,35 @@ def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(tod
     page.get_by_role("heading", name="Questions & connections", exact=True).wait_for()
 
 
-def test_the_phone_menu_opens_above_today_and_send_keeps_the_bottom(today):
-    """Owner, 2026-11-09: the sidebar «现在看起来不是很好». On a phone the native-looking "Browse notebook"
-    box became a quiet Menu button in the header row; it opens a sheet below the header. A bottom tab bar
-    was the art director's first idea, but Today's Send bar already owns the bottom edge (D-10)."""
+def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today):
+    """N3 (D-123): on a phone the rail and the ⌘K bar give way to a floating tab bar (今天 · 等你 · 人物 · 搜索 · 更多);
+    Send stays pinned just above it, and 更多 opens every other place as a sheet."""
     page, _, _ = today
     page.set_viewport_size({"width": 390, "height": 844})
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
     assert page.locator("select").count() == 0
+    tabs = page.locator("#tabbar")
+    assert [" ".join(t.split()) for t in tabs.locator(".tab").all_inner_texts()][:3] == ["Today", "Waiting", "People"]
     toggle = page.locator(".nav-toggle")
-    assert toggle.inner_text() == "Menu" and toggle.get_attribute("aria-expanded") == "false"
+    assert toggle.inner_text() == "More" and toggle.get_attribute("aria-expanded") == "false"
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
-    # One header row: the brand, search and Menu share it, so the first screen keeps its room.
-    boxes = [page.locator(selector).bounding_box() for selector in (".brand", ".search", ".nav-toggle")]
-    assert max(box["y"] for box in boxes) < min(box["y"] + box["height"] for box in boxes)
     assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
+    assert send.bounding_box()["y"] + send.bounding_box()["height"] <= tabs.bounding_box()["y"]
     assert toggle.bounding_box()["height"] >= 44
+    assert not page.locator(".search").is_visible()
+    tabs.locator(".tab-search").click()
+    assert page.locator("#q").is_visible() and page.evaluate("document.activeElement.id", isolated_context=False) == "q"
+    page.locator("#q").blur()
     toggle.click()
     assert toggle.get_attribute("aria-expanded") == "true"
     links = page.locator("#nav a")
-    assert links.first.is_visible() and page.locator(".rail .foot .version").is_visible()
-    # The open sheet sits above the pinned Send bar: every link it shows answers its own centre.
+    assert links.first.is_visible() and page.locator('#nav a[href="#view=changes"]').is_visible()
+    # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
       const box = link.getBoundingClientRect();
-      if (box.bottom <= 0 || box.top >= innerHeight) return true;
+      if (box.bottom <= 0 || box.top >= innerHeight || !box.width) return true;
       const y = Math.min(Math.max(box.top + box.height / 2, 0), innerHeight - 1);
       return link.contains(document.elementFromPoint(box.left + box.width / 2, y));
     })""", isolated_context=False)
@@ -442,7 +480,7 @@ def test_the_phone_menu_opens_above_today_and_send_keeps_the_bottom(today):
     assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
     assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
     page.goto(BASE)
-    page.locator(".brief-header h1").wait_for()
+    page.locator(".night-card .count").wait_for()
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
@@ -464,6 +502,7 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     slot = card.locator(".owner-slot input")
     slot.fill("Thursday afternoon")
     row = card.locator(".qitem").first
+    row.hover()
     row.locator(".talk-menu > summary").click()
     row.locator('[data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
@@ -555,6 +594,7 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
     items = page.locator(".today-brief .qcard.open .qitem")
     assert items.count() == 2
     for i in range(2):
+        items.nth(i).hover()  # the kind line under a row is its second level (D-120)
         words, below = items.nth(i).locator(".words"), items.nth(i).locator(".qkind")
         if not words.is_visible():
             continue

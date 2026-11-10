@@ -221,6 +221,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
         today_queue:[{key:'fern', reply:{state, last_word_yours:true, provider:'outlook',
           thread:'mail:outlook:original', promise:'I will send feedback.', since:'2026-10-28'}}]};
       const doneKey = () => 'fern', threadKind = () => ({kind:'outlook', mail:true});
+      const icon = () => null, groupLate = () => 0;
       const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, threadContact = () => null, approvalTask = () => null;
       const obligationEvidence = () => ({ids:new Set(['thread:outlook:original', 'thread:outlook:feedback'])});
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';

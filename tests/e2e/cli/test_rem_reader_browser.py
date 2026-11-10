@@ -284,7 +284,7 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page.locator('details.deep-note > summary').click()
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.locator(".reader-settings > summary").click()
+    page.locator(".settings-open").click()
     page.get_by_role("button", name="Hide labelled passages").click()
     assert not private.is_visible()
     page.get_by_role("button", name="Show labelled passages").click()
@@ -420,7 +420,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
         # D-60 (build 3b review): Reader settings no longer carries the People review command.
-        page.locator('.reader-settings > summary').click()
+        page.locator('.settings-open').click()
         assert page.locator('.reader-settings .cmd').count() == 0
         browser.close()
 

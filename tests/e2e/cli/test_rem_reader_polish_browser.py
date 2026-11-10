@@ -207,7 +207,7 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
       .every(n => n.getBoundingClientRect().right <= innerWidth + 0.5)""", isolated_context=False)
 
 
-@pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".r4-crumb"), ("projects/harbour.md", ".eyebrow")])
+@pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".hero-marks"), ("projects/harbour.md", ".eyebrow")])
 def test_the_translation_mark_is_small_and_sits_in_the_crumb(reader, path, crumb):
     page, _, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');

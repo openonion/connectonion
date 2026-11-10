@@ -57,8 +57,9 @@ def test_person_contact_metric_is_a_true_readable_sentence(language, history):
       const history = ''' + json.dumps(history) + r''';
       const last_mail = history === 'none' ? '' : history === 'old' ? '2025-01-02T12:00:00Z' : '2026-11-07T12:00:00Z';
       const weekly_messages = history === 'active' ? [...Array(48).fill(1), 0, 1, 2, 3] : Array(52).fill(0);
+      const personFuseData = () => null, age = day => day;
       const stats = personStats({title: 'Mara Ostrowski', index: {relationship: {last_mail, weekly_messages}}});
-      console.log(JSON.stringify(stats.children.map(cell => [cell.children[0].text, cell.children[1]])));
+      console.log(JSON.stringify(stats.children.map(cell => [cell.children[0].text, cell.children[1].text])));
     '''
     result = run_js(['personStats', 'replyDuration', 'firstName', 'fmtDate', 'calendarDay', 't'], script)
     assert result[0] == (['54', 'mails this year' if language == 'en' else '封邮件往来 · 一年内']
@@ -87,7 +88,8 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
 def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
     """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
     a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
-    result = run_js(['personQuotes', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
+    result = run_js(['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
+      const icon = () => null;
       const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
         text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
       const to = {to: ['avery@lin.example'], cc: []};
@@ -129,9 +131,9 @@ QUOTE_HARNESS = r'''
   const fmtDate = day => day, calendarDay = day => day, inline = text => text;
   const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: [].concat(children).filter(Boolean)});
   const sourceList = () => [{n: '3', text: 'gmail:b'}];
-  const ownerAddresses = () => OWNER;
+  const ownerAddresses = () => OWNER, icon = () => null;
 '''
-QUOTE_NAMES = ['personQuotes', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'hasPrivacy']
+QUOTE_NAMES = ['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'hasPrivacy']
 
 
 def _quotes(text, excerpt, participants="to", owner="['avery@lin.example']"):
