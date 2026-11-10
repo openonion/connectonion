@@ -3173,7 +3173,7 @@ let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
-  en: { "More places": "More" },
+  en: {},
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
@@ -3482,7 +3482,6 @@ const UI = {
     "Follow up in {channel}": "在 {channel} 里跟进",
     "{channel} reply": "{channel} 回信",
     "Draft the reply": "起草回信",
-    "More": "展开",
     "Less": "收起",
     "Drafting the reply… about a minute": "正在起草回信…约一分钟",
     "mail": "邮件",
@@ -4258,7 +4257,7 @@ const UI = {
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
-    "More places": "更多"
+    "More": "更多"
 }
 };
 function t(key, values = {}) {
@@ -6232,7 +6231,7 @@ function railMore(active) {
     rest.map(([key, iconName, title, link]) => el("a", { href: link, class: "mi" + (active === key ? " active" : "") }, [icon(iconName), el("span", { text: title })])));
   const on = rest.some(([key]) => key === active);
   const button = el("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more",
-    "aria-label": t("More places") }, [icon("more"), el("span", { class: "tip", text: t("More places") })]);
+    "aria-label": t("More") }, [icon("more"), el("span", { class: "tip", text: t("More") })]);
   button.onclick = event => { event.stopPropagation(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); };
   return [button, menu];
 }
@@ -6264,7 +6263,7 @@ function renderTabbar(active) {
   const tab = (key, iconName, title, link, badge) => el("a", { href: link, class: "tab" + (active === key ? " active" : "") }, [icon(iconName), badge, el("span", { text: title })]);
   const search = el("button", { type: "button", class: "tab tab-search" }, [icon("search"), el("span", { text: t("Search") })]);
   search.onclick = () => { document.body.classList.add("searching"); document.getElementById("q").focus(); };
-  toggle.replaceChildren(icon("more"), el("span", { text: t("More places") }));
+  toggle.replaceChildren(icon("more"), el("span", { text: t("More") }));
   toggle.classList.add("tab");
   const mine = threadCounts().mine;
   bar.replaceChildren(tab("today", "sun", t("Today"), "#"), tab("open", "inbox", t("Waiting"), "#view=open", mine ? el("span", { class: "n", text: String(mine) }) : null),
@@ -6981,7 +6980,7 @@ function personCard(group, focal, total = 1) {
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
   const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More") }) : null;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late, focal && total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
+    cardHead(group, late, total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
@@ -7327,13 +7326,30 @@ function deckOrder(groups) {
   const first = lead >= 0 ? lead : Math.max(0, ready);
   return [...groups.slice(first), ...groups.slice(0, first)];
 }
-// Deal another card: the faces, J/K and Skip only change which card is raised; nothing is written.
+// Deal another card: the faces, J/K and Skip only change which card is raised; nothing is written and nothing
+// is drawn again. Every card is already in the page, so what was typed in any of them stays where it was.
 function dealCard(path) {
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
+  const next = cards.find(card => card.dataset.path === path);
+  if (!next) return;
   todayLead = path;
-  const y = window.scrollY;
-  overview();
-  window.scrollTo(0, y);
-  document.querySelector("#main .qcard.focal")?.focus({ preventScroll: true });
+  for (const card of cards) raiseCard(card, card === next);
+  for (const face of document.querySelectorAll("#main .deal")) {
+    face.classList.toggle("on", face.dataset.path === path);
+    face.setAttribute("aria-pressed", String(face.dataset.path === path));
+  }
+  const chart = document.querySelector("#main .night-card .hyp-wrap"), redrawn = chart && nightChart(path);
+  if (redrawn) chart.replaceWith(redrawn.svg);
+  next.focus({ preventScroll: true });
+}
+// The raised card is open and carries the page's one green action; a card behind its face carries none.
+function raiseCard(card, raised) {
+  card.classList.toggle("focal", raised);
+  card.classList.toggle("open", raised);
+  for (const button of card.querySelectorAll(":scope > .card-acts :is(.btn-act, .btn-line)")) {
+    button.classList.toggle("btn-act", raised);
+    button.classList.toggle("btn-line", !raised);
+  }
 }
 function dealNext(step) {
   const groups = todayGroups(threadEntries().filter(entry => !isDone(entry)));
@@ -7403,7 +7419,6 @@ function nightCard(groups, current, ticked) {
 // depth, rewriting and translating pages at the deepest) and from when each reply or task was prepared (the
 // rises, with the person's face). Only what the snapshot records is drawn: a stretch without a log is a flat
 // line, never an invented stage. Three nights at most; a phone shows the last thirty hours.
-let NIGHT_W = 760;
 const NIGHT_X = 8, LEVEL = { idle: 20, rise: 44, read: 66, deep: 92 };
 const RUN_KIND = { sync: ["read", "Read mail and sessions"], "daily-update": ["deep", "Rewrote pages"], "daily-translation": ["deep", "Translated pages"] };
 function nightRises() {
@@ -7422,50 +7437,53 @@ function nightRuns() {
     return { from, to: Math.max(from + 4 * 60000, Date.parse(run.finished_at || "") || 0), level, what, items: run.items || 0 };
   });
 }
-function nightWindow(times) {
+// From the earliest night that has a record (at most three, thirty hours on a phone) to now. Times later than
+// the snapshot's as_of (a clock ahead of it) still leave an hour to draw, never an empty or reversed axis.
+function nightWindow(times, narrow) {
   const end = Date.parse(REM.as_of || new Date().toISOString());
   const early = new Date(Math.min(...times)); early.setHours(0, 0, 0, 0);
-  const span = window.innerWidth <= 640 ? 30 * 3600000 : 3 * DAY_MS;
-  return { start: Math.max(end - span, early.getTime()), end };
+  const start = Math.max(end - (narrow ? 30 * 3600000 : 3 * DAY_MS), early.getTime());
+  return { start: Math.min(start, end - 3600000), end };
 }
-function nightChart(current) {
-  NIGHT_W = window.innerWidth <= 640 ? 360 : 760;  // a phone keeps the labels at their size
+// A phone draws a narrower chart, so its labels keep their size.
+function nightChart(current, narrow = window.innerWidth <= 640) {
+  const width = narrow ? 360 : 760;
   const runs = nightRuns(), rises = nightRises();
   const times = [...runs.map(run => run.from), ...rises.map(rise => rise.at)];
   if (!times.length) return null;
-  const { start, end } = nightWindow(times), x = at => NIGHT_X + (Math.min(end, Math.max(start, at)) - start) / (end - start) * NIGHT_W;
+  const { start, end } = nightWindow(times, narrow), x = at => NIGHT_X + (Math.min(end, Math.max(start, at)) - start) / (end - start) * width;
   const shown = runs.filter(run => run.to >= start && run.from <= end).sort((a, b) => a.from - b.from);
   const marks = rises.filter(rise => rise.at >= start && rise.at <= end).sort((a, b) => a.at - b.at);
   const when = at => new Date(at).toLocaleString(uiLocale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
   const runTitles = shown.map(run => '<rect class="hit" x="' + x(run.from).toFixed(1) + '" y="12" width="' + Math.max(3, x(run.to) - x(run.from)).toFixed(1) + '" height="88"><title>'
     + esc(when(run.from) + " · " + t(run.what) + (run.items ? " · " + t("{n} read", { n: run.items }) : "")) + "</title></rect>");
-  const path = nightPath([...shown.map(run => ({ a: x(run.from), b: x(run.to), y: LEVEL[run.level] })), ...marks.map(rise => ({ a: x(rise.at) - 3, b: x(rise.at) + 3, y: LEVEL.rise }))]);
+  const path = nightPath([...shown.map(run => ({ a: x(run.from), b: x(run.to), y: LEVEL[run.level] })), ...marks.map(rise => ({ a: x(rise.at) - 3, b: x(rise.at) + 3, y: LEVEL.rise }))], width);
   const svg = el("div", { class: "hyp-wrap" });
-  svg.innerHTML = '<svg class="hyp" viewBox="0 0 ' + (NIGHT_X * 2 + NIGHT_W) + ' 128" role="img" aria-label="' + esc(nightSummary(shown, marks)) + '">'
-    + '<g class="lv">' + [LEVEL.rise, LEVEL.read, LEVEL.deep].map(y => '<line x1="0" x2="' + (NIGHT_X * 2 + NIGHT_W) + '" y1="' + y + '" y2="' + y + '"/>').join("") + "</g>"
+  svg.innerHTML = '<svg class="hyp" viewBox="0 0 ' + (NIGHT_X * 2 + width) + ' 128" role="img" aria-label="' + esc(nightSummary(shown, marks)) + '">'
+    + '<g class="lv">' + [LEVEL.rise, LEVEL.read, LEVEL.deep].map(y => '<line x1="0" x2="' + (NIGHT_X * 2 + width) + '" y1="' + y + '" y2="' + y + '"/>').join("") + "</g>"
     + '<path class="line" d="' + path + '"/>' + runTitles.join("")
     + marks.map(rise => '<line class="rise" x1="' + (x(rise.at) - 3).toFixed(1) + '" x2="' + (x(rise.at) + 3).toFixed(1) + '" y1="44" y2="44"><title>'
       + esc(when(rise.at) + " · " + t(rise.kind === "task" ? "Prepared a task for {name}" : "Drafted a reply to {name}", { name: threadWho(rise.r) })) + "</title></line>").join("")
-    + nightFaces(marks, x, current) + nightDays(start, end, x) + '<circle class="now" cx="' + x(end).toFixed(1) + '" cy="' + LEVEL.idle + '" r="4"/></svg>';
+    + nightFaces(marks, x, current, width) + nightDays(start, end, x) + '<circle class="now" cx="' + x(end).toFixed(1) + '" cy="' + LEVEL.idle + '" r="4"/></svg>';
   return { svg, legend: t("Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages") };
 }
 // One stepped line: runs closer than a few pixels are one stretch at the deepest of their depths.
-function nightPath(spans) {
+function nightPath(spans, width) {
   const merged = [];
   for (const span of spans.sort((p, q) => p.a - q.a)) {
     const last = merged.at(-1);
     if (last && span.a - last.b < 6) { last.b = Math.max(last.b, span.b); last.y = Math.max(last.y, span.y); }
     else merged.push({ ...span, b: Math.max(span.b, span.a + 3) });
   }
-  return "M0 " + LEVEL.idle + merged.map(span => " H" + span.a.toFixed(1) + " V" + span.y + " H" + span.b.toFixed(1) + " V" + LEVEL.idle).join("") + " H" + (NIGHT_X * 2 + NIGHT_W);
+  return "M0 " + LEVEL.idle + merged.map(span => " H" + span.a.toFixed(1) + " V" + span.y + " H" + span.b.toFixed(1) + " V" + LEVEL.idle).join("") + " H" + (NIGHT_X * 2 + width);
 }
 // Faces on the rises, never overlapping: rises closer than a face are one face and a "+N".
-function nightFaces(marks, x, current) {
+function nightFaces(marks, x, current, width) {
   const clusters = [];
   for (const rise of marks) {
     const last = clusters.at(-1);
     if (last && x(rise.at) - last.x < 30) { if (!last.people.includes(rise.r)) last.people.push(rise.r); }
-    else clusters.push({ x: Math.min(NIGHT_W - 6, Math.max(14, x(rise.at))), people: [rise.r] });
+    else clusters.push({ x: Math.min(width - 6, Math.max(14, x(rise.at))), people: [rise.r] });
   }
   return clusters.map(({ x: cx, people }) => {
     const lead = people.find(r => r.path === current) || people[0];
@@ -7492,13 +7510,17 @@ function nightSummary(runs, marks) {
 function todaySide(counts) {
   return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), recallPrompt(), nightLine()].filter(Boolean));
 }
+// What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
+// sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
 function othersWidget(counts) {
-  const approval = approvalHeader();
-  if (!counts.theirs && !counts.mine && !REM.live && !(REM.approval_outcomes || []).length) return approval.hidden ? null : approval;
-  const theirs = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
+  const outcomes = (REM.approval_outcomes || []).length, problems = approvalProblems();
+  if (!counts.theirs && !counts.mine && !outcomes && !problems)
+    return el("p", { class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
+  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
     : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
-  return el("section", { class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Waiting on others") })]),
-    el("div", { class: "pair" }, [theirs, approval])]);
+  const title = counts.theirs ? "Waiting on others" : counts.mine ? "Open threads" : "Approval status";
+  return el("section", { class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]),
+    el("div", { class: "pair" }, [cell, outcomes || REM.live ? approvalHeader() : problems])]);
 }
 // What REM did overnight, as one quiet line; 看 opens the list with every name.
 function nightLine() {
@@ -7809,14 +7831,16 @@ function personHead(r) {
 // Role, organisation (→ its page), project and place as chips; where the value came from stays in its title.
 function personSub(r) {
   const role = String(facts(r).role || ""), items = (parseFacts(r).get("Role") || []).filter(item => knownValue(item.value));
-  const org = personOrg(r), project = personProject(r), place = facts(r).location;
+  const org = personOrg(r), project = personProject(r), place = facts(r).location, language = facts(r).language;
+  const domain = org?.org ? plainLine(String(facts(org.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") : "";
   const units = (r.units || []).map(edge => ({ edge, unit: byPath(edge.path) })).filter(({ unit }) => unit && !orgHidden(unit));
   const parts = [knownValue(role) && items.length ? changedValue(el("span", { class: "chip" }, [roleLede(items, role, r.path)]), r, "Role") : null,
-    org ? changedValue(org.org ? el("a", { class: "chip ghost", href: href(org.org), title: org.full || "" }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() }), org.name])
+    org ? changedValue(org.org ? el("a", { class: "chip ghost", href: href(org.org), title: [org.full, knownValue(domain) ? domain : ""].filter(Boolean).join(" · ") }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() }), org.name])
       : el("span", { class: "chip ghost" }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() }), org.name]), r, "Company") : null,
     ...units.map(({ edge, unit }) => el("a", { class: "chip ghost", href: href(unit), text: unit.title + (edge.role ? " · " + unlabelled(edge.role) : "") })),
     project ? el("a", { class: "chip ghost soft", href: href(project) }, [icon("project"), project.title]) : null,
-    knownValue(place) ? el("span", { class: "chip ghost", title: knownValue(facts(r).language) ? plainLine(facts(r).language) : "" }, [icon("pin"), plainLine(place).split(/[;(]/)[0].trim()]) : null].filter(Boolean);
+    knownValue(place) ? el("span", { class: "chip ghost", title: knownValue(language) ? plainLine(language) : "" }, [icon("pin"), plainLine(place).split(/[;(]/)[0].trim()]) : null,
+    !knownValue(place) && knownValue(language) ? el("span", { class: "chip ghost", title: t("Language") }, [icon("globe"), plainLine(language)]) : null].filter(Boolean);
   return parts.length ? privateFallback(el("div", { class: "r4-sub tags" }, parts)) : null;
 }
 // Email, phone and a handle as round buttons: the value shows on hover, a click copies it.
@@ -7824,7 +7848,7 @@ function personContacts(r) {
   const parsed = parseFacts(r), mails = String(facts(r).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || [];
   const values = label => (parsed.get(label) || []).filter(item => knownValue(item.value));
   const phone = values("Phone")[0], handle = values("Handles").find(item => !item.value.includes("@"));
-  return [mails.length ? copyRound("mail", t("Email"), mails[0], mails.length > 1 ? mails[0] + " · " + t("+{n} more", { n: mails.length - 1 }) : mails[0]) : null,
+  return [mails.length ? copyRound("mail", t("Email"), mails[0], mails.slice(0, 3).join(" · ") + (mails.length > 3 ? " · " + t("+{n} more", { n: mails.length - 3 }) : "")) : null,
     phone ? copyRound("phone", t("Phone"), plainLine(phone.value)) : null,
     handle ? copyRound(/linkedin/i.test(handle.qualifier || handle.value) ? "linkedin" : "chat", t("Handle"), plainLine(handle.value)) : null].filter(Boolean);
 }
@@ -12462,7 +12486,7 @@ function openShortcuts() {
 function typingIn(target) {
   return !!target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']");
 }
-// J/K deal the next or previous card, S skips to the next, E closes the raised card (with the usual Undo),
+// J/K deal the next or previous card, S skips to the next, E closes the raised card when focus is in it (Undo),
 // R replies. Only on Today, never while typing.
 function todayKey(key) {
   const card = document.querySelector("#main .qcard.focal");
@@ -12470,7 +12494,8 @@ function todayKey(key) {
   if (key === "j" || key === "s") dealNext(1);
   else if (key === "k") dealNext(-1);
   else if (key === "r") card.reply();
-  else card.markDone();
+  else if (document.activeElement?.closest("#main .qcard.focal")) card.markDone();  // E closes only the card you are in
+  else return false;
   return true;
 }
 document.addEventListener("keydown", event => {

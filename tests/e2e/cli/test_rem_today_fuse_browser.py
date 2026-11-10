@@ -601,3 +601,49 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
             continue
         assert _cut(page, words, words) == [], (i, words.inner_text())
         assert _apart(words.bounding_box(), below.bounding_box()), (i, words.bounding_box(), below.bounding_box())
+
+
+def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
+    """Review of #2929: dealing redrew Today and dropped a half-answered question. Every card is already in the
+    page, so a deal only moves which one is raised; what was typed in any of them stays."""
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(r"""() => { REM.live = true;
+      REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+      REM.drafts = [{id: 'ines-receipts', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'prepared',
+        to: 'Ines Halvorsen <ines@example.test>', from: 'avery@example.test', subject: 'Re: Q3 receipts',
+        body: 'Hi Ines,\n\nI can send the receipts 【需要你：the day you can send them — by Friday】.\n\nAvery'}];
+      render(); }""", isolated_context=False)
+    card = page.locator(".today-brief .qcard.focal")
+    start = card.get_attribute("data-path")
+    card.locator(".owner-slot input").fill("Thursday afternoon")
+    other = next(path for path in page.locator(".deal").evaluate_all(FACES) if path != start)
+    page.locator(f'.deal[data-path="{other}"]').click()
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == other
+    assert page.locator(f'.deal[data-path="{other}"]').get_attribute("aria-pressed") == "true"
+    page.locator("body").press("s")  # S deals the next card; the words stay where they were typed
+    page.locator(f'.deal[data-path="{start}"]').click()
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == start
+    assert page.locator(".today-brief .qcard.focal .owner-slot input").input_value() == "Thursday afternoon"
+    # The raised card carries the page's one primary action; a card waiting behind its face does not.
+    assert page.locator(".today-brief .qcard:not(.focal) .card-acts .btn-act").count() == 0
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_with_nothing_open_today_says_so_instead_of_an_empty_widget(today, live):
+    """Review of #2929: an empty "Waiting on others" card showed when nothing was open either way. Live and
+    snapshot say the same sentence; with only your own items open, the link is not filed under others."""
+    page, _, _ = today
+    page.evaluate("""live => { REM.live = live; REM.approval_outcomes = []; REM.approval_pending = []; REM.today_queue = [];
+      for (const r of REM.records) r.text = r.text.replace(/## Open threads[\\s\\S]*?(?=\\n## |$)/, '## Open threads\\nUnknown\\n');
+      KNOWN.clear(); FACTS.clear(); OWING = null; threadEntries.cached = null; render(); }""", live, isolated_context=False)
+    assert page.evaluate("JSON.stringify([threadCounts().mine, threadCounts().theirs])", isolated_context=False) == "[0,0]"
+    assert page.locator(".others").count() == 0
+    assert page.locator(".side .nothing-open").inner_text() == "Nothing is open between you and anyone right now."
+    page.evaluate("""async () => { const r = byPath('people/mara-ostrowski.md'); r.original = undefined;
+      r.text = r.text.replace(/## Open threads[^\\n]*\\n[^\\n]*/, '## Open threads\\n- You owe Mara a review of the budget forecast; due 2026-10-06 [4].');
+      KNOWN.clear(); FACTS.clear(); OWING = null; await refreshTodayQueue(); render(); }""", isolated_context=False)
+    assert page.evaluate("threadCounts().mine", isolated_context=False) >= 1
+    widget = page.locator(".others")
+    assert widget.count() == 1 and "Waiting on others" not in widget.inner_text()
+    assert widget.locator(".waiting-more").get_attribute("href") == "#view=open"

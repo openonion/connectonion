@@ -393,8 +393,8 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index,
-        emails: ['marcus_jian.vale@some-long-domain.example', 'second@example.test', 'third@example.test'],
-        phone: '+61 0491570157 (mobile); +61 0491570158 (work)'};
+        emails: ['marcus_jian.vale.partnerships@a-much-longer-department-domain.example', 'second@example.test', 'third@example.test'],
+        phone: '+61 0491570157 (mobile partnerships desk after hours); +61 0491570158 (work)'};
       // Exercise index-backed previews without explicit notebook contact values.
       r.text = (r.original || r.text).replace(/^- (?:Email|Phone):.*\n/gm, '');
       r.original = r.text;
@@ -403,10 +403,10 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
     page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     for kind, first, count, title in [
-        ('email', 'marcus_jian.vale@some-long-domain.example', '+2',
-         'marcus_jian.vale@some-long-domain.example; second@example.test; third@example.test'),
-        ('phone', '+61 0491570157 (mobile)', '+1',
-         '+61 0491570157 (mobile); +61 0491570158 (work)'),
+        ('email', 'marcus_jian.vale.partnerships@a-much-longer-department-domain.example', '+2',
+         'marcus_jian.vale.partnerships@a-much-longer-department-domain.example; second@example.test; third@example.test'),
+        ('phone', '+61 0491570157 (mobile partnerships desk after hours)', '+1',
+         '+61 0491570157 (mobile partnerships desk after hours); +61 0491570158 (work)'),
     ]:
         cell = row.locator('.c-' + kind)
         assert cell.locator('.' + kind + '-first').inner_text() == first
@@ -415,7 +415,7 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
         assert cell.locator('.contact-first').evaluate('''node => {
           const style = getComputedStyle(node);
           return style.textOverflow === 'ellipsis' && style.overflowX === 'hidden'
-            && style.whiteSpace === 'nowrap';  // ellipsis when it does not fit (N3's 15px body may fit it whole)
+            && style.whiteSpace === 'nowrap' && node.scrollWidth > node.clientWidth;
         }''')
     # Range reports even text hidden by ellipsis. Intersect with actual clipping
     # ancestors so this compares painted text, without concealing visible overflow.
@@ -461,7 +461,7 @@ def test_people_mobile_phone_preview_wraps_with_its_label(reader, width):
     page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
-      r.index = {...r.index, phone: '+61 0491570157 (mobile); +61 0491570158 (work)'};
+      r.index = {...r.index, phone: '+61 0491570157 (mobile partnerships desk after hours); +61 0491570158 (work)'};
       r.text = (r.original || r.text).replace(/^- Phone:.*\n/gm, '');
       r.original = r.text;
       FACTS.delete(r.path); render();
@@ -5090,8 +5090,11 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
                           isolated_context=False)
     assert dated == 5 and fuse.locator("i.l1, i.l2, i.l3").count() == dated
     # One cell per day from first contact (mail map: Aug 21) to today (Oct 1): the dark cells are the real dates, in order.
-    days = fuse.locator("i.l1, i.l2, i.l3").evaluate_all("cells => cells.map(c => c.title)")
-    assert len(days) == 5 and fuse.locator(".rhythm i.today").count() == 1
+    days = fuse.locator("i.l1, i.l2, i.l3").evaluate_all("cells => cells.map(c => c.title.split(' · ')[0])")
+    # The dark cells are exactly the record's dated exchanges, in calendar order.
+    dates = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10)"
+                          ".map(i => i.day).sort().map(fmtDate)", isolated_context=False)
+    assert days == dates and len(days) == 5 and fuse.locator(".rhythm i.today").count() == 1
     # Name and fuse lead the page, on the first screen of a phone too.
     box = fuse.bounding_box()
     assert box["y"] + box["height"] <= 844
@@ -6158,7 +6161,7 @@ def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
     cards, aside = page.locator(".today-brief").bounding_box(), line.bounding_box()
     if width == 1440:
         assert aside["x"] >= cards["x"] + cards["width"], "beside the queue, in the right half"
-        assert aside["y"] < 1000, "on the first screen"
+        assert aside["y"] + aside["height"] <= page.viewport_size["height"], "on the first screen"
     else:
         assert aside["y"] >= cards["y"] + cards["height"], "after the queue on a phone"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

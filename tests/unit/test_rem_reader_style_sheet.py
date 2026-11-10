@@ -293,7 +293,7 @@ def test_the_sheet_has_five_sizes_two_weights_and_three_elevations():
     assert {'--e1', '--e2', '--e3'} <= set(light) and not any('shadow' in n for n in light)
     assert {'--r-card', '--r-inner', '--r-pill', '--radius'} <= set(light)
     for name in ('--paper', '--raised', '--ink', '--grey', '--rule', '--well', '--green', '--on-green', '--red', '--pencil'):
-        assert COLOUR.match(light[name]), name
+        assert COLOUR.fullmatch(light[name]), name
     assert not RETIRED.search(' '.join(light))
 
 

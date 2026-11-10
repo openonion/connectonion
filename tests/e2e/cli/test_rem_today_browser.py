@@ -106,3 +106,18 @@ def test_palette_is_a_bottom_sheet_on_a_phone(reader, theme):
     box = page.locator('#palette').bounding_box()
     assert abs(box['y'] + box['height'] - 844) <= 1 and box['width'] >= 389
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
+
+
+def test_a_stray_e_never_closes_the_raised_card(reader):
+    """Review of #2929: E marked the raised card done from anywhere on Today. It acts only with focus in that card."""
+    page, _ = reader
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    raised = page.locator('#main .qcard.focal').get_attribute('data-path')
+    page.evaluate('document.activeElement.blur()', isolated_context=False)
+    page.keyboard.press('e')
+    page.wait_for_timeout(400)
+    assert page.locator('#done-notice').count() == 0
+    assert page.locator('#main .qcard.focal').get_attribute('data-path') == raised
+    page.locator('#main .qcard.focal').focus()
+    page.keyboard.press('e')
+    page.locator('#done-notice').wait_for()

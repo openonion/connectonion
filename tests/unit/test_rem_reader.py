@@ -4234,3 +4234,18 @@ def test_a_verb_before_the_user_as_object_or_possessive_is_left_alone():
         "Has Mara replied to the user?": "Has Mara replied to you?",
     }
     assert _youify(list(cases)) == list(cases.values())
+
+
+def test_the_night_chart_window_never_ends_before_it_starts():
+    """Review of #2929: run times later than the snapshot's as_of (a clock ahead of it) made start > end, so every
+    x position divided by a negative span. The window keeps at least an hour, and a phone keeps thirty hours."""
+    page = TEMPLATE.read_text()
+    function = re.search(r'function nightWindow\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const DAY_MS = 86400000, REM = {as_of: '2026-11-10T12:00:00Z'}, end = Date.parse(REM.as_of);
+      const ahead = nightWindow([end + 2 * 3600000, end + 5 * 3600000], false);
+      const phone = nightWindow([end - 4 * DAY_MS], true), desk = nightWindow([end - 4 * DAY_MS], false);
+      console.log(JSON.stringify({ahead: [ahead.end - ahead.start], phone: (phone.end - phone.start) / 3600000, desk: (desk.end - desk.start) / DAY_MS}));
+    ''')
+    assert result['ahead'][0] >= 3600000
+    assert result['phone'] == 30 and result['desk'] == 3
