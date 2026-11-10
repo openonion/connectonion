@@ -482,3 +482,81 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     assert talk.evaluate("node => [node === document.activeElement, node.selectionStart, node.selectionEnd]") == [True, 6, 8]
     if os.environ.get("CO_REM_SHOTS"):
         page.locator(".today-brief .qcard.open").screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / "updates-kept-words.png"))
+
+
+# Two owed items on one card, the draft answering the second: a long English item first, then REM's long Chinese
+# summary of the draft, and a letter long enough to scroll with a question slot under it (owner, 2026-11-10: the
+# letter was half covered by the slot row and the summary's second line ran into the row below).
+TWO_ITEMS = r'''async lang => {
+  REM.live = true;
+  const r = byPath('people/ines-halvorsen.md');
+  r.original = undefined;
+  r.text = r.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1- You owe Inès a reply on the Quinn Alder introduction: "Could you reply to her directly with a time that works for both of you next week"; due 2026-09-30 [2].\n')
+    .replace(/(files the return by [^\[\n]*)\[1\]/, '$1, and asks whether you will join the 11 November workshop or the 12 November year-end review, one answer for both [1]')
+    .replace(/(^## Sources[^\n]*\n)/mi, '$1- [2] outlook:7c1e9b3a5d20 — intro to Quinn; confidence high; observed 2026-09-25.\n');
+  REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+  REM.drafts = [{id: 'ines-receipts', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'prepared',
+    to: 'Ines Halvorsen <ines@example.test>', from: 'avery@example.test', subject: 'Re: Q3 receipts and the two autumn workshops',
+    body: 'Inès,\n\nThanks for the note about the receipts and the two workshops. I would rather keep our conversation on what your clients need from the forecast, and on who looks after the books once the return is filed, since that is where I can help most.\n\n【需要你：确认是否参加 11/11 工作坊、11/12 年终复盘，或都不参加】\n\nAvery',
+    gist: '建议把交流重点放在她客户对预测的需求、报税之后谁来维护账目这两件事上。是否同行参加哪一场工作坊，需要你确认后再回。',
+    why: 'She files the return soon.'}];
+  KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); setInterfaceLanguage(lang); render(); scrollTo(0, 0);
+}'''
+
+# The lines of `text` that `clip`'s box cuts through: part shown, part hidden. A line is read whole or not at all.
+CUT_LINES = r'''([text, clip]) => {
+  const range = document.createRange(); range.selectNodeContents(text);
+  const box = clip.getBoundingClientRect();
+  return [...range.getClientRects()].filter(line => line.width > 0 && line.height > 0)
+    .filter(line => line.top < box.bottom - 0.5 && line.bottom > box.top + 0.5 && (line.top < box.top - 0.5 || line.bottom > box.bottom + 0.5))
+    .map(line => [text.className, Math.round(line.top), Math.round(line.bottom), Math.round(box.top), Math.round(box.bottom)]);
+}'''
+
+
+def _apart(a, b):
+    return a["y"] + a["height"] <= b["y"] + 0.5 or b["y"] + b["height"] <= a["y"] + 0.5
+
+
+def _cut(page, text, clip):
+    return page.evaluate(CUT_LINES, [text.element_handle(), clip.element_handle()], isolated_context=False)
+
+
+@pytest.mark.parametrize("size", [(1440, 1000), (390, 844)])
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(today, size, lang):
+    page, _, _ = today
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(TWO_ITEMS, lang, isolated_context=False)
+    card = page.locator(".today-brief .qcard.open")
+    body, letter, slot = card.locator(".mail-body"), card.locator(".mail-text"), card.locator(".mail-choices .owner-slot")
+    if os.environ.get("CO_REM_SHOTS"):
+        page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-overlaps-{lang}-{size[0]}.png"))
+    assert slot.is_visible() and card.locator(".mail-actions .btn-act").first.is_visible()
+    assert _apart(body.bounding_box(), slot.bounding_box()), (body.bounding_box(), slot.bounding_box())
+    columns = [letter] + ([card.locator(".mail-gist")] if card.locator(".mail-gist").is_visible() else [])
+    assert [cut for column in columns for cut in _cut(page, column, body)] == []
+    # The letter is read by scrolling inside its window, to its last line.
+    assert body.evaluate("node => node.scrollHeight > node.clientHeight")
+    body.evaluate("node => { node.scrollTop = node.scrollHeight; }")
+    last = page.evaluate("""node => { const r = document.createRange(); r.selectNodeContents(node);
+      const lines = [...r.getClientRects()].filter(l => l.height > 0); return lines.at(-1).bottom; }""",
+                         letter.element_handle(), isolated_context=False)
+    assert last <= body.bounding_box()["y"] + body.bounding_box()["height"] + 0.5
+
+
+@pytest.mark.parametrize("size", [(1440, 1000), (390, 844)])
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, size, lang):
+    page, _, _ = today
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(TWO_ITEMS, lang, isolated_context=False)
+    items = page.locator(".today-brief .qcard.open .qitem")
+    assert items.count() == 2
+    for i in range(2):
+        words, below = items.nth(i).locator(".words"), items.nth(i).locator(".qkind")
+        if not words.is_visible():
+            continue
+        assert _cut(page, words, words) == [], (i, words.inner_text())
+        assert _apart(words.bounding_box(), below.bounding_box()), (i, words.bounding_box(), below.bounding_box())
