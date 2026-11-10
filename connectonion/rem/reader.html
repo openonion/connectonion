@@ -2852,6 +2852,128 @@
     .gx-row-name { flex-wrap: wrap; }
   }
 </style>
+<style id="hierarchy-style">
+  /* Hierarchy by disclosure (direction D, 2026-11-10): the same sheet, and every function kept, but at rest
+     one thing speaks per screen. L2 arrives on hover, focus or selection; L3 waits behind 更多 or a fold. */
+  /* One menu primitive: a quiet word that opens a paper sheet of real controls. */
+  .d-menu { position: relative; display: inline-flex; }
+  .d-more-btn { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.5 var(--font); cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .d-more-btn:hover, .d-more-btn[aria-expanded="true"] { color: var(--ink); text-decoration-color: var(--ink); }
+  .d-more-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .d-pop[hidden] { display: none; }
+  .d-pop { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 15em; max-width: min(22em, calc(100vw - 32px)); display: flex; flex-direction: column; padding: var(--u2) 0; background: var(--paper); border: var(--hair) solid var(--ink); text-align: left; animation: today-rise var(--t-press) var(--ease-out) both; }
+  .d-pop .d-item, .d-pop > a { display: flex; justify-content: space-between; align-items: baseline; gap: var(--u3); min-height: 34px; padding: 6px var(--u3); border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-body)/22px var(--font); text-align: left; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .d-pop .d-item:hover, .d-pop > a:hover { background: var(--rule); }
+  .d-pop .d-item:focus-visible, .d-pop > a:focus-visible { outline: 0; border-left: 2px solid var(--ink); background: var(--rule); }
+  .d-pop .d-item:disabled { color: var(--grey); cursor: default; background: none; }
+  .d-pop .d-item[aria-pressed="true"]::after { content: "✓"; color: var(--ink); font-size: var(--s-meta); }
+  .d-pop kbd, .d-pop .d-hint { font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .d-pop-k { margin: var(--u1) 0 0; padding: 0 var(--u3); font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); white-space: normal; }
+  .d-pop-sep { height: 0; border-top: var(--hair) solid var(--rule); margin: var(--u1) 0; }
+
+  /* Rail: the rarer rooms wait behind 更多; language, theme and reading settings behind 设置. */
+  .d-nav-more { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: var(--u1); padding: var(--u1) 0 var(--u1) var(--u3); font: var(--w-regular) var(--s-meta)/1.5 var(--font); color: var(--grey); cursor: pointer; margin-top: var(--u1); }
+  .d-nav-more::after { content: "▾"; font-size: var(--s-meta); transition: transform var(--t-press) var(--ease-out); }
+  .d-nav-more[aria-expanded="true"]::after { transform: rotate(180deg); }
+  .d-nav-more:hover, .d-nav-more:focus-visible { color: var(--ink); }
+  .d-nav-more:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .d-nav-more-list[hidden] { display: none; }
+  .d-nav-more-list { display: flex; flex-direction: column; }
+  .rail .foot { position: relative; }
+  .rail .foot-line { flex-wrap: nowrap; justify-content: space-between; }
+  .rail .foot-line .foot-facts { flex-basis: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail .foot-line .d-more-btn { white-space: nowrap; flex: none; }
+  .rail .foot .d-menu { position: static; }
+  .d-pop.d-pop-up { top: auto; bottom: calc(100% + 6px); left: 0; right: 0; min-width: 0; max-width: none; padding: var(--u3); gap: var(--u2); color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
+  .d-pop.d-pop-up .d-pop-k { padding: 0; }
+  .d-pop.d-pop-up .d-item { padding: 6px 0; font-size: var(--s-meta); }
+  .d-pop.d-pop-up .d-item:hover, .d-pop.d-pop-up .d-item:focus-visible { background: none; border-left: 0; text-decoration: underline; }
+  .d-pop.d-pop-up .theme-switch { display: inline-flex; align-items: baseline; background: none; padding: 0; gap: 0; }
+  .d-pop.d-pop-up .theme-btn { background: none; padding: 0; min-height: 0; font: inherit; color: var(--grey); }
+  .d-pop.d-pop-up .theme-btn + .theme-btn::before { content: "·" / ""; margin: 0 var(--u1); color: var(--grey); font-weight: var(--w-regular); }
+  .d-pop.d-pop-up .theme-btn:hover { color: var(--ink); }
+  .d-pop.d-pop-up .theme-btn.active { color: var(--ink); font-weight: var(--w-bold); }
+  .d-pop.d-pop-up #privacy-toggle { min-height: 32px; }
+  .search .kbd { border: 0; background: none; min-height: 0; line-height: 18px; }
+  .search .kbd:hover, .search .kbd:focus-visible { color: var(--ink); }
+
+  /* ---- Today. At rest: the count, the fuse, the front card's letter and its green Send. ---- */
+  @media (min-width: 1200px) { .morning-layout.d-one { display: block; margin: 0 auto; max-width: 840px; } }
+  .morning-layout.d-one .morning-primary, .d-night { max-width: 760px; }
+  .brief-header .kicker { justify-content: space-between; }
+  .brief-header .kicker .d-menu { margin-left: auto; }
+  .brief-header .kicker .approval-header:empty { display: none; }
+  /* Fuse: each lane brings that person's card forward; the legend speaks only when you look at the fuse. */
+  .fuse .lane button.who { all: unset; box-sizing: border-box; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); min-height: 22px; }
+  .fuse .lane.current button.who { color: var(--ink); font-weight: var(--w-bold); }
+  .fuse .lane button.who:hover { color: var(--ink); }
+  .fuse .lane button.who:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .fuse .sketch { visibility: hidden; }
+  .fuse:hover .sketch, .fuse:focus-within .sketch { visibility: visible; }
+  /* The axis is a reading aid like the legend: it arrives with it. The heavy today line stays. */
+  .fuse:not(:hover):not(:focus-within) .axis .scale span { visibility: hidden; }
+
+  /* Cards not in front: who, how late, one grey line. Their own actions arrive on hover or focus. */
+  .today-brief .qcard:not(.focal) .qitem + .qitem { display: none; }
+  .today-brief .qcard:not(.focal) .qitem .words { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .today-brief .qcard:not(.focal) :is(.d-acts, .qmore, .qdraft) { display: none; }
+  .today-brief .qcard:not(.focal):not(:hover):not(:focus-within) .card-acts { display: none; }
+  .today-brief .qcard.focal[data-step="send"] .card-acts { display: none; }
+  /* Items: one line at rest. Hover or keyboard focus lays the item's own actions over the line's end. */
+  .today-brief .qitem { display: block; padding: 2px 0; outline: 0; }
+  .today-brief .qcard.focal .qitem .words { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 4px 0 0; line-height: 27px; }
+  .today-brief .qcard.focal .qitem.d-open .words { display: block; white-space: normal; -webkit-line-clamp: unset; }
+  .today-brief .qitem .words :is(sup, .cite) { display: none; }
+  .today-brief .qitem.d-open .words :is(sup, .cite) { display: inline; }
+  .today-brief .qcard .qmore { display: none; }
+  .today-brief .qcard.focal .qitem.d-open .qmore { display: block; margin: 2px 0 var(--u2); }
+  .d-acts { position: absolute; z-index: 2; top: 2px; right: 0; display: flex; align-items: center; gap: 2px var(--u3); padding-left: 56px; min-height: 31px;
+    background: linear-gradient(to right, transparent, var(--paper) 44px); opacity: 0; pointer-events: none; transition: opacity var(--t-press) var(--ease-out); }
+  .qitem:hover > .d-acts, .qitem:focus-within > .d-acts, .qitem.d-open > .d-acts, .qitem:has(.handed, .handoff-status:not(:empty), details[open], .talk-slot:not(:empty)) > .d-acts { opacity: 1; pointer-events: auto; }
+  .qitem.d-open > .d-acts, .qitem:has(.handed, .handoff-status:not(:empty), .talk-slot:not(:empty)) > .d-acts { position: static; padding-left: 0; background: none; flex-wrap: wrap; }
+  .d-acts .handoff { display: contents; }
+  .d-acts .handoff-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--u2); margin: 0; }
+  .d-acts .talk-slot { flex-basis: 100%; order: 9; }
+  .d-acts .talk-slot:empty { display: none; }
+  .d-acts .btn-quiet, .d-acts .talk-menu > summary, .d-a { min-height: 28px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/18px var(--font); white-space: nowrap; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .d-acts .btn-quiet:hover, .d-a:hover, .d-a:focus-visible { color: var(--ink); text-decoration-color: var(--ink); }
+  .d-acts .qdone { position: static; opacity: 1; width: 28px; height: 28px; }
+  .today-brief .qitem:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .today-brief .qitem:focus-visible .words { padding-left: 8px; box-sizing: border-box; }
+  /* The letter: To / CC / Subject stay (they are the letter); the channel switch and the writing tools arrive when you are in it. */
+  .qcard.focal .mailcard .mail-channels { opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
+  .qcard.focal .mailcard:hover .mail-channels, .qcard.focal .mailcard:focus-within .mail-channels { opacity: 1; }
+  .mail-body:not(.d-gist) .mail-gist { display: none; }
+  .mail-body.bilingual:not(.d-gist) { grid-template-columns: minmax(0, 1fr); }
+  .mailcard > .mail-why[hidden] { display: none; }
+  .mailcard > .mail-why { margin: 0; padding: var(--u2) var(--u3); border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-meta)/1.6 var(--font); color: var(--grey); }
+  .mail-actions .d-l2 { display: inline-flex; gap: 0 var(--u3); opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
+  .mailcard:hover .mail-actions .d-l2, .mailcard:focus-within .mail-actions .d-l2 { opacity: 1; }
+  .mail-actions .d-l2 .btn-quiet { padding: 0; min-height: 32px; font-size: var(--s-meta); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .mail-actions .d-menu { margin-left: auto; }
+  .mail-actions .d-pop { top: auto; bottom: calc(100% + 6px); min-width: 16em; }
+  .mail-actions .mail-note { display: none; }
+  .mail-actions .choose-hint { color: var(--red); }
+  .mailcard .btn-act { border: 0; }
+  .today-brief .mailcard { overflow: visible; }
+  .brief-header .d-pop #approve-all { min-height: 34px; padding: 6px var(--u3); color: var(--ink) !important; font: var(--w-regular) var(--s-body)/22px var(--font); text-decoration: none !important; }
+  .brief-header .d-pop #approve-all:disabled { color: var(--grey) !important; }
+  /* Overnight and memory: one fold under the queue; its summary sentence is the only thing at rest. */
+  .d-night { margin-top: var(--u5); border-top: var(--hair) solid var(--rule); font-family: var(--font); }
+  .d-night > summary { list-style: none; display: flex; align-items: baseline; gap: var(--u3); padding: var(--u3) 0; cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-meta)/18px var(--font); }
+  .d-night > summary::-webkit-details-marker { display: none; }
+  .d-night > summary .d-night-k { flex: none; color: var(--ink); font-weight: var(--w-bold); }
+  .d-night > summary .d-night-s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-night > summary::after { content: ""; margin-left: auto; align-self: center; flex: none; border-top: 5px solid currentColor; border-left: 4px solid transparent; border-right: 4px solid transparent; transition: transform var(--t-press) var(--ease-out); }
+  .d-night[open] > summary::after { transform: rotate(180deg); }
+  .d-night > summary:hover { color: var(--ink); }
+  .d-night > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .d-night .d-night-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--u5); align-items: start; }
+  .d-night .d-night-body > * { margin-top: 0; }
+  .d-night .night-done { grid-row: span 2; margin: 0; }
+  .d-night-folds { margin-top: var(--u5); }
+  .d-night-folds > details { max-width: 760px; }
+
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -2864,7 +2986,7 @@
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
       <input id="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search the notebook">
       <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
-      <span class="kbd" aria-hidden="true">/</span>
+      <button type="button" class="kbd" aria-label="Search or run a command">/</button>
     </div>
     <button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button>
     <div class="rail-menu" id="rail-menu">
@@ -4014,6 +4136,37 @@ function el(tag, attrs, children) {
   for (const child of children || []) if (child != null) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
   return node;
 }
+// ---------- disclosure: one quiet word that opens a sheet of real controls (direction D) ----------
+function moreMenu(items, { label = t("More actions"), cls = "", role = "menu" } = {}) {
+  const id = "menu-" + (moreMenu.seq = (moreMenu.seq || 0) + 1);
+  const button = el("button", { type: "button", class: "d-more-btn", "aria-haspopup": role === "menu" ? "menu" : "true", "aria-expanded": "false", "aria-controls": id, text: label });
+  return el("span", { class: "d-menu" }, [button, el("div", { class: "d-pop " + cls, id, hidden: "", ...(role === "menu" ? { role } : {}) }, items.filter(Boolean))]);
+}
+// A menu item runs its own action; `proxy` presses an existing control, so behaviour stays that control's.
+function menuItem(text, run, { hint = "", proxy = null, pressed = null } = {}) {
+  const item = el("button", { type: "button", role: "menuitem", class: "d-item", ...(pressed === null ? {} : { "aria-pressed": String(pressed) }) },
+    [text, hint ? el("span", { class: "d-hint", text: hint }) : null]);
+  if (proxy?.disabled) item.disabled = true;
+  item.onclick = () => proxy ? proxy.click() : run();
+  return item;
+}
+function menuLink(text, link, hint = "") {
+  return el("a", { role: "menuitem", href: link, ...(/^https?:/.test(link) ? { target: "_blank", rel: "noopener" } : {}) }, [text, hint ? el("span", { class: "d-hint", text: hint }) : null]);
+}
+function closeMenus(except) {
+  for (const button of document.querySelectorAll('[aria-haspopup][aria-expanded="true"]')) {
+    if (button === except) continue;
+    button.setAttribute("aria-expanded", "false");
+    document.getElementById(button.getAttribute("aria-controls")).hidden = true;
+  }
+}
+function toggleMenu(button) {
+  const pop = document.getElementById(button.getAttribute("aria-controls")), open = button.getAttribute("aria-expanded") !== "true";
+  closeMenus(button);
+  button.setAttribute("aria-expanded", String(open));
+  pop.hidden = !open;
+  if (open && pop.getAttribute("role") === "menu") pop.querySelector("button:not(:disabled), a")?.focus();
+}
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
@@ -5132,7 +5285,12 @@ function slotChoices(part, fills, i, onChange, keep) {
   }
   return row;
 }
-function replyDraftCard(draft, onSent) {
+// A 更多 item that switches a part of the card on and off, and says which state it is in.
+function cardToggle(text, flip) {
+  const item = menuItem(text, () => item.setAttribute("aria-pressed", String(!!flip())), { pressed: false });
+  return item;
+}
+function replyDraftCard(draft, onSent, extras = [], also = "") {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
     ? parts.map((part, i) => fills[i] ?? part).join("") : null;
@@ -5142,9 +5300,9 @@ function replyDraftCard(draft, onSent) {
   const syncChoices = () => {
     for (const [i, marker] of Object.entries(markers)) marker.textContent = fills[i] || slotWhat(parts[i]);
     status.textContent = "";
-    if (REM.live) send.disabled = filled() === null;
-    hint.hidden = filled() !== null;
+    hint.hidden = !tried || filled() !== null;
   };
+  let tried = false;
   const choiceRows = parts.map((part, i) => isSlot(part) ? slotChoices(part, fills, i, () => syncChoices(), draft.id && "slot:" + draft.id) : null).filter(Boolean);
   const hint = el("span", { class: "choose-hint", text: t("Choose above before sending.") });
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
@@ -5154,15 +5312,30 @@ function replyDraftCard(draft, onSent) {
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip") });
   const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
-  const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
-    const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
-    if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
-    return pill;
-  }));
-  const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip, hint,
-      el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
-        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]);
-  const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
+  const pills = ["mail", "lark", "whatsapp"].map(name => {
+    const text = t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]), node = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text });
+    if (name !== channel) node.onclick = () => run("redraft", undefined, name);
+    return { name, text, node };
+  });
+  const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, pills.map(pill => pill.node));
+  const note = el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
+    : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) });
+  // Why REM wrote it this way and the owner's-language reading wait behind the card's 更多 (L3).
+  const why = draft.why ? el("p", { class: "mail-why", hidden: "" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why + (also ? " " + also : "")]) : null;
+  // The owner's-language reading sits beside the letter once 中文对照 is on.
+  const body = el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
+    el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
+      // The choice row is a block of its own, so the blank lines around it would only add height.
+      parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
+    draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist })]) : null]);
+  const toggles = [draft.gist && cardToggle(t("In your words"), () => body.classList.toggle("d-gist")),
+    why && cardToggle(t("Why this reply"), () => { why.hidden = !why.hidden; return !why.hidden; })];
+  const others = pills.filter(pill => pill.name !== channel).map(pill => menuItem(t("Reply with {channel}", { channel: pill.text }), null, { proxy: pill.node }));
+  const menu = moreMenu([...toggles, el("div", { class: "d-pop-sep" }), ...others, menuItem(t("Write full screen"), null, { proxy: write, hint: "R" }),
+    channel === "mail" ? menuItem(t("Edit in {provider}", { provider }), null, { proxy: edit }) : null, menuItem(t("Skip"), null, { proxy: skip }), ...extras]);
+  // At rest: Send and 更多. The writing tools arrive when the pointer or focus is in the letter (L2).
+  const actions = el("div", { class: "mail-actions" }, [send, el("span", { class: "d-l2", role: "group", "aria-label": t("Write the letter") },
+    [write, ...(channel === "mail" ? [edit] : []), skip]), hint, note, menu]);
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -5171,16 +5344,11 @@ function replyDraftCard(draft, onSent) {
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]
       : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
           el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
-    el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
-      el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
-        // The choice row is a block of its own, so the blank lines around it would only add height.
-        parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
-      // Why this reply sits under the owner's-language reading, beside the letter, not under it.
-      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist }), why]) : null]),
-    draft.gist ? null : why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
+    body, why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
   if (!REM.live) {
     // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
-    actions.replaceChildren(el("button", {type: "button", class: "btn-act", disabled: "", text: t("Send")}));
+    const offline = [...toggles, ...extras].filter(Boolean);  // what a snapshot can still do: read, open the thread
+    actions.replaceChildren(el("button", {type: "button", class: "btn-act", disabled: "", text: t("Send")}), offline.length ? moreMenu(offline) : null);
     channels.replaceChildren(el("span", {text: t({mail: "Mail", lark: "Lark", whatsapp: "WhatsApp"}[channel])}));
     return draft.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [card])])) : card;
   }
@@ -5200,7 +5368,7 @@ function replyDraftCard(draft, onSent) {
     }
     if (action === "redraft") {
       REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
-      card.replaceWith(replyDraftCard(result));
+      card.replaceWith(replyDraftCard(result, onSent, extras));
       return;
     }
     const next = action === "send" ? "sent" : "discarded";
@@ -5228,7 +5396,8 @@ function replyDraftCard(draft, onSent) {
   };
   send.onclick = () => {
     const body = filled();
-    if (body === null) {status.textContent = t("Fill the marked part first"); return;}
+    // Send stays green: with REM's question unanswered it says so and puts the cursor there.
+    if (body === null) {tried = true; hint.hidden = false; status.textContent = t("Fill the marked part first"); card.querySelector(".mail-choices input, .mail-choices button")?.focus(); return;}
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
@@ -5883,19 +6052,26 @@ function renderRail(active) {
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
     el("span", {}, [moon(known(owner).status), " " + t("You")]), el("span", { class: "who", text: owner.title })]));
   nav.appendChild(el("div", { class: "label", text: t("Your day") }));
-  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"],
-    ["changes", "Memory changes", "#view=changes"]])
+  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"]])
     nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
   // Owner, 2026-11-09: sixteen right-aligned counts were the loudest thing on screen. Only Waiting on you
   // keeps its number; a category's size is not something to do. An empty category still stays out.
+  // Owner, 2026-11-10: the rooms he opens daily stay; the rarer ones wait behind 更多 (opened when one is current).
   nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
+  const room = (key, title, link) => el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title })]);
+  const daily = ["people", "orgs", "projects"], rarer = [room("changes", t("Memory changes"), "#view=changes")];
   for (const c of memoryCategories()) {
     const empty = (detailReady || c !== "sessions") && !inCategory(c).length;
-    if (empty && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
-    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" }, [el("span", { text: label(c) })]));
+    if (empty && active !== c && !daily.includes(c)) continue;
+    if (daily.includes(c)) nav.appendChild(room(c, label(c), "#c=" + c));
+    else rarer.push(room(c, label(c), "#c=" + c));
   }
-  nav.appendChild(el("div", { class: "gap" }));
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") })]));
+  nav.appendChild(room("all", t("All records"), "#c=all"));
+  const open = rarer.some(link => link.classList.contains("active"));
+  const more = el("button", { type: "button", class: "d-nav-more", id: "nav-more-btn", "aria-expanded": String(open), "aria-controls": "nav-more", text: t("More rooms") });
+  const list = el("div", { class: "d-nav-more-list", id: "nav-more", ...(open ? {} : { hidden: "" }) }, rarer);
+  more.onclick = () => { const now = list.hidden; list.hidden = !now; more.setAttribute("aria-expanded", String(now)); };
+  nav.append(more, list);
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
@@ -5915,13 +6091,9 @@ function renderRail(active) {
     button.onclick = () => setInterfaceLanguage(tag);
     languageSwitch.appendChild(button);
   }
-  // One quiet footer: the release and the render time (#rendered-at, which also says a failed
-  // rebuild), then language and theme, each part still a control.
-  // The 224px nav cannot carry all four on one row, so it breaks between the facts and the switches.
+  // One quiet footer: the release and the render time (#rendered-at, which also says a failed rebuild),
+  // and 设置, which holds language, theme, reading settings, the shortcuts and a redraw.
   const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
-  foot.appendChild(el("div", { class: "foot-line" }, [
-    el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
-      el("span", { class: "as-of", id: "rendered-at", text: t("Updated") + " " + asOf })]), languageSwitch, themeSwitch]));
   const hidden = document.documentElement.classList.contains("hide-private");
   const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: t(hidden ? "Show labelled passages" : "Hide labelled passages"),
@@ -5936,7 +6108,13 @@ function renderRail(active) {
   settings.appendChild(el("div", { text: nightlyUpdatesOff() ? t("Nightly updates are off.") : t(schedule).replace(/`/g, "") }));
   settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
     el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
-  foot.appendChild(settings);
+  const sheet = moreMenu([el("div", { class: "d-pop-k", text: t("Interface language") }), languageSwitch, el("div", { class: "d-pop-k", text: t("Theme") }), themeSwitch, settings,
+    el("div", { class: "d-pop-sep" }), menuItem(t("Keyboard shortcuts"), () => openShortcuts(), { hint: "?" }), menuItem(t("Reload now"), () => drawKeepingView())],
+    { label: t("Settings"), cls: "d-pop-up", role: "sheet" });
+  sheet.querySelector("button").id = "settings-btn";
+  foot.appendChild(el("div", { class: "foot-line" }, [
+    el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
+      el("span", { class: "as-of", id: "rendered-at", text: t("Updated") + " " + asOf })]), sheet]));
   const ownerPage = byPath(REM.owner);
   document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
 }
@@ -6326,21 +6504,31 @@ function ownerLine(draft) {
   if (uiLanguage === "en" || draft?.private || !["prepared", "no_reply"].includes(draft?.status) || !/\p{Script=Han}/u.test(draft.gist || "")) return null;
   return t(draft.status === "no_reply" ? "No reply needed: " : "REM drafted: ") + draft.gist;
 }
-function cardItem(entry, many, seen = new Set(), more = null) {
+// One line at rest. Its actions (hand to an agent, talk it over, expand, done) arrive on hover or focus (L2);
+// the kind, the age, REM's note and the original words wait behind 展开 (L3).
+function cardItem(entry, many, seen = new Set()) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
   if (own) seen.add(draft.id);
   const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + " · E", "aria-label": t("Mark done"), html: CHECK_ICON });
   done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
-  return el("li", { class: "qitem" }, [
+  const expand = el("button", { type: "button", class: "btn-quiet d-expand", "aria-expanded": "false", text: t("Expand") });
+  const item = el("li", { class: "qitem", tabindex: "0" }, [
     own ? el("p", { class: "words own", text: own, title: words })
-      : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry), more]),
+      : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]),
+    el("div", { class: "d-acts", role: "group", "aria-label": t("This item's actions") }, [handOff(entry), expand, done]),
+    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)])]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
+  expand.onclick = () => {
+    const open = item.classList.toggle("d-open");
+    expand.setAttribute("aria-expanded", String(open));
+    expand.textContent = t(open ? "Collapse" : "Expand");
+  };
+  return item;
 }
-function cardDraft(draft, group) {
+function cardDraft(draft, group, extras) {
   const n = group.entries.length;
   const sent = held => {
     // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
@@ -6351,8 +6539,9 @@ function cardDraft(draft, group) {
     document.querySelector(".fuse .lane" + selector)?.classList.add("done");
     setTimeout(render, still ? 0 : 320);
   };
-  return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, sent)]);
+  // "One reply can answer both" is part of why the letter is written this way, so it waits there (L3).
+  const both = n > 1 ? t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) : "";
+  return el("div", { class: "qdraft" }, [both && !draft.why ? el("p", { class: "quiet-line", text: both }) : null, replyDraftCard(draft, sent, extras, both)]);
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
@@ -6571,18 +6760,22 @@ function talkPanel(begin) {
 function personCard(group, focal) {
   const { r, entries } = group, next = groupStep(entries), late = overdueDays(entries[0].t);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
-  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More") }) : null;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
-    draft ? cardDraft(draft, group) : null,
+    cardHead(group, late), el("ul", { class: "qitems" }, entries.map(entry => cardItem(entry, entries.length > 1, seen))),
+    draft ? cardDraft(draft, group, draftExtras(next, () => card)) : null,
     el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
-  // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
-  if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
   // The talk menu and an open conversation are the card's own controls: using them never folds it.
-  card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
+  // A click on a card that is not in front brings it forward.
+  card.onclick = event => { if (!focal && !event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) bringForward(r.path); };
   return card;
+}
+// The card's own actions, in the letter's 更多 while the letter is open: its thread, done, not done yet.
+function draftExtras(next, card) {
+  const thread = mailboxLink(next.entry), notDone = notDoneAction(next);
+  return [el("div", { class: "d-pop-sep" }), thread && menuLink(thread.textContent, thread.href, "↗"),
+    menuItem(t("Mark done"), () => card().markDone(), { hint: "E" }), notDone && menuItem(notDone.textContent, null, { proxy: notDone })];
 }
 function openDraft(card) {
   card.classList.add("open");
@@ -6706,11 +6899,11 @@ function todayEntries(entries, section = "today") {
     .filter((entry, i, rows) => entry && !isDone(entry) && rows.indexOf(entry) === i);
 }
 
-function todayCards(groups, lead = null) {
+function todayCards(groups, lead = null, front = groups[0]?.r.path) {
   const sent = sentNote();
   return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [
     lead ? el("p", { class: "lead-why", text: t("Reply to {name} first: the reply is ready", { name: threadWho(lead.r) }) }) : null, groups.length || sent
-    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0))])
+    ? el("ol", { class: "today-threads", id: "today-threads" }, [sent, ...groups.map(group => personCard(group, group.r.path === front))])
     : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
 }
 // The fuse: one lane per person waiting. Ink runs from their oldest dated message to the due
@@ -6726,7 +6919,7 @@ function fuseLanes(groups, current) {
   });
   const span = Math.max(7, ...rows.map(row => row.age)), at = days => (days / span * 100).toFixed(2) + "%";
   const lane = ({ group, late, age, due }, i) => el("li", { class: "lane" + (group.r.path === current ? " current" : "") + (i > 2 && group.r.path !== current ? " extra" : "") + (i > 4 && group.r.path !== current ? " extra-wide" : ""), "data-path": group.r.path }, [
-    el("a", { class: "who", href: href(group.r), text: threadWho(group.r) }),
+    laneWho(group),
     el("span", { class: "track", "aria-hidden": "true" }, [
       age > late ? el("i", { class: "seg wait", style: "right: " + at(late) + "; width: " + at(age - late) }) : null,
       late ? el("i", { class: "seg burn", style: "width: " + at(late) }) : null, el("i", { class: "now" })]),
@@ -6741,6 +6934,12 @@ function fuseLanes(groups, current) {
       el("span", { class: "l", text: t("{n} days ago", { n: span }) }), el("span", { class: "m", text: t("{n} days ago", { n: Math.round(span / 2) }) }),
       el("span", { class: "r", text: t("Today") })]), el("span")]),
     el("p", { class: "sketch", text: t("Red = days past the due date · ink starts at the oldest dated message") })]);
+}
+// A lane's name brings that person's card forward; the name on the card is the link to their page.
+function laneWho(group) {
+  const button = el("button", { type: "button", class: "who", "aria-controls": "today-threads", text: threadWho(group.r) });
+  button.onclick = () => bringForward(group.r.path);
+  return button;
 }
 async function approvalRequest(payload) {
   const response = await fetch("/rem/approve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
@@ -6759,15 +6958,23 @@ function approvalProblems() {
   }));
 }
 function approvalHeader() {
-  const items = REM.approval_outcomes || [];
-  if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
-  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t(items.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: items.length})});
+  const items = REM.approval_outcomes || [], problems = approvalProblems();
+  if (!items.length && !REM.live) return { button: null, problems };  // a snapshot never gains outcomes later
+  const button = el("button", {id: "approve-all", class: "d-item", role: "menuitem", type: "button", text: t(items.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: items.length})});
   // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). The button stays
-  // in the page, hidden, so an Undo that brings items back can show it again.
+  // in the page's 更多, hidden, so an Undo that brings items back can show it again.
   button.disabled = !REM.live || !items.length;
   button.hidden = !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
-  return el("div", {class: "approval-header"}, [button, approvalProblems()]);
+  return { button, problems };
+}
+// Page 更多 (L3): the lists behind Today, approve-all, the snapshot's one line, the shortcuts.
+function pageMenu(counts, approve) {
+  const open = counts.mine || counts.theirs ? waitingMore(counts).querySelector("a") : null;
+  const snapshot = REM.live ? [] : [el("p", { class: "d-pop-k snapshot-line", text: t("This is a snapshot: sending and handing work to an agent happen in the live reader.") }),
+    REM.live_link ? menuLink(t("Open the live reader"), REM.live_link) : null];
+  return moreMenu([open && menuLink(open.textContent, "#view=open"), approve, menuLink(t("Questions & connections →"), "#reviews=1"),
+    el("div", { class: "d-pop-sep" }), ...snapshot, menuItem(t("Keyboard shortcuts"), () => openShortcuts(), { hint: "?" })]);
 }
 function approvalStatus(value) {
   return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
@@ -6910,8 +7117,8 @@ function briefHeader(counts, groups, approval = null) {
   const h1 = at < 0 ? el("h1", { text: sentence }) : el("h1", { class: "poster" }, [sentence.slice(0, at).trim() || null,
     el("span", { class: "count", text: String(n) }), " ", el("span", { class: "words", text: sentence.slice(at + String(n).length).trim() })]);
   const header = el("header", { class: "brief-header" }, [el("div", { class: "kicker" }, [el("div", { class: "eyebrow", text:
-    uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }), waitingMore(counts), approval]),
-    h1, urgentLede(groups, day)]);
+    uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }), counts.mine || counts.theirs ? null : waitingMore(counts), pageMenu(counts, approval?.button)]),
+    h1, urgentLede(groups, day), approval?.problems]);
   const failure = REM.status?.schedule_failure;
   if (failure) header.prepend(el("p", { class: "schedule-failure", role: "status", title: failure.evidence || "", text: turnTrouble(failure) }));
   return header;
@@ -6974,8 +7181,7 @@ function overview() {
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
   const header = briefHeader(counts, groups, approvalHeader());
   approvalUndoBar();
-  // Who needs you on the left; on a wide screen, what REM did for you sits beside it, front-page style.
-  // Narrow, one column in one order: who needs you, what REM did, what changed, what is worth remembering.
+  // One column: who needs you, then one fold for the night (owner, 2026-11-10: hierarchy, not a front page).
   // The count ticks down when a send took someone off it.
   if (groups.length < shownCount) header.querySelector(".count")?.classList.add("ticked");
   shownCount = groups.length;
@@ -6983,30 +7189,48 @@ function overview() {
   // Send is on the first screen; everyone else keeps their place, and that person's lane is the bold one.
   const ready = groups.findIndex(group => groupStep(group.entries).step === "send"), cards = [...groups];
   if (ready > 0) cards.unshift(...cards.splice(ready, 1));
-  const primary = el("div", { class: "morning-primary" }, [header, snapshotLine(), firstMapBrief(), fuseLanes(groups, cards[0]?.r.path), todayCards(cards, ready > 0 ? cards[0] : null)]);
-  const aside = el("div", { class: "morning-aside" }, [nightDone(), morningBrief(), recallPrompt(), connectionReview()].filter(Boolean));
-  main.appendChild(el("div", { class: "morning-layout" }, [primary, aside, quietThreads(entries, counts.quiet, true)]));
-
-  // This week: what the nightly passes rewrote, newest first, each with its one line.
-  const week = weekChanges();
-  if (week.length) {
-    main.appendChild(el("details", { id: "week-pages", class: "week-details" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
-      el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
-        el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
-        el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-          known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
-  }
-  // Under the pages it is about, not floating between unrelated sections.
-  const translations = translationNotice();
-  if (translations) main.appendChild(translations);
-
-  const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
+  // One card is in front; a lane or a click brings another forward without changing the order.
+  const front = cards.some(group => group.r.path === todayFront) ? todayFront : cards[0]?.r.path;
+  const primary = el("div", { class: "morning-primary" }, [header, firstMapBrief(), fuseLanes(groups, front), todayCards(cards, ready > 0 ? cards[0] : null, front)]);
+  main.appendChild(el("div", { class: "morning-layout d-one" }, [primary, nightFold(entries, counts)]));
+}
+// This week: what the nightly passes rewrote, newest first, each with its one line.
+function weekFold(week) {
+  if (!week.length) return null;
+  return el("details", { id: "week-pages", class: "week-details" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
+    el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
+      el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
+      el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
+        known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]);
+}
+function recentFold() {
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
-  if (recent.length && !week.length) main.appendChild(el("details", { class: "week-details recent-details" }, [
-    el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]));
-  main.appendChild(processing);
-  main.appendChild(maintenance(REM.status || {}));
+  return recent.length ? el("details", { class: "week-details recent-details" }, [
+    el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]) : null;
+}
+// Bring a waiting person's card to the front: the page redraws in place and focus lands on that card.
+let todayFront = null;
+function bringForward(path) {
+  todayFront = path;
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+  const card = [...document.querySelectorAll("#main .qcard")].find(node => node.dataset.path === path);
+  if (card) focusCard(card);
+}
+// What REM did overnight, what changed and what is worth remembering: one fold under the queue (L3);
+// its summary sentence is the only part at rest. The rarer lists fold once more inside it.
+function nightFold(entries, counts) {
+  const done = nightDone(), brief = morningBrief();
+  const said = done ? [...done.querySelectorAll("li > b")].map(b => b.textContent).join(uiLanguage === "zh" ? "，" : ", ")
+    : brief.querySelector(".quiet-line, li")?.textContent || "";
+  const week = weekChanges();
+  const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
+  return el("details", { id: "night", class: "d-night" }, [
+    el("summary", {}, [el("span", { class: "d-night-k", text: t(done ? "What REM did overnight" : "Overnight") }), el("span", { class: "d-night-s", text: said })]),
+    el("div", { class: "morning-aside d-night-body" }, [done, brief, recallPrompt(), connectionReview()].filter(Boolean)),
+    el("div", { class: "d-night-folds" }, [quietThreads(entries, counts.quiet, true), weekFold(week), translationNotice(), week.length ? null : recentFold(), processing, maintenance(REM.status || {})].filter(Boolean))]);
 }
 
 function maintenance(s) {
@@ -7471,6 +7695,7 @@ function personSessions(r) {
 }
 // What is still open between you, as facts of the record (D-30: no to-do UI here; D-36: not folded).
 // The words and the date only; marking, replying and closing happen in Today.
+// Direction D (owner, 2026-11-10: records are records): the list is done in Waiting on you; here one quiet line says how many.
 function personTopics(r) {
   const items = threads(r).items.filter(item => item.dir !== "third");
   const rows = items.map(item => {
@@ -11365,6 +11590,7 @@ function render() {
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".skip").textContent = t("Skip to content");
   document.querySelector(".nav-toggle").textContent = t("Menu");
+  document.querySelector(".search .kbd").setAttribute("aria-label", t("Search or run a command"));
   const { record: r, category: c, query, related, heading, view, reviews } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
@@ -11731,6 +11957,20 @@ document.addEventListener("click", e => {
   if (r && openEvidence(r, number, citation)) e.preventDefault();
 });
 
+// Menus (direction D): a click outside or on an item closes them; Esc closes; arrows move inside.
+document.addEventListener("click", event => {
+  const button = event.target.closest(".d-more-btn[aria-haspopup]");
+  if (button) { event.stopPropagation(); toggleMenu(button); return; }
+  if (!event.target.closest(".d-pop") || event.target.closest('.d-pop[role="menu"] :is(.d-item, a)')) closeMenus();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") return closeMenus();
+  const pop = event.target.closest?.('.d-pop[role="menu"]');
+  if (!pop || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  const items = [...pop.querySelectorAll(".d-item:not(:disabled), a")], i = items.indexOf(event.target);
+  items[(i + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+});
 const qInput = document.getElementById("q");
 const qClear = document.getElementById("q-clear");
 qInput.addEventListener("input", e => {

@@ -156,9 +156,10 @@ def test_this_week_project_rows_strip_the_now_label():
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
                           for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine"])
-    week = page[page.index("  // This week: what"):page.index('  const processing = el("details"')]
+    # The week's pages fold inside Today's overnight fold (direction D); the row text is unchanged.
+    week = "rows.push(weekFold(weekChanges()));"
     script = "\n".join([
-        parsing, functions,
+        parsing, functions, re.search(r"function weekFold\(.*?\n\}", page, re.S).group(0),
         'const youify = text => text;',
         'const translationPending = () => false; const el = (tag, attrs, children = []) => ({tag, ...attrs, children});',
         'const shortDate = day => day, moon = () => null, href = r => r.path;',
@@ -1427,7 +1428,8 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard',
+                                       'moreMenu', 'menuItem', 'cardToggle'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1451,9 +1453,12 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    buttons = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
-    assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
+    actions = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
+    # At rest Send and 更多; the writing tools are one group that arrives on hover or focus (direction D).
+    writing = next(node for node in actions if node and node.get('class') == 'd-l2')['children']
+    assert [actions[0]['text']] + [button['text'] for button in writing if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
+    assert actions[-1]['class'] == 'd-menu' and actions[-1]['children'][0]['text'] == 'More actions'
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
     assert result['actions']['children'][0]['text'] == 'Open the page'  # no archived thread identity
     assert result['actions']['children'][1]['text'] == 'Mark done'
@@ -1470,7 +1475,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink',
+                                       'moreMenu', 'menuItem', 'menuLink', 'cardToggle', 'draftExtras'])
     result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -1505,9 +1511,11 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert mail['children'][1]['children'][0]['text'] == 'I will send the review tomorrow.'
     gist = mail['children'][1]['children'][1]
     assert gist['class'] == 'mail-gist' and gist['children'][1]['text'] == '明天发出审阅意见。'
-    # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
-    why = gist['children'][2]
-    assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
+    # Direction D: Why this reply waits behind the card's 更多 (L3), its own paragraph under the letter.
+    why = mail['children'][2]
+    assert why['class'] == 'mail-why' and why['hidden'] == '' and '先确认收到，再给出明确的回复时间。' in why['children']
+    menu = mail['children'][4]['children'][-1]['children'][1]['children']
+    assert [item['children'][0] for item in menu[:2]] == ['In your words', 'Why this reply']
     assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
     assert mail['children'][4]['children'][0]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
@@ -1531,7 +1539,7 @@ def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_fi
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, waitingMore = () => ({tag: 'p'});
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, waitingMore = () => ({tag: 'p'}), pageMenu = () => null;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const groups = [{r: {title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
         {r: {title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]}];
@@ -1570,7 +1578,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       let OWING = null;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
-      const threadWho = r => r.title, waitingMore = () => null;
+      const threadWho = r => r.title, waitingMore = () => null, pageMenu = () => null;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
       const lines = pairs.map((words, i) => '- You owe Mara a review of the ' + words
@@ -2742,7 +2750,7 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede', 'turnTrouble'])
     result = _run_reader_js(ui + function + r'''
       uiLanguage = ''' + json.dumps(language) + r''';
-      const waitingMore = () => null, threadWho = r => r.title;
+      const waitingMore = () => null, threadWho = r => r.title, pageMenu = () => null;
       const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
       const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
@@ -2886,7 +2894,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard', 'moreMenu', 'menuItem', 'cardToggle'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -3073,9 +3081,10 @@ def test_static_approval_cta_and_durable_failure_copy():
     result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
+      // Direction D: the button lives in Today's page 更多; delivery problems stay at rest under the headline.
       const header = approvalHeader();
-      console.log(JSON.stringify({disabled: header.querySelector('button').disabled, instruction: header.querySelector('code'),
-        failures: header.querySelector('.approval-problems').textContent}));
+      console.log(JSON.stringify({disabled: header.button.disabled, instruction: header.problems.querySelector('code'),
+        failures: header.problems.textContent}));
     ''')
     assert result['disabled'] is True and result.get('instruction') is None  # D-60: no command to copy
     assert 'Delivery not confirmed' in result['failures'] and 'Timed out' in result['failures']
@@ -3087,7 +3096,7 @@ def test_approval_header_reads_restored_outcomes_when_reopened():
       const openApprovalSheet = items => {opened = items.map(item => item.id);};
       const restored = REM.approval_outcomes[0]; REM.approval_outcomes = [];
       const header = approvalHeader();
-      REM.approval_outcomes = [restored]; header.querySelector('button').onclick();
+      REM.approval_outcomes = [restored]; header.button.onclick();
       console.log(JSON.stringify(opened));
     ''')
     assert result == ['reply:fern']
