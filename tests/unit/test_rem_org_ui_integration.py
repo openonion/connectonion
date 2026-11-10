@@ -28,7 +28,7 @@ def test_same_name_private_org_does_not_join_public_obligations_or_people():
       const orgHidden = r => !!r.private, byPath = path => ({path});
       const orgMembers = r => r.people.map(byPath);
       const orgOwed = r => [{row: {key: r.path}, text: r.private ? 'private promise' : 'public promise'}];
-      const owedFirst = () => 0, known = () => ({last: '2026-11-08'});
+      const owedFirst = () => 0, known = () => ({last: '2026-11-08'}), orgLast = () => '';
       console.log(JSON.stringify(orgRows().map(row => ({path: row.r.path, keys: row.owed.map(e => e.row.key), people: row.people.map(p => p.path)}))));
     ''')
     assert result == [
@@ -151,3 +151,32 @@ def test_known_unit_kind_is_not_presented_as_an_unknown_organisation(unit_kind, 
       console.log(JSON.stringify(orgQuestions({unit_kind: ''' + json.dumps(unit_kind) + r''', to_you: 'Your delivery unit'}, [])));
     ''')
     assert ('What kind of organisation this is' in json.dumps(result)) is unknown
+
+
+# The page's own "last contact" lags when REM has not re-read the organisation; its people wrote later.
+ROLLUP = r'''
+  const org = {path: 'orgs/fernhill.md', title: 'Fernhill', people: ['people/mara.md', 'people/avery.md']};
+  const days = {'orgs/fernhill.md': '2026-10-10', 'people/mara.md': '2026-11-07', 'people/avery.md': '2026-09-02'};
+  const byPath = path => ({path, title: path});
+  const known = r => ({last: days[r.path] || ''}), orgLast = p => days[p.path] || '';
+  const orgMembers = r => r.people.map(byPath);
+'''
+
+
+def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_there():
+    result = run_js(['orgRows'], ROLLUP + r'''
+      const inCategory = () => [org], orgName = r => r.title, orgHidden = () => false;
+      const orgOwed = () => [], owedFirst = () => 0;
+      console.log(JSON.stringify(orgRows().map(row => row.last)));
+    ''')
+    assert result == ['2026-11-07']
+
+
+def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
+    result = run_js(['orgFacts'], ROLLUP + r'''
+      const orgAll = () => [], orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), fmtDate = day => day;
+      const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
+      const v = {r: org, people: org.people.map(byPath), events: [{day: '2026-03-01'}]};
+      console.log(JSON.stringify(orgFacts(v)));
+    ''')
+    assert 'Last contact 2026-11-07' in result and '2026-10-10' not in result
