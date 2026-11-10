@@ -27,6 +27,6 @@ One habit paid for itself again. Before trusting a mock, we rendered the owner's
 
 ## What we measured
 
-On the owner's notebook, at 1440 pixels, Today's first screen went from 112 pieces of text and 40 controls to 55 and 16, with one green action. Small text (12px and under) fell from two thirds of what you read to under half. The probe found no control without an effect, other than buttons a snapshot disables on purpose because sending needs the live reader.
+On the owner's notebook, at 1440 pixels, Today's first screen went from 112 pieces of text and 40 controls to 55 and 17, and in the live reader one of them is green: Send. Small text (12px and under) fell from two thirds of what you read to under half. The probe found no control without an effect, other than buttons a snapshot disables on purpose because sending needs the live reader.
 
 This is the first of three parts. The lists and the remaining records move onto the desk next.
