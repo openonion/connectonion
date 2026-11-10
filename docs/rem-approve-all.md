@@ -1,12 +1,13 @@
 # Approve the morning
 
-Today opens with **Approve all N** / **批准全部 N 项**. The sheet lists prepared
+Today's **More** menu (top right, beside the date) holds **N items to approve in one go** /
+**N 件可一键批准**. The sheet lists prepared
 replies (recipient, subject, first line), already-handled threads, and tasks.
 Rows start checked. Replies with marked owner slots start unchecked and disabled;
 reviewing and saving a filled reply enables its row. Confirmation shows each
 item's own result. Successful rows are frozen; failed rows remain reviewable.
 
-Static snapshots disable the header action and show `co rem open`. They have no
+Static snapshots disable that menu item and say once, in the same menu, that sending happens in the live reader. They have no
 active Undo. Labelled private replies use the reader's existing reveal behavior.
 Mailbox thread links are quiet secondary actions.
 

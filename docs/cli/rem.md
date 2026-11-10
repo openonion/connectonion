@@ -720,10 +720,10 @@ older page before showing its answer. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
-The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
-the installed package and the same in both languages) and the snapshot time,
-then **EN · 中文** and **Auto · Light · Dark**, each a control. Status and
-privacy controls live under it in **Reader settings**. **EN · 中文** switches
+The sidebar's footer is one quiet line: the release (**co 1.9.3**, read from
+the installed package and the same in both languages), the snapshot time and
+**Settings**. Settings opens **EN · 中文**, **Auto · Light · Dark**, **Reader
+settings** (status and privacy), **Keyboard shortcuts** and **Reload now**. **EN · 中文** switches
 interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
@@ -732,6 +732,17 @@ languages still take precedence. Page prose stays as written. On phones, the bra
 one header row; **Menu** opens the sidebar as a sheet under it. It is not a
 bottom tab bar because Today's Send bar already holds the bottom edge.
 
+- **Levels** (2026-11-10): every page rests on one focus and one primary action.
+  Everything else is still there and arrives when needed: on hover or focus (an
+  item's Hand to Codex / Claude, Talk it over, Expand, done; the letter's
+  channel switch, Write full screen, Edit in Gmail, Skip), behind **More**
+  (Today's lists and approve-all; the letter's In your words, Why this reply,
+  other channels, the thread, Mark done, Not done yet; the organisations list's
+  waiting view and state lines) or in a fold (what REM did overnight; on record
+  pages the people outline, Cooling, REM's doubts). Record pages keep to-dos in
+  Today: one quiet line links there. The organisations list is a hierarchy table
+  (parent, course, team) whose last contact is the newest exchange of anyone
+  there.
 - **Home** is a morning brief, read top to bottom. A date line and one
   sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
   on you"); a quiet line under it summarises the last pass, with its
@@ -851,11 +862,12 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
   Opening it again returns the same conversation.
-- **The sidebar** is three groups: **Your day** (Today, Waiting on you,
-  Memory changes), **Explore memory** (People, Organisations, Projects, Skills,
-  Knowledge, Decisions, Principles, Agenda, Agent sessions, and Opportunities
-  or Works when they hold pages; any other empty one is left out, but People,
-  Organisations and Projects always show), and **All records** last. Only **Waiting on you** carries a
+- **The sidebar** is two groups: **Your day** (Today, Waiting on you) and
+  **Explore memory** (People, Organisations, Projects, All records). **More**
+  under them opens the rarer rooms in place: Memory changes, Skills, Knowledge,
+  Decisions, Principles, Agenda, Agent sessions, and Opportunities or Works when
+  they hold pages (any other empty one is left out). It opens by itself when
+  one of them is the current page. Only **Waiting on you** carries a
   number; a category's size is not something to do. Rows share one size, grey,
   with the current page in ink and the fuse mark, and nothing boxed. There is
   no **Questions & connections** entry any more, as with Activity;
