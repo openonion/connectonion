@@ -3063,6 +3063,9 @@
   .d-showall { margin-top: var(--u2); }
   #main :is(.r4-name, .ov-say h1.ov-name) { hyphens: manual; -webkit-hyphens: manual; }
   .ov-xray:not(:hover):not(:focus-within) .ov-legend { visibility: hidden; }
+  #main:has(.record-focus.projects) .leadrow:not(:hover):not(:focus-within) :is(.project-purpose-cites, a.unsure) { visibility: hidden; }
+  .record-focus.projects .focus-head:not(:hover):not(:focus-within) .project-purpose-cites { visibility: hidden; }
+  .record-focus.projects .project-workspace li:not(:hover):not(:focus-within) .cite { visibility: hidden; }
   /* The contact values are the record's facts: reading size; their labels stay small. */
   .r4-rail .r4-kv { font-size: var(--s-body); line-height: var(--lh-body); align-items: baseline; }
   .r4-rail .r4-kv dt { font-size: var(--s-meta); }
@@ -4203,7 +4206,16 @@ const UI = {
     "Citation bundles multiple files: {detail}": "同一引用包含多个文件：{detail}",
     "projects write": "撰写项目",
     "skills write": "撰写技能",
-    "sessions import": "导入会话"
+    "sessions import": "导入会话",
+    // Hierarchy by disclosure (direction D)
+    "More actions": "更多", "Settings": "设置", "Reload now": "有更新 · 重新载入", "Expand": "展开", "Collapse": "收起",
+    "More rooms": "更多", "Reply with {channel}": "改用 {channel} 回",
+    "This is a snapshot": "这是快照", "Search · {key}": "搜索 · {key}", "This item's actions": "这件事的操作",
+    "Write the letter": "写信", "Reply card": "回信卡片",
+    "1 open topic; it is handled in ": "还有 1 个没结的话题，在", "{n} open topics; they are handled in ": "还有 {n} 个没结的话题，都在",
+    " — this record only keeps it.": "里办，档案只记录。",
+    "1 open item is not handled in the record: ": "1 件未完成事项不在档案里办：", "{n} open items are not handled in the record: ": "{n} 件未完成事项不在档案里办：",
+    "Go to Waiting on you →": "去等你处理 →"
 }
 };
 function t(key, values = {}) {
@@ -10531,7 +10543,11 @@ function recordFocus(r) {
   }
   out.appendChild(focusHead);
   const thread = threads(r), open = thread.items;
-  if (open.length || ["people", "projects", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
+  // A project is a record (owner, 2026-11-08 and 2026-11-10): its open items are done in Waiting on you; one quiet line here.
+  if (r.category === "projects") { if (open.length) out.appendChild(el("p", { class: "d-todo-link", id: "open-threads" }, [
+    t(open.length === 1 ? "1 open item is not handled in the record: " : "{n} open items are not handled in the record: ", { n: open.length }),
+    el("a", { href: "#view=open", text: t("Go to Waiting on you →") })])); }
+  else if (open.length || ["people", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
     el("h2", { text: t("Open threads") }), !open.length ? emptyLine(thread) : el("ul", { class: "threads", "aria-label": t("Open threads on this record") },
       open.slice(0, 3).map(t => threadRow(r, t, false)))]));
   if (r.category === "projects") {
