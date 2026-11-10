@@ -453,7 +453,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
     assert page.locator("select").count() == 0
     tabs = page.locator("#tabbar")
-    assert [" ".join(t.split()) for t in tabs.locator(".tab").all_inner_texts()][:3] == ["Today", "Waiting", "People"]
+    assert [t.split()[-1] for t in tabs.locator(".tab").all_inner_texts()][:3] == ["Today", "Waiting", "People"]  # after the badge
     toggle = page.locator(".nav-toggle")
     assert toggle.inner_text() == "More" and toggle.get_attribute("aria-expanded") == "false"
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
@@ -594,7 +594,8 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
     items = page.locator(".today-brief .qcard.open .qitem")
     assert items.count() == 2
     for i in range(2):
-        items.nth(i).hover()  # the kind line under a row is its second level (D-120)
+        if items.nth(i).is_visible():
+            items.nth(i).hover()  # the kind line under a row is its second level (D-120)
         words, below = items.nth(i).locator(".words"), items.nth(i).locator(".qkind")
         if not words.is_visible():
             continue

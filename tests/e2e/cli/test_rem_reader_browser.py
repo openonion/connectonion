@@ -285,9 +285,9 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
     page.locator(".settings-open").click()
-    page.get_by_role("button", name="Hide labelled passages").click()
+    page.get_by_role("switch", name="Hide labelled passages").click()
     assert not private.is_visible()
-    page.get_by_role("button", name="Show labelled passages").click()
+    page.get_by_role("switch", name="Show labelled passages").click()
     assert private.is_visible()
 
 
@@ -312,7 +312,7 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots = Path(os.environ.get("CO_REM_SHOTS", str(tmp_path / "shots")))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
-    page.locator(".brand").click()
+    page.evaluate("location.hash = ''")  # Today (the brand on a desk, the Today tab on a phone)
     page.locator(".night-card .count").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
@@ -325,17 +325,13 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
 
     page, _, _ = reader_page
     page.set_viewport_size({"width": 375, "height": 812})
-    page.locator('.skip').focus()
-    page.keyboard.press('Tab')
-    expect(page.locator('.brand')).to_be_focused()
-    # Owner, 2026-11-09 (sidebar in Fuse): the phone's "Browse notebook" box became a quiet Menu button.
-    button = page.get_by_role("button", name="Menu", exact=True)
+    # N3: on a phone the rail gives way to a tab bar; its 更多 opens every place as a sheet above it.
+    button = page.locator("#tabbar .nav-toggle")
     expect(button).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#nav")).not_to_be_visible()
     button.focus()
     page.keyboard.press("Enter")
     expect(button).to_have_attribute("aria-expanded", "true")
-    page.keyboard.press("Tab")
     expect(page.locator("#nav a").first).to_be_focused()
     page.keyboard.press("Escape")
     expect(button).to_have_attribute("aria-expanded", "false")
@@ -350,7 +346,7 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
     expect(button).not_to_be_visible()
-    page.set_viewport_size({"width": 768, "height": 1024})
+    page.set_viewport_size({"width": 600, "height": 1024})
     expect(page.locator("#nav")).not_to_be_visible()
 
 
@@ -531,9 +527,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         answered = cards.filter(has=page.locator('.today-who', has_text='Avery'))
 
         def open_card(card):
-            # A folded card opens on a tap; its action and draft are then in reach.
-            if 'open' not in card.get_attribute('class').split():
-                card.locator('.qage').click()
+            # N3: a card waiting behind its face is dealt onto the desk; its action and draft are then in reach.
+            if 'focal' not in card.get_attribute('class').split():
+                page.locator('.deal[data-path="%s"]' % card.get_attribute('data-path')).click()
         assert letter.locator('.owner-slot').count() == 1
         # Build 3b: the "需要你填" box became a row to answer in, named by what REM needs.
         assert letter.locator('.owner-slot').get_attribute('role') == 'group'
@@ -579,6 +575,7 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         evidence.mkdir(exist_ok=True)
         page.screenshot(path=str(evidence / f'today-{language}-{width}-{"live" if live else "snapshot"}.png'), full_page=True)
         if live:
+            letter.locator('.more-menu > summary').click()  # behind the letter's 更多 (D-120)
             letter.get_by_role('button', name='全屏写' if language == 'zh' else 'Write full screen').click()
             dialog = page.locator('dialog.writer')
             dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()

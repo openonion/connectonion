@@ -66,7 +66,7 @@
     /* lines */
     --hair: 1px;
     --rule-heavy: 2px;
-    --fuse: 3px; /* the burnt ring around an overdue face */
+    --fuse: 6px; /* the one heavy mark of the older fuse views (org timeline) */
 
     /* shape: cards 22, inner panels 16, controls 12, chips and the ⌘K bar fully round */
     --radius: 12px;
@@ -2778,7 +2778,7 @@
   .set-rem .ic { width: 15px; height: 15px; color: var(--grey); }
   .foot-line { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); flex-wrap: wrap; }
   .foot-facts > * + *::before { content: "·" / ""; margin: 0 var(--u1); }
-  .seg { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
+  .n3-seg { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
   .theme-btn { height: 30px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--raised); color: var(--ink); box-shadow: var(--e1); font-weight: var(--w-bold); }
@@ -2815,7 +2815,7 @@
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
     .search .kbd { display: none; }
-    main { padding: 0 14px 40px; }
+    main { padding: 4px 16px 40px; }
     .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: 14px; height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
       justify-content: space-around; align-items: center; z-index: 30; }
     .tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 48px; justify-content: center; color: var(--grey);
@@ -2847,9 +2847,11 @@
   .btn-act { min-height: 40px; padding: 0 16px; border: 0; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; box-shadow: var(--e-green);
     font: var(--w-bold) var(--s-body)/1 var(--font); transition: transform var(--t-press) var(--spring); }
   .btn-act:hover { background: var(--green); color: var(--on-green) !important; transform: translateY(-1px); }
-  .btn-act:disabled, .btn-act:disabled:hover { background: var(--green); color: var(--on-green) !important; opacity: .45; box-shadow: none; transform: none; }
+  /* Green means the action is available: a disabled primary (a snapshot, an unanswered question) is a well. */
+  .btn-act:disabled, .btn-act:disabled:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
   .btn-quiet { min-height: 32px; padding: 0 10px; border-radius: var(--radius); color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
   .btn-quiet:hover { color: var(--ink); background: var(--well); }
+  @media (max-width: 820px), (pointer: coarse) { .btn-act, .card-acts .btn-act { min-height: 44px; } }
   .link-btn { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font);
     text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
 
@@ -2858,6 +2860,7 @@
   .night-card { padding: 16px 24px 12px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); animation: n3-rise var(--t-draw) var(--spring) both; }
   .nh { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
   .nh .ic { width: 15px; height: 15px; }
+  .nh .chart-toggle { display: none; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
   .nh .legend { margin-left: 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
   .night-card:hover .legend, .night-card:focus-within .legend { opacity: 1; }
   .nb { display: flex; align-items: center; gap: 28px; }
@@ -2878,7 +2881,7 @@
   .hyp .now { fill: var(--ink); animation: n3-ember var(--t-ember) var(--ease-out) infinite; }
   .faces { flex: none; display: flex; flex-direction: column; gap: 10px; padding-left: 26px; border-left: var(--hair) solid var(--rule); max-width: 300px; }
   .nb.solo .faces { border-left: 0; padding: 8px 0; max-width: none; flex: 1; }
-  .count-line { display: flex; align-items: baseline; gap: 10px; color: var(--grey); }
+  .count-line { display: flex; align-items: baseline; gap: 10px; margin: 0; color: var(--grey); font: var(--w-regular) var(--s-body)/1.3 var(--font); letter-spacing: 0; }
   .count-line .count { color: var(--ink); font: var(--w-bold) var(--s-display)/1 var(--font); letter-spacing: var(--track-display); }
   .frow { display: flex; gap: 6px; overflow-x: auto; padding: 6px 4px 4px; margin: -6px -4px -4px; }
   .deal { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 8px 6px; border: 0; border-radius: var(--r-inner); background: none; cursor: pointer;
@@ -2898,8 +2901,8 @@
   .today-brief .today-threads { display: block; border: 0; }
   .today-brief .qcard { display: none; cursor: auto; }
   .today-brief .qcard.focal { display: block; padding: 24px 28px 22px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2); cursor: auto;
-    animation: n3-rise var(--t-draw) var(--spring) both; }
-  .today-brief .qcard.focal:focus-visible { outline: var(--rule-heavy) solid var(--ink); outline-offset: 3px; background: var(--raised); }
+    animation: n3-rise var(--t-draw) var(--spring) backwards; }  /* no fill once risen: a filled transform would hold the pinned Send bar */
+  .today-brief .qcard.focal:focus-visible { outline: 0; background: var(--well); }
   .today-brief .qsent { padding: 14px 20px; margin-bottom: 14px; border-radius: var(--r-inner); background: var(--well); }
   .today-brief .qsent .lede { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
   .today-brief > .quiet-line { padding: 36px 20px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); text-align: center; }
@@ -2959,10 +2962,10 @@
   .qdraft :is(.mail-body, .mail-choices, .mail-text, .mail-gist, .mail-head) { background: none; }
 
   /* ---- Today: the side column ---- */
-  .side { display: grid; gap: 16px; min-width: 0; }
-  .side > * { margin: 0; }
-  .side .widget:nth-child(2) { animation-delay: calc(var(--t-stagger) * 2); }
-  .side .widget:nth-child(3) { animation-delay: calc(var(--t-stagger) * 3); }
+  .tgrid > .side { display: grid; gap: 16px; min-width: 0; }
+  .tgrid > .side > * { margin: 0; }
+  .tgrid > .side .widget:nth-child(2) { animation-delay: calc(var(--t-stagger) * 2); }
+  .tgrid > .side .widget:nth-child(3) { animation-delay: calc(var(--t-stagger) * 3); }
   .pair { display: flex; gap: 20px; }
   .approval-header { display: contents; }
   .pair-cell { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
@@ -2970,6 +2973,7 @@
   .pair-cell[hidden] { display: none; }
   .pair-cell:hover .big { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .recall .rc { display: flex; align-items: center; gap: 14px; }
+  .recall .recall-toggle { grid-column: auto; grid-row: auto; margin: 0; padding: 0; min-height: 0; border: 0; }
   .recall .rc h2 { flex: 1; min-width: 0; margin: 0; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .recall-answer { margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .recall-answer p { margin: 0 0 6px; }
@@ -2982,8 +2986,8 @@
   #night-sheet .night-done li b { color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
 
   /* ---- Today: one fold below the desk ---- */
-  .desk-more { display: grid; gap: 4px; margin: 44px 0 0; max-width: var(--measure); }
-  .desk-more > details > summary, .desk-more .maint > summary { padding: 10px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); cursor: pointer; }
+  .desk-more { display: grid; gap: 4px; margin: 44px 0 0; }
+  .desk-more > details > summary, .desk-more .maint > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
   .desk-more > section { padding: 4px 0 12px; }
 
   @media (max-width: 640px) {
@@ -3001,18 +3005,23 @@
     .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 84px; border: 0; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); }
+    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 172px; }
+    /* A phone's first screen is the faces and the card: the chart opens from its title (D-120). */
+    .night-card:not(.chart-open) .hyp-wrap { display: none; }
+    .nh .chart-toggle { display: inline-flex; }
+    .nh .nt { display: none; }
     .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
     .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
     .qdraft .mail-row .v > .addr { display: none; }
-    .side { margin-top: 18px; }
+    .tgrid > .side { margin-top: 18px; }
   }
 
   /* ---- a person: a hero card and a bento of widgets (records, never to-dos: D-30) ---- */
-  .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
+  .n3-person .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
     font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important; }
-  .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
-  a.chip:hover, button.chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
-  .chip .ic { width: 14px; height: 14px; }
+  .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
+  .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
+  .n3-person .chip .ic { width: 14px; height: 14px; }
   .n3-person .hero { display: flex; align-items: center; gap: 28px; margin: 0; padding: 28px 32px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1);
     animation: n3-rise var(--t-draw) var(--spring) both; }
   .n3-person .face { background: var(--well); color: var(--ink); }
@@ -3088,8 +3097,8 @@
   .list-sheet li { padding: 10px 0; border-top: var(--hair) solid var(--rule); color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
 
   @media (max-width: 640px) {
-    .n3-person .hero { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px 20px; }
-    .n3-person .hero .face.xl { width: 72px; height: 72px; }
+    .n3-person .hero { flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 20px 18px; }
+    .n3-person .hero .face.xl { width: 56px; height: 56px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
     .hero-acts { justify-content: flex-start; width: 100%; gap: 6px; }
     .n3-person .r4-today { margin-left: auto; padding: 0 12px; }
     .round { width: 40px; height: 40px; }
@@ -6266,14 +6275,14 @@ function renderSettings() {
   close.replaceChildren(icon("x"));
   close.setAttribute("aria-label", t("Close"));
   close.onclick = () => document.getElementById("settings").close();
-  const themeSwitch = el("div", { class: "theme-switch seg", role: "radiogroup", "aria-label": t("Theme") });
+  const themeSwitch = el("div", { class: "theme-switch n3-seg", role: "radiogroup", "aria-label": t("Theme") });
   for (const mode of ["auto", "light", "dark"]) {
     const btn = el("button", { class: "theme-btn" + (current === mode ? " active" : ""), type: "button", role: "radio",
       "aria-checked": String(current === mode), text: t(mode[0].toUpperCase() + mode.slice(1)), title: t(mode + " theme") });
     btn.onclick = () => setTheme(mode);
     themeSwitch.appendChild(btn);
   }
-  const languageSwitch = el("div", { class: "language-switch seg", role: "group", "aria-label": t("Interface language") });
+  const languageSwitch = el("div", { class: "language-switch n3-seg", role: "group", "aria-label": t("Interface language") });
   for (const [tag, name] of [["en", "EN"], ["zh", "中文"]]) {
     const button = el("button", { type: "button", class: "theme-btn" + (uiLanguage === tag ? " active" : ""),
       "aria-pressed": String(uiLanguage === tag), lang: tag, text: name });
@@ -7367,13 +7376,19 @@ function faceStrip(groups, current) {
     return button;
   }));
 }
+// On a phone the chart folds under its title; the title opens it.
+function chartToggle() {
+  const button = el("button", { type: "button", class: "chart-toggle", "aria-expanded": "false" }, [t("Night chart"), icon("down")]);
+  button.onclick = () => button.setAttribute("aria-expanded", String(button.closest(".night-card").classList.toggle("chart-open")));
+  return button;
+}
 function nightCard(groups, current, ticked) {
   const n = groups.length;
-  const count = el("div", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(n) }),
+  const count = el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(n) }),
     el("span", { text: n ? t(n === 1 ? "person waiting on you" : "people waiting on you") : t("Nobody is waiting on you today.") })]);
   const chart = nightChart(current);
   return el("section", { class: "night-card card", "aria-label": t("Night chart") }, [
-    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), el("span", { class: "legend", text: chart.legend })]) : null,
+    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), chartToggle(), el("span", { class: "legend", text: chart.legend })]) : null,
     el("div", { class: "nb" + (chart ? "" : " solo") }, [chart?.svg, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
 }
 // The night chart: a hypnogram of REM's real work, read from the run logs (reading mail sits at the first
@@ -7471,8 +7486,9 @@ function todaySide(counts) {
 }
 function othersWidget(counts) {
   const approval = approvalHeader();
-  if (!counts.theirs && !REM.live && !(REM.approval_outcomes || []).length) return approval.hidden ? null : approval;
-  const theirs = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })]) : null;
+  if (!counts.theirs && !counts.mine && !REM.live && !(REM.approval_outcomes || []).length) return approval.hidden ? null : approval;
+  const theirs = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
+    : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
   return el("section", { class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Waiting on others") })]),
     el("div", { class: "pair" }, [theirs, approval])]);
 }
@@ -7778,8 +7794,8 @@ function personHead(r) {
   const late = group ? groupLate(group) : 0;
   return el("header", { class: "r4-head person-head hero" }, [fusedFace(r, late, "xl"),
     el("div", { class: "hero-who" }, [
-      el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }),
-      el("div", { class: "hero-marks" }, [updatedMarker(r, true), translationMark(r)]), personSub(r)]),
+      el("div", { class: "hero-marks" }, [updatedMarker(r, true), translationMark(r)]),
+      el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
     el("div", { class: "hero-acts" }, [...personContacts(r), personTodayLink(r, late)])]);
 }
 // Role, organisation (→ its page), project and place as chips; where the value came from stays in its title.
@@ -12289,6 +12305,7 @@ toggle.addEventListener("click", () => {
   // The sheet starts under the header row, wherever the page has scrolled it.
   document.getElementById("rail-menu").style.setProperty("--sheet-top", Math.max(0, rail.getBoundingClientRect().bottom) + "px");
   rail.dataset.open = String(open); toggle.setAttribute("aria-expanded", String(open));
+  if (open) document.querySelector("#nav a")?.focus();  // the sheet opens above the tab bar: focus moves into it
 });
 document.querySelector(".skip").addEventListener("click", e => { e.preventDefault(); document.getElementById("main").focus(); });
 document.getElementById("nav").addEventListener("click", e => {
