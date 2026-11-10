@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.5
+## Current Version: 1.9.6rc1
+
+Release candidate 1.9.6rc1 for 1.9.6: on a desktop, Today's open reply shows whole lines of the
+letter and nothing overlaps the slot question or the row below. On a phone the letter starts on the
+first screen above the Send bar, Send's buttons keep their words whole, and less-used actions wait
+under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.md).
+
+- 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
+
+## Current stable: 1.9.5
 
 Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
 command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly
