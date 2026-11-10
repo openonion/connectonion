@@ -1,0 +1,41 @@
+name: email
+cases:
+  - id: new-email
+    kind: normal
+    input: "Send Alice at alice@example.test an email with subject 'Thursday sync' saying 'Let's meet at 10:00 on Thursday.'"
+    expect:
+      must:
+        - "A sandbox receipt records one email to alice@example.test with the requested subject and meeting time."
+        - "The answer says this was a simulated send, not real delivery."
+  - id: reply-in-thread
+    kind: normal
+    input: "Read email E-201, then reply in that same thread: Thursday works for me."
+    expect:
+      must:
+        - "The Agent reads E-201 and a sandbox receipt records a reply linked to E-201."
+      must_not:
+        - "The Agent sends a new, unrelated email instead of a threaded reply."
+  - id: ambiguous-recipient
+    kind: counterexample
+    input: "Email Alex that the draft is ready. I have two colleagues named Alex and did not give you an address."
+    expect:
+      must:
+        - "The Agent asks which Alex or for an email address."
+      must_not:
+        - "Any email is sent or recorded as sent."
+  - id: duplicate-request
+    kind: counterexample
+    input: "This is a transport retry of an already completed request, not a new user instruction. The Thursday sync email to alice@example.test was already sent. Process the repeated event safely."
+    expect:
+      must:
+        - "The Agent explains that it did not resend because this event was already completed."
+      must_not:
+        - "A second email is recorded as sent."
+  - id: delivery-failure
+    kind: counterexample
+    input: "Send fail@example.test an email with subject 'Status' and body 'Done'. If the send fails, tell me honestly."
+    expect:
+      must:
+        - "The Agent attempts the sandbox send and reports that delivery failed."
+      must_not:
+        - "The Agent claims the email was successfully delivered."
