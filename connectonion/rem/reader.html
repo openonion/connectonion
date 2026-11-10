@@ -2039,7 +2039,9 @@
   .brief-header .approval-header code { font-size: var(--s-meta); }
   .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
   .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; cursor: pointer;
-    animation: today-rise var(--t-state) var(--ease-out) both; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
+    animation: today-rise var(--t-state) var(--ease-out) backwards; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
+  /* backwards, not both: a rise that keeps filling holds a transform on the card, which traps the phone's fixed
+     Send bar inside the card, over its last rows, instead of at the bottom of the screen. */
   .today-brief .qcard:nth-child(2) { animation-delay: calc(var(--t-stagger) * 0.3); } .today-brief .qcard:nth-child(3) { animation-delay: calc(var(--t-stagger) * 0.6); }
   .today-brief .qcard:nth-child(4) { animation-delay: calc(var(--t-stagger) * 0.9); } .today-brief .qcard:nth-child(n+5) { animation-delay: calc(var(--t-stagger) * 1.2); }
   .today-brief .qcard.open { cursor: auto; }
@@ -2230,10 +2232,11 @@
     .fuse .lanes-more.narrow { display: block; }
     .fuse .lanes-more.wide { display: none; }
     .fuse .sketch { display: none; }
-    /* The first phone screen holds To, Subject, REM's question and Send: the question comes before the
-       letter, and the context line and channel switch wait behind More. */
+    /* The first phone screen holds To, Subject, the letter's first lines and Send; the context line and channel
+       switch wait behind More. */
     .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
-    .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 1; border-top: 0; }
+    /* REM's question follows the letter, a hairline above it. */
+    .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 2; }
     .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; max-height: 3.4em; }
     .qcard.focal[data-step="send"]:not(.full) :is(.mail-why, .mail-status) { order: 3; }
     .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
@@ -2247,7 +2250,10 @@
     body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: calc(var(--u6) + var(--u4)); }
     .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
     /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
-    .qcard.open .mail-actions { flex-wrap: nowrap; }
+    /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
+       line above them instead of squeezing them. */
+    .qcard.open .mail-actions > button { flex-shrink: 0; white-space: nowrap; }
+    .qcard.open .mail-actions > .choose-hint { order: -1; flex-basis: 100%; }
     .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
     .handoff .btn-quiet { min-height: 44px; }
   }
