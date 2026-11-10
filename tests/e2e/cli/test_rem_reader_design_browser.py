@@ -4535,7 +4535,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert ('夜间更新已关闭。' if language == 'zh' else 'Nightly updates are off.') in page.locator('.reader-settings').inner_text()
     assert 'co rem' not in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.keyboard.press('Escape')
-    notice = page.locator('#main .translation-note')
+    notice = page.locator('#main .desk-more > .translation-note')
     if language == 'zh':
         assert notice.inner_text() == '打开页面时会翻译成中文。'
         # The notice follows the queue: nothing about the reader's own upkeep sits above what needs you.
@@ -4562,15 +4562,15 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
     }''', isolated_context=False)
-    assert page.locator('#main .translation-note').count() == 0
+    assert page.locator('#main .desk-more > .translation-note').count() == 0
     page.set_viewport_size({'width': 390, 'height': 844})
     page.evaluate(r'''() => {
       REM.default_root = false; REM.root = REM.root_display = '/tmp/' + 'invented notebook/'.repeat(12);
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert page.locator('#main .translation-note').inner_text() == '打开页面时会翻译成中文。'
-    assert page.locator('#main .translation-note button, #main > .translation-note code').count() == 0
+    assert page.locator('#main .desk-more > .translation-note').inner_text() == '打开页面时会翻译成中文。'
+    assert page.locator('#main .desk-more > .translation-note button, #main > .translation-note code').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4786,7 +4786,7 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
           title: 'Mapped ' + n, category: 'projects', written: false, text: '# Mapped\n'}))];
       REM.logs = []; setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    notice = page.locator('#main .translation-note')
+    notice = page.locator('#main .desk-more > .translation-note')
     assert notice.count() == 0  # Mapped-only stubs do not trigger the fallback.
     page.evaluate(r'''() => {
       delete REM.records[0].translations;
