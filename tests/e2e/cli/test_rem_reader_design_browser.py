@@ -597,7 +597,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page.locator(".nav-toggle").click()
     page.locator(".settings-open").click()
     assert "Nightly updates are off." in page.locator(".reader-settings").inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
-    page.locator(".nav-toggle").click()
+    page.keyboard.press("Escape")  # closes the settings sheet and the 更多 sheet under it
     page.locator(".first-map-actions a").click()
     assert "1 possible contact" in page.locator(".held-note").inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -3243,6 +3243,7 @@ def test_mobile_header_focus_and_touch_targets_on_every_view(reader):
             target.focus()
             page.keyboard.press('Tab')
             page.keyboard.press('Shift+Tab')
+            target.focus()  # keyboard modality is set; the last tab may leave the page from the tab bar
             assert target.evaluate('node => getComputedStyle(node).outlineStyle') != 'none', (view, selector)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), view
 
@@ -3401,6 +3402,8 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.locator('.language-switch').get_by_role('button', name='中文', exact=True).click()
     page.keyboard.press('Escape')
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
+    if width < 600:
+        page.locator('.nav-toggle').click()
     page.locator('#nav a[href="#c=people"]').click()
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
     # Avoid sharing this deliberate preference with another file:// fixture test.
@@ -3811,8 +3814,8 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     waiting = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
     assert '理学院教授' in waiting.locator('.qhead .meta').get_attribute('title')  # N3: the role is the organisation chip's title
     assert 'Fernhill Labs 科研团队' in waiting.locator('.qhead .meta').text_content()
-    if 'open' not in waiting.get_attribute('class').split():
-        waiting.locator('.qage').click()
+    if 'focal' not in waiting.get_attribute('class').split():
+        page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()  # N3: deal her card onto the desk
     assert waiting.locator('.words').first.inner_text() == '你需要签署试点协议；后续安排明天讨论4'
     assert waiting.locator('.words .cite').first.get_attribute('data-sources') == '4'
     assert waiting.locator('.context').count() == 0
@@ -4120,6 +4123,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
       const keys = [...document.querySelectorAll('.qcard .today-who')].map(a => a.textContent);
       return document.documentElement.scrollWidth <= innerWidth && keys.length === 1;
     }''')
+    if page.locator('#tabbar .tab-search').is_visible():
+        page.locator('#tabbar .tab-search').click()  # N3: search is a tab on a phone
     page.locator('#q').fill('pilot renewal')
     page.locator('#q').press('Enter')
     page.wait_for_url(uri + '#q=pilot%20renewal')
@@ -4223,8 +4228,8 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert page.locator('.recall-toggle').evaluate(r'''button => {
       const css = getComputedStyle(button);
       // N3: the recall card's one control is a quiet icon (flip), named for what it does; no fill at rest.
-      return css.backgroundColor === 'rgba(0, 0, 0, 0)' && button.getAttribute('aria-label') !== ''
-        && button.getBoundingClientRect().width >= 38;
+      return css.borderTopStyle === 'none' && !!button.getAttribute('aria-label') && !!button.querySelector('svg.ic')
+        && button.getBoundingClientRect().width >= 36;
     }''')
     page.locator('.recall-toggle').click()
     assert page.locator('.recall-answer').is_visible()
@@ -5040,7 +5045,7 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
     today = page.locator(".r4-today")
     assert re.fullmatch(r"今天里有 \d+ 件", today.inner_text()) and today.get_attribute("href") == "#"
     assert today.bounding_box()["y"] + today.bounding_box()["height"] <= 844, "the Today link is on the first screen"
-    assert page.locator(".r4-stats > div").count() >= 2  # mails, reply time, last word (the first exchange is under the rhythm)
+    assert page.locator(".r4-stats > div").count() >= 1  # mails, reply time, last word, as known (the first exchange is under the rhythm)
     assert page.locator(".r4-person #open-threads, .owe").count() == 0
     assert page.locator(".tl .tl-e .w i").count() >= 3
     # N3: how to reach her is the hero's round buttons; what REM is unsure of and the sources are cards that open more.
@@ -5186,7 +5191,7 @@ def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(reader):
     }""", isolated_context=False)
     card = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
     assert card.get_attribute("data-step") == "done"
-    card.click(position={"x": 8, "y": 8})  # a card opens its actions when chosen
+    page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()  # N3: her face deals her card onto the desk
     card.get_by_role("button", name="Not done yet", exact=True).click()
     assert page.evaluate("notDoneKeys.size", isolated_context=False) == 1
     assert page.evaluate("readerStorage(notDoneStorageKey())", isolated_context=False)

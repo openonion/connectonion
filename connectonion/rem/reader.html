@@ -2736,11 +2736,11 @@
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
   .top { display: flex; align-items: center; gap: var(--u3); height: 76px; padding: 0 40px; }
-  .crumb { width: 200px; flex: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crumb { flex: 0 1 200px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .crumb a { color: var(--grey); }
   .crumb a:hover { color: var(--ink); }
-  .top-end { width: 200px; flex: none; display: flex; justify-content: flex-end; }
-  .search { position: relative; flex: 1; max-width: 560px; margin: 0 auto; height: 44px; border-radius: var(--r-pill); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px;
+  .top-end { flex: 0 1 200px; display: flex; justify-content: flex-end; }
+  .search { position: relative; flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; height: 44px; border-radius: var(--r-pill); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px;
     background: var(--raised); box-shadow: var(--e1); color: var(--grey); transition: box-shadow var(--t-state) var(--ease-out); }
   .search:hover, .search:focus-within { box-shadow: var(--e2); }
   .search .search-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; flex: none; }
@@ -2778,6 +2778,7 @@
   .set-rem .ic { width: 15px; height: 15px; color: var(--grey); }
   .foot-line { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); flex-wrap: wrap; }
   .foot-facts > * + *::before { content: "·" / ""; margin: 0 var(--u1); }
+  .theme-switch { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
   .n3-seg { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
   .theme-btn { height: 30px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; }
   .theme-btn:hover { color: var(--ink); }
@@ -3004,6 +3005,9 @@
     .qitem { margin: 0 -6px; }
     .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
+    .card-acts .btn-act { min-height: 44px; }
+    .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
+    .today-brief .qcard.focal { padding-top: 14px; }
     .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 84px; border: 0; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); }
     body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 172px; }
     /* A phone's first screen is the faces and the card: the chart opens from its title (D-120). */
@@ -3165,7 +3169,7 @@ let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
-  en: {},
+  en: { "More places": "More" },
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",

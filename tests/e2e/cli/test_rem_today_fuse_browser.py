@@ -455,7 +455,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     tabs = page.locator("#tabbar")
     assert [t.split()[-1] for t in tabs.locator(".tab").all_inner_texts()][:3] == ["Today", "Waiting", "People"]  # after the badge
     toggle = page.locator(".nav-toggle")
-    assert toggle.inner_text() == "More" and toggle.get_attribute("aria-expanded") == "false"
+    assert toggle.inner_text().split()[-1] == "More" and toggle.get_attribute("aria-expanded") == "false"
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
     assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
     assert send.bounding_box()["y"] + send.bounding_box()["height"] <= tabs.bounding_box()["y"]
