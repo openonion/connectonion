@@ -3041,6 +3041,51 @@
     .d-tog, .d-tog-sp { width: 28px; height: 28px; }
   }
 
+  /* ---- Record pages (person, org, project): the name and one sentence speak; the rest waits. ---- */
+  .r4-lede { margin: var(--u3) 0 0; max-width: 40em; font: var(--w-regular) var(--s-body)/var(--lh-body) var(--font); color: var(--ink); }
+  .d-todo-link { margin: var(--u4) 0; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .d-todo-link a { color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .d-todo-link a:hover { color: var(--ink); text-decoration-color: var(--ink); }
+  .r4-fuse .fuse-note { visibility: hidden; }
+  .r4-fuse:hover .fuse-note, .r4-fuse:focus-within .fuse-note { visibility: visible; }
+  .r4-said ol:not(.all) > li.later { display: none; }
+  .r4-said li { cursor: pointer; }
+  .r4-said li:not(.d-open) .said-q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .r4-said li:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .r4-said li:not(:hover):not(:focus-within) .cite, #history-timeline .tl-e:not(:hover):not(:focus-within) .cite { visibility: hidden; }
+  .session-context-row:not(:hover):not(:focus-within) .session-tags { visibility: hidden; }
+  .d-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: var(--u2); color: var(--grey); font: var(--w-regular) var(--s-meta)/18px var(--font); padding: var(--u2) 0; }
+  .d-fold > summary::-webkit-details-marker { display: none; }
+  .d-fold > summary::after { content: ""; margin-left: var(--u1); align-self: center; border-top: 5px solid currentColor; border-left: 4px solid transparent; border-right: 4px solid transparent; transition: transform var(--t-press) var(--ease-out); }
+  .d-fold[open] > summary::after { transform: rotate(180deg); }
+  .d-fold > summary:hover { color: var(--ink); }
+  .d-fold > summary h2 { margin: 0; font: inherit; color: inherit; }
+  .d-showall { margin-top: var(--u2); }
+  #main :is(.r4-name, .ov-say h1.ov-name) { hyphens: manual; -webkit-hyphens: manual; }
+  /* The contact values are the record's facts: reading size; their labels stay small. */
+  .r4-rail .r4-kv { font-size: var(--s-body); line-height: var(--lh-body); align-items: baseline; }
+  .r4-rail .r4-kv dt { font-size: var(--s-meta); }
+
+  @media (max-width: 820px) {
+    .d-more-btn { min-height: 44px; }
+    .d-pop .d-item, .d-pop > a { min-height: 44px; align-items: center; }
+    .d-nav-more { min-height: 44px; align-items: center; }
+  }
+  @media (max-width: 720px) {
+    /* A tap on an item line lays its actions out below it; the channel switch and the writing tools live in 更多. */
+    .d-acts { position: static; min-height: 0; padding: 0; background: none; flex-wrap: wrap; gap: 0 var(--u3); display: none; opacity: 1; pointer-events: auto; }
+    .qitem:focus-within > .d-acts, .qitem.d-open > .d-acts { display: flex; }
+    .d-acts .btn-quiet, .d-a, .d-acts .talk-menu > summary { min-height: 44px; }
+    .d-acts .qdone { width: 44px; height: 44px; }
+    .qcard.focal .mailcard .mail-channels, .mail-actions .d-l2 { display: none; }
+    .qcard.focal.open .mail-actions .d-menu { margin-left: 0; flex: none; }
+    .qcard.focal.open .mail-actions .d-more-btn { padding: 0 var(--u2); }
+    .d-night .d-night-body { grid-template-columns: minmax(0, 1fr); }
+    .d-night .night-done { grid-row: auto; }
+    .d-night > summary .d-night-s { display: none; }
+    .d-night > summary { min-height: 44px; align-items: center; }
+  }
+</style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -7568,12 +7613,19 @@ function fitNames() {
   for (const node of document.querySelectorAll("#main .r4-name, #main .ov-say h1.ov-name")) {
     const name = node.dataset.name || (node.dataset.name = node.textContent);
     node.textContent = name;
-    // Measured without the break-word fallback, which would otherwise hide the overflow it is there to catch.
-    node.classList.add("name-measure");
-    const overflows = node.scrollWidth > node.clientWidth + 1;
-    node.classList.remove("name-measure");
-    if (overflows) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
+    node.style.fontSize = "";
+    // A name that does not fit steps down to one line first (owner, 2026-11-10: "Ope-/nOnion");
+    // only a name too long even at 28px gets soft hyphens at its syllables.
+    for (let size = parseFloat(getComputedStyle(node).fontSize); nameOverflows(node) && size > 28; size -= 4) node.style.fontSize = Math.max(28, size - 4) + "px";
+    if (nameOverflows(node)) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
   }
+}
+// Measured without the break-word fallback, which would otherwise hide the overflow it is there to catch.
+function nameOverflows(node) {
+  node.classList.add("name-measure");
+  const overflows = node.scrollWidth > node.clientWidth + 1;
+  node.classList.remove("name-measure");
+  return overflows;
 }
 // Who: the name is the page's one big mark. The fuse and its numbers open the column under it.
 function personHead(r) {
@@ -7581,7 +7633,12 @@ function personHead(r) {
   return el("header", { class: "r4-head person-head" }, [
     el("div", { class: "r4-over" }, [el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " · " + org.name }) : null, updatedMarker(r, true),
       translationMark(r)]), personTodayLink(r)]),
-    el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]);
+    el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), recordLede(known(r).summary)]);
+}
+// The one sentence a record leads with, at reading size: where things stand (owner, 2026-11-10: one focus per page).
+function recordLede(text) {
+  const line = summaryLine(text || "");
+  return line ? el("p", { class: "r4-lede", text: line }) : null;
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
 // exchange in the record. Positions are the real dates; nothing is spaced for looks.
@@ -7674,12 +7731,29 @@ function personQuotes(r) {
   if (!rows.length) return null;
   const kind = s => ({ gmail: "Gmail", outlook: "Outlook", imap: "Mail" })[sourceId(s.text).split(":")[0]] || "";
   return el("section", { class: "r4-sec r4-said" }, [el("h2", {}, [t("In their words"), el("span", { class: "more", text: t("Original · newest first") })]),
-    el("ol", {}, rows.slice(0, 6).map(({ s, words }) => el("li", {}, [
+    el("ol", {}, rows.slice(0, 6).map(({ s, words }, i) => quoteRow(el("li", { class: i > 1 ? "later" : "" }, [
       el("span", { class: "said-src" }, [el("span", { text: kind(s) }), el("span", { html: inline("[" + s.n + "]", r.path) })]),
-      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])))]);
+      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])))),
+    showAll(Math.min(rows.length, 6), 2)]);
 }
 // A person's page is their record; what you owe them is done from Today
 // (owner, 2026-11-08). One quiet link there, never a reply button here.
+// A quote is three lines at rest; a click or Enter on it reads it whole (L2).
+function quoteRow(li) {
+  li.tabIndex = 0;
+  li.setAttribute("aria-expanded", "false");
+  const flip = () => li.setAttribute("aria-expanded", String(li.classList.toggle("d-open")));
+  li.onclick = event => { if (!event.target.closest("a, button")) flip(); };
+  li.onkeydown = event => { if (event.key === "Enter" && event.target === li) { event.preventDefault(); flip(); } };
+  return li;
+}
+// "Show all n": the rows marked .later in the list just before it come into view (L3).
+function showAll(n, rest) {
+  if (n <= rest) return null;
+  const button = el("button", { type: "button", class: "r4-btn sm ghost d-showall", text: t("Show all {n}", { n }) });
+  button.onclick = () => { button.previousElementSibling.classList.add("all"); button.remove(); };
+  return button;
+}
 function personTodayLink(r) {
   const n = waitingOn(r).length;
   return n ? el("a", { class: "r4-today", href: "#", text: t(n === 1 ? "1 item in Today" : "{n} items in Today", { n }) }) : null;
@@ -7740,7 +7814,8 @@ function railOrg(r) {
 function railUnsure(r) {
   // Only the bullets: a summary paragraph under them is not an open question.
   const items = (section(r, "uncertainties")?.text || "").split("\n").filter(line => /^\s*[-*]\s/.test(line)).map(line => plainLine(line)).filter(Boolean).slice(0, 4);
-  return items.length ? [el("h4", { text: t("REM is not sure") }), el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item })))] : [];
+  return items.length ? [el("details", { class: "d-fold d-unsure" }, [el("summary", { text: t("REM is not sure") + " · " + items.length }),
+    el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item })))])] : [];
 }
 function railSources(r) {
   const n = sourceList(r).length;
@@ -7764,13 +7839,9 @@ function personSessions(r) {
 // The words and the date only; marking, replying and closing happen in Today.
 // Direction D (owner, 2026-11-10: records are records): the list is done in Waiting on you; here one quiet line says how many.
 function personTopics(r) {
-  const items = threads(r).items.filter(item => item.dir !== "third");
-  const rows = items.map(item => {
-    const content = historyRowContent(withoutDateClutter(youify(item.text), item), r.path);
-    return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
-      el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
-  }).filter(Boolean);
-  return rows.length ? el("section", { class: "r4-sec r4-topics" }, [el("h2", { text: t("Open topics") }), el("ul", {}, rows)]) : null;
+  const n = threads(r).items.filter(item => item.dir !== "third").length;
+  return n ? el("p", { class: "r4-topics d-todo-link" }, [t(n === 1 ? "1 open topic; it is handled in " : "{n} open topics; they are handled in ", { n }),
+    el("a", { href: "#view=open", text: t("Waiting on you") }), t(" — this record only keeps it.")]) : null;
 }
 // A person's page is their record (owner, 2026-11-08, D-30): what you owe them lives in Today.
 function personPage(r) {
