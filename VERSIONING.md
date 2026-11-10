@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.5rc1
+## Current Version: 1.9.5
+
+Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
+command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly
+floor holds investigation work, and says why a round waits. Nothing in the reader asks you to copy
+a command; a page that waited while you typed says "Updates waiting" and keeps your words; a
+headless `co claude run` edits files in its folder by default. See [1.9.5 notes](docs/releases/1.9.5.md).
+
+- 1.9.5 (fresh installs work, mail every slot past the floor, no command to copy).
+
+## Previous preview: 1.9.5rc1
 
 Release candidate 1.9.5rc1 for 1.9.5: nothing in the reader asks you to copy a command any more (a
 private project gets "Ask Codex to look" in place); a page that waited while you typed says
@@ -410,7 +420,7 @@ Bedrock/Vertex settings. Stable remains 1.9.4. See [candidate notes](docs/releas
 
 - 1.9.5rc1 (no command to copy, Updates waiting, headless co claude run does the work).
 
-## Current stable: 1.9.4
+## Previous stable: 1.9.4
 
 Stable 1.9.4 is a hotfix on 1.9.3: the first `co rem open` after upgrading from 1.9.3rc64 could wait
 minutes (17 measured) for a rebuild, because rc64's saved-page manifest did not list the file page.

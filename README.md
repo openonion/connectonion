@@ -138,14 +138,14 @@ Captured with `python scripts/capture_rem_reader.py --readme docs/assets/rem-rea
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.4
+### Try co rem · 1.9.5
 
 Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.4'
+pip install --upgrade 'connectonion==1.9.5'
 # build your map and first pages; approve nightly upkeep when prompted
 co rem init
 # read the local notebook
@@ -343,7 +343,7 @@ opens in place. Replies to people you trust can go on their own through a
 
 ## Project
 
-**Stable 1.9.4** is what `pip install connectonion` installs; previews
+**Stable 1.9.5** is what `pip install connectonion` installs; previews
 remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)
