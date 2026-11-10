@@ -212,7 +212,8 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
     functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
-                                               'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
+                                               'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl',
+                                               'draftExtras', 'menuItem', 'menuLink')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
       const draft = {status, provider:'outlook', thread:'feedback', body:'Here is my feedback on Demo A.', gist:'Fern needs no further reply.'};

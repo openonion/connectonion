@@ -3062,6 +3062,7 @@
   .d-fold > summary h2 { margin: 0; font: inherit; color: inherit; }
   .d-showall { margin-top: var(--u2); }
   #main :is(.r4-name, .ov-say h1.ov-name) { hyphens: manual; -webkit-hyphens: manual; }
+  #main :is(.r4-name, .ov-say h1.ov-name).name-wide { white-space: nowrap; width: max-content; max-width: none; }
   .ov-xray:not(:hover):not(:focus-within) .ov-legend { visibility: hidden; }
   #main:has(.record-focus.projects) .leadrow:not(:hover):not(:focus-within) :is(.project-purpose-cites, a.unsure) { visibility: hidden; }
   .record-focus.projects .focus-head:not(:hover):not(:focus-within) .project-purpose-cites { visibility: hidden; }
@@ -7630,11 +7631,12 @@ function fitNames() {
   for (const node of document.querySelectorAll("#main .r4-name, #main .ov-say h1.ov-name")) {
     const name = node.dataset.name || (node.dataset.name = node.textContent);
     node.textContent = name;
-    node.style.fontSize = "";
-    // A name that does not fit steps down to one line first (owner, 2026-11-10: "Ope-/nOnion");
-    // only a name too long even at 28px gets soft hyphens at its syllables.
-    for (let size = parseFloat(getComputedStyle(node).fontSize); nameOverflows(node) && size > 28; size -= 4) node.style.fontSize = Math.max(28, size - 4) + "px";
-    if (nameOverflows(node)) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
+    node.classList.remove("name-wide");
+    // A name wider than its column stays on one line while the page has room (owner, 2026-11-10: "Ope-/nOnion");
+    // only a name wider than the page gets soft hyphens at its syllables.
+    if (nameOverflows(node)) node.classList.add("name-wide");
+    if (node.getBoundingClientRect().right > document.getElementById("main").getBoundingClientRect().right) node.classList.remove("name-wide");
+    if (!node.classList.contains("name-wide") && nameOverflows(node)) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
   }
 }
 // Measured without the break-word fallback, which would otherwise hide the overflow it is there to catch.
@@ -7748,17 +7750,16 @@ function personQuotes(r) {
   if (!rows.length) return null;
   const kind = s => ({ gmail: "Gmail", outlook: "Outlook", imap: "Mail" })[sourceId(s.text).split(":")[0]] || "";
   return el("section", { class: "r4-sec r4-said" }, [el("h2", {}, [t("In their words"), el("span", { class: "more", text: t("Original · newest first") })]),
-    el("ol", {}, rows.slice(0, 6).map(({ s, words }, i) => quoteRow(el("li", { class: i > 1 ? "later" : "" }, [
+    el("ol", {}, rows.slice(0, 6).map(({ s, words }, i) => quoteRow(i > 1 ? "later" : "", [
       el("span", { class: "said-src" }, [el("span", { text: kind(s) }), el("span", { html: inline("[" + s.n + "]", r.path) })]),
-      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])))),
+      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })]))),
     showAll(Math.min(rows.length, 6), 2)]);
 }
 // A person's page is their record; what you owe them is done from Today
 // (owner, 2026-11-08). One quiet link there, never a reply button here.
 // A quote is three lines at rest; a click or Enter on it reads it whole (L2).
-function quoteRow(li) {
-  li.tabIndex = 0;
-  li.setAttribute("aria-expanded", "false");
+function quoteRow(cls, children) {
+  const li = el("li", { class: cls, tabindex: "0", "aria-expanded": "false" }, children);
   const flip = () => li.setAttribute("aria-expanded", String(li.classList.toggle("d-open")));
   li.onclick = event => { if (!event.target.closest("a, button")) flip(); };
   li.onkeydown = event => { if (event.key === "Enter" && event.target === li) { event.preventDefault(); flip(); } };
