@@ -8466,7 +8466,8 @@ function orgRows() {
     const seen = new Set();
     const owed = pages.flatMap(orgOwed).filter(entry => !seen.has(entry.row.key) && seen.add(entry.row.key)).sort(owedFirst);
     const people = [...new Map(pages.flatMap(page => orgMembers(page)).map(p => [p.path, p])).values()];
-    return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
+    // Last contact is the newest exchange with anyone there: the page's own date lags until REM re-reads it.
+    return { r, pages, owed, people, last: [...pages.map(page => known(page).last), ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "" };
   });
 }
 function orgByUrgency(a, b) {
@@ -8674,7 +8675,8 @@ function orgStage(v) {
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
-  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day, last = known(v.r).last || v.events.at(-1)?.day;
+  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day;
+  const last = [known(v.r).last, ...v.people.map(orgLast)].filter(Boolean).sort().at(-1) || v.events.at(-1)?.day;
   const parts = [v.r.domain ? el("span", { class: "ov-domain", text: v.r.domain }) : null,
     v.people.length ? orgT(v.people.length === 1 ? "1 person you know" : "{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
     first ? orgT("In touch since {date}", { date: fmtDate(first) }) : null, last ? orgT("Last contact {date}", { date: fmtDate(last) }) : null].filter(Boolean);
