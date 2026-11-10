@@ -2760,9 +2760,9 @@
   main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
 
   /* sheets: settings, the palette, shortcuts */
-  dialog.sheet, dialog.palette { width: min(640px, calc(100vw - 28px)); margin: 70px auto auto; padding: 22px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); color: var(--ink);
+  dialog.n3-sheet, dialog.palette { width: min(640px, calc(100vw - 28px)); margin: 70px auto auto; padding: 22px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); color: var(--ink);
     box-shadow: var(--e3); max-height: calc(100vh - 100px); overflow: auto; animation: n3-rise var(--t-draw) var(--spring) both; }
-  dialog.sheet::backdrop, dialog.palette::backdrop { background: var(--scrim); backdrop-filter: blur(6px); }
+  dialog.n3-sheet::backdrop, dialog.palette::backdrop { background: var(--scrim); backdrop-filter: blur(6px); }
   dialog.palette { padding: 8px; }
   .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .sheet-head h2 { flex: 1; margin: 0; font: var(--w-bold) var(--s-head)/1.15 var(--font); letter-spacing: -0.02em; }
@@ -2823,7 +2823,7 @@
     .tab.active, .tab[aria-expanded="true"] { color: var(--ink); font-weight: var(--w-bold); }
     .tab .n { position: absolute; top: -2px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
       font: var(--w-bold) var(--s-meta)/18px var(--font); text-align: center; }
-    dialog.sheet, dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0; max-height: 85vh; }
+    dialog.n3-sheet, dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0; max-height: 85vh; }
   }
 
   /* ---- shared N3 parts: faces, widgets, buttons ---- */
@@ -3135,7 +3135,7 @@
   </div>
   <nav class="tabbar" id="tabbar" aria-label="Tabs"><button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button></nav>
 </div>
-<dialog id="settings" class="sheet reader-settings" aria-labelledby="settings-title">
+<dialog id="settings" class="n3-sheet reader-settings" aria-labelledby="settings-title">
   <div class="sheet-head"><h2 id="settings-title">Settings</h2><button type="button" class="ibtn settings-close" aria-label="Close"></button></div>
   <div class="foot" id="foot"></div>
 </dialog>
@@ -7488,7 +7488,7 @@ function nightLine() {
 }
 function openNightSheet(done) {
   const close = el("button", { type: "button", class: "ibtn", "aria-label": t("Close") }, [icon("x")]);
-  const dialog = el("dialog", { id: "night-sheet", class: "sheet", "aria-labelledby": "night-title" }, [
+  const dialog = el("dialog", { id: "night-sheet", class: "n3-sheet", "aria-labelledby": "night-title" }, [
     el("div", { class: "sheet-head" }, [el("h2", { id: "night-title", text: t("What REM did overnight") }), close]), done]);
   close.onclick = () => dialog.close();
   dialog.addEventListener("close", () => dialog.remove());
@@ -7981,7 +7981,7 @@ function railUnsure(r) {
 }
 function openListSheet(title, body) {
   const close = el("button", { type: "button", class: "ibtn", "aria-label": t("Close") }, [icon("x")]);
-  const dialog = el("dialog", { class: "sheet list-sheet", "aria-label": title }, [el("div", { class: "sheet-head" }, [el("h2", { text: title }), close]), body]);
+  const dialog = el("dialog", { class: "n3-sheet list-sheet", "aria-label": title }, [el("div", { class: "sheet-head" }, [el("h2", { text: title }), close]), body]);
   close.onclick = () => dialog.close();
   dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
