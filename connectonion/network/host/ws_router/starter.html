@@ -7,195 +7,202 @@
 <style>
   /* Shared Control Center tokens. The page is self-contained: no remote assets,
      scripts, inline handlers, or navigation. The chat bridge owns declarative
-     data-ochat-* controls; plain HTML remains usable when that bridge is absent. */
+     data-ochat-* controls; plain HTML remains usable when that bridge is absent.
+     No web font either: the page has to render offline, so the headline uses
+     the system serif (New York on Apple, Georgia elsewhere). */
+  /* O Chat v12: one light ground, green and white only. Green is spent on four
+     things — the one primary action, the live dot, the current item and focus
+     rings — so --cc-danger is deliberately not a red: a failure is said in words
+     and weight, not in a second accent colour. --cc-subtle is the quietest text
+     that still reads (AA on every ground); --cc-faint is for chevrons and
+     the marks that carry no words. */
   :root {
     color-scheme: light dark;
-    --cc-bg: #f7f8f6;
+    --cc-bg: #f8faf9;
     --cc-surface: #ffffff;
-    --cc-surface-raised: #f0f2ee;
-    --cc-text: #171a17;
-    --cc-muted: #505650;
-    --cc-subtle: #626962;
-    --cc-border: #d9ddd7;
-    --cc-accent: #14733a;
-    --cc-accent-soft: #e2f3e7;
-    --cc-danger: #b42318;
-    --cc-focus: #075985;
-    --cc-radius-sm: 10px;
-    --cc-radius-md: 14px;
-    --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
+    --cc-surface-raised: #f1f5f2;
+    --cc-text: #122019;
+    --cc-muted: #4f5f56;
+    --cc-subtle: #5f6f66;
+    --cc-faint: #9aa8a0;
+    --cc-border: #e3e9e5;
+    --cc-border-strong: #cfd9d3;
+    --cc-accent: #146c43;
+    --cc-on-accent: #ffffff;
+    --cc-live: #1f9d5c;
+    --cc-accent-soft: #e9f4ee;
+    --cc-accent-text: #146c43;
+    --cc-danger: #122019;
+    --cc-focus: #146c43;
+    --cc-radius-sm: 6px;
+    --cc-radius-md: 8px;
+    --cc-shadow: 0 1px 2px rgba(20, 20, 19, .04);
+    --cc-serif: "New York", ui-serif, Georgia, serif;
+    --cc-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --cc-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --cc-bg: #111411;
-      --cc-surface: #191d19;
-      --cc-surface-raised: #222722;
-      --cc-text: #f1f5f1;
-      --cc-muted: #bbc4bb;
-      --cc-subtle: #aeb7ae;
-      --cc-border: #343b34;
-      --cc-accent: #62d68a;
-      --cc-accent-soft: #173d25;
-      --cc-danger: #ff8a80;
-      --cc-focus: #7dd3fc;
-      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
+    :root:not([data-theme="light"]) {
+      --cc-bg: #0b100d;
+      --cc-surface: #111813;
+      --cc-surface-raised: #17201a;
+      --cc-text: #e9f0eb;
+      --cc-muted: #a4b3aa;
+      --cc-subtle: #8a9990;
+      --cc-faint: #67766d;
+      --cc-border: #1f2a23;
+      --cc-border-strong: #2c3a31;
+      --cc-accent: #3fbf7f;
+      --cc-on-accent: #06150d;
+      --cc-live: #3fbf7f;
+      --cc-accent-soft: #16281e;
+      --cc-accent-text: #7fd6a8;
+      --cc-danger: #e9f0eb;
+      --cc-focus: #3fbf7f;
+      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .3);
     }
+  }
+  :root[data-theme="dark"] {
+    --cc-bg: #0b100d;
+    --cc-surface: #111813;
+    --cc-surface-raised: #17201a;
+    --cc-text: #e9f0eb;
+    --cc-muted: #a4b3aa;
+    --cc-subtle: #8a9990;
+    --cc-faint: #67766d;
+    --cc-border: #1f2a23;
+    --cc-border-strong: #2c3a31;
+    --cc-accent: #3fbf7f;
+    --cc-on-accent: #06150d;
+    --cc-live: #3fbf7f;
+    --cc-accent-soft: #16281e;
+    --cc-accent-text: #7fd6a8;
+    --cc-danger: #e9f0eb;
+    --cc-focus: #3fbf7f;
+    --cc-shadow: 0 1px 2px rgba(0, 0, 0, .3);
   }
   * { box-sizing: border-box; }
   html { background: var(--cc-bg); }
   body {
     margin: 0;
-    padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
     background: var(--cc-bg);
     color: var(--cc-text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.5;
+    font: 14px/1.5 var(--cc-sans);
     -webkit-font-smoothing: antialiased;
   }
   html, body { max-width: 100%; overflow-x: clip; }
-  main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
-  main { width: min(100%, 860px); margin: 0 auto; }
+  main, .skill-rows, .skill { width: 100%; min-width: 0; max-width: 100%; }
   button, input, summary { font: inherit; }
-  button, summary { min-height: 44px; }
-  :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--cc-focus); outline-offset: 2px; border-radius: 4px; }
 
-  .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
-  .eyebrow {
-    margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .11em; text-transform: uppercase;
+  /* The bar: who you are talking to, and that it is live. It says nothing else. */
+  .bar {
+    display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 16px;
+    border-bottom: 1px solid var(--cc-border); background: var(--cc-surface);
   }
-  .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .mark {
-    flex: none; display: grid; place-items: center; width: 42px; height: 42px;
-    border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
-    font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
+  .bar .nm { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
+  .bar .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--cc-live); }
+  .bar .r { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .quiet-link {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px;
+    border-radius: var(--cc-radius-sm); color: var(--cc-muted); font-size: 12.5px; text-decoration: none;
   }
-  h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
-  .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
-  .tagline:empty { display: none; }
-  .sub { margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+  .quiet-link:hover { background: var(--cc-surface-raised); color: var(--cc-text); }
 
-  .grid { display: grid; gap: 14px; }
-  .stack { margin-top: 14px; }
-  .card {
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
-    background: var(--cc-surface); box-shadow: var(--cc-shadow);
+  main { width: min(100%, 720px); margin: 0 auto; padding: 56px 24px 56px; }
+  h1 {
+    margin: 0; font-family: var(--cc-serif); font-weight: 600; font-size: 34px;
+    line-height: 1.1; letter-spacing: -.02em; overflow-wrap: anywhere;
   }
-  .card-pad { padding: 16px; }
-  .section-title {
-    margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .09em; text-transform: uppercase;
-  }
+  .bio { margin: 8px 0 0; max-width: 52ch; color: var(--cc-muted); font-size: 15px; }
+  .bio:empty { display: none; }
 
-  .now { display: flex; align-items: flex-start; gap: 11px; }
-  .now strong { display: block; font-size: 15px; }
-  .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
+  /* The owner's two strings — the address people connect to and the invite code
+     that lets them in. Quiet rows, not a panel: they are looked up, not read.
+     One click selects the whole value, which is the copy this page can offer
+     without a script. */
+  .ids { display: grid; gap: 2px; margin: 14px 0 0; }
+  .ids > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: 12.5px; }
+  .ids dt { flex: none; width: 52px; color: var(--cc-subtle); }
+  .ids dd { margin: 0; min-width: 0; color: var(--cc-muted); }
+  .addr, .code { font-family: var(--cc-mono); font-size: 12px; overflow-wrap: anywhere; user-select: all; cursor: text; }
 
-  /* One action per row. At the pane width this page is written for the three
-     columns already collapsed; at desktop width they did not, and the card there
-     is about 460px — roughly 150px per action, which wrapped the names and cut
-     every description mid-word, an ellipsis landing wherever the pixels ran out.
-     A row fits the name and two readable lines under it at every width this page
-     is served at. */
-  .quick { display: grid; gap: 6px; align-content: start; }
-  .quick .skill {
-    min-height: 62px; padding: 11px 32px 11px 13px;
-    border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
+  /* Skills: one hairline row each — the name, then what it does. No boxes; the
+     whole row is the button, and "Use" appears only under the pointer. */
+  .fold { margin-top: 32px; }
+  /* Consecutive folded sections read as one list of labels. */
+  .fold + .fold, .sec + .fold { margin-top: 12px; }
+  .fold > summary {
+    display: flex; align-items: center; gap: 8px; min-height: 44px; list-style: none; cursor: pointer;
+    color: var(--cc-muted); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
   }
-  .quick .skill::after { right: 14px; }
-  .quick .skill .desc {
-    white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before {
+    content: ""; flex: none; width: 6px; height: 6px; margin: 0 3px 0 1px;
+    border-right: 1.5px solid var(--cc-faint); border-bottom: 1.5px solid var(--cc-faint);
+    transform: rotate(-45deg);
   }
-
+  .fold[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+  .fold > summary .n { color: var(--cc-subtle); letter-spacing: 0; }
+  co-filter { display: block; min-height: 44px; margin: 4px 0 8px; }
+  .skill-rows { display: grid; }
+  .rows { display: grid; }
   .skill {
-    position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
-    border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-    color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
+    display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; row-gap: 2px;
+    min-height: 44px; padding: 10px 0; border: 0; border-top: 1px solid var(--cc-border);
+    background: transparent; color: var(--cc-text); cursor: pointer; text-align: left;
   }
-  .skill::after {
-    content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-    border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
-    transform: translateY(-50%) rotate(45deg);
-  }
-  .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
-  .skill:active { background: var(--cc-accent-soft); }
-  .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .skill .name { flex: none; max-width: 100%; font-weight: 500; overflow-wrap: anywhere; }
   .skill .desc {
-    min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
-    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1 1 18ch; min-width: 0; max-width: 100%; margin-top: 0; color: var(--cc-muted);
   }
   .skill .desc:empty { display: none; }
-
-  details.card { overflow: clip; }
-  details.card > summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
-  }
-  details.card > summary::-webkit-details-marker { display: none; }
-  details.card > summary::after {
-    content: ""; flex: none; width: 8px; height: 8px;
-    border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
-    transform: rotate(45deg) translate(-2px, 2px);
-  }
-  details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
-  .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
-  .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
-  co-filter { display: block; min-height: 44px; margin-top: 12px; }
-  .rows { display: grid; gap: 2px; margin-top: 8px; }
-  .more { margin-top: 7px; }
+  .skill .use { flex: none; margin-left: auto; color: var(--cc-subtle); font-size: 13px; opacity: 0; }
+  .skill:hover .use, .skill:focus-visible .use { opacity: 1; }
+  .skill:hover .name { color: var(--cc-accent-text); }
   .more > summary {
-    display: flex; align-items: center; justify-content: center; padding: 8px 12px;
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
-    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 680;
+    display: flex; align-items: center; min-height: 44px; border-top: 1px solid var(--cc-border);
+    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 13px;
   }
   .more > summary::-webkit-details-marker { display: none; }
-  .more[open] > .rows { margin-top: 7px; }
   .lbl-less { display: none; }
   .more[open] .lbl-more { display: none; }
   .more[open] .lbl-less { display: inline; }
-  .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
-  .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
-  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+  .empty { margin: 0; padding: 10px 0; border-top: 1px solid var(--cc-border); color: var(--cc-muted); }
+  code { font-family: var(--cc-mono); font-size: .92em; }
 
-  .activity { display: grid; gap: 10px; }
-  .sec { padding: 14px 16px; }
-  .sec > h2 { margin: 0 0 6px; font-size: 12px; }
-  .act { display: flex; align-items: baseline; gap: 8px; min-height: 38px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .act:first-of-type { border-top: 0; }
+  /* Activity and host facts: the same quiet label and hairline rows. */
+  .sec { margin-top: 32px; }
+  .sec > h2 {
+    margin: 0; padding: 6px 0; color: var(--cc-muted); font-size: 11px; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .act { display: flex; align-items: baseline; gap: 8px; min-height: 40px; padding: 9px 0; border-top: 1px solid var(--cc-border); font-size: 13px; }
   .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .act .meta { flex: none; color: var(--cc-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-  .act .bad { color: var(--cc-danger); }
-  .act .live { color: var(--cc-accent); font-weight: 680; }
-
-  .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
-  .diag { display: grid; grid-template-columns: minmax(76px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
-  .diag:first-child { border-top: 0; }
+  .act .meta { flex: none; color: var(--cc-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .act .bad { color: var(--cc-danger); font-weight: 600; }
+  .act .live { color: var(--cc-accent-text); }
+  .diagnostics { margin: 0; }
+  .diag { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid var(--cc-border); font-size: 13px; }
   .diag dt { color: var(--cc-subtle); }
   .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
-  .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
 
   @media (min-width: 640px) {
-    .masthead { grid-template-columns: 1fr auto; align-items: end; }
-    /* Two columns only when there are two cards. An Agent that has published
-       nothing renders no Quick actions card, and the second column stayed
-       declared: the Workspace note sat at 40% width beside an empty half. Day
-       zero is exactly when an Agent has no published skills, so that was the
-       first thing `co host` showed most people. */
-    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; }
-    .overview:not(:has(.quick)) { grid-template-columns: 1fr; }
-    .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+    .skill .name { white-space: nowrap; }
   }
   @media (max-width: 520px) {
-    body { padding-inline: 10px; }
-    .quick .skill { min-height: 56px; }
+    main { padding: 36px 16px 40px; }
+    h1 { font-size: 30px; }
     .act { align-items: flex-start; flex-direction: column; gap: 1px; }
     .act .what { white-space: normal; }
-    .diag { grid-template-columns: 1fr; gap: 2px; }
+    .skill .use { display: none; }
+    /* A description beside the name leaves a ragged hanging column at phone
+       width; under it, every row reads the same way. */
+    .skill .desc { flex-basis: 100%; }
   }
   @media (prefers-reduced-motion: no-preference) {
-    .skill, summary { transition: background-color .14s ease, border-color .14s ease; }
+    .skill .use, .skill .name, .quiet-link { transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
@@ -203,36 +210,26 @@
 </style>
 </head>
 <body>
+  <header class="bar">
+    <span class="nm"><i class="live-dot" aria-hidden="true"></i><span>$name</span></span>
+    <div class="r">$bar_actions</div>
+  </header>
   <main>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Control Center</p>
-        <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
-        $address
-        <p class="tagline">$tagline</p>
-      </div>
-    </header>
+    <section class="intro" aria-labelledby="agent-name">
+      <h1 id="agent-name">$name</h1>
+      <p class="bio">$tagline</p>
+$identity
+    </section>
 
-    <div class="grid overview">
-      <section class="card card-pad" aria-labelledby="workspace-title">
-        <h2 class="section-title" id="workspace-title">Workspace</h2>
-        <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
-      </section>
-    </div>
-
-    <div class="grid stack">
-$activity
-      <details class="card capabilities">
-        <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
-        <div class="details-body">
-          <co-filter target="#capability-list" placeholder="Search capabilities"></co-filter>
-          <div class="capability-rows" id="capability-list">
+    <details class="fold skills" id="skills" open>
+      <summary><span>Skills</span><span class="n">$skill_count</span></summary>
+$filter
+      <div class="skill-rows" id="capability-list">
 $body
-          </div>
-        </div>
-      </details>
+      </div>
+    </details>
+$activity
 $diagnostics
-    </div>
   </main>
 </body>
 </html>
@@ -242,7 +239,7 @@ Everything below this marker is render scaffolding and never reaches the page.
 Placeholders use string.Template syntax; do not use dollar signs elsewhere.
 -->
 
-<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
+<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span><span class="use" aria-hidden="true">Use →</span></button></template>
 
 <template id="list"><div class="rows">
 $rows
@@ -255,27 +252,35 @@ $rows
     </div>
   </details></template>
 
-<template id="empty"><section class="empty">
-    <p>No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p>
-  </section></template>
+<template id="empty"><p class="empty">None yet — add one to <code>.co/skills/</code>.</p></template>
 
-<template id="quick"><section class="card card-pad" aria-labelledby="quick-title">
-    <h2 class="section-title" id="quick-title">Quick actions</h2>
-    <div class="quick">
+<template id="filter"><co-filter target="#capability-list" placeholder="Search skills"></co-filter></template>
+
+<template id="ids"><dl class="ids">
+$rows
+      </dl></template>
+
+<template id="id"><div><dt>$label</dt><dd class="$class" title="Click to select">$value</dd></div></template>
+
+<template id="details-link"><a class="quiet-link" href="#details">Details</a></template>
+
+<template id="quick"><section class="sec" aria-labelledby="quick-title">
+    <h2 id="quick-title">Quick actions</h2>
+    <div class="rows">
 $rows
     </div>
   </section></template>
 
-<template id="activity"><section class="card sec">
-    <h2 class="section-title">$title</h2>
+<template id="activity"><section class="sec">
+    <h2>$title</h2>
 $rows
   </section></template>
 
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
 
-<template id="diagnostics"><details class="card diagnostics-card">
-    <summary><span>Diagnostics</span><span class="count">Host details</span></summary>
-    <dl class="diagnostics">
+<template id="diagnostics"><details class="fold diagnostics-card">
+    <summary><span>Diagnostics</span></summary>
+    <dl class="diagnostics" id="details">
 $rows
     </dl>
   </details></template>

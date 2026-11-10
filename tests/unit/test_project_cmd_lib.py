@@ -30,8 +30,9 @@ class TestControlCenterTemplate:
         contract = (app / "CONTROL_CENTER.md").read_text(encoding="utf-8")
         assert 'src="./control-center.js"' in html
         assert "interactive version of CO AI's canonical starter.html" in html
-        for landmark in ("Control Center", "Workspace", "Capabilities"):
+        for landmark in ("Control Center", "Workspace", "Skills", 'id="skills"'):
             assert landmark in html
+        assert "Capabilities" not in html
         assert "Connect AI" in html
         assert "Diagnostics" in html and 'id="agent-address"' in html
         for token in ("--cc-bg", "--cc-surface", "--cc-accent", "--cc-focus"):
@@ -44,7 +45,10 @@ class TestControlCenterTemplate:
         for token in (
             "--cc-bg", "--cc-surface", "--cc-surface-raised", "--cc-text",
             "--cc-muted", "--cc-subtle", "--cc-border", "--cc-accent",
-            "--cc-accent-soft", "--cc-danger", "--cc-focus",
+            "--cc-accent-soft", "--cc-danger", "--cc-focus", "--cc-faint",
+            "--cc-border-strong", "--cc-on-accent", "--cc-live", "--cc-accent-text",
+            "--cc-radius-sm", "--cc-radius-md", "--cc-shadow", "--cc-serif",
+            "--cc-sans", "--cc-mono",
         ):
             declarations = rf"{re.escape(token)}:\s*([^;]+);"
             assert re.findall(declarations, html) == re.findall(declarations, starter)
