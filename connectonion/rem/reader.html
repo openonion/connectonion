@@ -2136,11 +2136,16 @@
   .owner-slot.choose input:focus { outline: 0; border-bottom-color: var(--ink); }
   /* With a draft open the card is compact, so Send sits in normal flow on the first screen: the context is
      two lines with More, and the English original waits behind More too. */
-  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; max-height: 1.7em; }
+  /* align-self: start, or the 32px done button stretches the row and the clamped second line shows under the first. */
+  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; align-self: start; }
   .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
   /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
      screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
-  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: 4.5em; overflow: auto; overscroll-behavior: contain; }
+  /* The window is the top margin and three whole lines of the letter, which is four lines of the 中文对照 beside
+     it (16 and 12 at the same 1.6), so neither column shows a half line cut by the slot row under it. */
+  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: calc(var(--u3) + 3 * var(--s-body) * var(--lh-body)); overflow: auto; overscroll-behavior: contain; }
+  .qcard.focal[data-step="send"]:not(.full) :is(.mail-text, .mail-gist) { padding-top: var(--u3); line-height: var(--lh-body); }
+  .qcard.focal[data-step="send"]:not(.full) .mail-gist .k { margin-bottom: 0; }
   .qcard.focal.open .mail-head .mail-row { line-height: 1.35; }
   .mail-gist .mail-why { margin: var(--u3) 0 0; padding: 0; border: 0; }
   .mail-choices { padding: 0 var(--u3); border-top: var(--hair) solid var(--rule); background: var(--paper); }
@@ -2237,7 +2242,8 @@
     .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
     /* REM's question follows the letter, a hairline above it. */
     .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 2; }
-    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; max-height: 3.4em; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; max-height: calc(var(--u3) + 2 * var(--s-body) * var(--lh-body)); }
+    .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: none; -webkit-mask-image: none; mask-image: none; }
     .qcard.focal[data-step="send"]:not(.full) :is(.mail-why, .mail-status) { order: 3; }
     .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
     .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
