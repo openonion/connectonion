@@ -3062,9 +3062,14 @@
   .d-fold > summary h2 { margin: 0; font: inherit; color: inherit; }
   .d-showall { margin-top: var(--u2); }
   #main :is(.r4-name, .ov-say h1.ov-name) { hyphens: manual; -webkit-hyphens: manual; }
+  .ov-xray:not(:hover):not(:focus-within) .ov-legend { visibility: hidden; }
   /* The contact values are the record's facts: reading size; their labels stay small. */
   .r4-rail .r4-kv { font-size: var(--s-body); line-height: var(--lh-body); align-items: baseline; }
   .r4-rail .r4-kv dt { font-size: var(--s-meta); }
+  .ov-legend { transition: opacity var(--t-press) var(--ease-out); }
+  .ov-r6 .ov-over .ov-source-action { display: none; }  /* the same door as the coda's sources link */
+  .ov-r6 details.d-fold { margin-top: var(--u4); border-top: var(--hair) solid var(--rule); }
+  .ov-r6 details.d-fold > summary.ov-sh { border: 0; margin: 0; }
 
   @media (max-width: 820px) {
     .d-more-btn { min-height: 44px; }
@@ -8833,7 +8838,8 @@ function orgRows() {
     const seen = new Set();
     const owed = pages.flatMap(orgOwed).filter(entry => !seen.has(entry.row.key) && seen.add(entry.row.key)).sort(owedFirst);
     const people = [...new Map(pages.flatMap(page => orgMembers(page)).map(p => [p.path, p])).values()];
-    return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
+    // Last contact is the newest exchange with anyone there: the page's own date lags until REM re-reads it.
+    return { r, pages, owed, people, last: [...pages.map(page => known(page).last), ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "" };
   });
 }
 // ---------- the list: a hierarchy table, like a CRM's accounts (owner, 2026-11-10: 组织又不是你的 todo 类型) ----------
@@ -9107,7 +9113,8 @@ function orgStage(v) {
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
-  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day, last = known(v.r).last || v.events.at(-1)?.day;
+  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day;
+  const last = [known(v.r).last, ...v.people.map(orgLast)].filter(Boolean).sort().at(-1) || v.events.at(-1)?.day;
   const parts = [v.r.domain ? el("span", { class: "ov-domain", text: v.r.domain }) : null,
     v.people.length ? orgT(v.people.length === 1 ? "1 person you know" : "{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
     first ? orgT("In touch since {date}", { date: fmtDate(first) }) : null, last ? orgT("Last contact {date}", { date: fmtDate(last) }) : null].filter(Boolean);
@@ -9355,7 +9362,8 @@ function orgMember(p, unitPath) {
 function orgStructure(v) {
   if (!v.people.length && !v.tree.units.length) return null;
   const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length;
-  return el("section", { class: "ov-sec ov-structure" }, [el("div", { class: "ov-sh" }, [
+  // The outline repeats the X-ray in words: one fold (L3) under it.
+  return el("details", { class: "ov-sec ov-structure d-fold" }, [el("summary", { class: "ov-sh" }, [
     el("h2", { text: orgT(units ? "Units and people" : "People you know here") }),
     el("span", { class: "ov-meta", text: units ? orgT("{n} units · {m} people", { n: units, m: v.people.length }) : orgT("{n} people you know", { n: v.people.length }) })]),
     orgOutline(v)]);
@@ -9392,7 +9400,7 @@ function orgCooling(v) {
   if (!rows.length) return null;
   const strip = weeks => el("span", { class: "ov-sq", "aria-hidden": "true" }, Array.from({ length: 13 }, (_, i) => weeks.slice(i * 4, i * 4 + 4).reduce((a, b) => a + b, 0))
     .map(n => el("i", { class: n ? "f" : "", style: n ? `opacity:${.35 + .65 * Math.min(1, n / 10)}` : "" })));
-  return el("section", { class: "ov-sec ov-cool" }, [el("div", { class: "ov-sh" }, [el("h2", { text: orgT("Cooling") }), el("span", { class: "ov-meta", text: orgT("less mail than before · 52 weeks") })]),
+  return el("details", { class: "ov-sec ov-cool d-fold" }, [el("summary", { class: "ov-sh" }, [el("h2", { text: orgT("Cooling") }), el("span", { class: "ov-meta", text: orgT("less mail than before · 52 weeks") })]),
     el("ul", { class: "ov-cl" }, rows.map(({ p, rel }) => el("li", {}, [el("a", { class: "ov-ct", href: href(p), text: p.title }),
       el("span", { class: "ov-meta", text: rel.quiet ? orgT("{n} days without mail", { n: daysSince(calendarDay(rel.last_mail)) }) : orgT("{n}% less mail in the last 30 days", { n: Math.abs(Math.round(rel.change_percent || 0)) }) }),
       strip(rel.weekly_messages || [])])))]);
@@ -9473,7 +9481,7 @@ function orgTimeline(r, people) {
   const draw = all => {
     list.textContent = "";
     let month = "";
-    for (const item of all ? items.slice(0, 60) : items.slice(0, 8)) {
+    for (const item of all ? items.slice(0, 60) : items.slice(0, 4)) {
       const m = item.day.slice(0, 7);
       if (m !== month) list.appendChild(el("li", { class: "ov-month", text: new Date(m + "-01T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "long", ...(m.slice(0, 4) !== calendarDay(REM.as_of).slice(0, 4) ? { year: "numeric" } : {}) }) }));
       month = m;
@@ -9481,7 +9489,7 @@ function orgTimeline(r, people) {
     }
   };
   draw(false);
-  const more = items.length > 8 ? el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show all {n} entries", { n: Math.min(items.length, 60) }) }) : null;
+  const more = items.length > 4 ? el("button", { type: "button", class: "ov-btn ghost", text: orgT("Show all {n} entries", { n: Math.min(items.length, 60) }) }) : null;
   if (more) more.onclick = () => { draw(true); more.remove(); };
   return el("section", { class: "ov-section" }, [el("h2", {}, [orgT("Lately"), el("span", { class: "ov-hint", text: orgT("newest first") })]), list, more]);
 }
