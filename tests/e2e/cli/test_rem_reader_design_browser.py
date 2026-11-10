@@ -246,9 +246,15 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
     assert domain.bounding_box()['y'] >= page.locator('.ov-say .ov-name').bounding_box()['y']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.goto(uri + '#c=orgs')
-    row = page.locator('.ov-row').filter(has_text='ConnectOnion')
-    assert row.locator('.ov-domain').inner_text() == 'connectonion.com'
-    assert row.locator('.ov-domain').is_visible()
+    # The list is a hierarchy table (direction D): the name at rest; the domain finds the row (L1 filter)
+    # and is said in the row's peek on a desk (L2).
+    row = page.locator('#org-rows .d-tr').filter(has_text='ConnectOnion')
+    assert row.locator('.d-oname').inner_text() == 'ConnectOnion'
+    page.locator('#org-find').fill('connectonion.com')
+    assert page.locator('#org-rows .d-tr').filter(has_text='ConnectOnion').count() == 1
+    if width >= 1100:
+        row.hover()
+        assert 'connectonion.com' in page.locator('#org-peek').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -3540,6 +3546,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
+    page.locator('#org-rows .d-tr').first.wait_for()
     assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
     page.goto(uri)
     page.locator('.week-details summary').click()
@@ -3842,7 +3849,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
         assert '理学院教授' in row.locator('.people-card-meta').inner_text()
         assert 'Fernhill Labs 科研团队' in row.locator('.people-card-meta').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
-    org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
+    org = page.locator('.ov-list #org-rows .d-tr').filter(has_text='Fernhill Labs')
     assert org.count() == 1
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
@@ -5657,14 +5664,18 @@ def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, wid
     assert re.fullmatch(r"\d+ organisations", page.locator(".ov-list h1").inner_text().strip())
     assert page.locator(".ov-focal").count() == 0
     assert page.evaluate(GREEN) == 0
-    assert page.locator(".ov-list .list-today").inner_text() == "1 organisation waiting in Today →"
-    assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
-    assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
-    assert page.locator(".ov-tabs button").count() <= 4
+    # Direction D (owner, 2026-11-10: 组织又不是你的 todo 类型): a hierarchy table with no waiting groups at rest;
+    # the Today link and the waiting view are in the list's 更多 (L3).
+    assert page.get_by_role("heading", name=re.compile(r"^Waiting on you")).count() == 0
+    assert page.locator(".d-table[role=treegrid] .d-th [role=columnheader]").count() == 4
+    page.locator(".ov-list .d-head .d-more-btn").click()
+    assert page.locator(".ov-list .d-pop a").filter(has_text="1 organisation waiting in Today →").get_attribute("href") == "#view=open"
+    page.locator(".ov-list .d-pop [data-view=waiting]").click()
+    row = page.locator("#org-rows .d-tr").filter(has_text="Fernhill Labs")
+    assert row.locator(".d-wait").is_visible()
     assert page.locator(".ov-find").count() == 1
     page.locator(".ov-find").fill("no such organisation")
-    assert page.locator(".ov-row").count() == 0
+    assert page.locator("#org-rows .d-tr").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5698,7 +5709,8 @@ def test_org_with_nothing_owed_has_no_green_button(reader, width):
     assert page.locator(".ov-today").count() == 0
     page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
     page.locator(".ov-list").wait_for()
-    assert page.locator(".ov-list .list-today").count() == 0
+    page.locator(".ov-list .d-head .d-more-btn").click()
+    assert page.locator(".ov-list .d-pop a[href='#view=open']").count() == 0
     assert page.evaluate(GREEN) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -5707,10 +5719,14 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", 1440, "light")
     page.evaluate("() => { byPath('orgs/fernhill-labs.md').private = true; render(); }", isolated_context=False)
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
-    assert "Personal · shown only on this Mac" in row.inner_text()
+    row = page.locator("#org-rows .d-tr").filter(has_text="Fernhill Labs")
+    # The private state is said where the row speaks: its peek (L2), or inline with 每行显示现状 (L3).
+    row.hover()
+    assert "Personal · shown only on this Mac" in page.locator("#org-peek").inner_text()
+    page.locator(".ov-list .d-head .d-more-btn").click()
+    page.locator(".ov-list .d-pop [data-view=lines]").click()
+    assert "Personal · shown only on this Mac" in page.locator("#org-rows .d-tr").filter(has_text="Fernhill Labs").inner_text()
     assert page.locator(".ov-focal").count() == 0
-    assert row.locator(".ov-dot, .ov-chip").count() == 1
     assert "pilot" not in page.locator("#main").inner_text().lower()
     page.evaluate("() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }", isolated_context=False)
     page.locator(".ov-curtain").wait_for()

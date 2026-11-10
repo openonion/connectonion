@@ -2974,6 +2974,73 @@
   .d-night-folds { margin-top: var(--u5); }
   .d-night-folds > details { max-width: 760px; }
 
+  /* ---- Organisations: a hierarchy table, not a to-do list. ---- */
+  @media (min-width: 1100px) {
+    main.d-orgs { display: grid; grid-template-columns: minmax(0, 720px) 272px; column-gap: var(--u6); justify-content: center; align-items: start; max-width: none; }
+  }
+  .d-orgs .d-orgs-wrap { margin: 0; width: 100%; max-width: none; }
+  .d-orgs .d-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
+  .d-orgs .d-find { display: flex; margin: var(--u4) 0 var(--u3); }
+  .d-table { border-top: 1.5px solid var(--ink); }
+  .d-tr { display: grid; grid-template-columns: minmax(0, 1fr) 0 5.5rem 6.5rem; align-items: center; min-height: 48px; box-sizing: border-box; column-gap: var(--u3); padding: 10px var(--u2) 10px 0; border-bottom: var(--hair) solid var(--rule); }
+  .d-table.d-waiting .d-tr { grid-template-columns: minmax(0, 1fr) 5rem 5.5rem 6.5rem; }
+  .d-c-wait { overflow: hidden; }
+  .d-table:not(.d-waiting) .d-c-wait { visibility: hidden; }
+  .d-th { padding-top: 8px; padding-bottom: 8px; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .d-th [role=columnheader] { white-space: nowrap; }
+  .d-tr .d-c-people, .d-tr .d-c-when { text-align: right; }
+  .d-sort { all: unset; cursor: pointer; color: var(--grey); }
+  .d-sort:hover, .d-sort:focus-visible { color: var(--ink); }
+  .d-sort:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  [aria-sort="descending"] .d-sort::after { content: " ↓"; }
+  [aria-sort="ascending"] .d-sort::after { content: " ↑"; }
+  [aria-sort="descending"] .d-sort, [aria-sort="ascending"] .d-sort { color: var(--ink); }
+  #org-rows .d-tr { cursor: pointer; transition: background var(--t-press) var(--ease-out); }
+  #org-rows .d-tr:hover, #org-rows .d-tr:focus-within, #org-rows .d-tr.d-sel { background: color-mix(in srgb, var(--rule) 55%, var(--paper)); }
+  .d-c-name { display: flex; align-items: center; min-width: 0; padding-left: calc(var(--depth, 0) * 28px); }
+  .d-tog-sp { flex: none; width: 24px; height: 22px; margin-right: 4px; }
+  .d-tog { all: unset; box-sizing: border-box; flex: none; width: 24px; height: 22px; margin-right: 4px; display: inline-grid; place-items: center; cursor: pointer; color: var(--grey); }
+  .d-tog::before { content: ""; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform var(--t-press) var(--ease-out); }
+  .d-tog[aria-expanded="true"]::before { transform: rotate(90deg); }
+  .d-tog:hover { color: var(--ink); }
+  .d-nm { min-width: 0; flex: 1; }
+  .d-oname { color: var(--ink); font: var(--w-regular) var(--s-body)/22px var(--font); text-decoration: none; word-break: keep-all; overflow-wrap: normal; hyphens: none; }
+  .d-tr[aria-level="1"] .d-oname { font-weight: var(--w-bold); }
+  .d-oname:hover, #org-rows .d-oname:focus-visible { outline: 0; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--rule); }
+  .d-nm .ov-kind { margin-left: var(--u2); font-size: var(--s-meta); color: var(--grey); font-weight: var(--w-regular); }
+  .d-hint-n { margin-left: var(--u2); font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .d-phone-meta { display: none; }
+  .d-line { margin: 2px 0 0; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .d-c-people, .d-c-when { font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--grey); font-variant-numeric: tabular-nums; }
+  .d-dash { color: var(--rule); }
+  .d-wait { font: var(--w-regular) var(--s-meta)/22px var(--font); color: var(--ink); white-space: nowrap; }
+  .d-wait.late { color: var(--red); font-weight: var(--w-bold); }
+  .d-older { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 12px 0 12px 28px; color: var(--grey); font: var(--w-regular) var(--s-meta)/18px var(--font); cursor: pointer; }
+  .d-older:hover, .d-older:focus-visible { color: var(--ink); }
+  .d-older[hidden] { display: none; }
+  .d-empty { color: var(--grey); font-size: var(--s-meta); }
+  .d-peek { position: sticky; top: 96px; margin-top: 128px; font: var(--w-regular) var(--s-body)/1.6 var(--font); color: var(--ink); }
+  .d-peek[hidden] { display: block; visibility: hidden; }
+  .d-peek a { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .d-peek .ov-eyebrow a { color: var(--grey); text-decoration: none; }
+  .d-peek-name { margin: 4px 0 var(--u2); font: var(--w-bold) var(--s-head)/1.2 var(--font); word-break: keep-all; hyphens: none; }
+  .d-peek-name .ov-kind { font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); }
+  .d-peek-s, .d-peek-wait { margin: 0 0 var(--u3); font-size: var(--s-meta); line-height: 1.6; }
+  .d-peek-s { color: var(--grey); }
+  .d-peek-facts { margin: 0 0 var(--u3); display: grid; gap: 2px; font-size: var(--s-meta); }
+  .d-peek-facts dt { color: var(--grey); margin-top: var(--u2); }
+  .d-peek-facts dd { margin: 0; }
+  .d-peek-open { font-size: var(--s-meta); }
+  @media (max-width: 1099px) { .d-peek { display: none !important; } }
+  @media (max-width: 720px) {
+    .d-tr, .d-table.d-waiting .d-tr { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; min-height: 44px; }
+    .d-c-people, .d-c-wait { display: none; }
+    .d-table.d-waiting .d-c-wait { display: block; grid-column: 1; grid-row: 2; padding-left: calc(var(--depth, 0) * 20px + 28px); }
+    .d-c-name { padding-left: calc(var(--depth, 0) * 20px); }
+    .d-phone-meta { display: inline; margin-left: var(--u2); font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+    .d-tog, .d-tog-sp { width: 28px; height: 28px; }
+  }
+
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -8556,6 +8623,12 @@ const ORG_UI_ZH = {
   "Community and events": "社区与活动", "Your company": "你的公司", "Personal": "个人",
   "Not sure what this is yet": "还不清楚是什么机构",
   "{n} organisations": "{n} 个组织",
+  "Organisation": "组织", "People you know": "认识的人", "Recent contact": "最近往来", "Organisation hierarchy": "组织层级",
+  "Waiting on you only": "只看在等你的", "Show each row's current state": "每行显示现状", "Expand all": "全部展开", "Collapse all": "全部收起",
+  "Show older organisations": "显示更早的组织", "Hide older organisations": "收起更早的组织", "{n} older · no contact for over 45 days": "更早的 {n} 个 · 45 天以上没有往来",
+  "{n} people": "{n} 人", "{n} more people": "另 {n} 人", "Sub-units": "下属单位", "Domain": "域名",
+  "No dated contact": "没有记录日期", "Open {org} →": "打开 {org} →", "Handle in Today →": "在今天里处理 →", "No current state recorded yet.": "还没有记录现状。",
+  "No matching organisations.": "没有匹配的组织。", "Expand {org}": "展开 {org} 的下属单位", "Collapse {org}": "收起 {org} 的下属单位",
   "{org} has {n} waiting on you; most urgent: {who}, {thing}": "{org} 有 {n} 件在等你，最急的是 {who}：{thing}",
   "{org} is waiting on one thing: {who}, {thing}": "{org} 有 1 件在等你：{who}，{thing}",
   "{n} people you know": "{n} 位你认识的人", "1 person you know": "1 位你认识的人",
@@ -8611,7 +8684,6 @@ const ORG_ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'
 };
 const revealedOrgs = new Set();
-let orgFilter = { query: "", tab: "all" };
 
 function orgIcon(name) {
   const box = el("span", { "aria-hidden": "true", html: '<svg class="ov-i" viewBox="0 0 24 24">' + ORG_ICONS[name] + "</svg>" });
@@ -8637,7 +8709,6 @@ function orgFace(p, size = "") {
   const initials = (words.length > 1 ? words[0][0] + words.at(-1)[0] : [...(words[0] || "?")].slice(0, 2).join("")).toUpperCase();
   return el("span", { class: "ov-av " + size, "aria-hidden": "true", text: initials });
 }
-function orgChip(tone, text) { return el("span", { class: "ov-chip " + tone, text }); }
 function orgLock() { return el("span", { class: "ov-lock" }, [orgIcon("lock"), orgT("Personal · shown only on this Mac")]); }
 function orgFirstName(p) { return p.title.trim().split(/\s+/)[0]; }
 
@@ -8694,88 +8765,154 @@ function orgRows() {
     return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
   });
 }
-function orgByUrgency(a, b) {
-  const late = o => o.owed.some(overdue);
-  return Number(late(b)) - Number(late(a)) || (late(a) ? a.owed[0].t.due.localeCompare(b.owed[0].t.due) : 0)
-    || b.owed.length - a.owed.length || b.last.localeCompare(a.last);
+// ---------- the list: a hierarchy table, like a CRM's accounts (owner, 2026-11-10: 组织又不是你的 todo 类型) ----------
+// At rest: name, kind, how many people you know there, last contact. The row in hand speaks in the right
+// column (L2); the waiting view, the state lines, expand/collapse all and the older organisations wait in 更多 (L3).
+let orgTable = { query: "", sort: "when", dir: -1, open: null, older: false, waiting: false, lines: false };
+function orgTree(rows) {
+  const holder = new Map(rows.flatMap(o => o.pages.map(page => [page.path, o])));
+  for (const o of rows) { o.up = holder.get(o.r.parent) || null; o.kids = []; }
+  // A parent chain that loops back is cut where it closes, so no organisation drops out of the table.
+  for (const o of rows) for (let up = o.up, seen = new Set([o]); up; up = up.up) { if (seen.has(up)) { o.up = null; break; } seen.add(up); }
+  for (const o of rows) if (o.up && o.up !== o) o.up.kids.push(o);
+  return rows.filter(o => !o.up || o.up === o);
 }
-function orgGroup(rows) {
-  const waiting = rows.filter(o => o.owed.length).sort(orgByUrgency);
-  const rest = rows.filter(o => !o.owed.length).sort((a, b) => b.last.localeCompare(a.last));
-  const recent = rest.filter(o => o.last && daysSince(o.last) <= ORG_RECENT_DAYS);
-  return [["Waiting on you", "overdue first", waiting], ["Recently in touch", "within 45 days", recent],
-    ["Quiet", "no contact for over 45 days", rest.filter(o => !recent.includes(o))]];
+function orgLastOf(o) { return [o.last, ...o.kids.map(orgLastOf)].filter(Boolean).sort().at(-1) || ""; }
+function orgUrgency(o) { return (o.owed.some(overdue) ? 1000 : 0) + o.owed.length; }
+function orgCmp(a, b) {
+  const { sort, dir, waiting } = orgTable;
+  if (waiting && orgUrgency(a) !== orgUrgency(b)) return orgUrgency(b) - orgUrgency(a);
+  const byName = orgName(a.r).localeCompare(orgName(b.r), uiLocale());
+  if (sort === "name") return dir * byName;
+  if (sort === "people") return dir * (a.people.length - b.people.length) || byName;
+  return dir * orgLastOf(a).localeCompare(orgLastOf(b)) || byName;
 }
+function orgMatches(o) {
+  const words = orgTable.query.trim().toLowerCase();
+  const hit = !words || [o.r.title, ...o.pages.map(page => page.domain || ""), ...(orgHidden(o.r) ? [] : [orgRelation(o.r), ...o.people.map(p => p.title)])]
+    .some(text => (text || "").toLowerCase().includes(words));
+  return hit && (!orgTable.waiting || o.owed.length > 0);
+}
+function orgShown(o) { return orgMatches(o) || o.kids.some(orgShown); }
+function orgFiltering() { return !!orgTable.query.trim() || orgTable.waiting; }
+function orgWaitWords(o) { return !o.owed.length ? "" : o.owed.some(overdue) ? orgT("Overdue") : o.owed.length > 1 ? orgT("{n} items", { n: o.owed.length }) : orgT("Waiting on you"); }
 function orgsView() {
   const main = document.getElementById("main");
   main.textContent = "";
-  const rows = orgRows(), waiting = rows.filter(o => o.owed.length).sort(orgByUrgency);
-  const today = waiting.length ? t(waiting.length === 1 ? "1 organisation waiting in Today →" : "{n} organisations waiting in Today →", { n: waiting.length }) : "";
-  const box = el("div", { class: "ov ov-list" }, [el("div", { class: "ov-eyebrow", text: label("orgs") }),
-    el("div", { class: "list-head" }, [el("h1", { text: orgT("{n} organisations", { n: rows.length }) }), listTodayLink(today)])]);
-  const results = el("div", { class: "ov-groups" });
-  box.append(orgFilterBar(rows, results), results);
-  main.appendChild(box);
-  orgResults(rows, results);
+  main.classList.add("d-orgs");
+  const roots = orgTree(orgRows()), rows = roots.flatMap(function all(o) { return [o, ...o.kids.flatMap(all)]; });
+  const waiting = rows.filter(o => o.owed.length).length;
+  // The first visit shows the top level's units, the way a CRM opens an account's children.
+  orgTable.open ??= new Set(roots.filter(o => o.kids.length).map(o => o.r.path));
+  const body = el("div", { id: "org-rows", role: "rowgroup" }), older = el("button", { type: "button", class: "d-older", id: "org-older", "aria-controls": "org-rows" });
+  const find = el("input", { type: "search", class: "ov-find", id: "org-find", placeholder: orgT("Filter organisations, people, domains"), "aria-label": orgT("Filter organisations, people, domains"), value: orgTable.query });
+  const table = el("div", { class: "d-table", role: "treegrid", "aria-label": orgT("Organisation hierarchy") }, [orgTableHead(roots, body, older), body, older]);
+  const draw = () => orgTableDraw(roots, body, older, table);
+  find.oninput = () => { orgTable.query = find.value; draw(); };
+  older.onclick = () => { orgTable.older = !orgTable.older; draw(); };
+  main.append(el("div", { class: "ov ov-list d-orgs-wrap" }, [el("div", { class: "ov-eyebrow", text: label("orgs") }),
+    el("div", { class: "list-head d-head" }, [el("h1", { text: orgT("{n} organisations", { n: rows.length }) }), orgListMenu(rows, waiting, draw)]),
+    el("label", { class: "ov-findbox d-find" }, [orgIcon("search"), find]), table,
+    el("p", { class: "d-empty", id: "org-empty", hidden: "", text: orgT("No matching organisations.") })]),
+    el("aside", { class: "d-peek", id: "org-peek", "aria-live": "polite", hidden: "" }));
+  draw();
 }
-function orgFilterBar(rows, results) {
-  const find = el("input", { type: "search", class: "ov-find", placeholder: orgT("Filter organisations, people, domains"),
-    "aria-label": orgT("Filter organisations, people, domains"), value: orgFilter.query });
-  find.oninput = () => { orgFilter.query = find.value; orgResults(rows, results); };
-  const kinds = Object.entries(rows.reduce((count, o) => (o.r.kind ? { ...count, [o.r.kind]: (count[o.r.kind] || 0) + 1 } : count), {}))
-    .sort((a, b) => b[1] - a[1]).slice(0, 2);
-  const tabs = [["all", orgT("All"), rows.length], ["waiting", orgT("Waiting on you"), rows.filter(o => o.owed.length).length],
-    ...kinds.map(([kind, n]) => [kind, orgT(ORG_KINDS[kind]), n])];
-  const bar = el("div", { class: "ov-tabs", role: "group", "aria-label": label("orgs") }, tabs.map(([key, name, n]) => {
-    const tab = el("button", { type: "button", "aria-pressed": String(orgFilter.tab === key) }, [name, el("i", { text: String(n) })]);
-    tab.onclick = () => {
-      orgFilter.tab = key;
-      bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === tab)));
-      orgResults(rows, results);
+function orgListMenu(rows, waiting, draw) {
+  const flip = key => () => { orgTable[key] = !orgTable[key]; draw(); return orgTable[key]; };
+  const pressed = (item, key) => { item.setAttribute("aria-pressed", String(orgTable[key])); item.dataset.view = key; return item; };
+  const all = open => () => { orgTable.open = new Set(open ? rows.filter(o => o.kids.length).map(o => o.r.path) : []); draw(); };
+  return moreMenu([waiting ? pressed(cardToggle(orgT("Waiting on you only"), flip("waiting")), "waiting") : null,
+    waiting ? menuLink(t(waiting === 1 ? "1 organisation waiting in Today →" : "{n} organisations waiting in Today →", { n: waiting }), "#view=open") : null,
+    el("div", { class: "d-pop-sep" }), pressed(cardToggle(orgT("Show each row's current state"), flip("lines")), "lines"),
+    menuItem(orgT("Expand all"), all(true)), menuItem(orgT("Collapse all"), all(false)),
+    pressed(cardToggle(orgT("Show older organisations"), flip("older")), "older")]);
+}
+function orgTableHead(roots, body, older) {
+  const head = (key, words) => {
+    if (!key) return el("span", { role: "columnheader", class: "d-c-wait", text: words });
+    const button = el("button", { type: "button", class: "d-sort", "data-sort": key, text: words });
+    button.onclick = () => {
+      if (orgTable.sort === key) orgTable.dir *= -1; else Object.assign(orgTable, { sort: key, dir: key === "name" ? 1 : -1 });
+      orgTableDraw(roots, body, older, body.parentElement);
     };
-    return tab;
-  }));
-  return el("div", { class: "ov-bar" }, [el("label", { class: "ov-findbox" }, [orgIcon("search"), find]), bar]);
+    return el("span", { role: "columnheader", class: "d-c-" + (key === "name" ? "name" : key === "people" ? "people" : "when") }, [button]);
+  };
+  return el("div", { class: "d-tr d-th", role: "row" }, [head("name", orgT("Organisation")), head("", orgT("Waiting on you")), head("people", orgT("People you know")), head("when", orgT("Recent contact"))]);
 }
-function orgMatches(o) {
-  const { tab, query } = orgFilter;
-  if (tab === "waiting" && !o.owed.length) return false;
-  if (!["all", "waiting"].includes(tab) && o.r.kind !== tab) return false;
-  const words = query.trim().toLowerCase();
-  return !words || [o.r.title, ...o.pages.map(page => page.domain || ""), ...(o.r.private ? [] : o.people.map(p => p.title))]
-    .some(text => text.toLowerCase().includes(words));
-}
-function orgResults(rows, box) {
-  box.textContent = "";
-  for (const [name, hint, list] of orgGroup(rows.filter(orgMatches))) {
-    if (!list.length) continue;
-    const card = el("div", { class: "ov-rows" }, list.slice(0, 7).map(orgRow));
-    if (list.length > 7) {
-      const more = el("button", { type: "button", class: "ov-more" }, [orgT("{n} more →", { n: list.length - 7 })]);
-      more.onclick = () => { more.remove(); card.append(...list.slice(7).map(orgRow)); };
-      card.appendChild(more);
-    }
-    box.append(el("h2", { class: "ov-grp" }, [name === "Waiting on you" ? el("span", { class: "ov-dot lamp" }) : null,
-      orgT(name) + " · " + list.length, el("span", { class: "ov-hint", text: orgT(hint) })]), card);
+function orgTableDraw(roots, body, older, table) {
+  const shown = roots.filter(orgShown).sort(orgCmp), recent = shown.filter(o => orgFiltering() || orgTable.older || orgLastOf(o) && daysSince(orgLastOf(o)) <= ORG_RECENT_DAYS);
+  const rest = shown.length - recent.length;
+  body.replaceChildren(...recent.flatMap(o => orgTableRow(o, 0, () => orgTableDraw(roots, body, older, table))));
+  older.hidden = orgFiltering() || (!rest && !orgTable.older);
+  older.textContent = orgTable.older ? orgT("Hide older organisations") : orgT("{n} older · no contact for over 45 days", { n: rest });
+  older.setAttribute("aria-expanded", String(orgTable.older));
+  table.classList.toggle("d-waiting", orgTable.waiting);
+  document.getElementById("org-empty")?.toggleAttribute("hidden", shown.length > 0);
+  for (const header of table.querySelectorAll(".d-th [role=columnheader]")) {
+    const sort = header.querySelector(".d-sort")?.dataset.sort;
+    if (sort) header.setAttribute("aria-sort", sort === orgTable.sort ? (orgTable.dir < 0 ? "descending" : "ascending") : "none");
   }
-  if (!box.childElementCount) box.appendChild(emptyState("No matching pages", "Clear filters →", "#c=orgs", () => { orgFilter = {query: "", tab: "all"}; orgsView(); }));
+  for (const item of document.querySelectorAll(".d-orgs-wrap [data-view]")) item.setAttribute("aria-pressed", String(!!orgTable[item.dataset.view]));
 }
-function orgRow(o) {
-  const { r, owed } = o, hidden = orgHidden(r), kind = hidden ? "" : orgKind(r);
-  const state = owed.some(overdue) ? orgChip("late", orgT("Overdue")) : owed.length > 1 ? orgChip("lamp", orgT("{n} items", { n: owed.length }))
-    : owed.length ? el("span", { class: "ov-dot lamp", title: orgT("Waiting on you") }) : null;
-  const meta = hidden ? orgLock() : owed.length ? owedWords(owed[0]).title + (owed.length > 1 ? " · " + orgT("{n} more", { n: owed.length - 1 }) : "") : orgRelation(r);
-  return el("a", { class: "ov-row", href: href(r) }, [orgTile(r), el("div", { class: "ov-body" }, [
-    el("div", { class: "ov-t" }, [orgName(r), hidden ? null : updatedMarker(r), kind ? el("small", { class: "ov-kind" + (r.kind ? "" : " unknown"), text: kind }) : null]),
-    r.domain ? el("small", { class: "ov-domain", text: r.domain }) : null,
-    el("div", { class: "ov-s" }, [meta])]),
-    el("div", { class: "ov-end" }, [state, hidden ? null : orgFaces(o.people), el("span", { class: "ov-when", text: fmtDate(o.last) })])]);
+function orgTableRow(o, level, redraw) {
+  const kids = o.kids.filter(orgShown), open = kids.length > 0 && (orgTable.open.has(o.r.path) || orgFiltering());
+  const hidden = orgHidden(o.r), kind = hidden ? "" : orgKind(o.r), wait = orgWaitWords(o), last = orgLastOf(o), dash = () => el("span", { class: "d-dash", text: "—" });
+  const toggle = kids.length ? el("button", { type: "button", class: "d-tog", tabindex: "-1", "aria-expanded": String(open), "aria-label": orgT(open ? "Collapse {org}" : "Expand {org}", { org: orgName(o.r) }) }) : el("span", { class: "d-tog-sp" });
+  const flip = () => { orgTable.open[open ? "delete" : "add"](o.r.path); redraw(); document.querySelector(`.d-tr[data-path="${CSS.escape(o.r.path)}"] .d-oname`)?.focus(); };
+  if (kids.length) toggle.onclick = flip;
+  const row = el("div", { class: "d-tr", role: "row", "aria-level": String(level + 1), ...(kids.length ? { "aria-expanded": String(open) } : {}), "data-path": o.r.path, style: "--depth:" + level }, [
+    el("span", { class: "d-c-name", role: "gridcell" }, [toggle, el("span", { class: "d-nm" }, [el("a", { class: "d-oname", href: href(o.r), text: orgName(o.r) }), hidden ? null : updatedMarker(o.r),
+      kind ? el("small", { class: "ov-kind" + (o.r.kind || o.r.unit_kind ? "" : " unknown"), text: kind }) : null,
+      kids.length && !open ? el("span", { class: "d-hint-n", text: orgT("{n} units", { n: kids.length }) }) : null,
+      o.people.length && !hidden ? el("span", { class: "d-phone-meta", text: orgT("{n} people", { n: o.people.length }) }) : null,
+      orgTable.lines ? el("p", { class: "d-line", text: hidden ? orgT("Personal · shown only on this Mac") : orgRelation(o.r) || "—" }) : null])]),
+    el("span", { class: "d-c-wait", role: "gridcell" }, [wait ? el("span", { class: "d-wait" + (o.owed.some(overdue) ? " late" : ""), text: wait }) : null]),
+    el("span", { class: "d-c-people", role: "gridcell" }, [o.people.length && !hidden ? String(o.people.length) : dash()]),
+    el("span", { class: "d-c-when", role: "gridcell" }, [last ? fmtDate(last) : dash()])]);
+  row.onmouseenter = () => orgPeek(o);
+  row.addEventListener("focusin", () => orgPeek(o));
+  // A click on the row's empty space opens the record, like a CRM row.
+  row.onclick = event => { if (!event.target.closest("a, button")) location.hash = href(o.r).slice(1); };
+  row.onkeydown = event => orgTreeKey(event, row, o, open, flip);
+  return [row, ...(open ? kids.sort(orgCmp).flatMap(kid => orgTableRow(kid, level + 1, redraw)) : [])];
 }
-function orgFaces(people) {
-  if (!people.length) return el("span", { class: "ov-stack" });
-  const shown = [...people].sort((a, b) => known(b).last.localeCompare(known(a).last)).slice(0, 3);
-  return el("span", { class: "ov-stack", title: people.map(p => p.title).join(", ") },
-    [...shown.map(p => orgFace(p, "xs")), people.length > 3 ? el("em", { text: "+" + (people.length - 3) }) : null]);
+// Treegrid keys: ↓/↑ move, → opens or goes to the first child, ← closes or goes to the parent.
+function orgTreeKey(event, row, o, open, flip) {
+  const rows = [...document.querySelectorAll("#org-rows .d-tr")], i = rows.indexOf(row), go = next => next?.querySelector(".d-oname").focus();
+  const moves = { ArrowDown: () => go(rows[i + 1]), ArrowUp: () => go(rows[i - 1]),
+    ArrowRight: () => row.hasAttribute("aria-expanded") && (open ? go(rows[i + 1]) : flip()),
+    ArrowLeft: () => open ? flip() : o.up && go(document.querySelector(`.d-tr[data-path="${CSS.escape(o.up.r.path)}"]`)) };
+  if (!moves[event.key]) return;
+  event.preventDefault();
+  moves[event.key]();
+}
+// The row in hand, in the right column: where it sits, what it is to you, who you know there, what waits.
+function orgPeek(o) {
+  const box = document.getElementById("org-peek");
+  if (!box) return;
+  const hidden = orgHidden(o.r), chain = [];
+  for (let up = o.up, seen = new Set(); up && !seen.has(up); up = up.up) { seen.add(up); chain.unshift(up); }
+  const link = x => el("a", { href: href(x.r), text: orgName(x.r) });
+  const people = hidden ? [] : o.people, names = list => list.flatMap((p, i) => [i ? "、" : "", el("a", { href: href(p), text: p.title })]);
+  const who = el("dd", { class: "d-peek-people" }, names(people.slice(0, 8)));
+  if (people.length > 8) {
+    const rest = el("button", { type: "button", class: "btn-quiet d-all-people", text: orgT("{n} more people", { n: people.length - 8 }) });
+    rest.onclick = () => who.replaceChildren(...names(people));
+    who.append(" ", rest);
+  }
+  const wait = orgWaitWords(o);
+  box.replaceChildren(...[chain.length ? el("div", { class: "ov-eyebrow" }, chain.flatMap((x, i) => [i ? " › " : "", link(x)])) : null,
+    el("h2", { class: "d-peek-name" }, [orgName(o.r), orgKind(o.r) && !hidden ? el("small", { class: "ov-kind", text: " " + orgKind(o.r) }) : null]),
+    el("p", { class: "d-peek-s", text: hidden ? orgT("Personal · shown only on this Mac") : orgRelation(o.r) || orgT("No current state recorded yet.") }),
+    wait ? el("p", { class: "d-peek-wait" }, [el("span", { class: "d-wait" + (o.owed.some(overdue) ? " late" : ""), text: wait }), " ", el("a", { href: "#view=open", text: orgT("Handle in Today →") })]) : null,
+    el("dl", { class: "d-peek-facts" }, [people.length ? el("dt", { text: orgT("People you know") + " · " + people.length }) : null, people.length ? who : null,
+      o.kids.length ? el("dt", { text: orgT("Sub-units") }) : null, o.kids.length ? el("dd", {}, o.kids.flatMap((k, i) => [i ? "、" : "", link(k)])) : null,
+      o.r.domain ? el("dt", { text: orgT("Domain") }) : null, o.r.domain ? el("dd", { text: o.r.domain }) : null,
+      el("dt", { text: orgT("Recent contact") }), el("dd", { text: orgLastOf(o) ? fmtDate(orgLastOf(o)) : orgT("No dated contact") })]),
+    el("a", { class: "d-peek-open", href: href(o.r), text: orgT("Open {org} →", { org: orgName(o.r) }) })].filter(Boolean));
+  box.hidden = false;
+  for (const node of document.querySelectorAll("#org-rows .d-sel")) node.classList.remove("d-sel");
+  document.querySelector(`#org-rows .d-tr[data-path="${CSS.escape(o.r.path)}"]`)?.classList.add("d-sel");
 }
 
 // ---------- one organisation (round 6, a record): what this organisation is to you ----------
@@ -11596,6 +11733,7 @@ function render() {
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
+  document.getElementById("main").classList.remove("d-orgs");
   // The sheet views use the full width; reading views keep a measure.
   document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
   if (reviews) reviewPage();
