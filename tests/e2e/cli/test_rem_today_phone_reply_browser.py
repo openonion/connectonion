@@ -37,7 +37,7 @@ LINE_TOPS = r'''node => { const range = document.createRange(); range.selectNode
   return [...new Set([...range.getClientRects()].filter(l => l.width > 0 && l.height > 0).map(l => Math.round(l.top)))]; }'''
 
 
-def _open(page, lang, scene):
+def _open(page, lang, scene, shot=True):
     page.set_viewport_size({"width": 390, "height": 844})
     page.evaluate(OVERDUE, isolated_context=False)
     if scene == "two":
@@ -45,7 +45,7 @@ def _open(page, lang, scene):
     else:
         page.evaluate(DRAFT, True, isolated_context=False)
         page.evaluate(f"() => {{ setInterfaceLanguage('{lang}'); render(); scrollTo(0, 0); }}", isolated_context=False)
-    if os.environ.get("CO_REM_SHOTS"):
+    if shot and os.environ.get("CO_REM_SHOTS"):
         page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-phone-{scene}-{lang}-390.png"))
     return page.locator(".today-brief .qcard.open")
 
@@ -61,6 +61,19 @@ def test_the_letter_starts_on_the_first_phone_screen_above_the_send_bar(today, l
       const line = [...range.getClientRects()].find(l => l.height > 0); return [line.top, line.bottom]; }''',
                           letter.element_handle(), isolated_context=False)
     assert first[0] >= head["y"] + head["height"] - 0.5 and first[1] <= bar["y"] + 0.5, (first, head, bar)
+    # The reply's needed parts fit the first screen: REM's question and its answer box sit above the bar too.
+    for part in (".mail-choices .owner-slot .k", ".mail-choices .owner-slot :is(input, button)"):
+        box = card.locator(part).first.bounding_box()
+        assert box["y"] >= 0 and box["y"] + box["height"] <= bar["y"] + 0.5, (part, box, bar)
+
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_more_on_a_phone_brings_back_every_item_and_its_hand_off(today, lang):
+    page, _, _ = today
+    card = _open(page, lang, "two")
+    assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_hidden()
+    card.locator(".qfull").click()
+    assert card.locator(".qitem").nth(1).is_visible() and card.locator(".handoff").first.is_visible()
 
 
 @pytest.mark.parametrize("scene", ["one", "two"])
@@ -87,7 +100,7 @@ def test_every_word_on_the_phone_send_bar_stays_whole(today, lang, scene):
 def test_with_motion_on_the_send_bar_ends_at_the_bottom_of_the_screen_not_over_the_card(today, lang):
     page, _, _ = today
     page.emulate_media(reduced_motion="no-preference")
-    card = _open(page, lang, "two")
+    card = _open(page, lang, "two", shot=False)
     page.wait_for_timeout(1000)  # the cards' rise has ended
     bar = card.locator(".mail-actions").bounding_box()
     assert abs(bar["y"] + bar["height"] - 844) <= 0.5, bar

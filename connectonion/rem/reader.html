@@ -2249,6 +2249,9 @@
     .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
     .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
     .qcard.focal[data-step="send"]:not(.full) .qitem .qdone { display: none; }
+    /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
+       lines wait behind More, which stays in place of the first item. */
+    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull)) { display: none; }
     /* On a phone the open draft's Send is a bar pinned above the bottom edge, however far down the draft starts. */
     .qcard.focal.open .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
     #main:has(.qcard.focal.open .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
