@@ -3103,8 +3103,10 @@
 
   @media (max-width: 640px) {
     .n3-person .hero { flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 20px 18px; }
-    .n3-person .hero .face.xl { width: 56px; height: 56px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
-    .hero-acts { justify-content: flex-start; width: 100%; gap: 6px; }
+    .n3-person .hero .face.xl { width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+    .hero-who { flex: 1 1 100%; order: -1; }  /* the name leads with the card's whole width: a long word hyphenates instead of breaking */
+    .hero-acts { width: auto; flex: 1; }
+    .hero-acts { justify-content: flex-start; gap: 6px; }
     .n3-person .r4-today { margin-left: auto; padding: 0 12px; }
     .round { width: 40px; height: 40px; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }

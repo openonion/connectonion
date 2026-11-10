@@ -1272,11 +1272,11 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert heading.split('\n') == (['1', 'person waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
-    assert page.locator('.others .waiting-more').count() == bool(theirs)
+    assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
         assert page.locator('.others .waiting-more').inner_text().split('\n') == [str(theirs), 'waiting on others']
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
-    if theirs:
+    if theirs or mine:
         page.locator('.others .waiting-more').click()
     else:
         page.evaluate("location.hash = 'view=open'", isolated_context=False)
