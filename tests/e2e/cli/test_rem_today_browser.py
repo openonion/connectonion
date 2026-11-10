@@ -35,7 +35,7 @@ def test_today_is_one_card_per_person_with_one_green_action(reader):
     visible_green = page.evaluate('''() => [...document.querySelectorAll('#main button, #main a')]
       .filter(node => node.getClientRects().length && /rgb\\((34, 210, 122|59, 227, 143)\\)/.test(getComputedStyle(node).backgroundColor)).length''', isolated_context=False)
     assert visible_green == 1
-    assert page.locator('.brief-header h1').inner_text().endswith('waiting on you.')
+    assert page.locator('.night-card .count-line').inner_text().endswith('waiting on you')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
 
 
@@ -44,20 +44,21 @@ def test_today_keys_move_close_undo_and_never_steal_typing(reader):
     page.evaluate(TWO_ASKS, isolated_context=False)
     count = _cards(page).count()
     assert count >= 2
-    focused = 'document.activeElement.closest(".qcard")?.dataset.path || null'
-    paths = _cards(page).evaluate_all('cards => cards.map(card => card.dataset.path)')
+    # N3: J/K deal the next or previous card onto the desk, in the faces' order; E closes the raised one.
+    raised = 'document.querySelector("#main .qcard.focal")?.dataset.path || null'
+    faces = page.locator('.deal').evaluate_all('faces => faces.map(face => face.dataset.path)')
+    start = page.evaluate(raised, isolated_context=False)
+    at = faces.index(start)
     page.locator('body').press('j')
-    assert page.evaluate(focused, isolated_context=False) == paths[0]
-    page.keyboard.press('j')
-    assert page.evaluate(focused, isolated_context=False) == paths[1]
+    assert page.evaluate(raised, isolated_context=False) == faces[(at + 1) % len(faces)]
     page.keyboard.press('k')
-    assert page.evaluate(focused, isolated_context=False) == paths[0]
+    assert page.evaluate(raised, isolated_context=False) == start
     page.keyboard.press('e')
     page.locator('#done-notice').wait_for()
-    assert page.locator(f'.qcard[data-path="{paths[0]}"]').count() == 0
-    assert page.evaluate(focused, isolated_context=False) == paths[1]
+    assert page.locator(f'.qcard[data-path="{start}"]').count() == 0
+    assert page.evaluate(raised, isolated_context=False) not in (None, start)
     page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
-    page.locator(f'.qcard[data-path="{paths[0]}"]').wait_for()
+    page.locator(f'.qcard[data-path="{start}"]').wait_for()
     page.keyboard.press('?')
     sheet = page.locator('#shortcuts')
     assert sheet.is_visible() and 'Mark done' in sheet.inner_text()

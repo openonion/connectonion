@@ -205,7 +205,7 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.locator(".brief-header h1").wait_for()
+        page.locator(".night-card .count").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
@@ -283,10 +283,11 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
     # The statement counts people; the items total is the sidebar's, said once (TOP10 #9, polish).
     total = page.locator('#nav .n.waiting').inner_text()
-    assert int(total) > 0 and f'{total} items waiting on you' not in page.locator('.brief-header').inner_text()
+    assert int(total) > 0 and f'{total} items waiting on you' not in page.locator('.night-card').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.brief-header h1').text_content() == f'{len(whos)} people are waiting on you.'  # poster: count and words are two spans
+    assert page.locator('.night-card .count').text_content() == str(len(whos))  # N3: the count is the display element
+    assert page.locator('.night-card .count-line span').text_content() == 'people waiting on you'
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -583,7 +584,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri())
-    assert page.locator('.brief-header h1').is_visible()
+    assert page.locator('.night-card .count').is_visible()
     assert page.locator('.first-map').is_visible()
     assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
     assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
@@ -1262,23 +1263,20 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
       r.text = r.text.replace('## Open threads\nUnknown', '## Open threads\n' + (items.join('\n') || 'Unknown'));
       KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }""", {"mine": mine, "theirs": theirs}, isolated_context=False)
-    primary = page.locator('.morning-primary')
+    primary = page.locator('#main')
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
-    heading = page.locator('.brief-header h1').text_content()  # poster: count and words are two spans
-    assert heading == ('1 person is waiting on you.' if mine else 'Nobody is waiting on you today.')
+    heading = page.locator('.night-card .count-line').inner_text()
+    assert heading.split('\n') == (['1', 'person waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
-    header = page.locator('.brief-header')
-    if mine or theirs:
-        # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish).
-        assert header.locator('.waiting-more').inner_text() == (f'{theirs} on others' if theirs else 'Everything open') + ' →'
-    else:
-        assert header.locator('.waiting-more').count() == 0
-        assert header.locator('.quiet-line', has_text='Nothing is open between you and anyone right now.').count() == 1
+    # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
+    assert page.locator('.others .waiting-more').count() == bool(theirs)
+    if theirs:
+        assert page.locator('.others .waiting-more').inner_text().split('\n') == [str(theirs), 'waiting on others']
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
-    if mine or theirs:
-        header.locator('.waiting-more a').click()
+    if theirs:
+        page.locator('.others .waiting-more').click()
     else:
         page.evaluate("location.hash = 'view=open'", isolated_context=False)
     page.get_by_role('heading', name='Open threads', exact=True).wait_for()
@@ -4010,7 +4008,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(html.as_uri())
-        page.locator('.brief-header h1').wait_for()
+        page.locator('.night-card .count').wait_for()
 
         def no_private_words():
             visible = page.locator('body').inner_text()
@@ -4097,11 +4095,11 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.brief-header h1').text_content() == '1 person is waiting on you.'  # a poster: count and words are two spans
-    assert '2 days overdue' in page.locator('.brief-header .lede').inner_text()
+    assert page.locator('.night-card .count').text_content() == '1'
+    assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
-    assert page.locator('.brief-header .waiting-more a').get_attribute('href') == '#view=open'
+    assert page.locator('.others .waiting-more').get_attribute('href') == '#view=open'
     # A static, undrafted mail card opens its recorded provider thread; it
     # cannot promise a live Draft now action. Local completion stays available.
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
