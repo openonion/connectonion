@@ -254,7 +254,7 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
     assert page.locator('#org-rows .d-tr').filter(has_text='ConnectOnion').count() == 1
     if width >= 1100:
         row.hover()
-        assert 'connectonion.com' in page.locator('#org-peek').inner_text()
+        assert page.locator('#org-peek dt:text-is("Domain") + dd').inner_text() == 'connectonion.com'
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
