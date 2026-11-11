@@ -2754,6 +2754,8 @@
   .sync:hover { background: var(--well); color: var(--ink); }
   .sync::after { content: ""; position: absolute; right: 7px; top: 7px; width: 7px; height: 7px; border-radius: var(--round); background: var(--ink); box-shadow: var(--e-ring); }
   .sync.off::after { background: var(--pencil); }
+  .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
+  .lang-toggle:hover { background: var(--well); color: var(--ink); }
   main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
 
   /* sheets: settings, the palette, shortcuts */
@@ -2809,6 +2811,7 @@
     .crumb { width: auto; flex: 1; color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
     .crumb a { color: var(--ink); }
     .top-end { width: auto; }
+    .lang-toggle { min-width: 44px; height: 44px; }
     .search { display: none; }
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
@@ -3147,7 +3150,7 @@
         <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
         <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
       </div>
-      <div class="top-end"><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+      <div class="top-end"><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>
@@ -4272,6 +4275,25 @@ function setInterfaceLanguage(language) {
   readerStorage("co-rem-ui-language", language);
   closeEvidence();
   render();
+}
+// The one-click language switch at the top of every page (Aaron, 2026-11-11: «一键切换中英文»). It names the
+// language it switches TO, and goes through setInterfaceLanguage like the choice in Settings, so the two agree
+// and the choice persists. The redraw keeps the view: scroll, typed words and open sections, which are matched
+// by position because their summaries change language.
+function renderLangToggle() {
+  const button = document.getElementById("lang-toggle");
+  const to = uiLanguage === "zh" ? "en" : "zh";
+  button.textContent = to === "en" ? "EN" : "中";
+  button.lang = to;
+  button.setAttribute("aria-label", to === "en" ? "Switch to English" : "切换到中文");
+  button.title = button.getAttribute("aria-label");
+  button.onclick = () => {
+    const state = viewState(), open = [...document.querySelectorAll("#main details")].map(node => node.open);
+    setInterfaceLanguage(to);
+    const sections = document.querySelectorAll("#main details");
+    if (sections.length === open.length) sections.forEach((node, i) => { node.open = open[i]; });
+    restoreView({ ...state, open: [] });
+  };
 }
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
@@ -6257,6 +6279,7 @@ function renderRail(active) {
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   renderRailEnd(active);
   renderTabbar(active);
+  renderLangToggle();
   renderSettings();
   const ownerPage = byPath(REM.owner);
   document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");

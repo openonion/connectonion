@@ -722,7 +722,11 @@ says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
 The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
 the installed package and the same in both languages) and the snapshot time,
-then **EN · 中文** and **Auto · Light · Dark**, each a control. Status and
+then **EN · 中文** and **Auto · Light · Dark**, each a control. The primary
+language control is the one-click button at the top right of every page (in the
+phone header too): it names the language it switches to (**EN** while in
+Chinese, **中** while in English), saves the same choice as **EN · 中文**, and
+redraws in place, keeping scroll, open sections and typed words. Status and
 privacy controls live under it in **Reader settings**. **EN · 中文** switches
 interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
@@ -829,12 +833,17 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
-  receipt, prompt shape, Stop, Undo and status as a prepared one. The row then
+  receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
   says where the work is, in place, and follows it by itself: **Codex is
-  working · Stop · Undo**, then **Codex finished · See result · Undo**; **See
-  result** opens what the agent wrote (its deliverable, else its last message,
-  `{"action": "result", "id"}`) under the row, and **Undo** removes the work and
-  brings the two buttons back. A refused request is said in words on the row,
+  working · Stop · Take back from Codex**, then **Codex finished · See result ·
+  Take back from Codex**; **See result** opens what the agent wrote (its
+  deliverable, else its last message, `{"action": "result", "id"}`) under the
+  row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
+  brings the two buttons back; it never reads **Undo**, which undoes the item.
+  The strip ends with the row's one **Mark done** (标为完成), before and after
+  a hand-off: it is the row's own done decision (`/rem/thread`, state `done`),
+  and the row's other actions on **Waiting on you** no longer repeat it. A
+  snapshot keeps Mark done in the row's own actions. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
   reload, a changed item (409) too, an expired session (401) to reload the page,
   and no answer to try again shortly. In a snapshot the buttons are disabled and
