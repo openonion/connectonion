@@ -3226,7 +3226,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu']
+        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'stripDone']
 
 
 def _hand_js(body):
@@ -3257,14 +3257,14 @@ def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
       shown.runLine = line(handOff({key: 'run'}));
       console.log(JSON.stringify(shown));
     ''')
-    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Undo']
-    assert result['done'] == ['Claude finished', 'See result', 'Undo']
-    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Undo']
+    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Take back from Codex']
+    assert result['done'] == ['Claude finished', 'See result', 'Take back from Claude']
+    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Take back from Codex']
     assert result['open'] == ['Hand to Codex', 'Hand to Claude']
     assert result['snapshot'] == ['Codex is working', 'REM started this']
     # One line, a dot between each action, the conversation behind one quiet menu.
     assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude', '·', 'menu']
-    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Undo', '·', 'menu']
+    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex', '·', 'menu']
 
 
 def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
@@ -3272,7 +3272,7 @@ def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
       const REM = {live: true, today_queue: [row('done', {id: 'b', agent: 'codex', result: 'completed'})]};
       globalThis.fetch = async (url, options) => ({ok: true, status: 200, json: async () => ({status: 'cancelled'})});
       const node = handOff({key: 'done'});
-      node.children[0].children.find(child => child.text === 'Undo').onclick().then(() =>
+      node.children[0].children.find(child => child.text?.startsWith('Take back from')).onclick().then(() =>
         console.log(JSON.stringify({after: texts(node), task: REM.today_queue[0].task})));
     ''')
     assert result == {'after': ['Hand to Codex', 'Hand to Claude'], 'task': None}
@@ -4116,8 +4116,8 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     ''')
     assert result['before'] == ['Ask Codex to look', 'Ask Claude to look']
     assert result['requests'] == [{'url': '/rem/task', 'body': {'action': 'run', 'key': 'projects/private-notes-ab12.md', 'agent': 'codex'}}]
-    assert result['after'] == ['Codex is working', 'Stop', 'Undo'] and result['kept'] == 'starting'
-    assert result['reopened'] == ['Codex finished', 'See result', 'Undo']
+    assert result['after'] == ['Codex is working', 'Stop', 'Take back from Codex'] and result['kept'] == 'starting'
+    assert result['reopened'] == ['Codex finished', 'See result', 'Take back from Codex']
     # A snapshot cannot start it: one sentence, never a command.
     assert result['snapshot']['class'] == 'snapshot-line' and 'co rem' not in json.dumps(result['snapshot'])
 

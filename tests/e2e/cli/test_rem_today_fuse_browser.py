@@ -205,12 +205,12 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     assert rows.count() >= 4
     for i in range(rows.count()):
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Hand to Codex", "Hand to Claude"]
+        assert names == ["Hand to Codex", "Hand to Claude", "Mark done"]  # the row's one Mark done (2026-11-11)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done"]
         assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")

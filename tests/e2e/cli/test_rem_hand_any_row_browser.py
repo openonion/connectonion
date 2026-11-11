@@ -106,14 +106,15 @@ def test_a_waiting_row_the_night_never_prepared_is_handed_watched_and_its_result
     row.get_by_role("button", name="Hand to Codex").click()
     line = row.locator(".handoff-line")
     line.get_by_text("Codex is working").wait_for(timeout=10000)
-    assert line.get_by_role("button").all_inner_texts() == ["Stop", "Undo"]
+    # Taking the task back has its own words; the row's one Mark done stays in the strip (owner, 2026-11-11).
+    assert line.get_by_role("button").all_inner_texts() == ["Stop", "Take back from Codex", "Mark done"]
     line.get_by_text("Codex finished").wait_for(timeout=30000)       # it follows the run by itself
     line.get_by_role("button", name="See result").click()
     from patchright.sync_api import expect
     expect(row.locator(".task-output h2")).to_have_text("Pilot review")          # "# Pilot review", rendered
     if SHOTS:
         row.screenshot(path=str(Path(SHOTS) / "hand-row-finished.png"))
-    line.get_by_role("button", name="Undo").click()
+    line.get_by_role("button", name="Take back from Codex").click()
     row.get_by_role("button", name="Hand to Claude").wait_for()
     assert not list((root / ".state" / "tasks").glob("do-*/receipt.json"))
 
@@ -123,7 +124,7 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     row = _row(page, "Fernhill Labs contract draft")
     line = row.locator(".handoff-line")
     assert line.evaluate("node => node.getBoundingClientRect().height") < 48      # one line, not four links on two
-    assert " ".join(line.inner_text().split()) == "Hand to Codex · Hand to Claude · Talk it over ▾"
+    assert " ".join(line.inner_text().split()) == "Hand to Codex · Hand to Claude · Talk it over ▾ · Mark done"
     if SHOTS:
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
         zh = _row(page, "Fernhill Labs contract draft")
