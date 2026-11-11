@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc3
+## Current Version: 1.9.6rc4
+
+Release candidate 1.9.6rc4 for 1.9.6: in the REM reader, Done, Undo and Skip reach the notebook
+whatever the size of its mail version table (past 64 KB they were refused while the page showed them
+as saved), and a refused mark says "Not saved" (#2944, fixes #2936). While REM builds a newer render,
+the "Updating…" banner goes on the HTML pages only, so /rem/data.json stays JSON and Organisations,
+Projects, All records and Skills load (#2954). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc4.md).
+
+- 1.9.6rc4 (REM marks saved at any size; deferred pages load while REM updates).
+
+### Previous candidate: 1.9.6rc3
 
 Release candidate 1.9.6rc3 for 1.9.6: on macOS, co's own WTF Browser start and a double-click now open
 one profile with one Keychain, so a login made in either is the same login in both (Onionwright
