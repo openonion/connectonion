@@ -3006,8 +3006,12 @@
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
     .today-brief .qcard.focal { padding-top: 14px; animation-name: n3-fade; }  /* no transform: Send is pinned inside it */
-    .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 84px; border: 0; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); }
-    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 172px; }
+    /* The pinned Send bar sits on the tab bar as one docked unit: flush, square where they meet, so no strip of the
+       page shows from one to the other (#2931). The tab bar paints above it, so its outline is the line between them. */
+    .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 76px; border: 0; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+      background: var(--raised); box-shadow: var(--e3); }
+    body:has(.qcard.focal.open .mail-actions) .tabbar { border-top-left-radius: 0; border-top-right-radius: 0; }
+    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 164px; }
     /* A phone's first screen is the faces and the card: the chart opens from its title (D-120). */
     .night-card:not(.chart-open) .hyp-wrap { display: none; }
     .nh .chart-toggle { display: inline-flex; }
