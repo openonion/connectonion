@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import httpx
+import pytest
 
 import connectonion
 from connectonion import address
@@ -37,7 +38,10 @@ def _info(port):
         return None
 
 
-def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(tmp_path, monkeypatch):
+@pytest.fixture
+def upgraded(tmp_path, monkeypatch):
+    """(old Host process, its port, the identity's address, the record): a co ai
+    that `co rem open` started and recorded, and the package upgraded under it."""
     home = Path(os.environ["HOME"])                 # this test's own home (conftest)
     identity = address.generate()
     address.save(identity, home / ".co")
@@ -62,18 +66,41 @@ def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(tmp_path,
         record = home / ".co/rem-live-host.json"
         record.write_text(json.dumps({"address": identity["address"], "pid": old.pid, "port": port,
                                       "command": " ".join(args[1:])}))
-
-        opened = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "rem", "open", "--no-launch"],
-                                capture_output=True, text=True, timeout=120)
-
-        assert opened.returncode == 0, opened.stdout + opened.stderr
-        assert old.poll() is not None, "the Host started before the upgrade is still running"
-        saved = json.loads(record.read_text())
-        assert saved["pid"] != old.pid and saved["port"] == port      # an open tab keeps its address
-        assert f"http://127.0.0.1:{port}/rem?token=" in opened.stdout
-        info = _info(port)
-        assert info["address"] == identity["address"] and info["version"] == connectonion.__version__
+        yield old, port, identity["address"], record
     finally:
-        # The new Host is the one this home recorded: conftest stops it. The old one is this test's.
+        # The new Host is the one this home recorded: the leak guard stops it. The old one is this test's.
         old.kill()
         old.wait()
+
+
+def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(upgraded):
+    old, port, owner, record = upgraded
+    opened = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "rem", "open", "--no-launch"],
+                            capture_output=True, text=True, timeout=120)
+    assert opened.returncode == 0, opened.stdout + opened.stderr
+    assert old.poll() is not None, "the Host started before the upgrade is still running"
+    saved = json.loads(record.read_text())
+    assert saved["pid"] != old.pid and saved["port"] == port      # an open tab keeps its address
+    assert f"http://127.0.0.1:{port}/rem?token=" in opened.stdout
+    info = _info(port)
+    assert info["address"] == owner and info["version"] == connectonion.__version__
+
+
+def test_a_tab_open_before_the_upgrade_is_served_by_the_installed_version_with_no_command(upgraded):
+    """Nobody runs `co rem open` here (D-60). The tab's own request makes the old
+    Host start the page build, and the build, which is the installed code,
+    replaces that Host on its port; the tab's cookie is still good there."""
+    from connectonion.rem.live_host import reader_token
+    old, port, owner, record = upgraded
+    with httpx.Client(base_url=f"http://127.0.0.1:{port}", follow_redirects=True, timeout=20) as tab:
+        first = tab.get("/rem", params={"token": reader_token(record.parent)})
+        assert first.status_code == 200 and "Alice Chen" in first.text
+        deadline = time.monotonic() + 30   # under the suite's 60 s limit, so the failure is this sentence
+        while (_info(port) or {}).get("version") != connectonion.__version__:
+            assert time.monotonic() < deadline, "the old Host was not replaced"
+            time.sleep(0.3)
+        assert old.poll() is not None
+        saved = json.loads(record.read_text())
+        assert saved["pid"] != old.pid and saved["port"] == port
+        reloaded = tab.get("/rem")                                  # one reload, the cookie it already had
+        assert reloaded.status_code == 200 and "Alice Chen" in reloaded.text
