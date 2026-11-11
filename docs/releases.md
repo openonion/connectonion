@@ -25,12 +25,16 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc1**: on a desktop, Today's open reply shows whole lines and nothing
-overlaps; on a phone the letter starts on screen, Send's words stay whole, and less-used actions sit
-under More. Stable remains **1.9.5**. See [1.9.6rc1 notes](releases/1.9.6rc1.md).
+Release candidate **1.9.6rc2**: the REM reader's new desk, phase 1 of 3. An icon rail and one search
+pill on a desktop, a floating tab bar on a phone; Today opens on a night chart, the count of people
+waiting and one raised reply card; a person's record is a card with their face and a grid of what REM
+knows. Lists and the other records keep their old layouts until phases 2 and 3. Before it,
+**1.9.6rc1** made Today's open reply show whole lines on a desktop and start on screen on a phone.
+Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
+[1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc1'
+python -m pip install --upgrade 'connectonion==1.9.6rc2'
 ```
 
 ## Previous stable

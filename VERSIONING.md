@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc1
+## Current Version: 1.9.6rc2
+
+Release candidate 1.9.6rc2 for 1.9.6: the REM reader's new desk, phase 1 of 3. The shell is an icon
+rail with one search pill on a desktop and a floating tab bar on a phone; Today opens on a night
+chart, the count of people waiting and one raised reply card whose Send is the only green on the
+page; a person's record is a card with their face and a grid of what REM knows. Lists and the other
+records keep their 1.9.6rc1 layouts until phases 2 and 3. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc2.md).
+
+- 1.9.6rc2 (the new desk, phase 1 of 3: shell, Today and a person's record).
+
+### Previous candidate: 1.9.6rc1
 
 Release candidate 1.9.6rc1 for 1.9.6: on a desktop, Today's open reply shows whole lines of the
 letter and nothing overlaps the slot question or the row below. On a phone the letter starts on the
