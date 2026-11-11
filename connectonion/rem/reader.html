@@ -1999,10 +1999,6 @@
     line-height: var(--lh-tight); letter-spacing: var(--track-display); font-variant-numeric: tabular-nums; animation: today-rise var(--t-draw) var(--ease-out) both; }
   @keyframes count-tick { from { opacity: 0; transform: translateY(-0.25em); } }
 
-  /* The fuse: a lane per person, ending at the heavy line that is today. Ink = time that passed
-     fairly, red = time past due. A sent reply burns its lane out before the page redraws. */
-  @keyframes fuse-draw { from { transform: translateY(-50%) scaleX(0); } }
-
   /* The draft, open in place: To, CC, Subject; REM's question as a row of choices; Send stays in reach. */
   .owner-slot.choose { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u2) var(--u4); margin: var(--u2) 0; padding: var(--u2) 0; border: 0;
     border-top: var(--hair) dashed var(--pencil); border-bottom: var(--hair) dashed var(--pencil); background: none; white-space: normal; }
@@ -12510,15 +12506,15 @@ function typingIn(target) {
   return !!target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']");
 }
 // J/K deal the next or previous card, S skips to the next, R replies. E closes the raised card when the focus is
-// in it or in the notice the last E left, so E, E, E works through the deck; from anywhere else it does nothing.
-// Only on Today, never while typing.
+// in it or in the notice the last E left, so E, E, E works through the deck; from anywhere else it does nothing,
+// and nothing again while the card it closed is still leaving. Only on Today, never while typing.
 function todayKey(key) {
   const card = document.querySelector("#main .qcard.focal");
   if (!card) return false;
   if (key === "j" || key === "s") dealNext(1);
   else if (key === "k") dealNext(-1);
   else if (key === "r") card.reply();
-  else if (document.activeElement?.closest("#main .qcard.focal, #done-notice")) card.markDone();
+  else if (!card.classList.contains("leaving") && document.activeElement?.closest("#main .qcard.focal, #done-notice")) card.markDone();
   else return false;
   return true;
 }
@@ -12527,6 +12523,7 @@ document.addEventListener("keydown", event => {
   if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || typingIn(event.target) || document.querySelector("dialog[open]")) return;
   if (event.key === "?") { event.preventDefault(); openShortcuts(); return; }
   const key = event.key.toLowerCase();
+  if (key === "e" && event.repeat) return;  // a held E is one press: Undo brings back one card, not a deck
   if (railActive() === "today" && ["j", "k", "e", "r", "s"].includes(key) && todayKey(key)) event.preventDefault();
 });
 if (!/Mac|iPhone|iPad/.test(navigator.platform || "")) SHORTCUTS[4][0] = "Ctrl K";
