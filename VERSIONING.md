@@ -405,7 +405,8 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 Release candidate 1.9.6rc3 for 1.9.6: on macOS, co's own WTF Browser start and a double-click now open
 one profile with one Keychain, so a login made in either is the same login in both (Onionwright
 0.0.15, openonion/onionwright#74). Old logins in `~/.onionwright/profiles/browser-owned` are not
-moved; sign in once in the app. On a phone the REM reader's Send bar now sits on the tab bar with no
+moved; sign in once in the app. The WTF Browser.app in /Applications is kept at the build co runs
+(#2932). On a phone the REM reader's Send bar now sits on the tab bar with no
 gap (#2933). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc3.md).
 
 - 1.9.6rc3 (one WTF Browser profile for people and co; Send bar docked on a phone).
