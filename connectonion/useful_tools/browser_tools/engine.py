@@ -378,6 +378,18 @@ def _why_not_now(app: Path) -> str | None:
     return None
 
 
+def _newer(found: tuple[str, str], wanted: tuple[str, str]) -> bool:
+    """Whether `found` is a later revision on the channel of `wanted`.
+
+    Several `co` installs with different pins share one Mac. The one with the
+    older pin must not put back the build the server refuses, and the two must
+    not trade the app back and forth. Revisions compare as numbers, because as
+    text 154.0.8037.58 sorts after 154.0.8037.100.
+    """
+    theirs, ours = (tuple(map(int, build[0].split("."))) for build in (found, wanted))
+    return found[1] == wanted[1] and theirs > ours
+
+
 def _install_or_replace(runtime_app: Path, app: Path, trash: Path) -> str | None:
     """Put the build at `runtime_app` at `app`; the caller knows it is ours.
 
@@ -389,6 +401,8 @@ def _install_or_replace(runtime_app: Path, app: Path, trash: Path) -> str | None
         return None
     if app.exists() and found is None:
         return f"{app} is not OpenOnion's build, so co left it alone"
+    if found and _newer(found, wanted):
+        return f"{app.parent} has {found[0]}, newer than the {wanted[0]} co runs, so co left it"
     staged = app.with_name(f".{app.name}.installing")
     shutil.rmtree(staged, ignore_errors=True)       # left by a copy that was interrupted
     blocked = _why_not_now(app)
@@ -411,6 +425,7 @@ def _install_or_replace(runtime_app: Path, app: Path, trash: Path) -> str | None
 def refresh_applications_app(executable: str, applications: Path, trash: Path) -> str | None:
     """Make the WTF Browser in `applications` the build `executable` belongs to (#2932).
 
+    A later revision on the same channel is left where it is: see _newer.
     Returns what a person should be told, or None when nothing needed doing:
     the app is already that build, or `executable` is not inside our bundle.
     """
@@ -463,6 +478,8 @@ def applications_app_line(executable: str | None, applications: Path) -> str | N
     wanted = wanted or (BROWSER_REVISION, found[1] if found else "")
     if found == wanted:
         return f"WTF Browser app: {applications} has {found[0]}, the build co runs"
+    if found and _newer(found, wanted):
+        return f"WTF Browser app: {applications} has {found[0]}, newer than the {wanted[0]} co runs, so co leaves it"
     have = f"none in {applications}"
     if found:
         told = slice(None) if found[1] != wanted[1] else slice(1)  # the channel only when it differs

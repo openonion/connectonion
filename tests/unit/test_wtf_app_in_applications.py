@@ -25,6 +25,7 @@ import pytest
 from connectonion.useful_tools.browser_tools import engine
 
 NEW, OLD = "154.0.8037.100", "151.0.7922.222"
+NEWER = "155.0.8100.12"     # what a `co` with a later pin already put in /Applications
 OURS = "ai.openonion.browser"
 
 
@@ -97,6 +98,8 @@ def test_no_app_in_applications_gets_the_launched_build(mac):
 @pytest.mark.parametrize("old_revision, old_channel", [
     (OLD, "preview"),       # the Mac in #2932
     (NEW, "preview"),       # same revision, another channel: still not the build co runs
+    ("154.0.8037.58", "production"),    # older, though "58" sorts after "100" as text
+    (NEWER, "preview"),     # a higher revision of another channel is still not the build co runs
 ])
 def test_an_older_copy_of_ours_goes_to_the_trash_and_the_launched_build_takes_its_place(
     mac, old_revision, old_channel
@@ -112,6 +115,20 @@ def test_an_older_copy_of_ours_goes_to_the_trash_and_the_launched_build_takes_it
     assert trashed.suffix == ".app"
     assert revision_of(trashed) == old_revision
     assert "Trash" in said and old_revision in said
+
+
+@pytest.mark.parametrize("newer", [NEWER, "154.0.10000.1"])    # the second is older as text
+def test_a_newer_app_on_the_same_channel_is_never_replaced_by_an_older_build(mac, newer):
+    # Several `co` installs with different pins share one Mac. The one with the
+    # older pin must not put back the build the server refuses.
+    bundle(mac.applications, newer)
+
+    said = refresh(mac)
+
+    assert revision_of(mac.app) == newer
+    assert not mac.trash.exists()
+    assert mac.copies == []
+    assert said == f"{mac.applications} has {newer}, newer than the {NEW} co runs, so co left it"
 
 
 def test_an_identical_copy_is_left_untouched_and_costs_two_small_reads(mac):
@@ -344,6 +361,14 @@ def test_status_compares_against_the_pinned_revision_before_any_wtf_launch(mac, 
     bundle(mac.applications, NEW)
 
     assert "the build co runs" in status_line(mac)
+
+
+def test_status_says_a_newer_app_is_left_alone(mac):
+    bundle(mac.applications, NEWER)
+
+    assert status_line(mac, mac.executable) == (
+        f"WTF Browser app: {mac.applications} has {NEWER}, newer than the {NEW} co runs, so co leaves it"
+    )
 
 
 def test_status_says_a_stale_app_was_left_because_it_is_open(mac):

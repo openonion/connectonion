@@ -76,15 +76,16 @@ it never prints tokens, licence bytes, or paid-cache paths.
 
 `co` downloads and runs its own copy of the WTF Browser. The one you
 double-click, `/Applications/WTF Browser.app`, is a second copy, and `co` keeps
-it at the build it runs: after each `--engine wtf` launch it compares the two
+it from falling behind the build it runs: after each `--engine wtf` launch it compares the two
 (version and release channel, two small files) and does nothing when they
 match.
 
 | what is in /Applications | what `co` does |
 |---|---|
 | nothing | installs the build it just started |
-| OpenOnion's browser, another version or channel | moves it to the Trash as `WTF Browser <version> <date time>.app`, then installs the build it just started |
+| OpenOnion's browser, an older version or another channel | moves it to the Trash as `WTF Browser <version> <date time>.app`, then installs the build it just started |
 | the same build | nothing |
+| OpenOnion's browser, same channel, a newer version than `co` runs | leaves it: another `co` on this Mac with a later pin put it there, and an older build would be refused |
 | the app is open | leaves it, and replaces it at a later launch once it is closed |
 | an app with that name that is not OpenOnion's | leaves it |
 | `/Applications` is not writable by you | leaves it |
@@ -98,6 +99,7 @@ says where things stand:
 ```text
 WTF Browser app: /Applications has 154.0.8037.100, the build co runs
 WTF Browser app: /Applications has 151.0.7922.222, co runs 154.0.8037.100 — it is open, so co leaves it
+WTF Browser app: /Applications has 155.0.8100.12, newer than the 154.0.8037.100 co runs, so co leaves it
 WTF Browser app: none in /Applications — co installs the build it runs the next time it starts the WTF browser
 ```
 
