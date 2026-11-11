@@ -1611,6 +1611,7 @@
   .tl-m:first-child { padding-top: 4px; }
   .tl-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
   .tl-e .d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
+  .tl-e .d .y { display: block; }
   .tl-e .w { display: grid; place-items: center; }
   .tl-e .w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
   .tl-e .w i.me { background: var(--grey); outline: 0; }
@@ -3173,7 +3174,7 @@ let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
-  en: {},
+  en: { "More of this card": "More" },  // one English word, two meanings: each has a key of its own
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
@@ -4257,7 +4258,7 @@ const UI = {
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
-    "More": "更多"
+    "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
 };
 function t(key, values = {}) {
@@ -4279,7 +4280,6 @@ function togglePrivate() {
   if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
   button.classList.toggle("active", hidden);
-  button.setAttribute("aria-pressed", String(hidden));
   button.setAttribute("aria-checked", String(hidden));
   button.setAttribute("aria-label", t(hidden ? "Show labelled passages" : "Hide labelled passages"));
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
@@ -5202,14 +5202,24 @@ function setDone(entry, done, state = "done", entries = [entry]) {
     return synced;
   });
 }
+// The keyboard's place on Today is the raised card: E, R and Enter act from there.
+function focusRaisedCard() {
+  document.querySelector("#main .qcard.focal")?.focus({ preventScroll: true });
+}
+// The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
+// notice goes, the focus returns to the raised card, so the keys go on working.
 function doneNotice(entry, state, entries) {
   const undo = el("button", { type: "button", text: t("Undo") });
-  undo.onclick = () => setDone(entry, false, "done", entries);
+  undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
   const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
-  setTimeout(() => notice.remove(), 5000);
+  setTimeout(() => {
+    const held = notice.contains(document.activeElement);
+    notice.remove();
+    if (held) focusRaisedCard();
+  }, 5000);
 }
 
 // The one thing to do next: write to the person the thread is with. The address and
@@ -6263,6 +6273,7 @@ function renderTabbar(active) {
   const tab = (key, iconName, title, link, badge) => el("a", { href: link, class: "tab" + (active === key ? " active" : "") }, [icon(iconName), badge, el("span", { text: title })]);
   const search = el("button", { type: "button", class: "tab tab-search" }, [icon("search"), el("span", { text: t("Search") })]);
   search.onclick = () => { document.body.classList.add("searching"); document.getElementById("q").focus(); };
+  bar.setAttribute("aria-label", t("Tabs"));
   toggle.replaceChildren(icon("more"), el("span", { text: t("More") }));
   toggle.classList.add("tab");
   const mine = threadCounts().mine;
@@ -6298,7 +6309,7 @@ function renderSettings() {
   }
   const hidden = document.documentElement.classList.contains("hide-private"), calm = document.documentElement.classList.contains("calm");
   const privacy = el("button", { id: "privacy-toggle", class: "switch" + (hidden ? " active" : ""), type: "button", role: "switch",
-    "aria-pressed": String(hidden), "aria-checked": String(hidden), "aria-label": t(hidden ? "Show labelled passages" : "Hide labelled passages"),
+    "aria-checked": String(hidden), "aria-label": t(hidden ? "Show labelled passages" : "Hide labelled passages"),
     title: t("Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.") });
   privacy.onclick = togglePrivate;
   const motion = el("button", { id: "calm-toggle", class: "switch", type: "button", role: "switch", "aria-checked": String(calm), "aria-label": t("Reduce motion") });
@@ -6701,12 +6712,15 @@ function notDoneAction({ entry, step }) {
   button.onclick = () => keepOpen(entry);
   return button;
 }
+// Motion is stilled by the system's setting or by the reader's own Reduce motion switch: then nothing waits for it.
+function motionStilled() {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("calm");
+}
 // A handled card slides right and fades, then the page re-renders with an Undo.
 function closeEntries(node, entries) {
   if (!entries.length) return;
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   node?.classList.add("leaving");
-  setTimeout(() => setDone(entries[0], true, "done", entries), still ? 0 : 240);
+  setTimeout(() => setDone(entries[0], true, "done", entries), motionStilled() ? 0 : 240);
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
 // or how long it has waited. Mark the whole card done and Skip to the next card appear on hover (E / S).
@@ -6735,7 +6749,8 @@ function cardItem(entry, many, seen = new Set(), more = null) {
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
   if (own) seen.add(draft.id);
-  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + " · E", "aria-label": t("Mark done"), html: CHECK_ICON });
+  // E closes the whole card, so a row that is one of several does not claim the key.
+  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
   done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") }, [
@@ -6753,10 +6768,8 @@ function cardDraft(draft, group) {
     // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
     if (!held && n > 1) setDone(group.entries[0], true, "done", group.entries);
     todaySent = { name: threadWho(group.r), ...(held || {}) };
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches, selector = '[data-path="' + CSS.escape(group.r.path) + '"]';
-    document.querySelector(".qcard" + selector)?.classList.add("leaving");
-    document.querySelector(".fuse .lane" + selector)?.classList.add("done");
-    setTimeout(render, still ? 0 : 320);
+    document.querySelector('.qcard[data-path="' + CSS.escape(group.r.path) + '"]')?.classList.add("leaving");
+    setTimeout(render, motionStilled() ? 0 : 320);
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
     replyDraftCard(draft, sent)]);
@@ -6978,7 +6991,7 @@ function talkPanel(begin) {
 function personCard(group, focal, total = 1) {
   const { r, entries } = group, next = groupStep(entries), late = groupLate(group);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
-  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More") }) : null;
+  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More of this card") }) : null;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late, total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
@@ -6987,8 +7000,9 @@ function personCard(group, focal, total = 1) {
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
   if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
-  // The talk menu and an open conversation are the card's own controls: using them never folds it.
-  card.onclick = event => { if (!focal && !event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
+  // The talk menu and an open conversation are the card's own controls: using them never folds it. Nor does a
+  // click in the raised card, and which card that is changes with every deal, so it is read at the click.
+  card.onclick = event => { if (!card.classList.contains("focal") && !event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
   return card;
 }
 function openDraft(card) {
@@ -7134,8 +7148,8 @@ function approvalHeader() {
   const items = REM.approval_outcomes || [];
   if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
   const button = el("button", {id: "approve-all", class: "pair-cell", type: "button"}, approveAllWords(items.length));
-  // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). The button stays
-  // in the page, hidden, so an Undo that brings items back can show it again.
+  // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). An Undo that brings
+  // items back draws the widget again, button and all.
   button.disabled = !REM.live || !items.length;
   button.hidden = !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
@@ -7262,8 +7276,7 @@ function approvalUndoBar() {
       if (item.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === item.draft_id ? {...d, status: "prepared"} : d);
     }
     undoFailure = reply.results.filter(value => value.status === "error").map(approvalStatus).join(" · ");
-    const cta = document.getElementById("approve-all");
-    if (cta) {cta.replaceChildren(...approveAllWords(REM.approval_outcomes.length)); cta.disabled = !REM.live || !REM.approval_outcomes.length; cta.hidden = !REM.approval_outcomes.length;}
+    document.getElementById("today-others")?.replaceWith(othersWidget(threadCounts()));
     held = held.filter(item => !reply.results.some(value => value.id === item.id && value.status === "cancelled"));
     undo.disabled = !held.length;
     if (!held.length) clearInterval(approvalTimer);
@@ -7351,14 +7364,15 @@ function raiseCard(card, raised) {
     button.classList.toggle("btn-line", !raised);
   }
 }
+// The next card is the next one in the page: the notebook may already hold someone the page has not drawn yet.
 function dealNext(step) {
-  const groups = todayGroups(threadEntries().filter(entry => !isDone(entry)));
-  if (groups.length < 2) return;
-  const at = groups.findIndex(group => group.r.path === document.querySelector("#main .qcard.focal")?.dataset.path);
-  dealCard(groups[(at + step + groups.length) % groups.length].r.path);
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
+  if (cards.length < 2) return;
+  const at = cards.findIndex(card => card.classList.contains("focal"));
+  dealCard(cards[(at + step + cards.length) % cards.length].dataset.path);
 }
 function overview() {
-  const main = document.getElementById("main");
+  const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
   main.textContent = "";
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
   approvalUndoBar();
@@ -7368,6 +7382,7 @@ function overview() {
   main.append(...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
     todayFolds(entries, counts)].filter(Boolean));
+  if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
 function scheduleFailure() {
   const failure = REM.status?.schedule_failure;
@@ -7512,14 +7527,15 @@ function todaySide(counts) {
 }
 // What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
 // sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
+// Either shape carries the same id: an Undo that brings approvals back draws it again in place.
 function othersWidget(counts) {
   const outcomes = (REM.approval_outcomes || []).length, problems = approvalProblems();
   if (!counts.theirs && !counts.mine && !outcomes && !problems)
-    return el("p", { class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
+    return el("p", { id: "today-others", class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
   const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
     : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
   const title = counts.theirs ? "Waiting on others" : counts.mine ? "Open threads" : "Approval status";
-  return el("section", { class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]),
+  return el("section", { id: "today-others", class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]),
     el("div", { class: "pair" }, [cell, outcomes || REM.live ? approvalHeader() : problems])]);
 }
 // What REM did overnight, as one quiet line; 看 opens the list with every name.
@@ -7998,13 +8014,19 @@ function expandChip(list, words) {
   button.onclick = () => { const all = list.classList.toggle("all"); button.setAttribute("aria-expanded", String(all)); };
   return button;
 }
+// Month and day; an exchange from another year carries its year under them, where the narrow column has room.
+function timelineDay(day) {
+  if (day.length !== 10) return [];
+  const say = parts => new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", ...parts });
+  const thisYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
+  return [say({ month: "numeric", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
+}
 function timelineRow(r, item) {
   const text = withoutDateClutter(youify(item.text));
   const content = historyRowContent(text, r.path);
   if (!content) return null;
   const yours = /^\s*(?:\*\*)?(?:the user|you|你)\b/i.test(unlabelled(item.text));
-  const day = item.day.length === 10 ? new Date(item.day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "numeric", day: "numeric" }) : "";
-  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d", text: day }),
+  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d" }, timelineDay(item.day)),
     el("span", { class: "w" }, [el("i", { class: yours ? "me" : "", title: t(yours ? "You" : "Them") })]), el("span", { class: "x" }, [content])]);
 }
 function personTimeline(r) {
@@ -12431,7 +12453,7 @@ function onTodayCard(path, act) {
 }
 function openPalette() {
   if (document.getElementById("palette")) return;
-  const items = paletteItems(), before = document.activeElement;
+  const items = paletteItems();
   const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-list", autocomplete: "off", spellcheck: "false",
     "aria-label": t("Search or run a command"), placeholder: t("Search people, projects, pages — or type an action") });
   const list = el("ul", { id: "palette-list", role: "listbox" });
@@ -12465,13 +12487,14 @@ function openPalette() {
     if (event.key === "Enter" && shown[active]) { event.preventDefault(); pick(shown[active]); }
   };
   dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
-  dialog.addEventListener("close", () => { dialog.remove(); if (before?.isConnected) before.focus({ preventScroll: true }); });
+  // Closing a dialog returns the focus by itself, before the picked command runs; the command may then move it.
+  dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
   dialog.showModal();
   draw();
   input.focus();
 }
-const SHORTCUTS = [["J / K", "Next or previous card"], ["S", "Skip to the next card"], ["E", "Mark done"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
+const SHORTCUTS = [["J / K", "Next or previous card"], ["S", "Skip to the next card"], ["E", "Mark done (the card in focus)"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
 function openShortcuts() {
   const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
   const dialog = el("dialog", { id: "shortcuts", class: "palette shortcuts", "aria-labelledby": "shortcuts-title" }, [
@@ -12486,15 +12509,16 @@ function openShortcuts() {
 function typingIn(target) {
   return !!target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']");
 }
-// J/K deal the next or previous card, S skips to the next, E closes the raised card when focus is in it (Undo),
-// R replies. Only on Today, never while typing.
+// J/K deal the next or previous card, S skips to the next, R replies. E closes the raised card when the focus is
+// in it or in the notice the last E left, so E, E, E works through the deck; from anywhere else it does nothing.
+// Only on Today, never while typing.
 function todayKey(key) {
   const card = document.querySelector("#main .qcard.focal");
   if (!card) return false;
   if (key === "j" || key === "s") dealNext(1);
   else if (key === "k") dealNext(-1);
   else if (key === "r") card.reply();
-  else if (document.activeElement?.closest("#main .qcard.focal")) card.markDone();  // E closes only the card you are in
+  else if (document.activeElement?.closest("#main .qcard.focal, #done-notice")) card.markDone();
   else return false;
   return true;
 }
