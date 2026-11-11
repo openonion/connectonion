@@ -603,6 +603,26 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
         assert _apart(words.bounding_box(), below.bounding_box()), (i, words.bounding_box(), below.bounding_box())
 
 
+# Who is raised, read five ways: the open card, the card showing a green action, the pressed face, the lit face,
+# and the face ringed in the night chart.
+RAISED = """() => {
+  const shows = node => node.getClientRects().length > 0;
+  const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act')].some(shows));
+  // Faces that rose close together share one ring: its initials are the raised person's, its title names them all.
+  const waiting = [...document.querySelectorAll('.today-brief .qcard')].map(card => byPath(card.dataset.path));
+  const ringed = [...document.querySelectorAll('.night-card .fc.sel')].flatMap(ring => waiting.filter(r =>
+    ring.querySelector('title').textContent.includes(threadWho(r)) && ring.querySelector('text').textContent === face(threadWho(r)).textContent));
+  return [[...document.querySelectorAll('.today-brief .qcard.focal.open')], green, [...document.querySelectorAll('.deal[aria-pressed="true"]')],
+    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join()).concat(ringed.map(r => r.path).join());
+}"""
+
+
+def _raised_everywhere(page):
+    shown = page.locator(".today-brief .qcard.focal .btn-act").evaluate_all("nodes => nodes.filter(node => node.getClientRects().length).length")
+    assert shown == 1, "the raised card shows exactly one green action"
+    return page.evaluate(RAISED, isolated_context=False)
+
+
 def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
     """Review of #2929: dealing redrew Today and dropped a half-answered question. Every card is already in the
     page, so a deal only moves which one is raised; what was typed in any of them stays."""
@@ -613,20 +633,46 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
       REM.drafts = [{id: 'ines-receipts', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'prepared',
         to: 'Ines Halvorsen <ines@example.test>', from: 'avery@example.test', subject: 'Re: Q3 receipts',
         body: 'Hi Ines,\n\nI can send the receipts 【需要你：the day you can send them — by Friday】.\n\nAvery'}];
+      // Each person waiting has a rise of their own in the night chart, two hours apart, so each has a face there.
+      REM.night_outcomes = todayGroups(threadEntries().filter(e => !isDone(e))).map(({ r }, i) => ({key: r.path, record: r.path, title: r.title,
+        kind: 'prepared', prepared_at: new Date(Date.parse('2026-10-08T02:00:00Z') + i * 7200000).toISOString()}));
       render(); }""", isolated_context=False)
     card = page.locator(".today-brief .qcard.focal")
     start = card.get_attribute("data-path")
     card.locator(".owner-slot input").fill("Thursday afternoon")
-    other = next(path for path in page.locator(".deal").evaluate_all(FACES) if path != start)
+    faces = page.locator(".deal").evaluate_all(FACES)
+    other = next(path for path in faces if path != start)
+    assert _raised_everywhere(page) == [start] * 5
     page.locator(f'.deal[data-path="{other}"]').click()
-    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == other
-    assert page.locator(f'.deal[data-path="{other}"]').get_attribute("aria-pressed") == "true"
+    assert _raised_everywhere(page) == [other] * 5
+    assert page.locator(f'.deal[data-path="{start}"]').get_attribute("aria-pressed") == "false"
     page.locator("body").press("s")  # S deals the next card; the words stay where they were typed
+    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 5
     page.locator(f'.deal[data-path="{start}"]').click()
-    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == start
+    assert _raised_everywhere(page) == [start] * 5
     assert page.locator(".today-brief .qcard.focal .owner-slot input").input_value() == "Thursday afternoon"
     # The raised card carries the page's one primary action; a card waiting behind its face does not.
     assert page.locator(".today-brief .qcard:not(.focal) .card-acts .btn-act").count() == 0
+
+
+def test_a_click_in_a_dealt_card_never_folds_its_draft_and_send_away(today):
+    """Review of #2929: a card raised by a deal folded on a click anywhere plain in it, and its draft and Send
+    went with it. The click read how the card was first drawn, not whether it is the raised one now."""
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("""() => { REM.drafts.push({...REM.drafts[0], id: 'mara', thread: 'mail:fixture:harbour-renewal', to: 'Mara <mara@example.test>',
+      body: 'Signed today.'}); REM.approval_outcomes.push({...REM.approval_outcomes[0], id: 'reply:mara', draft_id: 'mara', blocked: false}); render(); }""",
+                  isolated_context=False)
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == "people/ines-halvorsen.md"
+    page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()
+    card = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
+    draft, send = card.locator(".qdraft"), card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
+    assert draft.is_visible() and send.is_visible()
+    for plain in (".qhead .qage", ".qitem .words"):  # the head's age, then a row's words, whose click reaches the card
+        card.locator(plain).first.click()
+        assert draft.is_visible() and send.is_visible(), plain
+        assert {"focal", "open"} <= set(card.get_attribute("class").split()), plain
 
 
 @pytest.mark.parametrize("live", [True, False])
@@ -647,3 +693,75 @@ def test_with_nothing_open_today_says_so_instead_of_an_empty_widget(today, live)
     widget = page.locator(".others")
     assert widget.count() == 1 and "Waiting on others" not in widget.inner_text()
     assert widget.locator(".waiting-more").get_attribute("href") == "#view=open"
+
+
+def test_undoing_a_held_approval_shows_the_approve_button_again(today):
+    """Review of #2929: with nothing open, Today shows one sentence and no approve button, so an Undo that brought
+    a held reply back had no button to show it in until the page was drawn again."""
+    page, calls, answers = today
+    held = {"id": "reply:ines", "kind": "reply", "status": "held", "release_at": "2099-01-01T00:10:00Z",
+            "to": "ines@example.test", "subject": "Re: Q3 receipts", "body": "The Q3 receipts are attached."}
+    page.evaluate("""held => { REM.live = true; REM.approval_outcomes = []; REM.approval_pending = [held]; REM.today_queue = [];
+      for (const r of REM.records) r.text = r.text.replace(/## Open threads[\\s\\S]*?(?=\\n## |$)/, '## Open threads\\nUnknown\\n');
+      KNOWN.clear(); FACTS.clear(); OWING = null; threadEntries.cached = null; render(); }""", held, isolated_context=False)
+    assert page.locator(".side .nothing-open").count() == 1 and page.locator("#approve-all").count() == 0
+    answers["/rem/approve"] = lambda body: (200, {"results": [{"id": i, "status": "cancelled"} for i in body["ids"]]})
+    page.locator("#approval-undo").get_by_role("button", name="Undo", exact=True).click()
+    page.locator("#approve-all").wait_for()
+    assert calls[-1] == ("/rem/approve", {"action": "undo", "ids": ["reply:ines"]})
+    assert page.locator("#approve-all").inner_text().split()[0] == "1" and page.locator("#approve-all").is_enabled()
+    assert page.locator(".side .nothing-open").count() == 0
+    assert "Cancelled" in page.locator("#approval-undo").inner_text()
+
+
+IN_RAISED = '!!document.activeElement.closest("#main .qcard.focal")'
+
+
+def _press_e_on_the_raised_card(page):
+    path = page.locator("#main .qcard.focal").get_attribute("data-path")
+    page.keyboard.press("e")
+    page.locator(f'.qcard[data-path="{path}"]').wait_for(state="detached")
+    page.evaluate("threadWrite", isolated_context=False)  # the Host has answered and Today is drawn again
+    return path
+
+
+def test_e_pressed_again_closes_the_next_card_and_enter_still_undoes(today):
+    """Review of #2929: after E closed a card the focus sat on Undo, so the next E did nothing. While the notice
+    shows, E closes the next card and Enter undoes; when the notice goes, the raised card has the focus again,
+    and a redraw (the Host confirming the save) leaves it there."""
+    page, calls, answers = today
+    # The Host answers a save with the decision it kept (threads.set_state).
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-08T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)
+    cards = page.locator(".today-brief .qcard")
+    count = cards.count()
+    assert count >= 3
+    page.locator("#main .qcard.focal").focus()
+    first = _press_e_on_the_raised_card(page)
+    second = _press_e_on_the_raised_card(page)
+    assert second != first and cards.count() == count - 2
+    page.keyboard.press("Enter")  # Undo holds the focus: the card just closed comes back
+    page.locator(f'.qcard[data-path="{second}"]').wait_for()
+    page.evaluate("threadWrite", isolated_context=False)
+    assert [body["state"] for path, body in calls if path == "/rem/thread"] == ["done", "done", "open"]
+    assert cards.count() == count - 1 and page.locator("#done-notice").count() == 0
+    assert page.evaluate(IN_RAISED, isolated_context=False)
+    _press_e_on_the_raised_card(page)
+    page.locator("#done-notice").wait_for(state="detached", timeout=8000)  # the notice leaves after five seconds
+    assert page.evaluate(IN_RAISED, isolated_context=False)
+    _press_e_on_the_raised_card(page)
+    assert cards.count() == count - 3
+
+
+def test_in_chinese_the_card_unfolds_and_the_tab_bar_says_more(today):
+    """Review of #2929: one key named both the card's unfold button and the tab bar's More, so the card said 更多;
+    and the tab bar's own name was English in every language."""
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    words = """() => [document.querySelector('.qcard.focal .qfull').textContent, document.querySelector('#tabbar .nav-toggle').textContent,
+      document.getElementById('tabbar').getAttribute('aria-label')]"""
+    assert page.evaluate(words, isolated_context=False) == ["More", "More", "Tabs"]
+    page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
+    assert page.evaluate(words, isolated_context=False) == ["展开", "更多", "标签栏"]

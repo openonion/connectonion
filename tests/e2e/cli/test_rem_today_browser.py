@@ -121,3 +121,72 @@ def test_a_stray_e_never_closes_the_raised_card(reader):
     page.locator('#main .qcard.focal').focus()
     page.keyboard.press('e')
     page.locator('#done-notice').wait_for()
+
+
+IN_RAISED = '!!document.activeElement.closest("#main .qcard.focal")'
+
+
+def test_a_card_dealt_from_the_palette_keeps_the_focus(reader):
+    """Review of #2929: the palette put the focus back where it was before it opened (here a face in the deck's
+    row), after the command had already moved it to the card it dealt, so the next E did nothing. Closing
+    without a command still returns it."""
+    page, _ = reader
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    raised = page.locator('#main .qcard.focal').get_attribute('data-path')
+    other = next(path for path in page.locator('.deal').evaluate_all('faces => faces.map(face => face.dataset.path)') if path != raised)
+    # Dealing is what is under test; what the reply step then opens (a writer, a mail app) is not.
+    name = page.evaluate("""path => { document.querySelector('.qcard[data-path="' + path + '"]').reply = () => {};
+      return threadWho(byPath(path)); }""", other, isolated_context=False)
+    page.locator(f'.deal[data-path="{raised}"]').focus()
+    page.keyboard.press('Control+k')
+    page.keyboard.press('Escape')
+    page.locator('#palette').wait_for(state='detached')
+    assert page.evaluate('document.activeElement.dataset.path', isolated_context=False) == raised
+    assert page.evaluate('document.activeElement.matches(".deal")', isolated_context=False)
+    page.keyboard.press('Control+k')
+    page.keyboard.type('draft a reply to ' + name)
+    assert page.locator('#palette [aria-selected="true"]').inner_text().startswith('Draft a reply to ' + name)
+    page.keyboard.press('Enter')
+    page.locator('#palette').wait_for(state='detached')
+    assert page.locator('#main .qcard.focal').get_attribute('data-path') == other
+    assert page.evaluate(IN_RAISED, isolated_context=False)
+
+
+def test_j_steps_through_the_cards_in_the_page_when_the_notebook_moved_on(reader):
+    """Review of #2929: J, K and S stepped through the people worked out from the data. When someone new was
+    waiting and the page had not drawn them yet (a redraw waits while you type), the step named a card that was
+    not there and nothing moved again."""
+    page, _ = reader
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    cards = _cards(page).evaluate_all('cards => cards.map(card => card.dataset.path)')
+    assert len(cards) >= 2 and 'people/tomas-reyes.md' not in cards
+    page.evaluate(r'''async () => {
+      const r = byPath('people/tomas-reyes.md');
+      r.original = undefined;
+      r.text = r.text.replace(/(^## Open threads[^\n]*\n)[^\n]*/mi, '$1- You owe Tomas the abstract; due 2026-10-18 [2].');
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue();
+    }''', isolated_context=False)
+    waiting = page.evaluate('todayGroups(threadEntries().filter(e => !isDone(e))).map(group => group.r.path)', isolated_context=False)
+    assert 'people/tomas-reyes.md' in waiting and _cards(page).count() == len(cards)  # in the data, not in the page
+    raised = 'document.querySelector("#main .qcard.focal").dataset.path'
+    seen = []
+    for _ in cards:
+        page.keyboard.press('j')
+        seen.append(page.evaluate(raised, isolated_context=False))
+    assert seen == cards[1:] + cards[:1]
+
+
+def test_the_readers_own_reduce_motion_closes_a_card_without_the_wait(reader):
+    """Review of #2929: only the system's setting skipped the wait for the leaving card; the reader's own
+    Reduce motion switch, which already stills the animation, did not."""
+    page, _ = reader
+    page.emulate_media(reduced_motion='no-preference')
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    page.evaluate("""() => { document.documentElement.classList.add('calm'); window.waits = [];
+      const timer = window.setTimeout;
+      window.setTimeout = (run, wait, ...rest) => { window.waits.push(wait); return timer(run, wait, ...rest); }; }""", isolated_context=False)
+    page.locator('#main .qcard.focal').focus()
+    page.keyboard.press('e')
+    page.locator('#done-notice').wait_for()
+    waits = page.evaluate('window.waits', isolated_context=False)
+    assert 0 in waits and 240 not in waits, waits

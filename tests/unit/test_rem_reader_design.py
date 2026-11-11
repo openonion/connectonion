@@ -31,7 +31,9 @@ def test_both_themes_define_every_colour_token():
     colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
     assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim"}
     # N3 (D-123): the one green and its label are the same in both themes; every other colour has its dark value.
-    assert blocks["dark-auto"] >= colours - {"--green", "--on-green"}
+    # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
+    shadows = {"--e1", "--e2", "--e3", "--e-fuse"}
+    assert blocks["dark-auto"] == colours - {"--green", "--on-green"} | shadows
     assert blocks["dark-forced"] == blocks["dark-auto"]
 
 

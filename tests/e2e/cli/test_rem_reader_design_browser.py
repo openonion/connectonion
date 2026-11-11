@@ -160,10 +160,10 @@ def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     privacy.focus()
     privacy.press('Enter')
     shown = page.get_by_role('switch', name='Show labelled passages')
-    assert shown.get_attribute('aria-pressed') == 'true'
+    assert shown.get_attribute('aria-checked') == 'true' and shown.get_attribute('aria-pressed') is None  # a switch is checked, not pressed
     assert shown.evaluate('(node) => node === document.activeElement')
     shown.press('Space')
-    assert privacy.get_attribute('aria-pressed') == 'false'
+    assert privacy.get_attribute('aria-checked') == 'false'
     assert privacy.evaluate('(node) => node === document.activeElement')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1510,6 +1510,25 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
     assert page.locator('.tl-e .d').all_inner_texts() == ['9/4', '9/3', '9/2', '9/1']  # N3: month and day on each row
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.tl-e .x').all_inner_texts())
     assert page.locator('.tl').evaluate('e => e.scrollHeight <= e.clientHeight')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('language, days', [('en', ['9/4', '12/24\n2025', '9/4\n2025']), ('zh', ['9/4', '12/24\n2025年', '9/4\n2025年'])])
+def test_an_exchange_from_another_year_says_its_year(reader, language, days):
+    """Review of #2929: the timeline gave month and day only, so last September read as this one. The notebook's
+    as_of year is the current one (2026 here); an older entry carries its year under the day, inside the column."""
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""language => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2025-09-04', '2026-09-04', '2025-12-24'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage(language);
+    }""", language, isolated_context=False)
+    assert page.locator('.tl-e .d').all_inner_texts() == days
+    assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth)')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
