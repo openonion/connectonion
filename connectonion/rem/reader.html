@@ -3433,6 +3433,8 @@ const UI = {
     "Saved in notebook": "已保存到笔记本",
     "Saved on this device — sync pending": "已保存在此设备，等待同步",
     "Saving…": "保存中…",
+    "Not saved": "未保存",
+    "Try again": "重试",
     "New mail · {date}": "新邮件 · {date}",
     "Subject": "主题",
     "Body": "正文",
@@ -5136,16 +5138,44 @@ function isDone(entry) {
   const value = threadStates[doneKey(entry)];
   return ["done", "skipped"].includes(value?.state) && !value.returned_at;
 }
+// A mark names only the mail it cites, at the versions this page showed. It never carries the whole
+// table: past 64 KB the Host refused every Done, Undo and Skip (#2936).
+function citedVersions(entries, shown) {
+  const threads = entries.flatMap(entry => [...obligationEvidence(entry).ids]).map(id => REM.source_context?.[id]?.thread);
+  return Object.fromEntries(threads.filter(thread => shown[thread]).map(thread => [thread, shown[thread]]));
+}
+// A mark's key is its page's path and the thread's words: enough to read again what it cites.
+function keyEntry(key) {
+  const cut = key.indexOf("\n");
+  return { r: byPath(key.slice(0, cut)), t: { text: key.slice(cut + 1) } };
+}
 async function reconcileThreads() {
   if (!REM.live) return;
   const response = await fetch("/rem/thread").catch(() => null);
   if (!response?.ok) return;
-  threadStates = { ...await response.json(), ...pendingThreads };
+  const notebook = await response.json();
+  threadStates = { ...notebook, ...pendingThreads };
   REM.threads = threadStates;
-  for (const [key, value] of Object.entries(pendingThreads)) await saveThreadState(key, value);
+  for (const [key, value] of Object.entries(pendingThreads)) {
+    // A mark kept from before #2936 still holds the whole table.
+    value.versions = citedVersions((value.keys || [key]).map(keyEntry).filter(entry => entry.r), value.versions || {});
+    await saveThreadState(key, value, notebook);
+  }
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
 }
-async function saveThreadState(key, value) {
+// The notebook answered and did not take the mark: nothing is waiting to sync, and the page shows what it did before.
+async function refuseThreadState(key, value, before) {
+  delete pendingThreads[key];
+  for (const item of value.keys || [key]) {
+    if (pendingThreads[item]) continue;
+    if (before[item]) threadStates[item] = before[item];
+    else delete threadStates[item];
+  }
+  await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
+  return "refused";
+}
+// Resolves true once the notebook holds the mark, false while it waits on this device, "refused" when the notebook said no.
+async function saveThreadState(key, value, before = { ...threadStates }) {
   pendingThreads[key] = value;
   if (value.state === "open") delete threadStates[key];
   else threadStates[key] = value;
@@ -5156,7 +5186,9 @@ async function saveThreadState(key, value) {
     if (pendingThreads[key] !== value) return true;
     const response = await fetch("/rem/thread", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, device: navigator.platform || "browser" }) }).catch(() => null);
-    if (!response?.ok) return false;
+    // Only no answer at all leaves a mark waiting: a refusal sent again unchanged is refused again.
+    if (!response) return false;
+    if (!response.ok) return pendingThreads[key] !== value || refuseThreadState(key, value, before);
     const saved = await response.json();
     if (pendingThreads[key] !== value) return true;
     delete pendingThreads[key];
@@ -5176,8 +5208,9 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   const members = entries.flatMap(item => item.members || [item]);
   value.keys = [...new Set([...members.map(doneKey), ...(threadStates[key]?.keys || [])])];
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
-  value.versions = REM.mail_versions || {};
+  value.versions = citedVersions(members, REM.mail_versions || {});
   value.draft_statuses = Object.assign({}, ...value.keys.map(item => threadStates[item]?.draft_statuses || {}));
+  const statuses = related.map(draft => draft.status);
   for (const draft of related) {
     if (draft.status === "sent") continue;
     if (done) {
@@ -5196,11 +5229,26 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   document.getElementById("done-notice")?.remove();
   if (done) doneNotice(entry, state, entries);
   return saved.then(synced => {
+    if (synced === "refused") {
+      related.forEach((draft, i) => { draft.status = statuses[i]; });
+      notSavedNotice(() => setDone(entry, done, state, entries));
+    }
     if (synced) render();
     const status = document.getElementById("thread-save-status");
     if (status) status.textContent = t(synced ? "Saved in notebook" : "Saved on this device — sync pending");
     return synced;
   });
+}
+// A refused mark is not saved: the notice says so in place of "Saved" and offers another try. The thread is back on the page by then.
+function notSavedNotice(retry) {
+  const held = document.getElementById("done-notice")?.contains(document.activeElement);
+  document.getElementById("done-notice")?.remove();
+  const again = el("button", { type: "button", text: t("Try again") });
+  again.onclick = retry;
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "alert" }, [t("Not saved"), " · ", again]);
+  document.body.appendChild(notice);
+  if (held) again.focus({ preventScroll: true });
+  noticeLeaves(notice);
 }
 // The keyboard's place on Today is the raised card: E, R and Enter act from there.
 function focusRaisedCard() {
@@ -5215,6 +5263,9 @@ function doneNotice(entry, state, entries) {
   const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
+  noticeLeaves(notice);
+}
+function noticeLeaves(notice) {
   setTimeout(() => {
     const held = notice.contains(document.activeElement);
     notice.remove();

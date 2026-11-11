@@ -117,7 +117,8 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
     if state != 'open':
         if keys and len(keys) > 1:
             value['keys'] = keys
-        value['versions'] = versions if versions is not None else {thread: row['id'] for thread, row in _mail_versions(root, key).items()}
+        # The page names the mail it showed; a cited thread it could not place is held at the notebook's latest.
+        value['versions'] = {**{thread: row['id'] for thread, row in _mail_versions(root, key).items()}, **(versions or {})}
         found[key] = value
     for row in drafts.candidates(root, refresh_index=False):
         if not any(done_key(item['record'], item['text']) == key for item in row['obligations']):
