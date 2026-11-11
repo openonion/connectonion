@@ -25,7 +25,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc3**: on macOS co's own WTF Browser start and a double-click share one
+Release candidate **1.9.6rc4**: in the REM reader, Done, Undo and Skip reach the notebook however
+much mail it holds, and a refused mark says "Not saved". Organisations, Projects, All records and
+Skills load while REM builds a newer reader. See [1.9.6rc4 notes](releases/1.9.6rc4.md).
+
+Before it, release candidate **1.9.6rc3**: on macOS co's own WTF Browser start and a double-click share one
 profile and one Keychain, so a login made in either works in both (sign in once in the app; old
 logins are not moved). On a phone the Send bar sits on the tab bar. See
 [1.9.6rc3 notes](releases/1.9.6rc3.md).
@@ -39,7 +43,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc3'
+python -m pip install --upgrade 'connectonion==1.9.6rc4'
 ```
 
 ## Previous stable
