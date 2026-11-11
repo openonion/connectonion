@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.6rc2"
+version = "1.9.6rc3"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -105,7 +105,7 @@ dependencies = [
 # demand too, so this is for anyone who would rather pin it in their own
 # requirements than have a command reach for pip.
 wtf = [
-    "onionwright>=0.0.14",
+    "onionwright>=0.0.15",
 ]
 synology = [
     "keyring>=25,<26",

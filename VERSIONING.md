@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc2
+## Current Version: 1.9.6rc3
+
+Release candidate 1.9.6rc3 for 1.9.6: on macOS, co's own WTF Browser start and a double-click now open
+one profile with one Keychain, so a login made in either is the same login in both (Onionwright
+0.0.15, openonion/onionwright#74). Old logins in `~/.onionwright/profiles/browser-owned` are not
+moved; sign in once in the app. The WTF Browser.app in /Applications is kept at the build co runs
+(#2932). On a phone the REM reader's Send bar now sits on the tab bar with no
+gap (#2933). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc3.md).
+
+- 1.9.6rc3 (one WTF Browser profile for people and co; Send bar docked on a phone).
+
+### Previous candidate: 1.9.6rc2
 
 Release candidate 1.9.6rc2 for 1.9.6: the REM reader's new desk, phase 1 of 3. The shell is an icon
 rail with one search pill on a desktop and a floating tab bar on a phone; Today opens on a night
