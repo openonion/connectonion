@@ -739,3 +739,19 @@ def test_a_private_projects_investigation_rides_on_its_page_in_the_live_reader(h
     shared = {r['path']: r for r in reader.snapshot(host.root)['records']}
     assert live['projects/private-notes-ab12.md']['task']['id'] == receipt['id']
     assert 'task' not in shared['projects/private-notes-ab12.md']
+
+
+def test_details_stay_json_while_a_newer_render_builds(host, cache, clock):
+    """The "Updating…" banner is HTML: put after the details JSON it broke every
+    deferred page (Org, Projects, All records) with "Unexpected non-whitespace
+    character after JSON" (1.9.6rc2)."""
+    from connectonion.rem.files import Notebook
+    cookie = f"co_rem={host.token}"
+    call(host.routes, "GET", "/rem", cookie=cookie)
+    reader.refresh(host.root)
+    Notebook(host.root).write("people/bruno-vale.md", "# Bruno Vale\n")   # the key moves; a build runs
+    clock[0] += reader.REBUILD_INTERVAL + 1                             # and one is due
+    status, head, body = call(host.routes, "GET", "/rem/data.json", cookie=cookie)
+    assert status == 200 and head["content-type"].startswith("application/json")
+    assert json.loads(body)["records"]                                  # parses, banner or not
+    assert 'id="rem-updating"' in call(host.routes, "GET", "/rem", cookie=cookie)[2]
