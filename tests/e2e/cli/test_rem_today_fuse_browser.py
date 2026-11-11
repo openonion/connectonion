@@ -487,6 +487,37 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     assert _box_inside(page, send, 16)
 
 
+# What is painted on top at each point from the Send bar's bottom edge to the tab bar's top edge that is neither bar.
+UNDER_THE_SEND_BAR = """() => {
+  const send = document.querySelector('.qcard.focal.open .mail-actions'), tabs = document.getElementById('tabbar');
+  const a = send.getBoundingClientRect(), b = tabs.getBoundingClientRect(), seen = new Set();
+  for (let y = a.bottom; y <= b.top; y++)
+    for (let x = Math.max(a.left, b.left); x < Math.min(a.right, b.right); x++) {
+      const top = document.elementFromPoint(x, y);
+      const words = [...top.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent.trim()).join(' ');
+      if (!send.contains(top) && !tabs.contains(top)) seen.add(`<${top.localName} class="${top.getAttribute('class') || ''}"> ${words}`.trim());
+    }
+  return [...seen];
+}"""
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_nothing_of_the_page_shows_between_the_pinned_send_bar_and_the_tab_bar(today, lang):
+    """#2931: on a phone, with Today at the top, the label of the widget below the raised card showed cut in half in
+    the gap between the two bars. They are one docked unit: every point from one to the other is painted by a bar."""
+    page, _, _ = today
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("lang => { setInterfaceLanguage(lang); scrollTo(0, 0); }", lang, isolated_context=False)
+    assert page.locator(".qcard.focal.open .mail-actions").evaluate("node => getComputedStyle(node).position") == "fixed"
+    assert page.locator(".others .wt").count() == 1 and page.evaluate("scrollY", isolated_context=False) == 0
+    shown = page.evaluate(UNDER_THE_SEND_BAR, isolated_context=False)
+    assert not shown, shown
+    if os.environ.get("CO_REM_SHOTS"):
+        page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-phone-docked-{lang}.png"))
+
+
 def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     """Clicking 有更新 redraws Today and puts typed words back: the reply slot, the talk box, caret and focus."""
     page, _, answers = today

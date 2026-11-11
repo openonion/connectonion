@@ -811,7 +811,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   the first screen holds To, Subject, the question and the Send bar, with the
   context line and channel switch behind **More**. **Send** is the page's only
   green control. On a desktop it sits under the letter in normal flow, inside
-  the first screen; on a phone it is a bar pinned to the bottom, and notices
+  the first screen; on a phone it is a bar docked on top of the tab bar, the
+  two reading as one panel with nothing of the page between them, and notices
   rise above it. When the Host lists an approval for the draft, Send holds the
   reply for 10 minutes: the person's card and lane close, the count steps down,
   and the line **Sent to …** keeps one **Undo** until the hold ends, when the
