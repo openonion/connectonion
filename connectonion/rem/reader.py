@@ -516,6 +516,10 @@ UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px
             ' = zh ? "正在更新…" : "Updating…"; })();</script>')
 
 
+# The saved pages a person reads; data.json is the live page's details, never altered.
+HTML_PAGES = ("live.html", "file.html")
+
+
 class CacheRefused(OSError):
     """The cache folder exists but is not this user's alone (a shared /tmp)."""
 
@@ -809,7 +813,10 @@ def cached_page(root: Path, name: str, *, owner: bool = False, say=None) -> tupl
     if text is None:
         text = _first_page(root, name, version, say)
     building = _rebuild_stale(root, name, version, owner=owner)
-    if building and saved(root, BUILDS[name]).get("version") != version:
+    # The banner is HTML, for the pages only: the details are JSON the page parses,
+    # and anything after them broke every deferred page (1.9.6rc2). The open page
+    # learns of a newer render from /rem/version.
+    if building and name in HTML_PAGES and saved(root, BUILDS[name]).get("version") != version:
         text = _updating(text)
     return text, building
 
