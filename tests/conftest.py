@@ -11,6 +11,7 @@ not failed.
 Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
 - _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
+- _never_touch_the_real_applications: the WTF Browser app `co` keeps current is looked for in a folder that does not exist
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
 - _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
@@ -157,6 +158,19 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     # itself still wins: its setattr runs after this one.
     for module, name, value in _constants_under_the_real_home():
         monkeypatch.setattr(module, name, home / value.relative_to(_REAL_CO.parent))
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_applications(monkeypatch, tmp_path_factory):
+    """No test may read or replace the operator's /Applications/WTF Browser.app.
+
+    A WTF launch on macOS makes that app the build it started, and `co browser
+    status` reads it (#2932). /Applications is not under HOME, so isolating HOME
+    does not cover it. Pointing it at a folder that does not exist does: there
+    is nothing to read, and nowhere to copy 350 MB to. real_api included.
+    """
+    from connectonion.useful_tools.browser_tools import engine
+    monkeypatch.setattr(engine, "APPLICATIONS", tmp_path_factory.getbasetemp() / "no-Applications-in-tests")
 
 
 _frozen_home_constants = (-1, [])

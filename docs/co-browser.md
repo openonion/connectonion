@@ -501,6 +501,12 @@ downgrading so an older client never talks to a newer daemon.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
+- **The WTF Browser you double-click in /Applications is refused as out of
+  date (macOS)** — that app is a second copy of the build `co` runs, and `co`
+  brings it to that build after each `--engine wtf` launch: the old one goes to
+  the Trash, and an app that is open is left until it is closed. Close it, run
+  one `co browser --engine wtf` command, and read the `WTF Browser app:` line of
+  `co browser status`. Details: [cli/browser.md](cli/browser.md).
 - **"browser daemon is busy at connection capacity"** — 32 commands are in
   flight (or all bounded Windows transport workers are occupied). Retry shortly;
   an unrelated slow browser action on another named tab no longer blocks yours.
