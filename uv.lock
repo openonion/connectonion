@@ -338,7 +338,7 @@ wheels = [
 
 [[package]]
 name = "connectonion"
-version = "1.9.6rc2"
+version = "1.9.6rc3"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -427,7 +427,7 @@ requires-dist = [
     { name = "keyring", marker = "extra == 'synology'", specifier = ">=25,<26" },
     { name = "mnemonic", specifier = ">=0.20" },
     { name = "neonize", marker = "extra == 'whatsapp'", specifier = "==0.4.3.post0" },
-    { name = "onionwright", marker = "extra == 'wtf'", specifier = ">=0.0.14" },
+    { name = "onionwright", marker = "extra == 'wtf'", specifier = ">=0.0.15" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1.0" },
     { name = "openpyxl", marker = "extra == 'rem'", specifier = ">=3.1.0" },
@@ -1246,16 +1246,16 @@ wheels = [
 
 [[package]]
 name = "onionwright"
-version = "0.0.14"
+version = "0.0.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "playwright" },
     { name = "pynacl" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/5e/cdd7a7e9d7cc98a8de6dac241179a321b4d5a14b60340dbe886986727eaf/onionwright-0.0.14.tar.gz", hash = "sha256:d699ecee040882b2857c4e31a7f9da32b8d8339adbfaa52a5ac08d6f7128c7f3", size = 167086, upload-time = "2026-09-14T04:40:26.889Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/29/98e6f296e0c6297d264670661552e7f12dcbd886aa5d40409e5a0b4a4899/onionwright-0.0.15.tar.gz", hash = "sha256:b46d6319fd7078acbde66dafd54206591deb8b5b2cc6fb55ad6d51bb8f6046d4", size = 168883, upload-time = "2026-11-11T08:58:15.521Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/27/e8982b501e097adf37a3753b228a758f32ba6ed3138bffec88b148ea36df/onionwright-0.0.14-py3-none-any.whl", hash = "sha256:fce8062603d5039351257024461c7cc6b83ba6859b1da12e57d9b5245505b344", size = 72446, upload-time = "2026-09-14T04:40:25.43Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/14/49f77a642c4c340c5b08e64004d92d1e4bf4d5701154ba2c8422c384f4ff/onionwright-0.0.15-py3-none-any.whl", hash = "sha256:dcc19929a6e55010afb380fb0fda6f2ebb5395c09a824750392f4c074ece6984", size = 73611, upload-time = "2026-11-11T08:58:14.137Z" },
 ]
 
 [[package]]
