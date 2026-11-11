@@ -4,6 +4,7 @@ import os
 import pytest
 
 from tests.e2e.cli.test_rem_reader_design_browser import reader  # noqa: F401  (fixture)
+from tests.e2e.cli.test_rem_today_fuse_browser import OVERDUE, today  # noqa: F401  (fixture)
 
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
@@ -190,3 +191,46 @@ def test_the_readers_own_reduce_motion_closes_a_card_without_the_wait(reader):
     page.locator('#done-notice').wait_for()
     waits = page.evaluate('window.waits', isolated_context=False)
     assert 0 in waits and 240 not in waits, waits
+
+
+def _live_deck(today):
+    """Today served by a Host that answers a save with the decision it kept (threads.set_state), with the
+    leave in motion and the focus in the raised card."""
+    page, calls, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-08T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.emulate_media(reduced_motion='no-preference')  # the leaving card takes its 240ms
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate('() => { REM.live = true; render(); }', isolated_context=False)
+    assert _cards(page).count() >= 3
+    page.locator('#main .qcard.focal').focus()
+    return page, lambda: [body for path, body in calls if path == '/rem/thread'], _cards(page).count()
+
+
+def _one_card_closed_and_saved_once(page, saves, count, raised):
+    page.locator(f'.qcard[data-path="{raised}"]').wait_for(state='detached')
+    page.wait_for_timeout(700)  # past the leave of any card a further E would have closed
+    page.evaluate('threadWrite', isolated_context=False)
+    assert _cards(page).count() == count - 1
+    assert [body['state'] for body in saves()] == ['done']
+
+
+def test_a_held_e_closes_one_card_and_saves_it_once(today):
+    """Review of #2929: a held E repeated, and every repeat closed another card while Undo brings back only the
+    last one. A held key is one press: one card closed, one save sent to the Host."""
+    page, saves, count = _live_deck(today)
+    raised = page.locator('#main .qcard.focal').get_attribute('data-path')
+    for _ in range(12):  # every down after the first is the keyboard's own repeat
+        page.keyboard.down('e')
+        page.wait_for_timeout(60)
+    page.keyboard.up('e')
+    _one_card_closed_and_saved_once(page, saves, count, raised)
+
+
+def test_e_again_while_the_card_is_leaving_closes_it_once(today):
+    """Review of #2929: a second E while the card was still sliding away closed it again: two timers and two
+    saves for one card. The presses are sent from the page so both land inside the 240ms leave."""
+    page, saves, count = _live_deck(today)
+    raised = page.locator('#main .qcard.focal').get_attribute('data-path')
+    page.evaluate("""() => { for (const press of [1, 2])
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'e', bubbles: true, cancelable: true})); }""", isolated_context=False)
+    _one_card_closed_and_saved_once(page, saves, count, raised)
