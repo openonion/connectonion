@@ -26,7 +26,7 @@ co browser --engine wtf go_to example.com     # paid WTF Browser, and only when 
 Paying is opt-in. An ordinary command never starts a billable session, even on
 a machine where Onionwright is installed and in credit.
 
-The paid path requires Onionwright 0.0.14 or newer. Install or upgrade the real
+The paid path requires Onionwright 0.0.15 or newer. Install or upgrade the real
 private wheel explicitly:
 
 ```bash
@@ -357,7 +357,7 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
   mode.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
-- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of `~/.onionwright/profiles/<address>` (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
+- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of the app's own profile, `~/Library/Application Support/WTF Browser/profile` on macOS (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
 - A supervisor can set `$CO_BROWSER_DAEMON_PID` to the positive PID of its
   already running local daemon. Commands then fail if that recorded owner is
   missing, replaced or unavailable; they never start a daemon or install a

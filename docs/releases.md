@@ -25,7 +25,12 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc2**: the REM reader's new desk, phase 1 of 3. An icon rail and one search
+Release candidate **1.9.6rc3**: on macOS co's own WTF Browser start and a double-click share one
+profile and one Keychain, so a login made in either works in both (sign in once in the app; old
+logins are not moved). On a phone the Send bar sits on the tab bar. See
+[1.9.6rc3 notes](releases/1.9.6rc3.md).
+
+Before it, release candidate **1.9.6rc2**: the REM reader's new desk, phase 1 of 3. An icon rail and one search
 pill on a desktop, a floating tab bar on a phone; Today opens on a night chart, the count of people
 waiting and one raised reply card; a person's record is a card with their face and a grid of what REM
 knows. Lists and the other records keep their old layouts until phases 2 and 3. Before it,
@@ -34,7 +39,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc2'
+python -m pip install --upgrade 'connectonion==1.9.6rc3'
 ```
 
 ## Previous stable

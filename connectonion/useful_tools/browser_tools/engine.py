@@ -40,7 +40,7 @@ ENGINE_SETTING = "CO_BROWSER_ENGINE"
 # every macOS renewal reused one Idempotency-Key and paid sessions ended after
 # 15 minutes. Linux renews through Onionwright, never had that bug, and stays.
 BROWSER_REVISION = "154.0.8037.100" if sys.platform == "darwin" else "154.0.8037.58"
-MIN_ONIONWRIGHT_VERSION = "0.0.14"
+MIN_ONIONWRIGHT_VERSION = "0.0.15"
 # The copy of the browser a person double-clicks. Onionwright downloads and runs
 # its own under ~/.onionwright and never looks here, so until #2932 this one
 # stayed at whatever revision someone once dragged in, and the server refused it.

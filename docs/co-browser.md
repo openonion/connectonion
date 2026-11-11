@@ -538,7 +538,8 @@ downgrading so an older client never talks to a newer daemon.
   `$CO_BROWSER_SOCK` that another script or agent is using.
 
 - **State locations** — profile (cookies/logins): `~/.co/browser_profile/`
-  (the paid Onion engine's: `~/.onionwright/profiles/<address>`), or
+  (the paid Onion engine's on macOS: `~/Library/Application Support/WTF Browser/profile`,
+  the same profile WTF Browser.app opens on a double-click), or
   `$CO_BROWSER_PROFILE_DIR` and `$CO_BROWSER_PROFILE_DIR/onion` for the paid
   engine when that is set, so an isolated run is isolated on every engine ·
   daemon log: `~/.co/browser.log` · socket: `/tmp/co-<user>/browser.sock` on
