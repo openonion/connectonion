@@ -3582,13 +3582,14 @@ def test_the_note_says_a_page_is_being_built_only_when_a_build_started(tmp_path,
 
 def test_a_new_install_changes_the_saved_pages_key_even_with_the_same_template(tmp_path, monkeypatch):
     """The page shows the package version, and a release can change Python without touching reader.html."""
-    import connectonion
     from connectonion.rem import reader
     root = tmp_path / "rem"
     prepare(root)
-    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    # The version on disk, which is what an install changes: a Host that was
+    # running through it keeps the old one in memory (#2937).
+    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.3")
     key = reader.reader_version(root)
-    monkeypatch.setattr(connectonion, "__version__", "1.9.4")
+    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.4")
     assert reader.reader_version(root) != key
 
 
@@ -3976,12 +3977,11 @@ def test_co_rem_open_runs_where_there_is_no_fcntl(tmp_path):
 # same road through "the last render took under 2 s".
 
 def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
-    import connectonion
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
-    monkeypatch.setattr(connectonion, "__version__", "1.9.3")
+    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.3")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     reader.cached_page(root, "live.html")
     reader.refresh(root)
@@ -3989,7 +3989,7 @@ def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
         manifest = json.loads(reader._cached(root, "current.json").read_text())
         (reader._cache_dir() / manifest["files"].pop("file.html")).unlink()
         reader._cached(root, "current.json").write_text(json.dumps(manifest))
-    monkeypatch.setattr(connectonion, "__version__", "1.9.4")                # the upgrade
+    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.4")   # the upgrade
     return reader, root
 
 

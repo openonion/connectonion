@@ -433,16 +433,19 @@ def reader_version(root: Path) -> list:
     queue over. A page edited in place by another tool is caught by the
     background walk (tree_version) each REBUILD_INTERVAL. The template and the package
     version are part of the key, so a new install re-renders even when a release
-    changed only Python and left reader.html as it was.
+    changed only Python and left reader.html as it was. The version is the one
+    on disk: a Host started before an upgrade put the version in its memory here,
+    the build (a new Python) saved pages under the installed one, and the two
+    never met, so every page said "Updating…" and every request started a build.
     """
-    import connectonion
     from .files import CHANGED
+    from .live_host import installed_version
     state = root / ".state"
     paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
              state / "rem.db", state / "rem.db-wal", TEMPLATE]
     from .service import notebook_today
     # The Today queue and every "overdue" turn over at the notebook's midnight.
-    key = [str(root.resolve()), str(TEMPLATE), connectonion.__version__,
+    key = [str(root.resolve()), str(TEMPLATE), installed_version(),
            str(notebook_today(root)) if root.is_dir() else None]
     for path in paths:
         try:
@@ -655,8 +658,8 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
 
 
 def _release() -> str:
-    import connectonion
-    return connectonion.__version__
+    from .live_host import installed_version
+    return installed_version()
 
 
 def _checked(root: Path, build: str, moment: float) -> None:
@@ -775,6 +778,10 @@ def main(argv) -> None:
     except Exception:
         _keep_failure(root)
         raise  # the traceback is the log's last lines
+    # After the pages are saved, and outside the build's failure: a Host that
+    # could not be replaced is not a failed build (its traceback still ends the log).
+    from .live_host import renew_idle
+    renew_idle()
 
 
 def _spawn_refresh(root: Path, builds) -> bool:
@@ -1042,15 +1049,15 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None)
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
-    if not host_online(address):
-        from .live_host import ensure_online
-        try:
-            failure = ensure_online(address)
-        except (OSError, RemError) as error:
-            failure = f"could not start co ai: {error}; run `co ai` to diagnose"
-        if failure:
-            return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
-                                 live_startup_failed=True)
+    from .live_host import ensure_online, outdated
+    try:
+        # Online is not enough when what is online is our own Host from before an upgrade.
+        failure = ensure_online(address) if not host_online(address) or outdated(address) else None
+    except (OSError, RemError) as error:
+        failure = f"could not start co ai: {error}; run `co ai` to diagnose"
+    if failure:
+        return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
+                             live_startup_failed=True)
     url = LIVE_REM_URL.format(address=address)
     if launch:
         webbrowser.open(url)

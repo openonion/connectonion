@@ -8,6 +8,10 @@ Session hooks (tests/real_home_guard.py): the run fails when a pytest process
 wrote the real ~/.co, naming the test; changes by other processes are reported,
 not failed.
 
+The co ai Host a test's own home recorded is stopped after the test, and one
+still running under this run's temp directory when the session ends fails the
+run and is stopped (tests/host_leak_guard.py).
+
 Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
 - _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
@@ -59,6 +63,8 @@ from tests.real_home_guard import (  # noqa: E402,F401  (pytest finds hooks by n
     pytest_runtest_logfinish, pytest_runtest_logstart, pytest_sessionfinish,
     pytest_sessionstart, pytest_terminal_summary,
 )
+
+from tests.host_leak_guard import HostLeakGuard  # noqa: E402
 
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse
@@ -158,6 +164,10 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     # itself still wins: its setattr runs after this one.
     for module, name, value in _constants_under_the_real_home():
         monkeypatch.setattr(module, name, home / value.relative_to(_REAL_CO.parent))
+
+
+def pytest_configure(config):
+    config.pluginmanager.register(HostLeakGuard(), "connectonion-host-leak-guard")
 
 
 @pytest.fixture(autouse=True)

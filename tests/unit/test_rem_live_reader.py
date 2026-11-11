@@ -450,7 +450,7 @@ def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkey
     monkeypatch.setattr(live_host, "ensure_online", lambda *a, **k: pytest.fail("waited for co ai to start"))
     started_hosts = []
 
-    def spawn(directory):
+    def spawn(directory, port=None):
         started_hosts.append(directory)
         return SimpleNamespace(pid=4242, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9126"])
     monkeypatch.setattr(live_host, "_spawn", spawn)
@@ -618,7 +618,7 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     live_host.write_json(identity / "rem-live-host.json", {                 # a Host ran here before
         "address": "owner", "pid": 2 ** 22 + 7, "port": 9125, "command": "-m connectonion.cli.main ai"})
     monkeypatch.setattr(live_host, "answers", lambda port, address: False)
-    monkeypatch.setattr(live_host, "_spawn", lambda directory: SimpleNamespace(
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: SimpleNamespace(
         pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
     first = reader.local_or_snapshot(host.root, "owner", launch=False)
     assert first["live"] == live_host.STARTING
@@ -755,3 +755,26 @@ def test_details_stay_json_while_a_newer_render_builds(host, cache, clock):
     assert status == 200 and head["content-type"].startswith("application/json")
     assert json.loads(body)["records"]                                  # parses, banner or not
     assert 'id="rem-updating"' in call(host.routes, "GET", "/rem", cookie=cookie)[2]
+
+
+def test_a_host_older_than_the_installed_package_does_not_say_updating_for_ever(host, cache, monkeypatch):
+    """The reader's Host was started under 1.9.5 and the package was upgraded
+    under it. Its page key carried the version in its memory; the build (a new
+    Python) saved pages under the installed one. The two never met, so every
+    page said "Updating…" and every request started a build with nothing to do."""
+    import connectonion
+    cookie = f"co_rem={host.token}"
+    call(host.routes, "GET", "/rem", cookie=cookie)
+    reader.refresh(host.root)                                    # what the detached build saves
+    monkeypatch.setattr(connectonion, "__version__", "0.0.1")    # this process is the old Host
+    cache.clear()
+    for _ in range(2):
+        assert 'id="rem-updating"' not in call(host.routes, "GET", "/rem", cookie=cookie)[2]
+    assert cache == []
+
+
+def test_the_page_build_checks_the_host_after_the_pages_are_saved(host, cache, monkeypatch):
+    seen = []
+    monkeypatch.setattr(live_host, "renew_idle", lambda: seen.append(bool(reader.saved(host.root, "live"))))
+    reader.main([str(host.root), "live"])
+    assert seen == [True]

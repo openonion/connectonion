@@ -419,7 +419,9 @@ Example:  co rem open
 Effects:  Reads pages and changes none. May start a background server using your
           co ai identity. Its log (rem-live-host.log) and access token
           (rem-reader-token) are in the selected .co identity folder.
-          Its link includes that token. Only the default notebook has a live
+          Its link includes that token. After an upgrade, replaces the server
+          it started before with the installed version, on the same port; a
+          co ai you started yourself is never stopped. Only the default notebook has a live
           reader. Message listeners stay off; no extra chat tab opens.
 Next:     co rem show PAGE   (to read one page in the terminal)
 Back:     co rem --help
