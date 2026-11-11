@@ -63,7 +63,7 @@ def test_default_open_page_loads_navigates_and_goes_back(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(data["link"])
-            contents = page.locator(".brief-header h1")
+            contents = page.locator(".night-card .count")
             contents.wait_for()
             page.locator("a[href='#c=people']").first.click()
             page.locator(".r4-people h1").wait_for()

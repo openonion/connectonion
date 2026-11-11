@@ -65,7 +65,7 @@ def reader(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".brief-header h1").wait_for()
+        page.locator(".night-card .count").wait_for()
         yield page, calls, answers
         browser.close()
     assert not errors, errors
@@ -166,15 +166,14 @@ def test_the_graph_files_knowledge_on_the_night_run_without_a_command(reader, li
 def test_today_shows_no_zero_count_and_no_number_twice(reader):
     page, _, _ = reader
     page.evaluate("() => { REM.live = true; REM.approval_outcomes = []; setInterfaceLanguage('zh'); render(); }", isolated_context=False)
-    header = page.locator(".brief-header")
+    header = page.locator("#main")
     assert not page.locator("#approve-all").is_visible()
     assert not re.search(r"(?<!\d)0 ?(件|项|items)", header.inner_text()), header.inner_text()
     # The sidebar's 等你处理 count is the nav; the first screen does not say the same number again.
     total = page.locator("#nav .n.waiting").inner_text()
     assert f"{total} 件等你处理" not in header.inner_text()
-    numbers = re.findall(r"\d+", header.locator(".kicker").inner_text().replace(header.locator(".eyebrow").inner_text(), ""))
-    assert total not in numbers
-    header.locator(".waiting-more a").click()
+    assert total not in re.findall(r"\d+", page.locator(".others").inner_text())
+    page.locator(".others .waiting-more").click()
     assert page.evaluate("location.hash", isolated_context=False) == "#view=open"
 
 
@@ -187,7 +186,7 @@ def test_a_run_banner_speaks_the_readers_language(reader, language, evidence, li
     page, _, _ = reader
     page.evaluate("""([language, evidence]) => { REM.status = {...(REM.status || {}), schedule_failure: {code: 'repeated_failure', evidence}};
       setInterfaceLanguage(language); render(); }""", [language, evidence], isolated_context=False)
-    banner = page.locator(".brief-header .schedule-failure")
+    banner = page.locator("#main .schedule-failure")
     assert banner.inner_text() == line
     if language == "zh":
         assert not re.search(r"[A-Za-z]{4,}", banner.inner_text())
@@ -207,7 +206,7 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
       .every(n => n.getBoundingClientRect().right <= innerWidth + 0.5)""", isolated_context=False)
 
 
-@pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".r4-crumb"), ("projects/harbour.md", ".eyebrow")])
+@pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".hero-marks"), ("projects/harbour.md", ".eyebrow")])
 def test_the_translation_mark_is_small_and_sits_in_the_crumb(reader, path, crumb):
     page, _, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');

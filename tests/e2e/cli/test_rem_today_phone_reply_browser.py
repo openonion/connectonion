@@ -72,6 +72,7 @@ def test_more_on_a_phone_brings_back_every_item_and_its_hand_off(today, lang):
     page, _, _ = today
     card = _open(page, lang, "two")
     assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_hidden()
+    card.locator(".qitem .words").first.click()  # a tap opens the row's second level (D-120)
     card.locator(".qfull").click()
     assert card.locator(".qitem").nth(1).is_visible() and card.locator(".handoff").first.is_visible()
 
@@ -97,10 +98,10 @@ def test_every_word_on_the_phone_send_bar_stays_whole(today, lang, scene):
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_with_motion_on_the_send_bar_ends_at_the_bottom_of_the_screen_not_over_the_card(today, lang):
+def test_with_motion_on_the_send_bar_sits_just_above_the_tab_bar_not_over_the_card(today, lang):
     page, _, _ = today
     page.emulate_media(reduced_motion="no-preference")
     card = _open(page, lang, "two", shot=False)
     page.wait_for_timeout(1000)  # the cards' rise has ended
-    bar = card.locator(".mail-actions").bounding_box()
-    assert abs(bar["y"] + bar["height"] - 844) <= 0.5, bar
+    bar, tabs = card.locator(".mail-actions").bounding_box(), page.locator("#tabbar").bounding_box()
+    assert tabs["y"] - 12 <= bar["y"] + bar["height"] <= tabs["y"], (bar, tabs)  # N3: the floating tab bar owns the bottom edge

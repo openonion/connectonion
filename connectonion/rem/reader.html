@@ -25,84 +25,121 @@
 <title>co rem</title>
 <style>
   /* fuse:tokens */
-  /* REM · "Fuse": the whole token sheet. Outside it the reader may only name these
-   (tests/unit/test_rem_reader_style_sheet.py). Dark is the same names under the two theme selectors. */
+  /* REM · N3 "Desk" (D-123): the whole token sheet. Outside it the reader may only name these
+   (tests/unit/test_rem_reader_style_sheet.py). One white canvas; depth comes from elevation only.
+   Colour meanings: green = the one primary action, red = overdue, pencil (dashed) = REM's guess.
+   Dark is the same names under the two theme selectors. */
   :root {
     color-scheme: light;
-    /* colour: one paper, one ink, one grey, one action, one danger, one pencil */
-    --paper: #ffffff; /* white: green + white only, no off-white */
+    --paper: #ffffff; /* the only canvas colour */
+    --raised: #ffffff; /* cards and widgets: in light mode depth comes from shadow only */
     --ink: #121512;
-    --grey: #636863; /* second ink: meta, the axis, quiet links; art direction had #6a6f6a, darkened to 4.5:1 on --rule, which the reader uses as a well */
-    --rule: #e4e6e3; /* hairlines only; derived from ink on paper */
-    --green: #22d27a; /* Fresh: the one primary action per screen */
+    --grey: #636863; /* second ink: meta, labels, quiet icons */
+    --pencil: #a3a8a3; /* REM's inference: dashed borders, the night-chart line, never solid text */
+    --rule: #e8eae7; /* hairlines and ring tracks */
+    --well: #f5f6f4; /* insets inside a card: avatar discs, inputs, hover rows, segment tracks */
+    --green: #22d27a; /* the one primary action per screen */
     --on-green: #05301b;
-    --red: #c02a17; /* danger / overdue only: the burnt part of a fuse; art direction had #e2321b, darkened to 4.5:1 on --rule (a focused Today card) */
-    --pencil: #9da29d; /* REM's inference: dashed, never solid */
+    --red: #c02a17; /* overdue only: fuse rings, N 天 labels */
+    --scrim: rgba(255, 255, 255, .6); /* behind sheets */
 
-    /* type: 4 sizes, 2 weights, one family (CJK + Latin) */
+    /* type: five sizes, two weights, one family (CJK + Latin); fonts are local on purpose */
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", Inter, sans-serif;
-    --s-display: min(112px, 22vw); /* the one number or name a page is about; fluid so a name fits at 390 */
-    --s-head: 24px; /* a person, a project, a section's first line */
-    --s-body: 16px; /* sentences, drafts, quotes */
-    --s-meta: 12px; /* at most one line per row: dates, axis labels */
+    --s-display: 44px; /* the single display element per screen: a count or a name */
+    --s-head: 24px; /* a card's subject, a widget's big number */
+    --s-body: 15px; /* sentences, letters, quotes */
+    --s-ui: 13px; /* rows, chips, buttons in menus; the smallest size for running Chinese */
+    --s-meta: 11px; /* dates, labels, badges: short labels only */
     --mono: ui-monospace, "SF Mono", Menlo, monospace; /* code and paths only */
     --w-regular: 400;
-    --w-bold: 700;
-    --lh-tight: 1.04;
-    --lh-body: 1.6;
-    --track-display: -0.03em;
+    --w-bold: 600;
+    --lh-tight: 1.05;
+    --lh-body: 1.55;
+    --track-display: -0.035em;
 
-    /* grid: one measure, one gap, one rail (the art director's sheet; added with the person and org records) */
+    /* grid */
     --measure: 720px;
-    --gap: 64px;
-    --rail: 320px;
+    --gap: 36px;
+    --rail: 300px;
     --u1: 4px; --u2: 8px; --u3: 16px; --u4: 24px; --u5: 40px; --u6: 64px;
 
-    /* lines: the fuse is the system's only heavy mark */
+    /* lines */
     --hair: 1px;
     --rule-heavy: 2px;
-    --fuse: 6px;
+    --fuse: 6px; /* the one heavy mark of the older fuse views (org timeline) */
 
-    /* shape */
-    --radius: 0; /* everything is square */
-    --round: 50%; /* only the exchange dot */
+    /* shape: cards 22, inner panels 16, controls 12, chips and the ⌘K bar fully round */
+    --radius: 12px;
+    --r-card: 22px;
+    --r-inner: 16px;
+    --r-pill: 999px;
+    --round: 50%;
+    --r-org: 30%; /* an organisation is a rounded square */
+    --r-cell: 4px; /* a day in the contact rhythm */
+
+    /* elevation: e1 resting card, e2 the one focus card per screen, e3 menus and sheets */
+    --e1: 0 0 0 1px rgba(18, 21, 18, .06), 0 1px 2px rgba(18, 21, 18, .04), 0 8px 24px -10px rgba(18, 21, 18, .14);
+    --e2: 0 0 0 1px rgba(18, 21, 18, .07), 0 2px 6px rgba(18, 21, 18, .05), 0 28px 60px -22px rgba(18, 21, 18, .30);
+    --e3: 0 0 0 1px rgba(18, 21, 18, .08), 0 16px 40px -12px rgba(18, 21, 18, .28);
+    --e-ring: inset 0 0 0 1px var(--rule); /* an outlined chip or an inset panel */
+    --e-ink: inset 0 0 0 1.5px var(--ink); /* a chosen chip, a hovered control */
+    --e-fuse: inset 0 0 0 1.5px rgba(192, 42, 23, .25); /* a fuse pill */
+    --e-green: 0 8px 18px -8px rgba(34, 210, 122, .7); /* the one primary action lifts off the card */
 
     /* motion: it explains a change of state, never decorates */
-    --t-press: 160ms; /* hover, press */
-    --t-state: 320ms; /* a row collapses, a count ticks */
-    --t-draw: 480ms; /* a fuse draws in from now, backwards in time */
-    --t-stagger: 60ms;
-    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --t-press: 150ms; /* hover, colour */
+    --t-state: 250ms; /* lift, menu pop, switch */
+    --t-draw: 500ms; /* a card or widget rises */
+    --t-stagger: 40ms;
+    --t-burn: 1100ms; /* a fuse ring burns in */
+    --t-ember: 1600ms; /* the most urgent fuse still glows */
+    --t-night: 2400ms; /* the night chart draws up to now */
+    --ease-out: cubic-bezier(.2, .7, .2, 1);
+    --spring: cubic-bezier(.2, .9, .25, 1.15);
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --paper: #0f110f;
-      --ink: #eceeeb;
+      --raised: #181b18;
+      --ink: #eef0ed;
       --grey: #9aa09a;
-      --rule: #262a26;
-      --green: #3be38f;
-      --on-green: #05301b;
-      --red: #ff553d;
-      --pencil: #697069;
+      --pencil: #6b716b;
+      --rule: #2a2e2a;
+      --well: #20241f;
+      --red: #ff5a3c;
+      --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
+      --scrim: rgba(15, 17, 15, .6);
+      --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
+      --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
+      --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --paper: #0f110f;
-    --ink: #eceeeb;
+    --raised: #181b18;
+    --ink: #eef0ed;
     --grey: #9aa09a;
-    --rule: #262a26;
-    --green: #3be38f;
-    --on-green: #05301b;
-    --red: #ff553d;
-    --pencil: #697069;
+    --pencil: #6b716b;
+    --rule: #2a2e2a;
+    --well: #20241f;
+    --red: #ff5a3c;
+    --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
+    --scrim: rgba(15, 17, 15, .6);
+    --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
+    --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
+    --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; }
+    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
   }
+  /* A phone's display element is 36. */
+  @media (max-width: 640px) { :root { --s-display: 36px; } }
+  /* 设置 ▸ 减少动态效果: the same stillness, chosen in the reader. */
+  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
   /* /fuse:tokens */
   * { box-sizing: border-box; }
   html { background: var(--paper); }
@@ -121,62 +158,6 @@
   .mono { font-family: var(--font); font-variant-numeric: tabular-nums; }
   svg.moon { width: 11px; height: 11px; flex-shrink: 0; color: var(--grey); vertical-align: -1px; }
 
-  .app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
-
-  /* ---- rail: quiet chrome, the notebook's spine ---- */
-  /* Owner, 2026-11-09: «侧边栏…现在看起来不是很好». Fuse's nav: no boxes, one row size, grey rows, the
-     current page in ink with the fuse mark, one number (Waiting on you), and one quiet footer line. */
-  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; padding: 32px var(--u4) var(--u4); border-right: var(--hair) solid var(--rule); background: var(--paper); display: flex; flex-direction: column; gap: var(--u4); }
-  .rail-menu { display: flex; flex-direction: column; gap: var(--u4); flex: 1 0 auto; }
-  .brand { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: center; color: var(--ink); text-decoration: none !important; }
-  .brand svg { grid-row: span 2; width: 34px; height: 18px; }
-  .brand .name { letter-spacing: 0; font: var(--w-bold) var(--s-body)/1 var(--font); }
-  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--s-meta)/1.5 var(--font); color: var(--grey); margin-top: 3px; }
-
-  .search { position: relative; }
-  .search input { width: 100%; padding: 6px 28px 6px 22px; border: 0; border-bottom: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
-  .search input::-webkit-search-decoration,
-  .search input::-webkit-search-cancel-button,
-  .search input::-webkit-search-results-button,
-  .search input::-webkit-search-results-decoration { display: none; -webkit-appearance: none; }
-  .search input:focus { border-color: var(--ink); outline: none; }
-  .search input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  .search input::placeholder { color: var(--grey); }
-  .search .search-icon { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: none; stroke: var(--grey); stroke-width: 2; pointer-events: none; }
-  .search .kbd { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font: var(--s-meta) var(--font); color: var(--grey); border: 0; border-radius: var(--radius); padding: 0 5px; pointer-events: none; }
-  .search input:not(:placeholder-shown) ~ .kbd { display: none; }
-  .search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 2px 6px; font-size: var(--s-meta); color: var(--grey); cursor: pointer; border-radius: var(--radius); display: none; line-height: 1; }
-  .search-clear:hover { color: var(--ink); background: var(--rule); }
-  .search input:not(:placeholder-shown) + .search-clear { display: block; }
-
-  nav { display: flex; flex-direction: column; }
-  nav .label { letter-spacing: 0; text-transform: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.5 var(--font); margin: var(--u4) 0 var(--u1) var(--u3); }
-  nav a { display: flex; justify-content: space-between; align-items: baseline; gap: var(--u2); color: var(--grey); position: relative; font: var(--w-regular) var(--s-body)/1.5 var(--font); padding: var(--u1) 0 var(--u1) var(--u3); }
-  nav a:hover { color: var(--ink); text-decoration: none; }
-  nav a.active { color: var(--ink); font-weight: var(--w-bold); }
-  nav a.active::before { content: ""; position: absolute; left: 0; top: 50%; width: var(--fuse); height: var(--fuse); transform: translateY(-50%); background: var(--ink); }
-  nav a .n { color: var(--ink); font: var(--w-bold) var(--s-body)/1.5 var(--font); }
-  nav .gap { height: var(--u3); }
-
-  .rail > * { flex-shrink: 0; }
-  .rail .foot { margin-top: auto; color: var(--grey); display: flex; flex-direction: column; gap: var(--u1); font: var(--s-meta)/1.5 var(--font); }
-  .rail .foot-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--u3); }
-  .rail .foot-line .foot-facts { flex-basis: 100%; }
-  .rail .foot-line .foot-facts > * + *::before, .rail .foot-line .theme-btn + .theme-btn::before { content: "·" / ""; margin: 0 var(--u1); color: var(--grey); font-weight: var(--w-regular); }
-  .rail .foot-line .theme-switch { display: inline-flex; align-items: baseline; background: none; padding: 0; gap: 0; }
-  .rail .foot-line .theme-btn { background: none; padding: 0; min-height: 0; font: inherit; color: var(--grey); }
-  .rail .foot-line .theme-btn:hover { color: var(--ink); }
-  .rail .foot-line .theme-btn.active { background: none; color: var(--ink); font-weight: var(--w-bold); }
-  .reader-settings { min-width: 0; overflow-wrap: anywhere; }
-  .reader-settings summary { cursor: pointer; padding: 4px 0; }
-  .reader-settings > :not(summary) { margin-top: 8px; }
-  .reader-settings code { display: block; white-space: normal; }
-  .reader-settings .theme-btn { min-height: 44px; text-align: left; }
-  .theme-switch { display: inline-flex; background: var(--rule); border-radius: var(--radius); padding: 2px; gap: 2px; align-self: flex-start; }
-  .theme-btn { background: none; border: none; padding: 3px 9px; font: var(--s-meta) var(--font); color: var(--grey); border-radius: var(--radius); cursor: pointer; min-height: 24px; }
-  .theme-btn:hover { color: var(--ink); }
-  .theme-btn.active { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); }
-  .rail .foot :is(button, summary):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .privacy-tag { font: var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; padding: 0 5px; margin: 0 2px; border-radius: var(--radius); border: 1px solid var(--rule); color: var(--grey); background: var(--rule); white-space: nowrap; }
   .privacy-tag.sensitive { border-color: var(--grey); color: var(--ink); font-weight: var(--w-bold); }
   :root.hide-private .private, :root.hide-private li.private-item { display: none; }
@@ -243,11 +224,7 @@
 
   /* Waiting comes before rewrites; quieter context stays in the margin (UI audit #1–4). */
   /* Waiting on you is the count that asks something of the owner: heavier, not a hue. */
-  nav a .n.waiting { color: var(--ink); font-weight: var(--w-bold); }
-  .morning-layout, .morning-primary { min-width: 0; }
-  .morning-primary h1 { font: var(--w-regular) var(--s-head)/1.15 var(--font); margin: 0 0 8px; }
   .waiting-intro, .quiet-line { color: var(--grey); font-size: var(--s-body); }
-  .morning-primary { max-width: 760px; }
   .today-brief .section { margin-top: 0; }
   .owner-slot { background: var(--paper); color: var(--ink); border: 1px dashed var(--pencil); border-radius: var(--radius); padding: 2px 5px; box-decoration-break: clone; }
   .draft-reason { grid-column: 1 / -1; }
@@ -258,7 +235,6 @@
   .today-threads { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   .btn-act { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font: var(--w-bold) var(--s-body) var(--font); text-decoration: none !important; white-space: nowrap; transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
   /* The primary key turns over on hover: green label on the dark green, both from the sheet. */
-  .btn-act:hover { background: var(--on-green); color: var(--green) !important; }
   .btn-quiet { min-height: 40px; padding: 0 10px; border: 0; background: transparent; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); cursor: pointer; border-radius: var(--radius); }
   .btn-quiet:hover { color: var(--ink); background: var(--rule); }
   .thread-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
@@ -628,9 +604,6 @@
   .best-open .dir { flex-shrink: 0; color: var(--grey); }
   .search-group { max-width: 80ch; }
   h2.section.group { font-size: var(--s-body); margin: 28px 0 8px; }
-  nav a.you { font-size: var(--s-meta); align-items: center; }
-  nav a.you > span:first-child { display: inline-flex; align-items: center; gap: var(--u1); }
-  nav a.you .who { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 820px) { .best-facts { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: 96px minmax(0, 1fr); } }
 
   /* questions & connections */
@@ -646,7 +619,6 @@
   .review-acts textarea { flex: 1 0 100%; box-sizing: border-box; font: var(--s-body)/1.5 var(--font); color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 8px 10px; }
   .review-done { margin: 12px 0 0; font-size: var(--s-body); color: var(--ink); }
 
-  .nav-toggle { display: none; }
   .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--paper); padding: 10px; }
   .skip:focus { top: 8px; }
   .mobile-back { display: none; margin-bottom: 14px; }
@@ -1115,26 +1087,8 @@
     .deep-head { display: block; }
     .deep-hint { display: block; margin-top: 3px; }
     .evidence-dialog { padding: 18px; }
-    .app { grid-template-columns: 1fr; align-content: start; }
-    /* One header row: brand, search, Menu. The menu opens as a sheet under it; the bottom edge stays Send's (D-10). */
-    .rail { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 0 var(--u3); gap: 0 var(--u3); position: static; height: auto; overflow: visible; border-right: 0; border-bottom: var(--hair) solid var(--rule); }
-    .brand { min-height: 44px; }
-    .brand svg { width: 22px; height: 22px; }
-    .brand .sub { display: none; }
-    .brand svg { grid-row: auto; }
     main:has(.page-head) > .mobile-back { display: none; }
-    .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
-    .rail-menu { display: none; }
-    .rail[data-open="true"] .rail-menu { display: flex; position: fixed; left: 0; right: 0; top: var(--sheet-top, 0px); bottom: 0; z-index: 45; overflow-y: auto; overscroll-behavior: contain; padding: var(--u2) var(--u3) var(--u5); background: var(--paper); border-top: var(--hair) solid var(--rule); }
-    .rail .foot-line .theme-btn { min-height: 44px; min-width: 44px; }
-    .rail[data-open="true"] .reader-settings summary { min-height: 44px; }
-    .rail[data-open="true"] #privacy-toggle { width: 100%; min-height: 44px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); text-align: center; }
-    .nav-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0; color: var(--ink); background: none; border: 0; font: var(--w-regular) var(--s-body) var(--font); cursor: pointer; }
-    .nav-toggle[aria-expanded="true"] { font-weight: var(--w-bold); }
-    nav a { min-height: 44px; align-items: center; }
-    .search input { font-size: var(--s-body); min-height: 44px; padding-right: 44px; border-bottom: 0; }
-    .search-clear { right: 0; min-width: 44px; min-height: 44px; }
     h1 { font-size: var(--s-head); }
     .standfirst { font-size: var(--s-body); }
     h2.section { display: block; }
@@ -1236,8 +1190,6 @@
   button, select, .copy { min-height: 24px; }
   .toc a, .hits a, .waiting-more a { display: inline-block; min-height: 24px; }
   @media (max-width: 820px) {
-    .brand svg { width: 30px; height: 18px; }
-    .morning-primary h1 { font-size: var(--s-head); }
     .morning, .focus-section, .record-focus.people .focus-head, .focus-head { padding: 16px 0; }
     .thread, .band .threads .thread, .block-threads .thread { padding: 16px 0; }
     .night { margin: -22px -16px 24px; padding: 16px; }
@@ -1466,14 +1418,10 @@
   .rem-activity:hover { color: var(--ink); }
   .all-switch { margin: 0 0 22px; }
   .all-switch .theme-btn { min-height: 32px; padding-inline: 12px; }
-  :lang(zh) .rail .label { letter-spacing: 0; }
 
-  .brief-header { margin-bottom: 26px; }
   .schedule-failure { padding-left: 12px; border-left: 2px solid var(--ink); color: var(--ink); font: var(--s-body)/1.6 var(--font); overflow-wrap: anywhere; }
-  .brief-header h1 { font: var(--w-regular) var(--s-head)/1.2 var(--font); margin: 10px 0; text-wrap: balance; }
   .pass-summary { color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
   .pass-summary a { color: var(--grey); }
-  .morning-primary > section:first-child .section { margin-top: 0; }
   .overnight-changes, .today-threads { list-style: none; margin: 0; padding: 0; }
   .overnight-change { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 12px 0; border-bottom: 1px solid var(--rule); font-size: var(--s-meta); overflow-wrap: anywhere; }
   .overnight-change > a:first-child { color: var(--ink); font-weight: var(--w-regular); }
@@ -1496,7 +1444,6 @@
     .people-sheet .c-company a:hover { text-decoration: underline; }
   }
   @media (max-width: 600px) {
-    .brief-header h1 { font-size: var(--s-head); }
     .pass-summary a, .today-who, .task-links a, .overnight-change a { display: inline-flex; align-items: center; min-height: 44px; }
     /* Full-size tap targets without the extra line height between rows. */
     .pass-summary a, .today-who, .overnight-change a { margin-block: -10px; }
@@ -1630,33 +1577,17 @@
   .r4 .r4-today { flex: none; align-self: center; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
   .r4-card { background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); }
   /* The person page */
-  .r4-crumb { font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); }
-  .r4-crumb a:hover { color: var(--ink); }
-  .r4-crumb .updated-label { margin-left: 10px; color: var(--ink); }
-  .r4-crumb .fresh-dot { margin: 0 4px 0 0; color: var(--ink); }
   /* The person record (Fuse): the name is the one big mark, the fuse is the one heavy line. */
   .r4.r4-person { max-width: calc(var(--measure) + var(--gap) + var(--rail)); margin: 0; }
-  .r4-over { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
-  .r4 .r4-over .r4-today { font-size: var(--s-meta); text-decoration-color: var(--rule); }
   .r4 .r4-name { font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); font-weight: var(--w-bold); margin: var(--u6) 0 0; overflow-wrap: break-word; hyphens: auto; }
   .r4-sub { font-size: var(--s-head); line-height: 1.4; color: var(--ink); margin-top: var(--u4); max-width: var(--measure); }
   .r4-sub a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .r4-sub a.soft { color: var(--grey); }
   .r4-fuse { max-width: var(--measure); }
   .r4 .r4-name.name-measure, .ov.ov-r6 .ov-say h1.name-measure { overflow-wrap: normal; }
-  .fuse-line { position: relative; height: calc(var(--u5) + var(--fuse)); }
-  .fuse-line::after, .fuse-line::before { content: ""; position: absolute; bottom: 0; background: var(--ink); }
-  .fuse-line::after { left: 0; right: 0; height: var(--fuse); }
-  .fuse-line::before { right: 0; width: var(--rule-heavy); height: calc(100% + var(--u2)); }
-  .fuse-tick { position: absolute; bottom: 0; width: var(--rule-heavy); height: 100%; background: var(--ink); }
-  .fuse-red { position: absolute; right: 0; bottom: 0; min-width: var(--u2); height: var(--fuse); background: var(--red); z-index: 1; }
   .fuse-ends { display: flex; justify-content: space-between; gap: var(--u3); margin-top: var(--u2); font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
   .fuse-ends b { color: var(--ink); font-weight: var(--w-bold); white-space: nowrap; }
-  .fuse-ends .fuse-wait { color: var(--red); margin-left: auto; }
-  .fuse-note { margin: var(--u1) 0 0; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
   /* An honest limit of the data: REM's pencil, dashed, never solid. */
-  .fuse-note::before { content: ""; display: inline-block; width: var(--u4); margin-right: var(--u2); vertical-align: middle; border-top: var(--hair) dashed var(--pencil); }
-  .r4-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); margin-top: var(--u5); }
   .r4-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--u4); max-width: var(--measure); margin-top: var(--u5); }
   .r4-stats div { font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); min-width: 0; }
   .r4-stats b { display: block; font: var(--w-bold) var(--s-head)/32px var(--font); color: var(--ink); margin-bottom: var(--u1); white-space: nowrap; }
@@ -1680,16 +1611,12 @@
   .tl-m:first-child { padding-top: 4px; }
   .tl-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
   .tl-e .d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
+  .tl-e .d .y { display: block; }
   .tl-e .w { display: grid; place-items: center; }
   .tl-e .w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
   .tl-e .w i.me { background: var(--grey); outline: 0; }
   .tl-e .x { color: var(--grey); }
   .tl-more { margin: 8px 0 0 82px; }
-  .r4-rail h4 { font: var(--w-bold) var(--s-meta) var(--font); color: var(--grey); margin: 28px 0 10px; letter-spacing: 0; text-transform: none; }
-  .r4-rail h4:first-child { margin-top: 44px; }
-  .r4-kv { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 10px; font-size: var(--s-meta); margin: 0; }
-  .r4-kv dt { color: var(--grey); }
-  .r4-kv dd { margin: 0; overflow-wrap: anywhere; }
   .r4-card.mini { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
   .r4-card.mini .sq { width: 28px; height: 28px; border-radius: var(--radius); background: var(--rule); color: var(--grey); outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); display: grid; place-items: center; font-weight: var(--w-bold); font-size: var(--s-meta); flex: none; }
   .r4-card.mini b { font-weight: var(--w-bold); }
@@ -1741,10 +1668,7 @@
     .r4 h1 .soft::before { content: none; }
     .r4 h2 { margin-top: 32px; }
     .r4 .r4-name { margin-top: 0; }
-    .r4-over { gap: var(--u2); }
     .r4-sub { font-size: var(--s-body); margin-top: var(--u3); }
-    .r4-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
-    .r4-rail h4:first-child { margin-top: 32px; }
     .r4-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .r4-said li, .r4-topics li { grid-template-columns: minmax(0, 1fr); gap: var(--u1); }
     .said-src { flex-direction: row; gap: var(--u2); }
@@ -2021,22 +1945,10 @@
   /* A link you tap is at least 44px tall (WCAG 2.5.5), however quiet it looks. */
   .brief-more { display: inline-flex; align-items: center; min-height: 44px; color: var(--grey); text-underline-offset: 3px; }
   .brief-header, .today-brief { font-family: var(--font); max-width: 760px; }
-  .brief-header { margin-bottom: 32px; }
-  .brief-header .eyebrow { font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); margin: 0; }
   /* The one thing a page is about takes the display size: Today's count here, an entity's name on its page. */
-  .brief-header h1 { font-weight: var(--w-bold); font-size: var(--s-display); line-height: var(--lh-tight); letter-spacing: var(--track-display); overflow-wrap: anywhere; margin: 8px 0 12px; animation: today-rise var(--t-draw) var(--ease-out) both; }
   /* Before the first pass the page is about the map ("N records mapped"), not a count: the headline steps down so the next step stays on the first screen. */
-  #main:has(.first-map) .brief-header h1 { font-size: var(--s-head); letter-spacing: 0; }
-  .brief-header .lede { font: var(--w-regular) var(--s-body)/27px var(--font); color: var(--grey); margin: 0 0 4px; animation: today-rise var(--t-draw) var(--t-stagger) var(--ease-out) both; }
   .brief-header .late, .qage.late { color: var(--red); font-weight: var(--w-bold); }
-  .brief-header .waiting-more { font: var(--w-regular) var(--s-body)/22px var(--font); margin: 0; }
-  .brief-header .waiting-more a { color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
-  .brief-header .approval-header { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
-  .brief-header #approve-all { min-height: 0; padding: 0; border: 0; background: none; color: var(--grey) !important; font: var(--w-regular) var(--s-body)/22px var(--font); text-decoration: underline !important; text-decoration-color: var(--rule) !important; text-underline-offset: 4px; }
   #approve-all[hidden] { display: none; }
-  .brief-header #approve-all:disabled { color: var(--grey) !important; text-decoration: none !important; cursor: default; font-size: var(--s-meta); }
-  .brief-header .approval-header .quiet-line { margin: 0; font-size: var(--s-meta); }
-  .brief-header .approval-header code { font-size: var(--s-meta); }
   .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
   .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; cursor: pointer;
     animation: today-rise var(--t-state) var(--ease-out) backwards; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
@@ -2083,47 +1995,9 @@
   .card-acts .draft-now { display: inline-flex; align-items: center; gap: 12px; }
   /* Today as a fuse (D-108). The poster: the count at the display size, its words and the most urgent
      person beside it at the head size; the date and the quiet links sit on one kicker line above. */
-  .brief-header { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr auto; column-gap: var(--u4); margin-bottom: var(--u4); }
-  .brief-header > * { grid-column: 1 / -1; }
-  .brief-header .kicker { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
-  .brief-header .kicker .waiting-more { margin-left: auto; }
-  .brief-header .kicker .waiting-more, .brief-header .kicker .waiting-more a, .brief-header .kicker #approve-all { font-size: var(--s-meta); line-height: var(--lh-body); }
-  .brief-header .kicker .approval-header { margin: 0; }
-  .brief-header h1.poster { display: contents; }
   .brief-header .poster .count { grid-column: 1; grid-row: 2 / 4; align-self: end; margin: var(--u3) 0 0; font-weight: var(--w-bold); font-size: var(--s-display);
     line-height: var(--lh-tight); letter-spacing: var(--track-display); font-variant-numeric: tabular-nums; animation: today-rise var(--t-draw) var(--ease-out) both; }
-  .brief-header .poster .count.ticked { animation: count-tick var(--t-state) var(--ease-out) both; }
-  .brief-header .poster .words { grid-column: 2; grid-row: 2; align-self: end; font-weight: var(--w-bold); font-size: var(--s-head); line-height: var(--lh-tight); letter-spacing: 0; }
-  .brief-header .poster ~ .lede { grid-column: 2; grid-row: 3; align-self: end; margin: var(--u1) 0 var(--u2); font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
-  #main:has(.first-map) .brief-header .poster .count { font-size: var(--s-head); letter-spacing: 0; }
   @keyframes count-tick { from { opacity: 0; transform: translateY(-0.25em); } }
-
-  /* The fuse: a lane per person, ending at the heavy line that is today. Ink = time that passed
-     fairly, red = time past due. A sent reply burns its lane out before the page redraws. */
-  .fuse { max-width: 760px; margin: 0 0 var(--u3); font-family: var(--font); }
-  .fuse ol { list-style: none; margin: 0; padding: 0; }
-  .fuse .lane, .fuse .axis { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 7.5rem; align-items: center; column-gap: var(--u3); }
-  .fuse .lane { min-height: 22px; transition: opacity var(--t-state) var(--ease-out); }
-  .fuse .lane .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); text-decoration: none; }
-  .fuse .lane.current .who { color: var(--ink); font-weight: var(--w-bold); }
-  .fuse .late { text-align: right; white-space: nowrap; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--red); }
-  .fuse .late.ok { font-weight: var(--w-regular); color: var(--grey); }
-  .fuse .track { position: relative; height: var(--u3); }
-  .fuse .track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: var(--hair) solid var(--rule); }
-  .fuse .now { position: absolute; right: 0; top: calc(-1 * var(--u2)); bottom: calc(-1 * var(--u2)); border-right: var(--rule-heavy) solid var(--ink); }
-  .fuse .seg { position: absolute; top: 50%; right: 0; transform: translateY(-50%); transform-origin: right; animation: fuse-draw var(--t-draw) var(--ease-out) both; transition: transform var(--t-state) var(--ease-out); }
-  .fuse .seg.burn { height: var(--fuse); background: var(--red); }
-  .fuse .seg.wait { height: var(--rule-heavy); background: var(--ink); }
-  .fuse .lane.done { opacity: 0; }
-  .fuse .lane.done .seg { transform: translateY(-50%) scaleX(0); }
-  .fuse .axis { margin-top: var(--u1); font-size: var(--s-meta); color: var(--grey); }
-  .fuse .scale { position: relative; height: 1.6em; }
-  .fuse .scale span { position: absolute; white-space: nowrap; }
-  .fuse .scale .l { left: 0; }
-  .fuse .scale .m { left: 50%; transform: translateX(-50%); }
-  .fuse .scale .r { right: 0; color: var(--ink); font-weight: var(--w-bold); }
-  .fuse .sketch { margin: var(--u1) 0 0; font-size: var(--s-meta); color: var(--grey); }
-  @keyframes fuse-draw { from { transform: translateY(-50%) scaleX(0); } }
 
   /* The draft, open in place: To, CC, Subject; REM's question as a row of choices; Send stays in reach. */
   .owner-slot.choose { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u2) var(--u4); margin: var(--u2) 0; padding: var(--u2) 0; border: 0;
@@ -2154,8 +2028,6 @@
   .slot-ref { color: var(--grey); border-bottom: var(--hair) dashed var(--pencil); }
   .choose-hint { font-size: var(--s-meta); color: var(--grey); }
   .choose-hint[hidden] { display: none; }
-  .fuse .lanes-more { margin: 0 0 calc(-1 * var(--u4)); font-size: var(--s-meta); line-height: var(--u4); color: var(--grey); }
-  .fuse .lanes-more.narrow, .fuse .lane.extra-wide { display: none; }
   .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
   .qcard .qkind .handoff { margin: 0; }
   .qcard .qkind .handoff .btn-quiet { min-height: 28px; }
@@ -2170,7 +2042,6 @@
   .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
   .snapshot-line, .lead-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
-  .lead-why { color: var(--ink); font-weight: var(--w-bold); }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
   .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
   .qsent .meta { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
@@ -2229,14 +2100,6 @@
   .talk-form .btn-line:hover:not(:disabled), .session-composer > .btn-line:hover { border-color: var(--ink); }
   .talk-form .btn-line:disabled { color: var(--grey); border-color: var(--rule); cursor: default; }
   @media (max-width: 720px) {
-    .brief-header { column-gap: var(--u3); }
-    .brief-header .poster ~ .lede { font-size: var(--s-body); line-height: var(--lh-body); }
-    .fuse .lane, .fuse .axis { grid-template-columns: 7.5rem minmax(0, 1fr) 6rem; column-gap: var(--u2); }
-    .fuse .scale .m { display: none; }
-    .fuse .lane.extra { display: none; }
-    .fuse .lanes-more.narrow { display: block; }
-    .fuse .lanes-more.wide { display: none; }
-    .fuse .sketch { display: none; }
     /* The first phone screen holds To, Subject, the letter's first lines and Send; the context line and channel
        switch wait behind More. */
     .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
@@ -2291,9 +2154,7 @@
   .shortcuts h2 { margin: 0 0 12px; font: var(--w-bold) var(--s-body)/27px var(--font); }
   .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 12px; font: var(--w-regular) var(--s-body)/22px var(--font); }
   .shortcuts dt, .shortcuts dd { margin: 0; }
-  .shortcuts kbd, .search .kbd { font: var(--w-regular) var(--s-meta)/18px var(--font); }
   .shortcuts kbd { padding: 1px 6px; border: 1px solid var(--rule); border-radius: var(--radius); }
-  .search .kbd { cursor: pointer; pointer-events: auto; }
   @media (max-width: 720px) {
     dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: var(--radius); max-height: 85vh; }
     .palette ul { max-height: 60vh; }
@@ -2641,11 +2502,6 @@
   .ov-key li .ov-meta { display: block; margin: 0; font-size: var(--s-meta); line-height: 18px; }
   /* Today as a front page: who needs you on the left, what REM did for you on the right.
      One sans, sizes 17 · 14 · 12, weights 400/700, rows on hairlines, no boxes. */
-  .morning-layout { font-family: var(--font); }
-  .morning-aside { max-width: 760px; }
-  .morning-aside > * + * { margin-top: 40px; }
-  .morning-aside h2, .morning-aside .section { margin: 0; padding: 0 0 10px; border-bottom: 1.5px solid var(--ink); font: var(--w-bold) var(--s-body)/22px var(--font); letter-spacing: 0; color: var(--ink); }
-  .morning-aside .section .n { display: none; }
   .night-done { margin-top: 40px; }
   .night-done ul { list-style: none; margin: 0; padding: 0; }
   .night-done li { padding: 12px 0; border-bottom: 1px solid var(--rule); }
@@ -2654,28 +2510,13 @@
   .night-done .who { display: block; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
   .night-done .who a { color: var(--grey); text-decoration: none; }
   .night-done .who a:hover { color: var(--ink); text-decoration: underline; }
-  .morning-aside .overnight .quiet-line, .morning-aside .overnight-change { font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--grey); }
-  .morning-aside .overnight .quiet-line { margin: 12px 0 0; }
-  .morning-aside .recall { display: block; padding: 0; border: 0; }
-  .morning-aside .recall .label { display: block; padding: 0 0 10px; border-bottom: 1.5px solid var(--ink); font: var(--w-bold) var(--s-body)/22px var(--font); color: var(--ink); }
-  .morning-aside .recall h2 { margin: 12px 0 4px; padding: 0; border: 0; font: var(--w-regular) var(--s-body)/27px var(--font); }
-  .morning-aside .recall .why { margin: 0; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
-  .morning-aside .recall-toggle { margin-top: 12px; min-height: 40px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--grey); background: none; color: var(--ink); font: var(--w-bold) var(--s-body) var(--font); }
-  .morning-aside .recall-toggle:hover { border-color: var(--ink); }
-  .morning-aside .recall-answer p { font: var(--w-regular) var(--s-body)/22px var(--font); }
-  .morning-aside .connection-review { padding: 0; border: 0; background: none; border-radius: var(--radius); }
   .morning-layout > .gone-quiet, #main > .week-details, #main > .maint, #main > .translation-note { max-width: 760px; font-family: var(--font); }
   .morning-layout > .gone-quiet, #main > .week-details, #main > .night-details { margin-top: 0; padding: 0; border-top: 1px solid var(--rule); }
-  .morning-layout > .gone-quiet { margin-top: 48px; }
   :is(.gone-quiet, .week-details, .night-details) > summary { padding: 12px 0; color: var(--grey); cursor: pointer; }
   #main > .translation-note { margin: 0 0 0 16px; padding-bottom: 12px; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
   #main > .maint { margin-top: 48px; }
   #main > .maint > summary h2 { font: var(--w-bold) var(--s-body)/22px var(--font); }
   @media (min-width: 1200px) {
-    .morning-layout { display: grid; grid-template-columns: minmax(0, 760px) 300px; column-gap: 56px; align-items: start; }
-    .morning-primary { grid-column: 1; grid-row: 1; }
-    .morning-aside { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 24px; }
-    .morning-layout > .gone-quiet { grid-column: 1; grid-row: 2; }
     .night-done { margin-top: 0; }
   }
 </style>
@@ -2852,28 +2693,466 @@
     .gx-row-name { flex-wrap: wrap; }
   }
 </style>
+<style id="n3-style">
+  /* N3 "Desk" (D-123): the app shell and the shared components. Declared last, so a page redone in N3
+     reads these over the older rules; the older pages still read the same tokens. */
+  body { font: var(--s-body)/var(--lh-body) var(--font); }
+  .icw { display: contents; }
+  .ic { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .app { display: grid; grid-template-columns: 72px minmax(0, 1fr); min-height: 100vh; }
+  .stage { min-width: 0; }
+
+  /* the rail: six places as icons, names on hover; 更多, settings and you at the foot */
+  .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: var(--u2); padding: 20px 0; z-index: 30; }
+  .brand { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 14px; color: var(--ink); text-decoration: none !important; }
+  .brand .mark { width: 34px; height: 34px; }
+  .brand .mark .f { fill: currentColor; }
+  .brand .mark .s { fill: none; stroke: currentColor; stroke-width: 2.4; }
+  .brand .name, .brand .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .rail-menu { display: flex; flex-direction: column; align-items: center; flex: 1; gap: var(--u2); }
+  #nav { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .rail-end { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .nav { position: relative; width: 44px; height: 44px; border-radius: var(--radius); display: grid; place-items: center; color: var(--grey); background: none; border: 0; padding: 0; cursor: pointer;
+    text-decoration: none !important; transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
+  .nav:hover { background: var(--well); color: var(--ink); }
+  .nav.active { color: var(--ink); background: var(--raised); box-shadow: var(--e1); }
+  .nav .n { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
+    font: var(--w-bold) var(--s-meta)/18px var(--font); text-align: center; }
+  .tip { position: absolute; left: 54px; top: 50%; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
+    background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
+    transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
+  .nav:hover .tip, .nav:focus-visible .tip { opacity: 1; transform: translate(0, -50%); }
+  .nav.you .face { width: 32px; height: 32px; font: var(--w-bold) var(--s-meta)/1 var(--font); }
+  .menu { position: absolute; z-index: 40; min-width: 220px; padding: 6px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); animation: n3-pop var(--t-state) var(--spring) both; }
+  .menu[hidden] { display: none; }
+  .mi { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--radius); font: var(--w-regular) var(--s-ui)/1.4 var(--font); color: var(--ink);
+    width: 100%; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: none !important; }
+  .mi:hover, .mi.active { background: var(--well); }
+  .mi .ic { width: 16px; height: 16px; color: var(--grey); }
+  .rail-more { left: 64px; top: 280px; }
+
+  /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
+  .top { display: flex; align-items: center; gap: var(--u3); height: 76px; padding: 0 40px; }
+  .crumb { flex: 0 1 200px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crumb a { color: var(--grey); }
+  .crumb a:hover { color: var(--ink); }
+  .top-end { flex: 0 1 200px; display: flex; justify-content: flex-end; }
+  .search { position: relative; flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; height: 44px; border-radius: var(--r-pill); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px;
+    background: var(--raised); box-shadow: var(--e1); color: var(--grey); transition: box-shadow var(--t-state) var(--ease-out); }
+  .search:hover, .search:focus-within { box-shadow: var(--e2); }
+  .search .search-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; flex: none; }
+  .search input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/1 var(--font); outline: none; }
+  .search input::placeholder { color: var(--grey); }
+  .search input::-webkit-search-decoration, .search input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+  .search-clear { display: none; background: none; border: 0; color: var(--grey); cursor: pointer; font: var(--w-regular) var(--s-ui)/1 var(--font); padding: 6px; border-radius: var(--radius); }
+  .search-clear:hover { color: var(--ink); background: var(--well); }
+  .search input:not(:placeholder-shown) + .search-clear { display: block; }
+  .kbd, .search .kbd { font: var(--w-bold) var(--s-meta)/18px var(--font); color: var(--grey); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: var(--radius); padding: 0 6px;
+    background: var(--raised); cursor: pointer; }
+  .search input:not(:placeholder-shown) ~ .kbd { display: none; }
+  .sync { position: relative; width: 36px; height: 36px; border-radius: var(--round); display: grid; place-items: center; color: var(--grey); background: none; border: 0; cursor: pointer; }
+  .sync:hover { background: var(--well); color: var(--ink); }
+  .sync::after { content: ""; position: absolute; right: 7px; top: 7px; width: 7px; height: 7px; border-radius: var(--round); background: var(--ink); box-shadow: var(--e-ring); }
+  .sync.off::after { background: var(--pencil); }
+  main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
+
+  /* sheets: settings, the palette, shortcuts */
+  dialog.n3-sheet, dialog.palette { width: min(640px, calc(100vw - 28px)); margin: 70px auto auto; padding: 22px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); color: var(--ink);
+    box-shadow: var(--e3); max-height: calc(100vh - 100px); overflow: auto; animation: n3-rise var(--t-draw) var(--spring) both; }
+  dialog.n3-sheet::backdrop, dialog.palette::backdrop { background: var(--scrim); backdrop-filter: blur(6px); }
+  dialog.palette { padding: 8px; }
+  .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sheet-head h2 { flex: 1; margin: 0; font: var(--w-bold) var(--s-head)/1.15 var(--font); letter-spacing: -0.02em; }
+  .ibtn { width: 38px; height: 38px; border-radius: var(--radius); display: inline-grid; place-items: center; color: var(--grey); background: none; border: 0; padding: 0; cursor: pointer; flex: none;
+    transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
+  .ibtn:hover { background: var(--well); color: var(--ink); }
+  .reader-settings .foot { display: flex; flex-direction: column; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); padding: 12px 0; border-top: var(--hair) solid var(--rule); }
+  .set-k { color: var(--ink); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+  .set-note, .notebook-languages, .memory-legend, .foot-line { font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
+  .notebook-languages, .set-rem, .memory-legend, .foot-line { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
+  .set-rem { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .set-rem .ic { width: 15px; height: 15px; color: var(--grey); }
+  .foot-line { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); flex-wrap: wrap; }
+  .foot-facts > * + *::before { content: "·" / ""; margin: 0 var(--u1); }
+  .theme-switch { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
+  .n3-seg { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: var(--well); gap: 2px; flex: none; }
+  .theme-btn { height: 30px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); }
+  .theme-btn.active { background: var(--raised); color: var(--ink); box-shadow: var(--e1); font-weight: var(--w-bold); }
+  /* A switch is a 44px target; its track and knob are drawn inside it. */
+  .switch { position: relative; width: 44px; height: 44px; border: 0; padding: 0; background: none; cursor: pointer; flex: none; }
+  .switch::before { content: ""; position: absolute; left: 2px; top: 10px; width: 40px; height: 24px; border-radius: var(--r-pill); background: var(--rule);
+    transition: background var(--t-press) var(--ease-out); }
+  .switch::after { content: ""; position: absolute; left: 5px; top: 13px; width: 18px; height: 18px; border-radius: var(--round); background: var(--raised); box-shadow: var(--e1); transition: transform var(--t-state) var(--spring); }
+  .switch[aria-checked="true"]::before { background: var(--ink); }
+  .switch[aria-checked="true"]::after { transform: translateX(16px); }
+  .btn-quiet.shortcuts-open { background: none; border: 0; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; padding: 0; }
+
+  /* phone: the rail and the ⌘K bar give way to a floating tab bar */
+  .tabbar { display: none; }
+  @media (max-width: 640px) {
+    .app { display: block; padding-bottom: 84px; }
+    .rail { position: static; height: 0; padding: 0; width: 0; overflow: visible; }
+    .brand, .rail-menu { display: none; }
+    .rail[data-open="true"] .rail-menu { display: flex; position: fixed; left: 12px; right: 12px; bottom: 88px; top: auto; max-height: 70vh; overflow-y: auto; z-index: 45; align-items: stretch;
+      padding: 8px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e3); }
+    .rail[data-open="true"] #nav { align-items: stretch; }
+    .rail[data-open="true"] .rail-end { flex-direction: row; justify-content: space-between; margin-top: 4px; }
+    .rail[data-open="true"] .nav { width: auto; justify-content: start; grid-auto-flow: column; gap: 12px; padding: 0 12px; }
+    .rail[data-open="true"] .nav .tip { position: static; opacity: 1; transform: none; background: none; color: inherit; padding: 0; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .nav .n { position: static; }
+    .rail[data-open="true"] .nav.more { display: none; }
+    .rail[data-open="true"] .rail-more { display: block; position: static; box-shadow: none; padding: 0; animation: none; min-width: 0; }
+    .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .top { height: 48px; padding: 0 18px; gap: 10px; }
+    .crumb { width: auto; flex: 1; color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
+    .crumb a { color: var(--ink); }
+    .top-end { width: auto; }
+    .search { display: none; }
+    body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
+    body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
+    .search .kbd { display: none; }
+    main { padding: 4px 16px 40px; }
+    .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: 14px; height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
+      justify-content: space-around; align-items: center; z-index: 30; }
+    .tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 48px; justify-content: center; color: var(--grey);
+      font: var(--w-regular) var(--s-meta)/1.3 var(--font); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none !important; }
+    .tab.active, .tab[aria-expanded="true"] { color: var(--ink); font-weight: var(--w-bold); }
+    .tab .n { position: absolute; top: -2px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
+      font: var(--w-bold) var(--s-meta)/18px var(--font); text-align: center; }
+    dialog.n3-sheet, dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0; max-height: 85vh; }
+  }
+
+  /* ---- shared N3 parts: faces, widgets, buttons ---- */
+  .face { position: relative; width: 40px; height: 40px; border-radius: var(--round); background: var(--well); color: var(--ink); display: inline-grid; place-items: center; flex: none;
+    font: var(--w-bold) var(--s-ui)/1 var(--font); letter-spacing: 0; }
+  .face.s { width: 22px; height: 22px; font: var(--w-bold) var(--s-meta)/1 var(--font); }
+  .face.l { width: 46px; height: 46px; }
+  .face.xl { width: 104px; height: 104px; font: var(--w-bold) var(--s-head)/1 var(--font); }
+  .face svg.ring { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); transform: rotate(-90deg); overflow: visible; }
+  .face svg.ring circle { fill: none; stroke-width: 3; }
+  .face.xl svg.ring circle { stroke-width: 2.4; }
+  .face svg.ring .track { stroke: var(--rule); }
+  .face svg.ring .burn { stroke: var(--red); stroke-linecap: round; animation: n3-burn var(--t-burn) var(--ease-out) both; animation-delay: var(--t-state); }
+  .org-mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--r-org); border: 1.6px solid currentColor; flex: none;
+    font: var(--w-bold) var(--s-meta)/1 var(--font); color: var(--ink); }
+  .org-mark.l { width: 46px; height: 46px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+  .widget { background: var(--raised); border-radius: var(--r-card); box-shadow: var(--e1); padding: 18px 20px; animation: n3-rise var(--t-draw) var(--spring) both; }
+  .wt { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .wt .ic { width: 15px; height: 15px; }
+  .big { font: var(--w-bold) var(--s-head)/1.15 var(--font); letter-spacing: -0.02em; color: var(--ink); }
+  .btn-act { min-height: 40px; padding: 0 16px; border: 0; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; box-shadow: var(--e-green);
+    font: var(--w-bold) var(--s-body)/1 var(--font); transition: transform var(--t-press) var(--spring); }
+  .btn-act:hover { background: var(--green); color: var(--on-green) !important; transform: translateY(-1px); }
+  /* Green means the action is available: a disabled primary (a snapshot, an unanswered question) is a well. */
+  .btn-act:disabled, .btn-act:disabled:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
+  .btn-quiet { min-height: 32px; padding: 0 10px; border-radius: var(--radius); color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
+  .btn-quiet:hover { color: var(--ink); background: var(--well); }
+  @media (max-width: 820px), (pointer: coarse) { .btn-act, .card-acts .btn-act { min-height: 44px; } }
+  .link-btn { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+
+  /* ---- Today: the night chart and who waits ---- */
+  .schedule-failure, .snapshot-line { margin: 0 0 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .night-card { padding: 16px 24px 12px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); animation: n3-rise var(--t-draw) var(--spring) both; }
+  .nh { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
+  .nh .ic { width: 15px; height: 15px; }
+  .nh .chart-toggle { display: none; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
+  .nh .legend { margin-left: 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
+  .night-card:hover .legend, .night-card:focus-within .legend { opacity: 1; }
+  .nb { display: flex; align-items: center; gap: 28px; }
+  .hyp-wrap { flex: 1; min-width: 0; }
+  .hyp { display: block; width: 100%; height: auto; overflow: visible; }
+  .hyp .lv line { stroke: var(--rule); stroke-dasharray: 2 4; }
+  .hyp .line { fill: none; stroke: var(--pencil); stroke-width: 1.3; stroke-linejoin: round; stroke-dasharray: 6000; animation: n3-draw var(--t-night) var(--ease-out) both; }
+  .hyp .hit { fill: transparent; }
+  .hyp .hit:hover { fill: var(--well); }
+  .hyp .rise { stroke: var(--ink); stroke-width: 6; stroke-linecap: round; }
+  .hyp .stem { stroke: var(--ink); stroke-width: 1.6; }
+  .hyp .fc circle { fill: var(--raised); stroke: var(--ink); stroke-width: 1.4; }
+  .hyp .fc text { fill: var(--ink); text-anchor: middle; dominant-baseline: central; font: var(--w-bold) var(--s-meta)/1 var(--font); }
+  .hyp .fc.sel circle { fill: var(--ink); }
+  .hyp .fc.sel text { fill: var(--paper); }
+  .hyp .fc text.plus { fill: var(--grey); text-anchor: start; }
+  .hyp .days text { fill: var(--grey); text-anchor: middle; font: var(--w-regular) var(--s-meta)/1 var(--font); }
+  .hyp .now { fill: var(--ink); animation: n3-ember var(--t-ember) var(--ease-out) infinite; }
+  .faces { flex: none; display: flex; flex-direction: column; gap: 10px; padding-left: 26px; border-left: var(--hair) solid var(--rule); max-width: 300px; }
+  .nb.solo .faces { border-left: 0; padding: 8px 0; max-width: none; flex: 1; }
+  .count-line { display: flex; align-items: baseline; gap: 10px; margin: 0; color: var(--grey); font: var(--w-regular) var(--s-body)/1.3 var(--font); letter-spacing: 0; }
+  .count-line .count { color: var(--ink); font: var(--w-bold) var(--s-display)/1 var(--font); letter-spacing: var(--track-display); }
+  .frow { display: flex; gap: 6px; overflow-x: auto; padding: 6px 4px 4px; margin: -6px -4px -4px; }
+  .deal { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 8px 6px; border: 0; border-radius: var(--r-inner); background: none; cursor: pointer;
+    transition: background var(--t-state) var(--ease-out), box-shadow var(--t-state) var(--ease-out); }
+  .deal:hover { background: var(--well); }
+  .deal.on { background: var(--raised); box-shadow: var(--e1); }
+  .deal .dd { color: var(--grey); font: var(--w-regular) var(--s-meta)/1.2 var(--font); white-space: nowrap; }
+  .deal .dd.late { color: var(--red); }
+
+  /* ---- Today: the deck — one raised card ---- */
+  .tgrid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); align-items: start; margin-top: 22px; }
+  .deck { position: relative; padding-bottom: 26px; min-width: 0; }
+  .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
+    background: var(--raised); box-shadow: var(--e1); }
+  .deck:has(.qcard ~ .qcard)::after { left: 44px; right: 44px; bottom: 0; opacity: .7; }
+  .today-brief { position: relative; z-index: 1; }
+  .today-brief .today-threads { display: block; border: 0; }
+  .today-brief .qcard { display: none; cursor: auto; }
+  .today-brief .qcard.focal { display: block; padding: 24px 28px 22px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2); cursor: auto;
+    animation: n3-rise var(--t-draw) var(--spring) backwards; }  /* no fill once risen: a filled transform would hold the pinned Send bar */
+  .today-brief .qcard.focal:focus-visible { outline: 0; background: var(--well); }
+  .today-brief .qsent { padding: 14px 20px; margin-bottom: 14px; border-radius: var(--r-inner); background: var(--well); }
+  .today-brief .qsent .lede { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
+  .today-brief > .quiet-line { padding: 36px 20px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); text-align: center; }
+  .qhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+  .qhead .qmark { display: none; }
+  .qhead .qmark.org { display: inline-block; width: 18px; height: 18px; border-radius: var(--r-org); border: 1.6px solid var(--ink); }
+  .qhead .today-who { color: var(--ink); font: var(--w-bold) var(--s-head)/1.15 var(--font); letter-spacing: -0.01em; }
+  .qhead .org-chip { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 4px 11px; border-radius: var(--r-pill); box-shadow: var(--e-ring);
+    color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); white-space: normal; overflow: visible; }
+  .qhead-acts { margin-left: auto; display: flex; opacity: 0; transition: opacity var(--t-state) var(--ease-out); }
+  .qcard:hover .qhead-acts, .qcard:focus-within .qhead-acts { opacity: 1; }
+  .qhead .qage { color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; }
+  .qhead .qage.late { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-pill); color: var(--red); box-shadow: var(--e-fuse); }
+  .qhead .qage.late::before { content: ""; width: 7px; height: 7px; border-radius: var(--round); background: var(--red); animation: n3-ember var(--t-ember) var(--ease-out) infinite; }
+  .qitems { display: grid; gap: 2px; margin: 16px 0 18px; padding: 0; }
+  .qitem { grid-template-columns: minmax(0, 1fr) 30px; padding: 7px 8px 7px 30px; margin: 0 -10px; border-radius: var(--radius); cursor: default;
+    transition: background var(--t-press) var(--ease-out); }
+  .qitem::before { content: ""; position: absolute; left: 12px; top: 15px; width: 8px; height: 8px; border-radius: var(--round); background: var(--pencil); }
+  .qitem.late::before { background: var(--red); }
+  .qitem:hover, .qitem.show { background: var(--well); }
+  .qcard .qitem .words, .qcard.open .qitem .words { margin: 0; white-space: normal; color: var(--ink); font: var(--w-regular) var(--s-body)/1.5 var(--font); }
+  .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 1.5; }
+  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .qcard .qdone, .qcard.open .qdone { width: 30px; height: 30px; opacity: 0; border-radius: var(--radius); }
+  .qcard .qitem:is(:hover, :focus-within, .show) .qdone { opacity: 1; }
+  .qcard .qdone:hover { background: var(--raised); }
+  .qcard .qmore, .qcard.open .qmore { display: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .qcard .qitem:is(:hover, :focus-within, .show) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
+  .qcard .qkind { gap: var(--u1) var(--u3); }
+  .qcard .handoff-line .btn-quiet, .qcard .talk-menu summary { min-height: 30px; color: var(--ink); }
+  .task-result { margin: 8px 0 0; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); color: var(--ink); }
+  .card-acts { margin: 14px 0 0; gap: 8px 14px; }
+  .card-acts .btn-act, .card-acts .btn-line { min-height: 40px; border-radius: var(--radius); }
+  .card-acts .btn-line { border: 0; box-shadow: var(--e-ring); }
+  .card-acts .btn-quiet { font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+
+  /* the composer: the reply as the letter it becomes */
+  .qdraft .mailcard { border: 0; border-radius: var(--r-inner); box-shadow: var(--e-ring); background: none; }
+  .qdraft .mail-head { padding: 14px 18px 0; border: 0; background: none; }
+  .qdraft .mail-row { border: 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.6 var(--font); }
+  .qdraft .mail-row .k { color: var(--grey); }
+  .qdraft .mail-channels { padding: 3px; border-radius: var(--r-pill); background: var(--well); }
+  .qdraft .mail-channels .channel { border-radius: var(--r-pill); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .qdraft .mail-channels .channel.active { background: var(--raised); color: var(--ink); box-shadow: var(--e1); }
+  .qdraft .mail-text { color: var(--ink); font: var(--w-regular) var(--s-body)/var(--lh-body) var(--font); }
+  .qdraft .mail-actions { border: 0; background: none; padding: 12px 18px 14px; }
+  .qdraft .mail-choices { border: 0; }
+  .mail-actions .btn-act { margin-left: auto; }
+  .mail-actions .mail-note { opacity: 0; transition: opacity var(--t-press) var(--ease-out); color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .mail-actions:hover .mail-note, .mail-actions:focus-within .mail-note { opacity: 1; }
+  .more-menu { position: relative; }
+  .more-menu > summary { list-style: none; width: 38px; height: 38px; border-radius: var(--radius); display: grid; place-items: center; color: var(--grey); cursor: pointer; }
+  .more-menu > summary::-webkit-details-marker { display: none; }
+  .more-menu > summary:hover, .more-menu[open] > summary { background: var(--well); color: var(--ink); }
+  .more-menu > .menu { left: 0; bottom: 44px; }
+  .more-menu .menu .btn-quiet { display: flex; width: 100%; justify-content: flex-start; min-height: 36px; color: var(--ink); }
+  .qdraft :is(.mail-body, .mail-choices, .mail-text, .mail-gist, .mail-head) { background: none; }
+
+  /* ---- Today: the side column ---- */
+  .tgrid > .side { display: grid; gap: 16px; min-width: 0; }
+  .tgrid > .side > * { margin: 0; }
+  .tgrid > .side .widget:nth-child(2) { animation-delay: calc(var(--t-stagger) * 2); }
+  .tgrid > .side .widget:nth-child(3) { animation-delay: calc(var(--t-stagger) * 3); }
+  .pair { display: flex; gap: 20px; }
+  .approval-header { display: contents; }
+  .pair-cell { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+    color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); text-decoration: none !important; }
+  .pair-cell[hidden] { display: none; }
+  .pair-cell:hover .big { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .recall .rc { display: flex; align-items: center; gap: 14px; }
+  .recall .recall-toggle { grid-column: auto; grid-row: auto; margin: 0; padding: 0; min-height: 0; border: 0; }
+  .recall .rc h2 { flex: 1; min-width: 0; margin: 0; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .recall-answer { margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .recall-answer p { margin: 0 0 6px; }
+  .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .closed .ic { width: 15px; height: 15px; }
+  .closed .link-btn { margin-left: auto; }
+  #night-sheet .night-done h2 { display: none; }
+  #night-sheet .night-done ul { list-style: none; margin: 0; padding: 0; }
+  #night-sheet .night-done li { display: grid; gap: 2px; padding: 12px 0; border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
+  #night-sheet .night-done li b { color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
+
+  /* ---- Today: one fold below the desk ---- */
+  .desk-more { display: grid; gap: 4px; margin: 44px 0 0; }
+  .desk-more > details > summary, .desk-more .maint > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
+  .desk-more > section { padding: 4px 0 12px; }
+
+  @media (max-width: 640px) {
+    .night-card { padding: 10px 14px 6px; }
+    .deal { padding: 4px 6px 2px; gap: 4px; }
+    .nh .legend { display: none; }
+    .nb { flex-direction: column; align-items: stretch; gap: 6px; }
+    .faces { flex-direction: row; align-items: center; gap: 8px; padding: 4px 0 2px; border-left: 0; border-top: var(--hair) solid var(--rule); max-width: none; }
+    .count-line span { display: none; }
+    .frow { flex: 1; justify-content: flex-start; }
+    .tgrid { display: block; margin-top: 10px; }
+    .today-brief .qcard.focal { padding: 18px 16px 16px; }
+    .qhead .org-chip { display: none; }
+    .qhead-acts { opacity: 1; }
+    .qitem { margin: 0 -6px; }
+    .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
+    .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
+    .card-acts .btn-act { min-height: 44px; }
+    .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
+    .today-brief .qcard.focal { padding-top: 14px; animation-name: n3-fade; }  /* no transform: Send is pinned inside it */
+    .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 84px; border: 0; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); }
+    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 172px; }
+    /* A phone's first screen is the faces and the card: the chart opens from its title (D-120). */
+    .night-card:not(.chart-open) .hyp-wrap { display: none; }
+    .nh .chart-toggle { display: inline-flex; }
+    .nh .nt { display: none; }
+    .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
+    .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
+    .qdraft .mail-row .v > .addr { display: none; }
+    .tgrid > .side { margin-top: 18px; }
+  }
+
+  /* ---- a person: a hero card and a bento of widgets (records, never to-dos: D-30) ---- */
+  .n3-person .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important; }
+  .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
+  .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
+  .n3-person .chip .ic { width: 14px; height: 14px; }
+  .n3-person .hero { display: flex; align-items: center; gap: 28px; margin: 0; padding: 28px 32px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1);
+    animation: n3-rise var(--t-draw) var(--spring) both; }
+  .n3-person .face { background: var(--well); color: var(--ink); }
+  .hero-who { flex: 1; min-width: 0; }
+  .n3-person .hero .r4-name { margin: 0; font: var(--w-bold) var(--s-display)/var(--lh-tight) var(--font); letter-spacing: var(--track-display); }
+  .hero-marks { color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .hero-marks:empty { display: none; }
+  .n3-person .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; font: inherit; }
+  .hero-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  .round { position: relative; width: 44px; height: 44px; border: 0; border-radius: var(--round); display: grid; place-items: center; background: var(--raised); box-shadow: var(--e1); color: var(--ink);
+    cursor: pointer; transition: transform var(--t-state) var(--spring), box-shadow var(--t-state) var(--ease-out); }
+  .round:hover { transform: translateY(-2px); box-shadow: var(--e2); }
+  .round .tip { left: 50%; top: 52px; transform: translate(-50%, -4px); }
+  .round:hover .tip, .round:focus-visible .tip { opacity: 1; transform: translate(-50%, 0); }
+  .n3-person .r4-today { display: inline-flex; align-items: center; gap: 8px; height: 44px; margin-left: 8px; padding: 0 16px; border: 0; border-radius: var(--r-pill); box-shadow: var(--e-ring);
+    color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; text-decoration: none !important; }
+  .n3-person .r4-today.late { color: var(--red); box-shadow: var(--e-fuse); }
+  .n3-person .r4-today.late::before { content: ""; width: 7px; height: 7px; border-radius: var(--round); background: var(--red); }
+  .bento { display: grid; grid-template-columns: 1.35fr 1fr 1fr; grid-auto-flow: row dense; gap: 16px; margin-top: 16px; align-items: start; }
+  .bento .span2 { grid-column: span 2; }
+  .bento > :nth-child(2) { animation-delay: var(--t-stagger); }
+  .bento > :nth-child(3) { animation-delay: calc(var(--t-stagger) * 2); }
+  .bento > :nth-child(4) { animation-delay: calc(var(--t-stagger) * 3); }
+  .bento .wt h2 { margin: 0; color: inherit; font: inherit; }
+  .bento .wt .end { margin-left: auto; }
+  .bento .r4-sec { margin: 0; padding: 18px 20px; border: 0; }
+  .rh-row { display: flex; align-items: flex-end; gap: 22px; }
+  .rh { flex: 1; min-width: 0; }
+  .rhythm { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; grid-template-rows: repeat(7, 13px); gap: 4px; }
+  .rhythm i { border-radius: var(--r-cell); background: var(--well); }
+  .rhythm i.l1 { background: var(--pencil); }
+  .rhythm i.l2 { background: var(--grey); }
+  .rhythm i.l3 { background: var(--ink); }
+  .rhythm i.today { background: var(--raised); box-shadow: var(--e-ink); }
+  .n3-person .fuse-ends { display: flex; justify-content: space-between; margin-top: 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person .fuse-ends b { color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person .r4-stats { display: grid; grid-template-columns: none; grid-auto-flow: row; gap: 10px; min-width: 110px; margin: 0; padding: 0; border: 0; }
+  .n3-person .r4-stats > div { display: flex; flex-direction: column; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person .r4-stats .late .big { color: var(--red); }
+  .n3-person .r4-said ol, .n3-person .tl, .n3-person .r4-topics ul { list-style: none; margin: 0; padding: 0; }
+  .n3-person .r4-said li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0; border: 0; }
+  .n3-person .r4-said li + li { display: none; margin-top: 12px; padding-top: 12px; border-top: var(--hair) solid var(--rule); }
+  .n3-person .r4-said ol.all li { display: grid; }
+  .n3-person .said-q { order: -1; color: var(--ink); quotes: none; font: var(--w-regular) var(--s-ui)/1.6 var(--font); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .n3-person .said-src { display: flex; gap: 6px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person .tl .tl-e { display: grid; grid-template-columns: 44px 12px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border: 0; }
+  .n3-person .tl .tl-e .d { text-align: right; color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
+  .n3-person .tl .tl-e .w i { display: block; width: 9px; height: 9px; margin-top: 6px; border-radius: var(--round); border: 1.6px solid var(--ink); background: none; }
+  .n3-person .tl .tl-e .w i.me { background: var(--ink); }
+  .n3-person .tl .tl-e .x, .n3-person .r4-topics li .x { color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  /* Three lines a row at rest; 显示全部 shows every row whole. */
+  .n3-person :is(.tl, .r4-topics ul):not(.all) .x { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .n3-person :is(.tl, .r4-topics ul):not(.all) > .later { display: none; }
+  .n3-person .tl-more { margin-top: 8px; }
+  .n3-person .r4-topics li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 6px 0; border: 0; }
+  .n3-person .r4-topics li .d { color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
+  .rel-slot:empty { display: none; }
+  .bento .r4-topics { grid-column: 1 / -1; }
+  .bento .person-sessions { grid-column: span 2; }
+  .person-sessions ul { list-style: none; margin: 0; padding: 0; }
+  .person-sessions .wt a { color: var(--grey); }
+  .rel-slot .gx-local { margin: 0; padding: 0; border: 0; }
+  .rel-slot .gx-local-svg { width: 100%; height: auto; overflow: visible; }
+  .rel-slot .gx-local h4 { margin: 0 0 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .stack2 { display: grid; gap: 16px; align-content: start; }
+  .row2 { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 18px; border: 0; cursor: pointer; text-align: left; color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/1.4 var(--font); text-decoration: none !important; transition: transform var(--t-state) var(--spring), box-shadow var(--t-state) var(--ease-out); }
+  .row2:hover { transform: translateY(-2px); box-shadow: var(--e2); }
+  .row2 span { flex: 1; }
+  .row2 .ic, .row2 .muted { color: var(--grey); }
+  .row2.dashed { background: transparent; box-shadow: none; border: 1.5px dashed var(--pencil); }
+  .list-sheet ul { list-style: none; margin: 0; padding: 0; }
+  .list-sheet li { padding: 10px 0; border-top: var(--hair) solid var(--rule); color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+
+  @media (max-width: 640px) {
+    .n3-person .hero { flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 20px 18px; }
+    .n3-person .hero .face.xl { width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+    .hero-who { flex: 1 1 100%; order: -1; }  /* the name leads with the card's whole width: a long word hyphenates instead of breaking */
+    .hero-acts { width: auto; flex: 1; }
+    .hero-acts { justify-content: flex-start; gap: 6px; }
+    .n3-person .r4-today { margin-left: auto; padding: 0 12px; }
+    .round { width: 40px; height: 40px; }
+    .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .bento .span2, .bento .person-sessions { grid-column: auto; }
+    .rh-row { flex-direction: column; align-items: stretch; }
+    .n3-person .r4-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .rhythm { grid-template-rows: repeat(7, 10px); gap: 3px; }
+  }
+
+  @keyframes n3-burn { from { stroke-dashoffset: 314.16; } }
+  @keyframes n3-draw { from { stroke-dashoffset: 6000; } }
+  @keyframes n3-ember { 50% { opacity: .55; } }
+
+  @keyframes n3-rise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+  @keyframes n3-fade { from { opacity: 0; } }
+  @keyframes n3-pop { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+</style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="app">
   <aside class="rail">
     <a class="brand" href="#" aria-label="co rem, contents">
-      <svg viewBox="0 0 34 18" aria-hidden="true"><path d="M1,4 L7,4 L7,14 L15,14 L15,4 L18,4 L18,9 L23,9 L23,4 L33,4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="29" cy="4" r="2.6" fill="var(--lamp)"/></svg>
+      <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><circle class="f" cx="11" cy="12" r="7"/><path class="s" d="M20 17h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-6a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3z"/><path class="f" d="M5 29 11 20l6 9z"/></svg>
       <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
-    <div class="search">
-      <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-      <input id="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search the notebook">
-      <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
-      <span class="kbd" aria-hidden="true">/</span>
-    </div>
-    <button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button>
     <div class="rail-menu" id="rail-menu">
       <nav id="nav" aria-label="Categories"></nav>
-      <div class="foot" id="foot"></div>
+      <div class="rail-end" id="rail-end"></div>
     </div>
   </aside>
-  <main id="main" tabindex="-1"></main>
+  <div class="stage">
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input id="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search the notebook">
+        <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
+        <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
+      </div>
+      <div class="top-end"><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+    </header>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <nav class="tabbar" id="tabbar" aria-label="Tabs"><button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button></nav>
 </div>
+<dialog id="settings" class="n3-sheet reader-settings" aria-labelledby="settings-title">
+  <div class="sheet-head"><h2 id="settings-title">Settings</h2><button type="button" class="ibtn settings-close" aria-label="Close"></button></div>
+  <div class="foot" id="foot"></div>
+</dialog>
 <script id="graph-d3">/*__D3__*/</script>
 <script>
 "use strict";
@@ -2891,7 +3170,7 @@ let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
-  en: {},
+  en: { "More of this card": "More" },  // one English word, two meanings: each has a key of its own
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
@@ -3200,7 +3479,6 @@ const UI = {
     "Follow up in {channel}": "在 {channel} 里跟进",
     "{channel} reply": "{channel} 回信",
     "Draft the reply": "起草回信",
-    "More": "展开",
     "Less": "收起",
     "Drafting the reply… about a minute": "正在起草回信…约一分钟",
     "mail": "邮件",
@@ -3964,7 +4242,19 @@ const UI = {
     "Citation bundles multiple files: {detail}": "同一引用包含多个文件：{detail}",
     "projects write": "撰写项目",
     "skills write": "撰写技能",
-    "sessions import": "导入会话"
+    "sessions import": "导入会话",
+    // N3 "Desk" (D-123): the shell, Today and a person
+    "Settings": "设置", "Reduce motion": "减少动态效果", "REM status": "REM 状态", "Waiting": "等你",
+    "Night chart": "夜图", "person waiting on you": "人在等你", "people waiting on you": "人在等你", "{n} d": "{n} 天",
+    "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
+    "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
+    "Prepared a task for {name}": "为 {name} 备好一件任务", "Drafted a reply to {name}": "起草了给 {name} 的回信",
+    "REM's work: {runs} runs, {n} replies and tasks prepared": "REM 的工作：{runs} 次运行，备好 {n} 件回信和任务",
+    "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
+    "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
+    "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
+    "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
+    "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
 };
 function t(key, values = {}) {
@@ -3986,8 +4276,8 @@ function togglePrivate() {
   if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
   button.classList.toggle("active", hidden);
-  button.setAttribute("aria-pressed", String(hidden));
-  button.textContent = t(hidden ? "Show labelled passages" : "Hide labelled passages");
+  button.setAttribute("aria-checked", String(hidden));
+  button.setAttribute("aria-label", t(hidden ? "Show labelled passages" : "Hide labelled passages"));
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
   if (query) search(query);
   refreshFocusExpansion();
@@ -4908,14 +5198,24 @@ function setDone(entry, done, state = "done", entries = [entry]) {
     return synced;
   });
 }
+// The keyboard's place on Today is the raised card: E, R and Enter act from there.
+function focusRaisedCard() {
+  document.querySelector("#main .qcard.focal")?.focus({ preventScroll: true });
+}
+// The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
+// notice goes, the focus returns to the raised card, so the keys go on working.
 function doneNotice(entry, state, entries) {
   const undo = el("button", { type: "button", text: t("Undo") });
-  undo.onclick = () => setDone(entry, false, "done", entries);
+  undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
   const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
-  setTimeout(() => notice.remove(), 5000);
+  setTimeout(() => {
+    const held = notice.contains(document.activeElement);
+    notice.remove();
+    if (held) focusRaisedCard();
+  }, 5000);
 }
 
 // The one thing to do next: write to the person the thread is with. The address and
@@ -5159,9 +5459,12 @@ function replyDraftCard(draft, onSent) {
     if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
     return pill;
   }));
-  const actions = el("div", { class: "mail-actions" }, [send, write, ...(channel === "mail" ? [edit] : []), skip, hint,
+  // Send is the one green action; writing full screen, editing in the mail app and Skip wait behind 更多 (D-120).
+  const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
+    el("div", { class: "menu" }, [write, ...(channel === "mail" ? [edit] : []), skip])]);
+  const actions = el("div", { class: "mail-actions" }, [more, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
-        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]);
+        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
@@ -5876,69 +6179,170 @@ function scheduleState(s) {
 function nightlyUpdatesOff() {
   return scheduleState(REM.status || {}) === "Background updates off";
 }
+// The N3 icon set (D-123): Feather shapes, the react-icons names are listed in the design's tokens.md
+// (FiSun, FiInbox, FiUser, FiSquare, FiTriangle, LuWaypoints…). Strokes come from .ic, never from here.
+const ICONS = {
+  sun: '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  org: '<path d="M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7a4.5 4.5 0 0 1-4.5 4.5h-7A4.5 4.5 0 0 1 4 15.5v-7A4.5 4.5 0 0 1 8.5 4z"/>',
+  project: '<path d="M12 4.5 20.5 19h-17z"/>',
+  graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2l7.5 0.6M7 8.3l1.5 7.3M16.6 10l-5.8 6.3"/>',
+  layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  skip: '<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>',
+  agent: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+  chat: '<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/>',
+  mail: '<path d="M5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 17V7A2.5 2.5 0 0 1 5 4.5z"/><polyline points="3 6.5 12 13 21 6.5"/>',
+  phone: '<path d="M8.5 2.5h7A2.5 2.5 0 0 1 18 5v14a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 6 19V5a2.5 2.5 0 0 1 2.5-2.5z"/><line x1="11" y1="18" x2="13" y2="18"/>',
+  linkedin: '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><path d="M2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
+  sliders: '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/>',
+  quote: '<path d="M7 17c-2 0-3-1.6-3-3.5C4 10 6.5 7.5 9 7M17 17c-2 0-3-1.6-3-3.5 0-3.5 2.5-6 5-6.5"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
+  flip: '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
+  right: '<polyline points="9 6 15 12 9 18"/>',
+  down: '<polyline points="6 9 12 15 18 9"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  calendar: '<path d="M5.5 4.5h13A2.5 2.5 0 0 1 21 7v11.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5V7a2.5 2.5 0 0 1 2.5-2.5z"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  scale: '<path d="M12 3v18M7 21h10M5 7h14"/><path d="M5 7l-3 7a3.5 3.5 0 0 0 6 0zM19 7l-3 7a3.5 3.5 0 0 0 6 0z"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+  doc: '<path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><polyline points="14 2.5 14 8 19.5 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
+  undo: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
+  x: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+  ext: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+};
+function icon(name, cls = "") {
+  return el("span", { class: "icw", "aria-hidden": "true", html: '<svg class="ic' + (cls ? " " + cls : "") + '" viewBox="0 0 24 24">' + (ICONS[name] || "") + "</svg>" });
+}
+const CATEGORY_ICON = { people: "person", orgs: "org", projects: "project", skills: "layers", knowledge: "book", decisions: "scale",
+  principles: "book", agenda: "calendar", sessions: "terminal", opportunities: "activity", works: "doc" };
+// The rail (D-123): six places as icons with their names on hover, the rest one 更多 away, settings and
+// you at the foot. The names stay in the links, so a screen reader and a search read the same words.
+function railLink(key, iconName, title, link, active, badge) {
+  return el("a", { href: link, class: "nav" + (active === key ? " active" : ""), "aria-label": title }, [icon(iconName),
+    el("span", { class: "tip", text: title }), badge]);
+}
+function railMore(active) {
+  const rest = [["changes", "activity", t("Memory changes"), "#view=changes"],
+    ...memoryCategories().filter(c => !["people", "orgs", "projects"].includes(c))
+      .filter(c => (!detailReady && c === "sessions") || inCategory(c).length || active === c)
+      .map(c => [c, CATEGORY_ICON[c] || "doc", label(c), "#c=" + c])];
+  const menu = el("div", { class: "menu rail-more", id: "rail-more", hidden: "" },
+    rest.map(([key, iconName, title, link]) => el("a", { href: link, class: "mi" + (active === key ? " active" : "") }, [icon(iconName), el("span", { text: title })])));
+  const on = rest.some(([key]) => key === active);
+  const button = el("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more",
+    "aria-label": t("More") }, [icon("more"), el("span", { class: "tip", text: t("More") })]);
+  button.onclick = event => { event.stopPropagation(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); };
+  return [button, menu];
+}
 function renderRail(active) {
   const nav = document.getElementById("nav");
-  nav.textContent = "";
-  const owner = REM.owner && byPath(REM.owner);
-  if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
-    el("span", {}, [moon(known(owner).status), " " + t("You")]), el("span", { class: "who", text: owner.title })]));
-  nav.appendChild(el("div", { class: "label", text: t("Your day") }));
-  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Waiting on you", "#view=open"],
-    ["changes", "Memory changes", "#view=changes"]])
-    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: t(title) }), key === "open" ? el("span", { class: "n waiting", text: String(threadCounts().mine) }) : null]));
-  // Owner, 2026-11-09: sixteen right-aligned counts were the loudest thing on screen. Only Waiting on you
-  // keeps its number; a category's size is not something to do. An empty category still stays out.
-  nav.appendChild(el("div", { class: "label", text: t("Explore memory") }));
-  for (const c of memoryCategories()) {
-    const empty = (detailReady || c !== "sessions") && !inCategory(c).length;
-    if (empty && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
-    nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" }, [el("span", { text: label(c) })]));
-  }
-  nav.appendChild(el("div", { class: "gap" }));
-  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: t("All records") })]));
+  const waiting = el("span", { class: "n waiting", text: String(threadCounts().mine) });
+  nav.replaceChildren(
+    railLink("today", "sun", t("Today"), "#", active),
+    railLink("open", "inbox", t("Waiting on you"), "#view=open", active, threadCounts().mine ? waiting : null),
+    ...["people", "orgs", "projects"].map(c => railLink(c, CATEGORY_ICON[c], label(c), "#c=" + c, active)),
+    railLink("all", "graph", t("All records"), "#c=all", active), ...railMore(active));
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
-  const s = REM.status || {};
-  const foot = document.getElementById("foot");
-  foot.textContent = "";
-  const current = document.documentElement.dataset.theme || "auto";
-  const themeSwitch = el("div", { class: "theme-switch", role: "radiogroup", "aria-label": t("Theme") });
+  renderRailEnd(active);
+  renderTabbar(active);
+  renderSettings();
+  const ownerPage = byPath(REM.owner);
+  document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
+}
+function renderRailEnd(active) {
+  const end = document.getElementById("rail-end"), owner = REM.owner && byPath(REM.owner);
+  const settings = el("button", { type: "button", class: "nav settings-open", "aria-label": t("Settings"), "aria-controls": "settings" }, [icon("sliders"), el("span", { class: "tip", text: t("Settings") })]);
+  settings.onclick = openSettings;
+  end.replaceChildren(settings, owner ? el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": t("You") + " · " + owner.title }, [
+    face(owner.title, "s"), el("span", { class: "tip", text: t("You") + " · " + owner.title })]) : null);
+}
+// Phone (D-123): the rail and the ⌘K bar give way to a floating tab bar: 今天 · 等你 · 人物 · 搜索 · 更多.
+function renderTabbar(active) {
+  const bar = document.getElementById("tabbar"), toggle = bar.querySelector(".nav-toggle");
+  const tab = (key, iconName, title, link, badge) => el("a", { href: link, class: "tab" + (active === key ? " active" : "") }, [icon(iconName), badge, el("span", { text: title })]);
+  const search = el("button", { type: "button", class: "tab tab-search" }, [icon("search"), el("span", { text: t("Search") })]);
+  search.onclick = () => { document.body.classList.add("searching"); document.getElementById("q").focus(); };
+  bar.setAttribute("aria-label", t("Tabs"));
+  toggle.replaceChildren(icon("more"), el("span", { text: t("More") }));
+  toggle.classList.add("tab");
+  const mine = threadCounts().mine;
+  bar.replaceChildren(tab("today", "sun", t("Today"), "#"), tab("open", "inbox", t("Waiting"), "#view=open", mine ? el("span", { class: "n", text: String(mine) }) : null),
+    tab("people", "person", label("people"), "#c=people"), search, toggle);
+}
+function openSettings() {
+  const sheet = document.getElementById("settings");
+  if (!sheet.open) sheet.showModal();
+}
+// Settings (D-123): one sheet for language, theme, motion, labelled passages, the notebook's languages,
+// REM's state and the release. #rendered-at stays in the page so a failed rebuild can say so.
+function renderSettings() {
+  const s = REM.status || {}, foot = document.getElementById("foot"), current = document.documentElement.dataset.theme || "auto";
+  document.getElementById("settings-title").textContent = t("Settings");
+  const close = document.querySelector("#settings .settings-close");
+  close.replaceChildren(icon("x"));
+  close.setAttribute("aria-label", t("Close"));
+  close.onclick = () => document.getElementById("settings").close();
+  const themeSwitch = el("div", { class: "theme-switch n3-seg", role: "radiogroup", "aria-label": t("Theme") });
   for (const mode of ["auto", "light", "dark"]) {
     const btn = el("button", { class: "theme-btn" + (current === mode ? " active" : ""), type: "button", role: "radio",
       "aria-checked": String(current === mode), text: t(mode[0].toUpperCase() + mode.slice(1)), title: t(mode + " theme") });
     btn.onclick = () => setTheme(mode);
     themeSwitch.appendChild(btn);
   }
-  const languageSwitch = el("div", { class: "language-switch theme-switch", role: "group", "aria-label": t("Interface language") });
+  const languageSwitch = el("div", { class: "language-switch n3-seg", role: "group", "aria-label": t("Interface language") });
   for (const [tag, name] of [["en", "EN"], ["zh", "中文"]]) {
     const button = el("button", { type: "button", class: "theme-btn" + (uiLanguage === tag ? " active" : ""),
       "aria-pressed": String(uiLanguage === tag), lang: tag, text: name });
     button.onclick = () => setInterfaceLanguage(tag);
     languageSwitch.appendChild(button);
   }
-  // One quiet footer: the release and the render time (#rendered-at, which also says a failed
-  // rebuild), then language and theme, each part still a control.
-  // The 224px nav cannot carry all four on one row, so it breaks between the facts and the switches.
-  const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
-  foot.appendChild(el("div", { class: "foot-line" }, [
-    el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
-      el("span", { class: "as-of", id: "rendered-at", text: t("Updated") + " " + asOf })]), languageSwitch, themeSwitch]));
-  const hidden = document.documentElement.classList.contains("hide-private");
-  const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
-    "aria-pressed": String(hidden), text: t(hidden ? "Show labelled passages" : "Hide labelled passages"),
+  const hidden = document.documentElement.classList.contains("hide-private"), calm = document.documentElement.classList.contains("calm");
+  const privacy = el("button", { id: "privacy-toggle", class: "switch" + (hidden ? " active" : ""), type: "button", role: "switch",
+    "aria-checked": String(hidden), "aria-label": t(hidden ? "Show labelled passages" : "Hide labelled passages"),
     title: t("Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.") });
   privacy.onclick = togglePrivate;
-  const settings = el("details", { class: "reader-settings" }, [el("summary", { text: t("Reader settings") }), privacy,
-    el("div", { text: t("Also hides raw excerpts; other details stay visible.") })]);
-  settings.appendChild(notebookLanguages());
-  const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
-    : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run)
-    : t(scheduleState(s) || "No pass scheduled");
-  settings.appendChild(el("div", { text: nightlyUpdatesOff() ? t("Nightly updates are off.") : t(schedule).replace(/`/g, "") }));
-  settings.appendChild(el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
-    el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]));
-  foot.appendChild(settings);
-  const ownerPage = byPath(REM.owner);
-  document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
+  const motion = el("button", { id: "calm-toggle", class: "switch", type: "button", role: "switch", "aria-checked": String(calm), "aria-label": t("Reduce motion") });
+  motion.onclick = toggleCalm;
+  const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
+  const words = remStateWords(s);
+  const row = (title, control, note) => el("div", { class: "set-row" }, [el("div", {}, [el("div", { class: "set-k", text: t(title) }), note ? el("div", { class: "set-note", text: note }) : null]), control]);
+  foot.replaceChildren(
+    row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
+    row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
+    notebookLanguages(),
+    el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
+    el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
+      el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
+    el("div", { class: "foot-line" }, [el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
+      el("span", { class: "as-of", id: "rendered-at", text: t("Updated") + " " + asOf })]), shortcutsLink()]));
+  const state = document.getElementById("rem-state");
+  state.replaceChildren(icon("moon"));
+  state.setAttribute("aria-label", t("REM status") + " · " + words);
+  state.classList.toggle("off", nightlyUpdatesOff());
+  state.onclick = openSettings;
+}
+// REM's state in words, never a command (D-60): off, needs attention, or when the next pass runs.
+function remStateWords(s) {
+  if (nightlyUpdatesOff()) return t("Nightly updates are off.");
+  return /^Background needs attention/.test(s.state || "") ? t(scheduleState(s)).replace(/`/g, "")
+    : s.next_run ? t("Next pass") + " " + fmtTime(s.next_run) : t(scheduleState(s) || "No pass scheduled").replace(/`/g, "");
+}
+function shortcutsLink() {
+  const button = el("button", { type: "button", class: "btn-quiet shortcuts-open", text: t("Keyboard shortcuts") });
+  button.onclick = () => { document.getElementById("settings").close(); openShortcuts(); };
+  return button;
+}
+function toggleCalm() {
+  const calm = document.documentElement.classList.toggle("calm");
+  if (location.protocol === "file:") readerStorage("co-rem-calm", calm ? "calm" : "");
+  renderSettings();
 }
 
 // One page as one row: its name, what it is to you, what is open, when.
@@ -6304,21 +6708,31 @@ function notDoneAction({ entry, step }) {
   button.onclick = () => keepOpen(entry);
   return button;
 }
+// Motion is stilled by the system's setting or by the reader's own Reduce motion switch: then nothing waits for it.
+function motionStilled() {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("calm");
+}
 // A handled card slides right and fades, then the page re-renders with an Undo.
 function closeEntries(node, entries) {
   if (!entries.length) return;
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   node?.classList.add("leaving");
-  setTimeout(() => setDone(entries[0], true, "done", entries), still ? 0 : 240);
+  setTimeout(() => setDone(entries[0], true, "done", entries), motionStilled() ? 0 : 240);
 }
-function cardHead(group, late) {
+// The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
+// or how long it has waited. Mark the whole card done and Skip to the next card appear on hover (E / S).
+function cardHead(group, late, skippable) {
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
-  const meta = r.path === REM.owner ? [] : [company(r), role ? roleSummary(role, r.path) : null].filter(Boolean);
+  const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
+  const done = el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]);
+  done.onclick = event => event.currentTarget.closest(".qcard").markDone();
+  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Skip") + " · S", title: t("Skip") + " · S" }, [icon("skip")]) : null;
+  if (skip) skip.onclick = () => dealNext(1);
   return el("div", { class: "qhead" }, [
     el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
     el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
-    meta.length ? el("span", { class: "meta" }, meta.flatMap((part, i) => i ? [" · ", part] : [part])) : null,
+    org ? el(page ? "a" : "span", { class: "meta org-chip", title: role ? plainLine(role) : "", ...(page ? { href: href(page) } : {}) }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.trim()[0]?.toUpperCase() || "" }), org]) : null,
+    el("span", { class: "qhead-acts" }, [done, skip]),
     el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t) })]);
 }
 // On a 中文 reader the card speaks his language where REM already wrote it: the draft's gist.
@@ -6331,14 +6745,18 @@ function cardItem(entry, many, seen = new Set(), more = null) {
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
   if (own) seen.add(draft.id);
-  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + " · E", "aria-label": t("Mark done"), html: CHECK_ICON });
+  // E closes the whole card, so a row that is one of several does not claim the key.
+  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
   done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
-  return el("li", { class: "qitem" }, [
+  // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
+  const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
+  item.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .talk")) item.classList.toggle("show"); };
+  return item;
 }
 function cardDraft(draft, group) {
   const n = group.entries.length;
@@ -6346,10 +6764,8 @@ function cardDraft(draft, group) {
     // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
     if (!held && n > 1) setDone(group.entries[0], true, "done", group.entries);
     todaySent = { name: threadWho(group.r), ...(held || {}) };
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches, selector = '[data-path="' + CSS.escape(group.r.path) + '"]';
-    document.querySelector(".qcard" + selector)?.classList.add("leaving");
-    document.querySelector(".fuse .lane" + selector)?.classList.add("done");
-    setTimeout(render, still ? 0 : 320);
+    document.querySelector('.qcard[data-path="' + CSS.escape(group.r.path) + '"]')?.classList.add("leaving");
+    setTimeout(render, motionStilled() ? 0 : 320);
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
     replyDraftCard(draft, sent)]);
@@ -6568,20 +6984,21 @@ function talkPanel(begin) {
 }
 // The first card is open and carries the page's one green action; the others
 // show who and what, and reveal their action on hover, focus or tap.
-function personCard(group, focal) {
-  const { r, entries } = group, next = groupStep(entries), late = overdueDays(entries[0].t);
+function personCard(group, focal, total = 1) {
+  const { r, entries } = group, next = groupStep(entries), late = groupLate(group);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
-  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More") }) : null;
+  const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More of this card") }) : null;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
+    cardHead(group, late, total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
   if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
-  // The talk menu and an open conversation are the card's own controls: using them never folds it.
-  card.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
+  // The talk menu and an open conversation are the card's own controls: using them never folds it. Nor does a
+  // click in the raised card, and which card that is changes with every deal, so it is read at the click.
+  card.onclick = event => { if (!card.classList.contains("focal") && !event.target.closest("a, button, textarea, input, select, summary, .mailcard, .talk")) card.classList.toggle("open"); };
   return card;
 }
 function openDraft(card) {
@@ -6667,18 +7084,19 @@ function recallPrompt() {
   if (!r) return null;
   const relationship = section(r, "our relationship");
   const answerText = summaryLine(relationship?.text || known(r).summary);
-  const card = el("section", { class: "recall", "aria-label": t("Recall a memory") });
+  const card = el("section", { class: "recall widget", "aria-label": t("Recall a memory") });
   const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
     el("p", { text: answerText }), el("a", { href: href(r), text: t("Open {name} and its sources →", { name: r.title }) })]);
-  const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: t("Reveal the context") });
+  // Pause before revealing: the answer comes from a page co rem already wrote. The flip is the only control.
+  const button = el("button", { class: "recall-toggle ibtn", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false",
+    "aria-label": t("Reveal the context"), title: t("Reveal the context") }, [icon("flip")]);
   button.onclick = () => {
     answer.hidden = !answer.hidden;
     button.setAttribute("aria-expanded", String(!answer.hidden));
-    button.textContent = t(answer.hidden ? "Reveal the context" : "Hide the context");
+    button.setAttribute("aria-label", t(answer.hidden ? "Reveal the context" : "Hide the context"));
   };
-  card.append(el("span", { class: "label", text: t("Worth remembering") }),
-    el("h2", { text: t(relationship ? "How do you know {name}?" : "What should you remember about {name}?", { name: r.title }) }),
-    el("p", { class: "why", text: t("Pause before revealing. The answer comes from a page co rem already wrote.") }), button, answer);
+  card.append(el("div", { class: "rc" }, [r.category === "people" ? face(r.title, "l") : el("span", { class: "org-mark l", "aria-hidden": "true", text: r.title.trim()[0]?.toUpperCase() || "" }),
+    el("h2", { text: t(relationship ? "How do you know {name}?" : "What should you remember about {name}?", { name: r.title }) }), button]), answer);
   return card;
 }
 function connectionReview() {
@@ -6692,12 +7110,6 @@ function connectionReview() {
       ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
       el("a", { href: "#reviews=1", text: t("Review the evidence →") })])]);
 }
-function waitingMore(counts) {
-  if (!counts.mine && !counts.theirs) return el("p", { class: "quiet-line", text: t("Nothing is open between you and anyone right now.") });
-  // Only nonzero counts: "0 waiting on you" reads as a task. Your own total is the sidebar's 等你处理
-  // number, so the first screen does not say it again (TOP10 #9); the link still leads to the list.
-  return el("p", { class: "waiting-more" }, [el("a", { href: "#view=open", text: (counts.theirs ? t("{n} on others", { n: counts.theirs }) : t("Everything open")) + " →" })]);
-}
 function todayEntries(entries, section = "today") {
   // Python's snapshot is the ranking authority for both the reader and the night.
   return (REM.today_queue || []).filter(row => row.section === section).map(row =>
@@ -6706,41 +7118,11 @@ function todayEntries(entries, section = "today") {
     .filter((entry, i, rows) => entry && !isDone(entry) && rows.indexOf(entry) === i);
 }
 
-function todayCards(groups, lead = null) {
+function todayCards(groups) {
   const sent = sentNote();
-  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [
-    lead ? el("p", { class: "lead-why", text: t("Reply to {name} first: the reply is ready", { name: threadWho(lead.r) }) }) : null, groups.length || sent
-    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0))])
+  return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length || sent
+    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0, groups.length))])
     : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
-}
-// The fuse: one lane per person waiting. Ink runs from their oldest dated message to the due
-// date, red from the due date to today, so red is exactly the days overdue. No due date, no red,
-// and the label says so; no dated message, no ink. The lanes are the headline's people, in order.
-function fuseLanes(groups, current) {
-  if (!groups.length) return null;
-  const rows = groups.map(group => {
-    const items = group.entries.map(entry => entry.t);
-    const late = Math.max(0, ...items.map(overdueDays));
-    const age = Math.max(late, ...items.map(item => item.since ? daysSince(item.since) || 0 : 0));
-    return { group, late, age, due: items.map(item => item.due).filter(Boolean).sort()[0] };
-  });
-  const span = Math.max(7, ...rows.map(row => row.age)), at = days => (days / span * 100).toFixed(2) + "%";
-  const lane = ({ group, late, age, due }, i) => el("li", { class: "lane" + (group.r.path === current ? " current" : "") + (i > 2 && group.r.path !== current ? " extra" : "") + (i > 4 && group.r.path !== current ? " extra-wide" : ""), "data-path": group.r.path }, [
-    el("a", { class: "who", href: href(group.r), text: threadWho(group.r) }),
-    el("span", { class: "track", "aria-hidden": "true" }, [
-      age > late ? el("i", { class: "seg wait", style: "right: " + at(late) + "; width: " + at(age - late) }) : null,
-      late ? el("i", { class: "seg burn", style: "width: " + at(late) }) : null, el("i", { class: "now" })]),
-    el("span", { class: "late" + (late ? "" : " ok"), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late })
-      : due ? t("due ") + threadDate(due) : t("No due date") })]);
-  // The most urgent lanes (five on a desk, three on a phone, always the open card's), then how many more wait.
-  const more = after => rows.filter((row, i) => i > after && row.group.r.path !== current).length;
-  const moreLine = (n, cls) => n ? el("p", { class: "lanes-more " + cls, text: t(n === 1 ? "1 more person" : "{n} more people", { n }) }) : null;
-  return el("section", { class: "fuse", "aria-label": t("Who is waiting, and how late") }, [el("ol", {}, rows.map(lane)),
-    moreLine(more(4), "wide"), moreLine(more(2), "narrow"),
-    el("div", { class: "axis", "aria-hidden": "true" }, [el("span"), el("span", { class: "scale" }, [
-      el("span", { class: "l", text: t("{n} days ago", { n: span }) }), el("span", { class: "m", text: t("{n} days ago", { n: Math.round(span / 2) }) }),
-      el("span", { class: "r", text: t("Today") })]), el("span")]),
-    el("p", { class: "sketch", text: t("Red = days past the due date · ink starts at the oldest dated message") })]);
 }
 async function approvalRequest(payload) {
   const response = await fetch("/rem/approve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
@@ -6761,13 +7143,17 @@ function approvalProblems() {
 function approvalHeader() {
   const items = REM.approval_outcomes || [];
   if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
-  const button = el("button", {id: "approve-all", class: "btn-act", type: "button", text: t(items.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: items.length})});
-  // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). The button stays
-  // in the page, hidden, so an Undo that brings items back can show it again.
+  const button = el("button", {id: "approve-all", class: "pair-cell", type: "button"}, approveAllWords(items.length));
+  // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). An Undo that brings
+  // items back draws the widget again, button and all.
   button.disabled = !REM.live || !items.length;
   button.hidden = !items.length;
   button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
   return el("div", {class: "approval-header"}, [button, approvalProblems()]);
+}
+// 一键批准 as a widget cell: the count large, its words under it.
+function approveAllWords(n) {
+  return [el("b", { class: "big", text: String(n) }), el("span", { text: t(n === 1 ? "item to approve in one go" : "items to approve in one go") })];
 }
 function approvalStatus(value) {
   return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
@@ -6886,8 +7272,7 @@ function approvalUndoBar() {
       if (item.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === item.draft_id ? {...d, status: "prepared"} : d);
     }
     undoFailure = reply.results.filter(value => value.status === "error").map(approvalStatus).join(" · ");
-    const cta = document.getElementById("approve-all");
-    if (cta) {cta.textContent = t(REM.approval_outcomes.length === 1 ? "1 item to approve in one go" : "{n} items to approve in one go", {n: REM.approval_outcomes.length}); cta.disabled = !REM.live || !REM.approval_outcomes.length; cta.hidden = !REM.approval_outcomes.length;}
+    document.getElementById("today-others")?.replaceWith(othersWidget(threadCounts()));
     held = held.filter(item => !reply.results.some(value => value.id === item.id && value.status === "cancelled"));
     undo.disabled = !held.length;
     if (!held.length) clearInterval(approvalTimer);
@@ -6896,26 +7281,6 @@ function approvalUndoBar() {
   tick(); approvalTimer = setInterval(tick, 1000);
 }
 
-// The page's one statement is a fact with a number: how many people wait on you.
-// The lede names the most overdue of them; red marks only the days late.
-function briefHeader(counts, groups, approval = null) {
-  const day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z");
-  const locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
-  const weekday = date.toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
-  const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
-  const n = groups.length;
-  const sentence = n ? t(n === 1 ? "1 person is waiting on you." : "{n} people are waiting on you.", { n }) : t("Nobody is waiting on you today.");
-  // The poster: the count at the display size, its words beside it at the head size.
-  const at = n ? sentence.indexOf(String(n)) : -1;
-  const h1 = at < 0 ? el("h1", { text: sentence }) : el("h1", { class: "poster" }, [sentence.slice(0, at).trim() || null,
-    el("span", { class: "count", text: String(n) }), " ", el("span", { class: "words", text: sentence.slice(at + String(n).length).trim() })]);
-  const header = el("header", { class: "brief-header" }, [el("div", { class: "kicker" }, [el("div", { class: "eyebrow", text:
-    uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar }), waitingMore(counts), approval]),
-    h1, urgentLede(groups, day)]);
-  const failure = REM.status?.schedule_failure;
-  if (failure) header.prepend(el("p", { class: "schedule-failure", role: "status", title: failure.evidence || "", text: turnTrouble(failure) }));
-  return header;
-}
 // The receipt's reason is the runner's own English (codex_exec.py). Known ones are said in the reader's
 // language; anything else gets a plain sentence for its kind, never the raw string (D-71). The raw
 // reason stays on the line's title for whoever debugs it.
@@ -6925,15 +7290,6 @@ function turnTrouble(failure) {
   if (/^MAINTENANCE_BUSY\b/.test(evidence)) return t("Another job was holding the notebook, so the last round did not run; the next round tries again.");
   return t(failure.code === "blocked" ? "The last scheduled round could not finish and is waiting for its blocker to clear."
     : "The last two scheduled rounds did not finish; REM retries them automatically.");
-}
-function urgentLede(groups, day) {
-  const late = groups.flatMap(group => group.entries.filter(entry => entry.t.due && entry.t.due < day).map(entry => ({ r: group.r, due: entry.t.due })))
-    .sort((a, b) => a.due.localeCompare(b.due))[0];
-  // Nothing overdue: Python's first is still the most urgent, named without inventing a lateness.
-  if (!late) return groups.length ? el("p", { class: "lede", text: t("First in line: {name}.", { name: threadWho(groups[0].r) }) }) : null;
-  const days = Math.round((new Date(day + "T00:00:00Z") - new Date(late.due + "T00:00:00Z")) / 86400000);
-  return el("p", { class: "lede" }, [t("Most urgent: {name}, ", { name: threadWho(late.r) }),
-    el("b", { class: "late", text: t(days === 1 ? "1 day overdue" : "{n} days overdue", { n: days }) }), uiLanguage === "zh" ? "。" : "."]);
 }
 // Last night's numbers live with the processing details, not on the first screen.
 function passSummary() {
@@ -6968,45 +7324,251 @@ function translationNotice() {
   return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") });
 }
 
+// ---------- Today as a card desk (N3, D-123) ----------
+// The night chart and the faces of who waits on top; one raised card (the deck) with the page's one green
+// action; at its side what others owe, a memory to recall, and what REM did overnight. Everything else of
+// the old front page is one fold below.
+let todayLead = null;
+function deckOrder(groups) {
+  const lead = groups.findIndex(group => group.r.path === todayLead);
+  const ready = groups.findIndex(group => groupStep(group.entries).step === "send");
+  const first = lead >= 0 ? lead : Math.max(0, ready);
+  return [...groups.slice(first), ...groups.slice(0, first)];
+}
+// Deal another card: the faces, J/K and Skip only change which card is raised; nothing is written and nothing
+// is drawn again. Every card is already in the page, so what was typed in any of them stays where it was.
+function dealCard(path) {
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
+  const next = cards.find(card => card.dataset.path === path);
+  if (!next) return;
+  todayLead = path;
+  for (const card of cards) raiseCard(card, card === next);
+  for (const face of document.querySelectorAll("#main .deal")) {
+    face.classList.toggle("on", face.dataset.path === path);
+    face.setAttribute("aria-pressed", String(face.dataset.path === path));
+  }
+  const chart = document.querySelector("#main .night-card .hyp-wrap"), redrawn = chart && nightChart(path);
+  if (redrawn) chart.replaceWith(redrawn.svg);
+  next.focus({ preventScroll: true });
+}
+// The raised card is open and carries the page's one green action; a card behind its face carries none.
+function raiseCard(card, raised) {
+  card.classList.toggle("focal", raised);
+  card.classList.toggle("open", raised);
+  for (const button of card.querySelectorAll(":scope > .card-acts :is(.btn-act, .btn-line)")) {
+    button.classList.toggle("btn-act", raised);
+    button.classList.toggle("btn-line", !raised);
+  }
+}
+// The next card is the next one in the page: the notebook may already hold someone the page has not drawn yet.
+function dealNext(step) {
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
+  if (cards.length < 2) return;
+  const at = cards.findIndex(card => card.classList.contains("focal"));
+  dealCard(cards[(at + step + cards.length) % cards.length].dataset.path);
+}
 function overview() {
-  const main = document.getElementById("main");
+  const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
   main.textContent = "";
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
-  const header = briefHeader(counts, groups, approvalHeader());
   approvalUndoBar();
-  // Who needs you on the left; on a wide screen, what REM did for you sits beside it, front-page style.
-  // Narrow, one column in one order: who needs you, what REM did, what changed, what is worth remembering.
-  // The count ticks down when a send took someone off it.
-  if (groups.length < shownCount) header.querySelector(".count")?.classList.add("ticked");
+  const cards = deckOrder(groups);
+  const ticked = groups.length < shownCount;
   shownCount = groups.length;
-  // The lanes keep Python's urgency order. The cards lead with the first reply REM has ready, so its
-  // Send is on the first screen; everyone else keeps their place, and that person's lane is the bold one.
-  const ready = groups.findIndex(group => groupStep(group.entries).step === "send"), cards = [...groups];
-  if (ready > 0) cards.unshift(...cards.splice(ready, 1));
-  const primary = el("div", { class: "morning-primary" }, [header, snapshotLine(), firstMapBrief(), fuseLanes(groups, cards[0]?.r.path), todayCards(cards, ready > 0 ? cards[0] : null)]);
-  const aside = el("div", { class: "morning-aside" }, [nightDone(), morningBrief(), recallPrompt(), connectionReview()].filter(Boolean));
-  main.appendChild(el("div", { class: "morning-layout" }, [primary, aside, quietThreads(entries, counts.quiet, true)]));
-
-  // This week: what the nightly passes rewrote, newest first, each with its one line.
-  const week = weekChanges();
-  if (week.length) {
-    main.appendChild(el("details", { id: "week-pages", class: "week-details" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
-      el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
-        el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
-        el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
-          known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]));
+  main.append(...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
+    todayFolds(entries, counts)].filter(Boolean));
+  if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
+}
+function scheduleFailure() {
+  const failure = REM.status?.schedule_failure;
+  return failure ? el("p", { class: "schedule-failure", role: "status", title: failure.evidence || "", text: turnTrouble(failure) }) : null;
+}
+// The top bar names the day; on a phone the crumb is the page's title.
+function todayCrumb() {
+  const day = calendarDay(REM.as_of), date = new Date(day + "T00:00:00Z"), locale = uiLanguage === "zh" ? "zh-CN" : "en-GB";
+  const weekday = date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" });
+  const calendar = date.toLocaleDateString(locale, { day: "numeric", month: "long", timeZone: "UTC" });
+  return uiLanguage === "zh" ? calendar + " " + weekday : weekday + ", " + calendar;
+}
+// A face is a circle with initials; an overdue one wears a fuse ring burnt by overdue days / 14.
+const RING = 314.16;
+function fusedFace(r, late, size = "l") {
+  const node = face(threadWho(r), size);
+  const burn = Math.min(1, late / 14);
+  node.append(el("span", { class: "ring-host", "aria-hidden": "true", html: '<svg class="ring" viewBox="-4 -4 108 108"><circle class="track" cx="50" cy="50" r="50"/>'
+    + (burn ? '<circle class="burn" cx="50" cy="50" r="50" stroke-dasharray="' + (burn * RING).toFixed(1) + ' ' + RING + '"/>' : "") + "</svg>" }));
+  return node;
+}
+function groupLate(group) { return Math.max(0, ...group.entries.map(entry => overdueDays(entry.t))); }
+function faceStrip(groups, current) {
+  return el("div", { class: "frow", role: "group", "aria-label": t("Who is waiting, and how late") }, groups.map(group => {
+    const late = groupLate(group), name = threadWho(group.r);
+    const button = el("button", { type: "button", class: "deal" + (group.r.path === current ? " on" : ""), "data-path": group.r.path,
+      "aria-pressed": String(group.r.path === current), "aria-label": name + " · " + (late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(group.entries[0].t)) }, [
+      fusedFace(group.r, late), el("span", { class: "dd" + (late ? " late" : ""), text: late ? t("{n} d", { n: late }) : threadAge(group.entries[0].t) })]);
+    button.onclick = () => dealCard(group.r.path);
+    return button;
+  }));
+}
+// On a phone the chart folds under its title; the title opens it.
+function chartToggle() {
+  const button = el("button", { type: "button", class: "chart-toggle", "aria-expanded": "false" }, [t("Night chart"), icon("down")]);
+  button.onclick = () => button.setAttribute("aria-expanded", String(button.closest(".night-card").classList.toggle("chart-open")));
+  return button;
+}
+function nightCard(groups, current, ticked) {
+  const n = groups.length;
+  const count = el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(n) }),
+    el("span", { text: n ? t(n === 1 ? "person waiting on you" : "people waiting on you") : t("Nobody is waiting on you today.") })]);
+  const chart = nightChart(current);
+  return el("section", { class: "night-card card", "aria-label": t("Night chart") }, [
+    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), chartToggle(), el("span", { class: "legend", text: chart.legend })]) : null,
+    el("div", { class: "nb" + (chart ? "" : " solo") }, [chart?.svg, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+}
+// The night chart: a hypnogram of REM's real work, read from the run logs (reading mail sits at the first
+// depth, rewriting and translating pages at the deepest) and from when each reply or task was prepared (the
+// rises, with the person's face). Only what the snapshot records is drawn: a stretch without a log is a flat
+// line, never an invented stage. Three nights at most; a phone shows the last thirty hours.
+const NIGHT_X = 8, LEVEL = { idle: 20, rise: 44, read: 66, deep: 92 };
+const RUN_KIND = { sync: ["read", "Read mail and sessions"], "daily-update": ["deep", "Rewrote pages"], "daily-translation": ["deep", "Translated pages"] };
+function nightRises() {
+  const seen = new Set(), rises = [];
+  for (const o of REM.night_outcomes || []) {
+    const r = byPath(o.record);
+    if (!["prepared", "task"].includes(o.kind) || !o.prepared_at || !r || r.private || r.path === REM.owner || seen.has(o.key)) continue;
+    seen.add(o.key);
+    rises.push({ at: Date.parse(o.prepared_at), r, kind: o.kind });
   }
-  // Under the pages it is about, not floating between unrelated sections.
-  const translations = translationNotice();
-  if (translations) main.appendChild(translations);
-
-  const processing = el("details", { id: "processing", class: "night-details" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
+  return rises;
+}
+function nightRuns() {
+  return (REM.logs || REM.brief_logs || []).filter(run => run.started_at).map(run => {
+    const from = Date.parse(run.started_at), [level, what] = RUN_KIND[run.phase] || ["read", run.phase || "sync"];
+    return { from, to: Math.max(from + 4 * 60000, Date.parse(run.finished_at || "") || 0), level, what, items: run.items || 0 };
+  });
+}
+// From the earliest night that has a record (at most three, thirty hours on a phone) to now. Times later than
+// the snapshot's as_of (a clock ahead of it) still leave an hour to draw, never an empty or reversed axis.
+function nightWindow(times, narrow) {
+  const end = Date.parse(REM.as_of || new Date().toISOString());
+  const early = new Date(Math.min(...times)); early.setHours(0, 0, 0, 0);
+  const start = Math.max(end - (narrow ? 30 * 3600000 : 3 * DAY_MS), early.getTime());
+  return { start: Math.min(start, end - 3600000), end };
+}
+// A phone draws a narrower chart, so its labels keep their size.
+function nightChart(current, narrow = window.innerWidth <= 640) {
+  const width = narrow ? 360 : 760;
+  const runs = nightRuns(), rises = nightRises();
+  const times = [...runs.map(run => run.from), ...rises.map(rise => rise.at)];
+  if (!times.length) return null;
+  const { start, end } = nightWindow(times, narrow), x = at => NIGHT_X + (Math.min(end, Math.max(start, at)) - start) / (end - start) * width;
+  const shown = runs.filter(run => run.to >= start && run.from <= end).sort((a, b) => a.from - b.from);
+  const marks = rises.filter(rise => rise.at >= start && rise.at <= end).sort((a, b) => a.at - b.at);
+  const when = at => new Date(at).toLocaleString(uiLocale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const runTitles = shown.map(run => '<rect class="hit" x="' + x(run.from).toFixed(1) + '" y="12" width="' + Math.max(3, x(run.to) - x(run.from)).toFixed(1) + '" height="88"><title>'
+    + esc(when(run.from) + " · " + t(run.what) + (run.items ? " · " + t("{n} read", { n: run.items }) : "")) + "</title></rect>");
+  const path = nightPath([...shown.map(run => ({ a: x(run.from), b: x(run.to), y: LEVEL[run.level] })), ...marks.map(rise => ({ a: x(rise.at) - 3, b: x(rise.at) + 3, y: LEVEL.rise }))], width);
+  const svg = el("div", { class: "hyp-wrap" });
+  svg.innerHTML = '<svg class="hyp" viewBox="0 0 ' + (NIGHT_X * 2 + width) + ' 128" role="img" aria-label="' + esc(nightSummary(shown, marks)) + '">'
+    + '<g class="lv">' + [LEVEL.rise, LEVEL.read, LEVEL.deep].map(y => '<line x1="0" x2="' + (NIGHT_X * 2 + width) + '" y1="' + y + '" y2="' + y + '"/>').join("") + "</g>"
+    + '<path class="line" d="' + path + '"/>' + runTitles.join("")
+    + marks.map(rise => '<line class="rise" x1="' + (x(rise.at) - 3).toFixed(1) + '" x2="' + (x(rise.at) + 3).toFixed(1) + '" y1="44" y2="44"><title>'
+      + esc(when(rise.at) + " · " + t(rise.kind === "task" ? "Prepared a task for {name}" : "Drafted a reply to {name}", { name: threadWho(rise.r) })) + "</title></line>").join("")
+    + nightFaces(marks, x, current, width) + nightDays(start, end, x) + '<circle class="now" cx="' + x(end).toFixed(1) + '" cy="' + LEVEL.idle + '" r="4"/></svg>';
+  return { svg, legend: t("Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages") };
+}
+// One stepped line: runs closer than a few pixels are one stretch at the deepest of their depths.
+function nightPath(spans, width) {
+  const merged = [];
+  for (const span of spans.sort((p, q) => p.a - q.a)) {
+    const last = merged.at(-1);
+    if (last && span.a - last.b < 6) { last.b = Math.max(last.b, span.b); last.y = Math.max(last.y, span.y); }
+    else merged.push({ ...span, b: Math.max(span.b, span.a + 3) });
+  }
+  return "M0 " + LEVEL.idle + merged.map(span => " H" + span.a.toFixed(1) + " V" + span.y + " H" + span.b.toFixed(1) + " V" + LEVEL.idle).join("") + " H" + (NIGHT_X * 2 + width);
+}
+// Faces on the rises, never overlapping: rises closer than a face are one face and a "+N".
+function nightFaces(marks, x, current, width) {
+  const clusters = [];
+  for (const rise of marks) {
+    const last = clusters.at(-1);
+    if (last && x(rise.at) - last.x < 30) { if (!last.people.includes(rise.r)) last.people.push(rise.r); }
+    else clusters.push({ x: Math.min(width - 6, Math.max(14, x(rise.at))), people: [rise.r] });
+  }
+  return clusters.map(({ x: cx, people }) => {
+    const lead = people.find(r => r.path === current) || people[0];
+    const initials = face(threadWho(lead)).textContent;
+    return '<line class="stem" x1="' + cx.toFixed(1) + '" x2="' + cx.toFixed(1) + '" y1="33" y2="41"/><g class="fc' + (lead.path === current ? " sel" : "") + '" transform="translate(' + cx.toFixed(1) + ' 20)">'
+      + '<circle r="12.5"/><text>' + esc(initials) + "</text>" + (people.length > 1 ? '<text class="plus" x="15" y="-10">+' + (people.length - 1) + "</text>" : "")
+      + "<title>" + esc(people.map(threadWho).join(uiLanguage === "zh" ? "、" : ", ")) + "</title></g>";
+  }).join("");
+}
+function nightDays(start, end, x) {
+  const labels = [], day = new Date(start);
+  day.setHours(0, 0, 0, 0);
+  for (let at = day.getTime(); at < end; at += DAY_MS) {
+    const a = Math.max(start, at), b = Math.min(end, at + DAY_MS);
+    if (b - a < 4 * 3600000) continue;
+    labels.push('<text x="' + ((x(a) + x(b)) / 2).toFixed(1) + '" y="122">' + esc(new Date(at + 12 * 3600000).toLocaleDateString(uiLocale(), { weekday: "short" })) + "</text>");
+  }
+  return '<g class="days">' + labels.join("") + "</g>";
+}
+function nightSummary(runs, marks) {
+  return t("REM's work: {runs} runs, {n} replies and tasks prepared", { runs: runs.length, n: marks.length });
+}
+// The side column: what others owe and what can be approved at once, a memory to recall, what REM did overnight.
+function todaySide(counts) {
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), recallPrompt(), nightLine()].filter(Boolean));
+}
+// What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
+// sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
+// Either shape carries the same id: an Undo that brings approvals back draws it again in place.
+function othersWidget(counts) {
+  const outcomes = (REM.approval_outcomes || []).length, problems = approvalProblems();
+  if (!counts.theirs && !counts.mine && !outcomes && !problems)
+    return el("p", { id: "today-others", class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
+  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
+    : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
+  const title = counts.theirs ? "Waiting on others" : counts.mine ? "Open threads" : "Approval status";
+  return el("section", { id: "today-others", class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]),
+    el("div", { class: "pair" }, [cell, outcomes || REM.live ? approvalHeader() : problems])]);
+}
+// What REM did overnight, as one quiet line; 看 opens the list with every name.
+function nightLine() {
+  const done = nightDone();
+  if (!done) return null;
+  const n = [...new Set((REM.night_outcomes || []).filter(o => o.kind !== "could_not_prepare" && byPath(o.record) && !byPath(o.record).private).map(o => o.key))].length
+    + new Set((REM.sent_by_rem || []).map(row => row.title).filter(Boolean)).size;
+  const look = el("button", { type: "button", class: "link-btn", text: t("See") });
+  look.onclick = () => openNightSheet(done);
+  return el("div", { class: "closed" }, [icon("check"), el("span", { text: n ? t(n === 1 ? "REM handled 1 thing overnight" : "REM handled {n} things overnight", { n }) : t("What REM did overnight") }), look]);
+}
+function openNightSheet(done) {
+  const close = el("button", { type: "button", class: "ibtn", "aria-label": t("Close") }, [icon("x")]);
+  const dialog = el("dialog", { id: "night-sheet", class: "n3-sheet", "aria-labelledby": "night-title" }, [
+    el("div", { class: "sheet-head" }, [el("h2", { id: "night-title", text: t("What REM did overnight") }), close]), done]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+}
+// Below the desk, folded: what changed overnight, a connection to judge, quiet threads, this week's pages,
+// how the last pass ran and maintenance. All of it was on the old front page; none of it is gone.
+function todayFolds(entries, counts) {
+  const week = weekChanges();
+  const weekPages = week.length ? el("details", { id: "week-pages", class: "week-details fold" }, [el("summary", { text: t(firstBuild() ? "Pages written in the first build ({n})" : "Pages rewritten this week ({n})", { n: week.length }) }),
+    el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
+      el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
+      el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r), el("span", { class: "meta", text: singular(r.category) }),
+        known(r).summary ? el("span", { class: "s", text: summaryLine(known(r).summary) }) : null])])))]) : null;
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
-  if (recent.length && !week.length) main.appendChild(el("details", { class: "week-details recent-details" }, [
-    el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]));
-  main.appendChild(processing);
-  main.appendChild(maintenance(REM.status || {}));
+  const recentFold = recent.length && !week.length ? el("details", { class: "week-details recent-details fold" }, [
+    el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]) : null;
+  const processing = el("details", { id: "processing", class: "night-details fold" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
+  return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, counts.quiet, true), weekPages, translationNotice(), recentFold, processing,
+    maintenance(REM.status || {})].filter(Boolean));
 }
 
 function maintenance(s) {
@@ -7205,16 +7767,6 @@ function replyDuration(seconds) {
   return seconds < 3600 ? t("{n} min", { n: Math.max(1, Math.round(seconds / 60)) })
     : seconds < 48 * 3600 ? t("{n} hours", { n: Math.round(seconds / 3600) }) : t("{n} days", { n: Math.round(seconds / 86400) });
 }
-function personStats(r) {
-  const f = facts(r), rel = r.index?.relationship;
-  const year = rel?.last_mail ? rel.weekly_messages.reduce((a, b) => a + b, 0) : null;
-  const last = rel?.last_from_you === true ? t("you wrote last") : rel?.last_from_you === false ? t("{name} wrote last", { name: firstName(r) }) : t("Last contact");
-  const cells = [year ? [String(year), t("mails this year")] : f.mails ? [String(f.mails), t("mails exchanged")] : null,
-    f.first ? [fmtDate(f.first), t("first exchange")] : null,
-    rel?.reply_seconds_owner != null ? [replyDuration(rel.reply_seconds_owner), t("your median reply")] : null,
-    f.last ? [fmtDate(f.last), last] : null].filter(Boolean);
-  return cells.length ? el("div", { class: "r4-stats" }, cells.map(([value, label]) => el("div", {}, [el("b", { text: value }), label]))) : null;
-}
 function personOrg(r) {
   const company = String(facts(r).company || "");
   // The page's own words name the organisation (they follow the reading language); the link finds its page.
@@ -7241,14 +7793,6 @@ function roleLede(items, full, from) {
   const title = first.value + (kept.length ? " (" + kept.join("; ") + ")" : "");
   return el("span", { title: plainLine(full) }, [el("span", { html: inline(title, from) }),
     items.length > 1 ? el("span", { class: "role-more", text: " +" + (items.length - 1) }) : null]);
-}
-function personSub(r) {
-  const role = String(facts(r).role || ""), items = (parseFacts(r).get("Role") || []).filter(item => knownValue(item.value));
-  const org = personOrg(r), project = personProject(r);
-  const parts = [knownValue(role) && items.length ? changedValue(el("span", {}, [roleLede(items, role, r.path)]), r, "Role") : null,
-    project ? el("a", { class: "soft", href: href(project), text: project.title }) : null,
-    org ? changedValue(org.org ? el("a", { href: href(org.org), text: org.name }) : el("span", { text: org.name }), r, "Company") : null].filter(Boolean);
-  return parts.length ? privateFallback(el("div", { class: "r4-sub" }, parts.flatMap((part, i) => i ? [" · ", part] : [part]))) : null;
 }
 // A display name says which script it is in, so the browser hyphenates Latin names at its own syllables
 // and wraps CJK names between characters.
@@ -7284,13 +7828,100 @@ function fitNames() {
     if (overflows) node.textContent = name.split(/(\s+)/).map(softSyllables).join("");
   }
 }
-// Who: the name is the page's one big mark. The fuse and its numbers open the column under it.
+// Who: the name is the page's one display element, in a hero card with their face (a fuse ring when what you
+// owe them is overdue), what they are and where, how to reach them (on hover), and the one quiet link to Today.
 function personHead(r) {
-  const org = personOrg(r);
-  return el("header", { class: "r4-head person-head" }, [
-    el("div", { class: "r4-over" }, [el("div", { class: "r4-crumb" }, [el("a", { href: "#c=people", text: t("People") }), org ? el("span", { text: " · " + org.name }) : null, updatedMarker(r, true),
-      translationMark(r)]), personTodayLink(r)]),
-    el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]);
+  // The same fuse as their face on Today: the days overdue on their card there.
+  const group = todayGroups(threadEntries().filter(entry => !isDone(entry))).find(group => group.r.path === r.path);
+  const late = group ? groupLate(group) : 0;
+  return el("header", { class: "r4-head person-head hero" }, [fusedFace(r, late, "xl"),
+    el("div", { class: "hero-who" }, [
+      el("div", { class: "hero-marks" }, [updatedMarker(r, true), translationMark(r)]),
+      el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
+    el("div", { class: "hero-acts" }, [...personContacts(r), personTodayLink(r, late)])]);
+}
+// Role, organisation (→ its page), project and place as chips; where the value came from stays in its title.
+function personSub(r) {
+  const role = String(facts(r).role || ""), items = (parseFacts(r).get("Role") || []).filter(item => knownValue(item.value));
+  const org = personOrg(r), project = personProject(r), place = facts(r).location, language = facts(r).language;
+  const domain = org?.org ? plainLine(String(facts(org.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") : "";
+  const units = (r.units || []).map(edge => ({ edge, unit: byPath(edge.path) })).filter(({ unit }) => unit && !orgHidden(unit));
+  const parts = [knownValue(role) && items.length ? changedValue(el("span", { class: "chip" }, [roleLede(items, role, r.path)]), r, "Role") : null,
+    org ? changedValue(org.org ? el("a", { class: "chip ghost", href: href(org.org), title: [org.full, knownValue(domain) ? domain : ""].filter(Boolean).join(" · ") }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() }), org.name])
+      : el("span", { class: "chip ghost" }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() }), org.name]), r, "Company") : null,
+    ...units.map(({ edge, unit }) => el("a", { class: "chip ghost", href: href(unit), text: unit.title + (edge.role ? " · " + unlabelled(edge.role) : "") })),
+    project ? el("a", { class: "chip ghost soft", href: href(project) }, [icon("project"), project.title]) : null,
+    knownValue(place) ? el("span", { class: "chip ghost", title: knownValue(language) ? plainLine(language) : "" }, [icon("pin"), plainLine(place).split(/[;(]/)[0].trim()]) : null,
+    !knownValue(place) && knownValue(language) ? el("span", { class: "chip ghost", title: t("Language") }, [icon("globe"), plainLine(language)]) : null].filter(Boolean);
+  return parts.length ? privateFallback(el("div", { class: "r4-sub tags" }, parts)) : null;
+}
+// Email, phone and a handle as round buttons: the value shows on hover, a click copies it.
+function personContacts(r) {
+  const parsed = parseFacts(r), mails = String(facts(r).email || "").match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || [];
+  const values = label => (parsed.get(label) || []).filter(item => knownValue(item.value));
+  const phone = values("Phone")[0], handle = values("Handles").find(item => !item.value.includes("@"));
+  return [mails.length ? copyRound("mail", t("Email"), mails[0], mails.slice(0, 3).join(" · ") + (mails.length > 3 ? " · " + t("+{n} more", { n: mails.length - 3 }) : "")) : null,
+    phone ? copyRound("phone", t("Phone"), plainLine(phone.value)) : null,
+    handle ? copyRound(/linkedin/i.test(handle.qualifier || handle.value) ? "linkedin" : "chat", t("Handle"), plainLine(handle.value)) : null].filter(Boolean);
+}
+function copyRound(iconName, label, value, tip = value) {
+  const words = el("span", { class: "tip", text: tip });
+  const button = el("button", { type: "button", class: "round", "aria-label": label + " · " + value }, [icon(iconName), words]);
+  button.onclick = () => {
+    words.textContent = t("Copied") + " · " + value;
+    navigator.clipboard?.writeText(value).catch(() => { words.textContent = t("Copy failed"); });
+  };
+  button.onmouseleave = () => { words.textContent = tip; };
+  return hasPrivacy(value) ? el("span", { class: "private" }, [button]) : button;
+}
+// A person's page is their record; what you owe them is done from Today (owner, 2026-11-08, D-30).
+// One quiet link there, red only when it is overdue, and it raises their card.
+function personTodayLink(r, late = 0) {
+  const n = waitingOn(r).length;
+  if (!n) return null;
+  const link = el("a", { class: "r4-today" + (late ? " late" : ""), href: "#", text: late ? t("In Today · {n} days overdue", { n: late })
+    : t(n === 1 ? "1 item in Today" : "{n} items in Today", { n }) });
+  link.onclick = () => { todayLead = r.path; };
+  return link;
+}
+// The contact rhythm: one cell per day for the last half year (or since you first spoke), dark where the
+// record dates an exchange. Beside it the counts that say how close you are.
+function personFuse(r) {
+  const d = personFuseData(r);
+  if (!d) return null;
+  const counts = {};
+  for (const day of d.days) counts[day] = (counts[day] || 0) + 1;
+  const end = new Date(d.today + "T00:00:00Z"), start = new Date(Math.max(Date.parse(d.first + "T00:00:00Z"), end - 26 * 7 * DAY_MS));
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const cells = [];
+  for (let at = start.getTime(); at <= end.getTime(); at += DAY_MS) {
+    const day = new Date(at).toISOString().slice(0, 10), n = counts[day] || 0;
+    cells.push(el("i", { class: day === d.today ? "today" : n >= 3 ? "l3" : n === 2 ? "l2" : n ? "l1" : "", title: fmtDate(day) + (n ? " · " + n : "") }));
+  }
+  const mails = facts(r).mails;
+  const note = !d.days.length ? t("REM has no dated exchanges in this record yet, only the first contact.")
+    : mails > d.days.length ? t("Each tick is a dated exchange in the record ({n}); the other mails have no dates here.", { n: d.days.length })
+      : t("Each tick is a dated exchange in the record ({n}).", { n: d.days.length });
+  return el("section", { class: "widget span2 r4-fuse" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Contact rhythm") })]),
+    el("div", { class: "rh-row" }, [el("div", { class: "rh" }, [
+      el("div", { class: "rhythm", role: "img", "aria-label": t("{n} dated exchanges from {first} to today", { n: d.days.length, first: fmtDate(d.first) }), title: note }, cells),
+      el("div", { class: "fuse-ends" }, [el("span", { text: t("{date} first exchange", { date: fmtDate(d.first) }) }), el("b", { text: t("Today") })])]), personStats(r, d)])]);
+}
+function personStats(r, d = personFuseData(r)) {
+  const f = facts(r), rel = r.index?.relationship;
+  const year = rel?.last_mail ? rel.weekly_messages.reduce((a, b) => a + b, 0) : null;
+  const last = rel?.last_from_you === true ? t("you wrote last") : rel?.last_from_you === false ? t("{name} wrote last", { name: firstName(r) }) : t("Last contact");
+  // The first exchange is under the rhythm; the last one turns red only once their mail has waited past your usual reply time.
+  const cells = [year ? [String(year), t("mails this year")] : f.mails ? [String(f.mails), t("mails exchanged")] : null,
+    rel?.reply_seconds_owner != null ? [replyDuration(rel.reply_seconds_owner), t("your median reply")] : null,
+    f.last ? [fmtDate(f.last), last, d?.wait ? "late" : ""] : null].filter(Boolean);
+  return cells.length ? el("div", { class: "r4-stats" }, cells.map(([value, label, cls]) => el("div", { class: cls || "" }, [el("b", { class: "big", text: value }), el("span", { text: label })]))) : null;
+}
+// The rest of the record as widgets; the full note with every source stays below them.
+function personPage(r) {
+  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r),
+    el("div", { class: "bento" }, [personFuse(r), personQuotes(r), personTimeline(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
+      el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r), personTopics(r)].filter(Boolean))]);
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
 // exchange in the record. Positions are the real dates; nothing is spaced for looks.
@@ -7309,23 +7940,6 @@ function personWait(r, today) {
   if (entries.length && entries.every(entry => isDone(entry) || looksDone(entry) || threadDraft(entry)?.status === "no_reply")) return "";
   const waited = (Date.parse(REM.as_of || new Date().toISOString()) - Date.parse(rel.last_mail)) / 1000;
   return waited > rel.reply_seconds_owner && calendarDay(rel.last_mail) <= today ? calendarDay(rel.last_mail) : "";
-}
-function personFuse(r) {
-  const d = personFuseData(r);
-  if (!d) return null;
-  const ms = text => Date.parse(text + "T00:00:00Z"), span = Math.max(DAY_MS, ms(d.today) - ms(d.first));
-  const at = text => (Math.min(1, Math.max(0, (ms(text) - ms(d.first)) / span)) * 100).toFixed(3) + "%";
-  const line = el("div", { class: "fuse-line", role: "img", "aria-label": t("{n} dated exchanges from {first} to today", { n: d.days.length, first: fmtDate(d.first) }) },
-    [...d.days.map(day => el("i", { class: "fuse-tick", style: "left:" + at(day), title: fmtDate(day) })),
-      d.wait ? el("b", { class: "fuse-red", "data-mark": "overdue", style: "left:" + at(d.wait) }) : null]);
-  const ends = el("div", { class: "fuse-ends" }, [el("span", { text: t("{date} first exchange", { date: fmtDate(d.first) }) }),
-    d.wait ? el("span", { class: "fuse-wait", text: t("{name} wrote last · {date}", { name: firstName(r), date: fmtDate(d.wait) }) }) : null,
-    el("b", { text: t("Today") })]);
-  const mails = facts(r).mails;
-  const note = !d.days.length ? t("REM has no dated exchanges in this record yet, only the first contact.")
-    : mails > d.days.length ? t("Each tick is a dated exchange in the record ({n}); the other mails have no dates here.", { n: d.days.length })
-      : t("Each tick is a dated exchange in the record ({n}).", { n: d.days.length });
-  return el("div", { class: "r4-fuse" }, [line, ends, el("p", { class: "fuse-note", text: note })]);
 }
 // The archive keeps From, To, Cc and the subject, not Auto-Submitted, List-Id or Bcc: these are what it can judge by.
 function isAutoReply(text) {
@@ -7382,92 +7996,81 @@ function personQuotes(r) {
     .sort((a, b) => String(b.c.time).localeCompare(String(a.c.time)));
   if (!rows.length) return null;
   const kind = s => ({ gmail: "Gmail", outlook: "Outlook", imap: "Mail" })[sourceId(s.text).split(":")[0]] || "";
-  return el("section", { class: "r4-sec r4-said" }, [el("h2", {}, [t("In their words"), el("span", { class: "more", text: t("Original · newest first") })]),
-    el("ol", {}, rows.slice(0, 6).map(({ s, words }) => el("li", {}, [
+  const list = el("ol", {}, rows.slice(0, 6).map(({ s, words }) => el("li", {}, [
       el("span", { class: "said-src" }, [el("span", { text: kind(s) }), el("span", { html: inline("[" + s.n + "]", r.path) })]),
-      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])))]);
+      el("q", { class: "said-q", text: [...words].length > 280 ? [...words].slice(0, 279).join("") + "…" : words })])));
+  return el("section", { class: "widget r4-said" }, [widgetHead("quote", t("In their words"), rows.length > 1 ? expandChip(list, t("{n} entries", { n: Math.min(6, rows.length) })) : null), list]);
 }
-// A person's page is their record; what you owe them is done from Today
-// (owner, 2026-11-08). One quiet link there, never a reply button here.
-function personTodayLink(r) {
-  const n = waitingOn(r).length;
-  return n ? el("a", { class: "r4-today", href: "#", text: t(n === 1 ? "1 item in Today" : "{n} items in Today", { n }) }) : null;
+// A widget's title line: its icon, its name, and on the right a count or the one control that shows more.
+function widgetHead(iconName, title, end = null) {
+  return el("div", { class: "wt" }, [icon(iconName), el("h2", { text: title }), end ? el("span", { class: "end" }, [end]) : null]);
+}
+function expandChip(list, words) {
+  const button = el("button", { type: "button", class: "chip ghost", "aria-expanded": "false", text: words });
+  button.onclick = () => { const all = list.classList.toggle("all"); button.setAttribute("aria-expanded", String(all)); };
+  return button;
+}
+// Month and day; an exchange from another year carries its year under them, where the narrow column has room.
+function timelineDay(day) {
+  if (day.length !== 10) return [];
+  const say = parts => new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", ...parts });
+  const thisYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
+  return [say({ month: "numeric", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
 }
 function timelineRow(r, item) {
   const text = withoutDateClutter(youify(item.text));
   const content = historyRowContent(text, r.path);
   if (!content) return null;
   const yours = /^\s*(?:\*\*)?(?:the user|you|你)\b/i.test(unlabelled(item.text));
-  const day = item.day.length === 10 ? new Date(item.day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", day: "numeric" }) : "";
-  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d", text: day }),
+  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d" }, timelineDay(item.day)),
     el("span", { class: "w" }, [el("i", { class: yours ? "me" : "", title: t(yours ? "You" : "Them") })]), el("span", { class: "x" }, [content])]);
 }
 function personTimeline(r) {
   const items = historyItems(section(r, "history")?.text || "").filter(item => item.day).sort((a, b) => b.day.localeCompare(a.day));
-  if (!items.length) return null;
-  const list = el("ol", { class: "tl" });
-  let month = "", shown = 0;
-  for (const item of items) {
-    const row = timelineRow(r, item);
-    if (!row) continue;
-    if (item.day.slice(0, 7) !== month) {
-      month = item.day.slice(0, 7);
-      list.appendChild(el("li", { class: "tl-m" + (shown >= 12 ? " later" : ""), text: new Date(month + "-01T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", month: uiLanguage === "zh" ? "numeric" : "long", ...(month.slice(0, 4) !== calendarDay(REM.as_of).slice(0, 4) ? { year: "numeric" } : {}) }) }));
-    }
-    if (shown++ >= 12) row.classList.add("later");
-    list.appendChild(row);
-  }
-  const more = shown > 12 ? el("button", { type: "button", class: "r4-btn sm ghost tl-more", text: t("Show all {n} entries", { n: shown }) }) : null;
+  const rows = items.map(item => timelineRow(r, item)).filter(Boolean);
+  if (!rows.length) return null;
+  rows.slice(3).forEach(row => row.classList.add("later"));
+  const list = el("ol", { class: "tl" + (rows.length > 3 ? "" : " all") }, rows);
+  const more = rows.length > 3 ? el("button", { type: "button", class: "chip ghost tl-more", text: t("Show all {n} entries", { n: rows.length }) }) : null;
   if (more) more.onclick = () => { list.classList.add("all"); more.remove(); };
-  const notice = privateHistoryNotice([...list.querySelectorAll(".tl-e")]);
-  return el("section", { class: "r4-sec", id: "history-timeline" }, [el("h2", {}, [t("Exchanges"), el("span", { class: "more", text: t("Newest first") })]), list, notice, more]);
+  return el("section", { class: "widget r4-sec", id: "history-timeline" }, [widgetHead("layers", t("Exchanges"), el("span", { text: t("{n} entries", { n: rows.length }) })),
+    list, privateHistoryNotice(rows), more]);
 }
-function railContact(r) {
-  const parsed = parseFacts(r), f = facts(r);
-  const values = label => (parsed.get(label) || []).filter(item => knownValue(item.value));
-  // A qualifier ("shown in the 2026-10-29 signature") is where the value came from: a tooltip, not the value.
-  const shown = item => el("span", { text: plainLine(item.value), title: item.qualifier ? plainLine(item.qualifier) : "" });
-  const mails = (f.email.match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
-  const handles = values("Handles").filter(item => !item.value.includes("@"));
-  const rows = [...mails.slice(0, 2).map(address => ["Email", el("a", { href: "mailto:" + address, text: address })]),
-    ...values("Phone").slice(0, 1).map(phone => ["Phone", shown(phone)]),
-    ...handles.slice(0, 1).map(handle => ["Handle", shown(handle)]),
-    knownValue(f.language) ? ["Language", el("span", { text: plainLine(f.language) })] : null,
-    knownValue(f.location) ? ["Location", el("span", { text: plainLine(f.location) })] : null].filter(Boolean);
-  return rows.length ? [el("h4", { text: t("Contact") }), privateFallback(el("dl", { class: "r4-kv" }, rows.flatMap(([label, value]) => [el("dt", { text: t(label) }), el("dd", {}, [value])])))] : [];
-}
-function railOrg(r) {
-  const found = personOrg(r);
-  if (!found) return [];
-  const what = found.full || found.org && (plainLine(String(facts(found.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") || plainLine(String(facts(found.org).what || "")));
-  const card = el(found.org ? "a" : "div", { class: "r4-card mini", ...(found.org ? { href: href(found.org) } : {}) }, [
-    el("span", { class: "sq", text: found.name.trim()[0].toUpperCase() }), el("div", {}, [el("b", { text: found.name }), what ? el("small", { text: what }) : null])]);
-  const units = (r.units || []).map(edge => ({edge, unit: byPath(edge.path)})).filter(({unit}) => unit && !orgHidden(unit));
-  return [el("h4", { text: t("Organisation") }), card, ...(units.length ? [el("h4", {text: orgT("Units")}),
-    ...units.map(({edge, unit}) => el("a", {class: "r4-card mini", href: href(unit)}, [el("div", {}, [el("b", {text: unit.title}), edge.role ? el("small", {text: unlabelled(edge.role)}) : null])]))] : [])];
-}
+// REM's open questions about this person: its inference, so a dashed card; the questions open in a sheet.
 function railUnsure(r) {
   // Only the bullets: a summary paragraph under them is not an open question.
-  const items = (section(r, "uncertainties")?.text || "").split("\n").filter(line => /^\s*[-*]\s/.test(line)).map(line => plainLine(line)).filter(Boolean).slice(0, 4);
-  return items.length ? [el("h4", { text: t("REM is not sure") }), el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item })))] : [];
+  const items = (section(r, "uncertainties")?.text || "").split("\n").filter(line => /^\s*[-*]\s/.test(line)).map(line => plainLine(line)).filter(Boolean);
+  if (!items.length) return null;
+  const button = el("button", { type: "button", class: "widget row2 dashed unsure-open" }, [el("b", { class: "big muted", text: String(items.length) }), el("span", { text: t("REM is not sure") }), icon("right")]);
+  button.onclick = () => openListSheet(t("REM is not sure"), el("ul", { class: "r4-unsure" }, items.map(item => el("li", { text: item }))));
+  return button;
 }
+function openListSheet(title, body) {
+  const close = el("button", { type: "button", class: "ibtn", "aria-label": t("Close") }, [icon("x")]);
+  const dialog = el("dialog", { class: "n3-sheet list-sheet", "aria-label": title }, [el("div", { class: "sheet-head" }, [el("h2", { text: title }), close]), body]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+}
+// The sources: the count, and a click opens the full note where every one is listed.
 function railSources(r) {
   const n = sourceList(r).length;
-  if (!n) return [];
-  const button = el("button", { type: "button", class: "r4-src", text: t(n === 1 ? "{n} source" : "{n} sources", { n }) });
+  if (!n) return null;
+  const button = el("button", { type: "button", class: "widget row2 r4-src" }, [el("b", { class: "big", text: String(n) }), el("span", { text: t(n === 1 ? "source" : "sources") }), icon("right")]);
   button.onclick = () => {
     const deep = document.querySelector(".deep-note");
     if (deep) { deep.open = true; deep.scrollIntoView({ block: "start" }); }
   };
-  return [button];
+  return button;
 }
 // Sessions that name this person: five rows under the timeline, the rest one link away.
 function personSessions(r) {
   const sessions = (r.session_mentions || []).map(byPath).filter(Boolean);
   if (!sessions.length) return null;
-  return el("section", { class: "r4-sec person-sessions" }, [el("h2", { text: t("Mentioned in sessions") }),
-    el("ul", { class: "session-context-rows" }, sessions.slice(0, 5).map(s => sessionContextRow(s, r.title))),
-    sessions.length > 5 ? el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
+  const all = el("a", { href: sessionHash({ person: r.path }), text: t("All {n} sessions", { n: sessions.length }) });
+  return el("section", { class: "widget person-sessions" }, [widgetHead("terminal", t("Mentioned in sessions"), all),
+    el("ul", { class: "session-context-rows" }, sessions.slice(0, 3).map(s => sessionContextRow(s, r.title)))]);
 }
 // What is still open between you, as facts of the record (D-30: no to-do UI here; D-36: not folded).
 // The words and the date only; marking, replying and closing happen in Today.
@@ -7478,15 +8081,10 @@ function personTopics(r) {
     return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
       el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
   }).filter(Boolean);
-  return rows.length ? el("section", { class: "r4-sec r4-topics" }, [el("h2", { text: t("Open topics") }), el("ul", {}, rows)]) : null;
+  rows.slice(2).forEach(row => row.classList.add("later"));
+  const list = el("ul", { class: rows.length > 2 ? "" : "all" }, rows);
+  return rows.length ? el("section", { class: "widget r4-sec r4-topics" }, [widgetHead("activity", t("Open topics"), rows.length > 2 ? expandChip(list, t("Show all {n} entries", { n: rows.length })) : el("span", { text: String(rows.length) })), list]) : null;
 }
-// A person's page is their record (owner, 2026-11-08, D-30): what you owe them lives in Today.
-function personPage(r) {
-  const rail = el("aside", { class: "r4-rail", "aria-label": t("About this person") }, [...railContact(r), ...railOrg(r), ...railUnsure(r), ...railSources(r)]);
-  return el("div", { class: "r4 r4-person" }, [personHead(r),
-    el("div", { class: "r4-grid" }, [el("div", { class: "r4-main" }, [personFuse(r), personStats(r), personTopics(r), personQuotes(r), personTimeline(r), personSessions(r)]), rail])]);
-}
-
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
   return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency);
@@ -8466,7 +9064,8 @@ function orgRows() {
     const seen = new Set();
     const owed = pages.flatMap(orgOwed).filter(entry => !seen.has(entry.row.key) && seen.add(entry.row.key)).sort(owedFirst);
     const people = [...new Map(pages.flatMap(page => orgMembers(page)).map(p => [p.path, p])).values()];
-    return { r, pages, owed, people, last: pages.map(page => known(page).last).filter(Boolean).sort().at(-1) || "" };
+    // Last contact is the newest exchange with anyone there: the page's own date lags until REM re-reads it.
+    return { r, pages, owed, people, last: [...pages.map(page => known(page).last), ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "" };
   });
 }
 function orgByUrgency(a, b) {
@@ -8674,7 +9273,8 @@ function orgStage(v) {
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
-  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day, last = known(v.r).last || v.events.at(-1)?.day;
+  const units = orgAll(v).filter(d => d.depth && d.kind !== "person").length, first = v.events[0]?.day;
+  const last = [known(v.r).last, ...v.people.map(orgLast)].filter(Boolean).sort().at(-1) || v.events.at(-1)?.day;
   const parts = [v.r.domain ? el("span", { class: "ov-domain", text: v.r.domain }) : null,
     v.people.length ? orgT(v.people.length === 1 ? "1 person you know" : "{n} people you know", { n: v.people.length }) : null, units ? orgT("{n} units", { n: units }) : null,
     first ? orgT("In touch since {date}", { date: fmtDate(first) }) : null, last ? orgT("Last contact {date}", { date: fmtDate(last) }) : null].filter(Boolean);
@@ -11312,7 +11912,7 @@ function graphLocal(r) {
     const x = cx + Math.cos(angle) * radius, y = cy + Math.sin(angle) * radius;
     lines.push(svgEl("line", { x1: cx, y1: cy, x2: x, y2: y, class: n.k === "knowledge" || centre.k === "knowledge" ? "topic" : "" }));
     marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6));
-    if (labelled.has(n.id) && !n.private) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), 12))]));
+    if (labelled.has(n.id) && !n.private) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), 18))]));
   });
   const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
     graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);
@@ -11333,7 +11933,7 @@ function graphRailAttach(main, r) {
   const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Knowledge here") + " " }),
     ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
   // A person's rail keeps who they are first; a project or organisation page has no rail yet, so the block sits above the full note.
-  const rail = main.querySelector(".r4-rail"), deep = main.querySelector(":scope > .deep-note");
+  const rail = main.querySelector(".rel-slot, .r4-rail"), deep = main.querySelector(":scope > .deep-note");
   if (rail) rail.append(block);
   else main.insertBefore(block, deep);
   block.classList.toggle("gx-inline", !rail);
@@ -11364,9 +11964,10 @@ function render() {
   document.getElementById("q").placeholder = t("Search");
   document.getElementById("q").setAttribute("aria-label", t("Search the notebook"));
   document.querySelector(".skip").textContent = t("Skip to content");
-  document.querySelector(".nav-toggle").textContent = t("Menu");
+  document.querySelector(".search .kbd").setAttribute("aria-label", t("Command palette"));
   const { record: r, category: c, query, related, heading, view, reviews } = route();
   renderRail(railActive());
+  renderCrumb(route());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
@@ -11390,6 +11991,13 @@ function render() {
   restoreAfterReload();
 }
 
+// Where you are, in the top bar: the day on Today, the list a record belongs to, or the page's name.
+function renderCrumb({ record: r, category: c, query, view, reviews }) {
+  const page = r && byPath(r);
+  const name = query ? t("Search") : reviews ? t("Questions & connections") : view === "open" ? t("Waiting on you") : view === "changes" ? t("Memory changes")
+    : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? t("All records") : c ? label(c) : todayCrumb();
+  document.getElementById("crumb").replaceChildren(page ? el("a", { href: categoryHref(page.category), text: categoryName(page.category) }) : name);
+}
 function sourceFind(excerpt, quote) {
   const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": t("Find in archived source") });
   const next = el("button", { type: "button", text: t("Next match"), disabled: "" });
@@ -11747,11 +12355,18 @@ toggle.addEventListener("click", () => {
   // The sheet starts under the header row, wherever the page has scrolled it.
   document.getElementById("rail-menu").style.setProperty("--sheet-top", Math.max(0, rail.getBoundingClientRect().bottom) + "px");
   rail.dataset.open = String(open); toggle.setAttribute("aria-expanded", String(open));
+  if (open) document.querySelector("#nav a")?.focus();  // the sheet opens above the tab bar: focus moves into it
 });
 document.querySelector(".skip").addEventListener("click", e => { e.preventDefault(); document.getElementById("main").focus(); });
 document.getElementById("nav").addEventListener("click", e => {
   if (e.target.closest("a")) { closeNav(); document.getElementById("main").focus(); }
 });
+// 更多 closes when you click anywhere else; on a phone the search bar folds away once it is empty and left.
+document.addEventListener("click", e => {
+  const menu = document.getElementById("rail-more");
+  if (menu && !menu.hidden && !e.target.closest("#rail-more")) { menu.hidden = true; document.querySelector(".nav.more")?.setAttribute("aria-expanded", "false"); }
+});
+qInput.addEventListener("blur", () => { if (!qInput.value) document.body.classList.remove("searching"); });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     if (document.activeElement === qInput) {
@@ -11824,8 +12439,9 @@ function paletteResults(query, items) {
 }
 function onTodayCard(path, act) {
   const run = () => {
-    const card = [...document.querySelectorAll("#main .qcard")].find(node => node.dataset.path === path);
-    if (card) { focusCard(card); act(card); }
+    dealCard(path);
+    const card = document.querySelector("#main .qcard.focal");
+    if (card?.dataset.path === path) act(card);
   };
   if (railActive() === "today") return run();
   window.addEventListener("hashchange", run, { once: true });
@@ -11833,7 +12449,7 @@ function onTodayCard(path, act) {
 }
 function openPalette() {
   if (document.getElementById("palette")) return;
-  const items = paletteItems(), before = document.activeElement;
+  const items = paletteItems();
   const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-list", autocomplete: "off", spellcheck: "false",
     "aria-label": t("Search or run a command"), placeholder: t("Search people, projects, pages — or type an action") });
   const list = el("ul", { id: "palette-list", role: "listbox" });
@@ -11867,13 +12483,14 @@ function openPalette() {
     if (event.key === "Enter" && shown[active]) { event.preventDefault(); pick(shown[active]); }
   };
   dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
-  dialog.addEventListener("close", () => { dialog.remove(); if (before?.isConnected) before.focus({ preventScroll: true }); });
+  // Closing a dialog returns the focus by itself, before the picked command runs; the command may then move it.
+  dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
   dialog.showModal();
   draw();
   input.focus();
 }
-const SHORTCUTS = [["J / K", "Next or previous card"], ["E", "Mark done"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
+const SHORTCUTS = [["J / K", "Next or previous card"], ["S", "Skip to the next card"], ["E", "Mark done (the card in focus)"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
 function openShortcuts() {
   const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
   const dialog = el("dialog", { id: "shortcuts", class: "palette shortcuts", "aria-labelledby": "shortcuts-title" }, [
@@ -11888,23 +12505,17 @@ function openShortcuts() {
 function typingIn(target) {
   return !!target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']");
 }
-function focusCard(card) {
-  card.focus({ preventScroll: true });
-  card.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-}
-// J/K move, E closes the card (with the usual Undo), R replies. Only on Today, never while typing.
+// J/K deal the next or previous card, S skips to the next, R replies. E closes the raised card when the focus is
+// in it or in the notice the last E left, so E, E, E works through the deck; from anywhere else it does nothing,
+// and nothing again while the card it closed is still leaving. Only on Today, never while typing.
 function todayKey(key) {
-  const cards = [...document.querySelectorAll("#main .qcard")];
-  if (!cards.length) return false;
-  const at = cards.indexOf(document.activeElement?.closest(".qcard"));
-  if (key === "j" || key === "k") focusCard(cards[at < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, at + (key === "j" ? 1 : -1)))]);
-  else if (at < 0) focusCard(cards[0]);
-  else if (key === "r") cards[at].reply();
-  else {
-    cards[at].markDone();
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setTimeout(() => { const left = [...document.querySelectorAll("#main .qcard")]; if (left.length) focusCard(left[Math.min(at, left.length - 1)]); }, still ? 20 : 280);
-  }
+  const card = document.querySelector("#main .qcard.focal");
+  if (!card) return false;
+  if (key === "j" || key === "s") dealNext(1);
+  else if (key === "k") dealNext(-1);
+  else if (key === "r") card.reply();
+  else if (!card.classList.contains("leaving") && document.activeElement?.closest("#main .qcard.focal, #done-notice")) card.markDone();
+  else return false;
   return true;
 }
 document.addEventListener("keydown", event => {
@@ -11912,10 +12523,11 @@ document.addEventListener("keydown", event => {
   if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || typingIn(event.target) || document.querySelector("dialog[open]")) return;
   if (event.key === "?") { event.preventDefault(); openShortcuts(); return; }
   const key = event.key.toLowerCase();
-  if (railActive() === "today" && ["j", "k", "e", "r"].includes(key) && todayKey(key)) event.preventDefault();
+  if (key === "e" && event.repeat) return;  // a held E is one press: Undo brings back one card, not a deck
+  if (railActive() === "today" && ["j", "k", "e", "r", "s"].includes(key) && todayKey(key)) event.preventDefault();
 });
-if (!/Mac|iPhone|iPad/.test(navigator.platform || "")) SHORTCUTS[3][0] = "Ctrl K";
-document.querySelector(".search .kbd").textContent = SHORTCUTS[3][0];
+if (!/Mac|iPhone|iPad/.test(navigator.platform || "")) SHORTCUTS[4][0] = "Ctrl K";
+document.querySelector(".search .kbd").textContent = SHORTCUTS[4][0];
 document.querySelector(".search .kbd").onclick = openPalette;
 // ---- Languages ---------------------------------------------------------------
 // A page read in another language. Translations are made by co ai on the Host
@@ -12120,6 +12732,7 @@ window.addEventListener("focus", () => reconcileThreads().then(redraw));
 window.addEventListener("online", () => reconcileThreads().then(redraw));
 window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
+readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
   readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone]) => {
   if (language === "zh" || language === "en") uiLanguage = language;

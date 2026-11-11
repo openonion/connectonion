@@ -110,7 +110,9 @@ def test_the_topic_list_and_graph_follow_the_chinese_interface(page):
     page.goto(uri + "#c=knowledge")
     page.locator(".gx-topics").wait_for()
     assert page.locator(".gx-rows li").count() == 1
+    page.locator(".settings-open").click()
     page.locator(".language-switch button[lang=zh]").click()
+    page.keyboard.press("Escape")
     assert page.locator(".gx-topics h1").inner_text() == "1 条知识"
     assert page.title() == "知识 · co rem"
     page.goto(uri + "#view=graph")
@@ -155,12 +157,11 @@ def test_the_rail_has_no_graph_entry_and_all_records_comes_last(page):
     labels = [text.split("\n")[0] for text in page.locator("#nav a").all_inner_texts()]
     assert "Graph" not in labels and "Topics" not in labels
     assert "Knowledge" in labels
-    memory = page.locator("#nav .label", has_text="Explore memory").evaluate(
-        # 2026-11-09 (sidebar in Fuse): a space, not a label, sets All records apart; it still ends the list.
-        "label => { const out = []; for (let n = label.nextElementSibling; n && (n.tagName === 'A' || n.classList.contains('gap')); n = n.nextElementSibling) if (n.tagName === 'A') out.push(n.getAttribute('href')); return out; }")
-    assert memory[-1] == "#c=all"
+    # N3: All records ends the rail's six places; the rest of memory waits behind 更多.
+    assert page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")[-1] == "#c=all"
     # Activity was the team's invention (D-03): REM's run history is reached from Memory changes only.
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
+    page.locator('.nav.more').click()
     page.locator('#nav a[href="#view=changes"]').click()
     activity = page.locator('#main a[href="#view=activity"]', has_text="REM activity")
     assert activity.inner_text() == "REM activity →"

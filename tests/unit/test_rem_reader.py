@@ -156,7 +156,7 @@ def test_this_week_project_rows_strip_the_now_label():
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
                           for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine"])
-    week = page[page.index("  // This week: what"):page.index('  const processing = el("details"')]
+    week = page[page.index("  const week = weekChanges();"):page.index("  const recent = listedRecords()")] + "  main.appendChild(weekPages);\n"
     script = "\n".join([
         parsing, functions,
         'const youify = text => text;',
@@ -1428,7 +1428,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
-    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
       const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
@@ -1451,7 +1451,9 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    buttons = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
+    actions = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
+    # Send is the one green; writing full screen, editing in Gmail and Skip wait behind 更多 (D-120).
+    buttons = [actions[-1], *actions[0]['children'][1]['children']]
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
@@ -1471,7 +1473,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
                                        'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
-    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
@@ -1509,7 +1511,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     why = gist['children'][2]
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
     assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
-    assert mail['children'][4]['children'][0]['text'] == 'Send'
+    assert mail['children'][4]['children'][-1]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -1526,33 +1528,37 @@ def _words(node):
     return (node or {}).get('text', '') + ''.join(_words(child) for child in (node or {}).get('children', []))
 
 
-def test_brief_header_counts_people_and_names_the_most_overdue_and_translates_find():
+def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_translates_find():
+    """N3 (D-123): the count of people waiting is the display element; each face wears a fuse burnt by days overdue."""
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede'])
-    result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, waitingMore = () => ({tag: 'p'});
-      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
-      const groups = [{r: {title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
-        {r: {title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]}];
-      const header = briefHeader({mine: 4}, groups), noDeadline = briefHeader({mine: 1}, [{r: {title: 'Cy'}, entries: [{t: {since: '2026-10-20'}}]}]);
-      const quiet = briefHeader({mine: 0}, []);
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['nightCard', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
+    result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null;
+      const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const face = name => ({tag: 'span', text: name.slice(0, 2), children: [], append(node) { this.children.push(node); }});
+      const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
+        {r: {path: 'b', title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]},
+        {r: {path: 'c', title: 'Cy'}, entries: [{t: {since: '2026-10-20'}}]}];
+      const card = nightCard(groups, 'b'), quiet = nightCard([], null);
+      const faces = card.children[0].children[0].children[1].children, date = todayCrumb();
       uiLanguage = 'zh';
-      const zh = briefHeader({mine: 4}, groups);
-      console.log(JSON.stringify({header, noDeadline, quiet, zh, find: t('Find')}));
+      const zh = nightCard(groups, 'b');
+      console.log(JSON.stringify({count: card.children[0].children[0].children[0].children.map(c => c.text),
+        faces: faces.map(f => [f['aria-pressed'], f.children[1].text, f.children[1].class, f.children[0].children[0].html.includes('class="burn"')]),
+        quiet: quiet.children[0].children[0].children[0].children.map(c => c.text), solo: card.children[0].class,
+        zh: zh.children[0].children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[0].children[1].children[0].children[1].text,
+        date, find: t('Find')}));
     })();''')
-    # The date shares a kicker line with the quiet links; the headline is a poster, the count its own span (D-108).
-    assert result['header']['children'][0]['children'][0]['text'] == 'Tuesday, 20 October'
-    assert _words(result['header']['children'][1]) == '2 people are waiting on you.'
-    assert [child['text'] for child in result['header']['children'][1]['children'] if isinstance(child, dict)] == ['2', 'people are waiting on you.']
-    lede = result['header']['children'][2]['children']
-    assert lede[0] == 'Most urgent: Ada, ' and lede[1] == {'tag': 'b', 'class': 'late', 'text': '2 days overdue', 'children': []}
-    assert _words(result['noDeadline']['children'][1]) == '1 person is waiting on you.'
-    # Nothing overdue still names who is first, without inventing a lateness (build 3b: "one sentence naming who is most urgent").
-    assert result['noDeadline']['children'][2]['text'] == 'First in line: Cy.'
-    assert result['quiet']['children'][1]['text'] == 'Nobody is waiting on you today.'
-    assert _words(result['zh']['children'][1]) == '2 个人在等你。'
-    assert result['zh']['children'][2]['children'][1]['text'] == '逾期 2 天'
+    assert result['count'] == ['3', 'people waiting on you']
+    # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
+    assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
+    assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
+    assert result['solo'] == 'nb solo'  # no logs and no drafts: no chart is drawn, the faces take the card
+    assert result['zh'] == ['3', '人在等你'] and result['zhLate'] == '2 天'
+    assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
 
@@ -1561,7 +1567,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'briefHeader', 'urgentLede']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'faceStrip', 'fusedFace', 'groupLate']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1570,8 +1576,10 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       let OWING = null;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
-      const threadWho = r => r.title, waitingMore = () => null;
-      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const threadWho = r => r.title, RING = 314.16;
+      const icon = () => null, nightChart = () => null, threadAge = () => 'new', overdueDays = () => 0;
+      const face = name => ({tag: 'span', text: name, append() {}});
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
       const lines = pairs.map((words, i) => '- You owe Mara a review of the ' + words
         + '; due ' + (i === 0 ? '2026-10-18' : '2026-10-20') + ' [4].');
@@ -1583,10 +1591,10 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: briefHeader({mine: entries.length}, personGroups(today)).children[1]}));
+        headline: nightCard(personGroups(today), null).children[0].children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '1 person is waiting on you.'
+    assert _words(result.pop('headline')) == '1person waiting on you'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
@@ -1618,8 +1626,8 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
-      const threadWho = r => r.title;
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+      const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
       const make = (text, due = '', since = '', extra = {}) => ({r, also, t: {text, due, since, dir: 'mine', ...extra}});
@@ -1644,14 +1652,14 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
         dated: cardItem(dated, false), datedHead: cardHead({r, entries: [dated]}, 0)}));
     ''')
     assert result['selected'] == ['overdue', 'today', 'three days', 'new']
-    assert result['row']['children'][3]['text'] == 'due 2026-11-02'
+    assert result['row']['children'][4]['text'] == 'due 2026-11-02'  # after the card's hover actions
     assert result['also']['children'][2]['children'][1]['also'] == [{'path': 'orgs/northgate-university.md'}]
     quoted = result['quoted']['children']
     assert 'Letter of Support draft' in quoted[0]['text']
     assert '“Please include the contribution details.”' in quoted[0]['text']
     assert quoted[0]['children'][0]['html'] == '[4]'
     assert result['dated']['children'][0]['text'] == 'Review the pilot'
-    assert result['datedHead']['children'][3]['text'] == 'due 2026-11-02'
+    assert result['datedHead']['children'][4]['text'] == 'due 2026-11-02'
 
 
 def test_claim_values_use_only_current_cached_facts_for_chinese_after():
@@ -1935,7 +1943,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2235,7 +2243,7 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadWho', 'cardHead', 'threadRow', 'withoutDateClutter'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, classList: {add() {}}});
       const href = r => '#r=' + r.path, morningWords = () => ({words: 'Review the pilot.', context: ''});
@@ -2261,7 +2269,8 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
         assert rows['open']['children'][1]['children'][1]['children'][0]['text'] == who
     head = result['counterpart']['today']['children']
     assert head[1]['text'] == 'Mia Chen'
-    assert head[2]['children'] == ['Northgate University', ' · ', 'Pilot lead']
+    # N3: the organisation is a chip (its mark, its name); the role is the chip's title, not a third phrase.
+    assert head[2]['children'][1] == 'Northgate University' and head[2]['title'] == 'Pilot lead'
 
 
 @pytest.mark.parametrize('configured', [True, False])
@@ -2305,7 +2314,8 @@ def test_reader_languages_setting_is_visible_inside_disclosure_and_read_only(ori
     assert result['children'][0]['text'] == 'Notebook languages: 中文 · English — ' + origin
     # D-60/D-103 (build 3b review): REM detects the languages; there is no command to copy beside them.
     assert len(result['children']) == 1 and 'co rem' not in json.dumps(result)
-    assert 'settings.appendChild(notebookLanguages())' in page
+    settings = re.search(r'function renderSettings\(.*?\n\}', page, re.S).group(0)
+    assert 'notebookLanguages(),' in settings  # one row of the settings sheet
 
 
 def test_translation_notice_is_one_quiet_line_for_missing_written_pages():
@@ -2369,12 +2379,11 @@ def test_chinese_interface_uses_the_owners_regional_cached_prose(tag):
 def test_settings_say_nightly_updates_are_off_without_a_command():
     """D-60 (build 3b review): Reader settings states the schedule in words, never a command to type."""
     page = TEMPLATE.read_text()
-    guidance = next(line for line in page.splitlines() if 'settings.appendChild' in line and 'nightlyUpdatesOff()' in line)
-    result = _run_reader_js(r'''
-        const schedule = 'Next pass 02:00', nightlyUpdatesOff = () => true;
-        const el = (tag, attrs) => attrs.text;
-        const settings = {appendChild: value => console.log(JSON.stringify(value))};
-    ''' + guidance)
+    function = re.search(r'function remStateWords\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+        const nightlyUpdatesOff = () => true, scheduleState = () => '', fmtTime = time => time;
+        console.log(JSON.stringify(remStateWords({next_run: '02:00'})));
+    ''')
     assert result == 'Nightly updates are off.'
 
 
@@ -2723,14 +2732,16 @@ def test_person_stats_strip_names_mail_first_contact_reply_time_and_who_wrote_la
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const facts = () => ({mails: 9, first: '2026-09-23', last: '2026-11-07'});
       const relationship = {weekly_messages: [...Array(50).fill(0), 20, 32], last_mail: '2026-11-07T12:00:00Z', reply_seconds_owner: 37269, last_from_you: false};
+      const personFuseData = () => ({wait: '2026-11-07'});
       const stats = personStats({title: 'Mara Ostrowski', index: {relationship}});
       const bare = personStats({title: 'Fern Ivy', index: null});
-      console.log(JSON.stringify([stats.children.map(cell => [cell.children[0].text, cell.children[1]]), bare.children.length]));
+      console.log(JSON.stringify([stats.children.map(cell => [cell.children[0].text, cell.children[1].text, cell.class]), bare.children.length]));
     """)
-    expected = {'en': [['52', 'mails this year'], ['Sep 23', 'first exchange'], ['10 hours', 'your median reply'], ['Yesterday', 'Mara wrote last']],
-                'zh': [['52', '封邮件往来 · 一年内'], ['9月23日', '第一次往来'], ['10 小时', '你的回复中位数'], ['昨天', 'Mara 最后来信']]}
+    # The first exchange sits under the contact rhythm (N3); the last one is red while their mail waits on you.
+    expected = {'en': [['52', 'mails this year', ''], ['10 hours', 'your median reply', ''], ['Yesterday', 'Mara wrote last', 'late']],
+                'zh': [['52', '封邮件往来 · 一年内', ''], ['10 小时', '你的回复中位数', ''], ['昨天', 'Mara 最后来信', 'late']]}
     assert result[0] == expected[language]
-    assert result[1] == 3
+    assert result[1] == 2
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -2739,14 +2750,14 @@ def test_schedule_failure_header_uses_interface_language(language, code):
     page = TEMPLATE.read_text()
     ui = page[page.index('const UI = {'):page.index('function t(')].strip()
     ui = ui.replace('const UI = ', 'Object.assign(UI, ', 1)[:-1] + ');'
-    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['briefHeader', 'urgentLede', 'turnTrouble'])
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['scheduleFailure', 'turnTrouble'])
     result = _run_reader_js(ui + function + r'''
       uiLanguage = ''' + json.dumps(language) + r''';
       const waitingMore = () => null, threadWho = r => r.title;
       const REM = {as_of: '2026-11-07', status: {schedule_failure: {code: ''' + json.dumps(code) + r''', evidence: 'exit 124'}}};
       const lastPass = () => null, firstBuild = () => false, calendarDay = day => day;
-      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, prepend(node) {this.children.unshift(node);}});
-      const line = briefHeader({}, []).children[0];
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const line = scheduleFailure();
       console.log(JSON.stringify([line.text, line.title]));
     ''')
     text, title = result
@@ -2891,6 +2902,7 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
       const mailbox = address => ({address, name: 'Fern'}), personByAddress = () => null;
+      const icon = () => null;
       const remCommand = args => "co rem --root '/tmp/fictional notebook' " + args;
       const commandChip = command => ({tag: 'div', class: 'cmd', text: command});
       const draft = {id: 'demo', provider: 'gmail', to: 'fern@example.test', subject: 'Demo',
@@ -3034,7 +3046,7 @@ def approval_functions(*names):
 
 
 def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar', 'approveAllWords') + r'''
 (async () => {
   openApprovalSheet(REM.approval_outcomes);
   const sheet = document.getElementById('approval-sheet'), checks = sheet.querySelectorAll('input');
@@ -3054,7 +3066,7 @@ def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
 
 
 def test_approval_undo_failure_can_be_retried_before_expiry():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar', 'approveAllWords') + r'''
 (async () => {
   REM.approval_pending = [{...REM.approval_outcomes[0], status: 'held', release_at: new Date(Date.now() + 600000).toISOString()}];
   approvalUndoBar();
@@ -3070,7 +3082,7 @@ def test_approval_undo_failure_can_be_retried_before_expiry():
 
 
 def test_static_approval_cta_and_durable_failure_copy():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approveAllWords', 'approvalProblems') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
@@ -3082,7 +3094,7 @@ def test_static_approval_cta_and_durable_failure_copy():
 
 
 def test_approval_header_reads_restored_outcomes_when_reopened():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approveAllWords', 'approvalProblems') + r'''
       let opened;
       const openApprovalSheet = items => {opened = items.map(item => item.id);};
       const restored = REM.approval_outcomes[0]; REM.approval_outcomes = [];
@@ -3094,7 +3106,7 @@ def test_approval_header_reads_restored_outcomes_when_reopened():
 
 
 def test_static_snapshot_never_offers_live_undo():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar', 'approveAllWords') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', status:'held', release_at:new Date(Date.now() + 600000).toISOString()}];
       approvalUndoBar();
@@ -3105,7 +3117,7 @@ def test_static_snapshot_never_offers_live_undo():
 
 def test_approval_request_freezes_all_controls_until_response():
     dom = APPROVAL_DOM.replace('const approvalRequest = async payload =>', 'let approvalRequest = async payload =>')
-    result = _run_reader_js(dom + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+    result = _run_reader_js(dom + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar', 'approveAllWords') + r'''
 (async () => {
   let settle;
   approvalRequest = payload => new Promise(resolve => {settle = resolve;});
@@ -4222,3 +4234,18 @@ def test_a_verb_before_the_user_as_object_or_possessive_is_left_alone():
         "Has Mara replied to the user?": "Has Mara replied to you?",
     }
     assert _youify(list(cases)) == list(cases.values())
+
+
+def test_the_night_chart_window_never_ends_before_it_starts():
+    """Review of #2929: run times later than the snapshot's as_of (a clock ahead of it) made start > end, so every
+    x position divided by a negative span. The window keeps at least an hour, and a phone keeps thirty hours."""
+    page = TEMPLATE.read_text()
+    function = re.search(r'function nightWindow\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const DAY_MS = 86400000, REM = {as_of: '2026-11-10T12:00:00Z'}, end = Date.parse(REM.as_of);
+      const ahead = nightWindow([end + 2 * 3600000, end + 5 * 3600000], false);
+      const phone = nightWindow([end - 4 * DAY_MS], true), desk = nightWindow([end - 4 * DAY_MS], false);
+      console.log(JSON.stringify({ahead: [ahead.end - ahead.start], phone: (phone.end - phone.start) / 3600000, desk: (desk.end - desk.start) / DAY_MS}));
+    ''')
+    assert result['ahead'][0] >= 3600000
+    assert result['phone'] == 30 and result['desk'] == 3

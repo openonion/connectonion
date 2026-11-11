@@ -1,4 +1,4 @@
-"""The reader is painted from one token sheet ("Fuse") and nothing else.
+"""The reader is painted from one token sheet (N3 "Desk", D-123; it replaced "Fuse") and nothing else.
 
 Every round of reader design used to add its own namespace (--r4-*, --ov-*,
 --gx-*, the Projects --bg/--surface set) and its own literal sizes, until the
@@ -31,7 +31,8 @@ from connectonion.rem.reader import TEMPLATE
 START, END = '/* fuse:tokens */', '/* /fuse:tokens */'
 KEYWORDS = {'inherit', 'initial', 'unset', '0', 'none', 'transparent', 'currentcolor'}
 # Which token family each property may name; a property missing here takes keywords only.
-FAMILY = {'font-size': r'--s-[\w-]+', 'font-weight': r'--w-[\w-]+', 'radius': r'--radius|--round'}
+FAMILY = {'font-size': r'--s-[\w-]+', 'font-weight': r'--w-[\w-]+', 'radius': r'--radius|--round|--r-[\w-]+',
+          'box-shadow': r'--e[\w-]*'}
 RADIUS = r'border(?:-(?:top|bottom|left|right|start|end)(?:-(?:left|right|start|end))?)?-radius'
 PROPS = re.compile(rf'(?<![\w-])(font-size|font-weight|font|box-shadow|text-shadow|font-variation-settings|'
                    rf'filter|backdrop-filter|clip-path|shape-outside|{RADIUS})\s*:\s*([^;{{}}"\'`]+)')
@@ -282,13 +283,16 @@ def test_the_reader_paints_only_from_the_token_sheet():
     assert not found, f'{len(found)} literals outside the Fuse sheet:\n' + '\n'.join(found[:80])
 
 
-def test_the_sheet_has_four_sizes_two_weights_and_no_shadow():
+def test_the_sheet_has_five_sizes_two_weights_and_three_elevations():
+    """N3 (D-123): 44 / 24 / 15 / 13 / 11, regular and semibold, e1 resting, e2 the one focus card, e3 menus and sheets."""
     blocks = _blocks(_parts()[0])
     light = blocks.get(('', ':root'), {})
-    assert sorted(n for n in light if n.startswith('--s-')) == ['--s-body', '--s-display', '--s-head', '--s-meta']
-    assert sorted(n for n in light if n.startswith('--w-')) == ['--w-bold', '--w-regular']
-    assert light['--radius'] == '0' and not any('shadow' in n for n in light)
-    for name in ('--paper', '--ink', '--grey', '--rule', '--green', '--on-green', '--red', '--pencil'):
+    sizes = {n: light[n] for n in light if n.startswith('--s-')}
+    assert sizes == {'--s-display': '44px', '--s-head': '24px', '--s-body': '15px', '--s-ui': '13px', '--s-meta': '11px'}
+    assert {n: light[n] for n in light if n.startswith('--w-')} == {'--w-regular': '400', '--w-bold': '600'}
+    assert {'--e1', '--e2', '--e3'} <= set(light) and not any('shadow' in n for n in light)
+    assert {'--r-card', '--r-inner', '--r-pill', '--radius'} <= set(light)
+    for name in ('--paper', '--raised', '--ink', '--grey', '--rule', '--well', '--green', '--on-green', '--red', '--pencil'):
         assert COLOUR.fullmatch(light[name]), name
     assert not RETIRED.search(' '.join(light))
 
