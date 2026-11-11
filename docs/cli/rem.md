@@ -770,12 +770,17 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   available later, including a collapsed history if the original thread text
   has changed. Skipping preserves the draft body. The live reader shares these
   decisions through `.state/threads.json`. A mark tells the notebook only which
-  mail it cites and the version the page showed, so saving it costs the same in
-  a notebook of any size. If the notebook cannot be reached, the mark waits in
-  localStorage ("Saved on this device — sync pending") and is sent again on
-  load, focus or reconnection. If the notebook answers and refuses it, the
-  thread comes back and the notice reads **Not saved** with **Try again** for
-  the same five seconds; nothing is left waiting. The channel switch (Mail / Lark / WhatsApp)
+  mail it cites and the version the page showed, so what it sends stays the
+  same size however large the notebook grows. If the notebook cannot be
+  reached, is busy with another write (409) or the Host fails (5xx), the mark
+  waits in localStorage ("Saved on this device — sync pending") and is sent
+  again on load, focus or reconnection, with the mail versions it was made
+  with, so mail that arrived while it waited still brings a Skip back. Any
+  other answer is a refusal, such as a thread the notebook no longer has
+  (400): the page goes back to what the notebook holds and the notice reads
+  **Not saved** with **Try again** for the same five seconds; nothing is left
+  waiting. If you have marked another thread since, its notice keeps its Undo
+  and gains the **Not saved** line. The channel switch (Mail / Lark / WhatsApp)
   rewrites the reply for that channel and sends it as you through `lark-cli` or
   `co whatsapp`, when the notebook knows how to reach the person there. Sending
   and rewriting work in the live reader on this computer only; a click is the

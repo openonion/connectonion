@@ -1347,7 +1347,7 @@ def test_written_thread_dates_and_evidence_backed_request_groups():
 @pytest.mark.parametrize('blocked', [False, True])
 def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
     page = TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
@@ -3023,7 +3023,7 @@ class ApprovalNode {
 const el = (tag, attrs, children) => new ApprovalNode(tag, attrs, children);
 const document = {body: el('body'), documentElement: {classList: {contains: () => true}},
   getElementById(id) {return this.body.querySelector('#' + id);}};
-const remCommand = command => 'co rem ' + command, render = () => {}, threadStates = {};
+const remCommand = command => 'co rem ' + command, render = () => {}, threadStates = {}, notebookThreads = {};
 const privateFallback = node => node;
 let approvalTimer; const setInterval = () => 1, clearInterval = () => {};
 const REM = {live: true, drafts: [], approval_pending: [], approval_outcomes: [

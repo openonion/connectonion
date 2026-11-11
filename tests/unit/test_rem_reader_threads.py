@@ -73,12 +73,13 @@ def test_both_night_paths_honour_persisted_state(notebook, monkeypatch, state):
 
 def test_reader_reconciles_only_pending_offline_changes_and_undo():
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'keyEntry', 'reconcileThreads', 'saveThreadState', 'setDone']
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'keyEntry', 'reconcileThreads', 'showNotebookThreads',
+             'notebookTook', 'sendThreadState', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     result = _run_reader_js(functions + r'''
       const REM = {root: '/test', live: true, threads: {remote: {state: 'done'}}};
       const byPath = () => undefined, obligationEvidence = () => ({ids: new Set()});
-      let threadStates = {}, pendingThreads = {offline: {state: 'skipped'}}, threadWrite = Promise.resolve();
+      let threadStates = {}, notebookThreads = {}, pendingThreads = {offline: {state: 'skipped'}}, threadWrite = Promise.resolve();
       const shortHash = x => x, stored = {}, requests = [];
       const readerStorage = (k, v) => { stored[k] = v; };
       const fetch = async (url, options) => {
@@ -200,7 +201,7 @@ def test_no_reply_restored_after_thread_undo(notebook, state):
 @pytest.mark.parametrize('state', ['done', 'skipped'])
 def test_reader_no_reply_undo_survives_offline_reload(state):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'setDone']
+    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     result = _run_reader_js(functions + 'const decision = ' + json.dumps(state) + ';' + r'''
       const REM = {root: '/test', live: false, drafts: [{id: 'draft', provider: 'gmail', thread: 'mail:gmail:pilot', version: 'gmail:one', status: 'no_reply', body: ''}]};
@@ -269,14 +270,15 @@ def test_skip_unobserved_thread_stays_blocked_and_skips_saved_draft(notebook, ve
 @pytest.mark.parametrize('new_mail', [False, True])
 def test_reader_skip_reconcile_and_fresh_snapshot_undo_uses_saved_status(new_mail):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
+    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'showNotebookThreads', 'notebookTook', 'sendThreadState', 'saveThreadState',
+             'threadMark', 'markDrafts', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     result = _run_reader_js(functions + 'const newMail = ' + json.dumps(new_mail) + ';' + r'''
       // The mark names both threads it cites, the one no draft answers too, and not the mail of another page (#2936).
       const REM = {root: '/test', live: true, mail_versions: {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:old', 'mail:gmail:elsewhere': 'gmail:other'},
         source_context: {'gmail:one': {source: 'gmail', thread: 'mail:gmail:pilot'}, 'gmail:old': {source: 'gmail', thread: 'mail:gmail:context'}},
         drafts: [{id: 'draft', provider: 'gmail', thread: 'mail:gmail:pilot', version: 'gmail:one', status: 'no_reply', body: '', gist: 'Already acknowledged'}]};
-      let threadStates = {}, pendingThreads = {}, threadWrite = Promise.resolve(), stored, server = {}, requests = [];
+      let threadStates = {}, notebookThreads = {}, pendingThreads = {}, threadWrite = Promise.resolve(), stored, server = {}, requests = [];
       const shortHash = x => x, readerStorage = (k, v) => {stored = v;};
       const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, document = {getElementById: () => null};
       const render = () => {}, doneNotice = () => {}, isDone = () => false;
@@ -334,11 +336,11 @@ def mark_script(setup, steps):
         r'const COMMENT = [^\n]*', r'function byPath\([^\n]*', r'function shortHash\(.*?\n\}', r'function rawSection\(.*?\n\}')]
     marks = page[page.index('function obligationWords('):page.index('// The one thing to do next')]
     return _run_reader_js('\n'.join(helpers) + '\n' + marks + setup + r'''
-      let stored, answer = 'saved';
+      let stored, answer = 'saved', release;
       const shown = [], requests = [], readerStorage = (key, value) => { stored = value; };
       const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, render = () => {}, setTimeout = () => {};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, focus() {}, contains: () => false,
-        remove() { shown.splice(shown.indexOf(this), 1); }});
+        appendChild(child) { this.children.push(child); }, remove() { shown.splice(shown.indexOf(this), 1); }});
       const inside = (node, id) => node.id === id ? node : (node.children || []).map(child => inside(child, id)).find(Boolean);
       const words = node => typeof node === 'string' ? node : (node.textContent ?? node.text ?? '') + (node.children || []).map(words).join('');
       const document = {getElementById: id => shown.map(node => inside(node, id)).find(Boolean) || null,
@@ -346,9 +348,13 @@ def mark_script(setup, steps):
       const fetch = async (url, options) => {
         if (!options) return {ok: true, json: async () => ({})};
         requests.push(options.body);
-        if (answer === 'unreachable') throw new TypeError('Failed to fetch');
-        return answer === 'saved' ? {ok: true, json: async () => JSON.parse(options.body)}
-          : {ok: false, status: 400, json: async () => ({error: 'Invalid JSON'})};
+        // One answer for every mark, or a list with one for each in turn: 'refused' is the Host's 400, a number
+        // is that status, and 'slow' is saved only once the test calls release().
+        const said = Array.isArray(answer) ? answer.shift() : answer;
+        if (said === 'unreachable') throw new TypeError('Failed to fetch');
+        if (said === 'slow') await new Promise(resume => { release = resume; });
+        return ['saved', 'slow'].includes(said) ? {ok: true, json: async () => JSON.parse(options.body)}
+          : {ok: false, status: said === 'refused' ? 400 : said, json: async () => ({error: 'Invalid JSON'})};
       };
       const entry = {r: byPath('people/fern.md'), t: {text: 'You owe Fern a pilot review. [1]'}};
       (async () => {''' + steps + '})();')
@@ -428,12 +434,14 @@ def test_refused_mark_is_not_saved_and_can_be_tried_again():
     assert 'Saved in notebook' in retried['notice'] and retried['pending'] == []
 
 
-def test_only_an_unreachable_notebook_leaves_a_mark_waiting_to_sync():
-    waiting, = mark_script(FERN_PAGE, "answer = 'unreachable'; await setDone(entry, true, 'skipped');"
+@pytest.mark.parametrize('answer', ["'unreachable'", '409', '500', '503'])
+def test_unreachable_busy_or_failing_notebook_leaves_a_mark_waiting_to_sync(answer):
+    """409 is a notebook another writer holds for a moment, 5xx a Host that failed: neither said no to the mark."""
+    waiting, = mark_script(FERN_PAGE, 'answer = ' + answer + "; await setDone(entry, true, 'skipped');"
                            'console.log(JSON.stringify([' + PAGE_AFTER_MARK + ']));')
     assert waiting['pending'] == waiting['kept'] == ['people/fern.md\nYou owe Fern a pilot review. [1]']
     assert waiting['marked'] and waiting['draft'] == 'skipped'
-    assert 'Saved on this device — sync pending' in waiting['notice']
+    assert 'Saved on this device — sync pending' in waiting['notice'] and 'Not saved' not in waiting['notice']
 
 
 def test_refused_mark_kept_from_an_earlier_visit_stops_waiting_and_returns_to_the_notebook_state():
@@ -444,6 +452,64 @@ def test_refused_mark_kept_from_an_earlier_visit_stops_waiting_and_returns_to_th
       await reconcileThreads();
       console.log(JSON.stringify([{pending: Object.keys(pendingThreads), kept: Object.keys(JSON.parse(stored).pending), marked: isDone(entry)}]));''')
     assert state == {'pending': [], 'kept': [], 'marked': False}
+
+
+@pytest.mark.parametrize('status', [409, 503])
+def test_mark_kept_from_an_earlier_visit_waits_out_a_busy_notebook_and_is_saved_on_the_next_one(status):
+    """A waiting mark met by a busy notebook used to be dropped without a word: it is sent again until it is taken."""
+    busy, saved = mark_script(FERN_PAGE, r'''
+      const key = doneKey(entry), state = () => ({pending: Object.keys(pendingThreads),
+        kept: Object.keys(JSON.parse(stored).pending), marked: isDone(entry), requests: requests.length});
+      pendingThreads = {[key]: {state: 'done', keys: [key], versions: {}}};
+      answer = ''' + str(status) + r''';
+      await reconcileThreads();
+      const busy = state();
+      answer = 'saved';
+      await reconcileThreads();
+      console.log(JSON.stringify([busy, state()]));''')
+    key = 'people/fern.md\nYou owe Fern a pilot review. [1]'
+    assert busy == {'pending': [key], 'kept': [key], 'marked': True, 'requests': 1}
+    assert saved == {'pending': [], 'kept': [], 'marked': True, 'requests': 2}
+
+
+def test_host_answers_409_for_a_busy_notebook_and_400_for_a_mark_it_will_never_take(notebook, tmp_path_factory):
+    """The page waits on a 409 and gives up on a 400, so the Host must keep the two apart."""
+    from connectonion.rem.files import maintenance_lock
+    mail_thread(notebook)
+    mark = json.dumps({'key': thread_key(notebook), 'state': 'done'})
+    with maintenance_lock(notebook):
+        assert host_answers(notebook, tmp_path_factory, mark) == 409
+    assert host_answers(notebook, tmp_path_factory, mark) == 200
+    gone = json.dumps({'key': 'people/juniper-hale.md\nYou owe Juniper an orchard note. [1]', 'state': 'done'})
+    assert host_answers(notebook, tmp_path_factory, gone) == 400
+
+
+@pytest.mark.parametrize('done, held', [
+    ("answer = 'saved'; await setDone(entry, true); answer = 'refused';", True),
+    ("answer = 'unreachable'; await setDone(entry, true); answer = 'refused';", False),
+    ("answer = 'refused'; setDone(entry, true);", False)], ids=['taken', 'waiting', 'not yet sent'])
+def test_refused_undo_shows_what_the_notebook_holds_not_a_done_it_never_took(done, held):
+    """Undo of a Done the notebook took leaves it done; Undo of one still waiting, or not yet sent, leaves no mark."""
+    state, = mark_script(FERN_PAGE, done + ' await setDone(entry, false);'
+                         'console.log(JSON.stringify([' + PAGE_AFTER_MARK + ']));')
+    assert state['marked'] is held and state['pending'] == state['kept'] == []
+    assert state['notice'] == 'Not saved · Try again'
+
+
+def test_refusal_of_one_mark_keeps_the_notice_of_the_mark_made_after_it():
+    """Two quick marks, the first refused: the second keeps its Undo and says "Saved" only once it is saved."""
+    during, after, marked = mark_script(FERN_PAGE, r'''
+      const next = {r: entry.r, t: {text: 'You owe Fern a budget decision. [1]'}};
+      answer = ['refused', 'slow'];
+      const first = setDone(entry, true), second = setDone(next, true);
+      await first;
+      const during = shown.map(words).join(' | ');
+      release();
+      await second;
+      console.log(JSON.stringify([during, shown.map(words).join(' | '), [isDone(entry), isDone(next)]]));''')
+    assert during == 'Marked done · Undo · Saving…Not saved · Try again'
+    assert after == 'Marked done · Undo · Saved in notebookNot saved · Try again'
+    assert marked == [False, True]
 
 
 def test_not_saved_notice_reads_in_chinese():
@@ -458,5 +524,19 @@ def test_skip_returns_on_new_mail_in_a_cited_thread_the_page_could_not_place(not
     threads.set_state(notebook, thread_key(notebook), 'skipped', versions={})
     assert threads.blocked(notebook, thread_key(notebook))
     mail_thread(notebook, latest='two')
+    assert threads.listing(notebook)[thread_key(notebook)].get('returned_at') == '2026-11-07T02:00:00+00:00'
+    assert not threads.blocked(notebook, thread_key(notebook))
+
+
+def test_waiting_skip_keeps_the_versions_it_stored_when_the_page_cannot_place_its_mail(notebook, tmp_path_factory):
+    """Mail that came while a Skip waited is not counted as seen: the mark goes out with what its reader saw."""
+    from connectonion.rem import threads
+    mail_thread(notebook)
+    waiting = {'state': 'skipped', 'keys': [thread_key(notebook)], 'versions': {'mail:gmail:pilot': 'gmail:one'}}
+    mail_thread(notebook, latest='two')
+    sent, = mark_script(notebook_page(notebook) + 'REM.source_context = {};', 'pendingThreads = {[doneKey(entry)]: '
+                        + json.dumps(waiting) + '}; await reconcileThreads(); console.log(JSON.stringify(requests));')
+    assert json.loads(sent)['versions'] == {'mail:gmail:pilot': 'gmail:one'}
+    assert host_answers(notebook, tmp_path_factory, sent) == 200
     assert threads.listing(notebook)[thread_key(notebook)].get('returned_at') == '2026-11-07T02:00:00+00:00'
     assert not threads.blocked(notebook, thread_key(notebook))

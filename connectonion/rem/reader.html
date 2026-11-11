@@ -5124,6 +5124,9 @@ function threadGroups(entries) {
   return groups.map(group => group.sort((a, b) => a - b).map(i => entries[i]));
 }
 let threadStates = {}, pendingThreads = {};
+// What the notebook itself last said it holds. threadStates is this plus the marks the page has not saved yet,
+// so a refused mark goes back to this and never to another unsaved mark.
+let notebookThreads = {};
 let threadWrite = Promise.resolve();
 function doneKey(entry) {
   return shortHash(entry.r.path + "\n" + (entry.t.originalText || entry.t.text));
@@ -5153,64 +5156,70 @@ async function reconcileThreads() {
   if (!REM.live) return;
   const response = await fetch("/rem/thread").catch(() => null);
   if (!response?.ok) return;
-  const notebook = await response.json();
-  threadStates = { ...notebook, ...pendingThreads };
+  notebookThreads = await response.json();
+  threadStates = { ...notebookThreads, ...pendingThreads };
   REM.threads = threadStates;
   for (const [key, value] of Object.entries(pendingThreads)) {
-    // A mark kept from before #2936 still holds the whole table.
-    value.versions = citedVersions((value.keys || [key]).map(keyEntry).filter(entry => entry.r), value.versions || {});
-    await saveThreadState(key, value, notebook);
+    // A mark kept from before #2936 holds the whole table, too much to send: it is cut to the mail this page can
+    // place. A mark that fits goes as it is, placed or not: its versions are what its reader saw, and a Skip
+    // returns on anything newer. 32768 is half of what the Host reads for one mark.
+    const cited = (value.keys || [key]).map(keyEntry).filter(entry => entry.r);
+    if (JSON.stringify(value.versions || {}).length > 32768) value.versions = citedVersions(cited, value.versions);
+    await saveThreadState(key, value);
   }
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
 }
-// The notebook answered and did not take the mark: nothing is waiting to sync, and the page shows what it did before.
-async function refuseThreadState(key, value, before) {
-  delete pendingThreads[key];
-  for (const item of value.keys || [key]) {
+// The page shows what the notebook holds for these threads, except where a mark of its own is still unsaved.
+function showNotebookThreads(keys) {
+  for (const item of keys) {
     if (pendingThreads[item]) continue;
-    if (before[item]) threadStates[item] = before[item];
+    if (notebookThreads[item]) threadStates[item] = notebookThreads[item];
     else delete threadStates[item];
   }
+}
+// The notebook took the mark: what it answered is what it holds, for every thread it names.
+function notebookTook(key, value, { keys = [key], ...decision }) {
+  for (const item of keys) {
+    if (value.state === "open") delete notebookThreads[item];
+    else notebookThreads[item] = { ...decision, keys, draft_statuses: decision.draft_statuses || value.draft_statuses };
+  }
+  return keys;
+}
+// One mark's turn at the notebook. No answer, a busy notebook (409) and a failing Host (5xx) leave the mark waiting
+// to be sent again. Any other refusal is final: the same mark sent again is refused again, so it stops waiting.
+async function sendThreadState(key, value) {
+  if (pendingThreads[key] !== value) return true;
+  const response = await fetch("/rem/thread", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, device: navigator.platform || "browser" }) }).catch(() => null);
+  if (!response || response.status === 409 || response.status >= 500) return false;
+  const keys = response.ok ? notebookTook(key, value, await response.json()) : value.keys || [key];
+  if (pendingThreads[key] !== value) return true;
+  delete pendingThreads[key];
+  showNotebookThreads(keys);
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
-  return "refused";
+  return response.ok || "refused";
 }
 // Resolves true once the notebook holds the mark, false while it waits on this device, "refused" when the notebook said no.
-async function saveThreadState(key, value, before = { ...threadStates }) {
+async function saveThreadState(key, value) {
   pendingThreads[key] = value;
   if (value.state === "open") delete threadStates[key];
   else threadStates[key] = value;
   REM.threads = threadStates;
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
   if (!REM.live) return false;
-  threadWrite = threadWrite.then(async () => {
-    if (pendingThreads[key] !== value) return true;
-    const response = await fetch("/rem/thread", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, device: navigator.platform || "browser" }) }).catch(() => null);
-    // Only no answer at all leaves a mark waiting: a refusal sent again unchanged is refused again.
-    if (!response) return false;
-    if (!response.ok) return pendingThreads[key] !== value || refuseThreadState(key, value, before);
-    const saved = await response.json();
-    if (pendingThreads[key] !== value) return true;
-    delete pendingThreads[key];
-    const { keys = [key], ...decision } = saved;
-    for (const item of keys) {
-      if (pendingThreads[item]) continue;
-      if (value.state === "open") delete threadStates[item];
-      else threadStates[item] = { ...decision, keys, draft_statuses: decision.draft_statuses || value.draft_statuses };
-    }
-    await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
-    return true;
-  });
+  threadWrite = threadWrite.then(() => sendThreadState(key, value));
   return threadWrite;
 }
-function setDone(entry, done, state = "done", entries = [entry]) {
-  const key = doneKey(entry), value = { state: done ? state : "open", at: new Date().toISOString(), device: navigator.platform || "browser" };
-  const members = entries.flatMap(item => item.members || [item]);
+// The mark one click makes: every key of the thread, the mail it cites as this page showed it, and what its drafts were.
+function threadMark(key, members, done, state) {
+  const value = { state: done ? state : "open", at: new Date().toISOString(), device: navigator.platform || "browser" };
   value.keys = [...new Set([...members.map(doneKey), ...(threadStates[key]?.keys || [])])];
-  const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
   value.versions = citedVersions(members, REM.mail_versions || {});
   value.draft_statuses = Object.assign({}, ...value.keys.map(item => threadStates[item]?.draft_statuses || {}));
-  const statuses = related.map(draft => draft.status);
+  return value;
+}
+// The drafts that answer a marked thread follow it: a Skip sets them aside, an Undo gives each its status back.
+function markDrafts(related, value, done, state) {
   for (const draft of related) {
     if (draft.status === "sent") continue;
     if (done) {
@@ -5218,6 +5227,13 @@ function setDone(entry, done, state = "done", entries = [entry]) {
       if (state === "skipped") draft.status = "skipped";
     } else if (value.draft_statuses[draft.id]?.version === draft.version) draft.status = value.draft_statuses[draft.id].status;
   }
+}
+function setDone(entry, done, state = "done", entries = [entry]) {
+  const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
+  const value = threadMark(key, members, done, state);
+  const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
+  const statuses = related.map(draft => draft.status);
+  markDrafts(related, value, done, state);
   const saved = saveThreadState(key, value);
   for (const memberKey of value.keys) {
     if (done) threadStates[memberKey] = value;
@@ -5227,24 +5243,28 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  if (done) doneNotice(entry, state, entries);
+  const notice = done ? doneNotice(entry, state, entries) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       related.forEach((draft, i) => { draft.status = statuses[i]; });
-      notSavedNotice(() => setDone(entry, done, state, entries));
+      notSavedNotice(() => setDone(entry, done, state, entries), notice);
     }
     if (synced) render();
-    const status = document.getElementById("thread-save-status");
+    // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
+    const status = synced !== "refused" && document.getElementById("thread-save-status");
     if (status) status.textContent = t(synced ? "Saved in notebook" : "Saved on this device — sync pending");
     return synced;
   });
 }
-// A refused mark is not saved: the notice says so in place of "Saved" and offers another try. The thread is back on the page by then.
-function notSavedNotice(retry) {
-  const held = document.getElementById("done-notice")?.contains(document.activeElement);
-  document.getElementById("done-notice")?.remove();
+// A refused mark is not saved: the notice says so in place of its "Saved" and offers another try. The thread is back
+// on the page by then. The notice of a later mark stays, with its Undo and its own "Saved", and gains these words.
+function notSavedNotice(retry, own) {
+  const showing = document.getElementById("done-notice");
   const again = el("button", { type: "button", text: t("Try again") });
   again.onclick = retry;
+  if (showing && showing !== own) return showing.appendChild(el("div", { role: "alert" }, [t("Not saved"), " · ", again]));
+  const held = showing?.contains(document.activeElement);
+  showing?.remove();
   const notice = el("div", { id: "done-notice", class: "done-notice", role: "alert" }, [t("Not saved"), " · ", again]);
   document.body.appendChild(notice);
   if (held) again.focus({ preventScroll: true });
@@ -5264,6 +5284,7 @@ function doneNotice(entry, state, entries) {
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
   noticeLeaves(notice);
+  return notice;
 }
 function noticeLeaves(notice) {
   setTimeout(() => {
@@ -7280,7 +7301,7 @@ function openApprovalSheet(items) {
       if (value.status === "error") continue;
       successful.add(value.id); row.check.disabled = true;
       row.node.querySelectorAll("textarea, button").forEach(control => {control.disabled = true;});
-      if (value.status === "done") for (const key of value.keys || []) threadStates[key] = {state: "done", at: new Date().toISOString()};
+      if (value.status === "done") for (const key of value.keys || []) threadStates[key] = notebookThreads[key] = {state: "done", at: new Date().toISOString()};
       if (value.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === value.draft_id ? {...d, status: value.status} : d);
       REM.approval_pending = [...(REM.approval_pending || []).filter(item => item.id !== value.id), {...row.item, ...value}];
     }
@@ -12796,6 +12817,7 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   const fallback = saved ? JSON.parse(saved) : null;
   pendingThreads = fallback?.pending || Object.fromEntries((done ? JSON.parse(done) : []).map(key => [key, { state: "done" }]));
+  notebookThreads = { ...REM.threads };
   threadStates = { ...(REM.live ? REM.threads : { ...REM.threads, ...fallback?.states }), ...pendingThreads };
   REM.threads = threadStates;
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));

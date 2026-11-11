@@ -59,7 +59,7 @@ def test_offline_startup_finishes_details_without_navigation():
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
       let detailLoad = null, detailReady = false, morePeopleColumns,
-        pendingThreads, threadStates, peopleMode, notDoneKeys;
+        pendingThreads, threadStates, notebookThreads, peopleMode, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       let PEOPLE_BY_ADDRESS = new Map();
       const location = {protocol: 'file:'};

@@ -285,6 +285,34 @@ def test_a_done_kept_with_the_whole_table_reaches_the_notebook_on_the_next_load(
         browser.close()
 
 
+def test_a_done_met_by_a_busy_notebook_waits_and_is_saved_on_the_next_load(tmp_path, monkeypatch):
+    """Another writer holds the notebook for a moment: the Host answers 409, which is not a refusal. The mark waits."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.files import maintenance_lock
+    root, routes, cookie = _live_notebook(tmp_path, monkeypatch)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': 1280, 'height': 900})
+        context.route('http://127.0.0.1:8123/**', _serve(routes, cookie))
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        mark = page.locator('.task-band .thread', has_text='pilot review').get_by_role('button', name='Mark done', exact=True)
+        with maintenance_lock(root), page.expect_response(_thread_write) as busy:
+            mark.click()
+        assert busy.value.status == 409
+        page.locator('#done-notice').get_by_text('Saved on this device — sync pending', exact=True).wait_for()
+        assert page.get_by_text('Not saved').count() == 0
+        assert page.evaluate('Object.keys(pendingThreads).length', isolated_context=False) == 1
+        assert read_json(state_path(root, 'threads.json'), {}) == {}
+        with page.expect_response(_thread_write) as saved:
+            page.reload()
+        assert saved.value.status == 200
+        assert read_json(state_path(root, 'threads.json'), {})[thread_key(root)]['state'] == 'done'
+        _wait_for_sync(page)
+        browser.close()
+
+
 @pytest.mark.parametrize('width', [1280, 375])
 def test_a_refused_done_says_not_saved_and_try_again_saves_it(tmp_path, monkeypatch, width):
     """The Host answered 400: nothing is waiting to sync. The thread comes back, and the notice offers another try."""
