@@ -183,7 +183,8 @@ async def _action(scope, receive, send, root, headers):
     from ...rem.tasks import UnknownItem
     try:
         result = await asyncio.to_thread(operation)
-    except UnknownItem as error:
+    # A thread mark the notebook will never take is a 400: the reader gives up on those and waits out a 409 (busy).
+    except (UnknownItem, threads.UnknownThread) as error:
         await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
         return
     except (RemError, ValueError) as error:
