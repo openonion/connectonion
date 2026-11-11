@@ -72,6 +72,38 @@ fingerprint state are not silently copied between them. `co browser status`
 shows requested/resolved engine, typed reason, and exact artifact when paid;
 it never prints tokens, licence bytes, or paid-cache paths.
 
+### The WTF Browser in /Applications (macOS)
+
+`co` downloads and runs its own copy of the WTF Browser. The one you
+double-click, `/Applications/WTF Browser.app`, is a second copy, and `co` keeps
+it at the build it runs: after each `--engine wtf` launch it compares the two
+(version and release channel, two small files) and does nothing when they
+match.
+
+| what is in /Applications | what `co` does |
+|---|---|
+| nothing | installs the build it just started |
+| OpenOnion's browser, another version or channel | moves it to the Trash as `WTF Browser <version> <date time>.app`, then installs the build it just started |
+| the same build | nothing |
+| the app is open | leaves it, and replaces it at a later launch once it is closed |
+| an app with that name that is not OpenOnion's | leaves it |
+| `/Applications` is not writable by you | leaves it |
+
+The copy is about 350 MB and runs beside the browser, after it is up: it does
+not delay the launch, and a copy that fails cannot fail it. A script that
+launches the WTF browser and ends at once waits for the copy to finish. What
+was done is printed to the launching process's stderr, and `co browser status`
+says where things stand:
+
+```text
+WTF Browser app: /Applications has 154.0.8037.100, the build co runs
+WTF Browser app: /Applications has 151.0.7922.222, co runs 154.0.8037.100 — it is open, so co leaves it
+WTF Browser app: none in /Applications — co installs the build it runs the next time it starts the WTF browser
+```
+
+Nothing here is configurable, and the free system-Chrome path never touches
+`/Applications`.
+
 ## Why Use This
 
 Two ways to use a browser from the CLI, and you pick per command:
