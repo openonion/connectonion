@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc6
+## Current Version: 1.9.6rc7
+
+Release candidate 1.9.6rc7 for 1.9.6: every Today row in the REM reader closes with Mark done, Not now
+and Ignore in words, Ignore can stop a bulk sender for good (`.state/ignored-senders.txt`), stale
+promises stop counting as people waiting, and the night counts agree (#2977); every record is named by
+what it is (#2970); record pages show the record (#2973); the Skills page puts what you use first and
+fits on a screen (#2975). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc7.md).
+
+- 1.9.6rc7 (worded Mark done · Not now · Ignore; ignored senders; real names; Skills on one screen).
+
+### Previous candidate: 1.9.6rc6
 
 Release candidate 1.9.6rc6 for 1.9.6: in the REM reader, Mark done sits in each row's action strip
 with Codex, Results, Undo and Talk, and one button beside the day/night switch changes the reader
