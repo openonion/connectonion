@@ -320,16 +320,18 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
     from .runner import ready
-    from .translate import backlog, cached, translate
+    from .translate import backlog, cached, shown_today, translate
     from .translate import languages
-    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    # Once per round and before the lock: Today's queue reads the whole notebook.
+    shown = shown_today(root)
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)
     if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in backlog(root, language, changed=changed):
+        for page in backlog(root, language, changed=changed, shown=shown):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue

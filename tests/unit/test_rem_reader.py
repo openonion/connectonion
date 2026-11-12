@@ -733,7 +733,8 @@ def test_interface_language_prefers_supported_non_english_and_leaves_record_pros
     from rem_reader_notebook import build
 
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
-    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': languages, 'from': 'detected from your own mail and sessions'})
+    # A configured list: either order means Chinese (a detected one is ordered by share; test_rem_owner_language).
+    monkeypatch.setattr('connectonion.rem.languages.owner_languages', lambda root: {'languages': languages, 'from': 'set (co rem config set languages)'})
     page = render(build(tmp_path / 'rem', datetime(2026, 10, 1, tzinfo=timezone.utc)), local=True)
     data = json.loads(re.search(r'const REM = (.*);', page).group(1))
     interface = page[page.index('let uiLanguage ='):page.index('function setInterfaceLanguage(')]
@@ -823,21 +824,17 @@ def test_reader_browser_evaluate_strings_compile():
     assert _run_reader_js(script) == len(scripts)
 
 
-def owner_language(tags):
-    """languages.owner_language over a list, as reader.py hands it to the page."""
-    return next((tag for tag in tags if not tag.startswith('en')), next(iter(tags), None))
-
-
-@pytest.mark.parametrize('languages,browser,expected', [
-    (['en', 'zh'], 'en-AU', 'zh'), (['ja', 'en', 'zh'], 'en-AU', 'zh'),
-    (['en'], 'zh-CN', 'zh'), ([], 'zh-TW', 'zh'),
-    (['ja', 'en'], 'ja-JP', 'en'), ([], 'en-AU', 'en'),
+# owner: what reader.py hands the page as owner_language (languages.owner_language) for that list.
+@pytest.mark.parametrize('languages,owner,browser,expected', [
+    (['en', 'zh'], 'zh', 'en-AU', 'zh'), (['ja', 'en', 'zh'], 'ja', 'en-AU', 'zh'),
+    (['en'], 'en', 'zh-CN', 'zh'), ([], None, 'zh-TW', 'zh'),
+    (['ja', 'en'], 'ja', 'ja-JP', 'en'), ([], None, 'en-AU', 'en'),
 ])
-def test_reader_interface_language_default(languages, browser, expected):
+def test_reader_interface_language_default(languages, owner, browser, expected):
     page = TEMPLATE.read_text()
     default = page[page.index('let uiLanguage ='):page.index('let morePeopleColumns =')]
     result = _run_reader_js('\n'.join([
-        '(() => { const REM = ' + json.dumps({'your_languages': languages, 'owner_language': owner_language(languages)}) + ';',
+        '(() => { const REM = ' + json.dumps({'your_languages': languages, 'owner_language': owner}) + ';',
         'const navigator = {language: ' + json.dumps(browser) + '};', default,
         'console.log(JSON.stringify(uiLanguage)); })();',
     ]))
@@ -4201,10 +4198,10 @@ def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_do
     assert building and 'id="rem-updating"' in served
     mark = re.search(r'<script>(\(\(\) => \{[^<]*?rem-updating.*?)</script>', served, re.S).group(1)
     shown = {}
-    for languages, browser in ((["zh", "en"], "en-AU"), (["en"], "zh-CN"), (["en"], "en-AU")):
+    for languages, owner, browser in ((["zh", "en"], "zh", "en-AU"), (["en"], "en", "zh-CN"), (["en"], "en", "en-AU")):
         shown[f"{languages[0]}/{browser}"] = _run_reader_js(
             "const node = {}; const document = {getElementById: () => node};"
-            f"const window = {{REM: {json.dumps({'your_languages': languages, 'owner_language': owner_language(languages)})}}};"
+            f"const window = {{REM: {json.dumps({'your_languages': languages, 'owner_language': owner})}}};"
             f"const navigator = {{language: {json.dumps(browser)}}};" + mark
             + "\nconsole.log(JSON.stringify(node.textContent));")
     assert shown == {"zh/en-AU": "正在更新…", "en/zh-CN": "正在更新…", "en/en-AU": "Updating…"}

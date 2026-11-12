@@ -216,7 +216,7 @@ def prepare(root, row, config, *, directory):
               # Named twice, the code alone read as a hint: an en-first list once drafted the gist in English.
               + f'The material is {material}; the owner reads {native_name(language)} ({language}): write gist, why '
               'and every 【需要你：…】 slot in it, even when the thread and the body are in another language; '
-              'the body stays in the thread\'s language. '
+              'the body follows the skill\'s language rule (the thread\'s language unless the table says otherwise). '
               + today_note(root) + ' '
               f'Write JSON to {candidate} as the skill says. Never send or contact anyone. Reply DONE.')
     return {'row': row, 'person': identities['person'], 'verdict': read_json(directory / 'verdict.json', {}),

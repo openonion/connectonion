@@ -158,11 +158,15 @@ def owner_language(root: Path) -> str | None:
     of their own: three rules once made the same `en, zh` owner an English draft under a 中文
     reader.
 
-    The first non-English tag of his languages (set, else detected): an owner who writes a
-    second language writes English too, and the reader appends what he chooses, so `en` often
-    comes first by accident. Only a list with no other language means English; None while
-    nothing is set or detected."""
-    tags = owner_languages(root)["languages"]
+    A configured list: its first non-English tag. The reader appends what he chooses, so `en`
+    often comes first there by accident; only a list with no other language means English.
+    A detected list is ordered by how much he writes each language, so its first tag is his:
+    someone who writes 88% English and the odd Chinese line reads English. None while nothing
+    is set or detected."""
+    chosen = owner_languages(root)
+    tags = chosen["languages"]
+    if not chosen["from"].startswith("set"):
+        return next(iter(tags), None)
     return next((tag for tag in tags if tag.split("-")[0].lower() != "en"), next(iter(tags), None))
 
 

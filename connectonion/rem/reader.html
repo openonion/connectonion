@@ -6727,14 +6727,16 @@ function translationMark(r) {
 function originalMark(lead = false) {
   return el("span", { class: "lang-status" + (lead ? " lead" : ""), text: t("Original"), title: t("No Chinese translation yet; showing original") });
 }
-// Today's and Maybe over's rows say what they are in the page's words: one not yet in the reader's language
-// carries the page header's 原文, first, so a closed row's ellipsis never cuts it off.
-function rowMark(words) {
-  const language = uiLanguage === "en" ? null : textLanguage(words);
-  return language && language !== uiLanguage ? originalMark(true) : null;
+// Today's and Maybe over's rows carry the page header's 原文 when their page has no current Chinese version
+// (what translationMark reads), first, so a closed row's ellipsis never cuts it off. A row of Chinese words
+// keeps no mark even then: names, codes and English terms inside it ("跟进 Jordan Lee 的 Q3 pricing proposal")
+// would outvote the Han characters in a script count, and the row is already in the reader's language.
+function rowMark(words, r) {
+  if (uiLanguage !== "zh" || r?.translations?.zh || /[\u4e00-\u9fff]{2}/.test(words)) return null;
+  return originalMark(true);
 }
-function wordsLine(name, words, after, attrs = {}) {
-  const mark = rowMark(words);
+function wordsLine(name, words, r, after, attrs = {}) {
+  const mark = rowMark(words, r);
   return mark ? el("p", { class: name, ...attrs }, [mark, words, ...after]) : el("p", { class: name, text: words, ...attrs }, after);
 }
 // The language a text is written in, by script, as languages.language_of decides it: Han counts per
@@ -6749,7 +6751,8 @@ function textLanguage(text) {
 // The draft's gist is a summary, not a translation, and the writer may miss the owner's language:
 // the title names its language whenever that is not the reader's, so a Chinese-side label never sits over English.
 function gistTitle(gist) {
-  const language = textLanguage(gist);
+  // A run of Han is Chinese however many English names sit in it (rowMark says why).
+  const language = /[\u4e00-\u9fff]{2}/.test(gist) ? "zh" : textLanguage(gist);
   return t("Gist") + (language && language !== uiLanguage ? " · " + nativeName(language) : "");
 }
 function claimValue(claim, r, after, compact = false) {
@@ -7101,7 +7104,7 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
-      : wordsLine("words", words, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+      : wordsLine("words", words, entry.r, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
@@ -7764,10 +7767,11 @@ function translationNotice() {
 let todayLead = null;
 function deckOrder(groups) {
   const lead = groups.findIndex(group => group.r.path === todayLead);
-  // Among cards ready to send, one whose draft needs nothing from the owner goes on top: a 【需要你】 slot
-  // makes the top card a question; with every draft slotted, the first still leads.
+  // Among cards ready to send, one whose draft needs nothing from the owner goes on top: a slot makes the top
+  // card a question; with every draft slotted, the first still leads. A slot is what replyDraftCard holds Send
+  // for (its isSlot: any [, ［ or 【 part), so the card on top is one whose Send works at once.
   const sendable = groups.map((group, i) => [i, groupStep(group.entries)]).filter(([, next]) => next.step === "send");
-  const complete = sendable.find(([, next]) => !/【/.test(threadDraft(next.entry)?.body || ""));
+  const complete = sendable.find(([, next]) => !/[\[［【]/.test(threadDraft(next.entry)?.body || ""));
   const ready = (complete || sendable[0] || [-1])[0];
   const first = lead >= 0 ? lead : Math.max(0, ready);
   return [...groups.slice(first), ...groups.slice(0, first)];
@@ -7986,7 +7990,7 @@ function staleWidget(entries) {
     keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
     return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
-      wordsLine("stale-what", words, [], { title: words }),
+      wordsLine("stale-what", words, entry.r, [], { title: words }),
       el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
   });
   return el("section", { id: "today-stale", class: "widget stale", "aria-label": t("Maybe over") }, [
