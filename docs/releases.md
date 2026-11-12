@@ -25,7 +25,12 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc6**: in the REM reader, Mark done sits with the other row actions and one
+Release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
+Ignore in words, and Ignore can keep an advertiser out of Today for good. Records carry real names,
+record pages show the record, and the Skills page fits on one screen. See
+[1.9.6rc7 notes](releases/1.9.6rc7.md).
+
+Before it, release candidate **1.9.6rc6**: in the REM reader, Mark done sits with the other row actions and one
 button switches the reader between 中文 and English. After an upgrade the reader is served by the
 installed version: the old Host co rem started is replaced on its port when nothing is running. See
 [1.9.6rc6 notes](releases/1.9.6rc6.md).
@@ -52,7 +57,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc6'
+python -m pip install --upgrade 'connectonion==1.9.6rc7'
 ```
 
 ## Previous stable
