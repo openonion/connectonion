@@ -5,6 +5,11 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 # Investigating a person
 
+## Research beyond the mailbox
+
+Follow `rem-investigate` for research tools, privacy, own browser tab, the
+LinkedIn prohibition and saved captures. Resolve identity across names, company, public role and links; distinguish a name match from the same person. Lead with who they are and what they can do for/with the user, citing outside findings beside the mail.
+
 ## Identity is given, not guessed
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;
@@ -25,6 +30,9 @@ description: Read a person’s identity, relationship and obligations from gathe
 - Read `investigation:facts` first; put each value in its cited `Facts` field.
   Read `Signature`, `Calendar` and signatures for role, company, office, location
   and time zone. Date signature changes; qualify both phones.
+- Derive an Unknown time zone from an established, unambiguous city/country:
+  `Australia/Sydney (from location) [n]`, citing the location's source. Ambiguous
+  location or several time zones → `Unknown`; do not guess a fixed UTC offset.
 - `Phone` means the person's contact number, never a meeting dial-in, passcode
   or attendee's number. Calendar text is context, not their contact details.
 - A domain or student affiliation proves no employment; unstated employer →
@@ -46,7 +54,8 @@ Follow `rem-page-person` exactly, the lead above `Facts` included:
 `co rem list people --aliases` reads its headings and labels. **`Open threads`
 is mandatory**: who owes what, since when.
 
-**Insight, three shapes** (never copy these facts):
+**Insight, three shapes plus labelled inference** (never copy these facts):
 - `At stake: the revised SOW Mia requested on 2026-09-21 is due 2026-10-03, at the A$15k she rejected in August [5][9]`
 - `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
 - `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`
+- `Inference: Mia could advise the launch because her public role covers developer relations and she offered a product review [4][9]`

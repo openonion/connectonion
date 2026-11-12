@@ -69,7 +69,7 @@ def _remaining(progress: dict, item: dict) -> list[str]:
     return [page for page in targets(item) if done.get(page, {}).get("outcome") not in TERMINAL]
 
 
-def plan(root: Path, progress: dict) -> tuple[list[dict], list[dict]]:
+def plan(root: Path, progress: dict, *, retry_pages=()) -> tuple[list[dict], list[dict]]:
     """Pending immutable events, eligible pages and explicit deferral reasons."""
     from .refusals import due_for_retry, refused_pages
 
@@ -94,7 +94,7 @@ def plan(root: Path, progress: dict) -> tuple[list[dict], list[dict]]:
                       item["role"] == "reflection" and hashlib.sha256(page.encode()).hexdigest() in unresolved
                       and item["source"] not in progress.get(RECEIPTS, {}) else
                       "Same feedback awaits refusal retry eligibility" if
-                      same_revision(held, item) and page not in due else "")
+                      same_revision(held, item) and page not in due and page not in retry_pages else "")
             if reason:
                 deferred.append({"source": item["source"], "record": page, "reason": reason})
             else:
@@ -136,7 +136,8 @@ def recover(root: Path, progress: dict, rows: list[dict]) -> None:
         except RemError:
             matches = False
         relevant = [item for item in proof.get("items", [])
-                    if current.get(item.get("source")) == item.get("feedback_revision")]
+                    if current.get(item.get("source")) == item.get("feedback_revision")
+                    and page in _remaining(progress, item)]
         if matches and relevant:
             accepted(root, progress, relevant, page, proof.get("changed", True))
             from .refusals import forget_refusal
@@ -145,7 +146,7 @@ def recover(root: Path, progress: dict, rows: list[dict]) -> None:
         path.unlink()
 
 
-def finish(root: Path, progress: dict, items: list[dict], page: str, result: dict) -> None:
+def finish(root: Path, progress: dict, items: list[dict], page: str, result: dict, *, checkpoint: Path | None = None) -> None:
     """Shared by sync and the daily retry: acknowledge only an accepted target."""
     from .refusals import forget_refusal, material_sources, remember_refusal
     relevant = [item for item in items if page in item.get("feedback_pending_targets", [])]
@@ -157,6 +158,8 @@ def finish(root: Path, progress: dict, items: list[dict], page: str, result: dic
         forget_refusal(root, page, sources)
     synchronize(progress, items)
     from .files import write_json
+    if checkpoint is not None:
+        write_json(checkpoint, progress)
     write_json(state_path(root, "progress.json"), progress)
 
 

@@ -37,8 +37,8 @@ def test_sent_read_hides_transport_tracebacks(monkeypatch, capsys):
     monkeypatch.setattr(email_commands, "_require_auth", lambda: True)
     monkeypatch.setattr(
         get_emails,
-        "get_sent",
-        lambda **kwargs: (_ for _ in ()).throw(requests.ConnectionError("secret host detail")),
+        "get_sent_email",
+        lambda email_id: (_ for _ in ()).throw(requests.ConnectionError("secret host detail")),
     )
 
     with pytest.raises(typer.Exit):
@@ -67,3 +67,18 @@ def test_send_does_not_call_a_non_retryable_key_safe(monkeypatch, capsys):
     assert "Request ID: req-old" in output
     assert "Safe retry key" not in output
     assert "--idempotency-key" not in output
+
+
+@pytest.mark.parametrize('status,phrase',[(404,'No sent email'),(401,'co auth login')])
+def test_direct_read_explains_not_found_and_expired_auth(monkeypatch,capsys,status,phrase):
+    monkeypatch.setattr(email_commands,'_require_auth',lambda:True)
+    monkeypatch.setattr(get_emails,'get_sent_email',lambda email_id:(_ for _ in ()).throw(_http_error(status)))
+    with pytest.raises(typer.Exit):email_commands.handle_email_sent_read('7')
+    assert phrase in capsys.readouterr().out
+
+def test_sent_read_keeps_bracketed_content_literal(monkeypatch,capsys):
+    monkeypatch.setattr(email_commands,'_require_auth',lambda:True)
+    monkeypatch.setattr(get_emails,'get_sent_email',lambda email_id:{'subject':'[draft]','body':'[bold]Literal[/bold] https://example.com/a[b]'})
+    email_commands.handle_email_sent_read('7')
+    output=capsys.readouterr().out
+    assert '[draft]' in output and '[bold]Literal[/bold]' in output and 'a[b]' in output

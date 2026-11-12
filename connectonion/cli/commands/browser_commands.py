@@ -9,6 +9,7 @@ LLM-Note:
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy)
 """
 
+import os
 import shlex
 import sys
 
@@ -27,6 +28,7 @@ USAGE = (
     "  co browser -t TAB network requests|request <n>|har start|har stop [FILE]   what the tab sent; HAR\n"
     "  co browser -t TAB cookies [set|clear|save|load] [--all] [--raw]   the tab's site cookies\n"
     "  co browser import [--domain SITE] [--dry-run]   carry Chrome's logins (cookies) into this browser\n"
+    "  co browser history [--days N] [--json]     read local Chrome visits; no browser or network\n"
     "  co browser status                        open or not, engine, last command, the tab board\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
@@ -196,7 +198,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             "co browser --engine system <verb>",
             file=sys.stderr,
         )
-    if engine_mode == "onion":
+    if engine_mode == "onion" and os.environ.get("CO_BROWSER_DAEMON_PID") is None:
         failure = _ensure_paid_client()
         if failure is not None:
             print(failure, file=sys.stderr)

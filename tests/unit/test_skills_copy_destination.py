@@ -26,7 +26,7 @@ def discovered(tmp_path, monkeypatch):
     index = {"skills": [{"name": "greeter", "source": "claude",
                          "path": str(library / "SKILL.md")}]}
     monkeypatch.setattr(sc, "_load_index", lambda: index)
-    monkeypatch.setattr(sc, "SKILLS_DIR", tmp_path / "user-tier" / "skills")
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "user-tier"))
     monkeypatch.chdir(tmp_path / "project")
     return tmp_path
 
@@ -51,7 +51,7 @@ class TestCopyingIntoTheProject:
     def test_without_the_flag_it_still_goes_to_the_user_library(self, discovered):
         sc.handle_skills_copy(["greeter"])
 
-        assert (sc.SKILLS_DIR / "greeter" / "SKILL.md").exists()
+        assert (sc.user_skills_dir() / "greeter" / "SKILL.md").exists()
         assert not (Path.cwd() / ".co" / "skills" / "greeter").exists()
 
     def test_all_respects_the_destination_too(self, discovered):

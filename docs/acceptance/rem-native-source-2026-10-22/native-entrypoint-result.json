@@ -1,0 +1,14 @@
+{
+  "entrypoint": "bundled codex-app-tools MCP -> native tools pipe -> automation_update",
+  "plugin_version": "0.1.5",
+  "plugin_present": true,
+  "native_pipe_identified_from_desktop_startup_log": true,
+  "operation_attempted": "tools/list (read-only)",
+  "connection_closed_without_response": true,
+  "desktop_rejection": "untrusted-process-ancestry",
+  "rejection_timestamp_utc": "2026-10-22T07:07:44.086Z",
+  "automation_mutation_attempted": false,
+  "security_checks_modified": false,
+  "live_native_creation_verified": false,
+  "file_probe_failure_root_cause_established": false
+}

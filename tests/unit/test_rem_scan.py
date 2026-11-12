@@ -92,12 +92,16 @@ def test_all_history_finds_old_people_and_splits_full_provider_listings():
 
 
 @pytest.mark.parametrize("failure", [ssl.SSLError, ConnectionError])
-def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure):
+def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure, monkeypatch):
     from connectonion.rem.map import _mail_rows
+
+    slept, failed_windows = [], []
+    monkeypatch.setattr("connectonion.rem.mail.time.sleep", slept.append)
 
     class Interrupted(Box):
         def list_between(self, start, end, n):
             if start[:4] >= "1999":
+                failed_windows.append((start, end, n))
                 raise failure("connection lost")
             return super().list_between(start, end, n)
 
@@ -117,6 +121,8 @@ def test_all_history_keeps_completed_years_after_a_later_connection_failure(fail
                            coverage, errors, inventory=inventory, all_history=True)
     assert {person["address"]: person["mails"] for person in people} == {
         "old@example.org": 1, "other@example.org": 1}
+    assert slept == [2, 4, 8]  # No sleep after the fourth and final failure.
+    assert len(failed_windows) == 4 and len(set(failed_windows)) == 1
     assert len(errors) == 1 and errors[0]["stage"] == "metadata-window"
     assert errors[0]["start"].startswith("1999")
     assert any("outlook" in note and "incomplete" in note for note in coverage)
@@ -253,6 +259,11 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
         # Read while the turn runs: a finished task keeps no copy of it (#1958).
         handed.extend(__import__("json").loads(next(Path(cwd).glob("investigate-*/material.json")).read_text()))
         candidate = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        web = candidate.parent / 'web'
+        web.mkdir()
+        (web / 'contact.md').write_text('Rowan’s phone: +61 2 9385 1000')
+        (web / 'sources.json').write_text(__import__('json').dumps([{
+            'url': 'https://example.org/contact', 'file': 'contact.md', 'date': '2026-09-19'}]))
         candidate.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]").replace(
             '- (none yet)', '- [W1] https://example.org/contact — observed 2026-09-19')
             .replace('- Unknown — not investigated yet', '- Unknown'))
@@ -345,16 +356,16 @@ def test_a_domain_that_only_sends_notices_is_not_an_organisation_we_deal_with():
 
 
 def test_the_users_own_domain_is_not_an_organisation_they_deal_with():
-    """On the real census `mail.openonion.ai` came third with 18 correspondents: the
+    """In this census example, `example.com` has four correspondents: the
     user's own agent addresses. A domain the user sends from is the user."""
     from connectonion.rem.scan import scan_orgs
-    rows = [{"address": f"agent{i}@mail.openonion.ai", "name": f"0x{i}", "mails": 3, "last": "2026-09-10",
+    rows = [{"address": f"agent{i}@example.com", "name": f"0x{i}", "mails": 3, "last": "2026-09-10",
              "automated_hint": False, "one_way": False} for i in range(4)]
     rows += [{"address": "rowan@unsw.edu.au", "name": "Rowan", "mails": 7, "last": "2026-09-10",
               "automated_hint": False, "one_way": False},
              {"address": "ingrid@unsw.edu.au", "name": "Ingrid", "mails": 6, "last": "2026-09-12",
               "automated_hint": False, "one_way": True}]
-    orgs = scan_orgs(rows, own_addresses={"aaron@mail.openonion.ai", "me@x.y"})
+    orgs = scan_orgs(rows, own_addresses={"ellis@example.com", "me@x.y"})
     assert [o["domain"] for o in orgs] == ["unsw.edu.au"]
 
 
@@ -460,6 +471,6 @@ def test_a_greeting_to_an_agents_address_does_not_name_the_agent_after_its_owner
 
 def test_a_header_word_is_not_a_name():
     """A page titled "From gws": the owner's test mail put that text in the To line."""
-    sent = {"from": "me@x.y", "to": ["From gws <aaron@work.example>"], "cc": []}
-    assert _display_name(sent, "aaron@work.example") == ""
+    sent = {"from": "me@x.y", "to": ["From gws <ellis.work@example.com>"], "cc": []}
+    assert _display_name(sent, "ellis.work@example.com") == ""
     assert _display_name({"from": "me@x.y", "to": ["Fromm Ada <a@b.c>"], "cc": []}, "a@b.c") == "Fromm Ada"

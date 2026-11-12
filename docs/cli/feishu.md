@@ -54,12 +54,23 @@ that lists the ones you own. To use an existing one, configure it by hand:
    groups it is in. Add `im:message.p2p_msg:readonly` if people will message
    the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
-   `im.message.receive_v1`. No request URL is needed. That is the only event
-   the listener turns into messages. If the application is also subscribed to
-   `im.message.reaction.created_v1`, `im.message.reaction.deleted_v1` or
-   `im.message.message_read_v1`, those are acknowledged and dropped: they
-   never wake the agent. Any other event gets the SDK's
+   `im.message.receive_v1`. No request URL is needed. Every message type it
+   carries becomes an inbox record with its own `kind`: text, post, image,
+   file, audio, media, sticker and the rest; files and images keep their
+   resource keys in `attachments`. Optionally also subscribe to the chat
+   events the WhatsApp listener records, and they arrive the same way:
+
+   | Lark event | inbox `kind` | addressed to the bot |
+   |---|---|---|
+   | `im.message.reaction.created_v1` | `reaction` (on a message this inbox knows) | no |
+   | `im.message.recalled_v1` | `recall` | no |
+   | `im.chat.member.bot.added_v1` | `joined` | yes |
+   | `im.chat.member.bot.deleted_v1`, `im.chat.member.user.added_v1` / `deleted_v1` / `withdrawn_v1`, `im.chat.updated_v1`, `im.chat.disbanded_v1` | `group-info` | no |
+
+   `im.message.reaction.deleted_v1` and `im.message.message_read_v1` are
+   acknowledged and dropped. Any other event gets the SDK's
    `processor not found` in the log, and Feishu retries it; unsubscribe it.
+   Lark has no message-edit event for bots, so edits are not delivered.
 4. Publish it to your tenant, then write its credentials into
    `~/.co/keys.env` — `co env set` refuses these two names by default, because
    a hand-typed app secret came from somewhere it cannot check, so say where
@@ -126,16 +137,69 @@ them. `sender` is still the key: a name is not unique and can change.
 the bot from a reply to somebody else in the same group, which are different
 events; `mentioned` reads the same value.
 
+The message-kind, attachment and typed-sender behavior below requires the opt-in
+**1.9.3rc15** preview. After publication, install it with
+`python -m pip install --upgrade 'connectonion==1.9.3rc15'`.
+
 `kind` says what arrived: `text` for anything readable as words, otherwise the
 platform's own word for it — `image`, `sticker`, `audio` and the rest come
-through with an empty `text`, and without `kind` they look exactly like a
-message with nothing in it.
+through with their actual type. Feishu may retain a text placeholder such as
+`[file]`; use `kind`, not the placeholder, to decide how to handle it. A rich
+post carrying files or images has `kind: post`; a text-only post is `text`.
+
+Feishu/Lark messages also include optional `attachments` and `sender_ids` when
+the platform supplied them. They survive the queue, `receive` and `consume`
+without requiring `listen --raw`:
+
+```json
+{
+  "kind": "file",
+  "attachments": [
+    {
+      "type": "file",
+      "key": "file_v3_example",
+      "name": "receipts.zip"
+    }
+  ],
+  "sender_ids": {
+    "union_id": "on_example",
+    "open_id": "ou_example"
+  }
+}
+```
+
+`attachments` contains original resource references, including the separate
+file list and embedded images in rich posts. Each item has `type` and `key`,
+plus `name` when available. Types are `file`, `image`, `audio`, `media` or
+`folder`; a folder reference is not a downloadable file. Repeated references
+to the same type/key appear once per message. Only these metadata fields are
+exposed, not unrelated provider payload. The listener records a ZIP as a file;
+it does not download, extract, upload or execute its contents. The consuming
+program owns those steps and the corresponding validation.
+
+The Host's built-in inbox consumer also passes the normalized JSON record to
+the agent for non-text messages or messages with attachments. Plain text
+messages retain their usual text input. This keeps original attachment keys
+available at the final agent-input step without exposing `raw` or changing the
+sender's permissions.
 
 `chat` is where it came from; reply there and the answer lands beside the
-question. `sender` is the person's `union_id`. `mentioned` is whether the bot
+question. `sender` keeps its existing preference for `union_id`, falling back
+to `open_id`; a history response can supply only one of these. `sender_ids`
+labels the identifiers actually supplied, so an application using app-scoped
+bindings can check `sender_ids.open_id` without changing its existing keys.
+An ID from another app must not be treated as the same app's binding.
+`mentioned` is whether the bot
 was @'d (always true in a direct message). Nothing else from Feishu is kept
 unless you start `listen --raw`, so group titles and contact cards never reach
 a prompt by accident.
+
+History recovery queries conversations already recorded by this listener,
+including a conversation remembered just before an interrupted first journal
+write. It retains the original message ID, timestamp, type and attachment
+references and uses the same inbox deduplication. A fresh inbox does not
+discover or import old chats automatically; a migration must explicitly
+establish its known conversations and recovery boundary.
 
 You do not need the commands below to consume it:
 
@@ -484,7 +548,22 @@ restarting: deleting it discards that recovery boundary.
 Every history page passes through the same message-ID deduplication and durable
 completion records as WebSocket events. A successful pass advances the checkpoint;
 a failed page, denied permission, or storage failure leaves it unchanged and is
-retried after 60 seconds. `co lark check` reports an outstanding recovery failure.
+tried again at the next reconnect or restart — never on a timer, because every
+history page is an API call against the tenant's quota. One run makes at most
+40 calls, newest conversations first, at most 2 pages (100 messages) per
+conversation. A conversation Lark rejects (230001 invalid container, 230002 bot
+not in the chat) is logged once and skipped; the others still recover. Only a
+real thread id (`omt_…`) is read as a thread. `co lark check` reports an
+outstanding recovery failure.
+
+**Another client on the same app.** Lark delivers each event to only one long
+connection per app_id. If a second process (another machine, an old script)
+connects as the same bot, it silently takes a share of the messages. When a
+recovery run finds a message addressed to the bot that was sent while this
+listener was connected, it logs
+`WARNING message <id> reached the bot but not this listener — another client may be connected with this app_id`
+and `co lark check` shows it. The message itself is delivered by recovery; the
+fix is to stop the other client.
 This work runs outside the WebSocket callback so fetching history does not delay
 live-event acknowledgements.
 

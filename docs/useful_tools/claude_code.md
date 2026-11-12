@@ -173,3 +173,16 @@ events and per-action approval callbacks. Claude Code uses its documented
 `stream-json` subprocess contract for live inner tool cards and session resume.
 It does not yet translate Claude's unmatched permission requests into
 ConnectOnion approval cards.
+
+## Candidate: loopback bridge startup (#2698)
+
+A follow-up candidate binds its scoped Hook receiver to numeric `127.0.0.1` without
+reverse-DNS lookup before launching Claude. It keeps the authenticated endpoint,
+ephemeral port, request bounds, threaded delivery and normal shutdown. Bind
+failures still propagate and close the socket. It does not change global DNS,
+provider permission policy, user accounts or interruption deadlines.
+
+A 35-second local resolver observation motivated the repair; it is not a universal
+startup timing promise or evidence of faster Codex REM initialization. The
+candidate is prepared for 1.9.3rc27 and requires matching public artifacts and
+normal review/release gates. Tests use synthetic children and local Hook events, not a real model.

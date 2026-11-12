@@ -1,0 +1,111 @@
+{
+  "id": "rem-native-retest-2b99ac4f8a",
+  "started_at": "2026-10-22T06:44:55.727204+00:00",
+  "cadence": "every minute",
+  "registration_path": "legacy automation.toml",
+  "observations": [
+    {
+      "elapsed_seconds": 0,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 10,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 20,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 30,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 40,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 50,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 60,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 70,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 80,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 90,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 100,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 110,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 120,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 130,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 140,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    },
+    {
+      "elapsed_seconds": 150,
+      "native_row": null,
+      "native_runs": [],
+      "marker_exists": false
+    }
+  ],
+  "passed": false,
+  "marker": null,
+  "cleanup": {
+    "test_files_removed": true,
+    "existing_tasks_unchanged": true,
+    "database_writes": false
+  }
+}

@@ -12,20 +12,37 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from connectonion.rem import daily
-from connectonion.rem.config import prepare, read_config
+from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook
 from connectonion.rem.investigate import NothingFound
 from connectonion.rem.refusals import refused_pages, remember_refusal
+
+
+pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
 def no_change(root):
     return {"outcome": "no_change"}
 
 
+@pytest.mark.parametrize("enabled,consented,unsubscribed", [
+    (False, False, False), (True, False, False), (False, True, False),
+    (True, True, True), (True, True, False),
+])
+def test_daily_mail_clients_require_an_approved_subscription(monkeypatch, enabled, consented, unsubscribed):
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: True)
+    monkeypatch.setattr(daily, "mail_client", lambda kind, **kwargs: kind)
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": enabled, "consented": consented, "unsubscribed": unsubscribed}}
+    expected = {"gmail", "outlook"} if enabled and consented and not unsubscribed else {"gmail"}
+    assert set(daily._clients(sources)) == expected
+
+
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     root = tmp_path / "rem"
     prepare(root)
+    set_config(root, ["schedule.timezone", "UTC"])
     notebook = Notebook(root)
     notebook.stub_skill("skills/catalog/job-followup.md", "job-followup", "/nowhere/SKILL.md")
     notebook.stub_project("projects/historical-notes.md", "historical-notes", [])
@@ -98,7 +115,7 @@ def test_a_refused_page_is_retried_by_a_later_run_with_its_refused_material(root
     assert daily.run_daily(root, maintain=no_change)["run"]["phase"] == "daily-investigation"
     remember_refusal(root, "orgs/unsw-edu-au.md", ["gmail:1"], "Candidate rejected: x", stage="investigate")
     ledger = refused_pages(root)
-    ledger["orgs/unsw-edu-au.md"]["at"] = (datetime.now(timezone.utc) - timedelta(hours=21)).isoformat()
+    ledger["orgs/unsw-edu-au.md"]["at"] = (daily.now() - timedelta(hours=21)).isoformat()
     from connectonion.rem.files import state_path, write_json
     write_json(state_path(root, "refused-investigations.json"), ledger)
     result = daily.run_daily(root, maintain=no_change)
@@ -137,7 +154,7 @@ def test_partial_maintenance_still_saves_the_owners_detected_languages(root):
         db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
         db.execute("insert into messages values (?, 'gmail', 't', ?, '[]', '', '', ?, null)",
                    ("gmail:avery", "avery@example.test", "mail/messages/gmail/avery.json"))
-    result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"})
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "partial"}, translate_one=lambda *a: None)
     assert result["outcome"] == "partial" and result["investigation"] is None
     assert read_json(root / ".state" / "map.json", {})["owner"]["languages"]["languages"] == ["zh"]
 
@@ -149,19 +166,29 @@ def translation_root(tmp_path, monkeypatch):
     from connectonion.rem.config import set_config
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'fixtures'))
     from rem_reader_notebook import build
-    root = build(tmp_path / 'rem')
+    root = build(tmp_path / 'rem', daily.now())
+    import os
+    from connectonion.rem.files import Notebook
+    for record in Notebook(root).list():
+        modified = {'projects/harbour.md': 300, 'orgs/fernhill-labs.md': 200}.get(record, 100)
+        os.utime(root / record, (modified, modified))
     monkeypatch.setattr(daily, 'subscriptions', lambda root: {})
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
     monkeypatch.setattr(daily.quota, 'read', lambda config, request=None: {'unknown': 'no meter'})
-    set_config(root, ['languages', 'en,zh,ja', 'limits.translations_per_day', '2'])
+    set_config(root, ['languages', 'en,zh,ja'])
+    # D-104 retired the daily translation count; two pages waiting keep each run to two translations.
+    from connectonion.rem import translate
+    waiting = translate.backlog
+    monkeypatch.setattr(translate, 'backlog', lambda root, language, changed=(): waiting(root, language, changed=changed)[:2])
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', ''))
     monkeypatch.setattr('connectonion.rem.sessions.summarise_sessions', lambda *a, **kw: {})
     monkeypatch.setattr('connectonion.rem.sessions.summarise_line', lambda result: '')
     monkeypatch.setattr(daily, 'unfinished_by_recency', lambda root: [])
+    monkeypatch.setattr('connectonion.rem.people_pages.queue', lambda *a, **kw: [])
     return root
 
 
-def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failures(translation_root, monkeypatch):
+def test_daily_translates_changed_pages_and_reports_failures(translation_root, monkeypatch):
     from connectonion.rem.files import RemError
     root = translation_root
     pages = ['skills/catalog/weekly-brief.md', 'projects/harbour.md', 'orgs/fernhill-labs.md']
@@ -178,14 +205,12 @@ def test_daily_translates_changed_pages_once_with_daily_limit_and_reported_failu
     result = daily.run_daily(root, maintain=maintain, translate_one=translator, say=messages.append)
     report = result['maintenance']['translations']
     assert calls == [(pages[1], 'zh'), (pages[2], 'zh')]
-    assert [row['outcome'] for row in report['pages']] == ['cached', 'failed', 'translated']
-    assert report['runner_attempts'] == 2
-    assert report['pages'][1]['error'] == 'A quoted passage changed'
+    assert [row['outcome'] for row in report['pages']] == ['failed', 'translated']
+    assert report['attempted'] == 2
+    assert report['pages'][0]['error'] == 'A quoted passage changed'
     assert any('Translation failed' in message for message in messages)
     log = next(log for log in daily.run_logs(root) if log['phase'] == 'daily-translation')
     assert log['outcome'] == 'partial' and log['pages'] == report['pages']
-    daily.run_daily(root, maintain=maintain, translate_one=translator)
-    assert len(calls) == 2  # Another scheduled slot shares today's allowance.
 
 
 def test_daily_translates_investigation_changes_after_refresh(translation_root, monkeypatch):
@@ -196,7 +221,7 @@ def test_daily_translates_investigation_changes_after_refresh(translation_root, 
     result = daily.run_daily(root, maintain=no_change,
                              investigate_one=lambda *a, **kw: {'changed': ['projects/harbour.md']},
                              translate_one=lambda root, page, language: calls.append((page, language)))
-    assert calls == ['refresh', ('projects/harbour.md', 'zh')]
+    assert calls == ['refresh', ('projects/harbour.md', 'zh'), ('orgs/fernhill-labs.md', 'zh')]
     assert result['maintenance']['translations']['pages'][0]['outcome'] == 'translated'
 
 
@@ -211,7 +236,7 @@ def test_daily_translation_skips_english_or_unready_runner(translation_root, mon
     assert 'translations' not in result['maintenance']
 
 
-def test_daily_translation_respects_total_runner_cap(translation_root, monkeypatch):
+def test_daily_translation_has_its_own_budget_after_runner_cap(translation_root, monkeypatch):
     from connectonion.rem.config import set_config
     from connectonion.rem.files import write_json, state_path
     set_config(translation_root, ['limits.runner_calls_per_day', '1'])
@@ -219,5 +244,245 @@ def test_daily_translation_respects_total_runner_cap(translation_root, monkeypat
         'started_at': daily.now().isoformat(), 'runner_attempts': 1, 'outcome': 'completed'})
     result = daily.run_daily(translation_root,
                              maintain=lambda root: {'outcome': 'completed', 'changed': ['projects/harbour.md']},
-                             translate_one=lambda *a: pytest.fail('daily cap exceeded'))
-    assert result['maintenance']['translations']['runner_attempts'] == 0
+                             translate_one=lambda *a: 'translated')
+    assert result['maintenance']['translations']['attempted'] == 2
+
+
+def _owner_page(root, investigated: str) -> str:
+    """The owner's page as the first build left it, investigated on `investigated`."""
+    from connectonion.rem.files import state_path, write_json
+    record = "people/casey-owner.md"
+    notebook = Notebook(root)
+    notebook.stub_person(record, "Casey Owner", ["casey@example.com"])
+    path = notebook.path(record)
+    path.write_text(path.read_text().replace("not investigated yet", f"investigated {investigated} (outlook)"))
+    write_json(state_path(root, "map.json"), {"owner": {"record": record, "addresses": ["casey@example.com"]}})
+    return record
+
+
+def test_a_later_run_refreshes_the_owners_page_once_a_day(root, monkeypatch):
+    """#2720: on 2026-11-03, after 33 runs that day, the page pinned as You still
+    read as of 2026-10-10, while the same rounds rewrote 39 other pages."""
+    calls = _investigators(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(daily, "investigate", lambda root, record, title, handles, **kw: (
+        seen.update({record: (handles, kw.get("sent_only"), kw.get("days"))}),
+        calls.append(("investigate", record, {})), {"changed": [record]})[-1])
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    record = _owner_page(root, (daily.now() - timedelta(days=24)).date().isoformat())
+    assert daily.run_daily(root, maintain=no_change)["run"]["phase"] == "daily-investigation"
+    result = daily.run_daily(root, maintain=no_change)
+    assert result["run"]["phase"] == "daily-update"
+    row = result["run"]["pages"][0]
+    assert (row["page"], row["outcome"], row["mode"]) == (record, "accepted", "owner")
+    # Read the way `investigate me` reads it, over the days since it was last read.
+    assert seen[record] == (["casey@example.com"], True, 25)
+    calls.clear()
+    daily.run_daily(root, maintain=no_change)
+    assert calls == []
+
+
+def test_the_owners_page_read_today_is_not_read_again(root, monkeypatch):
+    calls = _investigators(monkeypatch)
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    _owner_page(root, daily.now().date().isoformat())
+    daily.run_daily(root, maintain=no_change)
+    daily.run_daily(root, maintain=no_change)
+    assert calls == []
+
+
+def test_same_person_judgements_are_a_run_in_the_logs_and_count_against_the_days_calls(root, monkeypatch):
+    """#2741: two judge calls a run were in no log, no budget and no call count."""
+    from connectonion.rem import same_person
+    from connectonion.rem.service import run_logs, status
+    _investigators(monkeypatch)
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [] if kw.get("uninvestigated") else [{"pages": ["people/a.md", "people/b.md"], "why": "x"}])
+    monkeypatch.setattr(same_person, "judge", lambda root, config, limit, say, **kw: [
+        {"pages": ["people/a.md", "people/b.md"], "same": False, "usage": {"input_tokens": 40}}] * limit)
+    before = status(root)["runner_attempts_today"]
+    result = daily.run_daily(root, maintain=no_change)
+    run = next(record for record in run_logs(root) if record.get("phase") == "same-person")
+    assert run["runner_attempts"] == 2 and run["usage"] == {"input_tokens": 80} and run["outcome"] == "completed"
+    assert status(root)["runner_attempts_today"] == before + (result.get("run") or {}).get("runner_attempts", 0) + 2
+    from connectonion.rem.quota import INVESTIGATION_PHASES
+    assert "same-person" in INVESTIGATION_PHASES
+
+
+def test_no_pair_to_judge_writes_no_run(root, monkeypatch):
+    from connectonion.rem import same_person
+    from connectonion.rem.service import run_logs
+    _investigators(monkeypatch)
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [])
+    daily.run_daily(root, maintain=no_change)
+    assert not [record for record in run_logs(root) if record.get("phase") == "same-person"]
+
+
+def test_daily_round_waits_for_a_short_owner_command(root, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.sessions import import_sessions
+
+    entered = Event()
+    sessions = import_sessions(root, consented_only=True)
+
+    def lock(root, **options):
+        entered.set()
+        return maintenance_lock(root, **options)
+
+    monkeypatch.setattr(daily, "maintenance_lock", lock)
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [])
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("offline", ""))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with maintenance_lock(root):
+            future = pool.submit(daily.run_daily, root,
+                                 maintain=lambda root: {"outcome": "no_change", "sessions": sessions})
+            assert entered.wait(timeout=3)
+            with pytest.raises(TimeoutError):
+                future.result(timeout=0.05)
+        result = future.result(timeout=3)
+    assert result["outcome"] == "completed"
+
+
+@pytest.mark.parametrize("stage", ["maintenance", "unfinished", "update"])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_scheduled_daily_cap_is_recorded_as_budget_exhausted(root, monkeypatch, stage, wrapped):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import service
+    from connectonion.rem.files import read_json, state_path, write_json
+
+    config = read_config(root)
+    slot = daily.now().astimezone(service.notebook_zone(config))
+    write_json(state_path(root, "worker.json"), {"last_scheduled_slot": slot.isoformat()})
+    write_json(state_path(root, "runs/run_cap.json"), {
+        "started_at": daily.now().isoformat(), "outcome": "completed",
+        "phase": "daily-investigation" if stage == "update" else "sync",
+        "runner_attempts": config["limits"]["runner_calls_per_day"]})
+    if stage == "update":
+        _owner_page(root, "2026-01-01")
+
+    def maintain(root, **options):
+        return {"outcome": "budget_exhausted" if stage == "maintenance" else "no_change"}
+
+    if wrapped:
+        monkeypatch.setattr(service, "_scheduled_slot", lambda root: slot)
+        result = service.run_scheduled(root, lambda: daily.run_daily(root, maintain=maintain))
+    else:
+        result = daily.run_daily(root, scheduled=True, maintain=maintain)
+    worker = read_json(state_path(root, "worker.json"), {})
+    assert result["outcome"] == "budget_exhausted"
+    assert worker["last_scheduled_outcome"] == "budget_exhausted"
+    assert worker["last_scheduled_reason"] == "the day's runner calls are spent"
+    shown = CliRunner().invoke(app, ["rem", "--root", str(root), "status"])
+    assert shown.exit_code == 0, shown.output
+    assert "daily cap reached" in shown.output
+
+
+def test_status_renders_daily_cap_as_reached():
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _last_run
+
+    rendered = Text.from_markup(_last_run({
+        "outcome": "budget_exhausted", "started_at": "2026-11-05T03:00:00+00:00"}, timezone.utc)).plain
+    assert "daily cap reached" in rendered
+    assert "failed" not in rendered
+
+
+def test_same_person_quota_starts_after_the_investigation(root, monkeypatch):
+    from connectonion.rem import same_person
+
+    meter = {"used_percent": 10, "resets_at": int((daily.now() + timedelta(days=1)).timestamp()),
+             "window_minutes": 10080, "plan": "fictional"}
+    monkeypatch.setattr(daily.quota, "read", lambda config: dict(meter))
+    monkeypatch.setattr(daily, "unfinished_by_recency", lambda root: [{"path": "projects/historical-notes.md"}])
+    monkeypatch.setattr(same_person, "candidates", lambda root, **kw: [] if kw.get("uninvestigated") else [{"pages": ["people/a.md", "people/b.md"]}])
+
+    def investigate(*args, **options):
+        meter["used_percent"] = 13
+        return {"changed": ["projects/historical-notes.md"]}
+
+    def judge(*args, **options):
+        meter["used_percent"] = 14
+        return [{"pages": ["people/a.md", "people/b.md"], "same": False}]
+
+    monkeypatch.setattr(same_person, "judge", judge)
+    result = daily.run_daily(root, maintain=no_change, investigate_one=investigate)
+    run = next(row for row in daily.run_logs(root) if row.get("phase") == "same-person")
+    assert run["quota"]["before"] == result["run"]["quota"]["after"]
+    assert run["quota"]["before"]["used_percent"] == 13
+    assert daily.quota.points_spent([result["run"], run], meter) == 4
+
+
+def test_translation_usage_is_returned_once_and_excludes_older_runs(translation_root, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    root = translation_root
+    monkeypatch.setattr("connectonion.rem.translate.cached", lambda *a: None)
+    write_json(state_path(root, "runs/run_old.json"), {
+        "id": "run_old", "phase": "translate", "started_at": daily.now().isoformat(),
+        "outcome": "completed", "usage": {"input_tokens": 9999}})
+
+    def run(workspace, prompt, config, stage):
+        (workspace / "translation.md").write_text((workspace / "page.md").read_text())
+        return {"outcome": "natural", "usage": {"input_tokens": 400, "output_tokens": 10}}
+
+    monkeypatch.setattr("connectonion.rem.runner.run_task", run)
+    result = daily.run_daily(root, maintain=lambda root: {
+        "outcome": "completed", "changed": ["projects/harbour.md"]})
+    assert result["maintenance"]["translations"]["usage"] == {"input_tokens": 800, "output_tokens": 20}
+    summary = next(log for log in daily.run_logs(root) if log["phase"] == "daily-translation")
+    assert summary["usage"] is None  # The underlying translate run already owns this usage.
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_translation_usage_excludes_overlapping_manual_run(translation_root, monkeypatch, failed):
+    from connectonion.rem.translate import translate
+
+    root = translation_root
+    page = "projects/harbour.md"
+    calls = []
+    # One page waiting: the run translates it once, beside the standalone translation.
+    monkeypatch.setattr("connectonion.rem.translate.backlog", lambda root, language, changed=(): [page])
+
+    def run(workspace, prompt, config, stage):
+        calls.append(workspace)
+        scheduled = len(calls) == 1
+        if scheduled:
+            # A standalone translation of even the same page may finish during upkeep.
+            translate(root, page, "zh")
+        if not (scheduled and failed):
+            (workspace / "translation.md").write_text((workspace / "page.md").read_text())
+        return {"outcome": "natural", "usage": {
+            "input_tokens": 400 if scheduled else 900, "output_tokens": 10}}
+
+    monkeypatch.setattr("connectonion.rem.runner.run_task", run)
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "completed", "changed": [page]})
+    report = result["maintenance"]["translations"]
+    assert len(calls) == 2
+    assert report["usage"] == {"input_tokens": 400, "output_tokens": 10}
+    assert report["pages"][0]["outcome"] == ("failed" if failed else "translated")
+
+
+
+@pytest.mark.parametrize("zone, moment, day", [
+    ("Pacific/Honolulu", "2026-11-06T01:00:00+00:00", "2026-11-05"),
+    ("Pacific/Kiritimati", "2026-11-05T12:00:00+00:00", "2026-11-06"),
+])
+def test_owner_due_and_refresh_use_the_notebook_day(root, monkeypatch, zone, moment, day):
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+    from connectonion.rem.files import read_json, state_path
+
+    set_config(root, ["schedule.timezone", zone])
+    clock = lambda: datetime.fromisoformat(moment)
+    monkeypatch.setattr(service, "now", clock)
+    monkeypatch.setattr(daily, "now", clock)
+    record = _owner_page(root, day)
+    assert daily._owner_due(root) == []
+    Notebook(root).write(record, Notebook(root).read(record).replace(f"investigated {day}", "investigated 2026-11-01"))
+    [row] = daily._owner_due(root)
+    monkeypatch.setattr(daily, "investigate", lambda *args, **kwargs: {})
+    daily._owner(root, row, clients={}, subscriptions={})
+    assert read_json(state_path(root, "owner-refresh.json"), {})["date"] == day
+    assert daily._owner_due(root) == []

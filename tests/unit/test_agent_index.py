@@ -9,6 +9,7 @@ Every test runs in the tmp HOME conftest gives it; none may reach the real
 ~/.codex or ~/.claude.
 """
 
+import os
 import stat
 from pathlib import Path
 
@@ -82,6 +83,39 @@ class TestGenerated:
 
 
 class TestWrite:
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
+    def test_refresh_links_new_bundled_skills_after_upgrade(self, tmp_path, monkeypatch):
+        from connectonion.cli.commands import skills_commands
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        bundled = tmp_path / "bundled"
+        for name in ("silver-fox", "amber-owl"):
+            skill = bundled / name
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
+        monkeypatch.setattr(skills_commands, "BUNDLED_SKILLS", bundled)
+        roots = [root for _, root in skills_commands.link_targets()]
+        for root in roots:
+            root.mkdir(parents=True)
+            (root / "silver-fox").symlink_to(bundled / "silver-fox", target_is_directory=True)
+        indices = agent_index.targets()
+        for path in indices:
+            path.write_text(agent_index.block("Old index", version="0.0.1"), encoding="utf-8")
+        existing = [(root / "silver-fox").lstat().st_ino for root in roots]
+
+        assert agent_index.refresh() == [(path, "0.0.1", __version__) for path in indices]
+
+        for root, inode in zip(roots, existing):
+            assert (root / "amber-owl").resolve() == bundled / "amber-owl"
+            assert (root / "silver-fox").lstat().st_ino == inode
+            assert (root / "silver-fox").readlink() == bundled / "silver-fox"
+        paths = indices + [root / name for root in roots for name in ("silver-fox", "amber-owl")]
+        before = [(path.lstat().st_ino, path.lstat().st_mtime_ns) for path in paths]
+
+        assert agent_index.refresh() == []
+        assert [(path.lstat().st_ino, path.lstat().st_mtime_ns) for path in paths] == before
 
     def test_writes_both_files_with_the_version(self, tools):
         changed = agent_index.refresh(app)

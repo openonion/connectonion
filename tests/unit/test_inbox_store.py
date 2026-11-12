@@ -559,3 +559,25 @@ def test_a_message_handed_out_twice_after_lease_expiry_shows_both_consumers(tmp_
 
     bys = [r.get('by') for r in box._records(box.completed) if r.get('id') == 'om_x']
     assert bys == ['second', 'first']
+
+
+def test_optional_source_metadata_survives_claim_and_stale_recovery_without_raw(tmp_path):
+    box=make(tmp_path)
+    item=msg(attachments=[{'type':'file','key':'file_zip','name':'receipts.zip'}],
+             sender_ids={'open_id':'ou_owner'},raw={'private':'not consumer input'})
+    box.deliver(item,raw=True)
+    got=box.receive(timeout=0)
+    assert got.attachments==item.attachments and got.sender_ids==item.sender_ids
+    assert got.raw is None and 'private' not in got.to_json()
+    (path,)=list(box.cur.iterdir());old=time.time()-4000;os.utime(path,(old,old))
+    assert box.release_stale()==1
+    again=box.receive(timeout=0)
+    assert again.to_dict()==got.to_dict()
+    box.done(got.id)
+    assert box.deliver(item) is False
+
+
+def test_new_optional_fields_preserve_existing_positional_messages_and_plain_json():
+    item=Message('id','chat','sender','hello','at',None,True,None,'text',None,'',None)
+    assert item.attachments is None and item.sender_ids is None
+    assert item.to_json()=='{"id":"id","chat":"chat","thread":null,"sender":"sender","sender_name":"","text":"hello","kind":"text","quoted":null,"mentioned":true,"at":"at"}'

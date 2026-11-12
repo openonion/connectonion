@@ -36,7 +36,7 @@ def test_the_roster_reads_aliases_without_their_citations(tmp_path):
 
 def test_inspection_does_not_initialize(tmp_path):
     root = tmp_path / "rem"
-    assert read_config(root)["model"] == "gpt-6-luna"
+    assert read_config(root)["model"] == "gpt-6.1-sol"
     assert Notebook(root).list() == []
     assert not root.exists()
 
@@ -56,10 +56,26 @@ def test_start_prepares_layout_without_overwriting(tmp_path):
     assert not list(root.rglob("*.db"))
 
 
+NIGHT_TIMES = ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "17:00", "18:00", "19:00", "22:00", "23:00"]
+
+
+def test_an_old_default_schedule_and_draft_cap_take_the_new_night_defaults(tmp_path):
+    """The old six slots left 22:00-03:00 empty; an old notebook kept them, and 10 drafts a night."""
+    import yaml
+    prepare(tmp_path)
+    saved = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    saved["schedule"]["times"] = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(saved))
+    config = read_config(tmp_path)
+    assert config["schedule"]["times"] == NIGHT_TIMES
+    set_config(tmp_path, ["schedule.times", "03:00,04:00,06:00,17:00,18:00,19:00"])
+    assert read_config(tmp_path)["schedule"]["times"] == ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"], \
+        "times the owner set himself are kept"
+
+
 def test_confirmed_times_and_atomic_validation(tmp_path):
     prepare(tmp_path)
-    assert read_config(tmp_path)["schedule"]["times"] == [
-        "03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES
     old = (tmp_path / "config.yaml").read_bytes()
     with pytest.raises(RemError):
         set_config(tmp_path, ["model", "other", "schedule.times", "26:00"])
@@ -146,7 +162,7 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
     """Literal search cannot bridge a changed letter; the roster is what can."""
     _person(tmp_path, "people/corin-marsh.md", "\n".join([
         "# Corin Marsh", "", "## Contact",
-        "- Email: zhouodywork@gmail.com",
+        "- Email: corin.work@example.org",
         "- Also known as: Corin, Odi, 欧迪, 周泽凯",
         "- Phone: Unknown",
         "", "## Who they are",
@@ -159,7 +175,7 @@ def test_the_roster_carries_what_it_takes_to_recognise_someone_again(tmp_path):
     assert entry["path"] == "people/corin-marsh.md" and entry["title"] == "Corin Marsh"
     # The spelling a coding session would use is here even though it is not in the title.
     assert "Odi" in entry["aliases"] and "欧迪" in entry["aliases"]
-    assert entry["emails"] == ["zhouodywork@gmail.com"]
+    assert entry["emails"] == ["corin.work@example.org"]
     # The opening line says who they are, not what is missing from their contact card.
     assert "partner" in entry["summary"].lower()
     assert "Unknown" not in entry["summary"]
@@ -437,10 +453,10 @@ def test_repeated_page_passes_keep_only_the_latest_stamp_per_kind(tmp_path, monk
     record = "people/alice.md"
     body = "# Alice\n\nA sourced fact [1].\n\n## Sources\n- [1] gmail:one\n\n"
     notebook.write(record, body + "Investigation: mapped 2026-09-01 · not investigated yet\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-01")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-01")
     notebook.note_pass(record, "written", "own messages: codex")
     notebook.note_investigation(record, "gmail")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-02")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-02")
     for _ in range(50):
         notebook.note_investigation(record, "outlook")
     notebook.note_pass(record, "enriched", "web")
@@ -460,7 +476,7 @@ def test_next_pass_compacts_legacy_status_without_losing_unknown_metadata(tmp_pa
     notebook.write(record, "# Atlas\n\nInvestigation: mapped 2026-09-01 · "
                    "investigated 2026-10-02 (gmail) · Requested investigation window: 90 days · "
                    "custom provenance note · investigated 2026-10-01 (codex)\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "own messages: codex")
     assert notebook.read(record).split("Investigation:", 1)[1].strip() == (
         "mapped 2026-09-01 · investigated 2026-10-02 (gmail) · "
@@ -473,7 +489,7 @@ def test_first_page_pass_has_a_single_footer_and_terminal_newline(tmp_path, monk
     notebook = Notebook(tmp_path)
     record = "projects/atlas.md"
     notebook.write(record, "# Atlas\n\nA fact.\n")
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "codex")
     assert notebook.read(record) == "# Atlas\n\nA fact.\n\nInvestigation: written 2026-10-03 (codex)\n"
 
@@ -487,6 +503,77 @@ def test_compaction_keeps_dated_metadata_outside_known_pass_verbs(tmp_path, monk
     original = ("# Atlas\n\nInvestigation: mapped 2026-09-01 · custom 2026-09-02 (first) · "
                 "custom 2026-10-02 (second)\n")
     notebook.write(record, original)
-    monkeypatch.setattr(files, "_today", lambda: "2026-10-03")
+    monkeypatch.setattr(files, "_today", lambda root: "2026-10-03")
     notebook.note_pass(record, "written", "codex")
     assert notebook.read(record) == original.rstrip() + " · written 2026-10-03 (codex)\n"
+
+
+@pytest.mark.parametrize("zone, day", [("Pacific/Honolulu", "2026-11-05"), ("Pacific/Kiritimati", "2026-11-06")])
+def test_page_stamps_use_the_notebook_day(tmp_path, monkeypatch, zone, day):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", zone])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale")
+    book.note_investigation("people/robin.md", "fixture")
+    assert f"mapped {day}" in book.read("people/robin.md")
+    assert f"investigated {day} (fixture)" in book.read("people/robin.md")
+
+
+OLD_TIMES = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+
+
+def _pin_old_default(root):
+    """What a session restore left in a real notebook: the old default, marked as the owner's."""
+    import json
+    import yaml
+    from connectonion.rem.files import state_path
+    saved = yaml.safe_load((root / "config.yaml").read_text())
+    saved["schedule"]["times"] = OLD_TIMES
+    (root / "config.yaml").write_text(yaml.safe_dump(saved))
+    state_path(root, "config-explicit.json").write_text(json.dumps(["schedule.times"]))
+    state_path(root, "config-pin-checked.json").unlink(missing_ok=True)  # saved before this version
+
+
+def test_a_pin_equal_to_the_old_default_takes_the_new_night_once_and_says_so(tmp_path):
+    from connectonion.rem.config import migrate_schedule_pin
+    from connectonion.rem.files import read_json, state_path
+    prepare(tmp_path)
+    _pin_old_default(tmp_path)
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES  # read alone already unpins
+    migrate_schedule_pin(tmp_path)
+    assert "schedule.times" not in read_json(state_path(tmp_path, "config-explicit.json"), [])
+    [entry] = [__import__("json").loads(line) for line in state_path(tmp_path, "config-migrations.jsonl").read_text().splitlines()]
+    assert entry["key"] == "schedule.times" and entry["from"] == OLD_TIMES and entry["to"] == NIGHT_TIMES
+    migrate_schedule_pin(tmp_path)  # once
+    assert len(state_path(tmp_path, "config-migrations.jsonl").read_text().splitlines()) == 1
+    # Chosen again after the migration, the old times are his and stay.
+    set_config(tmp_path, ["schedule.times", ",".join(OLD_TIMES)])
+    assert read_config(tmp_path)["schedule"]["times"] == OLD_TIMES
+
+
+def test_a_pin_that_differs_from_the_old_default_stays(tmp_path):
+    from connectonion.rem.config import migrate_schedule_pin
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.times", "05:00,21:00"])
+    migrate_schedule_pin(tmp_path)
+    assert read_config(tmp_path)["schedule"]["times"] == ["05:00", "21:00"]
+
+
+def test_the_dense_profile_runs_every_half_hour_overnight_and_explicit_times_win(tmp_path):
+    from connectonion.rem.config import PROFILES
+    prepare(tmp_path)
+    assert read_config(tmp_path)["schedule"]["profile"] == "default"
+    set_config(tmp_path, ["schedule.profile", "dense"])
+    times = read_config(tmp_path)["schedule"]["times"]
+    assert times == PROFILES["dense"] and times[0] == "00:00" and "22:00" in times and "07:00" in times
+    assert len(times) == 19 and "07:30" not in times and "21:30" not in times
+    set_config(tmp_path, ["schedule.profile", "default"])
+    assert read_config(tmp_path)["schedule"]["times"] == NIGHT_TIMES
+    set_config(tmp_path, ["schedule.times", "05:00,21:00", "schedule.profile", "dense"])
+    assert read_config(tmp_path)["schedule"]["times"] == ["05:00", "21:00"]
+    with pytest.raises(RemError, match="schedule.profile"):
+        set_config(tmp_path, ["schedule.profile", "sparse"])

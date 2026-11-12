@@ -1025,7 +1025,7 @@ def test_an_unattended_refusal_names_the_line_to_write(tmp_path, monkeypatch):
     instance = agent(io=False, permissions=load_permission_patterns(tmp_path / ".co"))
     instance.current_session["pending_tool"] = {
         "name": "bash",
-        "arguments": {"command": "co email send --to aaron@example.com digest"},
+        "arguments": {"command": "co email send --to ellis@example.com digest"},
     }
 
     apply_auto_approve_policy(instance)

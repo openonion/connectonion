@@ -49,7 +49,7 @@ class FakeDaemon:
 def chrome_home(tmp_path, monkeypatch):
     make_profile(tmp_path, "Default", [
         cookie("github.com", "user_session", "gh-SECRET-3", expires=LATER),
-    ], shown_name="Aaron")
+    ], shown_name="Ellis")
     make_profile(tmp_path, "Profile 1", [
         cookie(".linkedin.com", "li_at", "li-at-SECRET-1", expires=LATER, samesite=0),
         cookie(".www.linkedin.com", "JSESSIONID", "jsession-SECRET-2", expires=LATER, samesite=0),
@@ -176,7 +176,7 @@ def test_a_terminal_asks_once_and_no_means_nothing(chrome_home, daemon, capsys, 
 
 def test_a_terminal_yes_imports(chrome_home, daemon, capsys, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda text: "y")
-    code, _ = run(capsys, "--profile", "Aaron", "--domain", "github.com", "--engine", "system", tty=True)
+    code, _ = run(capsys, "--profile", "Ellis", "--domain", "github.com", "--engine", "system", tty=True)
     assert code == 0 and [c["name"] for c in daemon.loaded] == ["user_session"]
 
 

@@ -2,7 +2,7 @@
 Purpose: Feishu and Lark as an inbox — the official SDK's long connection writes files, replies go out through the REST API
 LLM-Note:
   Dependencies: imports from [json, os, time, uuid, datetime, requests, inbox/store.py] and lazily from [lark_oapi] | imported by [inbox/__init__.py via provider()] | tested by [tests/unit/test_inbox_feishu.py]
-  Data flow: run(inbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → inbox.deliver() | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
+  Data flow: run(inbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → inbox.deliver(); reaction/recall/chat-member/chat-updated events → event_message() → inbox.deliver(); start/reconnect → HistoryRecovery.reconcile() (bounded, no timer) | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
   State/Effects: reads FEISHU_APP_ID/FEISHU_APP_SECRET (LARK_* for Lark) from the environment | one outbound WebSocket that dials out, so no port is opened | caches the tenant token in memory for its lifetime
   Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable inbox write; storage failures remain retryable
   Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the pip command
@@ -11,6 +11,7 @@ LLM-Note:
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from typing import Optional
@@ -18,7 +19,7 @@ from typing import Optional
 import requests
 
 from .store import Inbox, Message, iso_utc
-from .recovery import HistoryRecovery, MissingScope
+from .recovery import HistoryRecovery, LarkError, MissingScope
 
 DOMAINS = {
     "feishu": "https://open.feishu.cn",
@@ -182,17 +183,43 @@ class Feishu:
             else:
                 inbox.log(f"duplicate {message.id} dropped")
 
-        # Reactions and read receipts are acknowledged and dropped. An app
-        # subscribed to them got "processor not found" from the SDK for
-        # each one, and Feishu retried it (#1618). Neither is a person
-        # talking to us, so neither becomes a message to answer.
+        # Things that happen in a chat which are not somebody typing, recorded
+        # with their own `kind` the way the WhatsApp listener records them, so
+        # a consumer reading a conversation back sees "she recalled that" and
+        # "the bot was added". Only being added is addressed to us. Read
+        # receipts and reaction removals are acknowledged and dropped: without
+        # a processor the SDK answered "processor not found" and Lark retried
+        # each one (#1618).
+        def note(event_type):
+            def handle(data) -> None:
+                try:
+                    message = self.event_message(event_type, data, inbox)
+                except Exception as exc:
+                    inbox.log(f"{event_type} event not understood ({type(exc).__name__}: {exc}); skipped")
+                    return
+                if message is None:
+                    return
+                if inbox.deliver(message):
+                    inbox.log(f"received {event_type} {message.id} chat={message.chat}")
+                else:
+                    inbox.log(f"duplicate {message.id} dropped")
+            return handle
+
         def ignore(data) -> None:
             return None
 
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(on_message)
-            .register_p2_im_message_reaction_created_v1(ignore)
+            .register_p2_im_message_reaction_created_v1(note("reaction"))
+            .register_p2_im_message_recalled_v1(note("recall"))
+            .register_p2_im_chat_member_bot_added_v1(note("bot-added"))
+            .register_p2_im_chat_member_bot_deleted_v1(note("bot-removed"))
+            .register_p2_im_chat_member_user_added_v1(note("user-added"))
+            .register_p2_im_chat_member_user_deleted_v1(note("user-removed"))
+            .register_p2_im_chat_member_user_withdrawn_v1(note("user-left"))
+            .register_p2_im_chat_updated_v1(note("chat-updated"))
+            .register_p2_im_chat_disbanded_v1(note("chat-disbanded"))
             .register_p2_im_message_reaction_deleted_v1(ignore)
             .register_p2_im_message_message_read_v1(ignore)
             .build()
@@ -204,17 +231,62 @@ class Feishu:
             domain=self.base,
             log_level=lark.LogLevel.WARNING,
         )
-        client.on_reconnecting = lambda: inbox.log("reconnecting")
+
+        def reconnecting():
+            inbox.log("reconnecting")
+            recovery.disconnected()
+
         def reconnected():
             inbox.log("reconnected; reconciling known conversation history")
+            recovery.connected()
             recovery.request()
 
+        client.on_reconnecting = reconnecting
         client.on_reconnected = reconnected
         recovery.start()
+        recovery.connected()
         try:
             client.start()
         finally:
             recovery.stop()
+
+    def event_message(self, event_type: str, data, inbox: Inbox) -> Optional[Message]:
+        """A chat event as a Message with its own kind, or None when it is
+        ours or names a message this inbox has never seen. The id is Lark's
+        event_id, so a redelivered event is recorded once."""
+        event = data.event
+        header = data.header
+        name = getattr(event, "name", None) or ""
+        if event_type == "reaction":
+            if getattr(event, "operator_type", "user") != "user":
+                return None  # our own SEEN/ANSWERING marks coming back
+            target = event.message_id
+            known = inbox.lookup(target)
+            chat = known.chat if known else (inbox.lookup_sent(target) or {}).get("chat")
+            if not chat:
+                inbox.log(f"reaction on {target} not recorded: that message is not in this inbox")
+                return None
+            emoji = getattr(event.reaction_type, "emoji_type", "") or ""
+            kind, text, mentioned, operator = "reaction", f"reacted {emoji} to {target}", False, event.user_id
+        elif event_type == "recall":
+            chat, operator = event.chat_id, None
+            kind, text, mentioned = "recall", f"recalled {event.message_id}", False
+        elif event_type == "bot-added":
+            chat, operator = event.chat_id, event.operator_id
+            kind, text, mentioned = "joined", f"added to {name}".strip(), True
+        else:
+            chat, operator = event.chat_id, event.operator_id
+            kind, mentioned = "group-info", False
+            text = _group_change(event_type, event, name)
+        return Message(
+            id=str(header.event_id),
+            chat=str(chat),
+            sender=_user_id(operator),
+            text=text,
+            kind=kind,
+            mentioned=mentioned,
+            at=_iso(getattr(header, "create_time", None)),
+        )
 
     def to_message(self, data, *, raw: bool = False) -> Optional[Message]:
         """An im.message.receive_v1 event as a Message, or None for an event
@@ -228,7 +300,12 @@ class Feishu:
             return None
 
         mentions = list(getattr(message, "mentions", None) or [])
-        text = _text_of(message, mentions)
+        content = _content_of(message)
+        text = _text_of(message, mentions, content)
+        attachments = _attachments_of(message, content)
+        kind = getattr(message, "message_type", None) or "text"
+        if kind == "post" and not attachments and text:
+            kind = "text"
         chat_type = getattr(message, "chat_type", None)
         if chat_type == "p2p":
             mentioned = True
@@ -245,6 +322,10 @@ class Feishu:
             thread=getattr(message, "thread_id", None) or getattr(message, "root_id", None) or None,
             sender=str(getattr(sender_id, "union_id", None) or getattr(sender_id, "open_id", None) or ""),
             text=text,
+            kind=kind,
+            attachments=attachments or None,
+            sender_ids={key: value for key in ("union_id", "open_id")
+                        if isinstance(value := getattr(sender_id, key, None), str) and value} or None,
             mentioned=mentioned,
             at=_iso(create_time),
             raw=_raw_of(data) if raw else None,
@@ -363,7 +444,7 @@ def _data(response, brand: str = "Feishu") -> dict:
     if body.get("code") == 230027:
         raise MissingScope(f"{brand} error 230027: {body.get('msg')}")
     if body.get("code") != 0:
-        raise RuntimeError(f"{brand} error {body.get('code')}: {body.get('msg')}")
+        raise LarkError(f"{brand} error {body.get('code')}: {body.get('msg')}", body.get("code"))
     # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the
     # top level beside code and msg. Accept both.
     data = body.get("data")
@@ -376,15 +457,17 @@ def _open_id(mention) -> Optional[str]:
     return getattr(getattr(mention, "id", None), "open_id", None)
 
 
-def _text_of(message, mentions) -> str:
-    """The text a person typed. @mentions arrive as placeholders like
-    `@_user_1` with the name beside them; put the name back so the text reads
-    as it did on screen. A non-text message is named by its type."""
-    message_type = getattr(message, "message_type", None) or "text"
+def _content_of(message) -> dict:
     try:
         content = json.loads(getattr(message, "content", None) or "{}")
     except ValueError:
-        content = {}
+        return {}
+    return content if isinstance(content, dict) else {}
+
+
+def _text_of(message, mentions, content) -> str:
+    """Keep typed words and readable mentions; name non-text messages by type."""
+    message_type = getattr(message, "message_type", None) or "text"
     if message_type == "text":
         text = str(content.get("text", ""))
     elif message_type == "post":
@@ -402,14 +485,76 @@ def _text_of(message, mentions) -> str:
 
 
 def _post_text(content: dict) -> str:
-    """Rich text is paragraphs of runs; keep the text runs, drop the rest."""
-    runs = []
+    """Read the selected rich-text body; resource references travel separately."""
+    content = next((body for body in _post_bodies(content) if body.get("title") or body.get("content")), content)
+    runs = [str(content.get("title") or ""), "\n"]
     for paragraph in content.get("content", []) or []:
         for run in paragraph or []:
             if isinstance(run, dict) and run.get("tag") == "text":
                 runs.append(str(run.get("text", "")))
         runs.append("\n")
     return "".join(runs).strip()
+
+
+def _post_bodies(content):
+    return [content, *(body for locale, body in content.items()
+                       if re.fullmatch(r"[a-z]{2}_[a-z]{2}", locale)
+                       and isinstance(body, dict) and any(key in body for key in ("title", "content", "files")))]
+
+
+def _attachments_of(message, content):
+    """Only resource type/key/name cross into consumer input, never arbitrary raw."""
+    kind = getattr(message, "message_type", None)
+    if kind == "image":
+        return _resource("image", content.get("image_key"))
+    if kind in {"file", "audio", "media"}:
+        return _resource(kind, content.get("file_key"), content.get("file_name"))
+    if kind != "post":
+        return []
+    resources = []
+    for body in _post_bodies(content):
+        for item in body.get("files", []) or []:
+            if isinstance(item, dict):
+                item_type = "folder" if item.get("is_folder") is True else "file"
+                resources.extend(_resource(item_type, item.get("file_key"), item.get("file_name")))
+        for row in body.get("content", []) or []:
+            for item in row or []:
+                if isinstance(item, dict) and item.get("tag") == "img":
+                    resources.extend(_resource("image", item.get("image_key")))
+                if isinstance(item, dict) and item.get("tag") == "media":
+                    resources.extend(_resource("media", item.get("file_key")))
+    return list({(item["type"], item["key"]): item for item in resources}.values())
+
+
+def _resource(kind, key, name=None):
+    if not isinstance(key, str) or not key:
+        return []
+    item = {"type": kind, "key": key}
+    if isinstance(name, str) and name:
+        item["name"] = name
+    return [item]
+
+
+def _user_id(user_id) -> str:
+    return str(getattr(user_id, "union_id", None) or getattr(user_id, "open_id", None) or "")
+
+
+def _group_change(event_type, event, name) -> str:
+    """What changed in a group, in words: who came, who went, what was renamed."""
+    people = ", ".join(getattr(user, "name", None) or _user_id(getattr(user, "user_id", None))
+                       for user in getattr(event, "users", None) or [])
+    if event_type == "user-added":
+        return f"{people} joined {name}".strip()
+    if event_type == "user-removed":
+        return f"{people} removed from {name}".strip()
+    if event_type == "user-left":
+        return f"{people} left {name}".strip()
+    if event_type == "bot-removed":
+        return f"removed from {name}".strip()
+    if event_type == "chat-disbanded":
+        return f"group {name} disbanded".replace("  ", " ")
+    renamed = getattr(getattr(event, "after_change", None), "name", None)
+    return f"group renamed to {renamed}" if renamed else "group changed"
 
 
 def _iso(create_time) -> str:

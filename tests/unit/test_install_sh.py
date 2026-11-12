@@ -59,3 +59,10 @@ def test_without_a_pinned_version_a_failure_is_not_retried(fake_bin):
     (fake_bin / "fails").write_text("1")
     assert _run(fake_bin, CO_INSTALL_WAIT="0").returncode != 0
     assert len((fake_bin / "installs").read_text().splitlines()) == 1
+
+
+def test_install_selects_a_supported_python_instead_of_the_system_python(fake_bin):
+    (fake_bin / "fails").write_text("0")
+    done = _run(fake_bin)
+    assert done.returncode == 0, done.stderr
+    assert "--python >=3.11" in (fake_bin / "installs").read_text()

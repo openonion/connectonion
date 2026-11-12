@@ -41,6 +41,15 @@ is context, not proof of the product's identity.
 - **A bare `/skill args` message records that the user ran something**, not a
   belief. Note it only when running it is itself the fact.
 
+## Message IDs
+
+Keep supplied IDs verbatim: `codex:<session>:<offset>-<h8>`. The suffix is the
+first eight hex characters of SHA-256 of the parsed text, before redaction or
+truncation. Copied messages share an ID; divergent rollout messages at the
+same offset have different IDs. Old `codex:<session>:<offset>` citations stay
+valid; do not rewrite them or migrate stored data. Claude Code keeps
+`claude-code:<session>:<offset>`.
+
 ## What a Codex note looks like
 
 ```

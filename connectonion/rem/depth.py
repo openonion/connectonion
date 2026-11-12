@@ -159,7 +159,9 @@ def deepen(root, record, *, stage=None) -> dict:
     thought = _run(root, record, "muse", stage or _stage)
     text = notebook.read(record)
     after = page_metrics(text)
+    from .runner import _add_usage
     row = {"at": service.now().isoformat(),
+           "usage": _add_usage(enrich.get("usage"), thought.get("usage")),
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),

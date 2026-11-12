@@ -9,7 +9,11 @@ failed at once, because the system python cannot import a uv tool's packages.
 """
 
 import asyncio
+import os
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -19,34 +23,83 @@ from connectonion.cli.main import app
 
 
 # ---- co host: agent.py with co's own interpreter ----
+# Run as a real process: on POSIX `co host` becomes agent.py (exec), so
+# invoking it inside pytest would replace pytest itself.
 
-def test_co_host_runs_agent_py_with_the_python_co_runs_on(tmp_path, monkeypatch):
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _co_host(project, *args):
+    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    return subprocess.Popen([sys.executable, "-m", "connectonion.cli.main", "host", *args],
+                            cwd=project, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+
+
+def test_co_host_runs_agent_py_with_the_python_co_runs_on(tmp_path):
     seen = tmp_path / "seen.txt"
     (tmp_path / "agent.py").write_text(
         "import os, sys\n"
         f"open({str(seen)!r}, 'w').write(sys.executable + '|' + os.environ.get('AGENT_PORT', ''))\n")
-    monkeypatch.chdir(tmp_path)
 
-    result = CliRunner().invoke(app, ["host", "--port", "8123"])
+    host = _co_host(tmp_path, "--port", "8123")
+    output, _ = host.communicate(timeout=30)
 
-    assert result.exit_code == 0, result.output
+    assert host.returncode == 0, output
     assert seen.read_text() == f"{sys.executable}|8123"
 
 
-def test_co_host_without_an_agent_py_says_how_to_make_one(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_co_host_without_an_agent_py_says_how_to_make_one(tmp_path):
+    host = _co_host(tmp_path)
+    output, _ = host.communicate(timeout=30)
 
-    result = CliRunner().invoke(app, ["host"])
-
-    assert result.exit_code == 2
-    assert "agent.py" in result.output and "co create" in result.output
+    assert host.returncode == 2
+    assert "agent.py" in output and "co create" in output
 
 
-def test_co_host_passes_on_how_agent_py_ended(tmp_path, monkeypatch):
+def test_co_host_passes_on_how_agent_py_ended(tmp_path):
     (tmp_path / "agent.py").write_text("raise SystemExit(3)\n")
-    monkeypatch.chdir(tmp_path)
 
-    assert CliRunner().invoke(app, ["host"]).exit_code == 3
+    host = _co_host(tmp_path)
+    host.communicate(timeout=30)
+
+    assert host.returncode == 3
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX stop signals")
+@pytest.mark.parametrize("stop", ["SIGTERM", "SIGINT", "SIGHUP"])
+def test_stopping_co_host_stops_agent_py(tmp_path, stop):
+    """`kill <co host pid>` left agent.py serving as an orphan on its port,
+    so the next `co host` failed with "Port 8000 is already in use"."""
+    pid_file = tmp_path / "agent.pid"
+    (tmp_path / "agent.py").write_text(
+        "import os, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "time.sleep(60)\n")
+    host = _co_host(tmp_path)
+    deadline = time.monotonic() + 20
+    while not pid_file.exists() or not pid_file.read_text():
+        assert time.monotonic() < deadline, "agent.py never started"
+        time.sleep(0.05)
+    agent_pid = int(pid_file.read_text())
+
+    host.send_signal(getattr(signal, stop))
+    host.wait(timeout=10)  # not communicate(): an orphan would hold the pipe open
+    host.stdout.close()
+    time.sleep(0.5)
+    orphaned = _alive(agent_pid)
+    if orphaned:
+        os.kill(agent_pid, signal.SIGKILL)
+
+    assert not orphaned, f"agent.py (pid {agent_pid}) outlived co host (pid {host.pid})"
 
 
 # ---- host() serves REM and answers channels, from host.yaml ----
@@ -136,10 +189,13 @@ def test_co_ai_answers_each_channel_once_through_the_host(monkeypatch):
     assert {t.name for t in threading.enumerate()} - before == set()
 
 
-def test_any_host_answers_questions_on_handoffs_it_sent(project, monkeypatch):
-    """#2453: only co ai ran the handoff watcher, so a sender on co host, python agent.py or co deploy
-    never answered; the recipient's `status --wait` waited until the sender happened to run status."""
+@pytest.mark.parametrize('owns_handoff_config', [False, True])
+def test_host_only_answers_handoffs_from_its_configuration(project, monkeypatch, owns_handoff_config):
+    """Keep #2453's sender watcher without giving a project the operator's queue (#2646)."""
     from connectonion.handoff import watch
+    configured = project if owns_handoff_config else project.parent / 'operator-config'
+    configured.mkdir(exist_ok=True)
+    monkeypatch.setenv('AGENT_CONFIG_PATH', str(configured))
     started, stopped = [], []
 
     class Stop:
@@ -149,7 +205,8 @@ def test_any_host_answers_questions_on_handoffs_it_sent(project, monkeypatch):
     built = _host(project, monkeypatch, "")
     asyncio.run(built["on_startup"]())
     asyncio.run(built["on_shutdown"]())
-    assert started == [True] and stopped == [True]
+    expected = [True] if owns_handoff_config else []
+    assert started == expected and stopped == expected
 
 
 def test_co_ai_does_not_start_a_second_handoff_watcher(monkeypatch):

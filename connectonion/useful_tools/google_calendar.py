@@ -38,7 +38,7 @@ Example:
     )
 
     agent.input("What meetings do I have today?")
-    agent.input("Schedule a meeting with aaron@openonion.ai tomorrow at 2pm")
+    agent.input("Schedule a meeting with ellis.work@example.org tomorrow at 2pm")
 """
 
 import os
@@ -84,7 +84,7 @@ def _kept_attendees(existing, attendees) -> list:
     `optional`, `comment` and `displayName` live on it too.
 
     Addresses are matched case-insensitively, because a mail system considers
-    Aaron@Example.com and aaron@example.com the same person and re-typing the
+    Ellis@Example.com and ellis@example.com the same person and re-typing the
     address with different capitals must not reset them.
     """
     known = {}

@@ -26,7 +26,7 @@ co browser --engine wtf go_to example.com     # paid WTF Browser, and only when 
 Paying is opt-in. An ordinary command never starts a billable session, even on
 a machine where Onionwright is installed and in credit.
 
-The paid path requires Onionwright 0.0.14 or newer. Install or upgrade the real
+The paid path requires Onionwright 0.0.15 or newer. Install or upgrade the real
 private wheel explicitly:
 
 ```bash
@@ -71,6 +71,40 @@ System Chrome and Onion Browser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`
 shows requested/resolved engine, typed reason, and exact artifact when paid;
 it never prints tokens, licence bytes, or paid-cache paths.
+
+### The WTF Browser in /Applications (macOS)
+
+`co` downloads and runs its own copy of the WTF Browser. The one you
+double-click, `/Applications/WTF Browser.app`, is a second copy, and `co` keeps
+it from falling behind the build it runs: after each `--engine wtf` launch it compares the two
+(version and release channel, two small files) and does nothing when they
+match.
+
+| what is in /Applications | what `co` does |
+|---|---|
+| nothing | installs the build it just started |
+| OpenOnion's browser, an older version or another channel | moves it to the Trash as `WTF Browser <version> <date time>.app`, then installs the build it just started |
+| the same build | nothing |
+| OpenOnion's browser, same channel, a newer version than `co` runs | leaves it: another `co` on this Mac with a later pin put it there, and an older build would be refused |
+| the app is open | leaves it, and replaces it at a later launch once it is closed |
+| an app with that name that is not OpenOnion's | leaves it |
+| `/Applications` is not writable by you | leaves it |
+
+The copy is about 350 MB and runs beside the browser, after it is up: it does
+not delay the launch, and a copy that fails cannot fail it. A script that
+launches the WTF browser and ends at once waits for the copy to finish. What
+was done is printed to the launching process's stderr, and `co browser status`
+says where things stand:
+
+```text
+WTF Browser app: /Applications has 154.0.8037.100, the build co runs
+WTF Browser app: /Applications has 151.0.7922.222, co runs 154.0.8037.100 — it is open, so co leaves it
+WTF Browser app: /Applications has 155.0.8100.12, newer than the 154.0.8037.100 co runs, so co leaves it
+WTF Browser app: none in /Applications — co installs the build it runs the next time it starts the WTF browser
+```
+
+Nothing here is configurable, and the free system-Chrome path never touches
+`/Applications`.
 
 ## Why Use This
 
@@ -323,7 +357,18 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
   mode.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
-- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of `~/.onionwright/profiles/<address>` (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
+- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of the app's own profile, `~/Library/Application Support/WTF Browser/profile` on macOS (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
+- A supervisor can set `$CO_BROWSER_DAEMON_PID` to the positive PID of its
+  already running local daemon. Commands then fail if that recorded owner is
+  missing, replaced or unavailable; they never start a daemon or install a
+  browser. Engine probes, reconnects and read keepalives retain the same pin.
+  A close never follows a replacement owner for force cleanup. Keep this
+  environment local to the supervised job and use a private endpoint/profile;
+  the PID is a lifecycle constraint, not authentication or a paid-session ID.
+  Explicit Host private targets ignore this local pin. Without it, ordinary
+  first-command startup works as before. Pinned ordinary commands also skip
+  automatic paid-client installation; an explicit `install-onion` command
+  remains an installation request.
 
 ## Importing logins from Chrome
 

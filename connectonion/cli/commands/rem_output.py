@@ -307,10 +307,55 @@ def _investigation_text(value: dict, failed: bool) -> str:
     return '\n'.join(lines)
 
 
+def _consent_source(name: str, source: dict) -> str:
+    """Describe source access without paths, timestamps or source bodies."""
+    from ...rem.source import KINDS, source_files
+    state = source['state']
+    label = name + ' sessions' if name in KINDS else name
+    if state == 'unsubscribed':
+        state = 'not subscribed'
+    elif state.startswith('connected; read from now on if you approve'):
+        state = 'connected; will be read if approved (automated senders skipped)'
+    elif name in KINDS and state == 'will be read':
+        count = len(source_files({'kind': name, 'root': source['root']}))
+        state = f'{count} found, will be read'
+    scope = f" (project: {source['project']})" if source.get('project') else ''
+    return f'  {label}: {state}{scope}'
+
+
+def _consent_text(value: dict) -> str:
+    """Keep the approval decision on screen; config and JSON retain the details."""
+    if 'changes' in value:
+        return '\n'.join(['Consent changes:', *('  ' + line for line in value['changes'])])
+    route = value['model_receives'].partition(', through ')[2]
+    route = route.replace('(no API key, no OpenOnion server)', '(no API key)')
+    permissions = value['model_permissions'].replace('Investigation and init use ', 'Init/research: ')
+    permissions = permissions.replace(' for local repository and mail archive research; other stages use ',
+                                      '; other stages: ')
+    schedule, limits = value['schedule'], value['limits']
+    background = value['background']
+    if sys.platform == 'darwin':
+        # The full macOS sentence lives in config and JSON; one line keeps the question on screen.
+        background = ('Codex Scheduled/launchd' if value['runner'] == 'codex' else 'launchd on macOS')
+        background += '; keep computer awake. Stop: co rem stop'
+    lines = ['co rem start — source access and schedule', '', 'Sources:',
+             *(_consent_source(name, source) for name, source in value['sources'].items()),
+             f"Model: {value['runner']} · {value['model']} · through {route}",
+             f'Permissions: {permissions}',
+             f"Schedule: {', '.join(schedule['times'])} ({schedule['timezone']})",
+             f"Daily cap: {limits['runner_calls_per_day']} runner calls/day; "
+             f"stop at {limits['quota_floor_percent']}% weekly quota used",
+             f"Background: {background}",
+             'Details: co rem config']
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
+    elif command == 'start — source access and schedule' and isinstance(value, dict):
+        text = _consent_text(value)
     elif command == 'init' and isinstance(value, dict):
         text = _init_text(value, failed)
     elif command == 'investigate' and isinstance(value, dict) and 'pages' in value and 'category' in value:
@@ -464,13 +509,19 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     material = f"{batch.get('items', 0)} items · {changed} page{'' if changed == 1 else 's'} changed"
     if batch.get('outcome') not in ('completed', None):
         material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
+    if batch.get('outcome') in ('completed', 'no_change'):
+        for source, left in batch.get('material_remaining', {}).items():
+            material += f" · {left} left in {source} for next time"
     lines = [rem_look.section('New material', said(material))]
     if batch.get('sessions'):
         from ...rem.sessions import summary
         lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
-    if batch.get('failed_source'):
-        lines.append(rem_look.section('Source failed', said(
-            f"{batch['failed_source']}: {batch.get('error') or 'source could not be read'}")))
+    failures = batch.get('source_failures') or ([{'source': batch['failed_source'],
+                 'error': batch.get('error') or 'source could not be read'}] if batch.get('failed_source') else [])
+    for name, count in batch.get("dropped_missing", {}).items():
+        lines.append(rem_look.section("Missing mail", said(f"{name}: {count} queued messages dropped as missing")))
+    for failure in failures:
+        lines.append(rem_look.section('Source failed', said(failure['error'])))
     lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
                            style.warn(rem_look.BROKEN))
               for row in batch.get('refusals') or [] if isinstance(row, dict)]
@@ -494,7 +545,11 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if archive:
         lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))
     lines += _store_lines(batch.get('store'), said, spell)
-    tokens = _tokens(batch.get('usage'), run.get('usage'))
+    tokens = _tokens(batch.get('usage'), run.get('usage'),
+                     (batch.get('sessions_summary') or {}).get('usage'),
+                     (batch.get('translations') or {}).get('usage'),
+                     *(row.get('usage') for row in value.get('same_person') or []),
+                     *(row.get('usage') for row in (value.get('depth') or {}).get('rounds', [])))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')

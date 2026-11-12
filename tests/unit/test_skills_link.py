@@ -45,6 +45,15 @@ class TestBundledSkills:
             assert fm.get("name"), f"{name}: missing frontmatter name"
             assert fm.get("description"), f"{name}: missing frontmatter description"
 
+    def test_every_bundled_skill_is_readable_as_yaml(self):
+        import yaml
+
+        for name in bundled_names():
+            text = (BUNDLED_SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+            metadata = yaml.safe_load(text.split("---", 2)[1])
+            assert metadata["name"] == name
+            assert isinstance(metadata["description"], str) and metadata["description"]
+
     def test_frontmatter_name_matches_directory(self):
         for name in bundled_names():
             fm = parse_frontmatter((BUNDLED_SKILLS / name / "SKILL.md").read_text(encoding="utf-8"))
@@ -55,6 +64,26 @@ class TestBundledSkills:
 
 
 class TestSkillsLink:
+
+    def test_link_missing_never_replaces_a_user_directory(self, targets, tmp_path, monkeypatch, capsys):
+        bundled = tmp_path / "bundled"
+        source = bundled / "silver-fox"
+        source.mkdir(parents=True)
+        (source / "SKILL.md").write_text("Bundled instructions", encoding="utf-8")
+        monkeypatch.setattr(skills_commands, "BUNDLED_SKILLS", bundled)
+        mine = targets[0] / "silver-fox"
+        mine.mkdir(parents=True)
+        (mine / "SKILL.md").write_text("My own instructions", encoding="utf-8")
+        inode = mine.stat().st_ino
+
+        assert skills_commands.link_missing() == ["silver-fox"]
+
+        assert mine.is_dir() and not mine.is_symlink()
+        assert mine.stat().st_ino == inode
+        assert (mine / "SKILL.md").read_text(encoding="utf-8") == "My own instructions"
+        assert (targets[1] / "silver-fox" / "SKILL.md").read_text(encoding="utf-8") == "Bundled instructions"
+        assert skills_commands.link_missing() == []
+        assert capsys.readouterr().out == ""
 
     def test_links_every_skill_into_every_target(self, targets):
         handle_skills_link()
@@ -105,7 +134,7 @@ class TestSkillsLink:
         assert (mine / "SKILL.md").read_text() != "my own version"
 
     @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
-    def test_repoints_a_symlink_aimed_somewhere_else(self, targets, tmp_path):
+    def test_repairs_a_dangling_symlink_from_a_removed_install(self, targets, tmp_path):
         """An upgrade that moves the package must not leave a dangling link."""
         stale_source = tmp_path / "old-install" / "co-browser"
         stale_source.mkdir(parents=True)
@@ -113,10 +142,26 @@ class TestSkillsLink:
         link = targets[0] / "co-browser"
         link.parent.mkdir(parents=True)
         link.symlink_to(stale_source, target_is_directory=True)
+        (stale_source / "SKILL.md").unlink()
+        stale_source.rmdir()
 
         handle_skills_link()
 
         assert link.resolve() == (BUNDLED_SKILLS / "co-browser").resolve()
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privilege on Windows")
+    def test_refreshes_a_bundled_link_even_when_the_old_install_still_exists(self, targets, tmp_path):
+        previous = tmp_path / "old-install/site-packages/connectonion/useful_skills/co-browser"
+        previous.mkdir(parents=True)
+        (previous / "SKILL.md").write_text("old bundled instructions")
+        link = targets[0] / "co-browser"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(previous, target_is_directory=True)
+
+        handle_skills_link()
+
+        assert link.resolve() == (BUNDLED_SKILLS / "co-browser").resolve()
+        assert (previous / "SKILL.md").read_text() == "old bundled instructions"
 
     def test_reports_both_targets(self, targets, capsys):
         handle_skills_link()

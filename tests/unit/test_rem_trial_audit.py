@@ -57,7 +57,7 @@ def test_the_problems_found_in_the_b3_logs_are_each_severe(tmp_path):
                                            f"cat {home}/.co/rem-trials/iter13/people/v.md"])
     # A page cites REM's own task session as the user's words (row 3).
     _rollout(sessions, "01a12360-47f8-7513-aff3-eb033d92fb14", root / ".state" / "tasks" / "model-access", [])
-    (root / "people" / "aaron.md").write_text("# Aaron\n\nAsked for a Wiki-only task [1].\n\n"
+    (root / "people" / "ellis.md").write_text("# Ellis\n\nAsked for a Wiki-only task [1].\n\n"
                                               "## Sources\n- [1] codex:01a12360-47f8-7513-aff3-eb033d92fb14:136643 — 2026-10-10\n")
     # A page refused last, missing from the refusal ledger (row 6).
     _run(root, "run_2", record="skills/catalog/x.md", outcome="refused", error="Section must occur once: Limitations")

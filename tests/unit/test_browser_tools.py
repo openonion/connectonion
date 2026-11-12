@@ -577,9 +577,9 @@ def test_go_to_records_owner_and_purpose_on_active_tab():
     browser.page = page                 # writes _pages[None] (unbound = default tab)
     browser._save_context = lambda: None
 
-    browser.go_to("https://x.com", purpose="post launch", who="aaron")
+    browser.go_to("https://x.com", purpose="post launch", who="ellis")
     meta = browser._tab_meta[None]
-    assert meta["who"] == "aaron"
+    assert meta["who"] == "ellis"
     assert meta["purpose"] == "post launch"
     assert "opened_at" in meta
 
@@ -592,14 +592,14 @@ def test_tab_status_marks_active_and_prunes_closed_tabs():
     browser.browser = SimpleNamespace()          # truthy: context open
     browser._pages = {None: p0, "1": p1}
     browser._tab_meta = {
-        None: {"who": "aaron", "purpose": "post"},
+        None: {"who": "ellis", "purpose": "post"},
         "1": {"who": "greta", "purpose": "inbox"},
     }
     browser._bind_session("1")                    # active tab = session "1"
 
     out = browser.tab_status()
     assert "Tabs (2):" in out
-    assert " [main] https://x.com/home  who=aaron" in out
+    assert " [main] https://x.com/home  who=ellis" in out
     assert "*[1] https://mail.google.com  who=greta" in out
 
     # A tab whose page has closed still shows (from the registry) but as reserved.
@@ -640,7 +640,7 @@ def test_go_to_occupied_tab_navigates_without_flags():
     browser.browser = SimpleNamespace()
     browser.page = page                                  # writes _pages[None]
     browser._save_context = lambda: None
-    browser._tab_meta[None] = {"who": "aaron", "purpose": "post"}  # tab already occupied
+    browser._tab_meta[None] = {"who": "ellis", "purpose": "post"}  # tab already occupied
 
     result = browser.go_to("https://x.com/explore")      # no flags — must not raise
     assert "Navigated to" in result
@@ -657,7 +657,7 @@ def test_tab_status_flags_may_be_closed():
     browser.browser = SimpleNamespace()                  # truthy: context open
     browser._pages = {None: p0}
     browser._tab_meta = {
-        None: {"who": "aaron", "purpose": "post", "hours": 2,
+        None: {"who": "ellis", "purpose": "post", "hours": 2,
                "opened_at": datetime.now() - timedelta(hours=3)},
     }
 
