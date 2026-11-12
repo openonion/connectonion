@@ -34,7 +34,8 @@ def notebook_links(origin: str, text: str) -> list[str]:
 def organisation_links(record: str, text: str) -> list[str]:
     from .facts import parse
     label = 'Company' if record.startswith('people/') else 'Organisation'
-    return list(dict.fromkeys(path for fact in parse(text, record).get(label, [])
+    # A labelled Company line is the person's private business: it does not place them in the org.
+    return list(dict.fromkeys(path for fact in parse(text, record).get(label, []) if not PRIVATE.search(fact['value'])
                              for path in notebook_links(record, fact['value']) if path.startswith('orgs/')))
 
 
@@ -49,8 +50,11 @@ def organisation_fields(record: dict, paths: set[str]) -> dict:
     result = {'facts': facts}
     if category == 'orgs':
         kind = value('Kind')
+        # A label on the title (or Kind: personal) makes the organisation private; a labelled
+        # passage in its body hides that passage only, as on a person's page. Reading the whole
+        # body put a busy organisation's people, threads and graph behind one curtain.
         result.update(kind=kind if kind in ORG_KINDS else '', to_you=value('To you'),
-                      private=bool(PRIVATE.search(_not_sources(text))) or kind == 'personal')
+                      private=bool(PRIVATE.search(text.split('\n', 1)[0])) or kind == 'personal')
     else:
         result['organisations'] = [org for org in organisation_links(path, text) if org in paths]
         if category == 'people':
@@ -62,7 +66,9 @@ def _org_roster(org: dict) -> set[str]:
     """The org's own contact roster establishes affiliation, not employment."""
     contacts = [fact['value'] for fact in org['facts']['Your contacts']]
     roster = re.search(r'^## People here\s*\n(.*?)(?=^## |\Z)', org['text'], re.M | re.S)
-    return set(notebook_links(org['path'], '\n'.join(contacts) + '\n' + (roster[1] if roster else '')))
+    # A labelled line stays behind its curtain: its person is not drawn into the org's structure.
+    lines = [line for line in [*contacts, *(roster[1] if roster else '').splitlines()] if not PRIVATE.search(line)]
+    return set(notebook_links(org['path'], '\n'.join(lines)))
 
 
 def organisation_members(records: list[dict], owner: str) -> None:
@@ -285,7 +291,8 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
     edges = {}
     for origin in paths:
         for rel in links.get(origin, []):
-            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths:
+            # A link made only on a labelled line is private: it draws no edge.
+            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths or rel.get('private'):
                 continue
             a, b = sorted((folded.get(origin, origin), folded.get(rel['path'], rel['path'])))
             if a != b:

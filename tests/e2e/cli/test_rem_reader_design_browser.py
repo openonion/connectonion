@@ -1005,7 +1005,9 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
 
 
-def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(reader):
+def test_unknown_repository_stays_unknown_and_the_workspace_path_stays_in_the_record(reader):
+    # A machine path is not something the owner reads (D-60 spirit): it stays in the full
+    # memory, never as a fact beside the session count or in the search's best match.
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -1015,15 +1017,52 @@ def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(r
         + '\\n## Paths\\n- /tmp/session-workspace\\n- Sessions: 4\\n- First seen: 2026-07-18\\n- Last seen: 2026-07-20';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert page.locator('.focus-facts dt:text-is("Local path") + dd').inner_text() == '/tmp/session-workspace'
+    assert not page.locator('.focus-facts dt:text-is("Local path")').count()
+    assert '/tmp/session-workspace' not in page.locator('.focus-facts').inner_text()
     assert not page.locator('.focus-facts dt:text-is("Repository")').count()
     page.locator('details.deep-note > summary').click()
     repository = page.locator('.factlist dt:text-is("Repository") + dd')
     assert not repository.locator('.val').count()
     assert 'not found' in repository.inner_text()
+    assert '/tmp/session-workspace' in page.locator('details.deep-note').inner_text()
     page.evaluate("() => { location.hash = '#q=Harbour'; render(); }", isolated_context=False)
-    assert page.locator('.best-facts dt:text-is("Local path") + dd').inner_text() == '/tmp/session-workspace'
-    assert not page.locator('.best-facts dt:text-is("Repository")').count()
+    assert not page.locator('.best-facts dt:text-is("Local path")').count()
+    assert '/tmp/session-workspace' not in page.locator('.best-facts').inner_text()
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_a_session_summary_names_the_owner_you_not_owner(reader, language):
+    # Session summaries are stored with the role word ("The owner asked…", "Owner 询问…"). The reader
+    # says you / 你 only where that is the subject of a finished act; everything else is left alone.
+    page, uri = reader
+    cases = {
+        "The owner asked Codex to clone Harbour.": "You asked Codex to clone Harbour.",
+        "The owner approved the Harbour budget.": "You approved the Harbour budget.",
+        "Owner 询问发布顺序，最终定稿。": "你询问发布顺序，最终定稿。",
+        "Owner 要求重写摘要。": "你要求重写摘要。",
+        "The owner wants a shorter brief.": "The owner wants a shorter brief.",
+        "The owner doesn't want a call.": "The owner doesn't want a call.",
+        "Owner asks for a review.": "Owner asks for a review.",
+        "Quinn is the owner of the repo.": "Quinn is the owner of the repo.",
+        "The owner of the listing, Ida, asked for photos.": "The owner of the listing, Ida, asked for photos.",
+        "The owner Ida raised prices.": "The owner Ida raised prices.",
+        "数据 owner 是 Mara。": "数据 owner 是 Mara。",
+        "Mara（owner）负责发布。": "Mara（owner）负责发布。",
+        "Mara is the Product Owner for Harbour.": "Mara is the Product Owner for Harbour.",
+    }
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""([language, summaries]) => {
+      const base = {category: 'sessions', session_project: 'projects/harbour.md', session_tags: [], session_turns: 1, text: ''};
+      summaries.forEach((summary, n) => REM.records.push({...base, path: 'sessions/s' + n + '.md', title: 'Session ' + n,
+        session_date: '2026-09-' + String(10 + n).padStart(2, '0'), session_summary: summary}));
+      setInterfaceLanguage(language); render();
+    }""", [language, list(cases)], isolated_context=False)
+    shown = page.evaluate("summaries => summaries.map(s => ownerAsYou(s))", list(cases), isolated_context=False)
+    assert dict(zip(cases, shown)) == cases
+    rows = page.locator('.project-sessions .session-context-summary').all_inner_texts()
+    assert "你要求重写摘要。" in rows and "Owner 要求重写摘要。" not in rows, rows
+    page.evaluate("() => { location.hash = 'r=sessions%2Fs0.md'; }", isolated_context=False)
+    assert page.locator('.session-summary .lede').inner_text() == "You asked Codex to clone Harbour."
 
 
 def test_investigation_command_targets_the_notebook_being_viewed(reader):
@@ -1921,9 +1960,12 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
     page.locator('details.deep-note > summary').click()
-    # The org overview is structured; the complete labelled prose lives in Full memory.
-    assert 'confidential finding' not in page.locator('.ov-sub').inner_text()
-    assert 'secret-value' not in page.locator('.ov-sub').inner_text()
+    # The first line may carry a labelled sentence, but only inside its own labelled span.
+    sub = page.locator('.ov-sub')
+    sub.evaluate("n => n.querySelectorAll('.private').forEach(p => p.remove())")
+    assert 'confidential finding' not in sub.inner_text() and 'secret-value' not in sub.inner_text()
+    page.evaluate('render()', isolated_context=False)
+    page.locator('details.deep-note > summary').click()
     for selector in ('.deep-note',):
         area = page.locator(selector)
         assert area.locator('.private').count() == 3
@@ -1935,6 +1977,7 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
         assert 'confidential finding' not in text
         assert 'secret-value' not in text
         assert 'Public result.' in text
+    assert 'confidential finding' not in page.locator('.ov-sub').inner_text()
     page.evaluate('togglePrivate()', isolated_context=False)
     assert 'Second confidential finding' in page.locator('.deep-note').inner_text()
     assert page.locator('.deep-note .private code').is_visible()
@@ -3234,26 +3277,6 @@ def test_quotes_are_visually_distinct_from_search_marks(reader, theme):
         assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'underline'
 
 
-@pytest.mark.parametrize('width', [1440, 390])
-def test_project_path_wraps_at_slashes_and_keeps_segments_readable(reader, width):
-    page, uri = reader
-    page.set_viewport_size({'width': width, 'height': 844})
-    page.goto(uri + '#r=projects%2Fharbour.md')
-    page.evaluate('''() => {
-      const r = byPath('projects/harbour.md');
-      r.text = r.text.replace('/home/user/code/harbour', '/Users/avery/landpages/LayeredVisions');
-      FACTS.clear(); render();
-    }''', isolated_context=False)
-    path = page.locator('.focus-facts .local-path')
-    assert path.inner_text() == '/Users/avery/landpages/LayeredVisions'
-    assert path.locator('wbr').count() == 4
-    segment = path.locator('.path-segment').last
-    assert segment.evaluate('node => { const r = document.createRange(); r.selectNodeContents(node); return r.getClientRects().length; }') == 1
-    page.evaluate("document.querySelector('.path-segment:last-child').textContent = 'folder'.repeat(100)")
-    assert path.evaluate('node => node.scrollWidth <= node.clientWidth')
-    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-
-
 def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
     page, uri = reader
     page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
@@ -3815,7 +3838,7 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
-    assert page.locator('.hero-marks .lang-status').inner_text() == '翻译待处理'
+    assert page.locator('.hero-marks .lang-status').inner_text() == '原文'
     assert page.locator('.hero-marks .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -4106,7 +4129,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.search-group').count() == 0
         page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
-        assert page.locator('.hero-marks .lang-status').inner_text() == '翻译待处理'
+        assert page.locator('.hero-marks .lang-status').inner_text() == '原文'
         assert not errors, errors
         browser.close()
 
@@ -5752,6 +5775,32 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     assert page.locator(".ov-xray .ov-node").count() >= 2
     assert page.locator(".ov-today").count() == 1
     assert page.evaluate(GREEN) == 0
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_org_page_shows_each_labelled_passage_with_its_own_reveal(reader, width):
+    # An organisation with labelled passages is a record like a person: each passage shows with its
+    # label on the owner's Mac and hides alone when labelled passages are hidden. Before, the lead,
+    # What they do and History dropped them silently, with nothing to say they were there.
+    page, uri = reader
+    _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
+    page.evaluate("""() => { const org = byPath('orgs/fernhill-labs.md');
+      org.to_you = 'Mara confided a family illness [personal]. Your first paying pilot.';
+      org.text = org.text.replace('## Domains', '## Facts\\n- What they do: Climate data. Founder is in a lawsuit [sensitive] [1]\\n\\n'
+        + '## History\\n- ' + REM.as_of.slice(0, 7) + '-02: Pilot kickoff with Mara [1]\\n- ' + REM.as_of.slice(0, 7) + '-03: Mara shared a diagnosis [personal] [1]\\n\\n## Domains');
+      KNOWN.clear(); FACTS.clear(); render(); }""", isolated_context=False)
+    sub, about, lately = page.locator(".ov-sub"), page.locator(".ov-about"), page.locator(".ov-tl")
+    assert "Your first paying pilot." in sub.inner_text()
+    for box, secret in ((sub, "family illness"), (about, "lawsuit"), (lately, "diagnosis")):
+        assert secret in box.inner_text(), (secret, box.inner_text())
+        assert box.locator(".private .privacy-tag").count() >= 1
+    page.evaluate("togglePrivate()", isolated_context=False)
+    for box, secret in ((sub, "family illness"), (about, "lawsuit"), (lately, "diagnosis")):
+        assert secret not in box.inner_text()
+    assert "Pilot kickoff" in lately.inner_text() and "Climate data." in about.inner_text()
+    # The fuse's tooltips never carry a labelled exchange.
+    assert "diagnosis" not in page.locator(".ov-time").inner_html()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def test_org_kind_and_teams_appear_when_the_page_records_them(reader):

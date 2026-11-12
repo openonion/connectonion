@@ -203,3 +203,25 @@ def test_a_knowledge_entry_keeps_the_knowledge_name_in_its_crumb_and_title(page)
     page.goto(uri + "#c=knowledge")
     assert page.locator(".gx-topics h1").inner_text() == "1 knowledge entry"
     assert page.title() == "Knowledge · co rem"
+
+
+def test_the_map_never_draws_over_its_own_heading_tabs_or_legend(page):
+    # The canvas once filled the whole map under a see-through heading: a node sat on the
+    # Projects tab and another on the title. The map is drawn between the heading and the legend.
+    page, uri = page
+    for width in (1440, 390):
+        page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+        page.goto(uri + "#c=all")
+        page.locator(".gx-map canvas").wait_for()
+        canvas = page.locator(".gx-map canvas").bounding_box()
+        for selector in (".gx-head .all-head", ".gx-title", ".gx-bar", ".gx-tabs"):
+            box = page.locator(selector).bounding_box()
+            assert canvas["y"] >= box["y"] + box["height"], (width, selector, canvas, box)
+        if width > 720:
+            for selector in (".gx-legend", ".gx-zoom"):
+                box = page.locator(selector).bounding_box()
+                assert canvas["y"] + canvas["height"] <= box["y"], (width, selector, canvas, box)
+        # Fitted, every point sits inside the canvas it is drawn on.
+        assert page.evaluate("""() => GRAPH.linked.filter(graphVisible).every(n => {
+          const x = graphState.T.applyX(n.x), y = graphState.T.applyY(n.y);
+          return x >= 0 && x <= graphState.W && y >= 0 && y <= graphState.H; })""", isolated_context=False)

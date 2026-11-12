@@ -1309,7 +1309,7 @@ def test_reader_privacy_does_not_split_quotes_decimals_or_addresses(secret):
 def test_reader_session_search_removes_labelled_passages_before_indexing_and_truncating():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['sessionPreview', 'sessionText', 'sessionExcerpt'])
+                          for name in ['ownerAsYou', 'sessionPreview', 'sessionText', 'sessionExcerpt'])
     result = _run_reader_js(functions + r'''
       const SESSION_TEXT = new Map();
       const r = {path: 'sessions/fixture.md', title: 'Public session',
@@ -2680,7 +2680,7 @@ def test_primary_surfaces_have_no_command_copy_controls():
 def test_session_previews_hide_paths_including_paths_with_spaces():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['sessionExcerpt', 'sessionText', 'sessionPreview'])
+                          for name in ['ownerAsYou', 'sessionExcerpt', 'sessionText', 'sessionPreview'])
     result = _run_reader_js(functions + r'''
       const SESSION_TEXT = new Map();
       const r = {path: 'sessions/fiction.md', title: 'Plan review', text: '',

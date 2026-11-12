@@ -208,15 +208,20 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
 
 @pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".hero-marks"), ("projects/harbour.md", ".eyebrow")])
 def test_the_translation_mark_is_small_and_sits_in_the_crumb(reader, path, crumb):
-    page, _, _ = reader
+    page, calls, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');
       location.hash = 'r=' + encodeURIComponent(path); render(); }""", path, isolated_context=False)
     h1 = page.locator("#main h1").first
     h1.wait_for()
-    marks = page.locator("#main").get_by_text(re.compile("^(翻译中|翻译待处理)$"))
+    # Opening a page only moves it up the nightly queue: nothing is translating it now, so the
+    # mark says the page is in its original language, never a "translating" that never ends.
+    assert page.locator("#main").get_by_text(re.compile("^(翻译中|翻译待处理)$")).count() == 0
+    marks = page.locator(f"#main {crumb} .lang-status")
     assert marks.count() == 1
     mark = marks.first
-    assert mark.inner_text() == "翻译中"
+    assert mark.inner_text() == "原文"
+    assert mark.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
+    assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
     assert mark.get_attribute("role") is None                       # not announced again on every render
     assert mark.evaluate("(n, crumb) => !!n.closest(crumb)", crumb)
     meta = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
