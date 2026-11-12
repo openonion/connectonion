@@ -1325,7 +1325,7 @@ def server_destroy(
     name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; charges the used part of this month, or refunds the unused part of an old 12-month term."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; refunds the unused part of this month, or of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
         raise typer.Exit(1)
