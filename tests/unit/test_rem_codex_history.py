@@ -58,7 +58,7 @@ def test_only_a_known_rem_delegate_is_claimed_from_desktop_history(history):
     assert [row["id"] for row in internal_threads(root, home=home)] == ["delegated"]
 
 
-def fake_provider(history, monkeypatch, states=None, fail=False):
+def fake_provider(history, monkeypatch, states=None, fail=False, archive_errors=None):
     root, home, database, _ = history
     calls = []
 
@@ -84,6 +84,8 @@ def fake_provider(history, monkeypatch, states=None, fail=False):
                                    **(states or {}).get(thread_id, {})}}
             if fail:
                 raise RuntimeError("archive unavailable")
+            if thread_id in (archive_errors or {}):
+                raise RuntimeError(archive_errors[thread_id])
             with sqlite3.connect(database) as connection:
                 connection.execute("UPDATE threads SET archived=1 WHERE id=?", (thread_id,))
             calls.append(thread_id)
@@ -125,6 +127,40 @@ def test_native_failure_surfaces_and_closes_the_client(history, monkeypatch):
     assert calls[-1] == "close"
     receipt = json.loads((root / ".state/codex-history.json").read_text())
     assert receipt["archived"] == [] and receipt["requested"] == ["one"]
+
+
+def test_active_writer_is_kept_while_other_threads_are_archived(history, monkeypatch):
+    root, home, database, add = history
+    add("fictional-busy")
+    add("fictional-idle")
+    calls = fake_provider(history, monkeypatch, archive_errors={"fictional-busy":
+        "thread/archive failed: {'code': -32600, 'message': 'thread fictional-busy already has an active writer'}"})
+
+    assert archive_history(root, home=home) == {"archived": 1, "kept": 1}
+
+    receipt = json.loads((root / ".state/codex-history.json").read_text())
+    assert receipt["kept"] == ["fictional-busy"]
+    assert receipt["archived"] == ["fictional-idle"]
+    assert receipt["failed"] == []
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT archived FROM threads WHERE id='fictional-busy'").fetchone() == (0,)
+    assert calls[-1] == "close"
+
+
+@pytest.mark.parametrize("error", [
+    "thread/archive failed: {'code': -32600, 'message': 'fictional permission denied'}",
+    "thread/archive failed: {'code': -32600, 'message': 'thread another-id already has an active writer'}",
+])
+def test_unrelated_archive_errors_still_surface(history, monkeypatch, error):
+    root, home, _, add = history
+    add("fictional-thread")
+    calls = fake_provider(history, monkeypatch, archive_errors={"fictional-thread": error})
+    with pytest.raises(RuntimeError) as failure:
+        archive_history(root, home=home)
+    assert str(failure.value) == error
+    receipt = json.loads((root / ".state/codex-history.json").read_text())
+    assert receipt["failed"] == [{"id": "fictional-thread", "error": "RuntimeError"}]
+    assert calls[-1] == "close"
 
 
 @pytest.mark.parametrize("field,value", [("is_pinned", 1), ("updated_at", 9_999_999_999)])

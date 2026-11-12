@@ -25,7 +25,7 @@ from datetime import date
 from .files import Notebook, read_json, state_path
 from .map import needs_review
 
-CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/"}
+CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/", "topics": "knowledge/"}
 RECENT_DAYS = 7
 
 
@@ -51,6 +51,7 @@ def weights(state: dict, excluded: frozenset | set = frozenset()) -> dict:
     weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
     weight.update({row.get("record"): len([p for p in row.get("people") or [] if p not in excluded])
                    for row in state.get("orgs", [])})
+    weight.update({row.get('record'): row.get('source_count', 0) for row in state.get('topics', [])})
     return weight
 
 
@@ -192,7 +193,7 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
                    for domain in org_domains(notebook.read(record)))}
 
 
-ALL = ("people", "projects", "orgs", "skills")
+ALL = ("people", "projects", "orgs", "skills", "topics")
 
 
 def order_all(root) -> list[dict]:

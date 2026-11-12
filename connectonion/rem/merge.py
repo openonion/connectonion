@@ -190,6 +190,11 @@ def prepare_merge(notebook: Notebook, kept: str, old: str, reason: str) -> dict:
     page = _one_line_per_fact(page)
     if added:
         page = _note(page, old, day)
+    if kept.startswith("people/"):
+        from . import people_basics, store
+        store.refresh(notebook.root)
+        addresses = people_basics.own_addresses(notebook, kept, page, excluding={old}).get(kept, set())
+        page = people_basics.fill(notebook, kept, page, addresses=addresses)
     table = aliases(notebook.root)
     for entry in table.values():
         if entry["into"] == old:
@@ -222,6 +227,9 @@ def promote_merge(notebook: Notebook, plan: dict) -> dict:
     write_json(state_path(root, ALIASES), plan["aliases"])
     for record, text in plan["relinked"].items():
         notebook.write(record, text)
+    if kept.startswith("people/"):
+        from .store import refresh
+        refresh(root)
     return {"from": old, "into": kept, "reason": plan["reason"],
             "lines_merged": plan["lines_merged"], "relinked": list(plan["relinked"])}
 

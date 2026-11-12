@@ -9,7 +9,6 @@ again on the next request instead of being shown.
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
@@ -198,6 +197,9 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
 
 
 def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .inquiry import stage_config
+    from .service import now
+    config = stage_config(root, config, "translate")
     from .languages import owner_languages
     from .runner import _add_usage
     tasks = state_path(root, "tasks")
@@ -205,7 +207,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     task = prepare(root, record, language, directory=workspace, text=text)
     prose = task["prose"]
-    run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
+    run = {"id": "run_" + uuid4().hex, "started_at": now().isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "failed",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
     if on_run:
@@ -220,7 +222,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         error = sys.exc_info()[1]
         if error:
             run.update(error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
-        run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
+        run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
 
@@ -320,3 +322,80 @@ def written_pages(root: Path) -> list[str]:
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
             or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+
+
+def _waiting_pages(root):
+    """Pages behind the reader's active owner obligations, including their copies."""
+    from . import census, threads
+    from .files import read_json
+    from .service import notebook_today
+    book = Notebook(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    title = book.read(owner).splitlines()[0].lstrip("# ") if owner and book.exists(owner) else ""
+    first = (title.split() or [""])[0]
+    states, today = threads.listing(root), notebook_today(root)
+    return {row["path"] for row, text, _ in census._thread_items(book, census.pages(root), first)
+            if census.direction(text, first) == "mine" and not census._quiet(text, today)
+            and not threads.blocked(root, threads.done_key(row["path"], text), states=states)}
+
+
+def backlog(root, language, *, changed=()):
+    """Waiting-on-you pages first, then newest page edits; omit current translations.
+
+    Both scheduled paths use this order before applying the shared daily cap.
+    Explicit requests and this round's changes break equal modification times.
+    """
+    from .files import read_json
+    book = Notebook(root)
+    requested = read_json(state_path(root, "translation-requests.json"), {}).get(language, [])
+    requested = {record: position for position, record in enumerate(requested)}
+    waiting, changed = _waiting_pages(root), set(changed)
+    records = sorted(book.list(), key=lambda record: (
+        record not in waiting, -book.path(record).stat().st_mtime_ns,
+        record not in changed, requested.get(record, len(requested)), record))
+    return [record for record in records if cached(root, record, language) is None]
+
+
+def attempts_today(root):
+    from . import service
+    from .config import read_config
+    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(read_config(root)))
+    # Summary records describe the same work as their individual translate runs.
+    return sum(row.get('runner_attempts', 0) for row in runs
+               if row.get('phase') in ('daily-translation', 'translate'))
+
+
+def languages(root):
+    """The languages pages are translated into: the reader's requests, then the configured
+    list, or when that is empty the languages the owner writes, detected (D-103)."""
+    from .files import read_json
+    from .languages import owner_languages
+    requested = read_json(state_path(root, 'translation-requests.json'), {})
+    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
+
+
+def coverage(root, *, next_run=None):
+    """Current coverage and what is queued: every missing page of a requested language (D-104)."""
+    records, targets = Notebook(root).list(), languages(root)
+    directory = state_path(root, "translations")
+    saved = sorted(path.name for path in directory.iterdir()
+                   if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
+    report = {}
+    for language in dict.fromkeys([*targets, *saved, "zh"]):
+        if language.split("-")[0].lower() == "en":
+            continue
+        done = sum(cached(root, record, language) is not None for record in records)
+        report[language] = {"total": len(records), "translated": done,
+                            "requested": language in targets, "queued": len(records) - done if language in targets else 0}
+    return report
+
+
+def request(root, record, language):
+    from .files import maintenance_lock, read_json
+    checked_language(language)
+    if record not in Notebook(root).list():
+        raise RemError('No such page')
+    with maintenance_lock(root):
+        pending = read_json(state_path(root, 'translation-requests.json'), {})
+        pending[language] = list(dict.fromkeys([record, *pending.get(language, [])]))
+        write_json(state_path(root, 'translation-requests.json'), pending)

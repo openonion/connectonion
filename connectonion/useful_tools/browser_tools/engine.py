@@ -1,9 +1,19 @@
-"""Resolve the 1.8 browser engine once, before a browser session can charge."""
+"""Resolve the 1.8 browser engine once, before a browser session can charge.
+
+On macOS a WTF launch also brings /Applications/WTF Browser.app to the build it
+started (#2932): see refresh_applications_app.
+"""
 
 from __future__ import annotations
 
+import os
+import plistlib
+import shutil
+import subprocess
 import sys
+import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -30,7 +40,13 @@ ENGINE_SETTING = "CO_BROWSER_ENGINE"
 # every macOS renewal reused one Idempotency-Key and paid sessions ended after
 # 15 minutes. Linux renews through Onionwright, never had that bug, and stays.
 BROWSER_REVISION = "154.0.8037.100" if sys.platform == "darwin" else "154.0.8037.58"
-MIN_ONIONWRIGHT_VERSION = "0.0.14"
+MIN_ONIONWRIGHT_VERSION = "0.0.15"
+# The copy of the browser a person double-clicks. Onionwright downloads and runs
+# its own under ~/.onionwright and never looks here, so until #2932 this one
+# stayed at whatever revision someone once dragged in, and the server refused it.
+APPLICATIONS = Path("/Applications")
+APP_NAME = "WTF Browser.app"
+BUNDLE_ID = "ai.openonion.browser"
 
 
 class Reason:
@@ -325,6 +341,156 @@ def resolve(
     )
 
 
+def _our_build(app: Path) -> tuple[str, str] | None:
+    """(revision, channel) when the bundle at `app` is OpenOnion's browser, else None."""
+    plist = app / "Contents" / "Info.plist"
+    if not plist.is_file():
+        return None
+    info = plistlib.loads(plist.read_bytes())
+    if info.get("CFBundleIdentifier") != BUNDLE_ID:
+        return None
+    channel = app / "Contents" / "Resources" / "openonion-release-channel"
+    return (
+        info.get("CFBundleShortVersionString", ""),
+        channel.read_text().strip() if channel.is_file() else "",
+    )
+
+
+def _app_is_running(app: Path) -> bool:
+    """Whether any process was started from inside this bundle: the app or a helper."""
+    programs = subprocess.run(
+        ["/bin/ps", "-axo", "comm="], capture_output=True, text=True, errors="replace", check=True
+    ).stdout
+    return any(line.startswith(f"{app}/Contents/") for line in programs.splitlines())
+
+
+def _ditto(source: Path, destination: Path) -> None:
+    """Copy a signed bundle the way that keeps its signature and notarization valid."""
+    subprocess.run(["/usr/bin/ditto", str(source), str(destination)], check=True)
+
+
+def _why_not_now(app: Path) -> str | None:
+    """Why `co` must not put a build at `app` right now, in a person's words; None when it may."""
+    if not os.access(app.parent, os.W_OK):
+        return f"co cannot write to {app.parent}"
+    if app.exists() and _app_is_running(app):
+        return "it is open"
+    return None
+
+
+def _newer(found: tuple[str, str], wanted: tuple[str, str]) -> bool:
+    """Whether `found` is a later revision on the channel of `wanted`.
+
+    Several `co` installs with different pins share one Mac. The one with the
+    older pin must not put back the build the server refuses, and the two must
+    not trade the app back and forth. Revisions compare as numbers, because as
+    text 154.0.8037.58 sorts after 154.0.8037.100.
+    """
+    theirs, ours = (tuple(map(int, build[0].split("."))) for build in (found, wanted))
+    return found[1] == wanted[1] and theirs > ours
+
+
+def _install_or_replace(runtime_app: Path, app: Path, trash: Path) -> str | None:
+    """Put the build at `runtime_app` at `app`; the caller knows it is ours.
+
+    The new copy is staged beside the app and renamed into place, so a copy that
+    is interrupted never leaves a half bundle that reads as the current build.
+    """
+    wanted, found = _our_build(runtime_app), _our_build(app)
+    if found == wanted:
+        return None
+    if app.exists() and found is None:
+        return f"{app} is not OpenOnion's build, so co left it alone"
+    if found and _newer(found, wanted):
+        return f"{app.parent} has {found[0]}, newer than the {wanted[0]} co runs, so co left it"
+    staged = app.with_name(f".{app.name}.installing")
+    shutil.rmtree(staged, ignore_errors=True)       # left by a copy that was interrupted
+    blocked = _why_not_now(app)
+    if blocked is None:
+        _ditto(runtime_app, staged)
+        blocked = _why_not_now(app)                 # a person can open the old app during the copy
+    if blocked:
+        shutil.rmtree(staged, ignore_errors=True)
+        return f"{app} stays {'at ' + found[0] if found else 'absent'}: {blocked}"
+    said = f"co put WTF Browser {wanted[0]} in {app.parent}"
+    if found:
+        trash.mkdir(exist_ok=True)
+        kept = trash / f"WTF Browser {found[0]} {datetime.now():%Y-%m-%d %H.%M.%S}.app"
+        shutil.move(app, kept)
+        said += f"; the {found[0]} that was there is in the Trash as {kept.name!r}"
+    staged.rename(app)
+    return said
+
+
+def refresh_applications_app(executable: str, applications: Path, trash: Path) -> str | None:
+    """Make the WTF Browser in `applications` the build `executable` belongs to (#2932).
+
+    A later revision on the same channel is left where it is: see _newer.
+    Returns what a person should be told, or None when nothing needed doing:
+    the app is already that build, or `executable` is not inside our bundle.
+    """
+    runtime_app = Path(executable).parent.parent.parent
+    if _our_build(runtime_app) is None:
+        return None
+    import fcntl  # POSIX only, and only a macOS launch gets here
+
+    with open(runtime_app / "Contents" / "Info.plist", "rb") as turn:
+        # Two daemons started together would share one staging copy; they take turns.
+        fcntl.flock(turn, fcntl.LOCK_EX)
+        return _install_or_replace(runtime_app, applications / APP_NAME, trash)
+
+
+def _refresh_applications_app_and_say(executable: str, applications: Path, trash: Path) -> None:
+    said = refresh_applications_app(executable, applications, trash)
+    if said:
+        print(f"WTF Browser app: {said}", file=sys.stderr)
+
+
+def _refresh_applications_app_beside_the_launch(resolution: Resolution) -> None:
+    """After a WTF launch on macOS, bring /Applications to the build just started.
+
+    On its own thread: the copy is about 350 MB, and nothing it does or fails
+    at may slow the browser that is already up or take its paid session down.
+    Not a daemon thread, so a short script still finishes the copy before exit.
+    """
+    if sys.platform != "darwin" or not resolution.executable:
+        return
+    threading.Thread(
+        target=_refresh_applications_app_and_say,
+        args=(resolution.executable, APPLICATIONS, Path.home() / ".Trash"),
+        name="wtf-browser-app",
+    ).start()
+
+
+def applications_app_line(executable: str | None, applications: Path) -> str | None:
+    """What `co browser status` says about the WTF Browser a person can click.
+
+    `executable` is the paid runtime this daemon runs. Without one, the pinned
+    revision stands in for it and the channel is taken as matching.
+    """
+    if sys.platform != "darwin":
+        return None
+    app = applications / APP_NAME
+    found = _our_build(app)
+    if app.exists() and found is None:
+        return f"WTF Browser app: {app} is not OpenOnion's build, so co leaves it alone"
+    wanted = executable and _our_build(Path(executable).parent.parent.parent)
+    wanted = wanted or (BROWSER_REVISION, found[1] if found else "")
+    if found == wanted:
+        return f"WTF Browser app: {applications} has {found[0]}, the build co runs"
+    if found and _newer(found, wanted):
+        return f"WTF Browser app: {applications} has {found[0]}, newer than the {wanted[0]} co runs, so co leaves it"
+    have = f"none in {applications}"
+    if found:
+        told = slice(None) if found[1] != wanted[1] else slice(1)  # the channel only when it differs
+        have = f"{applications} has {' '.join(found[told]).strip()}, co runs {' '.join(wanted[told]).strip()}"
+    blocked = _why_not_now(app)
+    then = f"{blocked}, so co leaves it" if blocked else (
+        "co installs the build it runs the next time it starts the WTF browser"
+    )
+    return f"WTF Browser app: {have} — {then}"
+
+
 def launch(
     resolution: Resolution,
     playwright,
@@ -344,7 +510,7 @@ def launch(
             Reason.ONIONWRIGHT_INCOMPATIBLE,
             "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
         ) from exc
-    return launch_paid(
+    run = launch_paid(
         playwright,
         resolution.client,
         resolution.browser_revision,
@@ -352,6 +518,8 @@ def launch(
         prepared=resolution.prepared,
         **launch_kwargs,
     )
+    _refresh_applications_app_beside_the_launch(resolution)
+    return run
 
 
 async def launch_async(
@@ -373,7 +541,7 @@ async def launch_async(
             Reason.ONIONWRIGHT_INCOMPATIBLE,
             "Upgrade Onionwright to the ConnectOnion 1.8 compatible release.",
         ) from exc
-    return await launch_paid_async(
+    run = await launch_paid_async(
         playwright,
         resolution.client,
         resolution.browser_revision,
@@ -381,3 +549,5 @@ async def launch_async(
         prepared=resolution.prepared,
         **launch_kwargs,
     )
+    _refresh_applications_app_beside_the_launch(resolution)
+    return run

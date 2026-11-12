@@ -62,6 +62,24 @@ def read(config: dict, request=None) -> dict:
         return {"unknown": f"Codex did not report its quota ({type(error).__name__}: {error})"}
 
 
+def meter(root, config: dict, request=None) -> dict:
+    """The live reading, else the last one a run recorded in this week's window.
+
+    104 of 166 scheduled runs could not read the meter (sandboxed app-server), and an
+    unknown reading let every guard through. The week only moves up inside its
+    window, so the last recorded value is a floor on where it is now.
+    """
+    live = read(config) if request is None else read(config, request)
+    if "unknown" not in live:
+        return live
+    from . import service
+    moment = service.now().timestamp()
+    last = next((reading for run in service.run_logs(root) for key in ("after", "before")
+                 if "used_percent" in (reading := (run.get("quota") or {}).get(key) or {})
+                 and reading.get("resets_at", 0) > moment), None)
+    return {**last, "last_recorded": live["unknown"]} if last else live
+
+
 # Seven Codex pro batches (gpt-6-luna, 2026-10-08..11) measured 11.6M–13.6M
 # fresh tokens per point at standard speed. Fast bills twice as much;
 # fresh tokens are input minus cached input, plus output.
@@ -165,6 +183,8 @@ def floor_block(reading: dict, limits: dict) -> str:
         return ""
     floor = limits["quota_floor_percent"]
     if reading["used_percent"] >= floor:
+        resets = datetime.fromtimestamp(reading["resets_at"]).astimezone() if reading.get("resets_at") else None
         return (f"the Codex week is at {reading['used_percent']}%, at or past the {floor}% "
-                "floor kept for your own work")
+                "floor kept for your own work" + (f"; investigation resumes when it resets {resets:%a %d %b %H:%M}"
+                                                  if resets else ""))
     return ""

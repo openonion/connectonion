@@ -16,6 +16,7 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 
+from ..codex_cli import INSTALL_COMMAND
 from ..skills_catalog import useful_skills_dir
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import with_local_times
@@ -118,7 +119,9 @@ def co_command() -> list[str]:
         return [sys.executable]
     if not sys.executable:
         raise RemError("Cannot tell which Python is running ConnectOnion; run co rem from a normal install")
-    return [sys.executable, "-m", "connectonion.cli.main"]
+    from ..environment import explicit_env_file
+    selector = ["--env-file", str(explicit_env_file())] if explicit_env_file() is not None else []
+    return [sys.executable, "-m", "connectonion.cli.main", *selector]
 
 
 def preflight() -> list[str]:
@@ -135,7 +138,8 @@ def child_env(config: dict | None = None) -> dict:
     installed connectonion and failed with "Skill 'rem-investigate' not found"
     after minutes of gathering (#1974).
     """
-    environment = os.environ.copy()
+    from ..environment import subprocess_environment
+    environment = subprocess_environment()
     # Keep resumable traces, without promoting every maintenance page to a
     # recent Codex conversation. This is private to the REM child process.
     environment["CO_REM_CODEX_ARCHIVE"] = "1"
@@ -197,7 +201,7 @@ def check_skill(root: Path, stage: str) -> None:
                        "or absolute.")
 
 
-INSTALL = {"codex": "npm install -g @openai/codex",
+INSTALL = {"codex": INSTALL_COMMAND,
            "claude-code": "npm install -g @anthropic-ai/claude-code"}
 
 # Whose money a run spends, said before init starts the owner's page (#1943).
@@ -209,9 +213,9 @@ PLAN = {"codex": "on your own Codex plan (your ChatGPT sign-in), not ConnectOnio
 def ready(config: dict) -> tuple[str, str]:
     """(problem, fix) for the configured runner, or ("", "") when it can run.
 
-    Checked with no model and no subprocess: the binary on PATH (or its
-    CODEX_CMD / CLAUDE_CODE_CMD override) and, for Codex, the sign-in file the
-    quota meter reads. A missing or signed-out Codex used to surface only when
+    Checked without a model: the resolved CLI (or its CODEX_CMD /
+    CLAUDE_CODE_CMD override) and, for Codex, login status from the CLI. A
+    missing or signed-out Codex used to surface only when
     the first investigation failed, ten minutes into a first run (#1943).
     Claude Code keeps its login in the system keychain, so only its binary is
     checked; ConnectOnion's own loop needs neither.
@@ -219,11 +223,13 @@ def ready(config: dict) -> tuple[str, str]:
     runner = config.get("runner")
     if runner == "codex":
         from ..useful_tools.codex import _base_command
-        from .quota import _codex_auth
-        if not _base_command():
+        from ..codex_cli import signed_in
+        command = _base_command()
+        if not command:
             return "Codex is not installed", INSTALL["codex"]
-        if not _codex_auth().is_file():
-            return "Codex is not signed in", "codex login"
+        if not signed_in(command[:-1]):
+            import shlex
+            return "Codex is not signed in", shlex.join([*command[:-1], "login"])
     elif runner == "claude-code":
         from ..useful_tools.claude_code import _base_command
         if not _base_command():
@@ -428,7 +434,7 @@ def readable_material(items: list[dict]) -> str:
 # without `orgs`, so an org page was given every page shape plus the CLI
 # reference (63.7k characters instead of ~31k), and investigate sized its
 # material against that worst case on every page kind.
-PAGE_KINDS = {"people": "person", "projects": "project", "orgs": "org", "skills": "skill"}
+PAGE_KINDS = {"people": "person", "projects": "project", "orgs": "org", "skills": "skill", "knowledge": "topic"}
 
 
 def page_kind_of(record: str) -> str:
@@ -731,7 +737,7 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
 
 def promote_with_repairs(notebook, record, candidate, original, items, directory, result, *, workdir, config,
                          stage, investigation=True, lock_held=False, run=None, repairs=MAX_REPAIRS,
-                         stage_progress=None, native=False):
+                         stage_progress=None, native=False, draft_only=False):
     """Review the page; let its writer fix what review names; then keep what is sound.
 
     Only project pages had repair turns, so a person page refused for one
@@ -755,7 +761,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
                                        lock_held=lock_held, investigation=investigation, claim_config=config,
                                        carried=carried, ask_quotes=attempt < repairs and stage == "investigate",
                                        report=str(result.get("result") or ""),
-                                       stage_progress=stage_progress, **({"native": True} if native else {}))
+                                       stage_progress=stage_progress,
+                                       **({"native": True, "draft_only": draft_only} if native else {}))
             if usage and "needs_review" in usage:
                 return usage
             result["usage"] = _add_usage(result.get("usage"), usage)
@@ -801,7 +808,9 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
         stage_progress("insight critic")
     result["critic_usage_pending"] = True
     approved = result.get("insights_approved", [])
-    decision = judge(notebook, record, original, candidate, items, config, directory, run_claim_task,
+    from .inquiry import stage_config
+    decision = judge(notebook, record, original, candidate, items, stage_config(notebook.root, config, "insight-critic"),
+                     directory, run_claim_task,
                      approved=approved)
     result["critic_usage_pending"] = False
     result["usage"] = _add_usage(result.get("usage"), decision["usage"])
@@ -888,9 +897,9 @@ def _keep_identity(record: str, before: str, after: str) -> str:
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
-                       stage_progress=None, native=False, report=""):
+                       stage_progress=None, native=False, report="", draft_only=False):
     from .page_review import (add_missing_sections, clear_placeholders, compact_page, drop_empty_owner_section,
-                              drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              drop_owner_addresses, drop_foreign_identifiers, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               company_from_domain,
                               drop_others_phones, fold_history, link_company, owner_name_to_user, owner_pronouns, sort_history, unquoted_decisions, normalize_numbered_sources,
                               sources_before_footer, merge_duplicate_definitions, agent_threads, move_agent_threads, lead_without_last_contact,
@@ -903,12 +912,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         stage_progress("reviewing")
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
+    # Compare evidence by its resolved id; keep the raw snapshot for the write guard.
+    snapshot = original
+    original = resolve_sources(notebook.root, record, original)
+    carried = resolve_sources(notebook.root, record, carried)
     from .evidence import additional_research
     items = [*items, *additional_research(notebook.root, directory, items)]
     from . import facts
     from .fact_extract import OTHERS_PHONE
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))
     text = merge_duplicate_definitions(text)
+    text = resolve_sources(notebook.root, record, text)
     cleared_facts = fact_removals(record, text, original, report)
     if carried and cleared_facts:
         # The retention guard still protects every other line using those sources.
@@ -1027,6 +1041,13 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = drop_empty_owner_section(text, owner=record == owner.get("record"))
     text = merge_insight_shapes(text)
     text = timezone_from_location(record, text)
+    text, foreign_ids = drop_foreign_identifiers(notebook, record, text)
+    if foreign_ids:
+        cleared_facts.add('Legal entity')
+    if carried:
+        carried, stripped_ids = drop_foreign_identifiers(notebook, record, carried)
+        if stripped_ids:
+            carried = drop_uncited_sources(carried)
     text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
@@ -1055,18 +1076,19 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                if source.startswith(("http://", "https://")) and source not in carried_urls and source not in readable]
     audit_usage = {}
     audit_status = "not automatically assessed"
+    audit_unavailable = []
     if last_resort and (directory / "claim-review.json").is_file():
         audit_status = (f"bounded citation audit failed; {len(refuted) - len(unlocated)} refuted claims removed"
                         + (f", {len(unlocated)} already gone" if unlocated else ""))
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
-    if not errors and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
+    if not errors and not draft_only and claim_config is not None and not last_resort and record.startswith(AUDITED) and AUDIT.get():
         if stage_progress:
             stage_progress("claim audit")
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
-            from .project_claim_review import prepare, check, audit_progress
+            from .project_claim_review import prepare, check, audit_progress, preserve_checkpoints
             audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True, directory=directory)
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
@@ -1076,19 +1098,23 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                 report = audit["report"]
             elif saved.get("sha256") == digest and output.is_file():
                 decision = json.loads(output.read_text(encoding="utf-8"))
-                checked, total, _ = audit_progress(text, directory)
-                # Only the model's own valid INSUFFICIENT decision needs checkpoints.
-                # Code-derived insufficient keeps the child runner's existing policy.
-                if (str(decision.get("verdict", "")).lower() == "insufficient"
-                        and isinstance(decision.get("findings"), list)
-                        and checked < total):
+                if (not isinstance(decision, dict)
+                        or str(decision.get('verdict', '')).lower() not in ('pass', 'fail', 'insufficient')
+                        or not isinstance(decision.get('findings'), list)):
+                    return {"needs_review": audit["prompt"], "candidate": str(output),
+                            "continue_review": "Write a valid audit decision: verdict PASS, FAIL or INSUFFICIENT and a findings list; then submit again."}
+                report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
+                # Require checkpoints only for originals the packet can supply.
+                checked, total, _ = audit_progress(audit["material"]["candidate"], directory)
+                # Normalization can turn an empty/filtered FAIL into PASS or INSUFFICIENT.
+                verdict = str(decision.get("verdict", "")).lower()
+                if (verdict in ('pass', 'insufficient') or report['verdict'] != 'fail') and checked < total:
                     return {"needs_review": audit["prompt"], "candidate": str(output),
                             "continue_review": "Continue checking from the notes and submit when every citation is checked."}
-                report, audit_usage = check(saved["task"], {"result": json.dumps(decision, ensure_ascii=False), "usage": None})
             else:
                 output.unlink(missing_ok=True)
                 if saved.get("sha256") != digest:
-                    (directory / "notes.md").unlink(missing_ok=True)
+                    preserve_checkpoints(directory, saved.get("task", {}).get("material", {}), audit.get("material", {}))
                 write_json(directory / "audit-task.json", {"sha256": digest, "task": audit})
                 return {"needs_review": audit["prompt"] + f"\nWrite the JSON decision to {output}.",
                         "candidate": str(output)}
@@ -1096,13 +1122,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The child runner keeps its read-only audit and retained source behavior.
             with _promotion_lock(notebook.root, candidate, usage, lock_held):
                 retain_cited_originals(notebook, text, items)
-            report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
+            from .inquiry import stage_config
+            report, audit_usage = review_claims(notebook, text, stage_config(notebook.root, claim_config, "claim-audit"),
+                                                directory, run_claim_task,
                                                 record=record, items=items, carried=carried)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])
-        if report.get("unretained_citations"):
-            audit_status += f"; {len(report['unretained_citations'])} citations unverified (originals not retained)"
+        audit_unavailable = report.get("sources_unavailable", [])
+        if audit_unavailable:
+            audit_status += f"; {len(audit_unavailable)} citations unverified (originals unavailable)"
         if report.get("carried_findings"):
             audit_status += f"; {len(report['carried_findings'])} unchanged findings deferred"
         # Insufficient source coverage and deferred old findings stay explicit;
@@ -1116,10 +1145,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
     # because the scheduled sync had just started (#1885).
     with _promotion_lock(notebook.root, candidate, total_usage, lock_held):
-        if not notebook.path(record).is_file() or notebook.read(record) != original:
+        if not notebook.path(record).is_file() or notebook.read(record) != snapshot:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
+                   "foreign_identifiers_removed": foreign_ids,
                    "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "restored_lines": restored_lines,
                    "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
@@ -1128,12 +1158,19 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "factual_quality": audit_status})
+                   "sources_unavailable": audit_unavailable, "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
+        if draft_only:
+            from .evidence import retain_research
+            from .project_claim_review import retain_cited_originals
+            retain_cited_originals(notebook, text, items)
+            retain_research(notebook.root, text, items)
+            candidate.write_text(text, encoding="utf-8")
+        else:
+            _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
     return audit_usage
 
 
@@ -1146,6 +1183,10 @@ def _write_page(notebook, record, text, items, *, receipt=None):
     from .reader_model import _source_ids
     from .service import notebook_zone
     from .evidence import retain_research
+    if record.startswith("people/"):
+        from . import people_basics, store
+        store.refresh(notebook.root)
+        text = people_basics.fill(notebook, record, text)
     retain_research(notebook.root, text, items)
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
@@ -1157,6 +1198,18 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         write_json(receipt, {"record": record, "sha256": hashlib.sha256(saved.encode()).hexdigest()})
     prepare_promotion(notebook.root, record, saved, items)
     notebook.write(record, saved)
+    if record.startswith(("people/", "orgs/")):
+        from .org_inference import infer, apply
+        hierarchy_evidence = [row for item in items if item.get('role') == 'facts'
+                              for row in item.get('facts', [])]
+        apply(notebook, infer(notebook, record, hierarchy_evidence), lock_held=True)
+        final = notebook.read(record)
+        if final != saved:
+            prepare_promotion(notebook.root, record, final, items)
+            if receipt:
+                write_json(receipt, {"record": record, "sha256": hashlib.sha256(final.encode()).hexdigest()})
+    if record.startswith("people/"):
+        store.refresh(notebook.root)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False):
@@ -1184,26 +1237,29 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
         from . import facts
+        # `before` stays untouched for the concurrent-write check below.
+        original = resolve_sources(notebook.root, record, before.get(record, ''))
+        text = resolve_sources(notebook.root, record, after[record])
         text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_missing_facts(record, restore_runner_fields(record, after[record], before.get(record, '')), before.get(record, '')))))
-        text, dropped = drop_unresolved(record, text, before.get(record, ''), items, pages=set(before),
+            restore_missing_facts(record, restore_runner_fields(record, text, original), original))))
+        text, dropped = drop_unresolved(record, text, original, items, pages=set(before),
                                         root=notebook.root)
         unverified = []
         if record.startswith("people/") and record != owner:
-            text, unverified = verify_contacts(notebook.root, record, text, items, before.get(record, ''))
+            text, unverified = verify_contacts(notebook.root, record, text, items, original)
         text, overview_replaced = repair_project_overview(record, text)
-        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))
+        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), original)
         text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
         # Upkeep has no repair turn: a quote or source the page had and this
         # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
         # A gutted page is still refused on what the turn wrote, before anything is put back.
-        shrunk = shrinkage(before.get(record, ''), text) if headings(record) else ''
+        shrunk = shrinkage(original, text) if headings(record) else ''
         written = text
-        text = fold_history(restore_dropped(before.get(record, ''), text)) if before.get(record) and not shrunk else text
+        text = fold_history(restore_dropped(original, text)) if original and not shrunk else text
         restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
         text = drop_empty_owner_section(text, owner=record == owner)
         text = timezone_from_location(record, text)
-        text = drop_uncited_sources(facts.names_not_addresses(record, text, before.get(record, '')))
+        text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
         # What code removed is recorded, as an investigation's is; discarded,
         # a maintained page lost lines and its review.json never said which.
         repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
@@ -1211,7 +1267,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                            "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                            "restored_lines": restored_lines}
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = (validate(record, text, before.get(record, ''), items, pages=set(before),
+        errors = (validate(record, text, original, items, pages=set(before),
                            owner=record == owner, root=notebook.root)
                   if headings(record) else [])
         errors += [shrunk] if shrunk else []
@@ -1254,13 +1310,21 @@ def scrub_task(directory: Path) -> None:
     evidence directory was deleted "so copies of private mail do not
     accumulate" (#1958). What is kept is the owner's alone: a candidate page
     quotes their mail, and 1.9.0a2 left it 0644 (#1974).
+    Native completion is in the run log; its workspace goes once the round
+    no longer needs the earlier task outputs.
     """
+    if directory.name.startswith("do-") or not directory.is_dir() or directory.is_symlink():
+        return
     native_task = read_json(directory / "task.json", {})
     active_round = read_json(directory.parent.parent / "round.json", {}) if native_task else {}
-    if native_task.get("status") == "pending" or (native_task and not active_round.get("done")
+    if native_task.get("status") == "pending" or (native_task and active_round.get("started_at")
+            and not active_round.get("done")
             and native_task.get("round_started_at") == active_round.get("started_at")):
         return
     import shutil
+    if native_task.get("status") in ("accepted", "discarded"):
+        shutil.rmtree(directory)
+        return
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
             # refused/ holds the pages a maintenance pass wrote and review
@@ -1273,6 +1337,8 @@ def scrub_task(directory: Path) -> None:
             shutil.rmtree(path, ignore_errors=True)
         else:
             path.unlink(missing_ok=True)
+    if not any(directory.iterdir()):
+        directory.rmdir()
 
 
 # A folder with no result.json this old was left by a run that was killed: the
@@ -1290,12 +1356,15 @@ def scrub_finished_tasks(workdir: Path) -> None:
     stale = time.time() - ABANDONED_TASK_SECONDS
     finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
-        if folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
+        if folder.name.startswith("do-") or folder in _SCRUBBED_TASKS or not folder.is_dir() or folder.is_symlink():
             continue
         result = folder / "result.json"
-        if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
+        native_task = read_json(folder / "task.json", {})
+        if (native_task.get("status") in ("accepted", "discarded")
+                or (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale):
             scrub_task(folder)
-            _SCRUBBED_TASKS.add(folder)
+            if not (folder / "task.json").is_file():
+                _SCRUBBED_TASKS.add(folder)
 
 
 _TASK_MASK_LOCK = threading.Lock()
@@ -1432,6 +1501,8 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     one_page = stage == "maintain" and any(item.get("one_page") for item in items)
     candidate = directory / "candidate.md" if record and (stage in ONE_PAGE_STAGES or one_page) else None
     if candidate is not None:
+        from .browser_history import recently_read
+        prompt += recently_read(notebook.read(record))
         # The review refuses a page that ends over the limit; a person page
         # learnt that only after a 643k-token turn (#2041).
         from .page_review import history_note, size_note
@@ -1551,6 +1622,8 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
     notebook = Notebook(Path(task["root"]))
     directory, workdir = Path(task["directory"]), Path(task["directory"]).parent
     record, before, items, stage = task["record"], task["before"], task["items"], task["stage"]
+    if native:
+        items = [*items, *task.get("prior_items", [])]
     candidate = Path(task["candidate"]) if task["candidate"] else None
     task_root, summary, selected_config = Path(task["task_root"]), task["summary"], task["config"]
     run_turn = run_turn or run_task
@@ -1582,7 +1655,7 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
                              repairs=0 if not automatic_repairs or summary or not candidate.is_file()
                              or candidate.read_text(encoding="utf-8") == before[record]
                              else DEEPEN_REPAIRS if stage in ("enrich", "muse") else MAX_REPAIRS,
-                             **({"native": True} if native else {}))
+                             **({"native": True, "draft_only": task.get("draft_only", False)} if native else {}))
         if pending:
             return pending
         metrics["render_usage"] = result.get("usage")
@@ -1609,7 +1682,9 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
                search=None, turns=(), stage_progress=None):
     from .config import read_config
+    from .inquiry import stage_config
     from .service import notebook_zone
+    config = stage_config(notebook.root, config, stage)
     task = prepare(notebook, items, config, kind, stage=stage, directory=directory, search=search)
     record, before, items = task["record"], task["before"], task["items"]
     candidate = Path(task["candidate"]) if task["candidate"] else None
@@ -1633,9 +1708,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     refusals = []
     run_turn = _retry_timeouts(metrics)
     try:
-        from .inquiry import routing, stage_config
+        from .inquiry import inquiry_routed
         from .inquiry import run as inquiry_run
-        if stage == "investigate" and candidate and routing(notebook.root):
+        if stage == "investigate" and candidate and inquiry_routed(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,
                 lambda _task_directory, text, route, phase: run_turn(workdir, text, route, phase))

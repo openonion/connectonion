@@ -15,7 +15,7 @@ import yaml
 from connectonion.rem.codex_schedule import CodexNative, automation_id, recurrence
 from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError, atomic_write, state_path, write_json
-from connectonion.rem.schedule import Launchd, default_scheduler, label_for, wake_command
+from connectonion.rem.schedule import CodexExec, Launchd, default_scheduler, label_for, wake_command
 
 
 def _rule_pairs(rule):
@@ -111,8 +111,11 @@ def test_native_waiting_rules(native, tmp_path, source):
              "continuation": SCHEDULED_CONTINUATION}
     text = " ".join(texts[source].split())
     if source != "continuation":
-        for rule in ("several minutes", "same command until it exits", "poll its output",
-                     "do not start a second", "about a minute", "not a reason to end the turn",
+        for rule in ("several minutes", "progress line at least every minute",
+                     "same command up to its 10-minute deadline", "passed its deadline", "moves on to the next work",
+                     "Submit at most twice", "parks", "poll its output",
+                     "do not start a second", "10 minutes total", "MAINTENANCE_BUSY",
+                     "report its busy message verbatim and end the turn without retrying",
                      "daily cap", "weekly floor", "nothing to do"):
             assert rule in text
     for rule in ("Do the printed task (its Now step when shown)", "next again", "round is done or stopped", "rg/sed"):
@@ -149,7 +152,7 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
     result = service.start(root, scheduler=native,
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
-    assert "same command until it exits" in native.definition(root)["prompt"]
+    assert "same command up to its 10-minute deadline" in native.definition(root)["prompt"]
     assert "Do the printed task (its Now step when shown)" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
@@ -414,7 +417,7 @@ def test_private_file_pins_interpreter_root_model_and_archival(native, tmp_path)
     native._write(root, data)
     saved = tomllib.loads(native.definition_path(root).read_text())
     assert saved["status"] == "PAUSED" and saved["auto_archive"] is True
-    assert saved["model"] == "gpt-6-luna" and saved["execution_environment"] == "local"
+    assert saved["model"] == "gpt-6.1-sol" and saved["execution_environment"] == "local"
     assert "'/venv with spaces/bin/python' -m connectonion.cli.main" in saved["prompt"]
     assert "next --scheduled" in saved["prompt"] and "rem/SKILL.md" in saved["prompt"] and saved["cwds"] == [str(root.resolve())]
     assert native.definition_path(root).stat().st_mode & 0o777 == 0o600
@@ -878,13 +881,17 @@ def test_stopped_worker_cannot_claim_account_authority_from_a_cached_pause(tmp_p
     assert "needs confirmation" in text and "Stopped" not in text
 
 
-def test_default_prefers_native_for_codex_with_app_and_stop_finds_saved_provider(tmp_path, monkeypatch):
+def test_default_exec_explicit_app_and_stop_find_saved_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     root = tmp_path / "notes"
-    assert isinstance(default_scheduler(root, for_start=True), CodexNative)
+    assert isinstance(default_scheduler(root, for_start=True), CodexExec)
     config = default_config()
+    config["schedule"]["runner"] = "codex-app"
+    atomic_write(root / "config.yaml", yaml.safe_dump(config))
+    assert isinstance(default_scheduler(root, for_start=True), CodexNative)
     config["runner"] = "coai"
     atomic_write(root / "config.yaml", yaml.safe_dump(config))
     assert isinstance(default_scheduler(root, for_start=True), Launchd)
@@ -894,11 +901,17 @@ def test_default_prefers_native_for_codex_with_app_and_stop_finds_saved_provider
 
 
 def test_different_desktop_timezone_retains_the_existing_os_scheduler(tmp_path, monkeypatch):
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr("connectonion.rem.codex_schedule.app_installed", lambda: True)
     monkeypatch.setattr("connectonion.rem.codex_schedule.desktop_timezone", lambda: "Asia/Kathmandu")
+    assert isinstance(default_scheduler(tmp_path / "notes", for_start=True), CodexExec)
+    config = default_config()
+    config["schedule"]["runner"] = "codex-app"
+    atomic_write(tmp_path / "notes/config.yaml", yaml.safe_dump(config))
     assert isinstance(default_scheduler(tmp_path / "notes", for_start=True), Launchd)
+
 
 
 @pytest.mark.parametrize("moment,expected", [
@@ -1021,7 +1034,7 @@ def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, m
     root = tmp_path / 'notes'
     prepare(root)
     config = default_config()
-    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '19:00']
+    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '20:00']  # chosen, not the old default
     atomic_write(root / 'config.yaml', yaml.safe_dump(config))
     monkeypatch.setattr(service, 'mail_available', lambda kind: False)
     before = service.summary_fingerprint(root)

@@ -521,6 +521,20 @@ class Outlook:
 
         return "\n".join(output)
 
+    def list_attachments(self, email_id: str) -> list[dict]:
+        """List attachment names, MIME types and byte sizes without fetching file content."""
+        endpoint = f"/me/messages/{email_id}/attachments"
+        params = {"$select": "id,name,contentType,size"}
+        rows = []
+        while endpoint:
+            result = self._request("GET", endpoint, params=params)
+            rows.extend({"id": row["id"], "filename": row.get("name", ""),
+                         "mime_type": row.get("contentType", "application/octet-stream"),
+                         "size": row.get("size")} for row in result.get("value", []))
+            endpoint = result.get("@odata.nextLink", "").replace(self.GRAPH_API_URL, "")
+            params = None
+        return rows
+
     def download_attachments(self, email_id: str, out_dir: str = ".",
                              include_inline: bool = False) -> list[str]:
         """Save an email's file attachments to disk.
@@ -776,7 +790,7 @@ class Outlook:
 
     def reply(self, email_id: str, body: str, send_at: str = None, *,
               attachments: list = None, cc: str = None, bcc: str = None,
-              reply_all: bool = False, draft: bool = False) -> str:
+              reply_all: bool = False, draft: bool = False, return_receipt: bool = False) -> str | dict:
         """Reply to an email, immediately or at a scheduled time, or save the
         reply to Drafts in the same thread for the owner to finish and send.
 
@@ -802,6 +816,7 @@ class Outlook:
                 dropped, or answered through a fresh `send` in a new thread (#1834).
             draft: Save the reply in Drafts, threaded with To and Cc filled in,
                 instead of sending it (needs Mail.ReadWrite)
+            return_receipt: With send_at, return the scheduled message id for cancellation
 
         Returns:
             Confirmation message
@@ -835,7 +850,9 @@ class Outlook:
             return f"Reply draft saved{suffix}, not sent. Open it in Outlook: {saved.get('webLink')}"
 
         if send_at:
-            self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
+            message_id = self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
+            if return_receipt:
+                return {"id": message_id, "send_at": send_at}
             return f"Reply scheduled for {send_at}{suffix}"
 
         # The reply action takes writable message properties beside the
@@ -1110,7 +1127,7 @@ class Outlook:
         params = {
             "$search": f'"participants:{address} AND received>={start[:10]}"',
             "$top": 250,
-            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,replyTo,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         raw, endpoint = [], "/me/messages"
         while endpoint and len(raw) < max_results:
@@ -1124,6 +1141,7 @@ class Outlook:
             row['thread_id'] = msg.get('conversationId', '')
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
             row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
+            row['reply_to'] = ', '.join(self._recipient(r) for r in msg.get('replyTo', []))
         return sorted(rows, key=lambda row: (str(row.get('date', '')), row['id']))
 
     def list_between(self, start: str, end: str, max_results: int = 200,
@@ -1145,7 +1163,7 @@ class Outlook:
             "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
             "$orderby": f"receivedDateTime {'desc' if newest_first else 'asc'}",
             "$top": max_results,
-            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,replyTo,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         result = self._request("GET", "/me/messages", params=params, headers={"Prefer": 'IdType="ImmutableId"'})
         rows = self._email_dicts(result.get('value', []))
@@ -1159,6 +1177,7 @@ class Outlook:
         for row, msg in zip(rows, result.get('value', [])):
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
             row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
+            row['reply_to'] = ', '.join(self._recipient(r) for r in msg.get('replyTo', []))
         # Ascending either way: the flag chose which messages, not their order,
         # and every caller including co rem importer reads them oldest first.
         return sorted(rows, key=lambda row: str(row.get('date', '')))

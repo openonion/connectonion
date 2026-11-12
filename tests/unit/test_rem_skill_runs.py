@@ -1,6 +1,7 @@
 import re
 import json
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -275,6 +276,8 @@ def test_only_changed_skill_pages_retain_instruction_excerpts(tmp_path, monkeypa
     assert instruction_context(root, identifier)['excerpt'] == 'Check the actual output artifact.'
 
 
+# Parsing and snapshotting the full megabyte-sized record is part of this test.
+@pytest.mark.timeout(180)
 def test_large_retained_output_is_searchable_without_growing_the_page_or_losing_text(tmp_path, monkeypatch):
     import re
     from pathlib import Path

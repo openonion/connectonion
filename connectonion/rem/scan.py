@@ -24,8 +24,8 @@ from .source import KINDS, source_files
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
 # @, because "no-reply.products@" slipped past a pattern anchored to the @.
 AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|calendar|invitation|"
-                            r"digest|alerts?|updates?|marketing|express@|automated|changelog|announce|"
-                            r"news@|billing|receipts?@|invoice@|bounce|support@|team@|hello@|info@|"
+                            r"digest|alerts?|marketing|express@|automated|changelog|announce|"
+                            r"news@|billing|receipts?@|invoice@|bounce|"
                             # Account and notice desks the 1.9.0a5 notebook still kept as people (#2008):
                             # donotreply@dunsnumberlookup.dnb.com, notify@x.com, unsub+…@reply.github.com.
                             r"do-?not-?reply|notify@|^unsub\+|"

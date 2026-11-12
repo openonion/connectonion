@@ -1,4 +1,5 @@
 import json
+import shlex
 from pathlib import Path
 from unittest.mock import patch
 from typer.testing import CliRunner
@@ -32,9 +33,8 @@ def test_setup_commands_keep_custom_root(tmp_path):
         result=CliRunner().invoke(app,['rem','--root',str(root),'--json','init'])
     import shlex
     tips=json.loads(result.stdout)['data']['tips']
-    text=next(tip for tip in tips if 'then run ' in tip)
-    command=text.split('then run ',1)[1].removesuffix('.')
-    assert shlex.split(command)==['co','rem','--root',str(root),'init']
+    assert any('co auth google' in tip for tip in tips)
+    assert all('then run ' not in tip for tip in tips)
     # The approval tip (#2443) names the same root, quoted.
     approve=next(tip for tip in tips if 'Approve with ' in tip).split('Approve with ',1)[1].removesuffix('.')
     assert shlex.split(approve)==['co','rem','--root',str(root),'init','--yes']
@@ -51,11 +51,13 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 0
-    # An empty first run keeps the selected window in its next init command.
-    assert payload['next'].endswith(' init --days 5')
-    assert 'init --days 5.' in payload['data']['investigate_me']['reason']
+    # No schedule was approved in this noninteractive fixture; retain the window on the retry.
+    assert payload['data']['background']['started'] is False
+    assert shlex.split(payload['next']) == ['co', 'rem', '--root', str(root), 'investigate', 'me', '--days', '5']
+    assert 'background updates' in payload['data']['investigate_me']['reason']
     assert payload['data']['first_run']['pages'] == 0
-    assert all('init --days 5' in tip for tip in payload['data']['tips'])
+    assert all('then run ' not in tip for tip in payload['data']['tips'])
+    assert all('init --days 5' in tip for tip in payload['data']['tips'] if 'Approve with ' in tip)
 
     with patch('connectonion.rem.map.build_map', return_value={
         'errors': [{'source': 'gmail'}, {'source': 'outlook'}]
@@ -65,7 +67,9 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5', '--mail', 'gmail', '--mail', 'outlook'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 1
-    assert payload['next'].endswith('init --days 5 --mail gmail --mail outlook')
+    assert shlex.split(payload['next']) == ['co', 'rem', '--root', str(root), 'init', '--days', '5',
+                                           '--mail', 'gmail', '--mail', 'outlook']
+    assert payload['data']['errors']
 
 
 def test_equivalent_remotes_and_metadata_refresh_preserve_prose(tmp_path):
@@ -145,7 +149,7 @@ def test_show_names_searched_page_kinds_when_nobody_matches(tmp_path):
     root=tmp_path/'rem';prepare(root);_people(root)
     result=CliRunner().invoke(app,['rem','--root',str(root),'show','nobody'])
     assert result.exit_code!=0
-    assert 'No page matches "nobody" in people, projects, orgs or skills' in result.output
+    assert 'No page matches "nobody" in people, projects, orgs, skills or topics' in result.output
 
 
 def test_a_name_in_the_title_brackets_is_a_name_too(tmp_path):

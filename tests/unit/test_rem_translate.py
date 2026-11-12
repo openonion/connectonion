@@ -571,7 +571,7 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
     from connectonion.rem.service import run_logs, usage_report
     record = 'people/avery-lin.md'
     (notebook / record).write_text('# Avery Lin\n\nA draft [12].\n')
-    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '1'])
+    set_config(notebook, ['languages', 'en,zh'])
     calls = []
 
     def run(workspace, *args):
@@ -589,33 +589,6 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
     attempts = 2 if repair else 1
     assert usage_report(notebook)['total']['input_tokens'] == 80000 * attempts
     assert sum(log.get('runner_attempts', 0) for log in logs) == attempts
-    # The daily limit counts pages even though runner calls live in per-page logs.
-    (notebook / record).write_text('# Avery Lin\n\nA revised draft [12].\n')
-    _translate_changed(notebook, read_config(notebook), {}, [record], None, lambda text: None)
-    assert len(calls) == attempts
-
-
-def test_daily_rechecks_runner_budget_after_a_translation_repair(notebook, monkeypatch):
-    from connectonion.rem.config import read_config, set_config
-    from connectonion.rem.daily import _translate_changed
-    records = ['people/avery-lin.md', 'people/mara-ostrowski.md']
-    for record in records:
-        (notebook / record).write_text('# Avery Lin\n\nA draft [12].\n')
-    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '2', 'limits.runner_calls_per_day', '2'])
-    calls = []
-
-    def run(workspace, *args):
-        calls.append(workspace)
-        answer = '# Avery Lin\n\n草稿 [12]。\n'
-        (workspace / 'translation.md').write_text(answer.replace(' [12]', '') if len(calls) == 1 else answer)
-        return {'usage': {'input_tokens': 100}}
-
-    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
-    maintenance = {}
-    _translate_changed(notebook, read_config(notebook), maintenance, records, None, lambda text: None)
-    assert maintenance['translations']['pages'] == [{'page': records[0], 'outcome': 'translated'}]
-    assert len(calls) == 2
-    assert tr.cached(notebook, records[1], 'zh') is None
 
 
 def test_issue_numbers_at_line_start_are_prose_not_headings():

@@ -25,7 +25,7 @@ from posixpath import normpath
 
 from .files import Notebook, read_json, state_path
 
-CATEGORIES = ("people", "projects", "orgs", "skills", "sessions")
+CATEGORIES = ("people", "projects", "orgs", "skills", "sessions", "knowledge")
 DAY = r"(\d{4}-\d{2}-\d{2})"
 # Dates that say when something happened, as each kind of page writes them.
 ACTIVITY = re.compile(
@@ -60,9 +60,18 @@ def _counted(record: str) -> bool:
     return category in CATEGORIES
 
 
-def pages(root: Path) -> dict:
+def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
+    """Explicit entity/desk identity or the existing service rules, even after writing."""
+    from .map import service_page
+    from .scan import institutional_name
+    return bool(re.search(r'^## Domains\s*$', text, re.M)
+                or re.search(r'\bshared mailbox\b', title, re.I)
+                or institutional_name(title) or service_page(title, emails, row, automated))
+
+
+def pages(root: Path, *, records: list[dict] | None = None) -> dict:
     """{record: {category, written, last, held, service, duplicate}} for every counted page."""
-    from .map import needs_review, service_page
+    from .map import needs_review
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
     # Rows with an address: the owner's row names only the record.
@@ -70,15 +79,19 @@ def pages(root: Path) -> dict:
     automated = {row["address"].casefold() for row in state.get("automated_correspondents", [])
                  if row.get("address")}
     owner = (state.get("owner") or {}).get("record")
-    people = {person["path"]: person for person in notebook.people()}
+    from .files import EMAIL, EMAIL_LABELS
+    if records is None:
+        records = [{"path": path, "text": notebook.read(path)} for path in notebook.list()]
     held, titles, found = needs_review(root), set(), {}
-    for record in notebook.list():
+    for page in records:
+        record, text = page['path'], page['text']
         if not _counted(record):
             continue
-        text = notebook.read(record)
         title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
         category = record.split("/")[0]
-        person = people.get(record)
+        emails = [address.casefold() for line in text.splitlines()[:40]
+                  if line.strip().lstrip('-').strip().casefold().startswith(EMAIL_LABELS)
+                  for address in EMAIL.findall(line)] if category == 'people' else []
         duplicate = category == "skills" and title.casefold() in titles
         if category == "skills":
             titles.add(title.casefold())
@@ -87,8 +100,8 @@ def pages(root: Path) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": bool(person) and record != owner and not written(text)
-            and service_page(title, person["emails"], rows.get(record), automated)}
+            "service": category == 'people' and record != owner
+            and non_person(title, text, emails, rows.get(record), automated)}
     return found
 
 
@@ -105,6 +118,37 @@ def counts(root: Path, found: dict | None = None) -> dict:
             result[entry["category"]]["mapped"] += 1
             result[entry["category"]]["written"] += entry["written"]
     return result
+
+
+def people_coverage(root: Path) -> dict:
+    """Qualifying correspondents across the archive, grouped by existing person page.
+
+    Count From/To/Cc the same way scan_people does, rather than freezing coverage
+    at init. Several addresses on one person page count as one person.
+    """
+    from .mail import _address, _addresses
+    from .mail_archive import mail_metadata
+    from .map import worth_a_page
+    from .store_messages import owner_addresses
+    mine, book, found = owner_addresses(root), Notebook(root), pages(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    paged = {address: person["path"] for person in book.people() if person["path"] != owner
+             and listed(found[person["path"]]) for address in person["emails"]}
+    totals = {}
+    for row in mail_metadata(root):
+        sender = _address(row.get("from", ""))
+        recipients = set(_addresses(row.get("to")) + _addresses(row.get("cc")))
+        outgoing = sender in mine or "@" not in sender
+        contacts = recipients if outgoing else {sender}
+        for address in contacts - mine:
+            if "@" not in address:
+                continue
+            key = paged.get(address, address)
+            sent, received = totals.get(key, (0, 0))
+            totals[key] = sent + outgoing, received + (not outgoing)
+    qualifying = {key for key, (sent, received) in totals.items() if worth_a_page(sent, received)}
+    covered = len(qualifying & set(paged.values()))
+    return {"total": len(qualifying), "covered": covered, "missing": len(qualifying) - covered}
 
 
 # Open threads, read the way the reader reads them (reader.html owing(),
@@ -150,10 +194,12 @@ def direction(text: str, first_name: str = "") -> str:
     owner = re.match(rf"^{me}\s+(owes?|asked)\b", prefix, re.I)
     if owner:
         return "theirs" if owner[1].lower() == "asked" else "mine"
-    debt = re.match(r"^([^:;!?]+?)\s+owes?\s+(.+)", prefix, re.I)
+    debt = re.match(r"^([^:;!?]+?)\s+(owes?|asked)\s+(.+)", prefix, re.I)
     if debt and re.match(r"^[A-Z]", debt[1]) and 1 <= len(debt[1].split()) <= 6 \
             and not re.search(r",|\b(?:said|would|that|what)\b", debt[1], re.I):
-        return "theirs" if re.match(rf"^{me}\b", debt[2], re.I) else "third"
+        if re.match(rf"^{me}\b", debt[3], re.I):
+            return "mine" if debt[2].lower() == "asked" else "theirs"
+        return "third"
     mine, theirs = (pattern.search(text) for pattern in _directions(first_name))
     if not (mine or theirs):
         return "plain"
@@ -210,14 +256,20 @@ def _obligation_words(text: str) -> str:
 
 
 def _obligation_evidence(item: tuple) -> tuple:
-    _, text, sources = item
+    record, text, sources = item
+    from .reader_model import notebook_links
+    metadata = re.findall(r'(?:^|\s)- Unit:[ \t]*(.*?)(?=\s- Unit:|$)', text)
+    scope = {path for value in metadata for path in notebook_links(record['path'], value)}
+    text = re.sub(r'(?:^|\s)- Unit:[ \t]*.*?(?=\s- Unit:|$)', '', text)
     ids = {sources[n] for n in CITATION.findall(text) if n in sources}
     quotes = [_obligation_words(a or b) for a, b in QUOTED_WORDS.findall(text)]
     words = _obligation_words(CITATION.sub("", QUOTED_WORDS.sub("", text)))
-    return ids, [q for q in quotes if q], words
+    return ids, [q for q in quotes if q], words, scope
 
 
 def _same_obligation(a: tuple, b: tuple) -> bool:
+    if a[3] and b[3] and a[3].isdisjoint(b[3]):
+        return False
     return bool(a[0] & b[0]) and (a[2] == b[2] or
                                  any(x in y or y in x for x in a[1] for y in b[1]))
 
@@ -226,7 +278,13 @@ def _thread_groups(items: list) -> list:
     """Connected obligations, preserving the reader's existing sort order."""
     groups, evidence = [], [_obligation_evidence(item) for item in items]
     for i in range(len(items)):
-        matches = [group for group in groups if any(_same_obligation(evidence[i], evidence[j]) for j in group)]
+        matches = [group for group in groups
+                   if any(_same_obligation(evidence[i], evidence[j]) for j in group)
+                   and all(not evidence[i][3] or not evidence[j][3]
+                           or not evidence[i][3].isdisjoint(evidence[j][3]) for j in group)]
+        scopes = [evidence[j][3] for group in matches for j in group if evidence[j][3]]
+        if any(a.isdisjoint(b) for a in scopes for b in scopes):
+            matches = []  # An unplaced copy must not bridge two explicitly different units.
         if not matches:
             groups.append([i])
             continue
@@ -243,7 +301,7 @@ def _thread_counterpart(item: tuple, person: dict, owner: str, first: str) -> bo
     me = "(?:the user|user|you" + (f"|{re.escape(first)}" if first else "") + ")"
     text = text.replace("**", "")
     named = re.match(rf"^{me}\s+(?:owes?|asked)\s+(.+)", text, re.I) or re.match(
-        rf"^(.+?)\s+owes?\s+{me}\b", text, re.I)
+        rf"^(.+?)\s+(?:owes?|asked)\s+{me}\b", text, re.I)
     named = named[1] if named else ""
     link = re.match(r"\s*\[[^\]]+\]\(([^)]+\.md)\)", named)
     if link and normpath(str(Path(record["path"]).parent / link[1])) == person["path"]:
@@ -280,7 +338,10 @@ def open_threads(root: Path, found: dict | None = None, *, as_of: date | None = 
     title = next((line[2:] for line in notebook.read(owner).splitlines() if line.startswith("# ")), "") \
         if owner and notebook.path(owner).is_file() else ""
     first = (title.split() or [""])[0]
-    items = _thread_items(notebook, found, first)
+    from . import threads as thread_state
+    states = thread_state.listing(root)
+    items = [item for item in _thread_items(notebook, found, first)
+             if not thread_state.blocked(root, thread_state.done_key(item[0]["path"], item[1]), states=states)]
     from .config import read_config
     from .service import notebook_zone
     today = as_of or datetime.now(notebook_zone(read_config(root))).date()

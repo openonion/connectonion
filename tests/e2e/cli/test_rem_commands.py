@@ -289,7 +289,7 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
     says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -298,10 +298,17 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
     assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
     assert opened == [] and asked == []
-    # Rendered on every run, so the page opened is never older than the notebook.
+    # A changed notebook opens the saved page at once, marked while it is rebuilt behind it.
+    from connectonion.rem import reader
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     Notebook(tmp_path / ".co/rem").write("people/bob.md", "# Bob\nJoined yesterday.")
     assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
+    assert "Joined yesterday" not in snapshot.read_text(encoding="utf-8")
+    assert 'id="rem-updating"' in snapshot.read_text(encoding="utf-8")
+    reader.refresh(tmp_path / ".co/rem")                     # what the detached build runs
+    assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
     assert "Joined yesterday" in snapshot.read_text(encoding="utf-8")
+    assert "rem-updating" not in snapshot.read_text(encoding="utf-8")
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
@@ -309,7 +316,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
-                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
+                        lambda address, **k: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -319,7 +326,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address, **k: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
     assert result.exit_code == 1, result.output
     output = _plain(result.output)
@@ -367,15 +374,18 @@ def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
 
 
 class _CliScheduler:
-    installed, uninstalled = [], []
+    installations, uninstalled = [], []
 
     def install(self, root, config):
-        self.installed.append(root)
+        self.installations.append(root)
         return {"scheduler": "fake", "label": "fake", "plist": "/dev/null"}
 
     def uninstall(self, root):
         self.uninstalled.append(root)
         return True
+
+    def installed(self, root):
+        return root in self.installations and root not in self.uninstalled
 
     def describe(self, root):
         return {"installed": True}
@@ -419,22 +429,35 @@ def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
     assert not (root / ".state" / "consent.json").exists()
 
 
-def test_start_consent_question_stays_on_the_same_screen(lifecycle, monkeypatch):
+def test_terminal_start_prints_summary_and_undo_then_proceeds(lifecycle, monkeypatch):
     root, sessions, calls = lifecycle
     # Typer may provide its own streams instead of Click's; use the runner's
     # actual stdin type so the command takes the interactive path in either.
     with runner.isolation():
         monkeypatch.setattr(type(sys.stdin), "isatty", lambda self: True)
         result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 0, result.output
     output = Text.from_ansi(result.output).plain
-    before, question, _ = output.partition("Read these sources with this model and schedule? [y/N]")
-    assert question, output
-    assert len(before.splitlines()) <= 25
-    assert f"Details: co rem --root {root} config" in before
-    assert f"Stop: co rem --root {root} stop" in before
-    assert "Input chars per batch" not in before and "/inbox/whatsapp" not in before
-    assert not (root / ".state" / "consent.json").exists() and calls == []
+    assert "Read these sources with this model and schedule?" not in output
+    assert f"Details: co rem --root {root} config" in output
+    assert f"co rem --root {root} stop" in output
+    assert "Undo REM setup:" in output
+    assert (root / ".state" / "consent.json").exists()
+
+
+def test_terminal_start_prints_only_consent_changes_on_restart(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    assert invoke(root, 'start', '--yes').exit_code == 0
+    from connectonion.rem.config import set_config
+    set_config(root, ['schedule.times', '03:00'])
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), 'isatty', lambda self: True)
+        result = runner.invoke(app, ['rem', '--root', str(root), 'start'])
+    assert result.exit_code == 0, result.output
+    assert 'Consent changes:' in result.output
+    assert 'schedule.times:' in result.output and '03:00' in result.output
+    assert 'Sources:' not in result.output and 'Permissions:' not in result.output
+    assert 'Read these sources' not in result.output
 
 
 def test_start_yes_then_stop(lifecycle):
@@ -442,7 +465,7 @@ def test_start_yes_then_stop(lifecycle):
     result = invoke(root, "start", "--yes")
     assert result.exit_code == 0, result.output
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed and "status" in result.output.split("Next:")[1]
+    assert _CliScheduler.installations and "status" in result.output.split("Next:")[1]
     stopped = invoke(root, "stop")
     assert stopped.exit_code == 0, stopped.output
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
@@ -472,19 +495,20 @@ def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, 
     assert approved.exit_code == 0, approved.output
     assert json.loads(approved.stdout)["data"]["background"]["started"] is True
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed[-1] == root.resolve() and calls == []
+    assert _CliScheduler.installations[-1] == root.resolve() and calls == []
+    assert json.loads(approved.stdout)['next'].endswith(' status')
 
 
 def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
     root, sessions, calls = lifecycle
-    _CliScheduler.installed.clear()
+    _CliScheduler.installations.clear()
     for args in (("--estimate-only", "--yes"), ("--no-investigate", "--no-start", "--yes")):
         result = invoke(root, "--json", "init", *args)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["data"]["background"]["started"] is False
     # --yes approves the sources the map scans (#2443: nothing is scanned before
     # consent); neither run installs the schedule.
-    assert _CliScheduler.installed == []
+    assert _CliScheduler.installations == []
 
 
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):
@@ -782,7 +806,7 @@ def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
     root = tmp_path / 'rem'
-    result = invoke(root, 'init', '--skills-dir', str(empty))
+    result = invoke(root, 'init', '--skills-dir', str(empty), '--no-investigate')
     assert result.exit_code == 0, result.output
     assert "Held for review, not investigated or listed (no name, never replied): 1." in result.output
     assert f"--root {root} list people --review" in result.output
@@ -871,7 +895,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     today = lines.index('Today            1 page changed · 3 items read · 1 run')
     assert lines[today + 1] == '                 91k tokens in · 812 out'
     assert today < lines.index(next(line for line in lines if line.startswith('Notebook')))
-    assert '  People         ●●●●●○○○○○  1 of 2   50%' in lines
+    # Page stubs alone do not establish qualifying correspondents in the archive.
+    assert '  People         ○○○○○○○○○○  0 of 0     —' in lines
+    assert '  People coverage pages for correspondents meeting the page rule in the archive' in lines
     assert '  Skills         ○○○○○○○○○○  0 of 3    0%' in lines
     write = lines.index('  To write next  1 people page not written')
     assert lines[write + 1].startswith('                 → co rem --root ')
@@ -886,8 +912,11 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
         assert internal not in '\n'.join(lines), internal
 
 
-def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch):
+@pytest.mark.parametrize('schedule_runner', ['codex-exec', 'codex-app'])
+def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch, schedule_runner):
     _notebook_with_a_run(tmp_path, monkeypatch)
+    configured = invoke(tmp_path, 'config', 'set', 'schedule.runner', schedule_runner)
+    assert configured.exit_code == 0, configured.output
     verbose = invoke(tmp_path, 'status', '--verbose').output
     assert 'Details' in verbose and 'Known runs: 1' in verbose and 'Schedule times:' in verbose
     assert 'Record: people/alice.md' in verbose
@@ -896,7 +925,12 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
                                  'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
-                                 'investigation_this_week', 'quota', 'investigation_quota'}
+                                 'investigation_this_week', 'quota', 'investigation_quota',
+                                 'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
+                                 'round', 'nights'}
+    assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
+    assert data['data']['last_turn'] is None
 
 
 @pytest.mark.parametrize('ordinary_pending', [False, True])
@@ -1070,7 +1104,7 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
-    assert ('No page matches "missing" in people, projects, orgs or skills. '
+    assert ('No page matches "missing" in people, projects, orgs, skills or topics. '
             'Search names and paths with `co rem investigate`.') == failed['data']
     assert failed['next'].endswith(' investigate')
 
@@ -1251,16 +1285,14 @@ def test_start_help_explains_linux_systemd_and_linger():
 
 
 def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
-    """After stop, `start` resumed the schedule and printed `First batch:
-    Unknown` while its help promised it runs the first update. Only the first
-    start runs one; the output says so and names the command that runs one now."""
+    """After stop, `start` explains that scheduled upkeep will run the next batch."""
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     assert invoke(root, "stop").exit_code == 0
     again = invoke(root, "start", "--yes")
     assert again.exit_code == 0, again.output
     assert "First batch: Unknown" not in again.output
-    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert "Queued for the next scheduled run." in again.output.split("First batch:")[1].splitlines()[0]
     assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
 
 
@@ -1405,7 +1437,7 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
     assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
-    assert 'sync resumes it from the saved bodies' in status.output
+    assert 'background updates resume it from saved bodies when enabled' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
@@ -1499,7 +1531,11 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     result = invoke(tmp_path / 'notebook', *args)
     assert result.exit_code == 0, result.output
     text = ' '.join(result.output.split())
-    assert 'asks once before reading your sources' in text
+    assert 'co init asks no questions' in text
+    assert 'grants local Codex / Claude Code sessions and all connected Google/Microsoft mailboxes' in text
+    assert 'installs upkeep and builds in the foreground' in text
+    assert 'Undo: co rem stop; co rem sources remove SOURCE; co auth logout' in text
+    assert 'Use co rem init to rebuild; a terminal prints its summary, undo block and estimate, then proceeds' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text

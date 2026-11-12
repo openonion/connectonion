@@ -21,6 +21,106 @@ CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+
+
+def notebook_links(origin: str, text: str) -> list[str]:
+    """Markdown links are page-relative; [[orgs/name]] is notebook-relative."""
+    targets = [_destination(origin, raw) for _, raw in REFERENCE.findall(text)]
+    targets += [raw if raw.endswith('.md') else raw + '.md' for raw in WIKILINK.findall(text)]
+    return list(dict.fromkeys(targets))
+
+
+def organisation_links(record: str, text: str) -> list[str]:
+    from .facts import parse
+    label = 'Company' if record.startswith('people/') else 'Organisation'
+    # A labelled Company line is the person's private business: it does not place them in the org.
+    return list(dict.fromkeys(path for fact in parse(text, record).get(label, []) if not PRIVATE.search(fact['value'])
+                             for path in notebook_links(record, fact['value']) if path.startswith('orgs/')))
+
+
+def organisation_fields(record: dict, paths: set[str]) -> dict:
+    """Facts retain citation labels; the convenience fields never infer from a domain."""
+    from .facts import ORG_KINDS, parse
+    category, path, text = record['category'], record['path'], record['text']
+    if category not in ('people', 'orgs', 'projects'):
+        return {}
+    facts = parse(text, path)
+    value = lambda label: '; '.join(row['value'] for row in facts.get(label, []))
+    result = {'facts': facts}
+    if category == 'orgs':
+        kind = value('Kind')
+        # A label on the title (or Kind: personal) makes the organisation private; a labelled
+        # passage in its body hides that passage only, as on a person's page. Reading the whole
+        # body put a busy organisation's people, threads and graph behind one curtain.
+        result.update(kind=kind if kind in ORG_KINDS else '', to_you=value('To you'),
+                      private=bool(PRIVATE.search(text.split('\n', 1)[0])) or kind == 'personal')
+    else:
+        result['organisations'] = [org for org in organisation_links(path, text) if org in paths]
+        if category == 'people':
+            result['team'] = value('Unit')  # compatibility alias, never a second concept
+    return result
+
+
+def _org_roster(org: dict) -> set[str]:
+    """The org's own contact roster establishes affiliation, not employment."""
+    contacts = [fact['value'] for fact in org['facts']['Your contacts']]
+    roster = re.search(r'^## People here\s*\n(.*?)(?=^## |\Z)', org['text'], re.M | re.S)
+    # A labelled line stays behind its curtain: its person is not drawn into the org's structure.
+    lines = [line for line in [*contacts, *(roster[1] if roster else '').splitlines()] if not PRIVATE.search(line)]
+    return set(notebook_links(org['path'], '\n'.join(lines)))
+
+
+def organisation_members(records: list[dict], owner: str) -> None:
+    """Only listed people and explicit affiliations populate the org roster."""
+    people = [row for row in records if row['category'] == 'people' and row['path'] != owner
+              and not (row.get('service') or row.get('needs_review'))]
+    for org in records:
+        if org['category'] != 'orgs':
+            continue
+        roster = _org_roster(org)
+        for person in people:
+            if person['path'] in roster and org['path'] not in person['organisations']:
+                person['organisations'].append(org['path'])
+        linked = [row for row in records if org['path'] in row.get('organisations', [])
+                  and not (row.get('service') or row.get('needs_review')) and row['path'] != owner]
+        for category in ('people', 'projects'):
+            org[category] = [row['path'] for row in linked if row['category'] == category]
+
+
+def _obligation_people(row: dict, people: list[dict], origins: set[str]) -> list[str]:
+    from .census import _thread_counterpart
+    named = [person['path'] for person in people
+             if _thread_counterpart(({'path': row['record']}, row['text'], {}), person, '', '')]
+    # Names are a fallback only when unambiguous; copied page keys remain authoritative.
+    return sorted({person['path'] for person in people if person['path'] in origins}
+                  | (set(named) if len(named) == 1 else set()))
+
+
+def organisation_obligations(records: list[dict], queue: list[dict]) -> None:
+    """Reuse Today's obligation identity, including all copy keys and owner decisions."""
+    from .org_hierarchy import obligation_units
+    for row in queue:
+        row['units'] = obligation_units(row, records)
+        if not row['units'] and not any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys']):
+            origins = {key.partition('\n')[0] for key in row['keys']}
+            units = {unit['path'] for person in records if person['path'] in origins
+                     for unit in person.get('units', [])}
+            if len(units) == 1:
+                row['units'] = sorted(units)
+    for org in records:
+        if org['category'] != 'orgs':
+            continue
+        members = set(org['people'])
+        people = [person for person in records if person['path'] in members]
+        org['obligations'] = []
+        for row in queue:
+            origins = {key.partition('\n')[0] for key in row['keys']}
+            scoped = org['path'] in row['units']
+            direct = origins & (members | {org['path']})
+            explicit = any(re.search(r'(?:^|\s)- Unit:', key.partition('\n')[2]) for key in row['keys'])
+            if not row['closed'] and (scoped or direct and (not org.get('unit_kind') or not row['units'] and not explicit)):
+                org['obligations'].append({**row, 'people': _obligation_people(row, people, origins)})
 
 
 def source_definitions(sources: str) -> list[tuple[str, str]]:
@@ -59,8 +159,7 @@ def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re
     found = {}
     # An exact notebook path does not depend on its label or the target's title.
     for line in body.splitlines():
-        for _, raw in REFERENCE.findall(line):
-            target = _destination(origin, raw)
+        for target in notebook_links(origin, line):
             if target in paths and target != origin and target not in found:
                 found[target] = _relation(origin, target, line.strip(), "linked")
     # Match visible prose once per name, never Markdown URLs. Replacing link
@@ -126,6 +225,11 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
+    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
+                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    for origin, rows in forward.items():
+        for target, relation in rows.items():
+            relation['private'] |= origin in private_topics or target in private_topics
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.
@@ -136,6 +240,81 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
     return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))
             for path, rows in found.items()}
+
+
+TOPIC_LINKED = ('people/', 'orgs/', 'projects/', 'decisions/', 'principles/', 'agenda/')
+
+
+def topic_mentions(row: dict, paths: set[str], owner: str) -> list[dict]:
+    """The newest cited sentence per record naming a topic, newest first.
+
+    Sessions and skills are counted, not linked; the owner's own page is not a
+    backlink, and a sentence labelled private never leaves its page.
+    """
+    found = {}
+    for e in sorted(row['evidence'], key=lambda e: e['date']):
+        path = e['record']
+        if path in paths and path != owner and path.startswith(TOPIC_LINKED) and not e.get('private'):
+            found[path] = {'path': path, 'sentence': _around(e['sentence'], row.get('aliases', [])), 'date': e['date'], 'source': e['source']}
+    return sorted(found.values(), key=lambda m: m['date'], reverse=True)
+
+
+def _around(text: str, aliases: list[str], limit: int = 220) -> str:
+    """A long sentence keeps the words naming the topic, starting on a whole word."""
+    lowered = text.casefold()
+    at = min((lowered.find(a.casefold()) for a in aliases if a.casefold() in lowered), default=0)
+    if len(text) <= limit or at < limit - 60:
+        return _clip(text, limit)
+    start = text.find(' ', max(0, at - 80)) + 1
+    return '…' + _clip(text[start:], limit - 1)
+
+
+def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None) -> dict:
+    """Explicit undirected links only; sessions fold into their linked project.
+
+    `topics` maps a topic page to the records whose cited sentences name it
+    (`topic_mentions`); those become topic edges too. All other records remain
+    in nodes, including isolates. Private nodes have no title; callers exporting
+    off-device must remove private records beforehand.
+    """
+    from collections import Counter
+    paths = {r['path']: r for r in records if r['path'] != 'skills/catalog/index.md'
+             and r['category'] not in ('logs', 'notes')}
+    links = relationships(records) if links is None else links
+    folded = {}
+    for path, row in paths.items():
+        if row['category'] == 'sessions':
+            projects = sorted(r['path'] for r in links.get(path, [])
+                              if r['kind'] in ('linked', 'linked from') and r['path'].startswith('projects/'))
+            if projects:
+                folded[path] = projects[0]
+    edges = {}
+    for origin in paths:
+        for rel in links.get(origin, []):
+            # A link made only on a labelled line is private: it draws no edge.
+            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths or rel.get('private'):
+                continue
+            a, b = sorted((folded.get(origin, origin), folded.get(rel['path'], rel['path'])))
+            if a != b:
+                kind = 'topic' if a.startswith('knowledge/') or b.startswith('knowledge/') else 'linked'
+                edges[a, b] = {'source': a, 'target': b, 'kind': kind}
+    for topic, targets in (topics or {}).items():
+        for target in targets:
+            if topic in paths and target in paths:
+                edges.setdefault(tuple(sorted((topic, target))), {'source': min(topic, target), 'target': max(topic, target), 'kind': 'topic'})
+    degree = Counter(node for pair in edges for node in pair)
+    nodes = []
+    for path, row in paths.items():
+        if path in folded:
+            continue
+        private = bool(row.get('private') or PRIVATE.search(row['text'].split('\n', 1)[0]))
+        open_threads = re.search(r'^## Open threads\s*\n(.*?)(?=^## |\Z)', row['text'], re.M | re.S)
+        has_owed = bool(open_threads and re.search(r'\b(?:the user|user|you)\s+owes?\b|你欠|用户欠', open_threads[1], re.I))
+        nodes.append({'id': path, 'kind': row['category'], 'title': '' if private else row['title'],
+                      'degree': degree[path], 'has_owed': has_owed, 'private': private})
+    isolated = Counter(n['kind'] for n in nodes if not n['degree'])
+    return {'nodes': nodes, 'edges': list(edges.values()), 'folded_sessions': len(folded),
+            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)}}
 
 
 def _source_ids(records: list[dict]) -> set[str]:
@@ -163,10 +342,11 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
+    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
                       (provider, f"mail/messages/{provider}/{digest}%.json",
                        f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
+    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    if len(rows) == 1:
         return rows[0]
     return None
 
@@ -242,50 +422,73 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     return output
 
 
+def _conversation_message(root: Path, row, budget: int, private: bool) -> dict | None:
+    if budget <= 0:
+        return None
+    message = dict(row)
+    saved = archived_message(root, message) or {}
+    raw = saved.get("text" if message.get("body_line") else "body")
+    if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
+        return None
+    excerpt = raw.strip()[:min(900, budget)]
+    if not excerpt:
+        return None
+    sender = message.get("sender") or ""
+    if message.get("body_line"):
+        sender = "Agent" if saved.get("role") == "assistant" else "You"
+    return {"id": message["id"], "sender": sender, "time": message.get("time") or "",
+            "excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
+            "input_scope": input_scope(saved, message)}
+
+
 def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: int = 40,
                         budget: int = 300_000, private: bool = False) -> dict[str, dict]:
-    """A bounded local conversation view around cited archived messages.
+    """Two archived neighbours on each side of each verified citation.
 
-    Each thread is selected by a cited message. Its latest twelve archived
-    messages are shown, with a total count so the reader never implies that a
-    clipped view is complete. Bodies never leave the owner-only HTML snapshot.
+    Windows stay keyed by citation: pages citing different parts of the same
+    session must not see each other's excerpts. Labelled text follows the same
+    owner-only boundary as cited_context.
     """
-    threads = {row.get("thread") for row in contexts.values() if row.get("thread")}
     file = state_path(root, "rem.db")
-    if not threads or not file.is_file() or file.is_symlink():
+    if not contexts or not file.is_file() or file.is_symlink():
         return {}
     db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     output: dict[str, dict] = {}
     try:
-        ranked = []
-        for thread in threads:
-            last = db.execute("select max(time) from messages where thread = ?", (thread,)).fetchone()[0]
-            ranked.append((last or "", thread))
-        for _, thread in sorted(ranked, reverse=True)[:max_threads]:
+        threads = {}
+        for source, context in contexts.items():
+            row = _cited_row(db, source)
+            if row is not None and row["thread"] and row["thread"] == context.get("thread"):
+                threads.setdefault(row["thread"], []).append((source, row))
+        ranked = sorted(threads, key=lambda thread: max(row["time"] or "" for _, row in threads[thread]), reverse=True)
+        for thread in ranked[:max_threads]:
             if budget <= 0:
                 break
-            total = db.execute("select count(*) from messages where thread = ?", (thread,)).fetchone()[0]
-            rows = db.execute("select * from messages where thread = ? order by time desc, id desc limit 12",
-                              (thread,)).fetchall()
-            messages = []
-            for row in reversed(rows):
-                message = dict(row)
-                saved = archived_message(root, message) or {}
-                raw = saved.get("text" if message.get("body_line") else "body")
-                if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
+            rows = db.execute("select * from messages where thread = ? order by time, id", (thread,)).fetchall()
+            positions = {row["id"]: i for i, row in enumerate(rows)}
+            messages, windows, anchors = {}, {}, {}
+            for source, anchor in threads[thread]:
+                message = messages.get(anchor["id"]) or _conversation_message(root, anchor, budget, private)
+                if message is None:
                     continue
-                excerpt = raw.strip()[:min(900, budget)]
-                if not excerpt:
-                    continue
-                messages.append({"id": message["id"], "sender": message.get("sender") or "",
-                                 "time": message.get("time") or "", "excerpt": excerpt,
-                                 "truncated": len(raw.strip()) > len(excerpt),
-                                 "input_scope": input_scope(saved, message)})
-                budget -= len(excerpt)
+                if anchor["id"] not in messages:
+                    messages[anchor["id"]] = message
+                    budget -= len(message["excerpt"])
+                at = positions[anchor["id"]]
+                window = rows[max(0, at - 2):at + 3]
+                for row in window:
+                    if row["id"] not in messages:
+                        neighbor = _conversation_message(root, row, budget, private)
+                        if neighbor:
+                            messages[row["id"]] = neighbor
+                            budget -= len(neighbor["excerpt"])
+                windows[source] = [row["id"] for row in window if row["id"] in messages]
+                anchors[source] = anchor["id"]
             if messages:
-                output[thread] = {"subject": rows[0]["subject"] or "Conversation",
-                                  "total": total, "messages": messages}
+                output[thread] = {"subject": rows[0]["subject"] or "Conversation", "total": len(rows),
+                                  "messages": sorted(messages.values(), key=lambda row: positions[row["id"]]),
+                                  "windows": windows, "anchors": anchors, "cited_ids": list(dict.fromkeys(anchors.values()))}
     finally:
         db.close()
     return output
@@ -332,3 +535,46 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         if budget <= 0:
             break
     return found
+
+
+def reply_drafts(root: Path, *, local=False, records=None) -> list[dict]:
+    """Reply bodies and mailboxes belong only in the owner's local reader."""
+    if not local:
+        return []
+    from .drafts import listing
+    return listing(root, include_pending=True, **({'records': records} if records is not None else {}))
+
+
+def session_detail(text: str, *, private: bool = False) -> dict:
+    """Project only the transcript retained in a session page, never live logs.
+
+    Labelled turns follow cited_context's boundary: only an owner's local
+    snapshot may carry them, and the UI still hides them behind its toggle.
+    """
+    from .sessions import AGENTS, _section
+    facts = dict(re.findall(r"^- ([A-Za-z ]+): (.*)$", _section(text, "Facts"), re.M))
+    kind = next((key for key, name in AGENTS.items() if name == facts.get("Agent")), "")
+    sources = re.findall(rf"^- ({SESSION_SOURCE_PATTERN})$", _section(text, "Sources"), re.M)
+    turns = []
+    parts = re.split(r"^### ([^\n]+)\n", _section(text, "What you typed"), flags=re.M)
+    for index, (stamp, body) in enumerate(zip(parts[1::2], parts[2::2])):
+        raw = re.sub(r"^> ?", "", body, flags=re.M).strip()
+        if not raw or (PRIVATE.search(raw) and not private):
+            continue
+        turns.append({"id": f"session-message-{index + 1}", "role": "user", "time": stamp,
+                      "text": raw, "source": sources[index] if index < len(sources) else ""})
+    reply = re.sub(r"^> ?", "", _section(text, "Final reply"), flags=re.M).strip()
+    if reply and (private or not PRIVATE.search(reply)):
+        turns.append({"id": "session-final", "role": "assistant", "time": facts.get("Ended", ""), "text": reply})
+    return {"session_kind": kind, "session_id": facts.get("Session", ""), "session_messages": turns,
+            "session_commands": _session_commands(text, private),
+            "session_status": facts.get("Status", ""), "session_ended": facts.get("Ended", "")}
+
+
+def _session_commands(text: str, private: bool) -> list[dict]:
+    from .sessions import _section
+    command_line = next((line for line in _section(text, "Artifacts").splitlines()
+                         if line.startswith("- Commands:") and "; notable: " in line), "")
+    return [{"text": command, "private": bool(PRIVATE.search(command_line))}
+                for command in re.findall(r"`([^`]+)`", command_line.partition("; notable: ")[2])
+                if private or not PRIVATE.search(command_line)]

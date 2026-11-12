@@ -39,6 +39,7 @@ MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threadin
 def _fetch_slot(kind: str):
     return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
 DOMAIN_RESULTS = 10_000
+TOPIC_RESULTS = 500
 
 
 class NothingFound(RemError):
@@ -343,6 +344,10 @@ def page_handles(notebook: Notebook, record: str, handle=()) -> tuple[str, list[
 
     text = notebook.read(record)
     title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_aliases
+        aliases = topic_aliases(text)
+        return aliases[0], list(dict.fromkeys([*handle, *aliases]))
     if record.startswith("projects/"):
         # A project is read from where it lives. Only explicitly named handles
         # select its mail; its title alone matches unrelated notifications.
@@ -393,7 +398,7 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
     searching the user's home directory. File names alone prove no project fact.
     """
     roots = [Path(path).expanduser() for path in project_paths(collapse_worktree_paths(page))]
-    leads = []
+    leads = {}
     excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
     for root in roots[:4]:
@@ -415,7 +420,7 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
                 path = Path(current) / name
                 if _private_folder(str(path), opted_in) or path.is_symlink():
                     continue
-                leads.append(str(path))
+                leads.setdefault(str(path), path.relative_to(root).as_posix())
                 seen += 1
                 if seen >= 1000:
                     break
@@ -425,8 +430,8 @@ def project_file_inventory(page: str, *, max_files: int = 60, opted_in=frozenset
         name = Path(path).name.lower()
         return (0 if name.startswith("readme") else
                 1 if name in ("pyproject.toml", "package.json") else
-                2 if "rem" in path.lower() else 3, len(Path(path).parts), path)
-    return sorted(set(leads), key=priority)[:max_files]
+                2 if "rem" in leads[path].lower() else 3, len(Path(path).parts), path)
+    return sorted(leads, key=priority)[:max_files]
 
 
 def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
@@ -698,48 +703,6 @@ def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None
         return _patient(client.get_email_body, message_id)
 
 
-def _download(client, email_id: str, folder: str):
-    """The two mailboxes save attachments through different doors.
-
-    Outlook: `download_attachments(email_id, out_dir)` -> list of paths.
-    Gmail (its mailbox mixin): `download_attachments(email_id, directory, *,
-    all_attachments=...)` -> a result dict, because it also reports partial
-    saves and budget stops. Both are asked the way they expect.
-    """
-    import inspect
-    parameters = inspect.signature(client.download_attachments).parameters
-    if "all_attachments" in parameters:
-        return client.download_attachments(email_id, folder, all_attachments=True)
-    return client.download_attachments(email_id, folder)
-
-
-def _attachment_files(client, kind: str, message_id: str, attachments_dir: Path) -> tuple[str, list[str], str]:
-    """A message's saved attachments, asking the provider only the first time."""
-    short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
-    folder = attachments_dir / kind / short
-    done = folder / ".fetched"
-    if done.is_file():
-        return short, sorted(str(p) for p in folder.iterdir() if p.is_file() and p.name != ".fetched"), ""
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-        with _fetch_slot(kind):
-            paths = _saved_paths(_patient(_download, client, message_id, str(folder))) or []
-    except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-        return short, [], type(error).__name__
-    done.touch()
-    return short, paths, ""
-
-
-def _saved_paths(result) -> list[str]:
-    """Whatever a download returned, the files that are now on disk."""
-    if isinstance(result, dict):
-        # Gmail's mixin: {'items': [{'status': 'saved', 'path': ...} | {'status': 'failed', ...}],
-        # 'complete': bool}. A row without a path was not saved; it is not a file.
-        return [str(row["path"]) for row in result.get("items") or []
-                if isinstance(row, dict) and row.get("path") and row.get("status", "saved") == "saved"]
-    return [str(f) for f in (result or [])]
-
-
 def _matches(row: dict, handles: list[str], mine: set) -> bool:
     haystack = " ".join([correspondent(row, mine), str(row.get("from", "")), str(row.get("to", "")),
                          str(row.get("subject", ""))]).lower()
@@ -794,6 +757,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
                                    include_observed=True, left_out=archived_left_out)
+    elif archive_root is not None and record.startswith('knowledge/'):
+        from .mail_archive import topic_material
+        archived = topic_material(archive_root, handles)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # Count exclusions through the same date and subscription checks as kept mail.
     for (kind, native), when in archived_left_out.items() if archived else []:
@@ -851,22 +817,28 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached = 0
 
+        def attachment_metadata(message_id: str) -> list[dict]:
+            with _fetch_slot(kind):
+                return _patient(client.list_attachments, message_id)
+
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
-                            fetched=None) -> None:
+                            metadata=None) -> None:
             nonlocal attached
-            if attachments_dir is None or not hasattr(client, "download_attachments"):
+            if attachments_dir is None or not hasattr(client, "list_attachments"):
                 return
-            from .attachments import extract_text
-            short, paths, error = fetched or _attachment_files(client, kind, message_id, attachments_dir)
-            if error:
-                coverage.append(f"{kind}:{short}: attachments could not be saved ({error})")
-            for saved in paths:
-                attached += 1
-                items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
-                              "subject": f"{subject} — {Path(saved).name}",
-                              "text": extract_text(Path(saved), limit=None), "file": saved,
-                              "source": f"{kind}:{short}:{Path(saved).name}",
-                              **({"relationship_scope": scope} if scope else {})})
+            if metadata is None:
+                metadata = attachment_metadata(message_id)
+            if not metadata:
+                return
+            attached += len(metadata)
+            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+            items.append({"role": "attachments-index", "speaker": sender, "timestamp": stamp,
+                          "subject": subject, "attachments": metadata,
+                          "reference": f"{kind}:{message_id}",
+                          "source": f"investigation:attachments-index:{kind}:{short}",
+                          "text": json.dumps({"mail_id": message_id, "provider": kind,
+                                              "attachments": metadata}, ensure_ascii=False),
+                          **({"relationship_scope": scope} if scope else {})})
 
         intervals = [(start, end)]
         if archived and kind in cached_by_provider and kind in complete_kinds:
@@ -882,23 +854,26 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
             else:
                 coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
-                                "attachments unavailable without provider")
+                                "attachment metadata unavailable without provider")
             continue
-        # One server call per archived mail, in sequence, was most of a heavy
-        # page's 15-minute gather (2026-10-08); fetched once, then read from disk.
-        if attachments_dir is not None and hasattr(client, "download_attachments") and local:
+        if attachments_dir is not None and hasattr(client, "list_attachments") and local:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                found = pool.map(lambda item: _attachment_files(client, kind, item["_mail_id"], attachments_dir), local)
-                for item, fetched in zip(local, found):
+                metadata = pool.map(attachment_metadata, (item["_mail_id"] for item in local))
+                for item, listed in zip(local, metadata):
                     add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
-                                    item.get("relationship_scope", ""), fetched)
+                                    item.get("relationship_scope", ""), listed)
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         unavailable = None
         for begin, finish in intervals:
-            if domains and hasattr(client, "list_with"):
+            if record.startswith('knowledge/') and hasattr(client, 'list_search'):
+                terms = ['"' + handle.replace('"', '') + '"' for handle in handles]
+                rows = [row for term in terms for row in (_patient(client.list_search, term, TOPIC_RESULTS) or [])
+                        if start <= timestamp(str(row['date'])) < end]
+                searched += f"; searched mail text for {', '.join(terms)}; bounded to {TOPIC_RESULTS} results per alias"
+            elif domains and hasattr(client, "list_with"):
                 # One server query per domain rather than every header in the
                 # window. The server may match loosely; the handles still decide
                 # what is kept. A university's mail runs past list_with's
@@ -967,12 +942,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 for key in ("date", "from", "to", "cc", "subject")}}
                 head, _, rest = body.partition("--- Email Body ---")
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                if record.startswith('knowledge/') and not any(h in (body + ' ' + r.get('subject', '')).lower() for h in handles):
+                    continue
                 # Filter before creating evidence or reading attachments: unrelated owner mail stays private.
                 if mail_filter and not mail_filter(r, body):
                     continue
                 own = _address(r["from"]) in mine or "@" not in _address(r["from"])
                 short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses | notices) else ""
+                scope = RELATED_ORG_SCOPE if domains and not org_member(r, domains, own_addresses) else ""
                 thread = r.get("thread_id") or r.get("thread") or ""
                 items.append({"role": "user" if own else "other", "speaker": r["from"],
                               "text": body, "timestamp": str(r["date"]),
@@ -988,7 +965,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
-                        + f", {attached} attachments read")
+                        + f", {attached} attachments indexed")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:
             # Say it. A mailbox left out used to vanish from coverage, so the model
@@ -1638,11 +1615,11 @@ def falls_short(page: str, *, min_insight: int = 2) -> tuple[int, int, int] | No
     return None
 
 
-def prepare_quotes(notebook, record, rounds, counts, context=(), *, insight_target=2):
+def prepare_quotes(notebook, record, rounds, counts, context=(), *, insight_target=2, page=None):
     from .page_review import prose
     from .reader_model import SOURCE
     from .runner import RunFailed
-    page = notebook.read(record)
+    page = notebook.read(record) if page is None else page
     cited = {source for _, source in SOURCE.findall(
         prose(page).partition('\n## Sources\n')[2].split('\n## ', 1)[0])}
     quotes, messages, insight = counts
@@ -1699,16 +1676,17 @@ def quote_pass(runner, notebook: Notebook, record: str, parts: list[list[dict]],
             "counts": {"quotes": [counts[0], quotes_after], "insight": [counts[2], insight_after]}}
 
 
-def prepare_editing(notebook, record, context=()):
+def prepare_editing(notebook, record, context=(), *, page=None):
     from .page_review import hedged_lines
-    before = hedged_lines(notebook.read(record))
+    page = notebook.read(record) if page is None else page
+    before = hedged_lines(page)
     if not before:
         return None
     note = EDITING_NOTE.format(count=len(before), lines="\n".join(f"- {section}: {line}" for section, line in before))
     items = [{"role": "page", "record": record, "source": "investigation:page",
               "timestamp": datetime.now(timezone.utc).isoformat(),
               "text": f"The page as it stands, at {record}. This turn edits only the lines listed in the round "
-                      f"note:\n\n{notebook.read(record)}"},
+                      f"note:\n\n{page}"},
              {"role": "round", "source": "investigation:round", "text": note},
              # The facts the audit judges contact dates against (see quote_turn).
              *[item for item in context if item.get("role") == "facts"]]
@@ -2300,6 +2278,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     mail_handles = own_domains if company else search_handles
     items, coverage = gather(subject, mail_handles, days=days, clients=clients, subscriptions=mail_subs,
                              sent_only=sent_only, record=record, **gather_options)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_material
+        items.extend(topic_material(notebook, record))
+        coverage.append('Topic aliases searched across authorized sources; candidate notes and pages are context, not primary proof')
     if company:
         projects = company_projects(notebook, record, subject, own_domains)
         own_items, own_coverage = company_material(notebook, company, projects, record=record, days=days, clients=clients,
@@ -2437,9 +2419,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    from .inquiry import routing
+    from .inquiry import inquiry_routed
     original_material = None
-    if routing(root):
+    if inquiry_routed(root):
         import uuid
 
         original_material = directory / "originals.json" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}.json")
@@ -2498,7 +2480,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     items = with_local_times(items, notebook_zone(read_config(root, validated=False)))
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
-    synthesis_calls = 3 if routing(root) else 1
+    synthesis_calls = 3 if inquiry_routed(root) else 1
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
@@ -2689,6 +2671,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   searched_sources(coverage), changed=record in result.get("changed", []),
                   repository_items=repository_items,
                   session_items=original_items,
+                  hierarchy_evidence=fact_rows,
                   project_coverage={"inputs_read": project_inputs,
                                     "inputs_available": page_state(root, record).get("messages", 0),
                                     "days": days, "scope": "archived"}
@@ -2732,7 +2715,7 @@ def _repositories_note(roots: list[str], line) -> str:
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
                   *, changed: bool = False, repository_items=(), session_items=(), skill_records=(),
-                  project_coverage=None, lock_held=False) -> None:
+                  project_coverage=None, hierarchy_evidence=(), lock_held=False) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -2753,6 +2736,9 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
+        if changed and record.startswith(('people/', 'orgs/')):
+            from .org_inference import infer, apply
+            apply(notebook, infer(notebook, record, hierarchy_evidence), lock_held=True)
         notebook.note_investigation(record, ", ".join(searched))
         if project_coverage:
             from .project_material import page_state
