@@ -128,7 +128,7 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     if SHOTS:
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
         zh = _row(page, "Fernhill Labs contract draft")
-        assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "交给 Codex · 交给 Claude · 聊一聊 ▾"
+        assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成"
         zh.locator(".talk-menu > summary").click()
         menu = zh.locator(".talk-choices")
         assert menu.evaluate("node => document.elementFromPoint(node.getBoundingClientRect().left + 8, node.getBoundingClientRect().bottom - 8)?.closest('.talk-choices') === node")

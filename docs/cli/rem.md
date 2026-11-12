@@ -847,8 +847,18 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   brings the two buttons back; it never reads **Undo**, which undoes the item.
   The strip ends with the row's one **Mark done** (标为完成), before and after
   a hand-off: it is the row's own done decision (`/rem/thread`, state `done`),
-  and the row's other actions on **Waiting on you** no longer repeat it. A
-  snapshot keeps Mark done in the row's own actions. A refused request is said in words on the row,
+  and the row's other actions on **Waiting on you** no longer repeat it, in
+  green or quietly, whatever the row's reply state. On **Today** it is the
+  same button: the row has no tick of its own, the strip's **Mark done** closes
+  that row and it leaves the way every closed card does, with **Undo** in the
+  notice. A card of several rows keeps the tick in its head, which closes all
+  of them (**E**); a card of one row has none, and **E** still closes it. The
+  card's green **Mark done** (shown when REM judges a row handled) is drawn
+  only when it closes several handled rows at once; for one row it would repeat
+  that row's strip button, so the card leads with **Not done yet** instead and
+  the strip's **Mark done** is the way to close it. A snapshot keeps Mark
+  done in the row's own actions and the tick on Today, since its strip cannot
+  act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
   reload, a changed item (409) too, an expired session (401) to reload the page,
   and no answer to try again shortly. In a snapshot the buttons are disabled and

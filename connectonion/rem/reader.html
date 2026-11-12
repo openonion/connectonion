@@ -5344,7 +5344,8 @@ function threadUrl(reply, kind) {
 function quietOnly(node) {
   return node && !node.matches(".btn-act") && !node.querySelector(".btn-act") ? node : null;
 }
-// strip: the row also carries the hand-off strip, which holds its one Mark done (owner, 2026-11-11).
+// strip: the row also carries the hand-off strip, which holds its one Mark done (owner, 2026-11-11), so
+// nothing here marks it done: not the quiet button, and not the green one a replied row would lead with.
 function threadActions(entry, onPage = false, strip = false) {
   const undo = isDone(entry);
   const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
@@ -5355,7 +5356,7 @@ function threadActions(entry, onPage = false, strip = false) {
     const open = primaryAction(entry, false);
     return el("div", {class: "thread-actions"}, onPage ? [quietOnly(open), done] : strip ? [open] : [primaryAction(entry), open]);
   }
-  const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry);
+  const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry, !strip);
   return el("div", { class: "thread-actions" }, [
     undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
       + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : onPage ? quietOnly(primary) : primary,
@@ -6753,13 +6754,16 @@ function closeEntries(node, entries) {
   setTimeout(() => setDone(entries[0], true, "done", entries), motionStilled() ? 0 : 240);
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
-// or how long it has waited. Mark the whole card done and Skip to the next card appear on hover (E / S).
+// or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
+// does the tick that marks all of them done at once (E). A card of one row has no tick in the live reader:
+// it would only repeat that row's own Mark done (one control per row, owner 2026-11-11); E still closes it.
 function cardHead(group, late, skippable) {
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
-  const done = el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]);
-  done.onclick = event => event.currentTarget.closest(".qcard").markDone();
+  const done = entries.length > 1 || !stripMarksDone(entries[0])
+    ? el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]) : null;
+  if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
   const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Skip") + " · S", title: t("Skip") + " · S" }, [icon("skip")]) : null;
   if (skip) skip.onclick = () => dealNext(1);
   return el("div", { class: "qhead" }, [
@@ -6779,14 +6783,19 @@ function cardItem(entry, many, seen = new Set(), more = null) {
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
   if (own) seen.add(draft.id);
+  // One Mark done per row (owner, 2026-11-11). In the live reader it is the strip's, and it closes the row the
+  // way the tick did: the row, or the card when it is the only one, slides out. A snapshot has no strip action
+  // and keeps the tick.
   // E closes the whole card, so a row that is one of several does not claim the key.
-  const done = el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
-  done.onclick = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
+  const close = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
+  const done = stripMarksDone(entry) ? null
+    : el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
+  if (done) done.onclick = close;
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry), more]),
+    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
   item.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .talk")) item.classList.toggle("show"); };
@@ -6841,7 +6850,7 @@ function sentNote() {
       : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
 }
 // 交给 Codex / 交给 Claude (D-100) on every unfinished row: REM starts the work now, with that agent
-// and full access. The row then says where the work is, in place: working (Stop, Undo), then See result.
+// and full access. The row then says where the work is, in place: working (Stop, Take back), then See result.
 const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"];
 // An open conversation outlives a redraw: the same panel, its turns and its typed words, goes back in place.
 const OPEN_TALKS = new Map();
@@ -6866,32 +6875,32 @@ function hostPost(url, body) {
     .catch(() => ({ ok: false, code: 0 }));
 }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
-function handOff(entry) {
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel) : handButtons(entry, show, panel);
+// mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
+function handOff(entry, mark) {
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
   return el("div", { class: "handoff" }, [line, panel]);
 }
 // 标为完成 sits in the strip on every row, before and after a hand-off (owner, 2026-11-11: «为什么不能标记
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
-// same as everywhere else; once done, the row's done tag and Undo take its place.
-function stripDone(entry) {
-  // A snapshot keeps Mark done where it always was, in the row's own actions; the strip there is disabled work.
-  if (entry.ask || !entry.r || !entry.t || !liveHere()) return [];
-  if (isDone(entry)) {
-    const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
-    undo.onclick = () => setDone(entry, false);
-    return [el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done") }), undo];
-  }
-  const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
-  done.onclick = () => setDone(entry, true);
+// same as everywhere else. The strip is only drawn on unfinished rows (Waiting on you and Today both leave a
+// done row out, and its Undo is the page's done notice), so there is no done state to show here.
+function stripMarksDone(entry) {
+  // A snapshot keeps Mark done where it always was, on the row itself; the strip there is disabled work.
+  return !entry.ask && !!entry.r && !!entry.t && liveHere();
+}
+function stripDone(entry, mark) {
+  if (!stripMarksDone(entry)) return [];
+  const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
+  done.onclick = mark || (() => setDone(entry, true));
   return [done];
 }
 // One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成
 function dotted(nodes) {
   return nodes.filter(Boolean).flatMap((node, i) => i ? [el("span", { class: "sep", "aria-hidden": "true", text: "·" }), node] : [node]);
 }
-function handButtons(entry, show, panel) {
+function handButtons(entry, show, panel, mark) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }) });
@@ -6914,10 +6923,10 @@ function handButtons(entry, show, panel) {
     };
     return button;
   });
-  return [...dotted([...buttons, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry)]), status];
+  return [...dotted([...buttons, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry, mark)]), status];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
-function handState(entry, show, panel) {
+function handState(entry, show, panel, mark) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
   const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
@@ -6938,7 +6947,7 @@ function handState(entry, show, panel) {
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
   const actions = liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
-  return [...dotted([status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry)]), output].filter(Boolean);
+  return [...dotted([status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry, mark)]), output].filter(Boolean);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
@@ -7038,10 +7047,14 @@ function personCard(group, focal, total = 1) {
   const { r, entries } = group, next = groupStep(entries), late = groupLate(group);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
   const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More of this card") }) : null;
+  // A green Mark done that would close just one row only repeats that row's strip button, so it is not drawn;
+  // closing several handled rows at once, it does what no row's button does and stays.
+  const closing = next.step === "done" ? entries.filter(item => cardStep(item) === "done") : [];
+  const step = closing.length === 1 && stripMarksDone(closing[0]) ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late, total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
-    el("div", { class: "card-acts" }, [stepAction(next, group, focal ? "btn-act" : "btn-line"), notDoneAction(next), mailboxLink(next.entry)])]);
+    el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.

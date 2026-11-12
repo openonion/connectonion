@@ -34,6 +34,41 @@ def test_every_waiting_row_has_one_mark_done_in_its_strip(live):
         assert row.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).count() == 1
 
 
+# The row the owner already answered, with a reply the night prepared for the same mail thread: the state in
+# which the row used to lead with a green Mark done of its own. The Host fixture has no mail, so the page is told.
+REPLIED_AND_PREPARED = r"""() => {
+  const r = byPath('projects/fernhill.md'), old = doneKey(threadEntries().find(e => /pilot review/.test(e.t.text)));
+  r.original = undefined;
+  r.text = r.text.replace('You owe Mara a pilot review.', 'You owe Mara a pilot review [1].')
+    .replace('## Sources\n', '## Sources\n- [1] outlook:pilot-review\n');
+  REM.source_context = {...REM.source_context, 'outlook:pilot-review': {source: 'outlook', thread: 'mail:fixture:pilot'}};
+  REM.drafts = [{id: 'pilot', version: 'v1', provider: 'outlook', thread: 'mail:fixture:pilot', status: 'prepared',
+    to: 'Mara Ostrowski <mara@example.test>', from: 'avery@example.test', subject: 'Re: Pilot review', body: 'The review is attached.'}];
+  KNOWN.clear(); FACTS.clear(); threadEntries.cached = null;
+  const key = doneKey({r, t: threads(r).items.find(t => /pilot review/.test(t.text))});
+  REM.today_queue = REM.today_queue.map(row => row.key !== old ? row : {...row, key, keys: [key], text: 'You owe Mara a pilot review [1].',
+    reply: {state: 'replied', last_word_yours: true, provider: 'outlook', thread: 'mail:fixture:pilot', source: 'outlook:pilot-review'}});
+  render();
+  const entry = threadEntries().find(e => doneKey(e) === key);
+  return {draft: threadDraft(entry)?.status, reply: REM.today_queue.find(row => row.key === key).reply.state};
+}"""
+
+
+def test_a_replied_row_with_a_prepared_reply_has_one_quiet_mark_done(live):
+    """Review of #2955: only the first branch of the row's actions knew about the strip, so a row that was
+    replied to and had a prepared reply showed two Mark done, one of them green."""
+    page, _ = live
+    assert page.evaluate(REPLIED_AND_PREPARED, isolated_context=False) == {"draft": "prepared", "reply": "replied"}
+    rows = page.locator(".task-band ul.threads > li")
+    assert rows.count() >= 2
+    for i in range(rows.count()):
+        assert rows.nth(i).get_by_role("button", name="Mark done", exact=True).count() == 1
+    row = _row(page, "pilot review")
+    done = row.get_by_role("button", name="Mark done", exact=True)
+    assert done.evaluate("node => node.className + '|' + !!node.closest('.handoff-line')") == "btn-quiet|true"
+    assert row.locator(".btn-act").count() == 0        # nothing green on the row: its reply is already written
+
+
 def test_mark_done_from_the_strip_is_the_rows_own_decision(live):
     page, root = live
     from connectonion.rem import threads
