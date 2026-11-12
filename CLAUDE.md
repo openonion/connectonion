@@ -79,7 +79,7 @@ pip install -e .  # Development mode (deps from pyproject.toml)
 ```bash
 pip install -e ".[dev]"
 
-make test                             # everything offline, all cores, ~1 minute (what CI runs)
+make test                             # everything offline, all cores, ~1 minute (CI runs it in shards, see tests/README.md)
 make test-unit                        # unit only
 make test-e2e                         # our own system end to end
 make test-real                        # paid providers (requires keys)

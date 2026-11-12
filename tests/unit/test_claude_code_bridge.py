@@ -163,6 +163,47 @@ def test_scoped_settings_record_only_session_identity(tmp_path):
     assert not settings.exists()
 
 
+def test_scoped_loopback_receiver_never_needs_reverse_dns(tmp_path, monkeypatch):
+    import socket
+    from urllib.parse import urlsplit
+
+    def forbidden_lookup(*args, **kwargs):
+        raise AssertionError('loopback bridge must not resolve its own hostname')
+
+    monkeypatch.setattr(socket, 'getfqdn', forbidden_lookup)
+    with scoped_bridge_settings() as (settings, events):
+        hook = json.loads(settings.read_text())['hooks']['SessionStart'][0]['hooks'][0]
+        address = urlsplit(hook['args'][1])
+        assert address.hostname == '127.0.0.1' and 0 < address.port < 65536
+        _post_hook(hook, {'hook_event_name': 'SessionStart', 'session_id': SESSION,
+                          'transcript_path': str(tmp_path / 'session.jsonl'),
+                          'cwd': str(tmp_path), 'source': 'startup'})
+        assert session_start(events, cwd=tmp_path, requested_session='')['session_id'] == SESSION
+        bad_hook = {**hook, 'args': [*hook['args'][:2], 'wrong-token']}
+        with pytest.raises(HTTPError) as rejected:
+            _post_hook(bad_hook, {'hook_event_name': 'SessionStart', 'session_id': SESSION})
+        assert rejected.value.code == 403
+        with pytest.raises(HTTPError) as missing:
+            urlopen(Request(hook['args'][1], data=b'{}'), timeout=2)
+        assert missing.value.code == 403
+    assert not settings.exists()
+
+
+def test_scoped_receiver_closes_its_socket_when_bind_fails(monkeypatch):
+    from socketserver import TCPServer
+    sockets = []
+
+    def failed_bind(server):
+        sockets.append(server.socket)
+        raise OSError('synthetic bind failure')
+
+    monkeypatch.setattr(TCPServer, 'server_bind', failed_bind)
+    with pytest.raises(OSError, match='synthetic bind failure'):
+        with scoped_bridge_settings():
+            pytest.fail('a failed bind must not yield bridge settings')
+    assert len(sockets) == 1 and sockets[0].fileno() == -1
+
+
 def test_scoped_receiver_rejects_wrong_token_and_unknown_events():
     with scoped_bridge_settings() as (settings, events):
         hook = json.loads(settings.read_text())["hooks"]["SessionStart"][0]["hooks"][0]

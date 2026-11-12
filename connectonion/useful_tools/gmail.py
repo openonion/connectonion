@@ -635,8 +635,8 @@ class Gmail(GmailMailbox):
         return drafts
 
     def create_draft(self, to: str, subject: str, body: str, cc: str = None,
-                     bcc: str = None) -> dict:
-        """Create a Gmail draft without sending it."""
+                     bcc: str = None, *, in_reply_to: str = None) -> dict:
+        """Create an unsent Gmail draft, optionally replying in an existing thread."""
         from email.message import EmailMessage
 
         self._require_draft_write_scope()
@@ -648,10 +648,22 @@ class Gmail(GmailMailbox):
             message["Cc"] = cc
         if bcc:
             message["Bcc"] = bcc
+        thread_id = None
+        if in_reply_to:
+            original = self._get_service().users().messages().get(
+                userId="me", id=in_reply_to, format="metadata").execute()
+            headers = {row['name'].lower(): row['value'] for row in original.get('payload', {}).get('headers', [])}
+            if headers.get('message-id'):
+                message['In-Reply-To'] = headers['message-id']
+                message['References'] = (headers.get('references', '') + ' ' + headers['message-id']).strip()
+            thread_id = original.get('threadId')
         from .gmail_draft_mime import validate_message
         validate_message(self, message)
+        payload = {"raw": self._encode_message(message)}
+        if thread_id:
+            payload['threadId'] = thread_id
         created = self._get_service().users().drafts().create(
-            userId="me", body={"message": {"raw": self._encode_message(message)}}
+            userId="me", body={"message": payload}
         ).execute()
         return self._draft_dict(created["id"], message)
 
@@ -1259,7 +1271,7 @@ class Gmail(GmailMailbox):
         def fetch(stub):
             message = self._mailbox_get(f'messages/{quote(stub["id"], safe="")}', params={
                 'format': 'metadata',
-                'metadataHeaders': ['From', 'To', 'Cc', 'Subject', 'Date']},
+                'metadataHeaders': ['From', 'Reply-To', 'To', 'Cc', 'Subject', 'Date']},
                 ensure_service=False)
             headers = message.get('payload', {}).get('headers', [])
             def value(name):
@@ -1267,7 +1279,7 @@ class Gmail(GmailMailbox):
 
             cc = value('cc')
             return {'id': stub['id'], 'thread_id': stub.get('threadId', ''),
-                    'from': value('from'), 'to': [value('to')],
+                    'from': value('from'), 'reply_to': value('reply-to'), 'to': [value('to')],
                     'cc': [cc] if cc else [],
                     'subject': value('subject'), 'date': _iso_date(value('date'), start),
                     'snippet': message.get('snippet', ''),

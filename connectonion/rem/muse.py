@@ -24,7 +24,8 @@ MAX_PERIODS = 6
 INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
-                "Follow the skill's Turns 2–6 rules." for n in range(2, 7)),
+                "Follow the skill's Turns 2–6 rules. "
+                "Add a new bullet; never edit an existing Insight bullet." for n in range(2, 7)),
               "Last turn — look back, as the skill says.")
 
 
@@ -354,8 +355,10 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
 def _prior_runs(root: Path, record: str) -> list[dict]:
     logs = run_logs(root)
     reports = []
-    for phase, label in (("enrich", "Open leads from enrich"), ("muse", "Questions the last muse run left")):
-        latest = next((run for run in logs if run.get("phase") == phase and run.get("record") == record
+    for stages, label in ((("enrich",), "Open leads from enrich"), (("muse",), "Questions the last muse run left"),
+                          (("investigate", "continue"), "Open questions from the predecessor's investigate/continue report")):
+        latest = next((run for run in logs if run.get("render_stage", run.get("stage", run.get("phase"))) in stages
+                       and run.get("record") == record and run.get("report") and not run.get("pending_review")
                        and run.get("outcome") == "completed"), None)
         if latest and latest.get("report"):
             reports.append(f"## {label}\n{latest['report']}")
@@ -378,4 +381,5 @@ def muse(root, record, *, runner=None, stage_progress=None) -> dict:
             "turns": len(MUSE_TURNS),
             "insights": result.get("insights_kept", sum(bool(INSIGHT.search(reply))
                             for reply in result.get("turn_replies", [])[1:-1])),
-            **{key: result[key] for key in ("insights_proposed", "insights_kept", "insights_rejected") if key in result}}
+            **{key: result[key] for key in
+               ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}}

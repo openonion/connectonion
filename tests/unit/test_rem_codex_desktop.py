@@ -489,3 +489,21 @@ def test_cited_desktop_message_keeps_a_table_cell_after_640_chars(tmp_path):
     assert len(message) > 640
     assert context['excerpt'] == message
     assert not context['truncated']
+
+
+def test_rem_v1_window_migration_counts_a_rollout_that_vanishes_at_read(tmp_path, monkeypatch):
+    from connectonion.rem import investigate
+
+    path = rollout(tmp_path / 'rollout-vanishing.jsonl', [bare('Ask Mira about Atlas.')])
+    saved = {'items': [{'reference': path.as_uri(), 'text': 'Ask Mira about Atlas.'}], 'version': 1}
+    opened = Path.open
+
+    def vanish(file, *args, **kwargs):
+        if file == path:
+            path.unlink(missing_ok=True)
+        return opened(file, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', vanish)
+    migrated = investigate._migrate_session_window(saved, 'codex', root=tmp_path)
+    assert migrated['missing_files'] == ['rollout-vanishing.jsonl']
+    assert migrated['items'] == saved['items']

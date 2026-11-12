@@ -99,20 +99,35 @@ def test_primary_snapshot_wins_over_observed_copy_of_same_native_message(tmp_pat
     assert context(tmp_path, source)[source]['excerpt'] == 'First canonical rendering.'
 
 
-def test_fallback_does_not_override_ambiguous_indexed_pointers(tmp_path):
+def test_fallback_does_not_override_a_rejected_indexed_pointer(tmp_path):
     import sqlite3
     prepare(tmp_path)
     refresh(tmp_path)
     source, path, _ = retained(tmp_path, 'outlook')
     pointer = str(path.relative_to(tmp_path / '.state'))
     with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        db.execute('insert into messages (id,source,body_path) values (?,?,?)',
+                   ('outlook:conflicting-id', 'outlook', pointer))
+    assert not context(tmp_path, source)
+
+
+def test_indexed_pointer_whose_identity_matches_wins_over_a_conflicting_one(tmp_path):
+    # The index's own short-hash lookup keeps only rows whose native id hashes to
+    # the citation, so a second row pointing at the same file is not ambiguous.
+    import sqlite3
+    prepare(tmp_path)
+    refresh(tmp_path)
+    source, path, saved = retained(tmp_path, 'outlook')
+    pointer = str(path.relative_to(tmp_path / '.state'))
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
         db.executemany('insert into messages (id,source,body_path) values (?,?,?)', [
             ('outlook:native-outlook', 'outlook', pointer), ('outlook:conflicting-id', 'outlook', pointer)])
-    assert not context(tmp_path, source)
+    assert context(tmp_path, source)[source]['excerpt'] == saved['body']
 
 
 def test_ambiguous_retained_short_hash_does_not_pick_an_arbitrary_original(tmp_path, monkeypatch):
     from types import SimpleNamespace
+
     from connectonion.rem import reader_model
     prepare(tmp_path)
     handle = 'a' * 12

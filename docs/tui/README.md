@@ -78,7 +78,7 @@ Shows real-time progress:
 ⠹ Thinking... 5s (usually 3-10s)    # During LLM call
 
 ⠹ Search emails in inbox            # During tool call
-  └─ search_emails("aaron")
+  └─ search_emails("ellis")
 ```
 
 ## Architecture

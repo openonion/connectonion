@@ -20,12 +20,12 @@ Left out on purpose:
 """
 
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 
 from .files import Notebook, read_json, state_path
 from .map import needs_review
 
-CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/"}
+CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/", "topics": "knowledge/"}
 RECENT_DAYS = 7
 
 
@@ -51,6 +51,7 @@ def weights(state: dict, excluded: frozenset | set = frozenset()) -> dict:
     weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
     weight.update({row.get("record"): len([p for p in row.get("people") or [] if p not in excluded])
                    for row in state.get("orgs", [])})
+    weight.update({row.get('record'): row.get('source_count', 0) for row in state.get('topics', [])})
     return weight
 
 
@@ -141,21 +142,22 @@ def _stamped_from_nothing(page: str) -> bool:
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
-    today = today or datetime.now(timezone.utc).date()
+    from .service import notebook_today
+    today = today or notebook_today(root)
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     from .merge import resolve
     # The map may name a record a later merge aliased (#1976): exclude the page it lives in.
     excluded = {resolve(root, record) for record in excluded_people(state) if record} | needs_review(root)
     weight = weights(state, excluded)
+    notebook = Notebook(root)
+    companies = own_orgs(notebook, state.get("owner")) if category == "orgs" else set()
     # An org whose every mapped person is left out is a sender, not an
     # organisation the owner deals with: nothing about it is worth a turn (#2046).
     excluded |= {row.get("record") for row in state.get("orgs", [])
-                 if row.get("people") and not weight.get(row.get("record"))}
+                 if row.get("people") and not weight.get(row.get("record"))
+                 and row.get("record") not in companies}  # our company is written from the owner's work
     hollow = hollow_investigations(root) if category in ("people", "orgs") else set()
-    notebook = Notebook(root)
-    if category == "orgs":
-        excluded |= own_orgs(notebook, state.get("owner"))
     entries = notebook.unfinished(prefix.split("/")[0])
     listed = {entry["path"] for entry in entries}
     # A hollow page may have had its Unknowns written over with nothing; it is
@@ -181,15 +183,17 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
 
 
 def own_orgs(notebook: Notebook, owner: dict | None) -> set:
-    """Organisation pages for the owner's own company: not counterparties, never investigated as one."""
+    """Own-company pages still need investigation when all their contacts were excluded."""
     from .investigate import org_domains
-    from .org_map import own_domain
+    from .org_map import own_company
     page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
+    projects = [notebook.read(p) for p in notebook.list("projects")]
     return {record for record in notebook.list("orgs")
-            if any(own_domain(domain, owner, page) for domain in org_domains(notebook.read(record)))}
+            if any(own_company(domain, page, projects, (owner or {}).get("addresses", []))
+                   for domain in org_domains(notebook.read(record)))}
 
 
-ALL = ("people", "projects", "orgs", "skills")
+ALL = ("people", "projects", "orgs", "skills", "topics")
 
 
 def order_all(root) -> list[dict]:

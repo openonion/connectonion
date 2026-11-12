@@ -3,6 +3,7 @@
 import json
 import importlib
 import hashlib
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,24 @@ import pytest
 from connectonion.rem import project_claim_review, runner
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, state_path
+
+
+@pytest.mark.parametrize('kind', ['people', 'orgs'])
+def test_claim_review_rejects_irrelevant_not_established_filler(tmp_path, kind):
+    candidate = ('# Fern\n\nWhether an earlier introduction happened is not established [1].\n\n'
+                 '## Sources\n- [1] codex:fern:1\n')
+    prompts = []
+
+    def audit(_workspace, prompt, *_args):
+        prompts.append(prompt)
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audit,
+        record=f'{kind}/fern.md', items=[{'source': 'codex:fern:1', 'text': 'Please review the pilot.'}])
+    assert len(prompts) == 1
+    assert ('A sentence that only says something is not established, about a matter irrelevant to the '
+            "page's claims and the user's next step, fails as filler.") in prompts[0]
+    assert 'fails when a supplied original establishes it' in prompts[0]
 
 
 def test_missing_cited_original_never_reaches_the_model(tmp_path):
@@ -21,7 +40,9 @@ def test_missing_cited_original_never_reaches_the_model(tmp_path):
 
     report, usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run)
     assert report == {'verdict': 'insufficient', 'findings': [], 'missing_citations': ['1'],
-                      'reason': 'No cited originals supplied'}
+                      'reason': 'No cited originals supplied', 'sources_unavailable': [
+                          {'citation': '1', 'source_id': 'codex:missing',
+                           'reason': 'No readable original supplied'}]}
     assert usage == {}
 
 
@@ -35,7 +56,154 @@ def test_truncated_original_is_shown_with_its_limit(tmp_path, monkeypatch):
     assert material['sources'][0]['context']['excerpt'] == 'A question about filtering'
 
 
-def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
+@pytest.mark.parametrize('citation', ['74', 'W74'])
+def test_native_audit_guides_lookup_to_original_beyond_tool_output(tmp_path, citation):
+    source = 'outlook:atlas-review'
+    candidate = (f'# Atlas\n\nThe user requested a review [{citation}].\n\n## Sources\n'
+                 f'- [1] codex:atlas-background\n- [{citation}] {source}\n')
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+        items=[{'source': 'codex:atlas-background', 'text': 'Background detail.\n' * 2_100},
+               {'source': source, 'text': 'Please review Atlas.'}])
+    prompt = task['prompt']
+    assert "candidate's Sources list maps [N] to the source id" in prompt
+    assert '### <source id> · cited-original' in prompt
+    assert '### <source id> · later-message' in prompt
+    assert "rg -n '^\\[N\\]|^- \\[N\\] ' audit-material.md" in prompt
+    assert "rg -n -F '### <source id> · ' audit-material.md" in prompt
+    assert "sed -n 'L,ENDp' audit-material.md" in prompt
+    assert 'chunks of at most 80 lines' in prompt
+
+    # Follow the instructions on a real packet whose target is beyond a first tool read.
+    # Same lookups as the printed rg/sed commands, in Python so CI needs no ripgrep.
+    lines = (tmp_path / 'audit-material.md').read_text().splitlines()
+    definition = [text for text in lines if re.match(f'^\\[{citation}\\]|^- \\[{citation}\\] ', text)]
+    assert any(f'- [{citation}] {source}' in text for text in definition)
+    line = next(number for number, text in enumerate(lines, 1) if f'### {source} · ' in text)
+    assert line > 2_000
+    assert 'Please review Atlas.' in '\n'.join(lines[line - 1:line + 20])
+
+
+def test_native_audit_searches_before_treating_an_original_as_missing(tmp_path):
+    candidate = '# Atlas\n\nReview requested [1].\n\n## Sources\n- [1] codex:atlas\n'
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+                                       items=[{'source': 'codex:atlas', 'text': 'Please review Atlas.'}])
+    assert 'Never cat the whole packet' in task['prompt']
+    assert 'Before declaring an original missing, search for its source id heading' in task['prompt']
+    assert 'If no original is supplied, leave the claim out, not failed' in task['prompt']
+
+
+def test_native_audit_checkpoints_each_citation_before_continuing(tmp_path):
+    candidate = '# Atlas\n\nReview requested [1].\n\n## Sources\n- [1] codex:atlas\n'
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+                                       items=[{'source': 'codex:atlas', 'text': 'Please review Atlas.'}])
+    prompt = task['prompt']
+    assert f'Read {tmp_path / "notes.md"} first if it exists' in prompt
+    assert 'continue from the first unchecked citation' in prompt
+    assert 'Read the remaining sections of the audit packet' in prompt
+    assert 'one by one, in Sources order' in prompt
+    assert '[N] PASS|FAIL|INSUFFICIENT' in prompt
+    assert 'at least 20 verbatim characters' in prompt
+    assert 'excerpt:' in prompt
+    assert 'every claim using that citation' in prompt
+    assert 'evidence and required_correction' in prompt
+    assert 'When every citation is checked' in prompt and 'audit-output.json' in prompt
+
+
+def test_audit_progress_returns_unchecked_ids_in_sources_order(tmp_path):
+    candidate = ('# Atlas\n\n## Sources\n- [W74] web\n- [11] eleven\n- [2] two\n'
+                 '- [1] one\n- [W3] web-three\n- [2] two again\n')
+    from connectonion.rem.files import write_json
+    write_json(tmp_path / 'audit-material.json', {'sources': [
+        {'citation': number, 'context': {'excerpt': 'A fictional original for this citation.'}}
+        for number in ('W74', '11', '2', '1', 'W3')]})
+    (tmp_path / 'notes.md').write_text('[2] FAIL — excerpt: \"A fictional original for this citation.\" Incorrect.\n[W3] INSUFFICIENT — excerpt: \"A fictional original for this citation.\" Missing.\n'
+                                        '[2] PASS — Duplicate.\n[999] PASS — Unrelated.\n'
+                                        'Heading mentions [1] PASS.\n')
+    assert project_claim_review.audit_progress(candidate, tmp_path) == (2, 5, ['W74', '11', '1'])
+
+
+def test_audit_progress_requires_only_supplied_originals(tmp_path):
+    candidate = ('# Atlas\n\nReview requested [1].\nBudget pending [22].\n\n## Sources\n'
+                 '- [1] gmail:readable\n- [22] gmail:not-archived\n')
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate, native=True, directory=tmp_path,
+        items=[{'source': 'gmail:readable', 'text': 'Please review the Atlas pilot.'}])
+    assert project_claim_review.audit_progress(candidate, tmp_path) == (0, 1, ['1'])
+    (tmp_path / 'notes.md').write_text('[1] PASS — excerpt: "Please review the Atlas pilot."\n')
+
+    assert project_claim_review.audit_progress(candidate, tmp_path) == (1, 1, [])
+    unavailable = [{'citation': '22', 'source_id': 'gmail:not-archived',
+                    'reason': 'No readable original supplied'}]
+    assert task['material']['unavailable_originals'] == unavailable
+    assert 'unassessable and need no checkpoint' in task['prompt']
+    assert 'gmail:not-archived' in (tmp_path / 'audit-material.md').read_text()
+    report, _ = project_claim_review.check(task, {'result': '{"verdict":"PASS","findings":[]}'})
+    assert report['verdict'] == 'insufficient'
+    assert report['sources_unavailable'] == unavailable
+
+
+@pytest.mark.parametrize('body,claim,verdict,expected', [
+    ('Review requested [1]. Budget pending [22].', 'Budget pending.', 'INSUFFICIENT', 'insufficient'),
+    ('Review requested [1]. Budget pending. [1][22]', 'Budget pending.', 'INSUFFICIENT', 'insufficient'),
+    ('Review requested [1]. Budget pending. [1][22]', 'Budget pending.', 'FAIL', 'fail'),
+    ('Budget pending [22]. Review requested. [1]', 'Review requested.', 'INSUFFICIENT', 'fail'),
+    ('Budget pending [22]. Launch approved.', 'Launch approved.', 'INSUFFICIENT', 'fail'),
+    ('Budget pending. [22]\n\nBudget pending. [1]', 'Budget pending.', 'INSUFFICIENT', 'fail'),
+])
+def test_unavailable_findings_follow_adjacent_citations(tmp_path, body, claim, verdict, expected):
+    candidate = f'# Atlas\n\n{body}\n\n## Sources\n- [1] gmail:readable\n- [22] gmail:not-archived\n'
+    task = project_claim_review.prepare(Notebook(tmp_path), candidate,
+        items=[{'source': 'gmail:readable', 'text': 'Please review the Atlas pilot.'}])
+    finding = {'claim': claim, 'issue': 'Cannot verify', 'evidence': 'Original needed',
+               'required_correction': 'Check the original'}
+    report, _ = project_claim_review.check(task, {'result': json.dumps({'verdict': verdict, 'findings': [finding]})})
+    assert report['verdict'] == expected
+    assert report['findings'] == ([finding] if expected == 'fail' else [])
+    assert report['unavailable_findings'] == ([] if expected == 'fail' else [finding])
+
+
+@pytest.mark.parametrize('verdict,mixed', [('PASS', False), ('INSUFFICIENT', False), ('INSUFFICIENT', True)])
+def test_native_audit_completes_with_unavailable_citation_named(tmp_path, verdict, mixed):
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    before = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+        .replace('## What it is\n- Unknown', '## What it is\n- Budget pending. [22]')
+        .replace('- (none yet)', '- [22] gmail:not-archived'))
+    notebook.write(record, before)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(before.replace('## What it is\n', '## What it is\n- Review requested [1].\n')
+        .replace('## Sources\n', '## Sources\n- [1] gmail:readable\n'))
+    if mixed:
+        candidate.write_text(candidate.read_text().replace('Budget pending. [22]', 'Budget pending. [1][22]'))
+    items = [{'source': 'gmail:readable', 'text': 'Please review the Atlas pilot.'}]
+    audit = runner._promote_candidate(notebook, record, candidate, before, items, tmp_path, None,
+                                      claim_config={}, native=True)
+    assert 'needs_review' in audit
+    finding = {'claim': 'Budget pending.', 'issue': 'Original [22] is unavailable',
+               'evidence': 'No excerpt supplied', 'required_correction': 'Provide [22] or remove the claim'}
+    (tmp_path / 'audit-output.json').write_text(json.dumps({
+        'verdict': verdict, 'findings': [finding] if verdict == 'INSUFFICIENT' else []}))
+    (tmp_path / 'notes.md').write_text('[1] PASS — excerpt: "Please review the Atlas pilot."\n')
+
+    result = runner._promote_candidate(notebook, record, candidate, before, items, tmp_path, None,
+                                       claim_config={}, native=True)
+    assert not result or 'needs_review' not in result
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['verdict'] == 'insufficient' and report['findings'] == []
+    assert report['sources_unavailable'] == [{'citation': '22', 'source_id': 'gmail:not-archived',
+                                             'reason': 'No readable original supplied'}]
+    if verdict == 'INSUFFICIENT':
+        assert report['unavailable_findings'] == [finding]
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted'] is True
+    assert review['sources_unavailable'] == report['sources_unavailable']
+    assert '1 citations unverified (originals unavailable)' in review['factual_quality']
+    assert f'Budget pending. {"[1]" if mixed else ""}[2]' in notebook.read(record)
+    assert '- [2] gmail:not-archived' in notebook.read(record)
+
+
+@pytest.mark.parametrize('role', ['original_evidence', 'evidence-index'])
+def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path, role):
     prepare(tmp_path)
     session = 'codex:session:5121301'
     origin, body = 'git:main:README.md', 'The source states the project goal.'
@@ -51,11 +219,68 @@ def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
                  '- [2] ' + repository + ' — 2026-10-01\n')
     notebook = Notebook(tmp_path)
     assert project_claim_review.packet(notebook, candidate)[1] == ['1', '2']
-    project_claim_review.retain_cited_originals(notebook, candidate,
-        [{'role': 'original_evidence', 'file': str(file)}])
+    items = [{'role': role, 'originals' if role == 'evidence-index' else 'file': str(file)}]
+    project_claim_review.retain_cited_originals(notebook, candidate, items)
     material, missing = project_claim_review.packet(notebook, candidate)
     assert missing == []
     assert {row['source_id'] for row in material['sources']} == {session, repository}
+
+
+def test_packet_reads_indexed_originals_before_retention(tmp_path):
+    from connectonion.rem.evidence import write_evidence
+
+    source = 'codex:session-atlas:42'
+    body = 'Use example.com for the Atlas demo.'
+    laid_out = write_evidence(tmp_path / 'evidence', [{'role': 'user', 'source': source, 'text': body}])
+    items = [{'role': 'evidence-index', 'source': 'investigation:evidence',
+              'text': 'An index is not an original.', 'originals': str(laid_out['originals'])}]
+    candidate = f'# Atlas\n\nThe user requested a demo [1].\n\n## Sources\n- [1] {source}\n'
+
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == [] and material['unretained_citations'] == []
+    assert material['sources'][0]['context']['excerpt'] == body
+
+
+@pytest.mark.parametrize('body', ['', '   '])
+def test_handed_original_without_text_is_unverified_not_refuted(tmp_path, body):
+    candidate = '# Atlas\n\nThe user requested a demo [1].\n\n## Sources\n- [1] codex:session-atlas:42\n'
+    items = [{'role': 'user', 'source': 'codex:session-atlas:42', 'text': body}]
+
+    def should_not_run(*args):
+        pytest.fail('An unreadable handed original is an infrastructure gap')
+
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == [] and material['sources'] == []
+    assert material['unretained_citations'] == ['1']
+    assert material['unverified_lines'] == ['The user requested a demo [1].']
+    report, usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run,
+                                               items=items)
+    assert report['verdict'] == 'insufficient' and report['findings'] == []
+    assert report['reason'] == ('Cited originals were handed to the investigation but not retained; '
+                                'lines unverified, not refuted')
+    assert report['missing_citations'] == [] and report['unretained_citations'] == ['1']
+    assert report['unverified_lines'] == material['unverified_lines'] and usage == {}
+
+
+def test_packet_separates_unretained_missing_and_readable_citations(tmp_path):
+    candidate = ('# Atlas\n\nUnreadable [1].\nMixed [1][2].\nNever handed [3].\n\n## Sources\n'
+                 '- [1] codex:session-atlas:1\n- [2] codex:session-atlas:2\n- [3] codex:session-atlas:3\n')
+    items = [{'source': 'codex:session-atlas:1', 'text': ''},
+             {'source': 'codex:session-atlas:2', 'text': 'Atlas demo requested.'}]
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate, items=items)
+    assert missing == ['3']
+    assert material['unretained_citations'] == ['1']
+    assert material['unverified_lines'] == ['Unreadable [1].']
+    assert [row['citation'] for row in material['sources']] == ['2']
+
+
+def test_evidence_wrappers_do_not_count_as_originals(tmp_path):
+    items = [{'role': role, 'source': f'investigation:{role}', 'text': 'Index text'}
+             for role in ('original_evidence', 'evidence-index')]
+    file = tmp_path / 'originals.json'
+    file.write_text('[]')
+    items[0]['file'] = str(file)
+    assert project_claim_review.original_items(items) == []
 
 
 def test_audit_keeps_all_cited_originals_when_several_source_files_are_long(tmp_path):
@@ -195,7 +420,7 @@ def test_uncited_field_findings_do_not_hide_a_refuted_phone(tmp_path):
 
 @pytest.mark.parametrize('claim,carried_claim', [
     ('Last contact: 2026-10-17', 'Last contact: 2026-10-17 [3]'),
-    ('Avery [3] leads\n the lab.', 'Avery\t leads [W2] the lab.'),
+    ('Avery [3] leads\n the lab.', 'Avery [W2]\t leads the lab.'),
 ])
 def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, carried_claim):
     finding = {'claim': claim, 'issue': 'Unsupported', 'evidence': '', 'required_correction': 'Remove'}
@@ -203,10 +428,10 @@ def test_carried_claim_findings_are_recorded_without_refusing(tmp_path, claim, c
     def audited(*_args):
         return {'result': json.dumps({'verdict': 'FAIL', 'findings': [finding]})}
 
-    candidate = '# Avery\n\n' + claim + '\n\n## Sources\n- [1] gmail:invented\n'
+    candidate = '# Avery\n\n' + claim + ('' if '[3]' in claim else ' [1]') + '\n\n## Sources\n- [1] gmail:invented\n- [3] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried='# Avery\n\n' + carried_claim, items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
-    assert report['findings'] == [] and report['verdict'] == 'pass'
+        carried='# Avery\n\n' + carried_claim + '\n\n## Sources\n- [3] gmail:invented\n- [W2] gmail:invented\n', items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+    assert report['findings'] == [] and report['verdict'] == 'insufficient'
     assert report['carried_findings'] == [finding]
 
 
@@ -220,7 +445,7 @@ def test_carried_findings_do_not_hide_a_new_claim(tmp_path):
 
     candidate = '# Avery\n\n' + '\n'.join(claims) + '\n\n## Sources\n- [1] gmail:invented\n'
     report, _ = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
-        carried=claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
+        carried='# Avery\n\n' + claims[0], items=[{'source': 'gmail:invented', 'text': 'Hello.'}])
     assert report['verdict'] == 'fail' and report['findings'] == findings[1:]
     assert report['carried_findings'] == findings[:1]
 
@@ -353,3 +578,68 @@ def test_people_audit_keeps_an_unanswered_ask_open_and_an_overdue_promise_open(t
     assert "A dated ask or promise that no later message answers is open, however old" in seen[0]
     assert "overdue, still open" in seen[0]
     assert "a past ask is not a current debt" not in seen[0]
+
+
+@pytest.mark.parametrize('kind', ['people', 'orgs', 'projects'])
+def test_audit_does_not_resolve_obligations_from_elapsed_dates(tmp_path, kind):
+    candidate = ('# Atlas\n\n## Open threads\n'
+                 '- The user asked Avery for workshop notes on 2026-01-03; outcome unknown [1].\n'
+                 '- Avery promised a report by 2026-01-05; delivery unconfirmed [2].\n\n'
+                 '## Sources\n- [1] gmail:request\n- [2] gmail:promise\n')
+    seen = []
+
+    def audited(_workspace, prompt, *_args):
+        seen.append(prompt)
+        return {'result': '{"verdict":"INSUFFICIENT","findings":[]}'}
+
+    project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited,
+        record=f'{kind}/atlas.md', items=[
+            {'source': 'gmail:request', 'text': 'Please send the workshop notes.',
+             'timestamp': '2026-01-03T00:00:00Z'},
+            {'source': 'gmail:promise', 'text': 'I will send the report by January 5.',
+             'timestamp': '2026-01-03T00:00:00Z'}])
+    prompt = seen[0]
+    assert 'A past scheduled date alone does not establish occurrence or completion' in prompt
+    assert 'a promise past its due date with no delivery stays overdue and open' in prompt
+    assert 'answer, delivery, cancellation or withdrawal for the matching ask' in prompt
+    assert 'do not present a past scheduled event as upcoming' in prompt
+    assert 'history, never an open thread' not in prompt
+    assert 'resolves it or when the date of a meeting or event it is about has passed' not in prompt
+    if kind in ('people', 'orgs'):
+        assert 'A passed meeting date alone does not settle preparation, follow-up or related promises' in prompt
+        assert 'An ask the other side never agreed to is not their debt' in prompt
+    material = json.loads(prompt[prompt.index('{"candidate"'):])
+    assert {row['source_id'] for row in material['sources']} == {'gmail:request', 'gmail:promise'}
+
+
+@pytest.mark.parametrize('line, checked', [
+    ('[{n}] PASS — Previously checked citation', 0),
+    ('[{n}] PASS — excerpt: \"fictional pilot\"', 0),
+    ('[{n}] PASS — excerpt: "The fictional pilot starts on Monday."', 116),
+    ('[{n}] PASS — excerpt: "The fictional pilot starts on Friday."', 0),
+])
+def test_audit_checkpoint_requires_verbatim_original(tmp_path, line, checked):
+    from connectonion.rem.files import write_json
+    candidate = '# Atlas\n\n## Sources\n' + ''.join(f'- [{n}] codex:atlas:{n}\n' for n in range(1, 117))
+    write_json(tmp_path / 'audit-material.json', {'candidate': candidate, 'sources': [
+        {'citation': str(n), 'source_id': f'codex:atlas:{n}',
+         'context': {'excerpt': 'The fictional pilot starts on Monday.'}} for n in range(1, 117)]})
+    (tmp_path / 'notes.md').write_text('\n'.join(line.format(n=n) for n in range(1, 117)))
+    assert project_claim_review.audit_progress(candidate, tmp_path)[0] == checked
+
+
+def test_audit_repair_keeps_only_unchanged_verified_claims(tmp_path):
+    from connectonion.rem.files import write_json
+    before = '# Atlas\n\nPilot starts Monday [1].\n\nBudget approved [2].\n\n## Sources\n- [1] codex:1\n- [2] codex:2\n'
+    sources = [{'citation': str(n), 'source_id': f'codex:{n}', 'context': {'excerpt': text}}
+               for n, text in enumerate(['The fictional pilot starts on Monday.', 'The fictional budget was approved.'], 1)]
+    old = {'candidate': before, 'sources': sources}
+    notes = tmp_path / 'notes.md'
+    notes.write_text('[1] PASS — excerpt: "The fictional pilot starts on Monday."\n'
+                     '[2] PASS — excerpt: "The fictional budget was approved."\n')
+    new = {**old, 'candidate': before.replace('Budget approved', 'Budget rejected')}
+    write_json(tmp_path / 'audit-material.json', new)
+    project_claim_review.preserve_checkpoints(tmp_path, old, new)
+    assert '[1] PASS' in notes.read_text()
+    assert '[2]' not in notes.read_text()
+    assert project_claim_review.audit_progress(new['candidate'], tmp_path) == (1, 2, ['2'])

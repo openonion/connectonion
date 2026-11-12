@@ -2,7 +2,7 @@
 Purpose: Lay out one investigation's gathered material as files an agent searches, instead of chunks a model summarises
 LLM-Note:
   Dependencies: imports from [hashlib, json, pathlib, .chat.CHAT_KINDS] | imported by [rem/investigate.py] | tested by [tests/unit/test_rem_evidence.py]
-  Data flow: write_evidence(directory, items) → one file per mailbox-month (split past 40k chars), per attachment, per session or chat → index.md, one line per file → {"index", "files", "sources", "chars"}
+  Data flow: write_evidence(directory, items) → searchable files, index.md and unchanged originals.json → {"index", "originals", "files", "sources", "chars"}
   State/Effects: writes under the given directory only (0700); the caller owns retention
 
 Why files (#1850, owner 2026-09-24/30). The script has already gathered and
@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 
 from .chat import CHAT_KINDS
+from .files import RemError, read_json, safe_path, state_path, write_json
 
 INDEX = "index.md"
 
@@ -47,7 +48,7 @@ def _group(item: dict) -> str:
         # Mail: a month per mailbox. Each entry keeps its `### <source id>`
         # heading, so a search hit still names the one message to cite.
         return f"{kind}:{str(item.get('timestamp', ''))[:7] or 'undated'}"
-    return source.rsplit(":", 1)[0]   # a session: codex:<session>:<offset>
+    return source.rsplit(":", 1)[0]   # the session, excluding its offset and optional text hash
 
 
 def _file_name(group: str, first: str) -> str:
@@ -95,6 +96,8 @@ def _split(group: str, entries: list[dict]):
 def write_evidence(directory: Path, items: list[dict]) -> dict:
     """Write every item, oldest first within each file; return the index path and every citable id."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    originals = directory / "originals.json"
+    write_json(originals, items)
     groups: dict[str, list[dict]] = {}
     for item in sorted(items, key=lambda i: str(i.get("timestamp", ""))):
         groups.setdefault(_group(item), []).append(item)
@@ -123,4 +126,112 @@ def write_evidence(directory: Path, items: list[dict]) -> dict:
         "each entry starts with `### <source id> · <timestamp> · local <local_time> · <speaker>` "
         "(local time when available); cite that source id.\n\n"
         + "\n".join(lines) + "\n", encoding="utf-8")
-    return {"index": index, "files": len(groups), "sources": sources, "chars": total}
+    return {"index": index, "originals": originals, "files": len(groups), "sources": sources, "chars": total}
+
+
+def research_items(directory: Path) -> list[dict]:
+    """Task-local captures of pages/searches and read-only CLI results; never fetch during validation."""
+    from datetime import date
+
+    web = safe_path(directory, "web")
+    rows = read_json(safe_path(web, "sources.json"), [])
+    if not isinstance(rows, list):
+        raise RemError("web/sources.json must be a list of url/source, file and date entries")
+    items = {}
+    for row in rows:
+        if not isinstance(row, dict) or any(not isinstance(row.get(k), str) for k in ("file", "date")):
+            raise RemError("Each research capture needs file and date strings")
+        source = row.get("url") or row.get("source")
+        if not isinstance(source, str):
+            raise RemError("Research captures need URL or native source IDs")
+        _research_source(source)
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"]):
+            raise RemError("Research capture date must be YYYY-MM-DD")
+        date.fromisoformat(row["date"])
+        body = safe_path(web, row["file"]).read_text(encoding="utf-8")
+        if not body.strip():
+            raise RemError(f"Research capture has no saved text: {source}")
+        item = items.setdefault(source, {"texts": [], "timestamp": row["date"]})
+        if body not in item["texts"]:
+            item["texts"].append(body)
+        item["timestamp"] = max(item["timestamp"], row["date"])
+    return [{"role": "research", "source": source, "text": "\n\n".join(item["texts"]),
+             "timestamp": item["timestamp"]} for source, item in items.items()]
+
+
+def _research_source(source: str) -> None:
+    from urllib.parse import urlsplit
+
+    url = urlsplit(source)
+    if url.hostname and (url.hostname == "linkedin.com" or url.hostname.endswith(".linkedin.com")):
+        raise RemError("LinkedIn pages must not be opened; cite a saved search result instead")
+    native = re.fullmatch(r"(?:gmail|outlook|lark|github|codex|claude-code):\S+", source)
+    attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:[^/\\\r\n]+", source)
+    if not native and not attachment and (url.scheme not in ("http", "https") or not url.hostname):
+        raise RemError("Research captures need an HTTP(S) URL or a native read-only source ID")
+
+
+def retain_research(root: Path, text: str, items: list[dict]) -> None:
+    """Keep cited captures outside disposable tasks so later reviews can still check their words."""
+    from .reader_model import _source_ids
+
+    cited = _source_ids([{"text": text}])
+    for item in items:
+        if item.get("role") != "research" or item["source"] not in cited:
+            continue
+        identity = hashlib.sha256(item["source"].encode()).hexdigest()
+        digest = hashlib.sha256(item["text"].encode()).hexdigest()
+        write_json(state_path(root, f"research/{identity}/{item['timestamp']}-{digest}.json"), item)
+
+
+def research_contexts(root: Path, records: list[dict], *, private: bool = False) -> dict[str, dict]:
+    """Resolve URL/native IDs to dated saved captures; no network or task-directory scans."""
+    from .reader_model import PRIVATE, SOURCE, _source_ids
+
+    if not state_path(root, "research").is_dir():
+        return {}
+    dates = {}
+    for record in records:
+        tail = record.get("text", "").partition("\n## Sources\n")[2]
+        for match in SOURCE.finditer(tail):
+            suffix = tail[match.end():].split("\n", 1)[0]
+            if date := re.search(r"\b\d{4}-\d{2}-\d{2}\b", suffix):
+                dates.setdefault(match[2], set()).add(date[0])
+    contexts = {}
+    for source in _source_ids(records):
+        identity = hashlib.sha256(source.encode()).hexdigest()
+        captures = [read_json(path, {}) for path in sorted(state_path(root, f"research/{identity}").glob("*.json"))]
+        captures = [item for item in captures if item.get("source") == source
+                    and (not dates.get(source) or item.get("timestamp") in dates[source])
+                    and (private or not PRIVATE.search(item.get("text", "")))]
+        if captures:
+            contexts[source] = {"excerpt": "\n\n".join(dict.fromkeys(item["text"] for item in captures)),
+                                "truncated": False}
+            attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:([^/\\\r\n]+)", source)
+            if attachment:
+                contexts[source].update(source="attachment", filename=attachment[1], subject=attachment[1])
+    return contexts
+
+
+def additional_research(root: Path, directory: Path, items: list[dict]) -> list[dict]:
+    """A CLI capture cannot replace authoritative supplied or archived mail/session text."""
+    from .page_review import _source_item
+    from .project_claim_review import original_items
+    from .reader_model import cited_context
+
+    captures = research_items(directory)
+    if not captures:
+        return []
+    originals = original_items(items)
+    native = [item for item in captures if not item["source"].startswith(("http://", "https://"))]
+    records = [{"text": "\n## Sources\n" + "\n".join(
+        f"- [{number}] {item['source']}" for number, item in enumerate(native, 1))}]
+    retained = cited_context(root, records, private=True)
+    additions = []
+    for item in captures:
+        original = _source_item(root, item["source"], originals)
+        if original:
+            additions.append(original)
+        elif item not in native or item["source"] not in retained:
+            additions.append(item)
+    return additions

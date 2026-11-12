@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from connectonion.rem import project_material, project_pages
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.files import Notebook, RemError
 from connectonion.rem.project_material import extract, mark_written, page_state, stored
 from connectonion.rem.project_pages import PROMPT_CHARS, queue, write_page, write_pages
@@ -56,7 +56,10 @@ def claude(path: Path, cwd: str, rows, *, session="sess-1"):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
+    # The suite can run long after collection (or across a host sleep/clock jump).
+    # Generate relative source times against this test, not the module import.
+    monkeypatch.setitem(globals(), "NOW", datetime.now(timezone.utc))
     root = tmp_path / "rem"
     prepare(root)
     notebook = Notebook(root)
@@ -349,7 +352,7 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     extract(world.root, world.subs)
     source = stored(world.root, "projects/tide.md")[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source))
-    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
+    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default", "models": dict.fromkeys(LEVEL_MODELS, "default")}, run=run)
     page = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
@@ -441,7 +444,7 @@ def test_project_quote_round_carries_saved_page_note_and_whole_first_write_mater
     turns, directories, saved = [], [], []
 
     def page_from(prompt):
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        candidate = Path(re.search(r"existing page at (\S+candidate\.md)", prompt)[1])
         directory = candidate.parent
         directories.append(directory)
         turns.append(json.loads((directory / "material.json").read_text()))
@@ -593,7 +596,7 @@ def test_project_quote_round_failure_keeps_first_write_accepted(atlas, monkeypat
 
 def test_project_quote_round_that_shrinks_the_page_restores_the_first_page(atlas):
     saved = []
-    detail = (atlas.messages[0]["text"] + " ") * 80 + "[1]\n"
+    detail = (atlas.messages[0]["text"] + " ") * 120 + "[1]\n"
 
     def page_from(prompt):
         if not saved:
@@ -682,7 +685,8 @@ def test_projects_shows_the_order_and_the_cost_and_spends_nothing(world, monkeyp
     assert result.exit_code == 0, result.output
     assert "projects/tide.md  (last active" in result.stdout and "first write" in result.stdout
     assert "Cost: 1 model call(s)" in result.stdout and "Nothing was spent." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def _two_active_projects(world):
@@ -726,7 +730,8 @@ def test_ctrl_c_in_projects_write_names_what_was_written_and_the_next_command(wo
     result = CliRunner().invoke(app, ["rem", "--root", str(world.root), "projects", "write"])
     assert result.exit_code == 130
     assert f"Stopped: 1 page written before the stop ({done[0]}), and kept." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def test_one_new_message_is_singular(world):
@@ -893,6 +898,43 @@ def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_p
     assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
 
 
+def test_implementation_evidence_neither_reads_nor_lists_diary_files(tmp_path):
+    repo = tmp_path / 'work'
+    (repo / 'journal').mkdir(parents=True)
+    (repo / 'journal/PEOPLE.md').write_text('Mia Chen [sensitive] diary entry.')
+    (repo / 'PEOPLE.md').write_text('Avery Lin reviews the delivery.')
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Avery Lin', '-c',
+                    'user.email=avery@example.org', 'commit', '-qm', 'Add invented notes'], check=True)
+    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert {item['subject'] for item in items} == {'tracked-files', 'PEOPLE.md'}
+    assert 'journal' not in items[0]['text'] and 'PEOPLE.md' in items[0]['text']
+    assert any('Avery Lin reviews the delivery.' in item['text'] for item in items)
+    assert all('[sensitive]' not in item['text'] for item in items)
+
+
+def test_pending_excludes_messages_typed_in_diary_subfolders(world):
+    record = 'projects/tide.md'
+    codex(world.codex / 'rollout-j.jsonl', '/work/tide/journal',
+          [('user', 'Mia Chen [sensitive] diary entry.', 1)])
+    codex(world.codex / 'rollout-a.jsonl', '/work/tide',
+          [('user', 'Avery Lin reviews the delivery.', 2)])
+    extract(world.root, world.subs)
+    messages = stored(world.root, record)
+    assert {m['cwd'] for m in messages} == {'/work/tide', '/work/tide/journal'}
+
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'first'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+    mark_written(world.root, record, ago(3))
+    messages, mode = project_pages.pending(world.root, record)
+    assert mode == 'update'
+    assert [m['text'] for m in messages] == ['Avery Lin reviews the delivery.']
+
+
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
     """#2079: by recency alone a fresh init wrote the owner's private journal
     before LayeredVisions (28 sessions) and browser (17)."""
@@ -1033,3 +1075,23 @@ def test_a_cited_file_that_is_not_utf8_is_read_not_a_crash(tmp_path, monkeypatch
     monkeypatch.setattr("connectonion.rem.investigate.project_paths", lambda page: [str(repo)])
     snapshot = live_file_snapshot("", f"file:{note}@{hashlib.sha256(note.read_bytes()).hexdigest()}")
     assert "8% of net" in snapshot["text"]
+
+
+def test_a_project_under_a_diary_named_parent_is_private_until_investigated_on_purpose(world):
+    """Review of #2618: a whole-path rule dropped the sessions of ~/Personal/shop-app, but
+    `private()` read only the folder's own name, so the page could never be opted in."""
+    record = 'projects/shop-app.md'
+    world.notebook.stub_project(record, 'shop-app', ['/Users/a/Personal/shop-app'])
+    codex(world.codex / 'rollout-s.jsonl', '/Users/a/Personal/shop-app',
+          [('user', 'Ship the checkout page.', 1)])
+    extract(world.root, world.subs)
+    assert project_pages.private(record, world.notebook.read(record))
+    assert project_pages.pending(world.root, record)[0] == []
+
+    page = re.sub(r'^Investigation: .*$', 'Investigation: investigated 2026-10-20', world.notebook.read(record), flags=re.M)
+    world.notebook.write(record, page)
+    messages, mode = project_pages.pending(world.root, record)
+    assert [m['text'] for m in messages] == ['Ship the checkout page.']
+
+    world.notebook.stub_project('projects/atlas.md', 'atlas', ['/private/tmp/work/atlas'])
+    assert not project_pages.private('projects/atlas.md', world.notebook.read('projects/atlas.md'))

@@ -583,3 +583,30 @@ def test_a_usage_error_inside_a_provider_points_at_that_verbs_help(tmp_path):
     assert done.returncode == 2
     assert "Next: co telegram reply --help" in done.stderr, done.stderr
     assert "co commands" not in done.stderr
+
+
+@pytest.mark.parametrize('context',[0,2])
+def test_receive_cli_hands_attachment_references_to_the_program_without_raw(cli,box,context):
+    item=Message(id='om_zip',chat='oc_a',sender='on_x',text='[file]',kind='file',
+        at='2026-10-22T00:00:00Z',attachments=[{'type':'file','key':'file_zip','name':'receipts.zip'}],
+        sender_ids={'open_id':'ou_client'},raw={'private':'not prompt input'})
+    box.deliver(item,raw=True)
+    result=CliRunner().invoke(cli,['feishu','receive','--no-start','-t','0','--context',str(context)])
+    assert result.exit_code==0,result.output
+    got=json.loads(result.stdout)
+    assert got['attachments']==item.attachments and got['sender_ids']==item.sender_ids
+    assert got['kind']=='file' and 'raw' not in got and 'private' not in result.stdout
+
+
+def test_consume_passes_resource_metadata_on_stdin_and_silence_sends_no_reply(box,fake,monkeypatch):
+    monkeypatch.setattr(Inbox,'ensure_listener',lambda self,**_:1)
+    item=Message(id='om_zip',chat='oc_a',sender='on_x',text='[file]',kind='file',
+        at='2026-10-22T00:00:00Z',attachments=[{'type':'file','key':'file_zip','name':'receipts.zip'}],
+        sender_ids={'open_id':'ou_client'},raw={'private':'not prompt input'})
+    box.deliver(item,raw=True)
+    command=('import json,sys; m=json.load(sys.stdin); '
+             'assert m["kind"]=="file"; assert m["attachments"][0]["key"]=="file_zip"; '
+             'assert m["sender_ids"]["open_id"]=="ou_client"; assert "raw" not in m')
+    listen_commands.handle_consume('feishu',[sys.executable,'-c',command],once=True)
+    assert fake.sent==[]
+    assert 'om_zip' in box.completed.read_text()

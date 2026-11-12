@@ -32,15 +32,15 @@ def _pip_spy(monkeypatch, returncode=0, stdout="", stderr="", after=None):
         return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
     monkeypatch.setattr(installer.subprocess, "run", run)
-    versions = iter(after if after is not None else ["0.0.14"])
+    versions = iter(after if after is not None else ["0.0.15"])
     monkeypatch.setattr(
-        installer, "_installed_version", lambda: next(versions, "0.0.14")
+        installer, "_installed_version", lambda: next(versions, "0.0.15")
     )
     return calls
 
 
 def test_an_existing_client_is_left_alone_and_pip_is_never_started(monkeypatch):
-    monkeypatch.setattr(installer, "_installed_version", lambda: "0.0.14")
+    monkeypatch.setattr(installer, "_installed_version", lambda: "0.0.15")
     monkeypatch.setattr(
         installer.subprocess,
         "run",
@@ -49,7 +49,7 @@ def test_an_existing_client_is_left_alone_and_pip_is_never_started(monkeypatch):
 
     result = installer.install_onionwright()
 
-    assert result == installer.InstallResult(version="0.0.14", already_installed=True)
+    assert result == installer.InstallResult(version="0.0.15", already_installed=True)
 
 
 def test_a_newer_client_also_counts_as_present(monkeypatch):
@@ -63,20 +63,20 @@ def test_a_newer_client_also_counts_as_present(monkeypatch):
 
 
 def test_it_asks_pypi_for_the_package_not_a_local_file(monkeypatch):
-    calls = _pip_spy(monkeypatch, after=[None, "0.0.14"])
+    calls = _pip_spy(monkeypatch, after=[None, "0.0.15"])
 
     installer.install_onionwright()
 
     assert len(calls) == 1
     command = calls[0]
     assert command[1:4] == ["-m", "pip", "install"]
-    assert command[-1] == "onionwright>=0.0.14"
+    assert command[-1] == "onionwright>=0.0.15"
     assert not any(str(arg).endswith(".whl") for arg in command)
     assert "--break-system-packages" not in command
 
 
 def test_the_override_is_passed_to_pip_only_when_asked(monkeypatch):
-    calls = _pip_spy(monkeypatch, after=[None, "0.0.14"])
+    calls = _pip_spy(monkeypatch, after=[None, "0.0.15"])
 
     installer.install_onionwright(break_system_packages=True)
 
@@ -162,13 +162,13 @@ def test_cli_install_returns_before_contacting_browser_daemon(monkeypatch, capsy
         installer,
         "install_onionwright",
         lambda **kwargs: installer.InstallResult(
-            version="0.0.14", already_installed=False
+            version="0.0.15", already_installed=False
         ),
     )
 
     assert browser_commands.handle_browser(["install-onion"]) == 0
     output = capsys.readouterr()
-    assert "Installed Onionwright 0.0.14 from PyPI" in output.out
+    assert "Installed Onionwright 0.0.15 from PyPI" in output.out
     # stderr carries only the next-step tip — no daemon error, no traceback.
     assert output.err.strip() == "Use it:  co browser --engine wtf <function> [args]"
 

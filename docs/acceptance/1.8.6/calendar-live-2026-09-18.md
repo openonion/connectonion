@@ -1,8 +1,10 @@
 # Calendar full journey — 18 September 2026
 
+Mailbox addresses are anonymized below.
+
 Candidate: `main` at `b4a73c0f` (published as **1.8.6a2**). Run against the real
-Google account `openonionai@gmail.com`, inviting our own Outlook mailbox
-`xietianle@outlook.com` so that **delivery is verifiable from the other side**
+Google account `team@example.org`, inviting our own Outlook mailbox
+`ellis@example.org` so that **delivery is verifiable from the other side**
 without involving anybody outside the company. Times are UTC.
 
 > #1547 asks for one thing above all the others: *distinguish API acceptance
@@ -13,18 +15,18 @@ without involving anybody outside the company. Times are UTC.
 
 ## Setup
 
-- Organiser: `openonionai@gmail.com`, through `co gcalendar`.
-- Invitee: `xietianle@outlook.com`, read back with `co outlook inbox`.
+- Organiser: `team@example.org`, through `co gcalendar`.
+- Invitee: `ellis@example.org`, read back with `co outlook inbox`.
 - Event `9k1cv3k3229p75hus8q2ltcm4g`, titled `ACCEPT-cal-133803`.
 
 ## The journey
 
-**1 — Invite.** `co gcalendar create … --attendees xietianle@outlook.com --yes`
+**1 — Invite.** `co gcalendar create … --attendees ellis@example.org --yes`
 
 ```
 Event created: ACCEPT-cal-133803
 Start: 2026-09-25 10:00 AM +10:00
-Invitations sent: xietianle@outlook.com
+Invitations sent: ellis@example.org
 ```
 
 Two merged fixes are visible in those three lines: the confirmation *names who
@@ -35,7 +37,7 @@ converted to UTC (#1550/#1552) — an event at 10:00 +10:00 used to print as
 **Delivery confirmed** in the invited mailbox 10 seconds later:
 
 ```
-From:    openonion ai <openonionai@gmail.com>
+From:    openonion ai <team@example.org>
 Subject: Invitation: ACCEPT-cal-133803 @ Fri Sep 25, 2026 10am - 10:30am (AEST)
 Date:    2026-09-18T03:38:21Z
 ```
@@ -48,13 +50,13 @@ wipes an existing RSVP, and that code reads the field, not the gesture that set
 it — so a field set through the API exercises the same path. The click itself
 remains unexercised.
 
-**3 — Add an attendee.** `co gcalendar update … --attendees "xietianle@outlook.com,aaron@openonion.ai" --yes`
+**3 — Add an attendee.** `co gcalendar update … --attendees "ellis@example.org,ellis.work@example.org" --yes`
 
 Read back from Google:
 
 ```
-xietianle@outlook.com -> accepted
-aaron@openonion.ai    -> needsAction
+ellis@example.org -> accepted
+ellis.work@example.org    -> needsAction
 ```
 
 **This is the bug #1558 fixed, confirmed live.** Before it, the edit sent bare
@@ -66,8 +68,8 @@ somebody else being added.
 
 ```
 status: confirmed | start: 2026-09-25T15:00:00+10:00
-xietianle@outlook.com -> needsAction
-aaron@openonion.ai    -> needsAction
+ellis@example.org -> needsAction
+ellis.work@example.org    -> needsAction
 ```
 
 The accepted RSVP went back to `needsAction`, and that is **correct, not a

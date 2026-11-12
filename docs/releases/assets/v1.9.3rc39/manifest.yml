@@ -1,0 +1,2 @@
+version: v1.9.3rc39
+no_visual_change: "Scheduling and CLI-flow changes only: the native Scheduled session runs co rem next / submit instead of co rem sync; co init renders a scheduler error in one line and falls back to launchd. New terminal text; no reader layout, CSS or component changes."

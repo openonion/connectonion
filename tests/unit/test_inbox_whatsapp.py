@@ -570,10 +570,10 @@ def test_a_sender_arrives_with_a_name_a_person_would_recognise(sdk, tmp_path, mo
 def test_a_lid_sender_is_named_through_its_own_contact_row(sdk, tmp_path, monkeypatch):
     # Most of them have one: 857 of the 2020 rows on a real store are @lid.
     session = tmp_path / "session.db"
-    contacts_db(session, rows=[("126121882435737@lid", None, None, "aaronplus1996", None)])
+    contacts_db(session, rows=[("126121882435737@lid", None, None, "ellis.a", None)])
     monkeypatch.setenv("WHATSAPP_SESSION", str(session))
 
-    assert WhatsApp().name_of("126121882435737@lid") == "aaronplus1996"
+    assert WhatsApp().name_of("126121882435737@lid") == "ellis.a"
 
 
 def test_a_lid_with_no_row_is_named_through_the_number_it_belongs_to(sdk, tmp_path, monkeypatch):

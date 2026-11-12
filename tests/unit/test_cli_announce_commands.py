@@ -14,9 +14,7 @@ def isolated_announce_home(tmp_path, monkeypatch):
     skills_dir = co_home / "skills"
     agent_json = co_home / "agent.json"
 
-    monkeypatch.setattr(announce, "CO_HOME", co_home)
-    monkeypatch.setattr(announce, "SKILLS_DIR", skills_dir)
-    monkeypatch.setattr(announce, "AGENT_JSON", agent_json)
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(co_home))
 
     skills_dir.mkdir(parents=True)
     agent_json.write_text(

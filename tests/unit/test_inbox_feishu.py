@@ -66,6 +66,7 @@ def test_a_group_mention_becomes_a_message_with_the_name_put_back(creds):
 
     assert message.to_dict() == {
         "id": "om_9f8e", "chat": "oc_a1b2", "thread": None, "sender": "on_7c6d",
+        "sender_ids": {"union_id": "on_7c6d", "open_id": "ou_1"},
         "sender_name": "", "text": "@OpsAgent look at the deploy", "kind": "text", "quoted": None, "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
@@ -496,7 +497,9 @@ def test_a_reply_carries_markdown_as_a_post_and_plain_stays_text(creds, monkeypa
 def test_reaction_and_read_receipt_events_are_acked_and_never_become_messages(creds, monkeypatch, tmp_path):
     """#1618: an app subscribed to reactions or read receipts got
     "processor not found" from the SDK on every one, and Feishu retried
-    them. They are acknowledged now, and none of them is a message to answer.
+    them. They are acknowledged now, and none of them is a message to answer:
+    read receipts and removals are dropped, and a reaction on a message this
+    inbox never saw has no chat to file it under (#2690 records the rest).
     Uses the real lark_oapi dispatcher, so the SDK's own lookup is tested."""
     lark = pytest.importorskip("lark_oapi")
     from connectonion.inbox.store import Inbox
@@ -527,3 +530,230 @@ def test_reaction_and_read_receipt_events_are_acked_and_never_become_messages(cr
 
     assert len(outcomes) == 3, "every subscribed event had a processor"
     assert box.unread() == [], "a reaction is not a message to answer"
+
+
+@pytest.mark.parametrize('kind,content', [
+    ('image', {'image_key':'img_original'}),
+    ('file', {'file_key':'file_archive','file_name':'8月发票.zip'}),
+    ('audio', {'file_key':'file_voice','duration':1200}),
+    ('media', {'file_key':'file_video','file_name':'clip.mp4'}),
+    ('sticker', {'file_key':'file_sticker'}),
+])
+def test_nontext_events_keep_their_kind(creds,kind,content):
+    message=Feishu().to_message(event(message_type=kind,text=json.dumps(content)))
+    assert message.kind==kind
+
+
+def test_file_and_image_references_reach_a_plain_inbox_consumer_without_raw(creds,tmp_path):
+    from connectonion.inbox.store import Inbox
+    box=Inbox('feishu',home=tmp_path)
+    message=Feishu().to_message(event(message_type='file',text=json.dumps({
+        'file_key':'file_archive','file_name':'8月发票.zip'})))
+    box.deliver(message)
+    claimed=box.receive(timeout=0)
+    assert claimed.kind=='file'
+    assert claimed.attachments==[{'type':'file','key':'file_archive','name':'8月发票.zip'}]
+    assert claimed.raw is None
+    assert json.loads(claimed.to_json())['attachments']==claimed.attachments
+    assert box.lookup(claimed.id).attachments==claimed.attachments
+
+
+def test_mixed_rich_post_retains_separate_files_images_and_sender_open_id(creds,tmp_path):
+    from connectonion.inbox.store import Inbox
+    # The actual post shape has attachments beside content, not inside text runs.
+    body={'content':[[{'tag':'text','text':'请处理这批发票'},
+                      {'tag':'img','image_key':'img_original'}]],
+          'files':[{'file_key':'file_pdf','file_name':'invoice.pdf','is_folder':False},
+                   {'file_key':'file_zip','file_name':'invoices.zip','is_folder':False}]}
+    message=Feishu().to_message(event(message_type='post',text=json.dumps(body)))
+    box=Inbox('feishu',home=tmp_path);box.deliver(message)
+    got=box.receive(timeout=0)
+    assert got.kind=='post'
+    assert got.text=='请处理这批发票'
+    assert got.sender=='on_7c6d'  # Preserve the existing canonical sender contract.
+    assert got.sender_ids=={'union_id':'on_7c6d','open_id':'ou_1'}
+    assert got.attachments==[{'type':'file','key':'file_pdf','name':'invoice.pdf'},
+                             {'type':'file','key':'file_zip','name':'invoices.zip'},
+                             {'type':'image','key':'img_original'}]
+    assert 'raw' not in got.to_dict()
+
+
+def test_file_only_rich_post_is_not_an_empty_text_message(creds):
+    content={'content':[[]],'files':[{'file_key':'file_pdf','file_name':'invoice.pdf'}]}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.kind=='post'
+    assert got.attachments==[{'type':'file','key':'file_pdf','name':'invoice.pdf'}]
+
+
+def test_localized_rich_post_keeps_attachment_keys_without_duplicate_references(creds):
+    content={'zh_cn':{'content':[[{'tag':'text','text':'发票'},{'tag':'img','image_key':'img_a'},
+        {'tag':'img','image_key':'img_a'}]],'files':[{'file_key':'file_a','file_name':'a.pdf'}]}}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.text=='发票'
+    assert got.attachments==[{'type':'file','key':'file_a','name':'a.pdf'},{'type':'image','key':'img_a'}]
+
+
+def test_plain_rich_text_stays_text_and_old_plain_messages_keep_optional_fields_absent(creds):
+    post=json.dumps({'content':[[{'tag':'text','text':'hello'}]]})
+    got=Feishu().to_message(event(message_type='post',text=post))
+    assert got.kind=='text'
+    assert not got.attachments
+    from connectonion.inbox.store import Message
+    old=Message.from_dict({'id':'old','chat':'chat','text':'hello'})
+    assert old.attachments is None and old.sender_ids is None
+    assert 'attachments' not in old.to_dict() and 'sender_ids' not in old.to_dict()
+
+
+def test_resource_metadata_is_whitelisted_and_folder_is_not_a_file(creds):
+    content={'content':[[]],'files':[
+        {'file_key':'folder_a','file_name':'receipts','is_folder':True,'token':'private'},
+        {'file_key':'file_a','file_name':'invoice.pdf','is_folder':False,'secret':'private','url':'https://private'}],
+        'internal':{'content':[[{'tag':'text','text':'not a localized message'}]]}}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.attachments==[{'type':'folder','key':'folder_a','name':'receipts'},
+                             {'type':'file','key':'file_a','name':'invoice.pdf'}]
+    assert 'private' not in got.to_json() and 'internal' not in got.to_json()
+    assert not got.text
+
+
+def test_multiple_locale_resources_dedupe_without_losing_distinct_originals(creds):
+    body={'content':[[{'tag':'text','text':'receipt'},{'tag':'img','image_key':'img_a'}]],
+          'files':[{'file_key':'file_a','file_name':'a.pdf'}]}
+    got=Feishu().to_message(event(message_type='post',text=json.dumps({'en_us':body,'zh_cn':body})))
+    assert got.text=='receipt'
+    assert len(got.attachments)==2
+
+
+@pytest.mark.parametrize('brand',['feishu','lark'])
+def test_both_brands_normalize_the_same_file_payload(brand):
+    got=Feishu(brand).to_message(event(message_type='file',text='{"file_key":"file_a","file_name":"a.pdf"}'))
+    assert got.kind=='file' and got.attachments==[{'type':'file','key':'file_a','name':'a.pdf'}]
+
+
+@pytest.mark.parametrize('body',[
+    {'title':'交通费用途说明','content':[[]]},
+    {'title':'交通费用途说明','content':[[{'tag':'img','image_key':'img_a'}]]},
+    {'zh_cn':{'title':'交通费用途说明','content':[[{'tag':'img','image_key':'img_a'}]]}},
+])
+def test_post_title_carrying_expense_purpose_is_not_lost(creds,body):
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(body)))
+    assert got.text=='交通费用途说明'
+
+
+@pytest.mark.parametrize('localized',[False,True])
+def test_embedded_media_keeps_original_file_reference_without_treating_cover_as_original(creds,localized):
+    body={'content':[[{'tag':'media','file_key':'file_video','image_key':'img_cover'},
+                      {'tag':'media','file_key':'file_video','image_key':'img_cover'}]]}
+    content={'zh_cn':body} if localized else body
+    got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
+    assert got.kind=='post'
+    assert got.attachments==[{'type':'media','key':'file_video'}]
+
+
+# ---- #2690: every Lark event a WhatsApp listener would record ---------------
+# Payloads are Lark's documented schema-2.0 shapes for each event type, fed
+# through the real lark_oapi dispatcher and the real to_message, so the SDK's
+# own parsing is under test, not a SimpleNamespace stand-in.
+
+def _envelope(event_type, event_id, body):
+    return json.dumps({"schema": "2.0", "header": {
+        "event_id": event_id, "event_type": event_type, "create_time": "1756808267000",
+        "token": "", "app_id": "cli_test", "tenant_key": "t1"}, "event": body}).encode()
+
+
+def _receive(message_id, chat_id, chat_type, message_type, content, root_id=""):
+    return {"sender": {"sender_id": {"union_id": "on_1", "user_id": "u1", "open_id": "ou_1"},
+                       "sender_type": "user", "tenant_key": "t1"},
+            "message": {"message_id": message_id, "root_id": root_id, "parent_id": root_id,
+                        "create_time": "1756808267000", "update_time": "1756808267000",
+                        "chat_id": chat_id, "chat_type": chat_type, "message_type": message_type,
+                        "content": json.dumps(content), "user_agent": ""}}
+
+
+OPERATOR = {"open_id": "ou_1", "union_id": "on_1", "user_id": "u1"}
+LARK_EVENTS = [
+    ("im.message.receive_v1", "ev_file",
+     _receive("om_file", "oc_dm", "p2p", "file", {"file_key": "file_v3_1", "file_name": "invoice.pdf"})),
+    ("im.message.receive_v1", "ev_image",
+     _receive("om_image", "oc_dm", "p2p", "image", {"image_key": "img_v3_1"})),
+    ("im.message.reaction.created_v1", "ev_reaction",
+     {"message_id": "om_file", "reaction_type": {"emoji_type": "THUMBSUP"}, "operator_type": "user",
+      "user_id": OPERATOR, "action_time": "1756808268000"}),
+    ("im.message.recalled_v1", "ev_recall",
+     {"message_id": "om_image", "chat_id": "oc_dm", "recall_time": "1756808269000",
+      "recall_type": "message_owner"}),
+    ("im.chat.member.bot.added_v1", "ev_bot_added",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False,
+      "operator_tenant_key": "t1", "name": "Ops"}),
+    ("im.chat.member.user.added_v1", "ev_user_added",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "name": "Ops", "users": [{"name": "Alice", "tenant_key": "t1",
+                                "user_id": {"open_id": "ou_2", "union_id": "on_2"}}]}),
+    ("im.chat.member.user.deleted_v1", "ev_user_deleted",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "name": "Ops", "users": [{"name": "Bob", "tenant_key": "t1",
+                                "user_id": {"open_id": "ou_3", "union_id": "on_3"}}]}),
+    ("im.chat.updated_v1", "ev_chat_updated",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "after_change": {"name": "Ops 2"}, "before_change": {"name": "Ops"}}),
+]
+
+
+def _run_lark_events(monkeypatch, tmp_path, events):
+    lark = pytest.importorskip("lark_oapi")
+    from connectonion.inbox.store import Inbox
+
+    class FakeWs:
+        def __init__(self, *a, event_handler=None, **k):
+            self.handler = event_handler
+            self.on_reconnecting = self.on_reconnected = None
+
+        def start(self):
+            for event_type, event_id, body in events:
+                self.handler._do_without_validation(_envelope(event_type, event_id, body))
+
+    monkeypatch.setattr(lark.ws, "Client", FakeWs)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
+    box = Inbox("lark", home=tmp_path / "lark")
+    Feishu("lark").run(box)
+    ids = [json.loads(line)["id"] for line in box.received.read_text().splitlines()] if box.received.exists() else []
+    assert len(ids) == len(set(ids)), "each event is one record"
+    return box, {i: box.lookup(i) for i in ids}
+
+
+def test_files_images_reactions_recalls_and_group_events_all_reach_the_inbox(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARK_APP_ID", "cli_test")
+    monkeypatch.setenv("LARK_APP_SECRET", "s3cret")
+    box, got = _run_lark_events(monkeypatch, tmp_path, LARK_EVENTS)
+
+    assert got["om_file"].kind == "file" and got["om_file"].mentioned
+    assert got["om_file"].attachments == [{"type": "file", "key": "file_v3_1", "name": "invoice.pdf"}]
+    assert got["om_image"].kind == "image"
+    assert got["om_image"].attachments == [{"type": "image", "key": "img_v3_1"}]
+
+    reaction = got["ev_reaction"]
+    assert (reaction.kind, reaction.chat, reaction.mentioned) == ("reaction", "oc_dm", False)
+    assert "THUMBSUP" in reaction.text and "om_file" in reaction.text
+
+    recall = got["ev_recall"]
+    assert (recall.kind, recall.chat, recall.mentioned) == ("recall", "oc_dm", False)
+    assert "om_image" in recall.text
+
+    joined = got["ev_bot_added"]
+    assert (joined.kind, joined.chat, joined.mentioned) == ("joined", "oc_group", True)
+    assert "Ops" in joined.text
+
+    assert got["ev_user_added"].kind == "group-info" and "Alice" in got["ev_user_added"].text
+    assert got["ev_user_deleted"].kind == "group-info" and "Bob" in got["ev_user_deleted"].text
+    assert got["ev_chat_updated"].kind == "group-info" and not got["ev_chat_updated"].mentioned
+
+
+def test_a_redelivered_group_event_is_recorded_once(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARK_APP_ID", "cli_test")
+    monkeypatch.setenv("LARK_APP_SECRET", "s3cret")
+    added = [e for e in LARK_EVENTS if e[1] == "ev_bot_added"]
+    box, got = _run_lark_events(monkeypatch, tmp_path, added + added)
+    assert list(got) == ["ev_bot_added"]

@@ -40,7 +40,7 @@ reason anywhere except in the original discussion.
 
 **The agent found the command on its own.** With ConnectOnion's command index in
 `~/.codex/AGENTS.md`, a fresh Codex given only "hand the task we just discussed
-to aaron.xie@mail.openonion.ai" ran `co handoff --help`, then
+to ellis.yew@example.org" ran `co handoff --help`, then
 `co handoff send`. Without the right `co` on its PATH it did something worse:
 it fell back to scheduling an Outlook email from the owner's own account. The
 index is what turns "hand off" into the right command instead of an improvised

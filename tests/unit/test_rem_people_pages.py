@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from connectonion.rem import daily, people_pages
-from connectonion.rem.config import prepare as prepare_notebook
+from connectonion.rem.config import prepare as prepare_notebook, set_config
 from connectonion.rem.files import Notebook, state_path, write_json
 from connectonion.rem.people_pages import correspondents_since, estimate, queue, write_pages
 from connectonion.rem.runner import RunFailed
@@ -44,6 +44,7 @@ def mail(sender, to, date, subject="Hello"):
 def root(tmp_path):
     root = tmp_path / "rem"
     prepare_notebook(root)
+    set_config(root, ["schedule.timezone", "UTC"])
     notebook = Notebook(root)
     rows = []
     for slug, name, days in (("ada", "Ada Lovelace", 2), ("bob", "Bob Stone", 30), ("cy", "Cy Young", 5),
@@ -85,9 +86,10 @@ def test_a_page_investigated_since_its_last_mail_waits(root):
     assert "people/ada.md" not in {row["record"] for row in queue(root)}
 
 
-def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(root):
-    investigated(root, "people/ada.md", (NOW - timedelta(days=10)).date().isoformat())
-    row = next(row for row in queue(root) if row["record"] == "people/ada.md")
+@pytest.mark.parametrize("now", [NOW, NOW + timedelta(days=1)])
+def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(root, now):
+    investigated(root, "people/ada.md", (now - timedelta(days=10)).date().isoformat())
+    row = next(row for row in queue(root, now=now) if row["record"] == "people/ada.md")
     assert (row["mode"], row["days"]) == ("update", 11)
 
 
@@ -181,6 +183,8 @@ def _round(monkeypatch, *, clients=None, meter=None):
     monkeypatch.setattr(daily, "subscriptions", lambda root: {})
     monkeypatch.setattr(daily, "_clients", lambda sources: clients or {})
     monkeypatch.setattr(daily.quota, "read", lambda config, request=None: meter or {"unknown": "no meter"})
+    # The owner's own refresh has its tests in test_rem_daily_round.py.
+    monkeypatch.setattr(daily, "_owner_due", lambda root: [])
 
 
 def no_change(root):
@@ -236,15 +240,28 @@ def test_a_person_with_nothing_new_is_named_so_and_costs_the_portion_no_call(roo
     assert result["outcome"] == "completed" and result["run"]["pages"][0]["outcome"] == "nothing_new"
 
 
-def test_later_runs_follow_only_what_is_new(root, monkeypatch):
+@pytest.mark.parametrize("now", [NOW, NOW + timedelta(days=1)])
+def test_later_runs_follow_only_what_is_new(root, monkeypatch, now):
+    now = now.replace(hour=12, minute=0, second=0, microsecond=0)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    monkeypatch.setattr(people_pages, "datetime", Clock)
+    monkeypatch.setattr(daily, "now", lambda: now)
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: now)
     client = FakeMail([])
     _round(monkeypatch, clients={"gmail": client})
     first = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: {})
     assert first["run"]["phase"] == "daily-investigation"
-    for slug in ("ada", "bob", "cy", "dee"):
-        investigated(root, f"people/{slug}.md", (NOW - timedelta(days=4)).date().isoformat())
+    for slug in ("ada", "bob", "cy", "dee", "owner"):
+        investigated(root, f"people/{slug}.md", (now - timedelta(days=4)).date().isoformat())
     # Bob writes after the first run; nobody else does.
-    client.messages.append(mail("Bob <bob@example.org>", OWNER, datetime.now(timezone.utc).isoformat()))
+    now += timedelta(seconds=1)
+    client.messages.append(mail("Bob <bob@example.org>", OWNER, now.isoformat()))
+    now += timedelta(seconds=1)
     followed, projects = [], []
     second = daily.run_daily(root, maintain=no_change,
                              person_one=lambda root, row, **kw: followed.append((row["record"], row["mode"],
@@ -252,7 +269,7 @@ def test_later_runs_follow_only_what_is_new(root, monkeypatch):
                              project_one=lambda root, record, **kw: projects.append(record) or {})
     assert second["run"]["phase"] == "daily-update" and second["run"]["runner_attempts"] == 1
     assert followed == [("people/bob.md", "update", 5)] and projects == []
-    assert len(client.listings) == 1                                  # one listing, not a search per person
+    assert len(client.listings) == 2                                  # one listing per round, including the first
     third = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: pytest.fail("nothing is new"))
     assert third["reason"] == "nothing_new"
 
@@ -272,6 +289,9 @@ def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypat
     from connectonion.rem import project_pages
     _round(monkeypatch)
     daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: {})
+    # The injected investigator above does not write pages; model its successful writes.
+    for slug in ("ada", "bob", "cy", "dee", "owner"):
+        investigated(root, f"people/{slug}.md", NOW.date().isoformat())
     calls = []
     monkeypatch.setattr(project_pages, "queue", lambda root, since="", **kw: calls.append(since) or [
         {"record": "projects/tide.md", "mode": "update", "last_activity": ago(0), "recent": True}])
@@ -440,3 +460,36 @@ def test_a_company_left_unknown_before_its_organisation_page_existed_is_filled_a
     number = re.search(r"^- \[(\d+)\] gmail:\w{12} — ", page, re.M)[1]
     assert f"- Company: [The University](../{org}) [{number}]" in page
     assert people_pages.fill_companies(tmp_path) == []
+
+
+def test_people_update_window_uses_the_notebook_day(tmp_path):
+    from connectonion.rem.config import set_config
+
+    prepare_notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale", email="robin@tide.example")
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/robin.md", "last": "2026-11-06T00:30:00+00:00", "mails": 2, "sent": 1}]})
+    write_json(state_path(tmp_path, "people/investigated.json"), {
+        "people/robin.md": "2026-11-05T12:00:00+00:00"})
+    [row] = queue(tmp_path, now=datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    assert row["mode"] == "update" and row["days"] == 1
+
+
+@pytest.mark.parametrize("zone, hours, recent", [
+    ("Pacific/Honolulu", -5, False), ("Pacific/Kiritimati", 5, True),
+])
+def test_people_recency_compares_instants_across_notebook_zones(tmp_path, zone, hours, recent):
+    from connectonion.rem.config import set_config
+
+    prepare_notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", zone])
+    moment = datetime(2026, 11, 6, 1, tzinfo=timezone.utc)
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale", email="robin@tide.example")
+    last = (moment - timedelta(days=14) + timedelta(hours=hours)).isoformat()
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/robin.md", "last": last, "mails": 2, "sent": 1}]})
+    [row] = queue(tmp_path, now=moment)
+    assert row["recent"] is recent

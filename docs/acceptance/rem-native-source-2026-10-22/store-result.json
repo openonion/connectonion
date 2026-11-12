@@ -1,0 +1,18 @@
+{
+  "native_module_sha256": "50c7cf9c144594cfa6f33298e977f0b144976cc70c579f59fdc7242615c4af98",
+  "isolated_root": "/var/folders/4b/zx85b68j3v766zr3vngl54sw0000gn/T/rem-native-source-verified-1jt7HI",
+  "actual_native_create_writes_file_and_database": true,
+  "native_list_accepts_structure": true,
+  "native_rrule_computes_next_run": true,
+  "native_due_selector_accepts_task": true,
+  "native_pause_removes_due_slot": true,
+  "file_only_rebuilds_index_in_legacy_mode": true,
+  "owner_migration_filters_legacy": true,
+  "owner_cache_registration_visible": true,
+  "remote_sync_prunes_unregistered_owner_rows": true,
+  "native_delete_cleans_file_and_row": true,
+  "desktop_electron_surface_stubbed": true,
+  "sqlite_driver": "real better-sqlite3",
+  "live_desktop_trigger_tested": false,
+  "model_calls": 0
+}

@@ -350,8 +350,8 @@ def test_co_email_read_keeps_a_long_code_on_one_line(monkeypatch):
     code = "coh1." + "x" * 300
     monkeypatch.setattr("connectonion.cli.commands.email_commands._require_auth", lambda: True)
     import connectonion.useful_tools.get_emails  # noqa: F401  (the module; the package re-exports the function)
-    monkeypatch.setattr(sys.modules["connectonion.useful_tools.get_emails"], "get_emails", lambda last: [
-        {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"}])
+    monkeypatch.setattr(sys.modules["connectonion.useful_tools.get_emails"], "get_email", lambda email_id:
+        {"id": "7", "from": "a@b.c", "subject": "s", "timestamp": "t", "message": f"run co handoff accept {code} [now]"})
     result = runner.invoke(app, ["email", "read", "7"], env={"COLUMNS": "80", "NO_COLOR": "1"})
     assert f"co handoff accept {code} [now]" in result.output
 
@@ -808,10 +808,10 @@ def test_the_preview_warns_that_unpushed_code_cannot_reach_them(world):
 
 
 def test_the_preview_lists_every_private_detail(world):
-    talk = [{"at": "", "user": " ".join(f"/Users/aaron/p{i}/x" for i in range(13)), "ai": ""}]
+    talk = [{"at": "", "user": " ".join(f"/Users/ellis/p{i}/x" for i in range(13)), "ai": ""}]
     shown = _preview(world, dict(_bundle(RECIPIENT["mail"]), conversation=talk))
     assert "Private details in it (13)" in shown
-    assert "  conversation[0].user: /Users/aaron/p12/x" in shown                       # b19 listed 10 (#2451)
+    assert "  conversation[0].user: /Users/ellis/p12/x" in shown                       # b19 listed 10 (#2451)
 
 
 def test_the_sender_hears_by_mail_once_that_the_handoff_is_done_with_a_short_patch_inline(world, tmp_path, monkeypatch):
@@ -843,7 +843,7 @@ def test_the_inbox_names_the_sender_by_the_name_their_handoff_carries(world):
     _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-2b3c4d5e", "--yes")
     world["be"](RECIPIENT)
     listed = _invoke("handoff", "inbox").output
-    # b21 on Parrot listed "from 0x5fb5bef013 (0x5fb5bef013@mail…)" for a sender whose bundle said Aaron Test.
+    # b21 on Parrot listed "from 0x5fb5bef013 (0x5fb5bef013@mail…)" for a sender whose bundle said Ellis Test.
     assert f"from Alice Liddell ({SENDER['mail']})" in listed
 
 
@@ -917,7 +917,7 @@ def test_without_one_the_preview_says_the_agent_mailbox_may_read_as_spam_and_how
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     preview = " ".join(_invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d").output.split())
     assert "from your agent's mailbox" in preview and "may take for spam" in preview
-    assert "co auth google" in preview and "--via" not in preview                   # no flag for the person (Aaron)
+    assert "co auth google" in preview and "--via" not in preview                   # no flag for the person (Ellis)
 
 
 def test_via_mcp_mails_nothing_and_hands_the_mail_to_the_agents_own_mail_tool(world):
@@ -953,20 +953,20 @@ def test_a_first_mail_without_co_in_its_subject_is_still_found_in_the_inbox(worl
 
 
 def test_sent_from_outlook_it_names_the_outlook_address_even_with_gmail_connected_too(world, monkeypatch):
-    """Live b25: --via outlook said "from your Outlook (openonionai@gmail.com)", the first mailbox found."""
+    """Live b25: --via outlook said "from your Outlook (team@example.org)", the first mailbox found."""
     _FakeGmail.sent = []
-    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "g@gmail.com", "outlook": "aaron@outlook.com"})
+    monkeypatch.setattr(transport, "own_mailboxes", lambda: {"gmail": "g@gmail.com", "outlook": "ellis.outlook@example.org"})
     monkeypatch.setattr(transport, "_own_tool", lambda channel: _FakeGmail())
     world["be"](SENDER)
     drafts = Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "drafts"
     drafts.mkdir(parents=True)
     (drafts / "ho-1a2b3c4d.json").write_text(json.dumps(_bundle(RECIPIENT["mail"])))
     preview = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--via", "outlook").output
-    assert "It goes from your Outlook, aaron@outlook.com" in preview
+    assert "It goes from your Outlook, ellis.outlook@example.org" in preview
     sent = _invoke("handoff", "send", RECIPIENT["mail"], "--draft", "ho-1a2b3c4d", "--yes", "--via", "outlook")
-    assert "from your Outlook (aaron@outlook.com)" in sent.output
+    assert "from your Outlook (ellis.outlook@example.org)" in sent.output
     record = json.loads((Path(os.environ["AGENT_CONFIG_PATH"]) / "handoff" / "sent" / "ho-1a2b3c4d.json").read_text())
-    assert record["from"] == "aaron@outlook.com"
+    assert record["from"] == "ellis.outlook@example.org"
 
 
 def test_the_sender_can_take_the_page_down(world, monkeypatch):

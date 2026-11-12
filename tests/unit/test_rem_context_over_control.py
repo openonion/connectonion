@@ -12,6 +12,9 @@ from connectonion.rem.config import default_config, prepare, read_config
 from connectonion.rem.files import Notebook
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 @pytest.mark.parametrize("stage", ["init", "investigate"])
 @pytest.mark.parametrize("harness,flag,value", [
     ("codex", "--sandbox", "danger-full-access"),
