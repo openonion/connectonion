@@ -1,7 +1,7 @@
-"""Servers billed monthly in arrears (openonion/connectonion#2968, oo-api #291/#292).
+"""Servers billed monthly in advance (openonion/connectonion#2968, oo-api #291/#292).
 
 Nothing is charged at create; each month is charged when it ends; a destroy
-charges the used part of the month. The CLI shows only the backend's numbers,
+refunds the unused part of the month. The CLI shows only the backend's numbers,
 and against the backend still in production (12 months charged up front, no
 `billing` key) it must keep telling that truth instead: never "nothing is
 charged now" while a year is about to be charged.
@@ -17,7 +17,7 @@ from connectonion.cli.commands import server_commands as sc
 
 
 MONTHLY = {
-    "billing": "monthly_in_arrears", "term_months": 1, "currency": "USD",
+    "billing": "monthly_prepaid", "term_months": 1, "currency": "USD",
     "regions": ["australia-southeast1"], "default_region": "australia-southeast1",
     "default": "e2-small",
     "machine_types": {
@@ -88,12 +88,13 @@ def _prompt(pricing, balance, machine="e2-small", disk_gb=None, tty=True):
 
 
 class TestTheConfirmScreen:
-    def test_monthly_says_nothing_is_charged_now(self, capsys):
+    def test_monthly_says_the_first_month_is_charged_now(self, capsys):
         _prompt(MONTHLY, 500.0, "e2-standard-4", 200)
         out = _out(capsys)
 
         assert "$222.40 / month" in out
-        assert "charged at the end of each month from credits; nothing is charged now" in out
+        assert "first month charged now, then at the start of each month from credits" in out
+        assert "$500.00 → $277.60 after the first month" in out
         assert "200 GB pd-balanced" in out
         assert "for 12 months" not in out
 
@@ -102,7 +103,7 @@ class TestTheConfirmScreen:
 
         assert answer is False
         assert not confirm.called
-        assert "below one month ($190.00)" in _out(capsys)
+        assert "below the first month ($190.00), which is charged now" in _out(capsys)
 
     def test_the_old_backend_still_says_a_year_is_charged_now(self, capsys):
         """Production today charges 12 months at create. Saying otherwise
@@ -118,7 +119,7 @@ class TestTheConfirmScreen:
         out = _out(capsys)
 
         assert answer is False
-        assert "Nothing would be charged now; $30.00 at the end of each month" in out
+        assert "$30.00 would be charged now, then $30.00 at the start of each month" in out
         assert "--yes" in out
 
 
@@ -130,8 +131,9 @@ class TestDiskAndMachines:
              patch.object(sc, "_forget_host_key"), \
              patch.object(sc, "_wait_until_it_accepts_your_key", return_value=True), \
              patch("requests.post", return_value=_response(200, {
-                 "ssh_target": "co@203.0.113.10", "billing": "monthly_in_arrears",
-                 "charged_usd": 0.0, "usd_month": 222.4,
+                 "ssh_target": "co@203.0.113.10", "billing": "monthly_prepaid",
+                 "charged_usd": 222.4, "usd_month": 222.4,
+                 "paid_until": "2026-12-12T09:00:00+00:00",
                  "next_charge_at": "2026-12-12T09:00:00+00:00"})) as post:
             ok = sc.handle_server_new("prod", yes=True, **kwargs)
         return ok, post
@@ -161,7 +163,7 @@ class TestDiskAndMachines:
         self._new(MONTHLY, machine_type="e2-standard-4", disk_gb=200)
         out = _out(capsys)
 
-        assert "$222.40 / month — first charge 2026-12-12; $0.00 charged now" in out
+        assert "$222.40 / month — $222.40 charged now, paid until 2026-12-12; renews from credits" in out
 
     def test_an_unknown_machine_lists_what_is_sold_with_prices(self, servers_file, capsys):
         ok, _ = self._new(MONTHLY, machine_type="huge")
@@ -171,9 +173,14 @@ class TestDiskAndMachines:
         assert "e2-highmem-4 $250 / month" in out
 
 
-RUNNING = {"name": "prod", "billing": "monthly_in_arrears", "status": "running",
-           "usd_month": 222.4, "next_charge_at": "2026-12-12T09:00:00+00:00",
-           "accrued_usd": 74.13, "unpaid_usd": 0.0, "ssh_target": "co@203.0.113.10"}
+RUNNING = {"name": "prod", "billing": "monthly_prepaid", "status": "running",
+           "usd_month": 222.4, "period_start": "2026-11-12T09:00:00+00:00",
+           "paid_until": "2026-12-12T09:00:00+00:00",
+           "next_charge_at": "2026-12-12T09:00:00+00:00", "accrued_usd": 74.13,
+           "refund_if_destroyed_usd": 148.27, "unpaid_usd": 0.0,
+           "ssh_target": "co@203.0.113.10"}
+# A running server in its grace days: the month in progress could not be charged.
+IN_GRACE = {**RUNNING, "paid_until": None, "refund_if_destroyed_usd": 0.0, "unpaid_usd": 222.4}
 
 
 class TestServerLs:
@@ -183,11 +190,11 @@ class TestServerLs:
              patch.object(sc, "_fetch_balance", return_value=balance):
             assert sc.handle_server_list() is True
 
-    def test_next_charge_and_accrued_are_shown(self, servers_file, capsys):
+    def test_paid_until_and_renewal_are_shown(self, servers_file, capsys):
         self._ls([RUNNING], 500.0)
         out = _out(capsys)
 
-        assert "$222.40/mo · next charge 2026-12-12 · $74.13 so far" in out
+        assert "$222.40/mo · paid until 2026-12-12, renews from credits" in out
         assert "covers the next month" in out
 
     @pytest.fixture(autouse=True)
@@ -275,53 +282,51 @@ class TestServerDestroy:
             text.return_value.ask.return_value = "prod"
             return sc.handle_server_destroy("prod")
 
-    def test_the_warning_says_the_used_part_is_charged(self, servers_file, capsys):
-        self._destroy(RUNNING, {"billing": "monthly_in_arrears", "charged_usd": 111.2,
-                                "unpaid_usd": 0.0, "invoice_number": "SRV-2026-11-000124"})
+    def test_the_warning_and_result_say_the_unused_part_is_refunded(self, servers_file, capsys):
+        self._destroy(RUNNING, {"billing": "monthly_prepaid", "charged_usd": 74.13,
+                                "refunded_usd": 148.27, "refunded": True, "unpaid_usd": 0.0,
+                                "credit_note_number": "SRV-2026-11-000124"})
         out = _out(capsys)
 
-        assert "used part of this month (about $74.13) is charged now" in out
-        assert "$111.20 charged for the used part of this month" in out
-        assert "SRV-2026-11-000124" in out
+        assert "unused part of this month (about $148.27) is refunded to your credits" in out
+        assert "$148.27 refunded to your credits for the unused part of this month" in out
+        assert "credit note SRV-2026-11-000124" in out
+        assert "owe" not in out
+
+    def test_the_days_used_of_a_month_never_paid_are_said_to_be_owed(self, servers_file, capsys):
+        self._destroy(IN_GRACE, {"billing": "monthly_prepaid", "charged_usd": 0.0,
+                                 "refunded_usd": 0.0, "unpaid_usd": 12.5})
+        out = _out(capsys)
+
+        # The open month ($222.40 owed) ended at the destroy: only its days are owed.
+        assert "You still owe $12.50 for prod" in out
         assert "refunded" not in out
 
-    def test_an_amount_the_balance_could_not_pay_is_said_to_be_owed(self, servers_file, capsys):
-        self._destroy(RUNNING, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
-                                "unpaid_usd": 111.2, "invoice_number": None})
+    def test_a_server_that_owes_is_told_what_stays_owed(self, servers_file, capsys):
+        self._destroy(IN_GRACE, {"billing": "monthly_prepaid", "charged_usd": 0.0,
+                                 "refunded_usd": 0.0, "unpaid_usd": 12.5})
         out = _out(capsys)
 
-        assert "$111.20 for the used part of this month was recorded as unpaid" in out
-        assert "You still owe $111.20 for prod" in out
+        assert "what is owed ($222.40, plus the days used of a month that was never paid)" in out
+        assert "is refunded" not in out
 
-    def test_a_server_that_owes_is_told_the_used_part_joins_the_debt(self, servers_file, capsys):
-        """The backend does not charge a server that already owes; it records the part."""
-        owing = {**RUNNING, "accrued_usd": 12.5, "unpaid_usd": 30.0}
-        self._destroy(owing, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
-                              "unpaid_usd": 12.5, "invoice_number": None})
+    def test_a_stopped_server_refunds_nothing_and_its_debt_stays(self, servers_file, capsys):
+        stopped = {**RUNNING, "status": "suspended", "period_start": None, "paid_until": None,
+                   "refund_if_destroyed_usd": 0.0, "unpaid_usd": 30.0}
+        self._destroy(stopped, {"billing": "monthly_prepaid", "charged_usd": 0.0,
+                                "refunded_usd": 0.0, "unpaid_usd": 0.0})
         out = _out(capsys)
 
-        assert "about $12.50) is added to what you owe ($30.00 unpaid)" in out
-        assert "is charged now" not in out
-        assert "You still owe $42.50 for prod" in out
-
-    def test_nothing_accrued_drops_the_charge_sentence(self, servers_file, capsys):
-        stopped = {**RUNNING, "status": "suspended", "accrued_usd": 0.0, "unpaid_usd": 30.0}
-        self._destroy(stopped, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
-                                "unpaid_usd": 0.0, "invoice_number": None})
-        out = _out(capsys)
-
-        assert "used part" not in out
-        assert "the $30.00 unpaid stays owed" in out
-        assert "You still owe $30.00 for lab" not in out
+        assert "unused part" not in out
         assert "You still owe $30.00 for prod" in out
-        assert "Nothing charged" not in out
+        assert "Nothing refunded" not in out
 
     def test_yes_still_reports_what_is_owed(self, servers_file, capsys):
         owing = {**RUNNING, "unpaid_usd": 30.0}
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
              patch.object(sc, "_fetch_billed_servers", return_value=[owing]), \
              patch("requests.delete", return_value=_response(200, {
-                 "billing": "monthly_in_arrears", "charged_usd": 0.0, "unpaid_usd": 5.0})):
+                 "billing": "monthly_prepaid", "charged_usd": 0.0, "unpaid_usd": 5.0})):
             assert sc.handle_server_destroy("prod", yes=True) is True
 
         assert "You still owe $35.00 for prod" in _out(capsys)
@@ -538,7 +543,7 @@ class TestTheCreateRequest:
     def test_the_monthly_backend_gets_the_billing_acknowledgement(self, servers_file):
         _, body = self._post(MONTHLY, _response(400, {"detail": "x"}))
 
-        assert body["billing"] == "monthly_in_arrears"
+        assert body["billing"] == "monthly_prepaid"
 
     def test_the_old_backend_gets_nothing_new(self, servers_file):
         _, body = self._post(PREPAID, _response(400, {"detail": "x"}))
