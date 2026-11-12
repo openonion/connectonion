@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import daily, extract, investigate, project_pages, runner, service, sessions, translate
+from . import daily, extract, fetch_stalls, investigate, project_pages, runner, service, sessions, translate
 from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
 
@@ -51,7 +51,7 @@ def prepare(root, config, *, scheduled):
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
-              "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
+              "jobs": _with_parked(root, _jobs(root, first, logs, sources)), "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
               "mail_slot": slot.isoformat() if slot else None}
     if not batch["done"] and batch["digested"] is not None:
@@ -117,6 +117,14 @@ def _jobs(root, first, logs, sources):
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return daily._owner_due(root) + rows
+
+
+def _with_parked(root, jobs):
+    """Pages set aside on a mailbox failure wait for their retry time, then come back (fetch_stalls)."""
+    waiting, due = fetch_stalls.waiting(root), fetch_stalls.due(root)
+    jobs = [job for job in jobs if job["record"] not in waiting]
+    queued = {job["record"] for job in jobs}
+    return jobs + [job for record, job in due.items() if record not in queued]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -191,7 +199,7 @@ def prepare_task(root, cursor, config, directory):
             if task:
                 return task
             cursor["investigation_left"] = PORTION
-        task = _prepare_job(root, cursor, config, directory)
+        task = _guarded_job(root, cursor, config, directory)
         if task:
             return task
     if cursor["summaries"]:
@@ -267,6 +275,39 @@ def finish(root, cursor):
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
                                                    "last_scheduled_outcome": "completed"})
     write_json(state_path(root, "round.json"), cursor)
+
+
+def _guarded_job(root, cursor, config, directory):
+    """A mailbox failing while one page is prepared sets that page aside; the round goes on.
+
+    2026-11-12: a Graph 404 and then a ReadTimeout on one person's page left
+    co rem next before the cursor was saved, so 30 turns in a row tried the
+    same page and ended with no task."""
+    index = cursor["job_index"]
+    job = cursor["jobs"][index]
+    held = _stopped_mailboxes(root, job) if cursor["current"] is None else {}
+    if held:
+        # Not asked again this turn; the page comes back next round with no back-off.
+        fetch_stalls.hold(root, job, held)
+        cursor["job_index"] = index + 1
+        return None
+    try:
+        task = _prepare_job(root, cursor, config, directory)
+    except Exception as error:  # noqa: BLE001 -- park() returns None for anything not a mailbox's: re-raised
+        notice = fetch_stalls.park(root, job, error)
+        if notice is None:
+            raise
+        cursor.setdefault("set_aside", []).append(notice)
+        cursor.update(job_index=index + 1, current=None, project_quote=None)
+        return None
+    fetch_stalls.clear(root, job["record"])
+    return task
+
+
+def _stopped_mailboxes(root, job):
+    """The mailboxes stopped for this turn that this page's investigation would ask."""
+    stopped = fetch_stalls.stopped(root) if job["kind"] not in ("project", "skill") else {}
+    return {kind: why for kind, why in stopped.items() if kind in daily._clients(service.subscriptions(root))}
 
 
 def _prepare_job(root, cursor, config, directory):
@@ -353,7 +394,8 @@ def _prepare_investigation(root, cursor, job, directory):
         title, handles = investigate.page_handles(Notebook(root), record)
         return investigate.investigate(
             root, record, title, job.get("addresses") or handles, days=job.get("days", 30),
-            clients=daily._clients(service.subscriptions(root)), subscriptions=service.subscriptions(root),
+            clients=fetch_stalls.labelled(daily._clients(service.subscriptions(root))),
+            subscriptions=service.subscriptions(root),
             sent_only=job["kind"] == "owner", rounds=job.get("rounds"), retry_refused=job.get("retry_refused", False),
             prepare_only=True, lock_held=True, directory=directory)
     except investigate.NothingFound as error:
