@@ -57,7 +57,8 @@ def test_a_failed_read_says_why_and_does_not_raise(monkeypatch, tmp_path):
     assert "method not found" in reading["unknown"]
 
 
-def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch):
+@pytest.mark.parametrize("runner", ["codex", "claude-code"])
+def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch, runner):
     from rich.text import Text
     from connectonion.cli.commands import rem_status
     from connectonion.rem import service
@@ -65,14 +66,16 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch)
 
     root = tmp_path / "rem"
     prepare(root)
-    monkeypatch.setattr(quota, "read", lambda config: {
-        "unknown": "Codex did not report its quota (RuntimeError: boom)"})
-    bits = service._quota_status(read_config(root), [])
-    assert "RuntimeError" not in bits["codex_week"]
-    assert "unknown" in bits["codex_week"] or "unavailable" in bits["codex_week"]
+    monkeypatch.setattr(quota, "read", lambda config: pytest.fail("status read the meter live"))
+    config = {**read_config(root), "runner": runner}
+    bits = service._quota_status(config, [])
+    assert "unknown" in bits["codex_week"]
     assert "pages still run" in bits["codex_week"]
     assert "within the daily call cap" in bits["codex_week"]
-    assert "RuntimeError" in bits["quota"]["unknown"]
+    assert bits["quota"]["unknown"] == (
+        "No saved quota reading for the current window" if runner == "codex"
+        else "the claude-code runner has no quota meter")
+    assert quota.blocks(bits["quota"], 99, config["limits"]) == ""
 
     value = {"root": str(root), "state": "Stopped", "configured": True, **bits}
     text = Text.from_markup(rem_status.dashboard(root, value, lambda args: "co rem " + " ".join(args))).plain

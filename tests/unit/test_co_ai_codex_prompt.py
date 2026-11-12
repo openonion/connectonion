@@ -2,9 +2,15 @@
 
 from pathlib import Path
 
+import connectonion
+
+# The installed package's own file, not a path relative to wherever pytest runs:
+# the suite's isolation fixtures may change the working directory.
+CODEX_PROMPT = Path(connectonion.__file__).parent / "cli/co_ai/prompts/tools/codex.md"
+
 
 def test_codex_prompt_explains_hosted_modes_and_declined_results():
-    prompt = Path("connectonion/cli/co_ai/prompts/tools/codex.md").read_text()
+    prompt = CODEX_PROMPT.read_text(encoding="utf-8")
     assert "workspace-write" in prompt
     assert "no approval prompts" in prompt
     assert "operator" in prompt

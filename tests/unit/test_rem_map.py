@@ -755,14 +755,14 @@ def _map(tmp_path, monkeypatch, people):
     return build_map(tmp_path, {}, {}, skill_directories=[skills])
 
 
-def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, monkeypatch):
+def test_a_nameless_inbound_correspondent_qualifies_after_three_mails(tmp_path, monkeypatch):
     """After names were found for 176 pages, 43 of the owner's people pages were
     still titled by a bare address: senders the owner never wrote to. Each would
     have cost an investigation and filled the contents with addresses (#1844).
     Held back, never deleted; a nameless address the owner wrote to, and the
     agent's own address, stay people.
-    #2057: an address the owner never wrote to now gets no page at all, named or
-    not; the one nameless page still held is one the owner only writes to."""
+    Three inbound mails now qualify, named or not; the nameless page still
+    held is one the owner only writes to."""
     from connectonion.rem.queue import order
     from connectonion.rem.reader import snapshot
     prepare(tmp_path)
@@ -775,8 +775,8 @@ def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, 
          'one_way': True},
         {'name': '', 'address': 'desk@quiet.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True}])
     pages = {row['addresses'][0]: row['record'] for row in result['people']}
-    assert {row['address'] for row in result['without_page']} == {'x7@shop.example', 'ann@partner.example'}
-    assert not {'x7@shop.example', 'ann@partner.example'} & set(pages)
+    assert {row['address'] for row in result['without_page']} == {'ann@partner.example'}
+    assert 'x7@shop.example' in pages and 'ann@partner.example' not in pages
     held = pages['desk@quiet.example']
     assert result['needs_review'] == [held]
     assert Notebook(tmp_path).read(held).startswith('# desk@quiet.example\n')       # kept, not deleted
@@ -813,9 +813,9 @@ def test_a_sender_named_after_its_own_domain_is_a_service_not_a_person(tmp_path,
         {'name': 'Mia Tan', 'address': 'mia@acme.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
         {'name': 'Acme Sales', 'address': 'sales@acme.example', 'mails': 4, 'sent': 2, 'received': 2,
          'one_way': False}])
-    assert {row.get('name') for row in result['people']} == {'Ellis Wu', 'Acme Sales'}
-    # Mia only ever wrote: a person without a page yet, not a service (#2057).
-    assert [row['address'] for row in result['without_page']] == ['mia@acme.example']
+    assert {row.get('name') for row in result['people']} == {'Ellis Wu', 'Mia Tan', 'Acme Sales'}
+    # Three inbound mails qualify without a reply.
+    assert result['without_page'] == []
     listed = {row['address'] for row in result['automated_correspondents']}
     assert {'developer@email.apple.com', 'developer@insideapple.apple.com', 'discover@airbnb.com',
             'googlecloud@google.com', 'learn@retool.com', 'notify@x.com'} <= listed
@@ -1022,11 +1022,10 @@ def test_a_fresh_map_makes_no_page_for_booking_otp_and_portal_senders(tmp_path, 
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     listed = {row['address'] for row in result['automated_correspondents']}
     assert listed >= {row['address'] for row in services}
-    # People, not services: Ann has a page, and the three who only wrote wait
-    # without one until the owner answers (#2057).
-    assert {row.get('address') for row in result['people']} >= {'ann@partner.com.au'}
+    # Ann and Mia qualify; inbound-only contacts with fewer than three wait.
+    assert {row.get('address') for row in result['people']} >= {'ann@partner.com.au', 'mia@acme.example'}
     assert {row['address'] for row in result['without_page']} == {
-        'mia@acme.example', 'john@smith.dev', 'eishi.sn@gmail.com'}
+        'john@smith.dev', 'eishi.sn@gmail.com'}
     assert not any(service_page(p['title'], p['emails'], None, set()) for p in Notebook(tmp_path).people())
     assert tidy(tmp_path) == {}
 

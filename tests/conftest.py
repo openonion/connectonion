@@ -4,9 +4,18 @@ LLM-Note: Global pytest configuration and shared test fixtures
 
 Module level: FORCE_COLOR & co. are stripped so output matches CI.
 
+Session hooks (tests/real_home_guard.py): the run fails when a pytest process
+wrote the real ~/.co, naming the test; changes by other processes are reported,
+not failed.
+
+The co ai Host a test's own home recorded is stopped after the test, and one
+still running under this run's temp directory when the session ends fails the
+run and is stopped (tests/host_leak_guard.py).
+
 Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
-- _never_touch_the_real_home: HOME and ~/.co are a fresh tmp dir per test
+- _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
+- _never_touch_the_real_applications: the WTF Browser app `co` keeps current is looked for in a folder that does not exist
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
 - _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
@@ -45,6 +54,17 @@ import pytest
 # inherit os.environ, so this covers `co` invoked as a child too.
 for _name in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR", "COLORTERM", "NO_COLOR", "PY_COLORS"):
     os.environ.pop(_name, None)
+
+
+# The real-home guard goes in before connectonion is imported, so its audit hook
+# sees writes made at import too. See tests/real_home_guard.py.
+from tests.real_home_guard import IMPORT_CO as _REAL_CO  # noqa: E402  (the home module constants froze)
+from tests.real_home_guard import (  # noqa: E402,F401  (pytest finds hooks by name here)
+    pytest_runtest_logfinish, pytest_runtest_logstart, pytest_sessionfinish,
+    pytest_sessionstart, pytest_terminal_summary,
+)
+
+from tests.host_leak_guard import HostLeakGuard  # noqa: E402
 
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse
@@ -123,6 +143,10 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     a marker, and they are deselected from the default run — so they keep the
     real HOME while every other test is isolated.
     """
+    # The REM reader saves pages outside HOME, in the temporary directory: every
+    # test, real_api too, gets its own folder (tests/real_home_guard.py fails a
+    # run that writes the owner's real one). Inherited by the detached rebuild.
+    monkeypatch.setenv("CONNECTONION_REM_CACHE", str(tmp_path_factory.mktemp("rem-cache") / "cache"))
     if request.node.get_closest_marker("real_api"):
         return
 
@@ -133,6 +157,62 @@ def _never_touch_the_real_home(request, monkeypatch, tmp_path_factory):
     # exercise a custom global directory select it explicitly.
     monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    # The two lines above reach code that asks for the home when it runs. A
+    # module constant asked once, at import -- before this fixture existed --
+    # and still holds the real home; see the guard at the top of this file.
+    # Rebase each such constant onto this test's home. A test that patches one
+    # itself still wins: its setattr runs after this one.
+    for module, name, value in _constants_under_the_real_home():
+        monkeypatch.setattr(module, name, home / value.relative_to(_REAL_CO.parent))
+
+
+def pytest_configure(config):
+    config.pluginmanager.register(HostLeakGuard(), "connectonion-host-leak-guard")
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_applications(monkeypatch, tmp_path_factory):
+    """No test may read or replace the operator's /Applications/WTF Browser.app.
+
+    A WTF launch on macOS makes that app the build it started, and `co browser
+    status` reads it (#2932). /Applications is not under HOME, so isolating HOME
+    does not cover it. Pointing it at a folder that does not exist does: there
+    is nothing to read, and nowhere to copy 350 MB to. real_api included.
+    """
+    from connectonion.useful_tools.browser_tools import engine
+    monkeypatch.setattr(engine, "APPLICATIONS", tmp_path_factory.getbasetemp() / "no-Applications-in-tests")
+
+
+_frozen_home_constants = (-1, [])
+
+
+def _constants_under_the_real_home():
+    """[(module, name, path)] for every connectonion module-level Path under the real home.
+
+    Found by scanning rather than listed, so a constant added next month is
+    covered without anyone remembering it. Rescanned only when a module has
+    been imported since the last scan. A module first imported *during* a test
+    freezes that test's tmp home instead, which is not the operator's home.
+    """
+    global _frozen_home_constants
+    count, found = _frozen_home_constants
+    if count == len(sys.modules):
+        return found
+    # Everything under the home except the checkout itself: CI checks the
+    # repository out under the runner's home, and rebasing the package's own
+    # paths (reader.html, useful_skills) broke 282 tests; a constant holding the
+    # home itself (fanout.HOME) must still be rebased.
+    real_home, checkout = _REAL_CO.parent, Path(__file__).resolve().parents[1]
+    found = []
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.startswith("connectonion") or module is None:
+            continue
+        for name, value in list(vars(module).items()):
+            if (isinstance(value, Path) and value.is_absolute() and value.is_relative_to(real_home)
+                    and not value.is_relative_to(checkout)):
+                found.append((module, name, value))
+    _frozen_home_constants = (len(sys.modules), found)
+    return found
 
 
 

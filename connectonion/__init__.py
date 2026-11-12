@@ -20,12 +20,13 @@ from types import ModuleType as _ModuleType
 from ._version import __version__
 from .environment import load_environment as _load_environment
 
-# Console-script and `python -m` startup let Typer select the file first. This
-# avoids reading a broken global file before a valid --env-file can be parsed.
+# CLI startup lets Typer select the file before reading it. REM exec loads it
+# after writing its turn receipt, so startup failures remain visible in status.
 # Ordinary SDK imports keep the documented eager global initialization.
 _cli_startup = (_Path(_sys.argv[0]).stem in {"co", "co-script"} or
                 (_sys.argv[0] == "-m" and
-                 "connectonion.cli.main" in getattr(_sys, "orig_argv", ())))
+                 any(module in getattr(_sys, "orig_argv", ()) for module in
+                     ("connectonion.cli.main", "connectonion.rem.codex_exec"))))
 if not _cli_startup:
     _load_environment()
 

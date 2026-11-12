@@ -75,3 +75,14 @@ def test_quota_retry_header_reaches_authenticated_transport():
     with patch.object(flow,'load_api_key',return_value='test-token'),patch.object(flow.requests,'request',return_value=response) as request:
         flow._request('POST','purchase-quota',headers={'Idempotency-Key':'same-key'})
     assert request.call_args.kwargs['headers']=={'Authorization':'Bearer test-token','Idempotency-Key':'same-key'}
+
+
+def test_the_derived_address_is_refused_before_any_change_request(capsys):
+    """openonion/oo-api#288 lists the key's own 0x address (id: null); a
+    change would PATCH addresses/None and 422."""
+    settings={**SETTINGS,'addresses':[{'id':None,'address':'0x1234567890@mail.openonion.ai','derived':True}]}
+    with patch.object(flow,'_request',return_value=settings) as request,pytest.raises(typer.Exit) as exited:
+        flow.handle_email_change('0x1234567890@mail.openonion.ai',domain='steadmail.com',buy=True)
+    assert exited.value.exit_code==1
+    assert [c.args[0] for c in request.call_args_list]==['GET']
+    assert 'derived from your key' in capsys.readouterr().out

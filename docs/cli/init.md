@@ -8,8 +8,8 @@ explicit directory, such as `co init ./`.
 ## Quick start
 
 ```bash
-co init                           # identity, profile, skills, command index and REM consent
-co init --yes                     # automatic local setup; REM storage only, no source access
+co init                           # identity, profile, skills, command index and first REM notebook
+co init --yes                     # same prompt-free global setup
 co init --no-rem                  # skip REM setup
 co init ./ --yes                  # configuration in this existing project
 co init /path/to/project --yes    # configuration in another existing project
@@ -27,19 +27,79 @@ It also creates a missing `~/.co/agent.json` local profile. Your existing profil
 is kept; use `co setup --name my-agent --bio "My work" --no-skills` to customize
 only those fields.
 
+### Codex CLI and browser sign-in
+
+Global `co init` (including `--no-rem`) finds Codex in this order:
+
+1. `codex` on PATH;
+2. `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`;
+3. `/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
+
+An explicit `CODEX_CMD` override is kept. A previous standalone install in
+`~/.local/bin/codex` is also reused when that directory is absent from PATH.
+The same lookup is used by REM's `codex exec` turns and `co rem doctor`.
+
+If none is available, init uses the [official OpenAI standalone installer](https://github.com/openai/codex#installing-and-running-codex-cli)
+for macOS and Linux. It downloads the script over HTTPS from
+`https://chatgpt.com/codex/install.sh`, saves it temporarily, and runs `sh` with
+`CODEX_NON_INTERACTIVE=true` and `CODEX_INSTALL_DIR="$HOME/.local/bin"`.
+The [installer](https://github.com/openai/codex/blob/main/scripts/install/install.sh)
+checks release SHA-256 digests before installing. No npm, Homebrew, sudo or
+installation prompts are required. The equivalent manual command is:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=true sh
+```
+
+Only if the standalone attempt fails, init tries `npm install -g @openai/codex`
+when npm is available, then `brew install --cask codex` on macOS when Homebrew
+is available. The summary reports the reused path, installed version and path,
+or failure reason with the exact retry command. It also prints an undo line.
+The standalone installer may add a `Codex installer` PATH block to your shell
+profile; open a new terminal to use bare `codex`. ConnectOnion can use the full
+installed path immediately, including in scheduled turns.
+
+Init checks `<resolved CLI> login status`. If needed, it runs `<resolved CLI>
+login`, which opens the browser for your ChatGPT sign-in. It waits at most 45
+seconds for that attempt, then checks status again. Cancellation, failure or an
+unfinished browser login leaves the rest of init running. REM uses its ready
+Claude Code fallback after checking `claude auth status --json`; otherwise it records that scheduling is
+waiting for Codex login, completes the local notebook setup, and prints the
+exact login command followed by `co rem start`. An existing notebook and its
+schedule are preserved on repeated init.
+
+To undo a standalone install, remove `~/.local/bin/codex`,
+`~/.local/bin/codex-code-mode-host`, and `~/.codex/packages/standalone/`
+(or the printed package path if `CODEX_HOME` is set), then remove the block
+between `# >>> Codex installer >>>` and `# <<< Codex installer <<<` in your
+shell profile. Keep `auth.json`, sessions and your other Codex settings.
+Scheduled jobs preserve `CODEX_HOME` and `CODEX_CMD` when set.
+Package-manager installations use `npm uninstall -g @openai/codex` or
+`brew uninstall --cask codex`.
+
 ### REM setup
 
-Global `co init` prepares `~/.co/rem`, offers mailbox login and asks once for
-source/model/schedule consent. After installing Codex Scheduled task or launchd
-upkeep on macOS, it runs the same foreground first notebook build as `co rem init`.
-Before model work, the estimate pauses at `Build the first map now? [Y/n]`;
-Enter builds, while `n` keeps upkeep installed and prints `co rem init` to continue.
-The final summary reports mapped and written pages and names the scheduler;
-read with `co rem open`. Without a terminal or with `co init --yes`, only storage
-is created: no login, consent, source reads or scheduler. Connect later with
-`co auth google` or `co auth microsoft`, then run `co rem init`. `--no-rem` skips
-REM, rerunning init leaves existing REM unchanged, and `--background` uses this
-same REM step. See [REM: Start here](rem.md#start-here).
+Global `co init` asks no setup questions; a missing Codex login opens the browser. It prepares `~/.co/rem`, records an init
+consent grant for local Codex / Claude Code sessions and every authenticated
+Google and Microsoft mailbox, installs upkeep using the usual scheduler
+(Codex exec via launchd on macOS, systemd user timer on Linux), and builds
+the first notebook in the foreground. The cost estimate is information, with
+no confirmation pause. `--yes` and runs without a terminal do the same work.
+Without a mailbox it continues on sessions and prints `co auth google` /
+`co auth microsoft`. A mailbox connected later joins the next scheduled round
+automatically; a source explicitly removed stays removed.
+
+The final output names the scheduler and explains how to undo setup:
+`co rem stop` turns scheduling off; `co rem sources` lists sources and
+`co rem sources remove SOURCE` removes one; `co auth logout` removes OpenOnion
+credentials. There is no mailbox disconnect command in `co auth`; revoke
+mailbox access in your Google or Microsoft account. After stopping upkeep,
+delete `~/.co/rem` to remove the notebook.
+
+`--no-rem` skips REM, rerunning global init leaves existing REM unchanged,
+and `--background` uses the same REM step. Use `co rem init` to rerun the
+notebook build. Without a supported scheduler, init still builds and explains
+how to schedule manual sync. See [REM: Start here](rem.md#start-here).
 
 It does **not** create or modify the current directory's `.env`, `.co/`,
 `agent.py`, or other project files—even when run inside an existing project.

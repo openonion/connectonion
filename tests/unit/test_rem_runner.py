@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
@@ -592,7 +592,7 @@ def test_investigation_does_not_claim_another_concurrent_page_change(notebook, m
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
     config = default_config()
-    config.update(runner=harness, model="default")
+    config.update(runner=harness, model="default", models=dict.fromkeys(LEVEL_MODELS, "default"))
     item = {"role": "page", "record": "notes/old.md", "text": "x" * 300000}
     result = run_stage(notebook, [item], config, stage=stage)
     argv, options = delegate[0]
@@ -1006,6 +1006,60 @@ def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
     assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
+@pytest.mark.parametrize('promotion', ['candidate', 'carried', 'last-resort', 'maintenance',
+                                     'large-maintenance', 'raw-correction', 'raw-maintenance'])
+def test_promotion_compares_resolved_mail_sources(notebook, tmp_path, monkeypatch, promotion):
+    from connectonion.rem import page_review
+
+    record, raw, digest = 'people/avery.md', 'gmail:1a02327b9e6d2c51', 'gmail:94449e945db3'
+    monkeypatch.setattr(page_review, '_mail_digest', lambda root, source:
+                        digest if source in (raw, digest) else source)
+    notebook.stub_person(record, 'Avery Lin')
+    lead = '- Avery Lin builds small research tools. [23]'
+    if promotion == 'large-maintenance':
+        lead += '\n' + 'Avery builds tools for researchers to search their own notes. ' * 24 + '[23]'
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## Who they are\n- Unknown', '## Who they are\n' + lead)
+                .replace('- Location: Unknown', '- Location: Sydney [23]')
+                .replace('- (none yet)', f'- [23] {raw} — 2026-08-21'))
+    notebook.write(record, original)
+    text = original.replace(raw, digest).replace('[23]', '[1]')
+    if promotion.startswith('raw-'):
+        text = text.replace(digest, raw).replace('- Location: Sydney [1]', '- Location: Unknown')
+    items = [{'source': digest, 'text': 'Avery Lin builds small research tools in Sydney.'}]
+    reviewed = []
+    validate = page_review.validate
+
+    def review(record, candidate, before, *args, **kwargs):
+        reviewed.append((before, candidate))
+        return validate(record, candidate, before, *args, **kwargs)
+
+    monkeypatch.setattr(page_review, 'validate', review)
+    if 'maintenance' in promotion:
+        before = {r: notebook.read(r) for r in notebook.list()}
+        working = Notebook(tmp_path / 'working')
+        for r, page in before.items():
+            working.write(r, page)
+        working.write(record, text)
+        assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+        assert before[record] == original  # Raw snapshot still guards concurrent writes.
+    else:
+        candidate = tmp_path / 'candidate.md'
+        candidate.write_text(text)
+        runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None,
+                                  carried=original if promotion != 'candidate' else '',
+                                  last_resort=promotion == 'last-resort',
+                                  report='- Removed fact: Location — Unsupported' if promotion == 'raw-correction' else '')
+        assert json.loads((tmp_path / 'review.json').read_text())['accepted']
+
+    assert reviewed and all(page_review.dropped(before, after) == [] for before, after in reviewed)
+    sources = notebook.read(record).partition('\n## Sources\n')[2]
+    assert raw not in sources
+    assert sources.count(digest) == 1
+    assert len(page_review._cited_sources(notebook.read(record))) == 1
+    assert '- Location: Sydney [' in notebook.read(record)
+
+
 @pytest.mark.parametrize('promotion', ['candidate', 'maintenance'])
 def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     record = 'people/avery.md'
@@ -1230,7 +1284,7 @@ def test_unretained_original_records_unverified_status_without_refusal(notebook,
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['accepted'] is True
     assert review['factual_quality'] == ('bounded citation audit insufficient; '
-                                         '1 citations unverified (originals not retained)')
+                                         '1 citations unverified (originals unavailable)')
 
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
