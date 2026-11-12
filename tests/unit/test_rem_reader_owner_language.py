@@ -20,6 +20,7 @@ GIST = r'''
   const nativeName = tag => ({en: 'English', zh: '中文'})[tag] || tag;
   const el = (tag, attrs) => ({tag, ...attrs});
   const untranslated = {path: 'people/jordan-lee.md', translations: {}}, translated = {path: 'people/mara.md', translations: {zh: '# Mara'}};
+  const regional = {path: 'people/li.md', translations: {'zh-TW': '# 李'}};
   const mark = (words, r) => rowMark(words, r)?.text || null;
   const out = {};
   for (const lang of ['zh', 'en']) {
@@ -28,6 +29,7 @@ GIST = r'''
                  mixed: gistTitle('跟进 Jordan Lee 的 Q3 pricing proposal，确认 API v2 的 deadline'),
                  englishRow: mark('Send Mara the signed data-sharing addendum', untranslated),
                  translatedRow: mark('Send Mara the signed data-sharing addendum', translated),
+                 regionalRow: mark('Send Li the signed addendum', regional),
                  mixedRow: mark('跟进 Jordan Lee 的 Q3 pricing proposal (PR #2986, API v2)', untranslated),
                  shortRow: mark('OK', untranslated)};
   }
@@ -36,15 +38,15 @@ GIST = r'''
 
 
 def test_the_gist_title_names_its_language_and_rows_carry_the_original_mark():
-    result = _run_reader_js(functions('textLanguage', 'gistTitle', 'originalMark', 'rowMark') + GIST)
+    result = _run_reader_js(functions('textLanguage', 'gistTitle', 'originalMark', 'rowMark', 'hasChinese') + GIST)
     # Never 中文对照 over English: the title says it is the gist, and its language when not the reader's.
     # Names and codes inside Chinese words never make them English (review: a script count did).
     assert result['zh'] == {'english': '要点 · English', 'chinese': '要点', 'mixed': '要点',
                             # The mark is the page's: no current Chinese version and no Chinese words in the row.
-                            'englishRow': '原文', 'translatedRow': None, 'mixedRow': None, 'shortRow': '原文'}
+                            'englishRow': '原文', 'translatedRow': None, 'regionalRow': None, 'mixedRow': None, 'shortRow': '原文'}
     # An English reader reads every page as written; nothing is marked (pages are never translated into English).
     assert result['en'] == {'english': 'Gist', 'chinese': 'Gist · 中文', 'mixed': 'Gist · 中文',
-                            'englishRow': None, 'translatedRow': None, 'mixedRow': None, 'shortRow': None}
+                            'englishRow': None, 'translatedRow': None, 'regionalRow': None, 'mixedRow': None, 'shortRow': None}
     assert '中文对照' not in TEMPLATE.read_text(encoding='utf-8')
 
 
@@ -75,3 +77,12 @@ def test_among_ready_drafts_the_one_with_no_owner_slot_leads():
     assert deck([first, square, complete]) == ['people/mara.md', 'people/tomas.md', 'people/rue.md']
     # Nothing ready to send: the deck keeps its order.
     assert deck([first, group('people/rue.md', 'done')]) == ['people/tomas.md', 'people/rue.md']
+
+
+def test_the_page_header_mark_counts_a_regional_chinese_cache():
+    result = _run_reader_js(functions('translationMark', 'originalMark', 'hasChinese') + r'''
+      UI.zh = {Original: '原文'}; uiLanguage = 'zh';
+      const el = (tag, attrs) => ({tag, ...attrs}), REM = {status: {worker: {enabled: true}}}, translationQueued = () => false;
+      console.log(JSON.stringify([translationMark({translations: {'zh-TW': '# 李'}}), translationMark({translations: {}})?.text]));
+    ''')
+    assert result == [None, '原文']

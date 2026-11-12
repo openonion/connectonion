@@ -6718,11 +6718,15 @@ function memoryConnection(records) {
 // page never reloads its translation, so a 翻译中 here stayed for ever. The title says what happens next.
 // Meta size, grey, beside the crumb; never a line of its own above the name.
 function translationMark(r) {
-  if (uiLanguage === "en" || r.translations?.[uiLanguage]) return null;
+  if (uiLanguage === "en" || hasChinese(r)) return null;
   const mark = originalMark(), queued = translationQueued(r) || REM.status?.translation_coverage?.[uiLanguage]?.requested;
   if (!REM.status?.worker?.enabled) mark.title = t("Translation pending — background updates off");
   else if (queued) mark.title = t("Queued for the next translation pass");
   return mark;
+}
+// A current Chinese version of the page in any region: a zh-TW or zh-CN cache is read as 中文 too.
+function hasChinese(r) {
+  return Object.keys(r?.translations || {}).some(tag => /^zh(?:-|$)/i.test(tag));
 }
 function originalMark(lead = false) {
   return el("span", { class: "lang-status" + (lead ? " lead" : ""), text: t("Original"), title: t("No Chinese translation yet; showing original") });
@@ -6732,7 +6736,7 @@ function originalMark(lead = false) {
 // keeps no mark even then: names, codes and English terms inside it ("跟进 Jordan Lee 的 Q3 pricing proposal")
 // would outvote the Han characters in a script count, and the row is already in the reader's language.
 function rowMark(words, r) {
-  if (uiLanguage !== "zh" || r?.translations?.zh || /[\u4e00-\u9fff]{2}/.test(words)) return null;
+  if (uiLanguage !== "zh" || hasChinese(r) || /[\u4e00-\u9fff]{2}/.test(words)) return null;
   return originalMark(true);
 }
 function wordsLine(name, words, r, after, attrs = {}) {

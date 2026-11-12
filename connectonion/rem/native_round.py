@@ -218,6 +218,8 @@ def _reset_attempts(root, cursor):
     day = service.notebook_today(root).isoformat()
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
+        # A round that crosses midnight reads Today again: yesterday's rows are not today's.
+        cursor.pop("shown_today", None)
 
 
 # D-104: a portion interleaves the night's work and never stops it. After PORTION

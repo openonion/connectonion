@@ -124,3 +124,9 @@ def test_a_round_reads_todays_queue_once_whatever_the_languages_and_turns(notebo
     reads.clear()
     daily._translate_changed(notebook, read_config(notebook), {}, [], lambda root, record, language: None, lambda text: None)
     assert reads == [1]
+
+
+def test_a_round_that_crosses_midnight_reads_todays_queue_again(notebook, monkeypatch):
+    cursor = {'task_day': '2000-01-01', 'shown_today': ['people/old.md']}
+    native_round._reset_attempts(notebook, cursor)
+    assert 'shown_today' not in cursor
