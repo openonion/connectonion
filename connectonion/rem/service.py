@@ -752,7 +752,8 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
-    return {"state": state, "tonight": night_summary(root),
+    from .execution import summary as execution_summary
+    return {"execution_today": execution_summary(recent), "state": state, "tonight": night_summary(root),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": describe_levels(config),
@@ -1716,6 +1717,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         relevant = [item for item in selected_feedback if page in item["feedback_pending_targets"]]
         if relevant and all(feedback.same_revision(held, item) for item in relevant):
             mark_retried(root, page)
+    from . import execution
+    token = execution.begin(record, path)
     try:
         if digested is not None:
             record["extract_reused"] = True
@@ -1819,6 +1822,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             write_json(state_path(root, "progress.json"), updated)
             forget_digest(root)
     finally:
+        execution.end(token)
         record["finished_at"] = now().isoformat()
         if record["outcome"] == "completed" and record.get("changed"):
             from .claim_changes import material_changes
@@ -1908,7 +1912,10 @@ def usage_report(root: Path, days: int | None = None) -> dict:
     # What the tokens bought (#1846): a page turn that changes nothing costs the same.
     changed = sum(len(run.get("changed") or []) for run in runs)
     per_100k = round(changed * 100_000 / total["input_tokens"], 2) if total.get("input_tokens") else None
-    return {"runs": len(runs), "days": days, "total": total, "pages_changed": changed,
+    from .execution import summary as execution_summary
+    observed = [r for r in run_logs(root)
+                if since is None or datetime.fromisoformat(r["started_at"]) >= since]
+    return {"execution": execution_summary(observed), "runs": len(runs), "days": days, "total": total, "pages_changed": changed,
             "pages_changed_per_100k_input_tokens": per_100k, "by_stage": by_stage,
             "by_model": by_model, "by_source": by_source}
 

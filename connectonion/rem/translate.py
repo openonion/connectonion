@@ -202,26 +202,30 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
     config = stage_config(root, config, "translate")
     from .languages import owner_languages
     from .runner import _add_usage
+    from .service import running_marker
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
     task = prepare(root, record, language, directory=workspace, text=text)
     prose = task["prose"]
     run = {"id": "run_" + uuid4().hex, "started_at": now().isoformat(),
-           "phase": "translate", "record": record, "language": language, "outcome": "failed",
-           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0}
+           "phase": "translate", "record": record, "language": language, "outcome": "running",
+           "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0, **running_marker()}
     if on_run:
         on_run(run["id"])
     started = monotonic()
+    from . import execution
+    token = execution.begin(run, state_path(root, f"runs/{run['id']}.json"))
     try:
         translation = _translate_prose(workspace, prose, task["prompt"], config, run)
         translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
     finally:
+        execution.end(token)
         error = sys.exc_info()[1]
         if error:
-            run.update(error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
+            run.update(outcome="failed", error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
         run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)

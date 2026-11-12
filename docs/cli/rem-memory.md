@@ -81,6 +81,34 @@ context; this fallback does not establish managed feedback receipts for those pa
 It is not an external-agent instant-apply interface. The direct-investigation fallback is
 part of 1.9.3rc17 and is not included in 1.9.3rc16.
 
+## Execution evidence and daily allowance (candidate)
+
+`runner_attempts` and status's `runner_attempts_today` remain the existing routine
+allowance accounting. A daily job can reserve work before executing it; manual
+investigations and translation child logs can keep that field at zero. It is not
+an execution counter, and zero does not establish that no model ran. The daily
+cap and weekly metering policy are unchanged.
+
+This candidate records native co-ai subprocess **attempts** separately in existing
+run logs under `execution`: attempts, completed/failed/in-flight wrapper outcomes,
+and counts by stage. Metadata is saved before subprocess execution and after its
+wrapper returns or raises. A successful wrapper can still produce a page that
+fails validation. An attempted start can fail before a process/model runs.
+Neither outcome proves the number of provider model API calls.
+
+Nested run logs identify `parent_run_id`; each log counts only its own direct
+attempts. Daily translation parents therefore do not count the child's execution
+twice. Status exposes `execution_today`, and `logs --usage` exposes `execution`:
+recorded attempts, records with/without evidence and `provider_model_calls: null`.
+Missing, malformed or overflowing legacy evidence stays unknown. These are lower
+bounds over recorded native attempts; custom callbacks and other unobserved work
+cannot supply native execution proof. No existing history is rewritten.
+
+The reader labels the allowance separately from recorded AI process attempts and
+keeps provider model calls unknown. CLI batch progress says allowance slots.
+This is not included in public/installed 1.9.3rc16; native visual/accessibility and
+real model acceptance remain unverified.
+
 ## Investigate questions with explicit stage models
 
 ```bash
