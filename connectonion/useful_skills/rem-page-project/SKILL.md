@@ -63,6 +63,8 @@ Keep this order for those shown:
 `Started`, `Last activity`, and no other label. Several values `; ` between, each
 `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
 - `Repository`: the checkout's `Remote origin`, cited to the checkout state.
+- `Organisation`: `[[orgs/<page>]] [n]` when evidence names the organisation;
+  link its existing page. Otherwise `Unknown`; never infer from a repo owner.
 - `Status`: a phrase the evidence earns: `active — commits weekly on
   origin/main`, `quiet since 2026-08-10`, `exploring, nothing chosen`;
   never a licence, language or README topic, and never `Unknown` while

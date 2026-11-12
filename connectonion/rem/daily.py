@@ -31,7 +31,6 @@ from .service import mail_client, notebook_today, now, run_logs, run_sync, statu
 # let one large page spend a night's calls. A person is one call: up to 8 people.
 INVESTIGATION_CALLS = 8
 # Pages a later run updates from new material, one call each.
-UPDATE_PAGES = 5
 # Activity this recent comes first in the unfinished portion.
 RECENT_DAYS = 14
 PHASES = ("daily-investigation", "daily-update")
@@ -61,7 +60,7 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
     Which people, and over which window, is people_pages.queue's: a person
     investigated before is read only from the mail since then.
     """
-    from .people_pages import queue as people_queue
+    from .people_pages import queue as people_queue, rank
     from .project_material import page_state
     from .queue import order_all
     today = today or now()
@@ -91,7 +90,10 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
         stamp = row["last_activity"]
         return (not (stamp and stamp >= cutoff), -datetime.fromisoformat(stamp).timestamp() if stamp else 0.0,
                 row["position"])
-    return sorted(rows, key=key)
+    rows.sort(key=key)
+    people = iter(sorted((row for row in rows if row["path"].startswith("people/")),
+                         key=lambda row: rank(row, today)))
+    return [next(people) if row["path"].startswith("people/") else row for row in rows]
 
 
 def _clients(sources: dict) -> dict:
@@ -136,7 +138,9 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
             reason = maintenance.get('error') or 'the last scheduled maintenance failed'
         outcome = 'failed' if result['outcome'] == 'partial' else result['outcome']
         write_json(worker_path, {**worker, 'last_scheduled_outcome': outcome,
-                                 'last_scheduled_reason': reason})
+                                 'last_scheduled_reason': reason,
+                                 'last_scheduled_failure': next((row for row in maintenance.get('source_failures', [])
+                                                               if row.get('error') == reason), {})})
     return result
 
 
@@ -156,6 +160,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
     `say` gets one line per step. Run off a terminal, a sync printed nothing
     for 25 minutes and everything at the end (#2033)."""
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     if scheduled and maintain is None:
         from .service import run_scheduled
         return run_scheduled(root, lambda: run_daily(
@@ -186,6 +193,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+        from .topic_map import backfill_topics
+        maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
+    _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
         outcome = 'budget_exhausted' if maintenance['outcome'] == 'budget_exhausted' else 'partial'
@@ -197,42 +207,98 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         logs = run_logs(root)
         today = [record for record in logs if record.get('phase') in PHASES and
                  datetime.fromisoformat(record['started_at']).astimezone(zone).date().isoformat() == state['date']]
-        remaining = config['limits']['runner_calls_per_day'] - state['runner_attempts_today']
+        from .service import daily_cap
+        remaining = daily_cap(root)['remaining']
         # The Codex week (#1843): investigation's own budget, and a floor that
         # leaves the rest of the week to the owner's coding.
         meter = quota.read(config)
         stop = quota.blocks(meter, quota.points_spent(logs, meter), config['limits'])
+    from .people_pages import correspondents_since
+    previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES),
+                   default=(now() - timedelta(days=1)).isoformat())
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        found = correspondents_since(root, _clients(subscriptions(root)),
+                                     since=datetime.fromisoformat(previous), lock_held=True)
+    early = _same_person(root, config, remaining, say, uninvestigated=True) if not stop else []
+    remaining -= sum(row.get('runner_attempts', int('pages' in row)) for row in early)
+    if early:
+        meter = quota.read(config)
+        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config['limits'])
+    from .merge import resolve
+    found['records'] = sorted({resolve(root, record) for record in found['records']})
     if any(record.get('phase') == 'daily-investigation' for record in today):
         previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES), default='')
         result = _follow_new(root, config, maintenance, remaining, meter, stop, previous,
-                             person_one=person_one, project_one=project_one, say=say)
+                             person_one=person_one, project_one=project_one, say=say, found=found)
     else:
         result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
                              investigate_one=investigate_one, person_one=person_one, say=say)
     if not stop:
         left = remaining - ((result.get('run') or {}).get('runner_attempts') or 0)
-        result['same_person'] = _same_person(root, config, left, say)
+        result['same_person'] = early + _same_person(root, config, left, say)
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
 
 
-def _same_person(root, config, left, say) -> list[dict]:
+def _draft_replies(root, config, maintenance):
+    from . import night, runner
+    from .service import daily_cap
+    if runner.ready(config)[0]:
+        return
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        fetches, attempted = {}, []
+        for row in night.prepare(root, config, fetches=fetches):
+            stop = ("Daily runner cap reached." if not daily_cap(root)['remaining'] else
+                    quota.floor_block(quota.read(config), config['limits']))
+            if stop:
+                night.prepare(root, config, attempted=attempted, fetches=fetches, stop=stop)
+                break
+            attempted.append([row['id'], row['version']])
+            _prepare_reply(root, row, config, maintenance)
+        from .tasks import auto_dispatch
+        auto_dispatch(root, config)
+
+
+def _prepare_reply(root, row, config, maintenance):
+    from tempfile import TemporaryDirectory
+    from . import drafts, night, runner
+    record, log = _reserve(root, 'reply-draft', 1, {})
+    state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
+    try:
+        with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+            from .inquiry import stage_config
+            task = drafts.prepare(root, row, config, directory=Path(directory))
+            result = runner.run_task(Path(directory), task['prompt'], stage_config(root, config, 'reply-draft'), 'reply-draft')
+            plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
+            drafts.promote(root, plan)
+        record.update(outcome='completed', usage=result.get('usage'))
+        maintenance.setdefault('drafts', []).append(plan['id'])
+    except (RemError, ValueError, FileNotFoundError) as error:
+        # A rejected/missing model candidate must not abandon the rest of Today.
+        reason = f'Reply preparation failed: {type(error).__name__}.'
+        record.update(outcome='failed', error=reason, usage=getattr(error, 'usage', None))
+        night.failed(root, row, reason)
+    record['finished_at'] = now().isoformat()
+    write_json(log, record)
+
+
+def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]:
     """Pages that look like one person are judged by a model, a few a run (#2724).
 
     A run of its own, so its calls are in `co rem logs --usage`, the day's call
     count and the week's points like every other model call (#2741)."""
     from . import same_person
-    limit = min(same_person.PAIRS_PER_RUN, left)
+    limit = min(same_person.NEW_PAIRS_PER_RUN if uninvestigated else same_person.PAIRS_PER_RUN, left)
     if limit <= 0:
         return []
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        if not same_person.candidates(root):
+        if not same_person.candidates(root, uninvestigated=uninvestigated):
             return []
         record, path = _reserve(root, 'same-person', limit, quota.read(config))
     rows = []
     try:
-        rows = same_person.judge(root, config, limit=limit, say=say)
+        rows = same_person.judge(root, config, limit=limit, say=say, uninvestigated=uninvestigated)
         record.update(outcome='completed')
     except RemError as error:
         record.update(outcome='failed', error=str(error)[:300])
@@ -252,30 +318,23 @@ def _same_person(root, config, left, say) -> list[dict]:
 
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
-    """Cache this run's changed pages, sharing the existing maintenance lock."""
+    """Work through missing and stale translations under their own daily budget."""
     from .languages import owner_languages
     from .runner import ready
-    from .translate import cached, translate
-    language = next((tag for tag in owner_languages(root)['languages'] if tag.split('-')[0].lower() != 'en'), None)
-    if not language or not changed or ready(config)[0]:
+    from .translate import backlog, cached, translate
+    from .translate import languages
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        zone = ZoneInfo(config['schedule']['timezone']) if config['schedule']['timezone'] else timezone.utc
-        today = now().astimezone(zone).date()
-        spent = sum(sum(row['outcome'] != 'cached' for row in log['pages']) if 'pages' in log
-                    else log.get('runner_attempts', 0) for log in run_logs(root)
-                    if log.get('phase') == 'daily-translation'
-                    and datetime.fromisoformat(log['started_at']).astimezone(zone).date() == today)
-        remaining = min(config['limits']['translations_per_day'] - spent,
-                        config['limits']['runner_calls_per_day'] - status(root)['runner_attempts_today'])
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in dict.fromkeys(changed):
+        for page in backlog(root, language, changed=changed):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining or status(root)['runner_attempts_today'] >= config['limits']['runner_calls_per_day']:
+            if quota.floor_block(quota.meter(root, config), config['limits']):
                 continue
             attempts += 1
             write_json(path, record)
@@ -297,7 +356,7 @@ def _translate_changed(root, config, maintenance, changed, translate_one, say):
             _add_usage(usage, run_logs(root, run_id)[0].get('usage'))
         report = {'language': language, 'pages': rows, 'attempted': attempts, 'usage': usage or None}
         maintenance['translations'] = report
-        record.update(language=language, pages=rows, attempted=attempts, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
+        record.update(language=language, pages=rows, attempted=attempts, runner_attempts=0 if translation_runs else attempts, outcome='partial' if any(row['outcome'] == 'failed' for row in rows) else 'completed',
                       finished_at=now().isoformat())
         write_json(path, record)
 
@@ -307,8 +366,8 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     """The first run of the day: unfinished pages, most recent activity first."""
     resting = _found_nothing_lately(root)
     pages = [page for page in unfinished_by_recency(root) if page['path'] not in resting]
-    from .inquiry import routing
-    required = 3 if routing(root) else 1
+    from .inquiry import inquiry_routed
+    required = 3 if inquiry_routed(root) else 1
     # Even a run that starts nothing is the day's first: it is recorded, so the
     # later runs know to follow new material instead.
     why = 'nothing_unfinished' if not pages else 'budget_exhausted' if remaining < required else stop
@@ -518,8 +577,8 @@ def _project(root, record, *, config):
 
 
 def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one,
-                say=lambda text: None):
-    """A later run: only people and projects with new material since the previous run."""
+                say=lambda text: None, found=None):
+    """A later run: unfinished pages plus written pages with new material."""
     from .people_pages import correspondents_since
     from .people_pages import queue as people_queue
     from .project_material import extract
@@ -530,19 +589,19 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     # Step 1, no model: who has new material. One mailbox listing since the
     # last run says who wrote; new session lines are filed under their
     # project pages. Each person's own mail is gathered by the investigation.
-    found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
+    if found is None:
+        found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
     extract(root, sources)
-    rows = [{**row, 'kind': 'person'} for row in people_queue(root, since=since)
-            if row['mode'] == 'update' or row['record'] in found['records']]
-    rows += [{**row, 'kind': 'project'} for row in project_queue(root, since=since)]
+    rows = [{**row, 'kind': 'person'} for row in people_queue(root)
+            if row['mode'] == 'full' or row['last_activity'] > since]
+    rows += [{**row, 'kind': 'project'} for row in project_queue(root, since=since, include_backlog=True, now=now())]
     # Refused pages are retried once a day: from the material held for them when
     # a sync's maintenance refused them, otherwise by their own investigator.
     from .refusals import due_for_retry
-    queued = {row['record'] for row in rows}
+    retries = due_for_retry(root)
+    rows = [row for row in rows if row['record'] not in retries]
     rows += [{'record': record, 'kind': 'retry', 'mode': 'retry', 'last_activity': entry.get('at', ''),
-              'entry': entry} for record, entry in due_for_retry(root).items()
-             if record not in queued and Notebook(root).path(record).is_file()]
-    rows.sort(key=lambda row: row['last_activity'] or '', reverse=True)
+              'entry': entry} for record, entry in retries.items() if Notebook(root).path(record).is_file()]
     # The page pinned as You comes first: it is what the owner opens first.
     rows = _owner_due(root) + rows
     if not rows:
@@ -551,7 +610,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if stop:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': stop, 'quota': meter, 'left': len(rows)}
-    chosen = rows[:max(0, min(UPDATE_PAGES, remaining))]
+    chosen = rows[:max(0, remaining)]
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}

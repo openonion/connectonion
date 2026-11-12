@@ -260,7 +260,12 @@ def test_a_page_kept_after_its_audit_failed_says_how_many_claims_went(tmp_path, 
     assert review['factual_quality'] == 'bounded citation audit failed; 1 refuted claims removed'
 
 
-def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch):
+@pytest.mark.parametrize('decision', [
+    {'verdict': 'INSUFFICIENT', 'findings': []},
+    {'verdict': 'UNKNOWN', 'findings': []},
+    {'verdict': 'INSUFFICIENT'},
+])
+def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch, decision):
     """"insufficient" means the audit read too little; nobody showed a claim wrong."""
     notebook, old, written, items = _person(tmp_path)
     written = written.replace('- 2026-10-02 — Corin offered: “I can intro you to Jonah” [1] — open',
@@ -268,7 +273,7 @@ def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monke
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
-        'result': json.dumps({'verdict': 'INSUFFICIENT', 'findings': []}), 'usage': {}})
+        'result': json.dumps(decision), 'usage': {}})
     monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('nothing to repair'))
     runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')

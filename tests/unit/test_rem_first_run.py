@@ -57,6 +57,8 @@ class Mail:
 def first_run(tmp_path, monkeypatch):
     """A root with one connected mailbox (gmail), an isolated runner and a spy
     where the model would be."""
+    # This fake first-run flow does not exercise host boot discovery.
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: None)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
@@ -68,6 +70,8 @@ def first_run(tmp_path, monkeypatch):
         return {"record": record, "changed": [record], "items": 3}
 
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
+    # Flow tests fake investigation, including the separate historical mail fetch.
+    monkeypatch.setattr("connectonion.rem.people_pages.backfill_person", lambda *a, **kw: 0)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
     monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
     monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs:
@@ -146,7 +150,7 @@ def test_init_without_people_or_projects_exits_without_estimate_pause(first_run,
 
     assert result.exit_code == 0, result.output
     message = ("Nothing to write yet: connect a mailbox (co auth google|microsoft) or work in a project "
-               "with Codex, then run co rem init")
+               "with Codex. Background updates pick up new material.")
     assert message in result.stdout
     assert "Your page was not written: no mailbox gave an address of yours" in result.stdout
     assert "Estimate:" not in result.output
@@ -336,7 +340,7 @@ def test_init_yes_records_existing_consent_before_mapping(first_run, monkeypatch
     assert mapped == [True]
 
 
-def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkeypatch):
+def test_interactive_init_proceeds_with_summary_and_undo_for_selected_mailboxes(first_run, monkeypatch):
     import sys
     from types import SimpleNamespace
     from connectonion.cli.commands import rem_commands
@@ -356,7 +360,8 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output
-    assert len(prompts) == 1
+    assert prompts == []
+    assert 'Undo REM setup:' in result.output
     assert len(summaries) == 1
     assert summaries[0]['sources']['gmail']['state'].startswith('will be read')
     assert installed == [root]
@@ -480,7 +485,7 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
     assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
-    assert "codex" in text and "gpt-6-luna" in text
+    assert "codex" in text and "gpt-6.1-sol" in text
     assert "your own" in text and "Ctrl-C" in text
     assert text.rstrip().endswith(f"--root {root} open")
     assert f"--root {root} start" in text
@@ -591,12 +596,12 @@ def test_json_with_investigate_runs_it_and_stays_machine_readable(first_run):
 
 def test_a_rerun_does_not_pay_for_a_page_already_written(first_run):
     root, init, calls = first_run
-    assert init("--no-investigate").exit_code == 0
+    assert init("--no-investigate", "--days", "5").exit_code == 0
     page = root / owner_record(root)
     lines = [("Investigation: investigated 2026-09-30" if line.startswith("Investigation:") else line)
              for line in page.read_text().splitlines()]
     page.write_text("\n".join(lines) + "\n")
-    result = init("--json")
+    result = init("--json", "--days", "5")
     assert result.exit_code == 0, result.output
     assert all(call["record"] != owner_record(root) for call in calls)
     assert "already" in json.loads(result.stdout)["data"]["investigate_me"]["reason"]
@@ -623,7 +628,7 @@ def test_a_failed_first_page_keeps_the_map_and_names_the_retry(first_run, monkey
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"].endswith("investigate me --days 5")
+    assert payload["next"] == f"co rem --root {root} investigate me --days 5"
     assert (root / "logs/people-map.md").is_file()
 
 
@@ -642,10 +647,10 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr(codex, "_base_command", lambda: None)
     problem, fix = rem_runner.ready(config)
-    assert "not installed" in problem and "npm install -g @openai/codex" in fix
+    assert "not installed" in problem and "https://chatgpt.com/codex/install.sh" in fix
     monkeypatch.setattr(codex, "_base_command", lambda: ["/bin/codex", "app-server"])
     problem, fix = rem_runner.ready(config)
-    assert "not signed in" in problem and fix == "codex login"
+    assert "not signed in" in problem and fix == "/bin/codex login"
     (tmp_path / "codex").mkdir()
     (tmp_path / "codex/auth.json").write_text("{}")
     assert rem_runner.ready(config) == ("", "")
@@ -754,7 +759,7 @@ def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects,
     assert result.exit_code == 1, result.output
     data = json.loads(result.stdout)
     assert data["data"]["background"]["started"] is False
-    assert data["next"].endswith("investigate projects/alpha.md --retry-refused")
+    assert data["next"] == f"co rem --root {root} investigate projects/alpha.md --retry-refused"
 
 
 def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_error(projects, monkeypatch):
@@ -776,13 +781,13 @@ def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_er
 
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
-    assert init("--no-investigate").exit_code == 0
-    data = json.loads(init("--json").stdout)["data"]
+    assert init("--no-investigate", "--days", "5").exit_code == 0
+    data = json.loads(init("--json", "--days", "5").stdout)["data"]
     assert data["project_pages"]["started"]
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: False)
-    assert init().exit_code == 0
+    assert init("--days", "5").exit_code == 0
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
-    missing = init("--investigate")
+    missing = init("--investigate", "--days", "5")
     assert Text.from_ansi(missing.output).plain.count("Codex is not signed in") == 1
     assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
@@ -909,7 +914,8 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     assert result.exit_code == 130
     assert "people/p2.md" not in people_written
     text = Text.from_ansi(result.output).plain
-    assert f"--root {root} investigate all" in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 
@@ -1039,7 +1045,8 @@ def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
     assert result.exit_code == 130
     text = Text.from_ansi(result.output).plain
     assert "pages written before the stop" in text and "and kept." in text
-    assert f"Next: co rem --root {root} investigate all" in text
+    assert "Work queued for the next scheduled run." not in text
+    assert text.rstrip().endswith(f"Next: co rem --root {root} investigate all")
 
 
 # ------------------------------------------- several pages at once (owner, 2026-10-01)
@@ -1174,7 +1181,7 @@ def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, mo
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"].endswith("investigate me")
+    assert payload["next"] == f"co rem --root {root} investigate me"
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
     assert "projects/alpha.md" in projects_written
 
@@ -1365,7 +1372,7 @@ def test_init_translation_selects_only_listed_written_pages_without_daily_cap(tm
     from connectonion.rem import translate
     from connectonion.rem.service import run_logs
     prepare(tmp_path)
-    set_config(tmp_path, ['limits.translations_per_day', '1', 'limits.workers', '3'])
+    set_config(tmp_path, ['limits.workers', '3'])
     book = Notebook(tmp_path)
     records = ['people/avery-lin.md', 'orgs/northgate-university.md', 'projects/draft.md',
                'skills/catalog/weekly-brief.md', 'decisions/format.md', 'principles/simple.md']
@@ -1398,7 +1405,7 @@ def test_init_reports_why_translation_is_skipped(first_run, monkeypatch, flags, 
     monkeypatch.setattr('connectonion.rem.translate.translate_pages', lambda *args, **kw: pytest.fail('translation started'))
     if reason == 'Runner not ready':
         monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('runner unavailable', 'install runner'))
-    result = init('--json', '--languages', language, '--no-start', *flags)
+    result = init('--json', '--languages', language, '--no-start', '--days', '5', *flags)
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
     assert not data['translation']['started'] and reason in data['translation']['reason']
@@ -1519,8 +1526,7 @@ def test_init_summary_reports_translated_pages_and_how_to_retry_failures():
     ctx = SimpleNamespace(obj={"json": False, "root": None, "default_root": True})
     report = {"started": True, "language": "zh", "pages": [{}, {}, {}], "translated": 1, "cached": 1, "failed": 1}
     line, = _translation_line(ctx, report)
-    assert line.startswith("Translated into zh: 2 of 3 pages. 1 failed; retry with ")
-    assert line.endswith("translate --all.")
+    assert line == "Translated into zh: 2 of 3 pages. 1 failed; queued for the next translation pass."
     assert _translation_line(ctx, {"started": False, "reason": "Skipped by --no-translate."}) == []
 
 

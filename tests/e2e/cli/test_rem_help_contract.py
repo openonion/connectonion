@@ -20,8 +20,8 @@ from connectonion.cli.main import app
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "investigate", "enrich", "muse", "deepen", "open", "list", "show", "search", "start", "stop", "status",
-                 "sync", "next", "submit", "sources", "config", "logs", "doctor", "history"]
-ADVANCED = ["scan", "map-skills", "import", "stub", "merge", "translate", "reflect", "reflections", "propose", "review", "abstract", "capture",
+                 "sync", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
+ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "translate", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",
@@ -46,6 +46,13 @@ def test_rem_init_options_document_repeatable_mail_selection():
     assert "gmail|outlook" in line
     assert "repeatable" in line
     assert "consent" in options and "subscribe" in options
+
+
+def test_rem_start_and_init_help_match_terminal_no_prompt_behavior():
+    assert 'diff' in help_of(['start'])
+    assert 'without prompting' in help_of(['start'])
+    assert 'pauses at the estimate' not in help_of(['init'])
+    assert 'estimate pause unless' not in help_of([])
 
 
 @pytest.mark.parametrize("name", sorted(pages()))

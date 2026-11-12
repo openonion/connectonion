@@ -313,6 +313,7 @@ NEXT = {
     "co server fix-key": HANDLER,
     "co server forget": HANDLER,
     "co server destroy": "What you still have:  co server ls",
+    "co server invoice": HANDLER,
     "co skills discover": "Copy one into ~/.co/skills:  co skills copy <name from this index>",
     "co skills copy": "What is installed now:  co skills list",
     "co skills manifest": "Preview what would be published:  co announce --dry-run",

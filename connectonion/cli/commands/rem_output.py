@@ -325,6 +325,8 @@ def _consent_source(name: str, source: dict) -> str:
 
 def _consent_text(value: dict) -> str:
     """Keep the approval decision on screen; config and JSON retain the details."""
+    if 'changes' in value:
+        return '\n'.join(['Consent changes:', *('  ' + line for line in value['changes'])])
     route = value['model_receives'].partition(', through ')[2]
     route = route.replace('(no API key, no OpenOnion server)', '(no API key)')
     permissions = value['model_permissions'].replace('Investigation and init use ', 'Init/research: ')

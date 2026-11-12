@@ -137,7 +137,8 @@ def _write_only(row: dict) -> bool:
     if row.get('received') or row.get('sent', 0) < WRITE_ONLY_MIN:
         return False
     address = row['address']
-    return not (AUTOMATED_HINT.search(address) or BULK.search(address)
+    return not (AUTOMATED_HINT.search(address) or re.match(r"^(?:hello|info|team|support|updates)@", address, re.I)
+                or BULK.search(address)
                 or RELAY.search(address) or AGENT_ADDRESS.search(address))
 
 
@@ -183,12 +184,12 @@ def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
 
 
 def worth_a_page(sent: int, received: int) -> bool:
-    """Someone the owner corresponds with: mail both ways, or the owner wrote to them twice.
+    """Mail both ways, two sent, or three received; service and notice filters still apply.
 
-    On the owner's 367 correspondents: 41 both ways, 31 written to twice or
-    more; the other 295 were one cold mail, a newsletter, a booking (#2057).
+    One unanswered introduction waits; three inbound mails qualify even before
+    the owner replies. Service and notice senders are filtered separately.
     """
-    return bool((sent and received) or sent >= 2)
+    return bool((sent and received) or sent >= 2 or received >= 3)
 
 
 def _notice(row: dict) -> bool:
@@ -539,6 +540,11 @@ def _scratch_identity(path: str) -> str:
 
 
 def _mapped_only(page: str) -> bool:
+    from .facts import UNIT_KINDS, parse
+    fields = parse(page, 'orgs/unit.md')
+    if any(v['citations'] for v in fields['Parent']) and any(
+            v['citations'] and v['value'] in UNIT_KINDS for v in fields['Kind']):
+        return False  # Cited inferred structure is knowledge, not a disposable domain stub.
     return 'not investigated yet' in next(
         (line for line in page.splitlines() if line.startswith('Investigation:')), '')
 
@@ -558,12 +564,13 @@ def _held(group: list[dict], page: str) -> bool:
     (ellis.work@example.org, 10 sent, none received). It is still asked about with
     `init --mine`, and held until that is answered or it replies (#1987).
 
-    Since #2057 an address the owner never wrote to gets no page at all, so the
-    write-only case is the one that still arrives here.
+    Three inbound mails qualify even without a display name. The write-only
+    case remains held until its identity is clearer.
     """
     title = page.split('\n', 1)[0]
     return '@' in title and _mapped_only(page) and (
-        not any(row.get('sent') for row in group) or all(_write_only(row) for row in group))
+        (not any(row.get('sent') for row in group) and sum(row.get('received', 0) for row in group) < 3)
+        or all(_write_only(row) for row in group))
 
 
 def needs_review(root: Path) -> set[str]:
@@ -905,6 +912,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     state.parent.mkdir(parents=True, exist_ok=True)
     # An upgraded notebook is tidied first, from the map before this one (#1999).
     from .tidy import tidy
+    from .org_inference import reconcile
+    report['hierarchy'] = reconcile(notebook, lock_held=True)
+    report['created'] += report['hierarchy']['created']
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
@@ -1076,7 +1086,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if report['without_page']:
         report['coverage'].append(f"{len(report['without_page'])} correspondents with mail one way only, and at "
                                   "most one from the owner, listed in .state/map.json without people pages; a page "
-                                  "comes when mail goes both ways or the owner writes twice")
+                                  "comes with mail both ways, two sent mails, or three inbound mails")
     # Why a mailbox is not here is the command layer's knowledge, not the map's:
     # from inside, a mailbox nobody connected, one the user unsubscribed, and one
     # that failed to open are all equally absent. It says what it was told, and
@@ -1088,6 +1098,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if progress:
         progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
+    from .mail_archive import mail_metadata
+    hierarchy = reconcile(notebook, inventory.records if inventory else mail_metadata(root), lock_held=True)
+    report['created'] += hierarchy['created']
+    report['hierarchy']['created'] += hierarchy['created']
+    report['hierarchy']['reviews'] += hierarchy['reviews']
     report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organisation identity unverified; existing organisation pages preserved')
@@ -1127,6 +1142,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
+    from .topic_map import map_topics
+    report['topics'], created_topics = map_topics(notebook)
+    report['created'] += created_topics
     # And tidied again after (#2018): the acceptance run's map made pages that
     # tidy, run only before it, never saw. Tidy reads this map's rows. The
     # owner's own addresses wait for the next run: this map has just asked

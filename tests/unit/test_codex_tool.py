@@ -90,7 +90,7 @@ class FakeServer:
 
     def run_turn(self, thread_id, prompt, cwd="", timeout=600):
         self.calls.append(("run_turn", thread_id, prompt))
-        self.on_event({"kind": "agent_message", "text": "Hello "})
+        self.on_event({"kind": "agent_message", "text": "Running the tests first."})
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
         if self.requests_approval:
             self.approval_decision = self.on_approval(
@@ -100,7 +100,7 @@ class FakeServer:
             if not self.approval_decision:
                 self.on_event({"kind": "approval_denied", "reason": "operator_declined"})
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
-        self.on_event({"kind": "agent_message", "text": "world"})
+        self.on_event({"kind": "agent_message", "text": "Hello world"})
         return {"status": "completed", "usage": {"input_tokens": 5}}
 
 
@@ -1327,3 +1327,63 @@ class TestActiveThreadNotifications:
 
         with patch.object(client, "request", side_effect=start):
             assert client.run_turn("main", "Review", timeout=1) == {"status": "completed"}
+
+
+FIXTURES = __import__("pathlib").Path(__file__).parents[1] / "fixtures" / "native_runners"
+
+
+def _replayed(tmp_path, monkeypatch, **kwargs):
+    """The real client against fake_codex_app_server.py, a recorded codex-cli 0.167 turn."""
+    record = tmp_path / "requests.jsonl"
+    monkeypatch.setenv("CODEX_CMD", str(FIXTURES / "fake_codex_app_server.py"))
+    monkeypatch.setenv("FAKE_CODEX_RECORD", str(record))
+    monkeypatch.delenv("CO_REM_CODEX_ARCHIVE", raising=False)
+    kwargs.setdefault("timeout", 30)
+    result = json.loads(codex_module._run_codex(prompt="Add one line to README.md", cwd=str(tmp_path), **kwargs))
+    requests = [json.loads(line) for line in record.read_text().splitlines()]
+    return result, {request["method"]: request["params"] for request in requests}
+
+
+def test_last_message_is_the_final_answer_not_every_message_run_together(tmp_path, monkeypatch):
+    # Real run 2026-11-09: "I'll add a hello line to README.md.Hello!" -- the
+    # commentary and the answer glued with no space.
+    result, _ = _replayed(tmp_path, monkeypatch, approval="auto")
+    assert result["last_message"] == "Hello!"
+    assert result["usage"] == {"input_tokens": 120187, "output_tokens": 278, "cached_input_tokens": 103040}
+    assert result["exit_code"] == 0 and (tmp_path / "codex-was-here.md").is_file()
+
+
+def test_effort_and_writable_roots_reach_the_thread(tmp_path, monkeypatch):
+    extra = tmp_path / "deliverables"
+    _, requests = _replayed(tmp_path, monkeypatch, sandbox="danger-full-access", approval="auto",
+                            effort="high", writable_roots=[str(extra)])
+    assert requests["thread/start"]["sandbox"] == "danger-full-access"
+    assert requests["thread/start"]["approvalPolicy"] == "never"
+    assert requests["thread/start"]["config"] == {
+        "model_reasoning_effort": "high", "sandbox_workspace_write": {"writable_roots": [str(extra)]}}
+
+
+def test_a_turn_that_runs_out_of_time_says_timeout(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CODEX_SLEEP", "10")
+    result, _ = _replayed(tmp_path, monkeypatch, approval="auto", timeout=2)
+    assert result["status"] == "timeout" and result["exit_code"] != 0 and "timed out" in result["error"]
+
+
+def test_refused_approvals_are_counted_not_hidden(monkeypatch):
+    # Real run 2026-11-09: the default policy refused the README edit and the
+    # envelope still said exit_code 0 with no error.
+    monkeypatch.setattr(FakeServer, "requests_approval", True)
+    result = _run(prompt="inspect", approval="deny")
+    assert result["approvals_denied"] == 1
+    assert result["status"] == "blocked" and result["exit_code"] == 1
+    assert _run(prompt="inspect", approval="manual", agent=_Agent(_IO(approve=True)))["approvals_denied"] == 0
+
+
+def test_with_nobody_to_approve_the_default_writes_inside_the_sandbox(tmp_path, monkeypatch):
+    # #2904, real run 2026-11-09: codex(prompt, cwd=...) with no Work Room asked
+    # before every patch under "untrusted", nobody answered, and nothing changed.
+    _, alone = _replayed(tmp_path, monkeypatch)
+    assert alone["thread/start"]["approvalPolicy"] == "on-request"
+    assert alone["thread/start"]["sandbox"] == "workspace-write"
+    _, watched = _replayed(tmp_path, monkeypatch, agent=_Agent(_IO()))
+    assert watched["thread/start"]["approvalPolicy"] == "untrusted"
