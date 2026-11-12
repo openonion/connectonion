@@ -33,8 +33,8 @@ from pydantic import BaseModel
 
 from connectonion.core.events import after_each_tool, after_user_input
 from connectonion.core.mode import AUTO, FULL_ACCESS, MODE_NAMES, READ_ONLY, mode_of
-from connectonion.useful_plugins.system_reminder import reminder_message
 from connectonion.llm_do import llm_do
+from connectonion.useful_plugins.system_reminder import reminder_message
 
 if TYPE_CHECKING:
     from connectonion.core.agent import Agent
