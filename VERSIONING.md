@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc4
+## Current Version: 1.9.6rc5
+
+Release candidate 1.9.6rc5 for 1.9.6: the REM reader's rail shows a picture with its word under each
+place, so no place needs a hover to be told apart; Skills moves out of More onto the rail; a window lower
+than the rail scrolls the rail; REM has its own sleeping-face mark and an inline tab icon (#2960, fixes
+#2953). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc5.md).
+
+- 1.9.6rc5 (the reader's rail names every place; REM's own mark).
+
+### Previous candidate: 1.9.6rc4
 
 Release candidate 1.9.6rc4 for 1.9.6: in the REM reader, Done, Undo and Skip reach the notebook
 whatever the size of its mail version table (past 64 KB they were refused while the page showed them

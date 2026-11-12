@@ -25,7 +25,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc4**: in the REM reader, Done, Undo and Skip reach the notebook however
+Release candidate **1.9.6rc5**: the REM reader's rail names every place under its picture (Today,
+Waiting on you, People, Organisations, Projects, Skills, All records), Skills has its own place on it, and
+REM has its own mark and tab icon. See [1.9.6rc5 notes](releases/1.9.6rc5.md).
+
+Before it, release candidate **1.9.6rc4**: in the REM reader, Done, Undo and Skip reach the notebook however
 much mail it holds, and a refused mark says "Not saved". Organisations, Projects, All records and
 Skills load while REM builds a newer reader. See [1.9.6rc4 notes](releases/1.9.6rc4.md).
 
@@ -43,7 +47,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc4'
+python -m pip install --upgrade 'connectonion==1.9.6rc5'
 ```
 
 ## Previous stable
