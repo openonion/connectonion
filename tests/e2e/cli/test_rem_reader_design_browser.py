@@ -1752,13 +1752,13 @@ def test_skill_roster_links_are_touch_sized_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#c=skills')
-    links = page.locator('.hits.skills .t a:visible')
+    links = page.locator('.skills-view :is(a.skill-card, a.skill-item):visible')
     assert links.count() > 0
     for link in links.all():
         box = link.bounding_box()
         assert box['width'] >= 44 and box['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    page.locator('.hits.skills .t a').first.click()
+    links.first.click()
     assert page.locator('.record-focus.skills').is_visible()
 
 
@@ -3677,11 +3677,10 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
       return byPath('skills/catalog/weekly-brief.md').text;
     }''', language, isolated_context=False)
     assert page.locator('.lede').inner_text().startswith(
-        '可复用的操作流程，仅记录，未安装 · ' if language == 'zh' else 'Repeatable procedures, recorded not installed. ')
-    assert re.fullmatch(r'\d+ 项中，\d+ 项有内容' if language == 'zh' else r'\d+ written of \d+',
-                        page.locator('.lede .mono').inner_text())
-    assert page.locator('.hits .bar').count() == 0
-    assert page.locator('.hits .usage').first.inner_text().endswith(
+        '你的 agent 会做的事，最常用的在前 · ' if language == 'zh' else 'What your agents can do, the ones you use most first. ')
+    assert page.locator('.lede .mono').inner_text() == ('3 个技能' if language == 'zh' else '3 skills')
+    assert page.locator('.skills-view .bar').count() == 0
+    assert page.locator('.skill-card .skill-uses').first.inner_text().endswith(
         '最近 昨天' if language == 'zh' else 'last Yesterday')
     assert page.evaluate(r"byPath('skills/catalog/weekly-brief.md').text", isolated_context=False) == original
     page.evaluate(r"""() => {
@@ -3898,68 +3897,6 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
     assert '理学院教授' not in page.locator('.r4-sub').inner_text()
-
-
-@pytest.mark.parametrize('width', [375, 1440])
-def test_skills_group_recent_families_and_collapse_rare_search_matches(reader, width):
-    page, uri = reader
-    page.set_viewport_size({'width': width, 'height': 900})
-    page.goto(uri + '#c=skills')
-    assert page.locator('.skill-family h2').first.text_content() == 'Used in the last 30 days2'
-    rare = page.locator('.rare-skills')
-    assert rare.locator('summary').inner_text() == 'Rarely used (1)'
-    assert rare.get_attribute('open') is None
-    page.evaluate(r'''() => {
-      const base = byPath('skills/catalog/weekly-brief.md');
-      for (let i = 0; i < 36; i++) {
-        const name = i < 3 ? 'lark-fixture-' + i : 'archive-fixture-' + i;
-        REM.records.push({...base, path: 'skills/catalog/' + name + '.md', title: name,
-          text: base.text.replace(/last on \d{4}-\d{2}-\d{2}/, 'last on ' + (i < 3 ? '2026-08-15' : '2026-01-01'))});
-      }
-      KNOWN.clear(); FACTS.clear(); render();
-    }''', isolated_context=False)
-    assert page.locator('.skill-family h2').filter(has_text='lark').text_content() == 'lark3'
-    assert rare.locator('summary').inner_text() == 'Rarely used (34)'
-    assert rare.get_attribute('open') is None
-    page.locator('.skill-groups input').fill('archive-fixture-35')
-    assert rare.get_attribute('open') is not None
-    assert rare.locator('a').filter(has_text='archive-fixture-35').is_visible()
-    page.locator('.skill-groups input').fill('')
-    assert rare.get_attribute('open') is None
-    page.evaluate(r'''() => setInterfaceLanguage('zh')''', isolated_context=False)
-    assert page.locator('.skill-family h2').first.text_content() == '最近 30 天用过2'
-    assert rare.locator('summary').inner_text() == '很少使用 (34)'
-    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-
-
-@pytest.mark.parametrize('width', [375, 1440])
-def test_skills_recent_cap_and_headings_share_the_list_column(reader, width):
-    page, uri = reader
-    page.set_viewport_size({'width': width, 'height': 900})
-    page.goto(uri + '#c=skills')
-    page.evaluate(r'''() => {
-      const base = byPath('skills/catalog/weekly-brief.md');
-      REM.records = REM.records.filter(r => r.category !== 'skills');
-      for (let i = 0; i < 59; i++) {
-        const name = 'lark-fixture-' + i, day = String(1 + i % 29).padStart(2, '0');
-        REM.records.push({...base, path: 'skills/catalog/' + name + '.md', title: name,
-          text: base.text.replace(/last on \d{4}-\d{2}-\d{2}/, 'last on 2026-09-' + day)});
-      }
-      KNOWN.clear(); FACTS.clear(); render();
-    }''', isolated_context=False)
-    groups = page.locator('.skill-family')
-    assert groups.first.locator('h2').text_content() == 'Used in the last 30 days10'
-    assert groups.first.locator('.hits > li').count() == 10
-    assert groups.nth(1).locator('h2').text_content() == 'lark49'
-    assert page.locator('.hits.skills > li').count() == 59
-    for group in groups.all():
-        assert group.evaluate(r'''node => {
-          const heading = node.querySelector('h2').getBoundingClientRect();
-          const list = node.querySelector('ul').getBoundingClientRect();
-          const count = node.querySelector('.n').getBoundingClientRect();
-          return Math.abs(heading.right - list.right) < 1 && count.right <= list.right + 1;
-        }''')
-    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 @pytest.mark.parametrize('width', [375, 1440])
@@ -4712,7 +4649,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     page, uri = reader
     for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
-        page.locator('.sheet-find, .r4-find, .ov-find').first.fill('no-such-invented-page-zzzz')
+        page.locator('.sheet-find, .r4-find, .ov-find, .skills-find').first.fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'
         assert page.locator('.empty a').count() == 1
         page.locator('.empty a').click()
@@ -6239,3 +6176,111 @@ def test_graph_kinds_differ_by_shape_and_private_records_carry_a_slash(reader):
     assert page.evaluate("graphSvgMark('knowledge', 7, 7, 5, true).querySelectorAll('circle').length", isolated_context=False) == 1
     assert page.evaluate("graphSvgMark('people', 7, 7, 5, true).querySelectorAll('circle').length", isolated_context=False) == 0
     assert page.evaluate("graphSvgMark('sessions', 7, 7, 1.5, true).querySelector('path').getAttribute('d') === graphOutline('sessions', 7, 7, GRAPH_PRIVATE_MIN)", isolated_context=False)
+
+
+# Sprint 13 (owner, 2026-11-13: «skills 处理一下»): one glance answers "what do I use most" and
+# "what can my agents do". Before, 150 skills were one 760px column 12 000px tall, grouped by
+# lowercase prefix, the 62-use skill below a "used in the last 30 days" group of one, with
+# "recorded not installed" / "Source reviewed" chips and a tiny second search box.
+SKILL_SET = [
+    ('lark-mail', 40, 'Send and read Lark mail for you, with the reply checked in the sent folder.', ''),
+    ('lark-doc', 2, 'Edit a Lark document; the change is read back.', ''),
+    ('lark-calendar', 9, 'Book a Lark meeting room — rooms are checked for clashes first.', ''),
+    ('lark-sheets', 0, 'Fill a Lark sheet from a table.', ''),
+    ('deck-maker', 25, 'Guides creation of a bilingual, story-led pitch deck, with an HTML and PDF copy.',
+     '- Installed description: 用故事化漫画讲客户案例——从大纲到成品。\n'),
+    ('poster-cut', 0, 'Unknown — description not provided', ''),
+] + [(f'tool-{i}', 0, f'Do small job number {i} for the notebook.', '') for i in range(12)]
+
+
+def _add_skills(page):
+    page.evaluate(r'''skills => {
+      for (const [name, count, what, extra] of skills) REM.records.push({path: 'skills/catalog/' + name + '.md',
+        category: 'skills', title: name, written: !what.startsWith('Unknown'), translations: {}, text: '# ' + name
+          + '\n\n## What it does\n' + what + '\n\n## Usage history\n<!-- rem-usage -->\n- '
+          + (count ? 'Invoked ' + count + ' times in your coding sessions in the last 180 days (412 session files: Codex), last on 2026-09-'
+              + String(1 + count % 28).padStart(2, '0') + ' (Codex ' + count + ').'
+            : 'No invocation found in your coding sessions in the last 180 days (412 session files: Codex).')
+          + '\n<!-- /rem-usage -->\n\n## Source\n<!-- rem-installed-copies -->\n- File: /home/user/.codex/skills/' + name
+          + '/SKILL.md\n' + extra + '<!-- /rem-installed-copies -->\n'});
+      MAX_USAGE = null;
+      render();
+    }''', SKILL_SET, isolated_context=False)
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_skills_rank_what_you_use_and_fill_the_width(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    top = page.locator('.skills-top .skill-card .skill-name').all_inner_texts()
+    assert top[:4] == ['lark-mail', 'deck-maker', 'weekly-brief', 'lark-calendar']  # by uses: 40, 25, 14, 9
+    assert 'lark-sheets' not in top and 'tool-1' not in top  # never used: not in the top group
+    assert page.locator('.skills-top .skill-card').first.inner_text().count('40')
+    families = page.locator('.skill-families')
+    # Family names read as names ("Tool", not "tool"); a family left with fewer than three goes under Other.
+    assert [h.split('\n')[0].rstrip('0123456789') for h in families.locator('h3').all_inner_texts()] == ['Tool', 'Other']
+    assert families.locator('.skill-name').filter(has_text='lark-mail').count() == 0  # shown once, in the top group
+    boxes = [b for b in (families.locator('li').nth(i).bounding_box() for i in range(families.locator('li').count()))]
+    main = page.locator('#main').bounding_box()
+    lefts = {round(b['x']) for b in boxes}
+    if width >= 1200:
+        assert len(lefts) >= 3  # several columns, not one 760px list
+        assert max(b['x'] + b['width'] for b in boxes) >= main['x'] + main['width'] - 80  # the right side is used
+        assert page.locator('.skill-shape').bounding_box()['y'] < 900  # the shape of the rest is on the first screen
+    else:
+        assert len(lefts) == 1
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_skills_with_only_a_name_go_to_one_quiet_line(reader):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    assert page.locator('.skill-families .skill-name').filter(has_text='poster-cut').count() == 0
+    assert page.locator('.skills-empty').inner_text() == '1 skill has only a name: poster-cut'
+    assert page.locator('.skills-empty a').get_attribute('href') == '#r=skills%2Fcatalog%2Fposter-cut.md'
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_skills_say_what_each_does_in_one_plain_line(reader, language):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    page.evaluate('language => setInterfaceLanguage(language)', language, isolated_context=False)
+    line = lambda name: page.locator('.skill-item, .skill-card').filter(has=page.locator('.skill-name', has_text=name)).locator('.skill-line').inner_text()
+    assert line('deck-maker') == ('用故事化漫画讲客户案例' if language == 'zh' else 'Guides creation of a bilingual, story-led pitch deck')
+    assert line('lark-calendar') == 'Book a Lark meeting room'
+    assert line('lark-mail') == 'Send and read Lark mail for you'
+    text = page.locator('#main').inner_text()
+    for jargon in ['recorded not installed', 'Source reviewed', 'Getting to know them', 'More to learn', 'written of',
+                   '仅记录，未安装', '已核对来源', '待了解', '有内容', 'version unverified', '版本未验证']:
+        assert jargon not in text
+    assert page.locator('.lede').inner_text() == ('你的 agent 会做的事，最常用的在前 · 21 个技能' if language == 'zh'
+                                                  else 'What your agents can do, the ones you use most first. 21 skills')
+
+
+def test_skills_have_one_search_that_is_big_enough_to_use(reader):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    search = page.locator('#main input[type=search]')
+    assert search.count() == 1
+    box = search.bounding_box()
+    assert box['height'] >= 44 and box['width'] >= 320
+    assert search.get_attribute('placeholder') == 'Find among 21 skills…'
+    search.fill('meeting room')
+    assert page.locator('#main .skill-name').all_inner_texts() == ['lark-calendar']
+    assert page.locator('.skills-top').count() == 0
+
+
+def test_skill_page_says_where_it_lives_in_words(reader):
+    page, uri = reader
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.locator('details.deep-note > summary').click()
+    source = page.locator('.panel').filter(has=page.locator('h3', has_text='Source'))
+    assert 'Claude Code' in source.inner_text()
+    assert 'claude-user' not in source.inner_text()
+    assert source.locator('a').inner_text() == 'Open SKILL.md'
+    assert page.locator('.pill.status').count() == 0  # no research-state chip the owner cannot act on

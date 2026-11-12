@@ -857,9 +857,10 @@ def test_audited_chrome_uses_category_nouns_and_keeps_english_labels():
         'console.log(JSON.stringify({zh, emptyCounts, labels, en, englishReason: refusalReason("Missing or duplicate citation: 22")})); })();',
     ]))
     units = ['人', '个组织', '个项目', '项', '项', '条']
-    assert result['zh'] == [f'6 {unit}中，3 {unit}有内容' for unit in units]
-    assert result['emptyCounts'] == [f'3 {unit}' for unit in units]
-    assert result['en'] == ['3 written of 6'] * 6
+    # Skills say how many there are; "written of" was the notebook's bookkeeping, not the owner's (sprint 13).
+    assert result['zh'] == [f'6 {unit}中，3 {unit}有内容' if unit != '项' or i == 4 else '6 个技能' for i, unit in enumerate(units)]
+    assert result['emptyCounts'] == [f'3 {unit}' if unit != '项' or i == 4 else '3 个技能' for i, unit in enumerate(units)]
+    assert result['en'] == ['3 written of 6'] * 3 + ['6 skills'] + ['3 written of 6'] * 2
     assert result['labels'] == ['等你处理', '当前背景', '每日更新', '2 次技能名称匹配 · 最近 10月10日 · 版本未验证',
                                 '改动的页面缺少编号来源引用', '缺失或重复的引用：22', 'Claude Code 会话 · 9月3日', 'claude-code:aaaaaaaa…']
     assert result['englishReason'] == 'Missing or duplicate citation: 22'
@@ -969,34 +970,26 @@ def test_reader_language_swap_reuses_parsing_and_restores_original():
     assert _run_reader_js(script) == ['An original lead.', '中文摘要.', 'An original lead.', 'An original lead.']
 
 
-def test_reader_skills_group_and_search_reveals_rare_matches():
+def test_reader_skill_line_is_the_first_plain_clause():
+    """Sprint 13: a skill shows one line of what it does, not the description's whole paragraph."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['skillGroups', 'skillUsage'])
-    script = r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, value: "", ...attrs, children,
-        appendChild(child) { this.children.push(child); },
-        append(...nodes) { this.children.push(...nodes); },
-        set textContent(value) { this.children = []; }
-      });
-      const label = () => 'Skills', row = r => ({text: r.title});
-      const daysSince = day => (new Date('2026-10-01') - new Date(day)) / 86400000;
-    ''' + functions + r'''
-      const names = ['weekly-brief', 'invoice-check', 'lark-mail', 'lark-doc', 'lark-calendar', 'talk-outline'];
-      const items = names.map((title, i) => ({title, path: 'skills/catalog/' + title + '.md',
-        text: 'Invoked 3 times in the last 180 days; last on ' + (i < 2 ? '2026-09-30' : i < 5 ? '2026-08-15' : '2026-01-01')}));
-      const box = skillGroups(items), find = box.children[0], content = box.children[1];
-      const groups = content.children.map(n => n.tag === 'details' ? [n.children[0].text, !!n.open] :
-        [n.children[0].children[0], n.children[1].children.map(row => row.text)]);
-      find.value = 'talk-outline'; find.oninput();
-      const searched = content.children[0];
-      console.log(JSON.stringify({groups, searched: [searched.children[0].text, searched.open,
-        searched.children[1].children.map(row => row.text)]}));
-    '''
-    assert _run_reader_js(script) == {
-        'groups': [['Used in the last 30 days', ['weekly-brief', 'invoice-check']],
-                   ['lark', ['lark-calendar', 'lark-doc', 'lark-mail']], ['Rarely used (1)', False]],
-        'searched': ['Rarely used (1)', True, ['talk-outline']]}
+                          for name in ['skillClause', 'plainLine'])
+    result = _run_reader_js(page[page.index('const UNKNOWN_LINE ='):page.index('const UNKNOWN_LINE =') + 400].split('\n')[0] + '\n'
+                            + 'const youify = text => text;\n' + functions + r'''
+      console.log(JSON.stringify([
+        'Drive one browser from the shell to open pages, with the outcome checked against browser state.[1]',
+        'Install the framework — `pip install x` for Python. Then run it.',
+        'This skill guides an agent through a short group reply; it aims to keep context.',
+        '飞书日记流程提供记录规则；目标是把消息保存到 daily/。[1]',
+        '用故事化漫画讲客户案例——从大纲到成品。',
+        'AI语言特征修复 (user)',
+        'Unknown — description not provided',
+      ].map(skillClause)));
+    ''')
+    assert result == ['Drive one browser from the shell to open pages', 'Install the framework',
+                      'Guides an agent through a short group reply', '飞书日记流程提供记录规则',
+                      '用故事化漫画讲客户案例', 'AI语言特征修复', '']
 
 
 def test_reader_translated_relationship_takes_precedence_over_index_prose():
@@ -1103,30 +1096,6 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
     ''')
     assert result == [{'person': 'Mara Ostrowski', 'text': 'You owe Mara Ostrowski a signed agreement [1].',
                        'also': ['Mia Chen']}]
-
-
-def test_reader_recent_skills_are_capped_and_overflow_keeps_family_groups():
-    page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['skillGroups', 'skillUsage'])
-    result = _run_reader_js(r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, value: '', ...attrs, children,
-        appendChild(child) { this.children.push(child); }, append(...nodes) { this.children.push(...nodes); },
-        set textContent(value) { this.children = []; }
-      });
-      const label = () => 'Skills', row = r => ({text: r.title});
-      const daysSince = day => (new Date('2026-10-20') - new Date(day)) / 86400000;
-    ''' + functions + r'''
-      const items = Array.from({length: 16}, (_, i) => ({title: (i < 3 ? 'misc' : 'lark-') + i,
-        path: 'skills/catalog/skill-' + i + '.md',
-        text: 'Invoked 3 times in the last 180 days; last on 2026-10-' + String(i+1).padStart(2, '0')}));
-      const content = skillGroups(items).children[1];
-      console.log(JSON.stringify(content.children.map(group => [group.children[0].children[0],
-        group.children[1].children.map(row => row.text)])));
-    ''')
-    assert result == [['Used in the last 30 days', ['lark-15', 'lark-14', 'lark-13', 'lark-12', 'lark-11',
-                                                  'lark-10', 'lark-9', 'lark-8', 'lark-7', 'lark-6']],
-                      ['lark', ['lark-3', 'lark-4', 'lark-5']], ['Other', ['misc0', 'misc1', 'misc2']]]
 
 
 @pytest.mark.parametrize('marker', ['Now:', 'Now：', '现在：'])
