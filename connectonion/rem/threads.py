@@ -146,3 +146,30 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
         write_json(drafts.path(root, row['id']), {**saved, 'status': status})
     write_json(state_path(root, 'threads.json'), found)
     return value
+
+
+# 忽略 on a Today row can also stop its sender (owner, 2026-11-13: «广告要忽略»). One dated address per line in
+# the notebook's state, beside threads.json, so the owner can read the list and delete a line by hand.
+IGNORED = 'ignored-senders.txt'
+IGNORED_HEAD = '# Senders ignored in the REM reader: their mail stays out of Today and gets no draft. Delete a line to see them again.'
+
+
+def ignored_senders(root):
+    """{address: day ignored}, addresses casefolded; a missing file is an empty list."""
+    file = state_path(root, IGNORED)
+    lines = file.read_text(encoding='utf-8').splitlines() if file.is_file() else []
+    return {address.casefold(): day for day, _, address in (line.strip().partition(' ') for line in lines)
+            if day and not day.startswith('#') and '@' in address}
+
+
+def ignore_sender(root, address, *, ignored=True):
+    """Add the sender with today's date, or remove it; the whole list comes back for the reader."""
+    from .files import atomic_write
+    from .service import notebook_today
+    with maintenance_lock(root):
+        found = ignored_senders(root)
+        found.pop(address.casefold(), None)
+        if ignored:
+            found[address.casefold()] = notebook_today(root).isoformat()
+        atomic_write(state_path(root, IGNORED), '\n'.join([IGNORED_HEAD, *(f'{day} {who}' for who, day in found.items())]) + '\n')
+        return found

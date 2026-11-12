@@ -60,7 +60,7 @@ def candidates(root, *, refresh_index=True, records=None):
         refresh(root)
     if not state_path(root, 'rem.db').is_file():
         return []
-    owner = owner_addresses(root)
+    owner, ignored = owner_addresses(root), threads.ignored_senders(root)
     found = {}
     with closing(sqlite3.connect(state_path(root, 'rem.db'))) as db:
         db.row_factory = sqlite3.Row
@@ -79,7 +79,8 @@ def candidates(root, *, refresh_index=True, records=None):
                 continue
             sender = _address(saved.get('reply_to') or saved.get('from', ''))
             mailbox = next((a for a in _addresses(saved.get('to')) + _addresses(saved.get('cc')) if a.casefold() in owner), '')
-            if not sender or not mailbox:
+            # The owner ignored this sender from Today: the night writes them nothing either.
+            if not sender or not mailbox or {sender.casefold(), _address(saved.get('from', '')).casefold()} & set(ignored):
                 continue
             draft_id = hashlib.sha256(thread.encode()).hexdigest()[:32]
             cc = sorted(set(_addresses(saved.get('to')) + _addresses(saved.get('cc'))) - owner - {sender})

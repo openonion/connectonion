@@ -946,8 +946,15 @@ pinned to that edge: it comes into view with the draft.
   (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
   *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: stored as `done`, the only
   other state the Host keeps, so this item never returns and its history line reads *Marked done*; the notice
-  says *Ignored · this one will not come back*). Ignore does not stop the sender: a later mail from them is a new
-  item. Each notice keeps **Undo**. Mark done
+  says *Ignored · this one will not come back*). When the row cites a mail whose sender has an address, Ignore's
+  notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
+  (`POST /rem/sender {"address", "ignored": true}`, the same loopback, cookie and JSON rules as `/rem/thread`), the
+  notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
+  lets the sender back. REM never stops a sender by itself, and never offers a relay that carries people
+  (`express@airbnb.com`, Luma). The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
+  can be edited by hand: Today leaves out every item whose cited mail came from a listed sender, the night drafts
+  them no reply, and **Settings → Ignored senders** lists each with **Show again** (恢复显示). Each notice keeps
+  **Undo**. Mark done
   and the row's other actions on **Waiting on you** no longer repeat it, in
   green or quietly, whatever the row's reply state. On **Today** it is the
   same button: the row has no tick of its own, the strip's **Mark done** closes

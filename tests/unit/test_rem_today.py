@@ -227,6 +227,7 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       const setDone = (entry, done) => calls.push(['setDone', entry.t.text, done]);
+      const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
       const own = stripDone(entry), slide = stripDone(entry, event => calls.push(['close', event]));
       own[0].onclick(); slide[0].onclick('click');

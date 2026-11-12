@@ -298,6 +298,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
     from .today import queue as today_queue
     data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
+    from .threads import ignored_senders
+    data['ignored_senders'] = ignored_senders(root) if local else {}
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     outcomes = {row['key']: row for row in data['night_outcomes']}
@@ -318,6 +321,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:
             row.pop('reply', None)
+            row.pop('sender', None)
     organisation_obligations(records, data['today_queue'])
     from .service import notebook_today
     rollups(records, notebook_today(root))

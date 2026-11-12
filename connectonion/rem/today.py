@@ -146,8 +146,12 @@ def _entries(root, records, today, contexts, states, db):
     title = next((record['text'].splitlines()[0].lstrip('# ') for record in records if record['path'] == owner), '')
     first, addresses = (title.split() or [''])[0], owner_addresses(root)
     found = census.pages(root, records=records)
+    ignored = threads.ignored_senders(root)
     rows = []
     for record, text, sources in _items(records, found, first):
+        sender = _sender(sources, text, addresses, db)
+        if sender in ignored:
+            continue
         key = threads.done_key(record['path'], text)
         since, due = _dates(text, today)
         times = [_source_day(sources.get(n, ''), db, contexts) for n in census.CITATION.findall(text)]
@@ -159,8 +163,28 @@ def _entries(root, records, today, contexts, states, db):
         rows.append({'key': key, 'keys': [key], 'record': record['path'], 'text': text, 'title': record['title'],
                      'dir': direction, 'since': since, 'due': due, 'quiet': quiet,
                      'closed': threads.blocked(root, key, states=states),
-                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources})
+                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources,
+                     'sender': sender})
     return _grouped(rows)
+
+
+def _sender(sources, text, owner, db):
+    """Who wrote the first cited mail that is not the owner's own: the address 忽略 can stop.
+
+    A relay is nobody's address (guests write through express@airbnb.com; on the owner's notebook
+    Today rows were people behind it), and an Exchange path is no address at all: neither is offered."""
+    from .files import EMAIL
+    from .map import RELAY
+    from .reader_model import _cited_row
+    if db is None:
+        return ''
+    for number in census.CITATION.findall(text):
+        source = sources.get(number, '')
+        row = _cited_row(db, source) if source.partition(':')[0] in ('gmail', 'outlook') else None
+        address = (row['sender'] or '').casefold() if row is not None else ''
+        if address and address not in owner:
+            return address if EMAIL.fullmatch(address) and not RELAY.search(address) else ''
+    return ''
 
 
 def _grouped(rows):

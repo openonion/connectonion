@@ -2787,6 +2787,12 @@
   .reader-settings .foot { display: flex; flex-direction: column; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .set-row { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-k { color: var(--ink); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+  .set-ignored { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
+  .set-ignored ul { list-style: none; margin: 8px 0 0; padding: 0; }
+  .set-ignored li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--u3); padding: 4px 0; overflow-wrap: anywhere; }
+  .set-ignored li > :first-child { flex: 1 1 12em; color: var(--ink); }
+  /* An address has no spaces: on a phone the notice breaks it rather than run past the edge. */
+  .done-notice .sender-ignore { overflow-wrap: anywhere; text-align: left; }
   .set-note, .notebook-languages, .memory-legend, .foot-line { font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .notebook-languages, .set-rem, .memory-legend, .foot-line { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-rem { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -3482,6 +3488,10 @@ const UI = {
     "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
     "Not now": "暂不处理", "Not now · returns with new mail": "暂不处理 · 有新邮件会回来", "Ignore": "忽略",
     "Ignored · this one will not come back": "已忽略 · 这一条不会再回来", "Next card": "下一张",
+    "Stop showing mail from {address}": "以后不再显示 {address} 的邮件",
+    "Ignored · mail from {address} no longer shows here": "已忽略 · 以后不再显示 {address} 的邮件",
+    "Ignored senders": "已忽略的发件人", "Show again": "恢复显示", "Ignored {date}": "{date} 忽略",
+    "Their mail stays out of Today and gets no draft.": "他们的邮件不进今天，也不会起草回复。",
     "Saved in notebook": "已保存到笔记本",
     "Saved on this device — sync pending": "已保存在此设备，等待同步",
     "Saving…": "保存中…",
@@ -5127,7 +5137,8 @@ function threadEntries() {
     const entries = new Map([...records.values()].flatMap(r => threads(r).items.map(t => [doneKey({r, t}), {r, t}])));
     const rows = REM.today_queue.map(row => {
       const chosen = entries.get(row.key);
-      if (!chosen) return null;
+      // A sender ignored since this page was built leaves at once; the next build leaves it out (today.py).
+      if (!chosen || row.sender && REM.ignored_senders?.[row.sender]) return null;
       const members = row.keys.map(key => entries.get(key)).filter(Boolean);
       const also = [...new Map(members.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
       return {...chosen, t: {...chosen.t, since: row.since, due: row.due, quiet: row.quiet, dir: row.dir}, also, members};
@@ -5313,7 +5324,7 @@ function markDrafts(related, value, done, state) {
   }
 }
 // said: the notice's words when they are not the state's own (Ignore is stored as done; see stripDone).
-function setDone(entry, done, state = "done", entries = [entry], said = "") {
+function setDone(entry, done, state = "done", entries = [entry], said = "", extra = null) {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5328,11 +5339,11 @@ function setDone(entry, done, state = "done", entries = [entry], said = "") {
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  const notice = done ? doneNotice(entry, state, entries, said) : null;
+  const notice = done ? doneNotice(entry, state, entries, said, extra) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       related.forEach((draft, i) => { draft.status = statuses[i]; });
-      notSavedNotice(() => setDone(entry, done, state, entries, said), notice);
+      notSavedNotice(() => setDone(entry, done, state, entries, said, extra), notice);
     }
     if (synced) render();
     // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
@@ -5361,22 +5372,23 @@ function focusRaisedCard() {
 }
 // The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
 // notice goes, the focus returns to the raised card, so the keys go on working.
-function doneNotice(entry, state, entries, said) {
+// extra: one more worded choice after Undo (忽略's "stop showing this sender"); it gets time to be read and tapped.
+function doneNotice(entry, state, entries, said, extra) {
   const undo = el("button", { type: "button", text: t("Undo") });
   undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [said || t(state === "skipped" ? "Not now · returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [said || t(state === "skipped" ? "Not now · returns with new mail" : "Marked done"), " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
-  noticeLeaves(notice);
+  noticeLeaves(notice, extra ? 12000 : 5000);
   return notice;
 }
-function noticeLeaves(notice) {
+function noticeLeaves(notice, wait = 5000) {
   setTimeout(() => {
     const held = notice.contains(document.activeElement);
     notice.remove();
     if (held) focusRaisedCard();
-  }, 5000);
+  }, wait);
 }
 
 // The one thing to do next: write to the person the thread is with. The address and
@@ -6522,7 +6534,7 @@ function renderSettings() {
   foot.replaceChildren(
     row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
     row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
-    notebookLanguages(),
+    notebookLanguages(), ignoredSendersList(),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
     el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
       el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
@@ -6533,6 +6545,18 @@ function renderSettings() {
   state.setAttribute("aria-label", t("REM status") + " · " + words);
   state.classList.toggle("off", nightlyUpdatesOff());
   state.onclick = openSettings;
+}
+// Where an ignored sender is let back in: a quiet list, each with a worded button. Only the live page has one.
+function ignoredSendersList() {
+  const found = Object.entries(REM.ignored_senders || {});
+  if (!found.length || !liveHere()) return null;
+  return el("div", { class: "set-ignored" }, [el("div", { class: "set-k", text: t("Ignored senders") }),
+    el("div", { class: "set-note", text: t("Their mail stays out of Today and gets no draft.") }),
+    el("ul", {}, found.map(([address, day]) => {
+      const back = el("button", { type: "button", class: "btn-quiet", text: t("Show again") });
+      back.onclick = async () => { back.disabled = true; if (!await saveIgnoredSender(address, false)) back.disabled = false; };
+      return el("li", {}, [el("span", { text: address }), el("span", { class: "set-note", text: t("Ignored {date}", { date: threadDate(day) }) }), back]);
+    }))]);
 }
 // REM's state in words, never a command (D-60): off, needs attention, or when the next pass runs.
 function remStateWords(s) {
@@ -7100,8 +7124,9 @@ function stripMarksDone(entry) {
 // 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
 // 标为完成 — handled, settled offline included (state done);
 // 暂不处理 — not needed now: the notebook's "skipped", which leaves Today and returns when new mail arrives on the thread;
-// 忽略 — an ad or a notification: stored as done, since the Host knows no other state, so this item never returns. It
-// does not stop the sender: a later mail from them is a new item (sender-level ignore needs Host and today.py work).
+// 忽略 — an ad or a notification: stored as done, since the Host knows no other state, so this item never returns. Its
+// notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
+// itself: a relay carries people (on the owner's notebook, Today rows from guests came through express@airbnb.com), so the owner taps it.
 function stripDone(entry, mark) {
   if (!stripMarksDone(entry)) return [];
   const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
@@ -7109,8 +7134,43 @@ function stripDone(entry, mark) {
   const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
   later.onclick = () => setDone(entry, true, "skipped");
   const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
-  ignore.onclick = () => setDone(entry, true, "done", [entry], t("Ignored · this one will not come back"));
+  const sender = todayRow(entry)?.sender;
+  ignore.onclick = () => setDone(entry, true, "done", [entry], t("Ignored · this one will not come back"),
+    sender ? () => stopSenderButton(entry, sender) : null);
   return [done, later, ignore];
+}
+// The notice's "stop showing mail from x": once saved, the notice says what was ignored and its one Undo
+// reopens the item and lets the sender back in.
+function stopSenderButton(entry, address) {
+  const button = el("button", { type: "button", class: "sender-ignore", text: t("Stop showing mail from {address}", { address }) });
+  button.onclick = async () => {
+    button.disabled = true;
+    if (!await saveIgnoredSender(address, true)) {
+      button.disabled = false;
+      button.textContent = t("Not saved") + " · " + t("Try again");
+      return;
+    }
+    const notice = document.getElementById("done-notice"), undo = el("button", { type: "button", text: t("Undo") });
+    undo.onclick = async () => {
+      notice.remove();
+      await saveIgnoredSender(address, false);
+      setDone(entry, false, "done", [entry]);
+      focusRaisedCard();
+    };
+    notice?.replaceChildren(t("Ignored · mail from {address} no longer shows here", { address }), " · ", undo, " · ", t("Saved in notebook"));
+    undo.focus({ preventScroll: true });
+  };
+  return button;
+}
+// The Host's list comes back whole; the page redraws from it, so every row from that sender goes or returns together.
+async function saveIgnoredSender(address, ignored) {
+  const reply = await hostPost("/rem/sender", { address, ignored });
+  if (!reply.ok) return false;
+  REM.ignored_senders = reply.ignored || {};
+  threadEntries.cached = null;
+  render();
+  if (document.getElementById("settings")?.open) renderSettings();
+  return true;
 }
 // One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成
 function dotted(nodes) {
