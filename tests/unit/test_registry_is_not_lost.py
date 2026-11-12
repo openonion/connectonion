@@ -88,4 +88,5 @@ class TestTheRegistrationItself:
 
         src = inspect.getsource(sc.handle_server_new)
 
-        assert src.index("_update(") < src.index("is ready")
+        assert src.index("_update(") < src.index("_print_created(")
+        assert "is ready" in inspect.getsource(sc._print_created)
