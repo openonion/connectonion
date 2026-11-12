@@ -589,6 +589,7 @@ class TestServerDestroy:
         """It asks for the name back rather than y/N: a reflex 'y' is exactly how
         someone deletes production while meaning to tidy their config."""
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_billed_servers", return_value=None), \
              patch("questionary.text") as text, \
              patch("requests.delete") as delete:
             text.return_value.ask.return_value = "prd"
@@ -598,6 +599,7 @@ class TestServerDestroy:
 
     def test_the_typed_name_must_match_exactly(self, servers_file):
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_billed_servers", return_value=None), \
              patch("questionary.text") as text, \
              patch("requests.delete", return_value=_response(200, {"refunded_usd": 0})) as delete:
             text.return_value.ask.return_value = "prod"

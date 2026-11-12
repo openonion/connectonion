@@ -1257,7 +1257,7 @@ def server_add(
 
 @server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to. Read-only."""
+    """Show what you can deploy to and what each server costs: price, next charge, accrued so far, anything unpaid, and whether your balance covers the next month. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
@@ -1278,11 +1278,14 @@ def server_new(
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
     region: Optional[str] = typer.Option(None, "--region",
                                          help="Where to provision (default: australia-southeast1)"),
+    disk: Optional[int] = typer.Option(None, "--disk", metavar="GB",
+                                       help="Disk size in GB, one of the sizes co server new lists "
+                                            "(default 20; larger ones add to the monthly price)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
-    """Have a server created for you. Charges 12 months of credit up front."""
+    """Have a server created for you. Creates the machine and bills it from your credits at the end of each month; nothing is charged at create, and your balance must cover one month. Shows the price and asks first."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes, disk_gb=disk):
         raise typer.Exit(1)
 
 
@@ -1319,12 +1322,29 @@ def server_forget(
 
 @server_app.command("destroy", epilog="Example:  co server destroy prod")
 def server_destroy(
-    name: str = typer.Argument(..., help="Server to tear down"),
+    name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; the unused term is refunded."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; charges the used part of this month, or refunds the unused part of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
+        raise typer.Exit(1)
+
+
+@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod --month 2026-12 --pdf prod-2026-12.pdf  |  co server invoice --all --month 2026-12")
+def server_invoice(
+    name: Optional[str] = typer.Argument(None, help="Server name (leave out with --all)"),
+    month: Optional[str] = typer.Option(None, "--month", metavar="YYYY-MM",
+                                        help="Show the full invoices issued in this UTC month"),
+    every: bool = typer.Option(False, "--all", help="Every server's invoices for --month (default: this month)"),
+    pdf: Optional[Path] = typer.Option(None, "--pdf", metavar="FILE",
+                                       help="Write the invoices for --month (without it, the latest) to this PDF, one page each"),
+    as_json: bool = typer.Option(False, "--json", help="Print the backend's invoice JSON instead"),
+):
+    """Show the invoices for a server's monthly charges. Without --month, lists them; with --month, prints each in full. Read-only, except that --pdf writes FILE."""
+    from .commands.server_commands import handle_server_invoice
+    if not handle_server_invoice(name=name, month=month, every=every,
+                                 pdf=str(pdf) if pdf else None, as_json=as_json):
         raise typer.Exit(1)
 
 
