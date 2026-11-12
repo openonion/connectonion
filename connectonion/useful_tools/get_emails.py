@@ -163,17 +163,17 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
     } for email in response.json().get("emails", [])]
 
 
-def mark_read(email_ids: Union[str, List[str]]) -> bool:
+def mark_read(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as read.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as read
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:
@@ -202,17 +202,17 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     return True
 
 
-def mark_unread(email_ids: Union[str, List[str]]) -> bool:
+def mark_unread(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as unread.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as unread
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:

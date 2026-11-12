@@ -13,6 +13,69 @@ from tests.unit.test_rem_source import rollout
 pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
+@pytest.mark.parametrize('results,last_message,blocked,visible', [
+    (['failed', 'timed-out'], '', False, True),
+    (['completed', 'completed'], 'The first attempt could not start; I retried and completed the round.', False, False),
+    (['completed', 'completed'], 'Earlier MAINTENANCE_BUSY; retried and completed the round.', False, False),
+    (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
+    (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
+    (['failed', 'completed'], 'Finished the work.', False, False),
+    (['completed', 'failed'], '', False, False),
+    (['failed', 'running'], '', False, False),
+])
+def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
+    from connectonion.cli.commands.rem_status import _today
+    from connectonion.rem.reader import snapshot
+    root, _ = rem
+    for index, result in enumerate(results):
+        last = state_path(root, f'turns/turn-{index}.last.md')
+        last.parent.mkdir(exist_ok=True)
+        last.write_text(last_message if index == 1 else '')
+        turn = {'started_at': f'2026-11-0{index + 1}T03:00:00Z', 'result': result,
+                'last_message': str(last), 'blocked': blocked if index == 1 else False,
+                'reason': last_message if blocked else 'fictional timeout',
+                **({'finished_at': f'2026-11-0{index + 1}T04:00:00Z'} if result != 'running' else {})}
+        write_json(state_path(root, f'turns/turn-{index}.json'), turn)
+    write_json(state_path(root, 'last-turn.json'), turn)
+    value = status(root)
+    line = value.get('schedule_failure', '')
+    assert bool(line) == visible
+    if visible:
+        from rich.text import Text
+        assert line == {'code': 'blocked' if blocked else 'repeated_failure',
+                        'evidence': last_message if blocked else 'fictional timeout'}
+        output = Text.from_markup(_today(root, value)[0]).plain
+        assert output.startswith('Last scheduled turn did not finish:')
+        assert ('run co rem start' if blocked else 'Retried automatically') in output
+        assert line['evidence'] in output
+        assert snapshot(root)['status']['schedule_failure'] == line
+
+
+@pytest.mark.parametrize('message,blocked', [
+    ('The first attempt could not start; I retried and completed the round.', False),
+    ('Earlier MAINTENANCE_BUSY; the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; the earlier attempt failed, but the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled. '
+     'Report this message and end the turn without retrying.', True),
+])
+def test_turn_receipt_records_terminal_busy_outcome(rem, monkeypatch, message, blocked):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec
+    root, _ = rem
+    monkeypatch.setattr(codex_exec, '_start_command', lambda root, last: ['fictional-codex', str(last)])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda self, root: False)
+
+    def run(command, **kwargs):
+        from pathlib import Path
+        Path(command[1]).write_text(message)
+        return CompletedProcess(command, 0)
+
+    codex_exec.run_turn(root, run=run)
+    receipt = read_json(state_path(root, 'last-turn.json'), {})
+    assert receipt['blocked'] is blocked
+    assert bool(status(root).get('schedule_failure')) is blocked
+
+
 @pytest.fixture
 def rem(tmp_path, monkeypatch):
     root = tmp_path / "rem"
@@ -667,7 +730,7 @@ def test_scheduled_sync_leaves_slot_owed_while_a_local_run_is_alive(rem, monkeyp
         assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
 
 
-def test_scheduled_busy_cli_prints_one_line_and_starts_no_daily_work(rem, monkeypatch):
+def test_scheduled_busy_cli_prints_reason_and_next_and_starts_no_daily_work(rem, monkeypatch):
     from typer.testing import CliRunner
     from connectonion.cli.main import app
     from connectonion.rem import service
@@ -682,7 +745,8 @@ def test_scheduled_busy_cli_prints_one_line_and_starts_no_daily_work(rem, monkey
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "sync", "--scheduled"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running"]
+    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running",
+                                                f"Next: co rem --root {root} logs"]
 
 
 def test_scheduled_ownership_covers_gaps_between_stage_records_and_retries_next_tick(rem, monkeypatch):
@@ -1810,3 +1874,21 @@ def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform
     monkeypatch.setattr(service.Path, "is_file", lambda path: True)
     monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
     assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("code,message,fix", [
+    ("reauth_required", "Microsoft authorization expired or was revoked.", "co auth microsoft"),
+    ("broker_auth_failed", "OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    ("record_changed", "The selected credential record changed during this operation.", "co status"),
+    ("permission_denied", "Microsoft permission denied for this operation.", "co auth microsoft"),
+    ("invalid_response", "Authorization service returned invalid credentials; saved record kept.", "co status"),
+])
+def test_source_read_preserves_credential_code_and_recovery(rem, monkeypatch, code, message, fix):
+    from connectonion.rem import service
+    from connectonion.provider_credentials import ProviderCredentialError
+    root, _ = rem
+    failure = service._collection_failure("outlook", ProviderCredentialError(code, message, fix))
+    assert code in failure["error"] and message in failure["error"] and fix in failure["error"]
+    service._record_source_read(root, "outlook", failure["error"])
+    reason, _ = service._mailbox_read_failure(root, "outlook")
+    assert code in reason and message in reason and fix in reason

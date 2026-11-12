@@ -557,3 +557,38 @@ def test_new_alias_address_cleanup_does_not_leave_an_unused_source(tmp_path):
     saved = book.read(record)
     assert '- Also known as: Unknown' in saved
     assert 'gmail:alias' not in saved and 'Mira leads Atlas.' in saved
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+@pytest.mark.parametrize('filename', ['agreement.docx', 'Pilot agreement.docx'])
+def test_selected_attachment_capture_survives_task_cleanup(tmp_path, provider, filename):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    record = 'orgs/lantern.md'
+    book.stub_org(record, 'Lantern Labs', ['lantern.example'])
+    original = book.read(record)
+    directory = tmp_path / '.state/tasks/selected-attachment'
+    source = f'{provider}:0123456789ab:{filename}'
+    capture(directory, source=source, body='Lantern Labs pilot fee is $200.')
+    candidate = directory / 'candidate.md'
+    text = original.replace('Unknown — not investigated yet', 'Unknown')
+    text = text.replace('## Terms\n', '## Terms\n“Lantern Labs pilot fee is $200.” [1]\n')
+    candidate.write_text(text.replace('## Sources\n', f'## Sources\n- [1] {source} — 2026-11-06\n'))
+    runner._promote_candidate(book, record, candidate, original, [], directory, None)
+    saved = book.read(record)
+    runner.scrub_task(directory)
+    assert misquoted(tmp_path, record, saved, []) == []
+    material, missing = project_claim_review.packet(book, saved)
+    assert not missing
+    assert material['sources'][0]['source_id'] == source
+    assert material['sources'][0]['context']['excerpt'] == 'Lantern Labs pilot fee is $200.'
+
+
+def test_selected_attachment_reader_context_has_a_display_type(tmp_path):
+    source = capture(tmp_path, 'gmail:0123456789ab:Pilot agreement.pdf', 'Lantern pilot fee is $200.')
+    page = f'# Lantern\n\nPilot fee [1]\n\n## Sources\n- [1] {source} — 2026-11-06\n'
+    evidence.retain_research(tmp_path, page, evidence.research_items(tmp_path))
+    context = cited_context(tmp_path, [{'text': page}])[source]
+    assert context['source'] == 'attachment'
+    assert context['filename'] == 'Pilot agreement.pdf'
+    assert context['excerpt'] == 'Lantern pilot fee is $200.'

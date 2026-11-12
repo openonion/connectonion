@@ -62,7 +62,9 @@ def test_native_wait_handles_owner_metadata_windows(tmp_path, monkeypatch, phase
         assert entered.wait(2)
         release = threading.Timer(0.05, proceed.set)
         release.start()
-        with maintenance_lock(tmp_path, wait=0.2, operation="next", wait_for_native=True):
+        # The holder lets go 0.05 s in; the bound only has to outlast that on
+        # a busy runner (0.2 s ran out on a four-worker CI shard, run 42658773686).
+        with maintenance_lock(tmp_path, wait=2, operation="next", wait_for_native=True):
             pass
         release.join()
         first.result()

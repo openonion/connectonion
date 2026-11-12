@@ -1,0 +1,29 @@
+version: v1.9.3rc53
+images:
+- file: rem-citation-source.png
+  alt: Mia Chen's fictional REM page with an open cited email
+  caption: A claim opens its retained source beside the person page, with dates in
+    the notebook's local timezone.
+  scenario: Open Mia's pilot export citation; 2026-11-06 13:15 UTC displays as Nov
+    7, 2026 in Australia/Sydney.
+  viewport: 1440x1000, light, 1x, en-US, Australia/Sydney
+  commit: c0406d65131aebabf92699f6e9ffa9e5adef9f41
+  source_run: 'local: python scripts/capture_193rc53_release_reader.py docs/releases/assets/v1.9.3rc53'
+- file: rem-citation-conversation-window.png
+  alt: Five archived messages around Mia's cited reply
+  caption: The conversation shows the cited message and two neighbours on either side,
+    with the citation highlighted.
+  scenario: Open Cited conversations on Mia's page; only messages 3–7 of the twelve-message
+    synthetic thread appear, excluding Sam's distant citation.
+  viewport: 1440x1000, light, 1x, en-US, Australia/Sydney
+  commit: c0406d65131aebabf92699f6e9ffa9e5adef9f41
+  source_run: 'local: python scripts/capture_193rc53_release_reader.py docs/releases/assets/v1.9.3rc53'
+- file: rem-source-pinned-header.png
+  alt: Sender, local date and subject pinned above a scrolled email
+  caption: The source header stays visible while reading further down the archived
+    email.
+  scenario: Scroll the same citation's source panel by 1000 pixels; sender, local
+    date, subject and close control remain inside the panel.
+  viewport: 1440x1000, light, 1x, en-US, Australia/Sydney
+  commit: c0406d65131aebabf92699f6e9ffa9e5adef9f41
+  source_run: 'local: python scripts/capture_193rc53_release_reader.py docs/releases/assets/v1.9.3rc53'

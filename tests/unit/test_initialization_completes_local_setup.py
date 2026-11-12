@@ -2,7 +2,10 @@
 
 import json
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from dotenv import dotenv_values
@@ -14,7 +17,14 @@ from connectonion.cli.main import app
 
 
 @pytest.fixture
-def onboarding(tmp_path, monkeypatch):
+def onboarding(tmp_path, monkeypatch, rem_clock):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import config, schedule
+
+    monkeypatch.setattr(config, "first_runner", lambda config: config)
+    monkeypatch.setattr(schedule, "default_scheduler", lambda *a, **kw: SimpleNamespace(
+        install=Mock(return_value={"scheduler": "fictional"})))
+    monkeypatch.setattr(rem_commands, "init_rem_flow", Mock(return_value={}))
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -90,10 +100,11 @@ def test_profile_and_links_follow_the_current_home(onboarding, monkeypatch, comm
     assert result.exit_code == 0, result.output
     assert (selected / "keys" / "agent.key").is_file()
     assert (selected / "agent.json").is_file()
-    if command == ["init", "--yes"]:
+    if command == ["init", "--yes"] and sys.platform in ("darwin", "linux"):
         assert set(default_root.iterdir()) == {default_root / "rem"}
         assert (default_root / "rem/config.yaml").is_file()
-        assert not (default_root / "rem/.state/consent.json").exists()
+        consent = json.loads((default_root / "rem/.state/consent.json").read_text())
+        assert consent["granted_by"] == "init"
     else:
         assert not default_root.exists()
 

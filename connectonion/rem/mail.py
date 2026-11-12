@@ -42,7 +42,7 @@ from .source import TRUNCATION_NOTE, Batch, timestamp
 # newsletter platforms measured in a real 60-day mailbox (32 mails from two
 # platforms, none of them the user's knowledge).
 AUTOMATED_SENDER = re.compile(r"(no-?reply|do-?not-?reply|notification|notifications|newsletter|mailer-daemon|"
-                              r"postmaster|noreply|automated|alerts?|digest|updates?|info|marketing|support|team|hello)@"
+                              r"postmaster|noreply|automated|alerts?|digest|marketing)@"
                               r"|@(?:[a-z0-9-]+\.)*(?:substack\.com|beehiiv\.com)$",
                               re.IGNORECASE)
 LISTING_WINDOW = timedelta(days=7)   # one listing call covers this much of the timeline
@@ -121,6 +121,10 @@ def org_mail(row: dict, domains: list[str], own: set, notices: set, known: set, 
     # 2026-10-20: the owner's company gathered 983 items in 505–816 s for 0–4
     # quotes; most of 577 resolved sources were notices to the owner's address.
     addresses = set(participants(row))
+    sender = _address(row.get('from', ''))
+    if (sender not in own and on_domains({'from': sender}, domains)
+            and re.search(r'\b(?:invoice|receipts?|ABN|billing|payment)\b', row.get('subject', ''), re.I)):
+        return True
     if _address(row.get('from', '')) in notices and not (known - own).intersection(addresses):
         return False
     if on_domains(row, domains):

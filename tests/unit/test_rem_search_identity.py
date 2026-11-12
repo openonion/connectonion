@@ -134,7 +134,7 @@ def test_unique_whole_alias_keeps_best_match():
 def test_identity_details_use_original_visible_facts_without_poisoning_translation_cache():
     page = TEMPLATE.read_text()
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["identityDetails", "parseFacts", "rawSection", "plainLine", "plainValue", "knownValue"])
+                          for name in ["identityDetails", "parseFacts", "topLevelParts", "rawSection", "plainLine", "plainValue", "knownValue"])
     result = _run_reader_js(functions + r'''
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, UNFILLED_LINE = /^not investigated$/;
       const youify = s => s;
@@ -174,10 +174,24 @@ def test_candidates_without_visible_facts_are_explicit_and_descriptions_resolve(
         assert descriptions[0]["text"] == "No visible identifying details. Open the page to check its sources."
 
 
-def morning_functions():
+def morning_result(tmp_path, people, prefix):
+    # Ranking moved to Python; exercise that authority and its real JS projection.
+    from datetime import date
+    from connectonion.rem.config import prepare
+    from connectonion.rem.today import queue
+    prepare(tmp_path)
+    records = [{**person, 'text': '# ' + person['title'] + '\n' + person.get('text', '')
+                + '\n## Open threads\n- ' + prefix + '\n'} for person in people]
+    rows = queue(tmp_path, records=records, as_of=date(2026, 11, 8))
     page = TEMPLATE.read_text()
-    return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                     for name in ['recordedNames', 'morningEntries'])
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['morningEntries', 'todayEntries'])
+    return _run_reader_js(functions + 'const REM = ' + json.dumps({'today_queue': rows}) + ';'
+        + 'const records = ' + json.dumps(records) + ';' + r"""
+      const doneKey = entry => entry.r.path + '\n' + entry.t.text, isDone = () => false;
+      const entries = records.map(r => ({r, t:{dir:'mine', text:PREFIX}}));
+      console.log(JSON.stringify(morningEntries(entries).map(entry => entry.r.path)));
+    """.replace('PREFIX', json.dumps(prefix)))
 
 
 @pytest.mark.parametrize('prefix, expected', [
@@ -185,18 +199,12 @@ def morning_functions():
     ('You owe Aster Vale: review it', ['people/a.md', 'people/b.md']),
     ('You owe Aster North: review it', ['people/a.md']),
 ])
-def test_morning_cards_do_not_assign_an_ambiguous_counterpart(prefix, expected):
-    function = morning_functions()
-    result = _run_reader_js(function + '''
-      const people = [{path:'people/a.md', title:'Aster North', category:'people'},
-        {path:'people/b.md', title:'Aster Vale', category:'people'}];
-      if (PREFIX.includes('Aster Vale')) people[0].title = 'Aster Vale';
-      const inCategory = () => people, plainLine = s => s, isDone = () => false;
-      const morningWords = text => ({words:text});
-      const entries = people.map(r => ({r, t:{dir:'mine', text:PREFIX}}));
-      console.log(JSON.stringify(morningEntries(entries).map(entry => entry.r.path)));
-    '''.replace('PREFIX', json.dumps(prefix)))
-    assert result == expected
+def test_morning_cards_do_not_assign_an_ambiguous_counterpart(tmp_path, prefix, expected):
+    people = [{'path': 'people/a.md', 'title': 'Aster North'},
+              {'path': 'people/b.md', 'title': 'Aster Vale'}]
+    if 'Aster Vale' in prefix:
+        people[0]['title'] = 'Aster Vale'
+    assert morning_result(tmp_path, people, prefix) == expected
 
 
 def test_unique_full_name_beats_partial_title_matches():
@@ -232,40 +240,19 @@ def test_a_parenthetical_name_also_blocks_title_selection(query):
     assert any(n.get('text') == 'Choose a page' for n in nodes(result))
 
 
-def test_a_single_word_title_does_not_disambiguate_morning_cards():
-    function = morning_functions()
-    result = _run_reader_js(function + '''
-      const people = [{path:'people/a.md', title:'Aster', category:'people'},
-        {path:'people/b.md', title:'Aster Vale', category:'people'}];
-      const inCategory = () => people, plainLine = s => s, isDone = () => false;
-      const morningWords = text => ({words:text});
-      const entries = people.map(r => ({r, t:{dir:'mine', text:'You owe Aster: review it'}}));
-      console.log(JSON.stringify(morningEntries(entries).map(entry => entry.r.path)));
-    ''')
-    assert result == ['people/a.md', 'people/b.md']
+def test_a_single_word_title_does_not_disambiguate_morning_cards(tmp_path):
+    people = [{'path': 'people/a.md', 'title': 'Aster'},
+              {'path': 'people/b.md', 'title': 'Aster Vale'}]
+    assert morning_result(tmp_path, people, 'You owe Aster: review it') == ['people/a.md', 'people/b.md']
 
 
-def test_morning_counterpart_must_count_existing_aliases():
-    function = morning_functions()
-    result = _run_reader_js(function + '''
-      const people = [{path:'people/a.md', title:'Aster Vale', category:'people'},
-        {path:'people/b.md', title:'Nova Reed', category:'people', text:'## Facts\\n- Also known as: Aster Vale'}];
-      const inCategory = () => people, plainLine = s => s, isDone = () => false;
-      const morningWords = text => ({words:text});
-      const entries = people.map(r => ({r, t:{dir:'mine', text:'You owe Aster Vale: review it'}}));
-      console.log(JSON.stringify(morningEntries(entries).map(entry => entry.r.path)));
-    ''')
-    assert result == ['people/a.md', 'people/b.md']
+def test_morning_counterpart_must_count_existing_aliases(tmp_path):
+    people = [{'path': 'people/a.md', 'title': 'Aster Vale'},
+              {'path': 'people/b.md', 'title': 'Nova Reed', 'text': '## Facts\n- Also known as: Aster Vale'}]
+    assert morning_result(tmp_path, people, 'You owe Aster Vale: review it') == ['people/a.md', 'people/b.md']
 
 
-def test_morning_does_not_add_alias_only_resolution():
-    result = _run_reader_js(morning_functions() + '''
-      const people = [{path:'people/a.md', title:'Nova Reed', category:'people',
-        text:'## Facts\\n- Also known as: Aster Vale'},
-        {path:'people/b.md', title:'Sol Reed', category:'people'}];
-      const inCategory = () => people, plainLine = s => s, isDone = () => false;
-      const morningWords = text => ({words:text});
-      const entries = people.map(r => ({r, t:{dir:'mine', text:'You owe Aster Vale: review it'}}));
-      console.log(JSON.stringify(morningEntries(entries).map(entry => entry.r.path)));
-    ''')
-    assert result == ['people/a.md', 'people/b.md']
+def test_morning_does_not_add_alias_only_resolution(tmp_path):
+    people = [{'path': 'people/a.md', 'title': 'Nova Reed', 'text': '## Facts\n- Also known as: Aster Vale'},
+              {'path': 'people/b.md', 'title': 'Sol Reed'}]
+    assert morning_result(tmp_path, people, 'You owe Aster Vale: review it') == ['people/a.md', 'people/b.md']

@@ -41,7 +41,7 @@ def test_services_an_older_map_made_people_are_archived_and_investigated_pages_s
     _person(notebook, "people/apple.md", "Apple", "appleid@id.apple.com")                 # no row: its title is its domain
     _person(notebook, "people/github.md", "unsub+abc@reply.github.com", "unsub+abc@reply.github.com")
     _person(notebook, "people/clarity.md", "Microsoft Clarity", "maccount@microsoft.com")
-    _person(notebook, "people/x.md", "X", "notify@x.com", investigated=True)             # someone's work: stays
+    _person(notebook, "people/x.md", "X", "notify@x.com", investigated=True)             # written service: moves intact
     _person(notebook, "people/mia.md", "Mia Tan", "mia@acme.example")
     _state(tmp_path, people=[
         {"record": "people/clarity.md", "address": "maccount@microsoft.com", "name": "Microsoft Clarity",
@@ -53,10 +53,11 @@ def test_services_an_older_map_made_people_are_archived_and_investigated_pages_s
     done = tidy(tmp_path)
 
     assert done["archived service"] == ["people/apple.md", "people/clarity.md", "people/github.md"]
-    assert sorted(notebook.list("people")) == ["people/mia.md", "people/x.md"]
+    assert sorted(notebook.list("people")) == ["people/mia.md"]
+    assert notebook.path("notes/x.md").is_file()
     assert (tmp_path / ".state/archived/people/apple.md").is_file()          # moved, never deleted
     log = read_json(state_path(tmp_path, "tidy.json"), [])
-    assert {entry["page"] for entry in log} == set(done["archived service"])
+    assert {entry["page"] for entry in log} == {*done["archived service"], "people/x.md"}
     assert tidy(tmp_path) == {}                                             # idempotent: nothing left to do
     assert len(read_json(state_path(tmp_path, "tidy.json"), [])) == len(log)
 
@@ -462,3 +463,172 @@ def test_tidy_log_dates_use_the_notebook_day(tmp_path, monkeypatch):
     book.write("people/robin.md", book.read("people/robin.md").replace("## Sources\n", "## Sources\n- [2] investigation:coverage\n"))
     assert tidy(tmp_path)
     assert all(row["date"] == "2040-11-05" for row in read_json(state_path(tmp_path, "tidy.json"), []))
+
+
+def test_tidy_prunes_only_old_uncited_attachments_and_keeps_originals(tmp_path):
+    import os
+    from datetime import timedelta
+    from connectonion.rem import service
+    from connectonion.rem.attachments import attachment_context
+    from connectonion.rem.reader_model import cited_context
+
+    prepare(tmp_path)
+    now = service.now().timestamp()
+    old = now - timedelta(days=31).total_seconds()
+    folder = state_path(tmp_path, 'attachments/gmail/123456789abc')
+    folder.mkdir(parents=True)
+    for name in ('.fetched', 'Signed agreement.txt', 'archived.txt', 'unused.txt', 'recent-read.txt', 'recent-download.txt'):
+        path = folder / name
+        path.write_text('Fictional pilot terms. ' * (4000 if name == 'unused.txt' else 400))
+        os.utime(path, (old, old))
+    os.utime(folder / 'recent-read.txt', (now, old))
+    os.utime(folder / 'recent-download.txt', (old, now))
+    book = Notebook(tmp_path)
+    source = 'gmail:123456789abc:Signed agreement.txt'
+    book.write('notes/pilot.md', f'# Pilot\n\nPilot terms. [1]\n\n## Sources\n- [1] {source}\n')
+    records = [{'text': book.read('notes/pilot.md')}]
+    archived = state_path(tmp_path, 'archived/notes/old-pilot.md')
+    archived.parent.mkdir(parents=True)
+    archived.write_text('# Old pilot\n\n## Sources\n- [1] gmail:123456789abc:archived.txt\n')
+    before = cited_context(tmp_path, records)
+    # Citation protection must work even for an original that has not been read recently.
+    os.utime(folder / 'Signed agreement.txt', (old, old))
+    total = sum(p.stat().st_size for p in (tmp_path / '.state').rglob('*') if p.is_file())
+
+    done = tidy(tmp_path)
+
+    assert not (folder / 'unused.txt').exists()
+    assert {p.name for p in folder.iterdir()} == {
+        '.fetched', 'Signed agreement.txt', 'archived.txt', 'recent-read.txt', 'recent-download.txt'}
+    assert done['pruned attachment'] == ['.state/attachments/gmail/123456789abc/unused.txt']
+    assert cited_context(tmp_path, records) == before
+    assert attachment_context(tmp_path, source)['excerpt']
+    assert sum(p.stat().st_size for p in (tmp_path / '.state').rglob('*') if p.is_file()) <= total * 0.6
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_removes_finished_native_and_empty_tasks_but_keeps_active_round(tmp_path):
+    import os
+    from connectonion.rem import runner
+
+    prepare(tmp_path)
+    active = {'started_at': '2040-11-06T00:00:00+00:00', 'done': False}
+    write_json(state_path(tmp_path, 'round.json'), active)
+    for name, status, started in [('finished', 'accepted', '2040-11-05T00:00:00+00:00'),
+                                  ('discarded', 'discarded', '2040-11-05T00:00:00+00:00'),
+                                  ('dependency', 'accepted', active['started_at']),
+                                  ('pending', 'pending', active['started_at'])]:
+        folder = state_path(tmp_path, f'tasks/{name}')
+        write_json(folder / 'task.json', {'status': status, 'round_started_at': started})
+        (folder / 'material.md').write_text('Fictional private material')
+    empty = state_path(tmp_path, 'tasks/empty')
+    empty.mkdir()
+    os.utime(empty, (1, 1))  # An abandoned workspace, rather than one being prepared.
+    preparing = state_path(tmp_path, 'tasks/preparing')
+    preparing.mkdir()
+    legacy = state_path(tmp_path, 'tasks/legacy')
+    legacy.mkdir()
+    (legacy / 'material.md').write_text('Disposable material')
+    runner.scrub_task(legacy)
+
+    tidy(tmp_path)
+
+    assert not legacy.exists()
+    assert sorted(p.name for p in empty.parent.iterdir()) == ['dependency', 'pending', 'preparing']
+    assert (empty.parent / 'dependency/material.md').is_file()
+    write_json(state_path(tmp_path, 'round.json'), {**active, 'done': True})
+    tidy(tmp_path)
+    assert sorted(p.name for p in empty.parent.iterdir()) == ['pending', 'preparing']
+
+
+def test_tidy_prunes_finished_evidence_and_preserves_running_evidence(tmp_path):
+    import os
+
+    prepare(tmp_path)
+    for name, stamp in [('finished', 100), ('running', 300)]:
+        folder = state_path(tmp_path, f'evidence/{name}')
+        folder.mkdir(parents=True)
+        original = folder / 'originals.json'
+        original.write_text('[]')
+        os.utime(original, (stamp, stamp))
+        os.utime(folder, (stamp, stamp))
+    write_json(state_path(tmp_path, 'runs/run_' + 'a' * 32 + '.json'),
+               {'started_at': '1970-01-01T00:00:00+00:00', 'finished_at': '1970-01-01T00:03:20+00:00',
+                'outcome': 'completed'})
+    write_json(state_path(tmp_path, 'runs/run_' + 'b' * 32 + '.json'),
+               {'started_at': '1970-01-01T00:04:10+00:00', 'outcome': 'running'})
+
+    tidy(tmp_path)
+
+    assert not state_path(tmp_path, 'evidence/finished').exists()
+    assert state_path(tmp_path, 'evidence/running/originals.json').is_file()
+
+
+def test_tidy_moves_explicit_org_pages_out_of_people_without_losing_links(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    text = ('# Lantern Works\n\n## Domains\n- lantern.example\n\n'
+            '## History\n- Pilot agreed with [Robin](./robin.md). [1]\n\n'
+            '## Sources\n- [1] gmail:123456789abc\n\nInvestigation: investigated 2040-11-05\n')
+    book.write('people/lantern.md', text)
+    book.write('people/robin.md', '# Robin\n\n[Lantern](./lantern.md)\n')
+    unrelated = '# Separate\n\n[Robin](./robin.md)\n'
+    book.write('people/separate.md', unrelated)
+
+    done = tidy(tmp_path)
+
+    assert not book.path('people/lantern.md').exists()
+    assert book.read('orgs/lantern.md') == text.replace('./robin.md', '../people/robin.md')
+    assert '[Lantern](../orgs/lantern.md)' in book.read('people/robin.md')
+    assert book.read('people/separate.md') == unrelated
+    assert done['moved non-person page'] == ['people/lantern.md']
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_does_not_follow_attachment_directory_symlinks(tmp_path):
+    import os
+
+    root = tmp_path / 'notebook'
+    prepare(root)
+    external = tmp_path / 'external'
+    external.mkdir()
+    original = external / 'original.txt'
+    original.write_text('Fictional original outside the notebook')
+    os.utime(original, (1, 1))
+    provider = state_path(root, 'attachments/gmail')
+    provider.mkdir(parents=True)
+    (provider / 'linked-message').symlink_to(external, target_is_directory=True)
+
+    tidy(root)
+
+    assert original.is_file()
+    assert original.read_text() == 'Fictional original outside the notebook'
+
+
+def test_tidy_moves_written_service_pages_to_notes_and_keeps_the_owner(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    for record, name, address in [('people/service.md', 'Lantern Team', 'notify@lantern.example'),
+                                   ('people/owner.md', 'Owner', 'owner@example.test')]:
+        _person(book, record, name, address, investigated=True)
+    _state(tmp_path, owner={'record': 'people/owner.md'})
+    original = book.read('people/service.md')
+
+    done = tidy(tmp_path)
+
+    assert book.read('notes/service.md') == original
+    assert not book.path('people/service.md').exists()
+    assert book.path('people/owner.md').is_file()
+    assert done['moved non-person page'] == ['people/service.md']
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_moved_page_preserves_link_fragments(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/lantern.md', '# Lantern\n\n## Domains\n- lantern.example\n\n## History\n- Pilot.\n')
+    book.write('notes/pilot.md', '# Pilot\n\n[History](../people/lantern.md#history)\n')
+
+    tidy(tmp_path)
+
+    assert '[History](../orgs/lantern.md#history)' in book.read('notes/pilot.md')

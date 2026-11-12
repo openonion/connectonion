@@ -33,14 +33,15 @@ def _prepare_profile(runtime: Path) -> None:
 
 def _codex_readiness(environment: dict | None = None) -> dict:
     import os
-    import shutil
+    import shlex
     import subprocess
+    from ..codex_cli import INSTALL_COMMAND, resolve_codex
     if environment is None:
         environment = {key: os.environ[key] for key in ('PATH', 'HOME', 'TMPDIR', 'CODEX_HOME', 'CODEX_CMD', 'SYSTEMROOT') if key in os.environ}
-    command = environment.get('CODEX_CMD') or shutil.which('codex', path=environment.get('PATH', os.defpath))
+    command = environment.get('CODEX_CMD') or resolve_codex(path=environment.get('PATH', os.defpath))
     if not command:
         return {'codex_ready': False, 'codex_problem': 'Codex CLI is not installed',
-                'next_action': 'npm install -g @openai/codex'}
+                'next_action': INSTALL_COMMAND}
     try:
         result = subprocess.run([command, 'login', 'status'], env=environment,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -49,7 +50,7 @@ def _codex_readiness(environment: dict | None = None) -> dict:
     except (OSError, subprocess.TimeoutExpired):
         signed_in = False
     return {'codex_ready': signed_in, 'codex_problem': '' if signed_in else 'Codex login check did not pass',
-            'next_action': '' if signed_in else 'codex login'}
+            'next_action': '' if signed_in else shlex.join([command, 'login'])}
 
 
 def prepare_mac_host() -> dict:

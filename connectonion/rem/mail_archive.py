@@ -50,7 +50,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
         saved = read_json(path, {}) if path.is_file() else {
             "provider": provider, "id": row["id"], "body": body,
             **{key: row.get(key) or ([] if key in ("to", "cc") else "")
-               for key in ("date", "from", "to", "cc", "subject")},
+               for key in ("date", "from", "to", "cc", "subject", "reply_to")},
             "body_format": "provider-rendered text, not original MIME",
             "fetched_at": fetched_at, "retained_at": _utcnow().isoformat(), "input_scope": input_scope}
         if saved.get("provider") != provider or saved.get("id") != row["id"]:
@@ -61,7 +61,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
             write_json(path, saved)
         if not metadata.is_file():
             write_json(metadata, {"type": "mail", "source": provider, "id": row["id"],
-                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject")},
+                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject", "reply_to")},
                 "thread": row.get("thread_id") or row.get("thread") or ""})
     return saved
 
@@ -429,14 +429,37 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            own_domain = org_member(snapshot, domains, own | notices)
+            own_domain = org_member(snapshot, domains, own)
             if keep(snapshot):
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     if include_observed:
-        snapshots = _domain_observations(root, domains, snapshots, keep, own | notices)
+        snapshots = _domain_observations(root, domains, snapshots, keep, own)
     return _material(manifest, snapshots)
+
+
+def topic_material(root: Path, aliases: list[str]):
+    """Search saved mail bodies by topic alias, including separately observed mail."""
+    from .topic_map import _pattern
+    pattern = _pattern(aliases)
+    manifest = read_json(state_path(root, 'mail/archive.json'), {})
+    own = set(manifest.get('owner_addresses', []))
+    found, seen = {}, set()
+    for folder in ('mail/messages', 'mail/observed'):
+        for path in sorted(state_path(root, folder).glob('*/*.json')):
+            snapshot = read_json(path, {})
+            key = (snapshot.get('provider'), snapshot.get('id'))
+            if key in seen or not isinstance(snapshot.get('body'), str):
+                continue
+            if pattern.search(snapshot['body'] + ' ' + str(snapshot.get('subject', ''))):
+                found.setdefault(snapshot['provider'], []).append(_material_item(snapshot, own))
+                seen.add(key)
+    if not found:
+        return None
+    start = datetime.fromisoformat(manifest['range_start']) if manifest.get('range_start') else None
+    end = datetime.fromisoformat(manifest['range_end']) if manifest.get('range_end') else None
+    return found, start, end
 
 
 # No checkpoint for this long means no process is saving: init stamps `updated`
@@ -465,7 +488,7 @@ def archive_state(root: Path, now: datetime | None = None) -> dict | None:
     if stalled:
         summary = (f"Mail archive incomplete: {on_disk} of {target} bodies saved, no progress since "
                    f"{updated[:16]}; investigations ask the mail servers until it is done. The next "
-                   f"`co rem sync` resumes it from the saved bodies.")
+                   f"scheduled run resumes it from the saved bodies.")
     else:
         summary = f"Mail archive saving: {on_disk} of {target} bodies so far."
     return {"phase": manifest["phase"], "target": target, "on_disk": on_disk, "updated": updated,

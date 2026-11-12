@@ -49,8 +49,11 @@ def material_sources(items: list[dict]) -> list[str]:
 
 
 def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, stage: str,
-                     material: list[dict] | None = None) -> None:
-    """Add a refusal to the page's entry; what an earlier refusal held stays held."""
+                     material: list[dict] | None = None, parked: bool = False) -> None:
+    """Add a refusal to the page's entry; what an earlier refusal held stays held.
+
+    `parked`: the native round set the page aside (refused again and again, or
+    its preparation hung). That note stays until the page is accepted."""
     ledger = refused_pages(root)
     entry = ledger.get(record) or {}
     held = {item.get("source"): item for item in [*(entry.get("material") or []), *(material or [])]}
@@ -61,7 +64,9 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
     ledger[record] = {"sources": sorted({*entry.get("sources", []), *sources}),
                       "at": datetime.now(timezone.utc).isoformat(), "why": why[:300], "stage": stage,
                       "retries": 0 if new or revised else entry.get("retries", 0),
-                      **({"material": list(held.values())} if held else {})}
+                      **({"material": list(held.values())} if held else {}),
+                      **({"parked": why[:300], "parked_at": datetime.now(timezone.utc).isoformat()} if parked
+                         else {key: entry[key] for key in ("parked", "parked_at") if key in entry})}
     write_json(state_path(root, REFUSED), ledger)
 
 
@@ -101,3 +106,9 @@ def mark_retried(root: Path, record: str) -> None:
         ledger[record]["retried_at"] = datetime.now(timezone.utc).isoformat()
         ledger[record]["retries"] = ledger[record].get("retries", 0) + 1
         write_json(state_path(root, REFUSED), ledger)
+
+
+def parked_waiting(root: Path, *, now: datetime | None = None) -> dict:
+    """Pages parked in the last RETRY_HOURS: kept out of the queue until they are due for retry."""
+    cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=RETRY_HOURS)).isoformat()
+    return {record: entry for record, entry in refused_pages(root).items() if entry.get("parked_at", "") > cutoff}

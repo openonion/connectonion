@@ -31,6 +31,8 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 1280, 'height': 900})
         page.goto(path.as_uri() + '#r=people%2Felara-finch.md')
+        assert page.locator('details.deep-note').get_attribute('open') is None
+        page.locator('details.deep-note > summary').click()
         cite = page.locator('a.cite[href$="h=src-1"]').first
         assert cite.count() > 0
         assert source in cite.get_attribute('title')
@@ -143,9 +145,9 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.locator(".brief-header h1").wait_for()
+            page.locator(".night-card .count").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
-            page.locator('.home-find a[href="#c=projects"]').click()
+            page.locator('#nav a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
             assert page.locator(".next-exchanges .thread").count() == 0
             assert page.locator(".next-exchanges .empty-line").inner_text().startswith("No confirmed pending work")
@@ -153,7 +155,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
             page.locator('details.deep-note > summary').click()
-            page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
+            # The local graph links Storage too; follow the link in the memory just opened.
+            page.locator("details.deep-note").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")
@@ -189,8 +192,8 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.locator(".brief-header h1").wait_for()
-        assert frame.locator('.home-find a[href="#c=projects"]').is_visible()
+        frame.locator(".night-card .count").wait_for()
+        assert frame.locator('.today-brief').is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
 
@@ -281,10 +284,10 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page.locator('details.deep-note > summary').click()
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.locator(".reader-settings > summary").click()
-    page.get_by_role("button", name="Hide labelled passages").click()
+    page.locator(".settings-open").click()
+    page.get_by_role("switch", name="Hide labelled passages").click()
     assert not private.is_visible()
-    page.get_by_role("button", name="Show labelled passages").click()
+    page.get_by_role("switch", name="Show labelled passages").click()
     assert private.is_visible()
 
 
@@ -309,8 +312,8 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots = Path(os.environ.get("CO_REM_SHOTS", str(tmp_path / "shots")))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
-    page.locator(".brand").click()
-    page.locator(".brief-header h1").wait_for()
+    page.evaluate("location.hash = ''")  # Today (the brand on a desk, the Today tab on a phone)
+    page.locator(".night-card .count").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")
@@ -322,16 +325,13 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
 
     page, _, _ = reader_page
     page.set_viewport_size({"width": 375, "height": 812})
-    page.locator('.skip').focus()
-    page.keyboard.press('Tab')
-    expect(page.locator('.brand')).to_be_focused()
-    button = page.get_by_role("button", name="Browse notebook")
+    # N3: on a phone the rail gives way to a tab bar; its 更多 opens every place as a sheet above it.
+    button = page.locator("#tabbar .nav-toggle")
     expect(button).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#nav")).not_to_be_visible()
     button.focus()
     page.keyboard.press("Enter")
     expect(button).to_have_attribute("aria-expanded", "true")
-    page.keyboard.press("Tab")
     expect(page.locator("#nav a").first).to_be_focused()
     page.keyboard.press("Escape")
     expect(button).to_have_attribute("aria-expanded", "false")
@@ -340,13 +340,13 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator("#nav").get_by_role("link", name="People").click()
     expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
     expect(button).to_have_attribute("aria-expanded", "false")
-    assert page.locator('#main .empty .lead').inner_text() == 'Not mapped yet'
-    assert page.locator('#main .empty a').inner_text() == 'Copy setup command'
+    assert page.locator('#main .empty .lead').inner_text() == 'No contacts yet'
+    assert page.locator('#main .empty a').inner_text() == 'Explore memory →'
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
     expect(button).not_to_be_visible()
-    page.set_viewport_size({"width": 768, "height": 1024})
+    page.set_viewport_size({"width": 600, "height": 1024})
     expect(page.locator("#nav")).not_to_be_visible()
 
 
@@ -404,9 +404,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert page.locator('#nav a[href="#c=all"] .n').inner_text() == '1'
-        page.locator('.home-find a[href="#c=all"]').click()
-        assert page.locator('.hits > li').count() == 1
+        # Owner, 2026-11-09: the sidebar keeps no category counts, so the page itself is awaited.
+        page.locator('#nav a[href="#c=all"]').click()
+        page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.
@@ -415,9 +415,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         page.evaluate('''() => {
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
-        page.locator('#main .empty a').click()
-        command = page.evaluate('window.copiedCommand', isolated_context=False)
-        assert shlex.split(command)==['co','rem','--root',str(root),'init','--mail','outlook']
+        # D-60 (build 3b review): Reader settings no longer carries the People review command.
+        page.locator('.settings-open').click()
+        assert page.locator('.reader-settings .cmd').count() == 0
         browser.close()
 
 
@@ -438,13 +438,163 @@ def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
     page.goto(path.as_uri() + "#reviews=1")
     page.get_by_role('heading', name='Questions & connections', exact=True).wait_for()
     assert page.locator('#main img').count() == 0
-    command = page.locator('#main code').first.inner_text()
-    import shlex
-    assert shlex.split(command)[3] == "/synthetic/owner's co rem"
-    assert '--verdict yes' in command
+    # D-60: a snapshot decides nothing and copies nothing; one plain line says where deciding happens.
+    assert page.locator('#main code, #main .cmd, .review button').count() == 0
+    assert page.get_by_text('This is a snapshot; decide these on the live page.', exact=True).count() == 1
+    assert 'co rem' not in page.locator('#main').inner_text()
     shots = Path(os.environ.get('CO_REM_SHOTS', '/tmp/rem-review-shots'))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / 'reviews-desktop.png'), full_page=True)
     page.set_viewport_size({'width': 375, 'height': 812})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(shots / 'reviews-mobile.png'), full_page=True)
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('live', [False, True])
+def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkeypatch, width, language, live):
+    from datetime import datetime, timezone
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem import drafts, reader as rem_reader, service
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+
+    root = tmp_path / 'fictional notebook'
+    prepare(root)
+    moment = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    write_json(state_path(root, 'map.json'), {'owner': {'record': 'people/owner.md', 'addresses': ['owner@example.test']}})
+    book = Notebook(root)
+    book.write('people/owner.md', '# Ellis\n')
+    for index, (name, provider) in enumerate([('Fern', 'gmail'), ('Mara', 'gmail'), ('Hazel', 'outlook'), ('Nova', 'gmail'), ('Avery', 'outlook')]):
+        book.write(f'people/{index}-{name.lower()}.md', f'# {name}\n\n## Facts\n- Email: {name.lower()}@example.test\n\n'
+                   f'## Open threads\n- You owe {name} a demo review; due 2026-11-08. [1]\n\n'
+                   f'## Sources\n- [1] {provider}:{name.lower()}\n')
+        if name != 'Hazel':
+            retain_message(root, provider, {'id': name.lower(), 'from': name.lower() + '@example.test',
+                           'to': ['owner@example.test'], 'subject': 'Demo review', 'thread': name.lower(),
+                           'date': '2026-11-07T01:00:00+00:00'}, 'Please send your feedback.', fetched_at=moment.isoformat())
+    retain_message(root, 'gmail', {'id': 'promise', 'from': 'owner@example.test', 'to': ['mara@example.test'],
+                   'subject': 'Demo review', 'thread': 'mara', 'date': '2026-11-07T02:00:00+00:00'},
+                   "I'll watch the demo and send feedback.", fetched_at=moment.isoformat())
+    retain_message(root, 'outlook', {'id': 'answered', 'from': 'owner@example.test', 'to': ['avery@example.test'],
+                   'subject': 'Demo review', 'thread': 'avery', 'date': '2026-11-07T02:00:00+00:00'},
+                   '--- Email Body ---\nHi Avery,\nFriday works. I have sent a calendar invite.\n'
+                   'https://example.test/invite\nThanks,\nEllis\n> Please choose a time.', fetched_at=moment.isoformat())
+    refresh(root)
+    row = next(row for row in drafts.queue(root) if row['to'] == 'fern@example.test')
+    drafts.promote(root, {**row, 'body': 'Hello Fern,\n\nThe demo is clear. 【需要你：演示反馈 — date not agreed】',
+                         'sources': ['gmail:fern']})
+    snapshot = rem_reader.snapshot
+
+    def frozen_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
+        data['as_of'] = moment.isoformat()
+        data['status']['worker']['enabled'] = True
+        data['status']['mailboxes']['outlook'] = 'last read failed 2026-11-07'
+        return data
+
+    monkeypatch.setattr(rem_reader, 'snapshot', frozen_snapshot)
+    path = tmp_path / 'reader.html'
+    path.write_text(rem_reader.render(root, local=True))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(path.as_uri())
+        page.evaluate(r'''({language, live}) => {
+          REM.live = live;
+          window.draftRequests = [];
+          const template = REM.drafts.find(d => d.status === 'prepared');
+          window.fetch = async (url, options) => {
+            const request = JSON.parse(options.body); draftRequests.push(request);
+            const result = request.action === 'prepare'
+              ? {...template, id: 'nova-ready', thread: 'mail:gmail:nova',
+                  to: 'nova@example.test', body: 'The demo is ready.', status: 'prepared'} : {status: 'sent'};
+            return {ok: true, json: async () => result};
+          };
+          setInterfaceLanguage(language);
+        }''', {'language': language, 'live': live}, isolated_context=False)
+        cards = page.locator('.qcard')
+        letter = cards.filter(has=page.locator('.today-who', has_text='Fern'))
+        task = cards.filter(has=page.locator('.today-who', has_text='Mara'))
+        missing = cards.filter(has=page.locator('.today-who', has_text='Hazel'))
+        queued = cards.filter(has=page.locator('.today-who', has_text='Nova'))
+        answered = cards.filter(has=page.locator('.today-who', has_text='Avery'))
+
+        def open_card(card):
+            # N3: a card waiting behind its face is dealt onto the desk; its action and draft are then in reach.
+            if 'focal' not in card.get_attribute('class').split():
+                page.locator('.deal[data-path="%s"]' % card.get_attribute('data-path')).click()
+        assert letter.locator('.owner-slot').count() == 1
+        # Build 3b: the "需要你填" box became a row to answer in, named by what REM needs.
+        assert letter.locator('.owner-slot').get_attribute('role') == 'group'
+        assert '演示反馈' in letter.locator('.owner-slot').inner_text()
+        assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
+        display_date = page.evaluate("fmtDate('2026-11-07')", isolated_context=False)
+        assert display_date in task.locator('.draft-reason').inner_text()
+        assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert answered.locator('.kind-badge').inner_text() == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
+        assert answered.locator('.card-acts button').first.text_content() == ('标为完成' if language == 'zh' else 'Mark done')
+        assert answered.locator('.card-acts a.btn-quiet').get_attribute('href').endswith('/answered')
+        answer_note = answered.locator('.draft-reason').inner_text()
+        # The cleaned owner quote selects one sentence (or a future commitment)
+        # rather than copying the full message. The source link above keeps it available.
+        assert '“Friday works.”' in answer_note
+        assert ('已回复' if language == 'zh' else 'replied') in answer_note
+        assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
+        assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
+        # REM cannot draft from an unarchived message: the next step is writing, never the mailbox.
+        assert missing.locator('.card-acts > :first-child').text_content() in (
+            ['回复 Hazel', '打开 Hazel'] if language == 'zh' else ['Reply to Hazel', 'Open Hazel'])
+        if live:  # Draft now drafts now: no "queued for tonight" beside it.
+            assert queued.locator('.draft-reason').count() == 0
+        else:
+            note = queued.locator('.draft-reason').inner_text()
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
+        open_card(letter)
+        if live:
+            # Build 3b re-review: an unanswered question keeps Send disabled, with a plain hint, so nothing is sent.
+            assert letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
+            # Sprint 13: the hint names what is left to choose, in the reader's language.
+            assert ('处要选：' if language == 'zh' else ' left: ') in letter.locator('.choose-hint').inner_text()
+            assert page.evaluate('draftRequests.length', isolated_context=False) == 0
+        else:
+            # D-60 (build 3b review): Send disabled, no command anywhere on the page, one plain line says why.
+            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['发送' if language == 'zh' else 'Send']
+            assert letter.locator('.mail-actions .btn-act').is_disabled()
+            assert page.locator('.cmd, code').count() == 0
+            assert page.locator('.snapshot-line').count() == 1
+            assert letter.locator('.mail-channels button').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        evidence = Path('/tmp/rem-draft-coverage')
+        evidence.mkdir(exist_ok=True)
+        page.screenshot(path=str(evidence / f'today-{language}-{width}-{"live" if live else "snapshot"}.png'), full_page=True)
+        if live:
+            letter.locator('.more-menu > summary').click()  # behind the letter's 更多 (D-120)
+            letter.get_by_role('button', name='全屏写' if language == 'zh' else 'Write full screen').click()
+            dialog = page.locator('dialog.writer')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            assert dialog.is_visible()
+            assert ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first') in dialog.inner_text()
+            dialog.get_by_role('textbox').fill('The demo is ready for release.')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            # dialog.close() dispatches its removal through the close event.
+            dialog.wait_for(state='detached')
+            assert not dialog.count()
+            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the Host lists an
+            # approval for this draft, so the edited text goes to /rem/approve under that approval's id.
+            request = page.evaluate('draftRequests[0]', isolated_context=False)
+            outcome = page.evaluate("REM.approval_pending.concat(REM.approval_outcomes).find(o => o.draft_id === REM.drafts.find(d => d.to === 'fern@example.test').id).id",
+                                    isolated_context=False)
+            assert request == {'ids': [outcome], 'bodies': {outcome: 'The demo is ready for release.'}}
+            open_card(queued)
+            queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
+            assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
+        assert not errors, errors
+        browser.close()

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 import tempfile
 import threading
 from collections import deque
@@ -107,6 +108,31 @@ def atomic_write(path: Path, text: str) -> None:
     finally:
         if os.path.exists(name):
             os.unlink(name)
+    _changed(path)
+
+
+# The reader's cache key reads this one file instead of listing the notebook
+# (31,136 files took 17 s of stat calls per open). atomic_write and
+# Notebook.delete touch it; the lock's own files, rewritten or created by every
+# Host minute tick, are bookkeeping and do not (nor does the reader's full walk).
+CHANGED = "reader-changed"
+QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED}
+
+
+def _changed(path: Path) -> None:
+    """Mark the notebook a written file belongs to: the folder holding `.state`."""
+    if path.name in QUIET_STATE:
+        return
+    # Under `.state` the notebook is the folder above it, even for a candidate
+    # notebook a task keeps there: a marker inside the task would be new input.
+    inside = [parent for parent in path.parents if parent.name == ".state"]
+    for parent in inside[-1:] or list(path.parents)[:5]:
+        state = parent if parent.name == ".state" else parent / ".state"
+        if state.is_dir() and not state.is_symlink():
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+            with os.fdopen(os.open(state / CHANGED, flags, 0o600), "w") as output:
+                output.write(str(time.time_ns()))
+            return
 
 
 def state_path(root: Path, name: str) -> Path:
@@ -221,7 +247,16 @@ _THREADS = _InOrder()
 MAINTENANCE_BUSY = "co rem is busy; wait for the active maintenance run, then retry co rem next (the round is not over)"
 
 
-def _native_waiter(root: Path, waited_for: dict):
+def maintenance_busy(root: Path) -> str:
+    owner = read_json(state_path(root, "maintenance-owner.json"), {})
+    pid = owner.get("pid")
+    command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True).stdout.strip() if pid else ""
+    return (f"MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid {pid or 'unknown'}: "
+            f"{command or owner.get('operation') or 'command unavailable'}. Report this message and end the turn without retrying.")
+
+
+def _native_waiter(root: Path, waited_for: dict, *, scheduled=False):
     announced = False
     missing_since = None
 
@@ -233,8 +268,8 @@ def _native_waiter(root: Path, waited_for: dict):
         # that cannot identify itself, rather than misclassify a native next.
         if not owner and missing_since is None:
             missing_since = time.monotonic()
-        if owner and owner.get("operation") not in ("next", "submit") or (
-                not owner and time.monotonic() - missing_since >= 1):
+        if not scheduled and (owner and owner.get("operation") not in ("next", "submit") or (
+                not owner and time.monotonic() - missing_since >= 1)):
             raise RemError(MAINTENANCE_BUSY)
         if owner:
             waited_for.update(owner)
@@ -248,19 +283,20 @@ def _native_waiter(root: Path, waited_for: dict):
 
 
 @contextmanager
-def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False):
+def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False, scheduled=False):
     """One OS-owned lock for every write path; process death releases it.
 
-    `wait` bounds the wait. Native next waits only for another next/submit;
-    other scheduled maintenance still gives up immediately.
+    `wait` bounds thread and file waits together. Manual next waits only for
+    another next/submit; scheduled next waits for any maintenance holder.
     """
     deadline = time.monotonic() + wait
     waited_for = {}
-    on_busy = _native_waiter(root, waited_for) if wait_for_native else None
+    on_busy = _native_waiter(root, waited_for, scheduled=scheduled) if wait_for_native else None
     if not _THREADS.acquire(timeout=wait, on_busy=on_busy):
-        raise RemError(MAINTENANCE_BUSY)
+        raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY)
     try:
-        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy):
+        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy,
+                        scheduled=scheduled):
             yield waited_for
     finally:
         _THREADS.release()
@@ -293,7 +329,7 @@ def _try_lock(fd: int) -> None:
 
 
 @contextmanager
-def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None):
+def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None, scheduled=False):
     """The lock other processes see: a scheduled tick, a second terminal."""
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -308,10 +344,11 @@ def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None):
                 if on_busy:
                     on_busy()
                 if time.monotonic() >= deadline:
-                    raise RemError(MAINTENANCE_BUSY) from error
-                time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
+                    raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY) from error
+                time.sleep(min(1.0, max(0, deadline - time.monotonic())))
         owner = state_path(root, "maintenance-owner.json")
-        write_json(owner, {"pid": os.getpid(), "operation": operation})
+        write_json(owner, {"pid": os.getpid(), "operation": operation,
+                           "turn_id": os.environ.get("CO_REM_TURN_ID")})
         try:
             yield
         finally:
@@ -491,6 +528,20 @@ class Notebook:
                   f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
+    TOPIC_SECTIONS = ('What it is', 'Where you stand', 'People', 'Orgs', 'Projects',
+                      'Timeline', 'Open threads', 'Uncertainties', 'Sources')
+
+    def stub_topic(self, record: str, name: str, aliases=(), *, private=False) -> bool:
+        """A candidate's identity only; investigation owns its claims and links."""
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}" + (' [personal]' if private else ''), '',
+                 '- Also known as: ' + '; '.join(aliases), '']
+        for section in self.TOPIC_SECTIONS:
+            lines += [f'## {section}', '- Unknown — not investigated yet', '']
+        lines += [f'Investigation: mapped {_today(self.root)} · not investigated yet', '']
+        return self.write(record, '\n'.join(lines))
+
     # The first screen answers what, why, where it stands and what is next;
     # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
     PROJECT_SECTIONS = (
@@ -666,6 +717,7 @@ class Notebook:
         if not path.exists():
             return False
         path.unlink()
+        _changed(path)
         return True
 
     def search(self, query: str, category: str = "") -> list[dict]:
