@@ -312,8 +312,8 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
     assert result['single'] == [['row', 'btn-quiet', 'Mark done']]
     assert result['alone'] == [['.qcard', ['feedback']]]
     assert result['mixed'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done']]
-    assert result['both'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done'],
-                              ['step', 'btn-act', 'Mark done']]
+    # Every row handled: the green step closes them all, so the head's tick, which would too, is not drawn (E stays).
+    assert result['both'] == [['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done'], ['step', 'btn-act', 'Mark done']]
     assert result['together'] == [['.qcard', ['feedback', 'slides']]]
 
 

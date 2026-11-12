@@ -6864,11 +6864,12 @@ function closeEntries(node, entries) {
 // or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
 // does the tick that marks all of them done at once (E). A card of one row has no tick in the live reader:
 // it would only repeat that row's own Mark done (one control per row, owner 2026-11-11); E still closes it.
-function cardHead(group, late, skippable) {
+// tick: false where another control on the card already closes every row (personCard says when).
+function cardHead(group, late, skippable, tick = group.entries.length > 1 || !stripMarksDone(group.entries[0])) {
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
-  const done = entries.length > 1 || !stripMarksDone(entries[0])
+  const done = tick
     ? el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
   const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Skip") + " · S", title: t("Skip") + " · S" }, [icon("skip")]) : null;
@@ -7158,8 +7159,11 @@ function personCard(group, focal, total = 1) {
   // closing several handled rows at once, it does what no row's button does and stays.
   const closing = next.step === "done" ? entries.filter(item => cardStep(item) === "done") : [];
   const step = closing.length === 1 && stripMarksDone(closing[0]) ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
+  // When every row is handled, that green step and the head's tick would both close all of them: the green step
+  // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
+  const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late, total > 1), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
+    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);

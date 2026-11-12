@@ -864,7 +864,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   notice. A card of several rows keeps the tick in its head, which closes all
   of them (**E**); a card of one row has none, and **E** still closes it. The
   card's green **Mark done** (shown when REM judges a row handled) is drawn
-  only when it closes several handled rows at once; for one row it would repeat
+  only when it closes several handled rows at once (and when it closes every
+  row, the head's tick is left out, since it would close the same); for one row it would repeat
   that row's strip button, so the card leads with **Not done yet** instead and
   the strip's **Mark done** is the way to close it. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot

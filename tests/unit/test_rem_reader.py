@@ -3403,11 +3403,14 @@ def _rail(language):
     drawn = page[page.index('const ICONS = {'):page.index('function openSettings() {')]
     return _run_reader_js('\n'.join([
         'Object.assign(UI, {en: ' + english + ', zh: ' + chinese + '}); uiLanguage = ' + json.dumps(language) + ';',
-        labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0], r"""
+        labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0],
+        # renderRail names the header's language button too: the page's own function, not a stand-in.
+        re.search(r'function renderLangToggle\(.*?\n\}', page, re.S)[0], r"""
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: (children || []).filter(Boolean)});
       const node = () => ({children: [], replaceChildren(...kids) { this.children = kids.filter(Boolean); },
         querySelectorAll: () => [], setAttribute() {}, classList: {add() {}}});
-      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node()}, toggle = node();
+      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node(),
+        'lang-toggle': {...node(), setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }}}, toggle = node();
       nodes.tabbar.querySelector = () => toggle;
       const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
       const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
