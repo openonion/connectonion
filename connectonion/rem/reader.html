@@ -934,6 +934,7 @@
   .translation-line { margin: 10px 0 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
+  .lang-status.lead { margin: 0 6px 0 0; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
   .person-focus { max-width: 1120px; }
@@ -2033,7 +2034,7 @@
   .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
   /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
      screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
-  /* The window is the top margin and three whole lines of the letter, which is four lines of the 中文对照 beside
+  /* The window is the top margin and three whole lines of the letter, which is four lines of the gist beside
      it (16 and 12 at the same 1.6), so neither column shows a half line cut by the slot row under it. */
   .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: calc(var(--u3) + 3 * var(--s-body) * var(--lh-body)); overflow: auto; overscroll-behavior: contain; }
   .qcard.focal[data-step="send"]:not(.full) :is(.mail-text, .mail-gist) { padding-top: var(--u3); line-height: var(--lh-body); }
@@ -3267,7 +3268,10 @@ function readerStorage(key, value) {
     return value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value);
   }).then(result => result, () => null);
 }
-let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)) && "zh"
+// The owner's language is one rule (languages.owner_language): drafts and the night's translation use it too.
+// The interface has only 中文 and English, so an owner whose language it lacks (ja) gets 中文 when he reads it.
+let uiLanguage = (/^zh(?:-|$)/i.test(REM?.owner_language || "")
+    || !/^(?:en|zh)(?:-|$)/i.test(REM?.owner_language || "en") && (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))) && "zh"
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
@@ -3611,7 +3615,7 @@ const UI = {
     "To": "收件人",
     "CC": "抄送",
     "Subject": "主题",
-    "In your words": "中文对照",
+    "Gist": "要点",
     "Why this reply": "为什么这样写",
     "Reply draft": "回信草稿",
     "Sends from {mailbox} via {provider}": "将从 {mailbox} 经 {provider} 发出",
@@ -5598,7 +5602,7 @@ function openWriter(draft, who, onSend) {
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
       draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
-      draft.gist ? el("section", {}, [el("h4", { text: t("In your words") }), el("p", { text: draft.gist })]) : null,
+      draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null,
       cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
         el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
         el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
@@ -5749,7 +5753,7 @@ function replyDraftCard(draft, onSent) {
         // The choice row is a block of its own, so the blank lines around it would only add height.
         parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
       // Why this reply sits under the owner's-language reading, beside the letter, not under it.
-      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist }), why]) : null]),
+      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: gistTitle(draft.gist) }), el("p", { text: draft.gist }), why]) : null]),
     draft.gist ? null : why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
   if (!REM.live) {
     // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
@@ -6757,15 +6761,47 @@ function memoryConnection(records) {
 // Opening the page only moves it up the nightly queue (translate.request); nothing translates it while it is
 // open, so the line never says "translating". The title says what happens next.
 function translationLine(r) {
-  if (uiLanguage === "en" || r.translations?.[uiLanguage] || r.written_in?.toLowerCase().split("-")[0] === uiLanguage) return null;
+  if (uiLanguage === "en" || (uiLanguage === "zh" ? hasChinese(r) : r.translations?.[uiLanguage]) || r.written_in?.toLowerCase().split("-")[0] === uiLanguage) return null;
   // Only when one can arrive: queued from this live page, or a nightly target with background updates on.
   const queued = translationQueued(r), nightly = REM.status?.worker?.enabled && REM.status?.translation_coverage?.[uiLanguage]?.requested;
   if (!queued && !nightly) return null;
   return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
     title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
 }
-function originalMark() {
-  return el("span", { class: "lang-status", text: t("Original"), title: t("No Chinese translation yet; showing original") });
+// A current Chinese version of the page in any region: a zh-TW or zh-CN cache is read as 中文 too.
+function hasChinese(r) {
+  return Object.keys(r?.translations || {}).some(tag => /^zh(?:-|$)/i.test(tag));
+}
+function originalMark(lead = false) {
+  return el("span", { class: "lang-status" + (lead ? " lead" : ""), text: t("Original"), title: t("No Chinese translation yet; showing original") });
+}
+// Today's and Maybe over's rows carry the page header's 原文 when their page has no current Chinese version
+// (what translationLine reads), first, so a closed row's ellipsis never cuts it off. A row of Chinese words
+// keeps no mark even then: names, codes and English terms inside it ("跟进 Jordan Lee 的 Q3 pricing proposal")
+// would outvote the Han characters in a script count, and the row is already in the reader's language.
+function rowMark(words, r) {
+  if (uiLanguage !== "zh" || hasChinese(r) || /[\u4e00-\u9fff]{2}/.test(words)) return null;
+  return originalMark(true);
+}
+function wordsLine(name, words, r, after, attrs = {}) {
+  const mark = rowMark(words, r);
+  return mark ? el("p", { class: name, ...attrs }, [mark, words, ...after]) : el("p", { class: name, text: words, ...attrs }, after);
+}
+// The language a text is written in, by script, as languages.language_of decides it: Han counts per
+// character, other scripts per word, kana outrank shared Han, and under three it is too short to say.
+function textLanguage(text) {
+  const SCRIPT_WORDS = { ja: /[\u3040-\u30ff]/g, ko: /[\uac00-\ud7af]/g, zh: /[\u4e00-\u9fff]/g, ru: /[\u0400-\u04ff]+/g, ar: /[\u0600-\u06ff]+/g, en: /[A-Za-z]+/g };
+  const words = Object.fromEntries(Object.entries(SCRIPT_WORDS).map(([tag, pattern]) => [tag, (String(text || "").match(pattern) || []).length]));
+  if (Object.values(words).reduce((sum, n) => sum + n, 0) < 3) return null;
+  if (words.ja) { words.ja += words.zh; delete words.zh; }
+  return Object.entries(words).reduce((best, entry) => entry[1] > best[1] ? entry : best)[0];
+}
+// The draft's gist is a summary, not a translation, and the writer may miss the owner's language:
+// the title names its language whenever that is not the reader's, so a Chinese-side label never sits over English.
+function gistTitle(gist) {
+  // A run of Han is Chinese however many English names sit in it (rowMark says why).
+  const language = /[\u4e00-\u9fff]{2}/.test(gist) ? "zh" : textLanguage(gist);
+  return t("Gist") + (language && language !== uiLanguage ? " · " + nativeName(language) : "");
 }
 function claimValue(claim, r, after, compact = false) {
   let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
@@ -7118,7 +7154,7 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false, l
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
-      : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+      : wordsLine("words", words, entry.r, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close, lead), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
@@ -7789,7 +7825,12 @@ function translationNotice() {
 let todayLead = null;
 function deckOrder(groups) {
   const lead = groups.findIndex(group => group.r.path === todayLead);
-  const ready = groups.findIndex(group => groupStep(group.entries).step === "send");
+  // Among cards ready to send, one whose draft needs nothing from the owner goes on top: a slot makes the top
+  // card a question; with every draft slotted, the first still leads. A slot is what replyDraftCard holds Send
+  // for (its isSlot: any [, ［ or 【 part), so the card on top is one whose Send works at once.
+  const sendable = groups.map((group, i) => [i, groupStep(group.entries)]).filter(([, next]) => next.step === "send");
+  const complete = sendable.find(([, next]) => !/[\[［【]/.test(threadDraft(next.entry)?.body || ""));
+  const ready = (complete || sendable[0] || [-1])[0];
   const first = lead >= 0 ? lead : Math.max(0, ready);
   return [...groups.slice(first), ...groups.slice(0, first)];
 }
@@ -8047,7 +8088,7 @@ function staleWidget(entries) {
     keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
     return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
-      el("p", { class: "stale-what", text: words, title: words }),
+      wordsLine("stale-what", words, entry.r, [], { title: words }),
       el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
   });
   const n = entries.length;
