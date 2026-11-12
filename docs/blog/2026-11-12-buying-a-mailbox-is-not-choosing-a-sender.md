@@ -10,7 +10,7 @@ An account sent everything from its `0x…@mail.openonion.ai` address, the one d
 
 ## Why it happened
 
-The server flagged a new address as the default when the account had no stored address yet. The derived `0x…` address is never stored, because it belongs to the key by construction. So on every account the first purchase took the default. Choosing a default only looked at stored rows, so the derived address could not be chosen back.
+The server flagged a new address as the default when the account had no stored address yet. The derived `0x…` address is never stored, because it belongs to the key by construction. So on any account that had no stored address yet — every account still sending from its `0x…` address — the first purchase took the default. Choosing a default only looked at stored rows, so the derived address could not be chosen back.
 
 ## The rule now
 
@@ -18,6 +18,7 @@ A stored address is the default only if it is flagged. If nothing is flagged, th
 
 ```sh
 co email setup ops --domain steadmail.com --buy            # Default sender is still 0x…@mail.openonion.ai
+co email name ops --buy                                    # same rule for a custom name
 co email setup ops --domain steadmail.com --buy --default  # Default sender is now ops@steadmail.com
 co email default 0x1234567890@mail.openonion.ai            # back to the derived address
 ```

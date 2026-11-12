@@ -158,3 +158,20 @@ def test_an_owned_address_is_recognized_when_its_domain_closes_to_new_purchases(
     assert result.exit_code == 0, result.output
     assert result.output.strip() == 'Already owned: iron.share@steadmail.com'
     cloud[1].assert_not_called()
+
+
+@pytest.mark.parametrize('flags,changed,expected', [
+    ([], False, 'Default sender is still 0x1234567890@mail.openonion.ai'),
+    (['--default'], True, 'Default sender is now wren@mail.openonion.ai'),
+])
+def test_name_buy_follows_the_same_default_rule(cloud, flags, changed, expected):
+    cloud[1].return_value = response({
+        'message': 'Claimed wren@mail.openonion.ai', 'email': 'wren@mail.openonion.ai',
+        'default_address': 'wren@mail.openonion.ai' if changed else '0x1234567890@mail.openonion.ai',
+        'default_changed': changed,
+    })
+    result = CliRunner().invoke(app, ['email', 'name', 'wren', '--buy', *flags])
+    assert result.exit_code == 0, result.output
+    assert cloud[1].call_args.args[0].endswith('/email/purchase-name')
+    assert cloud[1].call_args.kwargs['json'] == {'name': 'wren', 'make_default': changed}
+    assert expected in result.output

@@ -611,7 +611,7 @@ def handle_email_unshare(address: str, *, with_: str):
     console.print(f"\n[green]✓ Revoked {with_}'s access to {address}[/green]\n")
 
 
-def handle_email_name(name: str, buy: bool = False):
+def handle_email_name(name: str, buy: bool = False, make_default: bool = False):
     """Check whether a custom email name is available, or claim it (deducts credits)."""
     token = load_api_key()
     if not token:
@@ -628,18 +628,21 @@ def handle_email_name(name: str, buy: bool = False):
         data = r.json()
         if data.get("available"):
             console.print(f"\n[green]✓ {data['email']} is available[/green] — [bold]${data['price']:.2f}[/bold] one-time, from credits")
-            console.print(f"[dim]Claim it:[/dim] [bold]co email name {name} --buy[/bold]\n")
+            console.print(f"[dim]Claim it:[/dim] [bold]co email name {name} --buy{' --default' if make_default else ''}[/bold]")
+            console.print("[dim]Buying keeps your current default sender; add --default to send from it by default.[/dim]\n")
         else:
             console.print(f"\n[yellow]✗ {data['email']} — {data.get('reason', 'unavailable')}[/yellow]\n")
         return
 
-    r = requests.post(f"{backend_url()}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
+    r = requests.post(f"{backend_url()}/api/v1/email/purchase-name",
+                      json={"name": name, "make_default": make_default}, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
         raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Your address: [cyan]{data['email']}[/cyan]")
+    _print_default_after_buy({**data, "address": data["email"]})
     console.print(f'[dim]Send from it:[/dim] [bold]co email send <to> "<subject>" "<body>" --from {data["email"]}[/bold]\n')
 
 

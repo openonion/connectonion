@@ -106,7 +106,7 @@ co email delete-history you@mail.openonion.ai
 
 These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
 
-Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address, and `--buy` keeps the current default sender unless you add `--default`; it prints which address is the default afterwards. `co email addresses` always lists the `0x…` address derived from your key, and `co email default 0x…@mail.openonion.ai` makes it the default again. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
+Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address, and `--buy` (on `setup` and `name`) keeps the current default sender unless you add `--default`; it prints which address is the default afterwards. `co email addresses` always lists the `0x…` address derived from your key, and `co email default 0x…@mail.openonion.ai` makes it the default again. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
 
 ## Transfer one address
 
