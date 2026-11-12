@@ -919,7 +919,8 @@ pinned to that edge: it comes into view with the draft.
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
   and has no red. The side asks **Maybe over · still open?** with **Mark done**
-  (the usual mark) and **Still open**, which brings it back to the count. The Projects headline names
+  (the usual mark) and **Still open**, which brings it back to the count; past three, its link *N more in Gone
+  quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -944,9 +945,11 @@ pinned to that edge: it comes into view with the draft.
   The strip ends with the row's three ways to close it, as words on screen, never an icon, before and after a
   hand-off: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
   (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
-  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: stored as `done`, the only
-  other state the Host keeps, so this item never returns and its history line reads *Marked done*; the notice
-  says *Ignored · this one will not come back*). When the row cites a mail whose sender has an address, Ignore's
+  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
+  closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
+  back*), its history line and the closed list's summary, which names the states it holds, e.g. *Marked done ·
+  Ignored (3)*). On Today all three leave the same way, the row (or a one-row card) sliding out unless motion is
+  reduced. When the row cites a mail whose sender has an address, Ignore's
   notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
   (`POST /rem/sender {"address", "ignored": true}`, the same loopback, cookie and JSON rules as `/rem/thread`), the
   notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and

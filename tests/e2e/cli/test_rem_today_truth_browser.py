@@ -190,21 +190,60 @@ def test_every_row_says_its_three_ways_to_close_in_words_without_a_hover(today, 
     page.mouse.move(0, 0)
     rows = page.locator(".today-brief .qcard.open .qitem:visible")
     assert rows.count() >= 1
-    for i in range(rows.count()):
-        buttons = [rows.nth(i).locator(cls) for cls in (".strip-done", ".strip-later", ".strip-ignore")]
-        assert all(b.count() == 1 and b.is_visible() for b in buttons)
-        assert [b.inner_text() for b in buttons] == ["Mark done", "Not now", "Ignore"]
+    # Found the way the owner finds them: buttons by their visible words, nothing by class.
+    words = lambda names: [rows.nth(i).get_by_role("button", name=name, exact=True) for i in range(rows.count()) for name in names]
+    assert all(b.count() == 1 and b.is_visible() for b in words(["Mark done", "Not now", "Ignore"]))
     page.evaluate("() => { setInterfaceLanguage('zh'); }", isolated_context=False)
     page.mouse.move(0, 0)
-    row = page.locator(".today-brief .qcard.open .qitem:visible").first
-    assert [row.locator(c).inner_text() for c in (".strip-done", ".strip-later", ".strip-ignore")] == ["标为完成", "暂不处理", "忽略"]
+    assert all(b.count() == 1 and b.is_visible() for b in words(["标为完成", "暂不处理", "忽略"]))
+    row = rows.first
     states = lambda: [body["state"] for path, body in calls if path == "/rem/thread" and body]
-    row.locator(".strip-ignore").click()
-    assert page.locator("#done-notice").inner_text().startswith("已忽略 · 这一条不会再回来 · 撤销") and states()[-1] == "done"
+    row.get_by_role("button", name="忽略", exact=True).click()
+    # Ignore is its own state, so the notice and every later line say 已忽略, never 已完成.
+    assert page.locator("#done-notice").inner_text().startswith("已忽略 · 这一条不会再回来 · 撤销") and states()[-1] == "ignored"
     page.locator("#done-notice").get_by_role("button", name="撤销").click()
     row = page.locator(".today-brief .qcard.open .qitem:visible").first
-    row.locator(".strip-later").click()
+    row.get_by_role("button", name="暂不处理", exact=True).click()
     assert page.locator("#done-notice").inner_text().startswith("暂不处理 · 有新邮件会回来 · 撤销") and states()[-1] == "skipped"
+    page.locator("#done-notice").get_by_role("button", name="撤销").click()
+    page.locator(".today-brief .qcard.open .qitem:visible").first.get_by_role("button", name="忽略", exact=True).click()
+    page.evaluate("() => { location.hash = '#view=open'; }", isolated_context=False)
+    closed = page.locator("#done-today summary")
+    closed.wait_for()
+    assert closed.inner_text().startswith("已忽略") and "已完成" not in closed.inner_text()
+
+
+def test_all_three_closes_leave_the_way_mark_done_does(today):
+    """Not now and Ignore called setDone directly, so their row jumped away while Mark done's slid out."""
+    page, _, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-08T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.emulate_media(reduced_motion="no-preference")
+    page.evaluate(OVERDUE, isolated_context=False)
+    for name in ("Mark done", "Not now", "Ignore"):
+        page.evaluate("() => { REM.live = true; render(); dealCard('people/mara-ostrowski.md'); scrollTo(0, 0); }", isolated_context=False)
+        row = page.locator(".today-brief .qcard.open .qitem:visible").first
+        row.get_by_role("button", name=name, exact=True).click()
+        assert page.locator(".today-brief .leaving").count() == 1, name
+        page.locator("#done-notice").get_by_role("button", name="Undo").click()
+
+
+def test_the_stale_widgets_more_link_opens_gone_quiet_and_shows_it(today):
+    """The link said "in Open threads" and opened Waiting with the promises folded away in Gone quiet."""
+    page, _, _ = today
+    page.evaluate(r"""async () => {
+      const r = byPath('people/tomas-reyes.md');
+      r.original = undefined;
+      const lines = [1, 2, 3, 4, 5].map(n => `- You owe Tomás signed form ${n} for the van; requested 2026-04-1${n}, due 2026-04-2${n}.`).join('\n');
+      r.text = r.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1' + lines + '\n');
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
+    }""", isolated_context=False)
+    more = page.get_by_role("link", name="2 more in Gone quiet →")
+    more.click()
+    quiet = page.locator("#gone-quiet")
+    page.wait_for_function("() => document.getElementById('gone-quiet')?.open")
+    box = quiet.bounding_box()
+    assert 0 <= box["y"] < page.viewport_size["height"]
+    assert quiet.get_by_text("signed form 5 for the van").first.is_visible()
 
 
 # Asked 3 July, due 23 July (70 days late on 1 October), and Tomás wrote on the thread last week ([9], 28 September).

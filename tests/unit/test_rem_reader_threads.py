@@ -151,10 +151,12 @@ def test_in_flight_native_reply_cannot_overwrite_a_done_thread(notebook):
 
 
 def test_record_retains_undo_for_a_thread_removed_from_markdown():
-    function = re.search(r'function threadDecisionHistory\(.*?\n\}', reader.TEMPLATE.read_text(), re.S)[0]
+    function = ''.join(re.search(rf'function {name}\(.*?\n\}}', reader.TEMPLATE.read_text(), re.S)[0]
+                       for name in ('threadDecisionHistory', 'stateWord', 'closedSummary'))
     value = _run_reader_js(function + r'''
       const REM = {as_of: '2026-11-07'}, r = {path: 'people/fern.md'};
-      const threadStates = {'people/fern.md\nOld promise': {state: 'done', at: '2026-11-06'}};
+      const threadStates = {'people/fern.md\nOld promise': {state: 'done', at: '2026-11-06'},
+                            'people/fern.md\nAn offer': {state: 'ignored', at: '2026-11-06'}};
       const threads = () => ({items: []}), privateFallback = x => x;
       const el = (tag, attrs, children) => ({tag, ...attrs, children});
       const fmtDate = x => x, calendarDay = x => x, actions = [];
@@ -165,6 +167,9 @@ def test_record_retains_undo_for_a_thread_removed_from_markdown():
     ''')
     assert value['actions'] == [['Old promise', False]]
     assert value['history']['class'] == 'done-details thread-history'
+    # An ignored line says Ignored, and the summary names both states it holds.
+    assert value['history']['children'][0]['text'] == 'Marked done · Ignored (2)'
+    assert value['history']['children'][1]['children'][1]['children'][2]['text'].startswith('Ignored · ')
 
 
 def test_batch_skip_undo_restores_every_obligation_and_preserved_body(notebook):

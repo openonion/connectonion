@@ -75,7 +75,7 @@ def listing(root):
 
 def blocked(root, key, *, states=None):
     value = (listing(root) if states is None else states).get(key, {})
-    return value.get('state') in ('done', 'skipped') and not value.get('returned_at')
+    return value.get('state') in ('done', 'skipped', 'ignored') and not value.get('returned_at')
 
 
 class UnknownThread(RemError):
@@ -86,10 +86,11 @@ class UnknownThread(RemError):
 def set_state(root, key, state, *, device=None, versions=None, keys=None):
     """Open removes the decision and restores its preserved draft, at any time."""
     requested = list(dict.fromkeys([key, *(keys or [])]))
-    if (state not in ('done', 'skipped', 'open') or any(
+    # ignored closes like done; it is its own word so the owner's history says 已忽略, not 已完成.
+    if (state not in ('done', 'skipped', 'ignored', 'open') or any(
             not isinstance(item, str) or '\n' not in item or len(item) > 32000
             or not Notebook(root).exists(item.partition('\n')[0]) for item in requested)):
-        raise UnknownThread('Expected a notebook thread key and state done, skipped or open')
+        raise UnknownThread('Expected a notebook thread key and state done, skipped, ignored or open')
     with maintenance_lock(root):
         keys = list(dict.fromkeys(item for requested_key in requested for item in _matching_keys(root, requested_key)))
         stamp = now().isoformat()

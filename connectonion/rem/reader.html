@@ -3484,10 +3484,10 @@ const UI = {
     "Draft discarded": "草稿已丢弃",
     "No reply needed: ": "不用回：",
     "Marked done": "已完成",
-    "Done or set aside ({n})": "已完成或暂不处理（{n}）",
+    "{states} ({n})": "{states}（{n}）",
     "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
     "Not now": "暂不处理", "Not now · returns with new mail": "暂不处理 · 有新邮件会回来", "Ignore": "忽略",
-    "Ignored · this one will not come back": "已忽略 · 这一条不会再回来", "Next card": "下一张",
+    "Ignored · this one will not come back": "已忽略 · 这一条不会再回来", "Next card": "下一张", "Ignored": "已忽略",
     "Stop showing mail from {address}": "以后不再显示 {address} 的邮件",
     "Ignored · mail from {address} no longer shows here": "已忽略 · 以后不再显示 {address} 的邮件",
     "Ignored senders": "已忽略的发件人", "Show again": "恢复显示", "Ignored {date}": "{date} 忽略",
@@ -4331,7 +4331,7 @@ const UI = {
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
     "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
     "Maybe over": "可能已过期", "Maybe over · still open?": "可能已过期 · 还开着吗？", "Still open": "还开着",
-    "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Open threads →": "未完成事项里还有 {n} 件 →",
+    "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Gone quiet →": "「久未推进」里还有 {n} 件 →",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
 };
@@ -5234,7 +5234,16 @@ function threadStorageKey() {
 }
 function isDone(entry) {
   const value = threadStates[doneKey(entry)];
-  return ["done", "skipped"].includes(value?.state) && !value.returned_at;
+  return ["done", "skipped", "ignored"].includes(value?.state) && !value.returned_at;
+}
+// What the owner did, in his words: 忽略 is its own state (ignored), so an ignored ad never reads 已完成.
+function stateWord(state) {
+  return t(state === "skipped" ? "Not now" : state === "ignored" ? "Ignored" : "Marked done");
+}
+// A closed list's summary says what is inside it: "Marked done · Ignored (3)", only the states it holds.
+function closedSummary(values) {
+  const states = ["done", "skipped", "ignored"].filter(state => values.some(value => (value?.state || "done") === state));
+  return t("{states} ({n})", { states: states.map(stateWord).join(" · "), n: values.length });
 }
 // A mark names only the mail it cites, at the versions this page showed. It never carries the whole
 // table: past 64 KB the Host refused every Done, Undo and Skip (#2936).
@@ -5323,8 +5332,8 @@ function markDrafts(related, value, done, state) {
     } else if (value.draft_statuses[draft.id]?.version === draft.version) draft.status = value.draft_statuses[draft.id].status;
   }
 }
-// said: the notice's words when they are not the state's own (Ignore is stored as done; see stripDone).
-function setDone(entry, done, state = "done", entries = [entry], said = "", extra = null) {
+// extra: one more choice the notice offers after Undo (忽略's "stop showing this sender"; see stripDone).
+function setDone(entry, done, state = "done", entries = [entry], extra = null) {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5339,11 +5348,11 @@ function setDone(entry, done, state = "done", entries = [entry], said = "", extr
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  const notice = done ? doneNotice(entry, state, entries, said, extra) : null;
+  const notice = done ? doneNotice(entry, state, entries, extra) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       related.forEach((draft, i) => { draft.status = statuses[i]; });
-      notSavedNotice(() => setDone(entry, done, state, entries, said, extra), notice);
+      notSavedNotice(() => setDone(entry, done, state, entries, extra), notice);
     }
     if (synced) render();
     // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
@@ -5373,11 +5382,11 @@ function focusRaisedCard() {
 // The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
 // notice goes, the focus returns to the raised card, so the keys go on working.
 // extra: one more worded choice after Undo (忽略's "stop showing this sender"); it gets time to be read and tapped.
-function doneNotice(entry, state, entries, said, extra) {
+function doneNotice(entry, state, entries, extra) {
   const undo = el("button", { type: "button", text: t("Undo") });
   undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [said || t(state === "skipped" ? "Not now · returns with new mail" : "Marked done"), " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status]);
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Not now · returns with new mail" : state === "ignored" ? "Ignored · this one will not come back" : "Marked done"), " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
   noticeLeaves(notice, extra ? 12000 : 5000);
@@ -5499,7 +5508,7 @@ function threadActions(entry, onPage = false, strip = false) {
   }
   const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry, !strip);
   return el("div", { class: "thread-actions" }, [
-    undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Not now" : "Marked done")
+    undo ? el("span", { class: "done-tag", text: stateWord(threadStates[doneKey(entry)]?.state)
       + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : onPage ? quietOnly(primary) : primary,
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), strip && !undo ? null : done]);
 }
@@ -5746,20 +5755,20 @@ function threadDecisionHistory(r) {
   const current = new Set(threads(r).items.map(t => doneKey({ r, t })));
   const saved = Object.entries(threadStates).filter(([key]) => key.startsWith(r.path + "\n") && !current.has(key));
   if (!saved.length) return null;
-  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: t("Done or set aside ({n})", { n: saved.length }) }),
+  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: closedSummary(saved.map(([, value]) => value)) }),
     el("ul", { class: "threads" }, saved.map(([key, value]) => {
       const entry = { r, t: { text: key.slice(r.path.length + 1) } };
       const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
       undo.onclick = () => setDone(entry, false);
       return el("li", {}, [privateFallback(el("span", { text: entry.t.text })), " · ",
-        el("span", { class: "done-tag", text: t(value.state === "skipped" ? "Not now" : "Marked done")
+        el("span", { class: "done-tag", text: stateWord(value.state)
           + " · " + fmtDate(calendarDay(value.at || REM.as_of)) }), undo]);
     }))]);
 }
 function markedDone(entries) {
   const done = entries.filter(isDone);
   if (!done.length) return null;
-  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: t("Done or set aside ({n})", { n: done.length }) }),
+  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: closedSummary(done.map(entry => threadStates[doneKey(entry)])) }),
     el("p", { class: "quiet-line", text: t(Object.keys(pendingThreads).length
       ? "Saved on this device — sync pending" : "Saved in your notebook. Undo here or on the record page at any time.") }),
     el("ul", { class: "threads" }, done.map(({ r, t, also }) => threadRow(r, t, true, also, true)))]);
@@ -6974,10 +6983,10 @@ function motionStilled() {
   return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("calm");
 }
 // A handled card slides right and fades, then the page re-renders with an Undo.
-function closeEntries(node, entries) {
+function closeEntries(node, entries, state = "done", extra = null) {
   if (!entries.length) return;
   node?.classList.add("leaving");
-  setTimeout(() => setDone(entries[0], true, "done", entries), motionStilled() ? 0 : 240);
+  setTimeout(() => setDone(entries[0], true, state, entries, extra), motionStilled() ? 0 : 240);
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
 // or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
@@ -7017,7 +7026,8 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   // way the tick did: the row, or the card when it is the only one, slides out. A snapshot has no strip action
   // and keeps the tick.
   // E closes the whole card, so a row that is one of several does not claim the key.
-  const close = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
+  // Mark done, Not now and Ignore all leave this way (state), so the three closes look alike.
+  const close = (event, state = "done", extra = null) => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry], state, extra);
   const done = stripMarksDone(entry) ? null
     : el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
   if (done) done.onclick = close;
@@ -7124,19 +7134,20 @@ function stripMarksDone(entry) {
 // 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
 // 标为完成 — handled, settled offline included (state done);
 // 暂不处理 — not needed now: the notebook's "skipped", which leaves Today and returns when new mail arrives on the thread;
-// 忽略 — an ad or a notification: stored as done, since the Host knows no other state, so this item never returns. Its
+// 忽略 — an ad or a notification: the state "ignored", which closes like done and never returns, and reads 已忽略. Its
 // notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
 // itself: a relay carries people (on the owner's notebook, Today rows from guests came through express@airbnb.com), so the owner taps it.
 function stripDone(entry, mark) {
   if (!stripMarksDone(entry)) return [];
+  // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.
+  const close = (state, extra = null) => event => mark ? mark(event, state, extra) : setDone(entry, true, state, [entry], extra);
   const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
-  done.onclick = mark || (() => setDone(entry, true));
+  done.onclick = close("done");
   const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
-  later.onclick = () => setDone(entry, true, "skipped");
+  later.onclick = close("skipped");
   const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
   const sender = todayRow(entry)?.sender;
-  ignore.onclick = () => setDone(entry, true, "done", [entry], t("Ignored · this one will not come back"),
-    sender ? () => stopSenderButton(entry, sender) : null);
+  ignore.onclick = close("ignored", sender ? () => stopSenderButton(entry, sender) : null);
   return [done, later, ignore];
 }
 // The notice's "stop showing mail from x": once saved, the notice says what was ignored and its one Undo
@@ -7897,7 +7908,18 @@ function staleWidget(entries) {
   });
   return el("section", { id: "today-stale", class: "widget stale", "aria-label": t("Maybe over") }, [
     el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Maybe over · still open?") })]), el("ul", {}, rows),
-    entries.length > 3 ? el("a", { class: "stale-more", href: "#view=open", text: t("{n} more in Open threads →", { n: entries.length - 3 }) }) : null]);
+    entries.length > 3 ? staleMore(entries.length - 3) : null]);
+}
+// The rest are in Waiting's folded Gone quiet section: the link says so, opens it and brings it into view.
+function staleMore(n) {
+  const link = el("a", { class: "stale-more", href: "#view=open", text: t("{n} more in Gone quiet →", { n }) });
+  link.onclick = () => addEventListener("hashchange", () => requestAnimationFrame(() => {
+    const quiet = document.getElementById("gone-quiet");
+    if (!quiet) return;
+    quiet.open = true;
+    quiet.scrollIntoView({ block: "start" });
+  }), { once: true });
+  return link;
 }
 // What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
 // sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.

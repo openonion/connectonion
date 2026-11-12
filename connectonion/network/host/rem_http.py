@@ -156,13 +156,13 @@ async def _action(scope, receive, send, root, headers):
                              else approvals.approve(root, body["ids"], bodies=body.get("bodies")))
     elif scope["path"] == "/rem/thread":
         if (not isinstance(body.get("key"), str) or "\n" not in body["key"]
-                or body.get("state") not in ("done", "skipped", "open")
+                or body.get("state") not in ("done", "skipped", "ignored", "open")
                 or not isinstance(body.get("device"), (str, type(None)))
                 or not isinstance(body.get("keys"), (list, type(None)))
                 or any(not isinstance(key, str) for key in body.get("keys") or [])
                 or not isinstance(body.get("versions"), (dict, type(None)))
                 or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
-            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
+            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped, ignored or open"}), "application/json")
             return
         operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
     elif scope["path"] == "/rem/sender":

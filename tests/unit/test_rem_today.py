@@ -226,11 +226,11 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('stripMarksDone', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const setDone = (entry, done) => calls.push(['setDone', entry.t.text, done]);
+      const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
       const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
-      const own = stripDone(entry), slide = stripDone(entry, event => calls.push(['close', event]));
-      own[0].onclick(); slide[0].onclick('click');
+      const own = stripDone(entry), slide = stripDone(entry, (event, state) => calls.push(['close', event, state]));
+      own[0].onclick(); own[2].onclick(); slide.forEach(button => button.onclick('click'));
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
@@ -240,7 +240,10 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     ''')
     assert result['own'] == [['button', 'btn-quiet strip-done', 'Mark done'], ['button', 'btn-quiet strip-later', 'Not now'],
                              ['button', 'btn-quiet strip-ignore', 'Ignore']]
-    assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True], ['close', 'click']]
+    # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
+    assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
     assert {key: result[key] for key in ('ask', 'bare', 'file', 'snapshot')} == {
         'ask': 0, 'bare': 0, 'file': 0, 'snapshot': 0}
 

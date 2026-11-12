@@ -87,3 +87,11 @@ def test_a_relay_that_carries_peoples_messages_is_never_a_sender_to_ignore(tmp_p
                    'Which day suits?', fetched_at='2026-11-08T00:00:00+00:00')
     refresh(tmp_path)
     assert [row['sender'] for row in today.queue(tmp_path, as_of=date(2026, 11, 8))] == ['']
+
+
+def test_ignored_is_its_own_thread_state_that_leaves_today_like_done(host):
+    # Stored as done, an ignored ad read "Marked done" in its history; the notebook now says what the owner did.
+    payload = json.dumps({'key': 'people/alice-chen.md\nA promise', 'state': 'ignored'}).encode()
+    assert call(host.routes, 'POST', '/rem/thread', cookie=f'co_rem={host.token}', body=payload)[0] == 200
+    assert threads.listing(host.root)['people/alice-chen.md\nA promise']['state'] == 'ignored'
+    assert threads.blocked(host.root, 'people/alice-chen.md\nA promise')
