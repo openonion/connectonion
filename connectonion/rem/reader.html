@@ -23,6 +23,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>co rem</title>
+<!-- The tab icon (D-132): the mark, drawn for 16 px and inline so nothing is fetched. The browser paints it
+     outside the page and by the system's theme, so it cannot read var(): its four colours are the
+     sheet's ink and paper, light and dark, written out (tests/unit/test_rem_reader_style_sheet.py). -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2034%2034%22%3E%3Cstyle%3E.f%7Bfill%3A%23121512%7D.sp%7Bfill%3Anone%3Bstroke%3A%23ffffff%3Bstroke-linecap%3Around%7D%40media%20(prefers-color-scheme%3Adark)%7B.f%7Bfill%3A%23eef0ed%7D.sp%7Bstroke%3A%230f110f%7D%7D%3C%2Fstyle%3E%3Cpath%20class%3D%22f%22%20d%3D%22M9%201h16a8%208%200%200%201%208%208v16a8%208%200%200%201-8%208H9a8%208%200%200%201-8-8V9a8%208%200%200%201%208-8z%22%2F%3E%3Cpath%20class%3D%22sp%22%20stroke-width%3D%223.4%22%20transform%3D%22translate(0%202.2)%22%20d%3D%22M5.82%2013.80A4.6%204.6%200%200%200%2013.78%2013.80M20.22%2013.80A4.6%204.6%200%200%200%2028.18%2013.80%22%2F%3E%3C%2Fsvg%3E">
 <style>
   /* fuse:tokens */
   /* REM · N3 "Desk" (D-123): the whole token sheet. Outside it the reader may only name these
@@ -2702,26 +2706,30 @@
   .app { display: grid; grid-template-columns: 72px minmax(0, 1fr); min-height: 100vh; }
   .stage { min-width: 0; }
 
-  /* the rail: six places as icons, names on hover; 更多, settings and you at the foot */
+  /* the rail (D-132): seven places, each a picture with its word under it; 更多, settings and you at the foot.
+     It stays 72 wide. Its content is 656 tall; in a lower window the rail itself scrolls. */
   .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: var(--u2); padding: 20px 0; z-index: 30; }
-  .brand { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 14px; color: var(--ink); text-decoration: none !important; }
+  .brand { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-bottom: 14px; color: var(--ink); text-decoration: none !important; }
   .brand .mark { width: 34px; height: 34px; }
   .brand .mark .f { fill: currentColor; }
-  .brand .mark .s { fill: none; stroke: currentColor; stroke-width: 2.4; }
+  .brand .mark .sp { fill: none; stroke: var(--paper); stroke-linecap: round; stroke-linejoin: round; }
   .brand .name, .brand .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .rail-menu { display: flex; flex-direction: column; align-items: center; flex: 1; gap: var(--u2); }
-  #nav { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .rail-menu { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 4px; }
+  #nav { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .rail-end { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .nav { position: relative; width: 44px; height: 44px; border-radius: var(--radius); display: grid; place-items: center; color: var(--grey); background: none; border: 0; padding: 0; cursor: pointer;
+  .nav { position: relative; flex: none; width: 56px; height: 52px; border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--grey); background: none; border: 0; padding: 0; cursor: pointer;
     text-decoration: none !important; transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
   .nav:hover { background: var(--well); color: var(--ink); }
   .nav.active { color: var(--ink); background: var(--raised); box-shadow: var(--e1); }
-  .nav .n { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
+  .nav .ic, .tab .ic { width: 20px; height: 20px; }
+  .nav .w { font: var(--w-regular) var(--s-meta)/14px var(--font); white-space: nowrap; }
+  .nav.active .w { font-weight: var(--w-bold); }
+  .nav .n { position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
     font: var(--w-bold) var(--s-meta)/18px var(--font); text-align: center; }
   .tip { position: absolute; left: 54px; top: 50%; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
     background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
     transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
-  .nav:hover .tip, .nav:focus-visible .tip { opacity: 1; transform: translate(0, -50%); }
+  .nav.you { height: 44px; }
   .nav.you .face { width: 32px; height: 32px; font: var(--w-bold) var(--s-meta)/1 var(--font); }
   .menu { position: absolute; z-index: 40; min-width: 220px; padding: 6px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); animation: n3-pop var(--t-state) var(--spring) both; }
   .menu[hidden] { display: none; }
@@ -2729,7 +2737,10 @@
     width: 100%; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: none !important; }
   .mi:hover, .mi.active { background: var(--well); }
   .mi .ic { width: 16px; height: 16px; color: var(--grey); }
-  .rail-more { left: 64px; top: 280px; }
+  /* 更多 opens beside its button, whose foot is 530 down the rail, and grows upward so a low window keeps all of it.
+     Fixed: a rail that scrolls would clip a menu positioned inside it. */
+  .rail-more { position: fixed; left: 70px; bottom: max(8px, calc(100vh - 530px)); }
+  @media (max-height: 655px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
   .top { display: flex; align-items: center; gap: var(--u3); height: 76px; padding: 0 40px; }
@@ -2799,9 +2810,12 @@
       padding: 8px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e3); }
     .rail[data-open="true"] #nav { align-items: stretch; }
     .rail[data-open="true"] .rail-end { flex-direction: row; justify-content: space-between; margin-top: 4px; }
-    .rail[data-open="true"] .nav { width: auto; justify-content: start; grid-auto-flow: column; gap: 12px; padding: 0 12px; }
-    .rail[data-open="true"] .nav .tip { position: static; opacity: 1; transform: none; background: none; color: inherit; padding: 0; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
-    .rail[data-open="true"] .nav .n { position: static; }
+    .rail[data-open="true"] .nav { width: auto; height: 44px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 0 12px; }
+    .rail[data-open="true"] .nav .ic { width: 18px; height: 18px; }
+    /* a row has room for the whole name, so it reads the name the link already carries, not the rail's short word */
+    .rail[data-open="true"] .nav .w { display: none; }
+    .rail[data-open="true"] .nav::after { content: attr(aria-label); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .nav .n { position: static; order: 1; }
     .rail[data-open="true"] .nav.more { display: none; }
     .rail[data-open="true"] .rail-more { display: block; position: static; box-shadow: none; padding: 0; animation: none; min-width: 0; }
     .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
@@ -3131,7 +3145,7 @@
 <div class="app">
   <aside class="rail">
     <a class="brand" href="#" aria-label="co rem, contents">
-      <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><circle class="f" cx="11" cy="12" r="7"/><path class="s" d="M20 17h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-6a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3z"/><path class="f" d="M5 29 11 20l6 9z"/></svg>
+      <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><path class="f" d="M10.5 1h13a9.5 9.5 0 0 1 9.5 9.5v13a9.5 9.5 0 0 1-9.5 9.5h-13A9.5 9.5 0 0 1 1 23.5v-13A9.5 9.5 0 0 1 10.5 1z"/><path class="sp" stroke-width="2.6" transform="translate(0 .6)" d="M6.16 15.25A4.8 4.8 0 0 0 14.64 15.25M19.36 15.25A4.8 4.8 0 0 0 27.84 15.25"/></svg>
       <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
     <div class="rail-menu" id="rail-menu">
       <nav id="nav" aria-label="Categories"></nav>
@@ -3174,7 +3188,9 @@ let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
-  en: { "More of this card": "More" },  // one English word, two meanings: each has a key of its own
+  // One English word, two meanings: each has a key of its own. And the rail's cell is 56 wide: three English
+  // names do not fit under a picture at 11px, so the rail has a short word for each (the names stay in aria-label).
+  en: { "More of this card": "More", "Waiting on you, in the rail": "Waiting", "Organisations, in the rail": "Orgs", "All records, in the rail": "All" },
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
@@ -4260,6 +4276,7 @@ const UI = {
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
+    "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
 };
@@ -6255,15 +6272,21 @@ function scheduleState(s) {
 function nightlyUpdatesOff() {
   return scheduleState(REM.status || {}) === "Background updates off";
 }
-// The N3 icon set (D-123): Feather shapes, the react-icons names are listed in the design's tokens.md
-// (FiSun, FiInbox, FiUser, FiSquare, FiTriangle, LuWaypoints…). Strokes come from .ic, never from here.
+// The N3 icon set (D-123): Feather shapes, the react-icons names are listed in the design's tokens.md.
+// The rail's and the tab bar's pictures (D-132) are Lucide 0.468.0 under Lucide's own names: sun,
+// message-square-reply, users, building-2, folder, zap, archive, ellipsis, settings. Strokes come from .ic, never from here.
 const ICONS = {
-  sun: '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
-  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
-  org: '<path d="M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7a4.5 4.5 0 0 1-4.5 4.5h-7A4.5 4.5 0 0 1 4 15.5v-7A4.5 4.5 0 0 1 8.5 4z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  "message-square-reply": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="m10 7-3 3 3 3"/><path d="M17 13v-1a2 2 0 0 0-2-2H7"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  "building-2": '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  // Lucide draws the lid as a rect with rx="1"; it is the same lid as a path, because the sheet owns every radius attribute.
+  archive: '<path d="M3 3h18a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  ellipsis: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   project: '<path d="M12 4.5 20.5 19h-17z"/>',
-  graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2l7.5 0.6M7 8.3l1.5 7.3M16.6 10l-5.8 6.3"/>',
   layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
   more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
   search: '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/>',
@@ -6277,7 +6300,6 @@ const ICONS = {
   linkedin: '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><path d="M2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
-  sliders: '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/>',
   quote: '<path d="M7 17c-2 0-3-1.6-3-3.5C4 10 6.5 7.5 9 7M17 17c-2 0-3-1.6-3-3.5 0-3.5 2.5-6 5-6.5"/>',
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
   flip: '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
@@ -6296,35 +6318,46 @@ const ICONS = {
 function icon(name, cls = "") {
   return el("span", { class: "icw", "aria-hidden": "true", html: '<svg class="ic' + (cls ? " " + cls : "") + '" viewBox="0 0 24 24">' + (ICONS[name] || "") + "</svg>" });
 }
-const CATEGORY_ICON = { people: "person", orgs: "org", projects: "project", skills: "layers", knowledge: "book", decisions: "scale",
-  principles: "book", agenda: "calendar", sessions: "terminal", opportunities: "activity", works: "doc" };
-// The rail (D-123): six places as icons with their names on hover, the rest one 更多 away, settings and
-// you at the foot. The names stay in the links, so a screen reader and a search read the same words.
-function railLink(key, iconName, title, link, active, badge) {
-  return el("a", { href: link, class: "nav" + (active === key ? " active" : ""), "aria-label": title }, [icon(iconName),
-    el("span", { class: "tip", text: title }), badge]);
+// 更多 lists the categories that have no rail entry of their own; these are their pictures.
+const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "book", agenda: "calendar", sessions: "terminal",
+  opportunities: "activity", works: "doc" };
+// The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
+// and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
+// name is wider than the cell; then the name stays in aria-label and one hover away, so a screen reader and a
+// search read the same words.
+function railPlaces() {
+  return [["today", "sun", t("Today"), "#"],
+    ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail")],
+    ["people", "users", label("people"), "#c=people"],
+    ["orgs", "building-2", label("orgs"), "#c=orgs", t("Organisations, in the rail")],
+    ["projects", "folder", label("projects"), "#c=projects"],
+    ["skills", "zap", label("skills"), "#c=skills"],
+    ["all", "archive", t("All records"), "#c=all", t("All records, in the rail")]];
+}
+function railCell(tag, attrs, picture, name, word = name, badge = null) {
+  return el(tag, { ...attrs, "aria-label": name, ...(word === name ? {} : { title: name }) },
+    [icon(picture), el("span", { class: "w", "aria-hidden": "true", text: word }), badge]);
 }
 function railMore(active) {
+  const placed = railPlaces().map(([key]) => key);
   const rest = [["changes", "activity", t("Memory changes"), "#view=changes"],
-    ...memoryCategories().filter(c => !["people", "orgs", "projects"].includes(c))
+    ...memoryCategories().filter(c => !placed.includes(c))
       .filter(c => (!detailReady && c === "sessions") || inCategory(c).length || active === c)
       .map(c => [c, CATEGORY_ICON[c] || "doc", label(c), "#c=" + c])];
   const menu = el("div", { class: "menu rail-more", id: "rail-more", hidden: "" },
     rest.map(([key, iconName, title, link]) => el("a", { href: link, class: "mi" + (active === key ? " active" : "") }, [icon(iconName), el("span", { text: title })])));
   const on = rest.some(([key]) => key === active);
-  const button = el("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more",
-    "aria-label": t("More") }, [icon("more"), el("span", { class: "tip", text: t("More") })]);
+  const button = railCell("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more" },
+    "ellipsis", t("More"));
   button.onclick = event => { event.stopPropagation(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); };
   return [button, menu];
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
-  const waiting = el("span", { class: "n waiting", text: String(threadCounts().mine) });
-  nav.replaceChildren(
-    railLink("today", "sun", t("Today"), "#", active),
-    railLink("open", "inbox", t("Waiting on you"), "#view=open", active, threadCounts().mine ? waiting : null),
-    ...["people", "orgs", "projects"].map(c => railLink(c, CATEGORY_ICON[c], label(c), "#c=" + c, active)),
-    railLink("all", "graph", t("All records"), "#c=all", active), ...railMore(active));
+  const mine = threadCounts().mine;
+  nav.replaceChildren(...railPlaces().map(([key, picture, name, link, word]) =>
+    railCell("a", { href: link, class: "nav" + (active === key ? " active" : "") }, picture, name, word,
+      key === "open" && mine ? el("span", { class: "n waiting", text: String(mine) }) : null)), ...railMore(active));
   nav.querySelectorAll("a.active").forEach(a => a.setAttribute("aria-current", "page"));
   renderRailEnd(active);
   renderTabbar(active);
@@ -6334,10 +6367,12 @@ function renderRail(active) {
 }
 function renderRailEnd(active) {
   const end = document.getElementById("rail-end"), owner = REM.owner && byPath(REM.owner);
-  const settings = el("button", { type: "button", class: "nav settings-open", "aria-label": t("Settings"), "aria-controls": "settings" }, [icon("sliders"), el("span", { class: "tip", text: t("Settings") })]);
+  const settings = railCell("button", { type: "button", class: "nav settings-open", "aria-controls": "settings" }, "settings", t("Settings"));
   settings.onclick = openSettings;
-  end.replaceChildren(settings, owner ? el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": t("You") + " · " + owner.title }, [
-    face(owner.title, "s"), el("span", { class: "tip", text: t("You") + " · " + owner.title })]) : null);
+  // Your face is its own picture and has no word under it, so its name is one hover away.
+  const you = owner && t("You") + " · " + owner.title;
+  end.replaceChildren(settings, owner ? el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, title: you },
+    [face(owner.title, "s")]) : null);
 }
 // Phone (D-123): the rail and the ⌘K bar give way to a floating tab bar: 今天 · 等你 · 人物 · 搜索 · 更多.
 function renderTabbar(active) {
@@ -6346,11 +6381,11 @@ function renderTabbar(active) {
   const search = el("button", { type: "button", class: "tab tab-search" }, [icon("search"), el("span", { text: t("Search") })]);
   search.onclick = () => { document.body.classList.add("searching"); document.getElementById("q").focus(); };
   bar.setAttribute("aria-label", t("Tabs"));
-  toggle.replaceChildren(icon("more"), el("span", { text: t("More") }));
+  toggle.replaceChildren(icon("ellipsis"), el("span", { text: t("More") }));
   toggle.classList.add("tab");
   const mine = threadCounts().mine;
-  bar.replaceChildren(tab("today", "sun", t("Today"), "#"), tab("open", "inbox", t("Waiting"), "#view=open", mine ? el("span", { class: "n", text: String(mine) }) : null),
-    tab("people", "person", label("people"), "#c=people"), search, toggle);
+  bar.replaceChildren(tab("today", "sun", t("Today"), "#"), tab("open", "message-square-reply", t("Waiting"), "#view=open", mine ? el("span", { class: "n", text: String(mine) }) : null),
+    tab("people", "users", label("people"), "#c=people"), search, toggle);
 }
 function openSettings() {
   const sheet = document.getElementById("settings");

@@ -468,6 +468,11 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     assert toggle.get_attribute("aria-expanded") == "true"
     links = page.locator("#nav a")
     assert links.first.is_visible() and page.locator('#nav a[href="#view=changes"]').is_visible()
+    # Each row of the sheet writes its place's full name beside its picture; the rail's short word is not shown twice.
+    rows = page.locator("#nav > a")
+    assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"All records"']
+    assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
       const box = link.getBoundingClientRect();
