@@ -65,7 +65,9 @@ def test_today_keys_move_close_undo_and_never_steal_typing(reader):
     assert sheet.is_visible() and 'Mark done' in sheet.inner_text()
     page.keyboard.press('j')  # a dialog is open: Today keys are inert
     page.keyboard.press('Escape')
-    assert page.locator('#shortcuts').count() == 0
+    # Escape closes the sheet at once; its node leaves in the "close" event a task later, so wait for that.
+    assert not page.evaluate('!!document.querySelector("#shortcuts")?.open', isolated_context=False)
+    sheet.wait_for(state='detached')
     page.locator('#q').focus()
     page.keyboard.type('jk?')
     assert page.locator('#q').input_value() == 'jk?'
@@ -95,7 +97,21 @@ def test_palette_searches_runs_actions_and_remembers(reader, chord):
     first = page.locator('#palette li[role="option"]').first
     assert 'Recent' in first.inner_text()
     page.keyboard.press('Escape')
-    assert page.locator('#palette').count() == 0
+    assert not page.evaluate('!!document.querySelector("#palette")?.open', isolated_context=False)
+    palette.wait_for(state='detached')
+
+
+def test_a_dialog_opens_again_before_the_closed_one_has_left(reader):
+    """⌘K right after a pick or Esc did nothing: the closed palette was still in the page until its close event."""
+    page, _ = reader
+    for opener, id_ in (('openPalette', 'palette'), ('openShortcuts', 'shortcuts')):
+        # One task: the first dialog's close event cannot have run yet.
+        state = page.evaluate(f'''() => {{ {opener}(); document.getElementById("{id_}").close(); {opener}();
+            const all = document.querySelectorAll("#{id_}");
+            return [all.length, all[0].open]; }}''', isolated_context=False)
+        assert state == [1, True], id_
+        page.keyboard.press('Escape')
+        page.locator(f'#{id_}').wait_for(state='detached')
 
 
 @pytest.mark.parametrize('theme', ['light', 'dark'])

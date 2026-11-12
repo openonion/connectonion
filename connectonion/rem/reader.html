@@ -12898,8 +12898,16 @@ function onTodayCard(path, act) {
   window.addEventListener("hashchange", run, { once: true });
   location.hash = "";
 }
+// A closed dialog leaves the page in its "close" event, which the browser fires a task later. Until then its node is
+// still here: only an open one may stop a second ⌘K, or ⌘K right after a pick or Esc did nothing at all.
+function dropClosed(id) {
+  const old = document.getElementById(id);
+  if (old?.open) return false;
+  old?.remove();
+  return true;
+}
 function openPalette() {
-  if (document.getElementById("palette")) return;
+  if (!dropClosed("palette")) return;
   const items = paletteItems();
   const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-list", autocomplete: "off", spellcheck: "false",
     "aria-label": t("Search or run a command"), placeholder: t("Search people, projects, pages — or type an action") });
@@ -12943,6 +12951,7 @@ function openPalette() {
 }
 const SHORTCUTS = [["J / K", "Next or previous card"], ["S", "Skip to the next card"], ["E", "Mark done (the card in focus)"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
 function openShortcuts() {
+  if (!dropClosed("shortcuts")) return;
   const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
   const dialog = el("dialog", { id: "shortcuts", class: "palette shortcuts", "aria-labelledby": "shortcuts-title" }, [
     el("h2", { id: "shortcuts-title", text: t("Keyboard shortcuts") }),
