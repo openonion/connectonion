@@ -13,6 +13,8 @@ PUBLISHED_EXCEPTIONS = {
     "gemini-3.7-flash",
     "gemini-3.8-flash",
     "gemini-4-argon",
+    "gemini-4-carbon",
+    "gemini-4-hydrogen",
 }
 
 
@@ -57,6 +59,15 @@ class TestTheProviderPublishedException:
         supported for this model; only implicit caching is."""
         row = MODEL_PRICING["gemini-4-argon"]
         assert row == {"input": 2.00, "output": 10.00, "cached": 0.10}
+        assert row["cached"] == pytest.approx(row["input"] * 0.05)
+
+    def test_gemini_4_carbon_is_priced_as_argon(self):
+        """Pricing page, every tier tab, checked 2026-11-13."""
+        assert MODEL_PRICING["gemini-4-carbon"] == {"input": 2.00, "output": 10.00, "cached": 0.10}
+
+    def test_gemini_4_hydrogen_cached_is_five_percent_of_input(self):
+        row = MODEL_PRICING["gemini-4-hydrogen"]
+        assert row == {"input": 1.50, "output": 7.50, "cached": 0.075}
         assert row["cached"] == pytest.approx(row["input"] * 0.05)
 
 
