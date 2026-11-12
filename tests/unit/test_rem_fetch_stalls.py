@@ -103,9 +103,11 @@ def notebook(tmp_path, monkeypatch, rem_clock):
     return root
 
 
-def round_of(root, monkeypatch, people, *, error=read_timeout, listing_error=None):
+def round_of(root, monkeypatch, people, *, error=read_timeout, listing_error=None, before_heron=()):
     """People pages whose preparation fails on Outlook, then the Heron project page, which needs no mail."""
     book = Notebook(root)
+    for record in [*people, *(job["record"] for job in before_heron)]:
+        book.stub_person(record, Path(record).stem.title())
     book.stub_project("projects/heron.md", "Heron")
     mark_written(root, "projects/heron.md", "2026-10-01T00:00:00Z", inputs_read=0, inputs_available=0)
     item = {"role": "user", "source": "codex:heron:1", "timestamp": NEW, "text": "Please review the pilot."}
@@ -133,8 +135,9 @@ def round_of(root, monkeypatch, people, *, error=read_timeout, listing_error=Non
 
     monkeypatch.setattr(inv, "investigate", investigation)
     cursor = native_round.prepare(root, read_config(root), scheduled=False)
-    cursor.update(batch={"done": True}, summaries=[], jobs=[
-        *({"record": record, "kind": "person"} for record in people), {"record": "projects/heron.md", "kind": "project"}])
+    cursor.update(batch={"done": True}, summaries=[], same_left=0, same_new_left=0, jobs=[
+        *({"record": record, "kind": "person"} for record in people), *before_heron,
+        {"record": "projects/heron.md", "kind": "project"}])
     write_json(state_path(root, "round.json"), cursor)
     return asked
 
@@ -154,7 +157,9 @@ def test_a_page_whose_preparation_times_out_is_parked_and_next_serves_the_next_p
     assert fetch_stalls.due(notebook) == {"people/ivy.md": {"record": "people/ivy.md", "kind": "person"}}
     monkeypatch.setattr(service, "now", lambda: moment)
     # Failing again waits longer.
-    fetch_stalls.park(notebook, {"record": "people/ivy.md", "kind": "person"}, type("Late", (TimeoutError,), {})())
+    late = TimeoutError()
+    late.rem_provider = "outlook"
+    fetch_stalls.park(notebook, {"record": "people/ivy.md", "kind": "person"}, late)
     assert read_json(state_path(notebook, fetch_stalls.LEDGER), {})["items"]["people/ivy.md"]["retry_at"] == (
         service.now() + timedelta(hours=6)).isoformat()
 
@@ -201,6 +206,7 @@ def _no_lock(*args, **kwargs):
 
 
 def test_the_night_line_summary_names_the_mailbox_the_reason_and_what_waits(notebook):
+    Notebook(notebook).stub_person("people/ivy.md", "Ivy")
     stuck = type("Stuck", (TimeoutError,), {})()
     stuck.rem_provider = "outlook"
     for _ in range(3):
@@ -255,5 +261,67 @@ def test_a_slot_mail_read_that_fails_stops_that_mailbox_and_the_next_slot_reads_
     native_round.read_new_mail(notebook, cursor, read_config(notebook), service.now())
     assert fetch_stalls.stopped(notebook) == {"outlook": "timeout"}
     assert any("Outlook timed out while reading new mail" in notice for notice in cursor["set_aside"])
+    # Every mailbox is stopped: the slot reads nothing rather than sessions mid-round.
     native_round.read_new_mail(notebook, cursor, read_config(notebook), service.now())
-    assert asked == [["fixture-outlook"], ["fixture-codex"]]
+    assert asked == [["fixture-outlook"]]
+
+
+def test_a_parked_page_that_is_gone_by_the_next_round_is_dropped_not_served(notebook, monkeypatch):
+    """Merged or deleted while it waited: serving it raised "Record not found" on every turn."""
+    round_of(notebook, monkeypatch, ["people/ivy.md"])
+    native.next_task(notebook)
+    Notebook(notebook).path("people/ivy.md").unlink()
+    moment = service.now()
+    monkeypatch.setattr(service, "now", lambda: moment + timedelta(hours=2))
+    assert fetch_stalls.due(notebook) == {}
+    assert "people/ivy.md" not in read_json(state_path(notebook, fetch_stalls.LEDGER), {})["items"]
+
+
+def test_a_parked_page_merged_into_another_comes_back_as_that_page(notebook, monkeypatch):
+    round_of(notebook, monkeypatch, ["people/ivy.md"])
+    native.next_task(notebook)
+    Notebook(notebook).path("people/ivy.md").unlink()
+    Notebook(notebook).stub_person("people/ivy-lantern.md", "Ivy")
+    write_json(state_path(notebook, "aliases.json"), {"people/ivy.md": {"into": "people/ivy-lantern.md"}})
+    moment = service.now()
+    monkeypatch.setattr(service, "now", lambda: moment + timedelta(hours=2))
+    assert fetch_stalls.due(notebook) == {"people/ivy-lantern.md": {"record": "people/ivy-lantern.md", "kind": "person"}}
+
+
+def test_a_timeout_that_is_not_a_mailbox_still_stops_next(notebook, monkeypatch):
+    """A child process or a web fetch timing out is a bug or an outage to see, not mail to park."""
+    import subprocess
+    round_of(notebook, monkeypatch, [])
+
+    def hung(*args, **kwargs):
+        raise subprocess.TimeoutExpired("git", 30)
+
+    monkeypatch.setattr(native_round, "_project_task", hung)
+    with pytest.raises(subprocess.TimeoutExpired):
+        native.next_task(notebook)
+    assert not state_path(notebook, fetch_stalls.LEDGER).exists()
+
+
+def test_a_stopped_mailbox_holds_only_pages_that_read_mail_and_they_return_next_turn(notebook, monkeypatch):
+    people = [f"people/fixture-{n}.md" for n in range(4)]
+    retry = {"record": "people/fixture-r.md", "kind": "retry", "entry": {"material": [{"source": "codex:r:1"}]}}
+    asked = round_of(notebook, monkeypatch, people, before_heron=[retry])
+    served = []
+    def retried(root, cursor, config, directory, job):
+        served.append(job["record"])
+        cursor["job_index"] += 1  # as _retry_task does when its material has nothing left
+
+    monkeypatch.setattr(native_round, "_retry_task", retried)
+    monkeypatch.setattr("connectonion.rem.refusals.mark_retried", lambda root, record: None)
+    task = native.next_task(notebook)
+    assert task["record"] == "projects/heron.md"
+    # The retry reads its held material, not the mailbox: it is not held.
+    assert served == ["people/fixture-r.md"] and asked == people[:3]
+    # The page held for the stopped mailbox comes back in the same round at the next turn.
+    cursor = read_json(state_path(notebook, "round.json"), {})
+    cursor.update(job_index=cursor["job_index"] + 1, pending=None)
+    monkeypatch.setenv("CO_REM_TURN_ID", "fixture-turn-2")
+    directory = state_path(notebook, "tasks/fixture-turn-2")
+    directory.mkdir(parents=True)
+    native_round.prepare_task(notebook, cursor, read_config(notebook), directory)
+    assert asked == people

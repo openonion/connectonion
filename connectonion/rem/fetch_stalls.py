@@ -118,10 +118,12 @@ def park(root, job: dict, error) -> str | None:
     """Set the round's `job` aside after a mailbox failed while preparing it: the notice to print, or None.
 
     None means the error is not a mailbox's, and the caller re-raises it."""
-    reason = failure(error)
-    if reason is None:
+    # Only an error a mail client raised (Labelled tags it) is a mailbox's: a git or
+    # web fetch timing out in a project or skill page is not mail, and must be seen.
+    provider, reason = getattr(error, "rem_provider", None), failure(error)
+    if provider is None or reason is None:
         return None
-    provider, record = getattr(error, "rem_provider", "") or "mail", job["record"]
+    record = job["record"]
     ledger, moment = _ledger(root), service.now()
     attempts = ledger["items"].get(record, {}).get("attempts", 0) + 1
     retry = moment + timedelta(hours=BACKOFF_HOURS[min(attempts, len(BACKOFF_HOURS)) - 1])
@@ -139,7 +141,7 @@ def park(root, job: dict, error) -> str | None:
          **({"stopped": True} if stops else {})}]
     write_json(state_path(root, LEDGER), ledger)
     name = NAMES.get(provider, provider)
-    notice = f"Set {record} aside: {name} {PHRASES[reason]}; tried again after {retry:%Y-%m-%d %H:%M} UTC"
+    notice = f"Set {record} aside: {name} {PHRASES[reason]}; tried again no earlier than {retry:%Y-%m-%d %H:%M} UTC"
     if stops:
         notice += f". {name} is not asked again in this turn"
     return notice
@@ -183,14 +185,45 @@ def hold(root, job: dict, providers: dict) -> None:
     provider = sorted(providers)[0]
     ledger["items"][record] = {"provider": provider, "reason": providers[provider], "job": job,
                                "attempts": entry.get("attempts", 0), "at": service.now().isoformat(),
-                               "retry_at": service.now().isoformat(), "held": True}
+                               "retry_at": service.now().isoformat(), "held": _turn()}
     write_json(state_path(root, LEDGER), ledger)
+
+
+def readmit(root, queued: set) -> list:
+    """Pages held in an earlier turn, back in the open round: the stop lasted only that turn."""
+    ledger = _live(root)
+    earlier = [record for record, entry in ledger["items"].items() if entry.get("held") not in (None, _turn())]
+    if not earlier:
+        return []
+    jobs = [ledger["items"].pop(record)["job"] for record in earlier]
+    write_json(state_path(root, LEDGER), ledger)
+    return [job for job in jobs if job["record"] not in queued]
+
+
+def _live(root) -> dict:
+    """The ledger with every page that no longer exists dropped, and merged ones moved to where they live.
+
+    A parked page merged away while it waited came back as a job, Notebook.read
+    raised "Record not found", and every turn died on it again."""
+    from .files import Notebook
+    from .merge import resolve
+    ledger, book, changed = _ledger(root), Notebook(root), False
+    for record, entry in list(ledger["items"].items()):
+        if book.exists(record):
+            continue
+        changed, now_at = True, resolve(root, record)
+        ledger["items"].pop(record)
+        if now_at != record and book.exists(now_at) and now_at not in ledger["items"]:
+            ledger["items"][now_at] = {**entry, "job": {**entry["job"], "record": now_at}}
+    if changed:
+        write_json(state_path(root, LEDGER), ledger)
+    return ledger
 
 
 def waiting(root) -> set:
     """Parked pages whose retry time has not come: the round leaves them out."""
     moment = service.now().isoformat()
-    return {record for record, entry in _ledger(root)["items"].items() if entry["retry_at"] > moment}
+    return {record for record, entry in _live(root)["items"].items() if entry["retry_at"] > moment}
 
 
 def due(root) -> dict:
@@ -199,7 +232,7 @@ def due(root) -> dict:
     They come back even when nothing new arrived: the round that parked them
     has already counted their activity as seen."""
     moment = service.now().isoformat()
-    return {record: entry["job"] for record, entry in _ledger(root)["items"].items() if entry["retry_at"] <= moment}
+    return {record: entry["job"] for record, entry in _live(root)["items"].items() if entry["retry_at"] <= moment}
 
 
 def clear(root, record: str) -> None:
@@ -217,7 +250,7 @@ def stopped(root) -> dict:
 
 def last_night(root) -> dict | None:
     """For the reader's night line: what failed in the last day, and every page still set aside."""
-    ledger, moment = _ledger(root), service.now()
+    ledger, moment = _live(root), service.now()
     since = (moment - timedelta(days=1)).isoformat()
     events = [event for event in ledger["events"] if event["at"] >= since]
     parked = sorted(({"record": record, **{key: entry[key] for key in ("provider", "reason", "retry_at")}}

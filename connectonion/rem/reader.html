@@ -4360,9 +4360,10 @@ const UI = {
     "Last night 1 page was set aside because {provider} {why}; REM will try again": "昨夜 1 项因 {provider} {why}跳过，会再试",
     "Last night {n} pages were set aside because {provider} {why}; REM will try again": "昨夜 {n} 项因 {provider} {why}跳过，会再试",
     "{n} pages wait for {provider}; REM will try again": "{n} 项在等 {provider}，会再试",
+    "1 page waits for {provider}; REM will try again": "1 项在等 {provider}，会再试",
     "timed out": "超时", "mail deleted or moved": "信件已删除或移走", "server error": "服务器出错", "network down": "网络不通",
     "authorization expired": "授权已过期", "permission denied": "没有权限", "throttled": "被限流", "request refused": "请求被拒", "unavailable": "暂时不可用",
-    "tries again {when}": "{when} 再试", "tries again next round": "下一轮再试",
+    "tries again from {when}": "{when} 起再试", "tries again next round": "下一轮再试",
     "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
@@ -7859,7 +7860,7 @@ function stallSentence(s) {
   const values = { provider: s.provider, why: t(STALL_WHY[s.reason] || "unavailable"), times: s.times, n: s.pages };
   if (s.stopped) return t("Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest", values);
   if (s.times >= 3 && s.pages === 1) return t("Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest", values);
-  if (!s.times) return t("{n} pages wait for {provider}; REM will try again", values);
+  if (!s.times) return t(s.pages === 1 ? "1 page waits for {provider}; REM will try again" : "{n} pages wait for {provider}; REM will try again", values);
   return t(s.pages === 1 ? "Last night 1 page was set aside because {provider} {why}; REM will try again"
     : "Last night {n} pages were set aside because {provider} {why}; REM will try again", values);
 }
@@ -7872,7 +7873,7 @@ function nightStall() {
   const rows = (s.parked || []).filter(row => byPath(row.record)).map(row => {
     const r = byPath(row.record), at = Date.parse(row.retry_at);
     return el("li", {}, [el("a", { href: href(r), text: r.title }),
-      el("span", { class: "meta", text: at > now ? t("tries again {when}", { when: when(at) }) : t("tries again next round") })]);
+      el("span", { class: "meta", text: at > now ? t("tries again from {when}", { when: when(at) }) : t("tries again next round") })]);
   });
   return el("details", { class: "night-stall" }, [el("summary", { text: stallSentence(s) }), rows.length ? el("ul", {}, rows) : null]);
 }

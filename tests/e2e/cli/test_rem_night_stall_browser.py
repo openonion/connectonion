@@ -24,7 +24,7 @@ STUCK = r'''(stall) => { REM.night_stall = stall; render(); scrollTo(0, 0); }'''
 
 
 def stall(**fields):
-    return {"provider": "Outlook", "reason": "timeout", "times": 14, "pages": 1, "stopped": False,
+    return {"provider": "Outlook", "reason": "timeout", "times": 3, "pages": 1, "stopped": False,
             "parked": [{"record": TOMAS, "provider": "outlook", "reason": "timeout", "retry_at": "2026-10-02T06:00:00+00:00"}],
             **fields}
 
@@ -40,7 +40,7 @@ def test_a_stalled_night_says_why_in_one_plain_sentence_and_folds_what_waits(tod
         # The fold opens with a thumb: a full touch target on a phone.
         assert line.bounding_box()["height"] >= 44
     assert line.inner_text().startswith(
-        "Last night REM got stuck on Outlook: timed out 14 times; it set that page aside and did the rest")
+        "Last night REM got stuck on Outlook: timed out 3 times; it set that page aside and did the rest")
     # Never an exception name or a command on screen.
     card = page.locator(".night-card").inner_text()
     assert "ReadTimeout" not in card and "co outlook" not in card and "HTTP" not in card
@@ -48,14 +48,14 @@ def test_a_stalled_night_says_why_in_one_plain_sentence_and_folds_what_waits(tod
     assert not page.locator(".night-stall li").first.is_visible()
     line.click()
     waits = page.locator(".night-stall li").first
-    assert waits.is_visible() and "Tomás Reyes" in waits.inner_text() and "tries again" in waits.inner_text()
+    assert waits.is_visible() and "Tomás Reyes" in waits.inner_text() and "tries again from" in waits.inner_text()
     assert "people/" not in page.locator(".night-stall").inner_text()
     # The card still fits the phone: no sideways scroll.
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
 
     page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
     assert page.locator(".night-card .night-stall > summary").inner_text().startswith(
-        "REM 昨夜在 Outlook 上卡住了：超时 14 次，已跳过这一项，其余照常")
+        "REM 昨夜在 Outlook 上卡住了：超时 3 次，已跳过这一项，其余照常")
 
 
 def test_once_fixed_the_line_says_how_many_were_skipped_and_that_rem_will_try_again(today):

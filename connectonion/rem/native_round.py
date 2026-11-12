@@ -73,10 +73,14 @@ def read_new_mail(root, cursor, config, slot):
     """
     # A slot's read is one source batch; the coding sessions are read when a round begins.
     stopped = fetch_stalls.stopped(root)
-    selected = {name: source for name, source in service._selected_sources(root, "").items()
-                if source.get("kind") not in stopped}
+    selected = service._selected_sources(root, "")
     mailboxes = {name: source for name, source in selected.items() if source.get("kind") in service.MAIL_KINDS}
-    batch = _read_sources(root, mailboxes or selected, read_json(state_path(root, "progress.json"), {}), config,
+    usable = {name: source for name, source in mailboxes.items() if source["kind"] not in stopped}
+    if mailboxes and not usable:
+        # Every mailbox is stopped this turn: the slot reads nothing, not the sessions mid-round.
+        cursor["mail_slot"] = slot.isoformat()
+        return
+    batch = _read_sources(root, usable or selected, read_json(state_path(root, "progress.json"), {}), config,
                           cursor.setdefault("set_aside", []))
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
@@ -225,6 +229,7 @@ def prepare_task(root, cursor, config, directory):
         return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
     from .tasks import auto_dispatch
     auto_dispatch(root, config)
+    cursor["jobs"] += fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             cursor["investigation_left"] = PORTION
@@ -340,7 +345,10 @@ def _guarded_job(root, cursor, config, directory):
 
 def _stopped_mailboxes(root, job):
     """The mailboxes stopped for this turn that this page's investigation would ask."""
-    stopped = fetch_stalls.stopped(root) if job["kind"] not in ("project", "skill") else {}
+    # A retry with held material reads that material, not a mailbox; every page that is
+    # investigated reads each connected mailbox (by address, or by name when it has none).
+    reads_mail = job["kind"] not in ("project", "skill") and not (job["kind"] == "retry" and job["entry"].get("material"))
+    stopped = fetch_stalls.stopped(root) if reads_mail else {}
     return {kind: why for kind, why in stopped.items() if kind in daily._clients(service.subscriptions(root))}
 
 
