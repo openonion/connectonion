@@ -285,6 +285,15 @@ def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
     assert card.get_by_text("No reply needed: She confirmed she has the receipts.").is_visible()
     page.set_viewport_size({"width": 390, "height": 900})
     assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
+    # A card whose rows are all handled leads with its one green Mark done; its rows' strips wait for a hover.
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("() => { REM.live = true; window.looksDone = entry => entry.r.path === 'people/mara-ostrowski.md'; render();"
+                  " dealCard('people/mara-ostrowski.md'); }", isolated_context=False)
+    page.mouse.move(0, 0)
+    mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
+    assert mara.locator(".qitem").count() == 2 and mara.get_attribute("data-step") == "done"
+    assert mara.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).is_visible()
+    assert not mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
 
 
 def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_errors(today):

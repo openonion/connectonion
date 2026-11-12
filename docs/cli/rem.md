@@ -868,7 +868,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   row, the head's tick is left out, since it would close the same); for one row it would repeat
   that row's strip button, so the card shows no green button and the row's
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
-  a phone too. Every row REM thinks is handled shows its strip that way. A snapshot keeps Mark
+  a phone too. A card of several rows keeps its strips behind a hover or tap,
+  and when every row is handled its green **Mark done** is its one visible lead. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
