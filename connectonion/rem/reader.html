@@ -4268,18 +4268,21 @@ function t(key, values = {}) {
   return (UI[uiLanguage][key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 function uiLocale() { return uiLanguage === "zh" ? "zh-CN" : undefined; }
-function setInterfaceLanguage(language) {
+function setInterfaceLanguage(language, draw = render) {
   if (REM.live && location.protocol !== "file:") fetch("/rem/language", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ language }) });
   uiLanguage = language;
   for (const r of REM.records) delete r.readLanguage;
   readerStorage("co-rem-ui-language", language);
   closeEvidence();
-  render();
+  draw();
 }
-// The one-click language switch at the top of every page (Aaron, 2026-11-11: «一键切换中英文»). It names the
+// The one-click language switch at the top of every page (owner, 2026-11-11: «一键切换中英文»). It names the
 // language it switches TO, and goes through setInterfaceLanguage like the choice in Settings, so the two agree
-// and the choice persists. The redraw keeps the view: scroll, typed words and open sections, which are matched
-// by position because their summaries change language.
+// and the choice persists. The click is the owner asking for a redraw, so it draws the way a click on the
+// 有更新 mark does (drawKeepingView): at once, keeping scroll, open sections and the words typed into a keyed
+// field, caret included. Sections are also matched by position, because one without an id is known by its
+// summary and that changes language. Words in a field a redraw cannot put back are never wiped: the button
+// flips and the choice is saved, 有更新 shows, and the page changes language when that field is done.
 function renderLangToggle() {
   const button = document.getElementById("lang-toggle");
   const to = uiLanguage === "zh" ? "en" : "zh";
@@ -4287,13 +4290,16 @@ function renderLangToggle() {
   button.lang = to;
   button.setAttribute("aria-label", to === "en" ? "Switch to English" : "切换到中文");
   button.title = button.getAttribute("aria-label");
-  button.onclick = () => {
-    const state = viewState(), open = [...document.querySelectorAll("#main details")].map(node => node.open);
-    setInterfaceLanguage(to);
-    const sections = document.querySelectorAll("#main details");
-    if (sections.length === open.length) sections.forEach((node, i) => { node.open = open[i]; });
-    restoreView({ ...state, open: [] });
-  };
+  button.onmousedown = event => event.preventDefault();  // the caret stays in the field being typed in
+  button.onclick = () => setInterfaceLanguage(to, () => {
+    renderLangToggle();
+    if (unkeptWords()) { redrawSkipped = true; markUpdatesWaiting(); return; }
+    const open = [...document.querySelectorAll("#main details")].map(node => node.open);
+    drawKeepingView(() => {
+      const sections = document.querySelectorAll("#main details");
+      if (sections.length === open.length) sections.forEach((node, i) => { node.open = open[i]; });
+    });
+  });
 }
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
@@ -12573,6 +12579,9 @@ document.addEventListener("keydown", event => {
 if (!/Mac|iPhone|iPad/.test(navigator.platform || "")) SHORTCUTS[4][0] = "Ctrl K";
 document.querySelector(".search .kbd").textContent = SHORTCUTS[4][0];
 document.querySelector(".search .kbd").onclick = openPalette;
+// The language button is named from the first paint: the first render waits for the saved choices, and the
+// button must not sit empty until then. It is called here, with the header's other load-time wiring.
+renderLangToggle();
 // ---- Languages ---------------------------------------------------------------
 // A page read in another language. Translations are made by co ai on the Host
 // (rem/translate.py) and cached beside the notebook; the page as written stays
@@ -12692,11 +12701,12 @@ function redraw() {
   if (typingIn(document.activeElement) || unsavedDraft()) { redrawSkipped = true; markUpdatesWaiting(); return; }
   drawKeepingView();
 }
-function drawKeepingView() {
+function drawKeepingView(reopen) {
   redrawSkipped = false;
   document.getElementById("updates-waiting")?.remove();
   const state = viewState();
   render();
+  reopen?.();  // the language switch reopens sections by position before the scroll goes back
   restoreView(state);
 }
 // Clicking it draws now and puts typed words back where they were (viewState carries them). A field

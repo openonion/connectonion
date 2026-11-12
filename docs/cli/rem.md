@@ -726,8 +726,13 @@ then **EN · 中文** and **Auto · Light · Dark**, each a control. The primary
 language control is the one-click button at the top right of every page (in the
 phone header too): it names the language it switches to (**EN** while in
 Chinese, **中** while in English), saves the same choice as **EN · 中文**, and
-redraws in place, keeping scroll, open sections and typed words. Status and
-privacy controls live under it in **Reader settings**. **EN · 中文** switches
+redraws in place, keeping scroll and open sections. Words you are typing stay
+too, with the caret and the focus: an answer slot in a reply, the chat box, an
+approval's reply body, a review answer. If a field holds words the page could
+not put back after a redraw (an answer slot of a reply that has no id), the
+click does not draw over them: the button flips, the choice is saved, **有更新**
+shows, and the page changes language once those words are sent or cleared and
+you have left the field. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
 interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and

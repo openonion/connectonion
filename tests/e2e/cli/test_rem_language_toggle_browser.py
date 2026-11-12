@@ -1,6 +1,6 @@
 """One button at the top of every page flips the reader between 中文 and English (opt in).
 
-Aaron, 2026-11-11: «语言切换应该有特别简洁的方式，就像日间模式和夜间模式切换的按钮一样，可以一键把语言切换成中文或者英文».
+The owner, 2026-11-11: «语言切换应该有特别简洁的方式，就像日间模式和夜间模式切换的按钮一样，可以一键把语言切换成中文或者英文».
 It is the same setter and storage as the language choice in Settings, so both agree and the choice persists;
 the page redraws in place. The notebook is the invented one in tests/fixtures/rem_reader_notebook.py.
 """
@@ -11,6 +11,7 @@ import re
 import pytest
 
 from tests.e2e.cli.test_rem_reader_polish_browser import reader  # noqa: F401  (fixture)
+from tests.e2e.cli.test_rem_today_fuse_browser import OVERDUE, today  # noqa: F401  (fixture)
 
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
@@ -70,3 +71,58 @@ def test_the_flip_keeps_scroll_and_open_sections(reader):
     assert page.locator("#main details").count() == count
     assert page.locator("#main details").last.evaluate("n => n.open")
     assert abs(page.evaluate("scrollY", isolated_context=False) - before) <= 2
+
+
+# Today with one prepared reply whose slot is a field to type into. A draft with an id gives the field a stable
+# key (data-keep), so a redraw can put its words back; one without an id gives a field no redraw can find again.
+SLOT = r"""id => { REM.live = true; setInterfaceLanguage('en');
+  REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+  REM.drafts = [{...(id ? {id} : {}), version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'prepared',
+    to: 'Ines Halvorsen <ines@example.test>', from: 'avery@example.test', subject: 'Re: Q3 receipts',
+    body: 'Hi Ines,\n\nI can send the receipts 【需要你：the day you can send them — by Friday】.\n\nAvery'}];
+  render(); }"""
+
+
+def test_a_real_click_keeps_the_words_caret_and_focus_of_a_field_being_typed_in(today):
+    """Review of #2955: the click drew the page again at once, and a reply half typed was gone."""
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(SLOT, "ines-receipts", isolated_context=False)
+    slot = page.locator(".today-brief .qcard.open .owner-slot input")
+    assert slot.get_attribute("data-keep") and slot.get_attribute("placeholder") == "Type your answer"
+    slot.click()
+    page.keyboard.type("Thursday afternoon")
+    slot.evaluate("node => node.setSelectionRange(3, 8)")
+    page.locator("#lang-toggle").click()
+    assert page.locator("#lang-toggle").inner_text() == "EN" and page.locator("#updates-waiting").count() == 0
+    slot = page.locator(".today-brief .qcard.open .owner-slot input")
+    assert slot.get_attribute("placeholder") != "Type your answer"       # the page was drawn again, in 中文
+    assert slot.input_value() == "Thursday afternoon"
+    assert slot.evaluate("node => [node === document.activeElement, node.selectionStart, node.selectionEnd]") == [True, 3, 8]
+    assert page.locator(".today-brief .qcard.open .mail-actions .btn-act").is_enabled()   # the answer is still in the reply
+
+
+def test_a_real_click_waits_instead_of_wiping_words_it_could_not_put_back(today):
+    page, _, _ = today
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate(SLOT, "", isolated_context=False)
+    slot = page.locator(".today-brief .qcard.open .owner-slot input")
+    assert slot.get_attribute("data-keep") is None
+    slot.click()
+    page.keyboard.type("Thursday afternoon")
+    page.evaluate("() => { document.querySelector('.today-brief').dataset.before = '1'; }", isolated_context=False)
+    page.locator("#lang-toggle").click()
+    # The choice is taken and saved, the button already names the way back, and the page says it has more to show.
+    assert page.locator("#lang-toggle").inner_text() == "EN"
+    assert page.evaluate("localStorage.getItem('co-rem-ui-language')", isolated_context=False) == "zh"
+    mark = page.locator("#updates-waiting")
+    assert mark.inner_text() == "有更新"
+    mark.click()                                                         # not while the words are still there
+    assert page.locator(".today-brief[data-before]").count() == 1
+    assert slot.input_value() == "Thursday afternoon" and slot.get_attribute("placeholder") == "Type your answer"
+    assert slot.evaluate("node => node === document.activeElement")
+    slot.fill("")                                                        # the words are gone by the owner's own hand
+    slot.blur()                                                          # and the field is left
+    mark.wait_for(state="detached")
+    assert page.locator(".today-brief[data-before]").count() == 0
+    assert page.locator(".today-brief .qcard.open .owner-slot input").get_attribute("placeholder") != "Type your answer"

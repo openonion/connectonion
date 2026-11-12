@@ -4203,6 +4203,93 @@ def test_a_redraw_carries_typed_words_caret_and_focus_by_stable_key_and_waits_fo
     assert result['focused'] and result['renders'] == 1 and result['marks'] == 1
 
 
+def _lang_toggle_js(body):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['setInterfaceLanguage', 'renderLangToggle', 'drawKeepingView'])
+    return _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
+      const stored = [], posted = [], order = [], marks = [], restored = [];
+      const REM = {live: true, records: [{readLanguage: 'en'}]}, location = {protocol: 'http:', hash: '#today'};
+      globalThis.fetch = (url, options) => { posted.push([url, JSON.parse(options.body)]); };
+      const readerStorage = (key, value) => stored.push([key, value]), closeEvidence = () => {};
+      const button = {setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }};
+      const named = () => [button.textContent, button.lang, button['aria-label'], button.title];
+      let sections = [{open: true}, {open: false}, {open: true}], unkept = false, redrawn = 3;
+      const document = {getElementById: id => id === 'lang-toggle' ? button : null,
+        querySelectorAll: selector => selector === '#main details' ? sections : []};
+      const unkeptWords = () => unkept, markUpdatesWaiting = () => marks.push('updates-waiting');
+      // What the page held before the click: where it was, the sections open by id, the words in keyed fields.
+      const state = {hash: '#today', y: 640, open: ['#processing'], fields: [{key: 'talk:codex:fern', value: 'Draft it short', focused: true, start: 2, end: 4}]};
+      const viewState = () => state;
+      const render = () => { order.push('render:' + uiLanguage); sections = Array.from({length: redrawn}, () => ({open: false})); };
+      const restoreView = given => restored.push({unchanged: given === state, open: given.open, fields: given.fields.length, y: given.y,
+        reopened: sections.map(node => node.open), language: uiLanguage});
+''' + body)
+
+
+def test_the_language_button_names_its_target_saves_the_choice_and_redraws_keeping_the_view():
+    """One click: the choice is stored and sent like the Settings switch, the button now names the other language,
+    and the page is drawn the way a click on 有更新 draws it: sections reopened by position (their summaries change
+    language), then restoreView with the state untouched, so id-keyed sections, keyed words and scroll come back."""
+    result = _lang_toggle_js(r'''
+      renderLangToggle();
+      const before = named();
+      let prevented = false;
+      button.onmousedown({preventDefault() { prevented = true; }});
+      button.onclick();
+      const after = named(), first = restored.splice(0);
+      redrawn = 2;                       // the other language draws a different number of sections
+      button.onclick();
+      console.log(JSON.stringify({before, after, prevented, uiLanguage, stored, posted, order, first, second: restored,
+        readLanguage: REM.records[0].readLanguage ?? null, redrawSkipped, marks}));
+    ''')
+    assert result['before'] == ['中', 'zh', '切换到中文', '切换到中文']
+    assert result['after'] == ['EN', 'en', 'Switch to English', 'Switch to English']
+    assert result['prevented'] is True                     # the caret stays in the field being typed in
+    assert result['stored'] == [['co-rem-ui-language', 'zh'], ['co-rem-ui-language', 'en']]
+    assert result['posted'] == [['/rem/language', {'language': 'zh'}], ['/rem/language', {'language': 'en'}]]
+    assert result['order'] == ['render:zh', 'render:en'] and result['uiLanguage'] == 'en'
+    assert result['readLanguage'] is None
+    assert result['first'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                'reopened': [True, False, True], 'language': 'zh'}]
+    # A different count: nothing is reopened by position, and the sections known by id still come back.
+    assert result['second'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                 'reopened': [False, False], 'language': 'en'}]
+    assert result['redrawSkipped'] is False and result['marks'] == []
+
+
+def test_the_language_button_never_wipes_words_a_redraw_cannot_put_back():
+    """Words in a field with no stable key: the click still saves the choice and the button flips, so it is seen
+    to have worked; the page is not drawn, 有更新 shows, and the waiting redraw brings the language."""
+    result = _lang_toggle_js(r'''
+      renderLangToggle();
+      unkept = true;
+      button.onclick();
+      console.log(JSON.stringify({label: named()[0], uiLanguage, stored, order, restored, redrawSkipped, marks}));
+    ''')
+    assert result == {'label': 'EN', 'uiLanguage': 'zh', 'stored': [['co-rem-ui-language', 'zh']], 'order': [], 'restored': [],
+                      'redrawSkipped': True, 'marks': ['updates-waiting']}
+
+
+def test_the_language_button_is_named_before_the_first_render():
+    """The first render waits for the saved choices; the button in the header is never an empty, unnamed control."""
+    page = TEMPLATE.read_text()
+    first_render = page.index('Promise.all([readerStorage("co-rem-ui-language")')
+    assert re.search(r'^renderLangToggle\(\);$', page[:first_render], re.M)
+    assert page.index('id="lang-toggle"') < page.index('function renderLangToggle()')
+
+
+def test_committed_rem_text_says_owner_and_never_a_real_name():
+    """The reader, its tests and its guide are public: the person it was built for is "the owner" there."""
+    name = 'Aa' + 'ron'
+    root = TEMPLATE.parents[2]
+    files = [TEMPLATE, root / 'docs' / 'cli' / 'rem.md', *sorted((root / 'tests' / 'unit').glob('test_rem_*.py')),
+             *sorted((root / 'tests' / 'e2e' / 'cli').glob('test_rem_*.py'))]
+    hits = [f'{path.relative_to(root)}:{number}' for path in files
+            for number, line in enumerate(path.read_text().splitlines(), 1) if name in line]
+    assert hits == []
+
+
 def _youify(lines):
     """The reader's own youify over `lines`, as the owner reads them."""
     source = TEMPLATE.read_text()
