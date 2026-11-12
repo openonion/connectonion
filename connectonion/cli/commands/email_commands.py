@@ -412,7 +412,7 @@ def handle_email_domains():
     console.print("Set one up: co email setup <alias> --domain <domain>\n")
 
 
-def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False):
+def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False, make_default: bool = False):
     """Add an address without replacing this account's existing mailboxes."""
     token, settings = _address_settings()
     alias, domain = alias.strip().lower(), domain.strip().lower()
@@ -426,20 +426,38 @@ def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool 
     if not buy:
         console.print(f"{address}: ${settings['prices']['add']:.2f} one-time, from credits.", markup=False)
         console.print("Availability is checked when you buy; a taken address is not charged.")
-        print(f"Add it: co email setup {alias} --domain {domain} --buy")
+        print(f"Add it: co email setup {alias} --domain {domain} --buy{' --default' if make_default else ''}")
+        print("Buying keeps your current default sender; add --default to send from the new address by default.")
         return
     response = requests.post(
         f"{backend_url()}/api/v1/email/addresses",
         headers={"Authorization": f"Bearer {token}"},
-        json={"local_part": alias, "domain": domain}, timeout=15,
+        json={"local_part": alias, "domain": domain, "make_default": make_default}, timeout=15,
     )
     if not response.ok:
         console.print(f"\n[red]✗ {_err(response)}[/red]\n")
         raise typer.Exit(1)
     result = response.json()
     console.print(result["message"], markup=False)
-    print(f"Choose default: co email default {result['address']}")
+    _print_default_after_buy(result)
     print(f'Send once: co email send <to> "<subject>" "<body>" --from {result["address"]}')
+
+
+def _print_default_after_buy(result: dict):
+    """Say whether the purchase moved the default sender (openonion/oo-api#288).
+
+    A backend from before #288 does not report it, and there a first purchase
+    could silently become the default — so point at `co email addresses`
+    rather than guess.
+    """
+    if "default_changed" not in result:
+        print("Check the default sender: co email addresses  (change it: co email default <address>)")
+        return
+    if result["default_changed"]:
+        print(f"Default sender is now {result['default_address']}")
+        return
+    print(f"Default sender is still {result['default_address']}")
+    print(f"Make the new one default: co email default {result['address']}")
 
 
 def handle_email_addresses():

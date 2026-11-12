@@ -49,9 +49,57 @@ def test_buy_adds_a_second_address_and_names_the_next_steps(cloud):
     assert result.exit_code == 0, result.output
     call = cloud[1].call_args
     assert call.args[0].endswith('/email/addresses')
-    assert call.kwargs['json'] == {'local_part': 'iron.share', 'domain': 'steadmail.com'}
-    assert 'Choose default: co email default iron.share@steadmail.com' in result.output
+    assert call.kwargs['json'] == {'local_part': 'iron.share', 'domain': 'steadmail.com',
+                                   'make_default': False}
     assert '--from iron.share@steadmail.com' in result.output
+
+
+def test_buy_says_the_default_sender_did_not_move(cloud):
+    """openonion/oo-api#288: a purchase used to take over the default silently."""
+    cloud[1].return_value = response({
+        'address': 'iron.share@steadmail.com', 'message': 'Claimed iron.share@steadmail.com',
+        'default_address': '0x1234567890@mail.openonion.ai', 'default_changed': False,
+    })
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
+    assert result.exit_code == 0, result.output
+    assert 'Default sender is still 0x1234567890@mail.openonion.ai' in result.output
+    assert 'Make the new one default: co email default iron.share@steadmail.com' in result.output
+
+
+def test_buy_with_default_asks_for_it_and_says_it_moved(cloud):
+    cloud[1].return_value = response({
+        'address': 'iron.share@steadmail.com', 'message': 'Claimed iron.share@steadmail.com',
+        'default_address': 'iron.share@steadmail.com', 'default_changed': True,
+    })
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy', '--default'])
+    assert result.exit_code == 0, result.output
+    assert cloud[1].call_args.kwargs['json']['make_default'] is True
+    assert 'Default sender is now iron.share@steadmail.com' in result.output
+    assert 'still' not in result.output
+
+
+def test_buy_against_an_older_backend_points_at_the_listing(cloud):
+    """Before #288 the server did not report the default and may have moved it."""
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--buy'])
+    assert result.exit_code == 0, result.output
+    assert 'Check the default sender: co email addresses' in result.output
+
+
+def test_preview_says_buying_keeps_the_default(cloud):
+    result = CliRunner().invoke(app, ['email', 'setup', 'iron.share', '-d', 'steadmail.com', '--default'])
+    assert result.exit_code == 0, result.output
+    assert 'co email setup iron.share --domain steadmail.com --buy --default' in result.output
+    assert 'keeps your current default sender' in result.output
+    cloud[1].assert_not_called()
+
+
+def test_the_derived_address_can_be_chosen_as_default_again(cloud):
+    cloud[1].return_value = response({'address': '0x1234567890@mail.openonion.ai', 'is_default': True})
+    result = CliRunner().invoke(app, ['email', 'default', '0x1234567890@mail.openonion.ai'])
+    assert result.exit_code == 0, result.output
+    assert cloud[1].call_args.args[0].endswith('/email/addresses/default')
+    assert cloud[1].call_args.kwargs['json'] == {'address': '0x1234567890@mail.openonion.ai'}
+    assert '0x1234567890@mail.openonion.ai is now the default sender' in result.output
 
 
 def test_an_owned_address_is_not_purchased_again(cloud):
