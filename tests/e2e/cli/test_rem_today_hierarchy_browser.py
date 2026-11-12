@@ -99,7 +99,9 @@ def test_every_card_has_one_primary_and_the_three_closes_are_words_without_a_hov
         line = card.locator(".qitem").first.locator(".handoff-line")
         for word in ("Mark done", "Not now", "Ignore"):
             assert line.get_by_role("button", name=word, exact=True).is_visible(), (i, word)
-        # The agents and the talk fold under a worded More, never under a bare glyph.
+        # The hand-offs stay visible words (D-100); only the talk folds under a worded More, never a bare glyph.
+        for word in ("Hand to Codex", "Hand to Claude"):
+            assert line.get_by_role("button", name=word, exact=True).is_visible(), (i, word)
         assert line.locator(":scope > .strip-more > summary").inner_text().startswith("More")
 
 
@@ -119,15 +121,17 @@ def test_a_card_with_nothing_else_to_do_leads_with_mark_done_in_bold(today):
     assert {text for text, _ in leads} <= {"Mark done", "Hand to Codex"}
 
 
-def test_on_a_phone_the_action_row_is_one_line_and_no_glyph_stands_alone(today):
+def test_on_a_phone_the_closes_are_one_line_and_no_glyph_stands_alone(today):
     page, _, _ = today
     _phone(page, (390, 844))
     page.evaluate(LIVE, isolated_context=False)
     card = page.locator(".today-brief .qcard.focal")
     line = card.locator(".qitem").first.locator(".handoff-line")
-    tops = line.evaluate("""line => [...line.children].filter(node => node.getBoundingClientRect().width > 0)
-      .map(node => Math.round(node.getBoundingClientRect().top))""")
-    assert tops and max(tops) - min(tops) <= 4, tops
+    tops = [round(button.bounding_box()["y"]) for button in line.locator(":scope > :is(.strip-done, .strip-later, .strip-ignore)").all()]
+    assert len(tops) == 3 and max(tops) - min(tops) <= 4, tops            # the three closes are the first line
+    codex = line.get_by_role("button", name="Hand to Codex", exact=True).bounding_box()
+    assert codex["y"] > max(tops) + 10                                      # the hand-offs start the second
+    assert "Hand to Codex" in line.inner_text() and "Hand to Claude" in line.inner_text()
     assert line.evaluate("line => line.scrollWidth <= line.clientWidth + 1")
     for button in card.locator(".qhead button").all():
         if button.is_visible():

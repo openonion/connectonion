@@ -3081,9 +3081,10 @@
     .qhead-acts { opacity: 1; }
     .qitem { margin: 0 -6px; }
     .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
-    /* One line of words on a phone: no dots between them, the tap targets stay 44px tall (sprint 14 #5). */
-    .qcard .handoff-line { flex-wrap: nowrap; gap: 0; margin-left: -8px; }
+    /* Words without dots on a phone: the three closes are the first line, the hand-offs and More the second. */
+    .qcard .handoff-line { gap: 0; margin-left: -8px; }
     .qcard .handoff-line > .sep { display: none; }
+    .qcard .handoff-line > .sep:has(+ [data-agent="codex"]) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
     .qcard .handoff-line :is(.btn-quiet, .talk-menu > summary) { padding: 0 8px; white-space: nowrap; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
@@ -7269,19 +7270,17 @@ function handButtons(entry, show, panel, mark, lead) {
   });
   const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
   if (lead === undefined) return [...dotted([...buttons, talk, ...closes]), status];
-  return [...dotted(todayStrip(buttons, talk, closes, lead)), status];
+  return [...dotted(todayStrip(buttons, talk, closes)), status];
 }
-// A Today row had eight equal links and wrapped to two lines on a phone (sprint 14 #5). Now it leads with one
-// control in bold, chosen by what the item is: 交给 Codex for a debt REM prepared as a task (principle 8), else
-// 标为完成. Its three ways to close stay words you can see (principle 10); the agents and the talk that are not
-// the lead fold under a worded 更多, so the row is one line on a phone. lead null: the card's own green step (or
-// the draft's Send) is the primary, so no row control competes with it.
-function todayStrip(agents, talk, closes, lead) {
-  const first = lead === "task" ? agents[0] : lead === "done" ? closes[0] : null;
-  const folded = [...agents.filter(button => button !== first), talk].filter(Boolean);
-  const more = el("details", { class: "talk-menu strip-more" }, [el("summary", {}, [t("More"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })]),
-    el("div", { class: "talk-choices" }, folded)]);
-  return [first, ...closes.filter(button => button !== first), more];
+// A Today row had eight equal links (sprint 14 #5). Now its three ways to close come first, as words (principle
+// 10), then 交给 Codex · 交给 Claude, which stay visible quiet words on every unfinished row (D-100, the owner's
+// «权限问题都给了»); only the talk folds under a worded 更多. One of them is the row's lead, in bold, chosen by
+// what the item is (lead, set where the buttons are made): 交给 Codex for a debt REM prepared as a task
+// (principle 8), else 标为完成; lead null: the card's green step or the draft's Send is the primary.
+function todayStrip(agents, talk, closes) {
+  const more = talk ? el("details", { class: "talk-menu strip-more" }, [el("summary", {}, [t("More"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })]),
+    el("div", { class: "talk-choices" }, [talk])]) : null;
+  return [...closes, ...agents, more];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
 function handState(entry, show, panel, mark) {

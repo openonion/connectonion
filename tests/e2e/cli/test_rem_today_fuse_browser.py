@@ -215,10 +215,9 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     rows = page.locator(".today-brief .qitem")
     assert rows.count() >= 4
     for i in range(rows.count()):
-        # On Today the row leads with one control; the agents that are not the lead fold under More (sprint 14).
+        # On Today the three closes come first, then the two hand-offs, still visible words (D-100; sprint 14).
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        folded = rows.nth(i).locator(".handoff-line > .strip-more button[data-agent]").all_text_contents()
-        assert names[-3:] == ["Mark done", "Not now", "Ignore"] and sorted(names[:-3] + folded) == ["Hand to Claude", "Hand to Codex"]
+        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1

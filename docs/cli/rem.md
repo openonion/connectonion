@@ -1002,8 +1002,9 @@ pinned to that edge: it comes into view with the draft.
   item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
   handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
   **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
-  *(lead) · Mark done · Not now · Ignore · More ▾*: the three closes stay words, and the agents and **Talk it
-  over** that are not the lead fold under the worded **More** (更多), so on a phone the strip is one line. The card
+  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾*, the lead among them in bold: the closes
+  and the two hand-offs stay visible words (D-100), and only **Talk it over** folds under the worded **More**
+  (更多). On a phone the three closes are the first line and the hand-offs and More the second. The card
   head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
   **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
@@ -1014,7 +1015,7 @@ pinned to that edge: it comes into view with the draft.
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
 - **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
-  Talk it over ▾*, and opens the agent choice (**With Codex**, **With Claude**;
+  Talk it over ▾* (on Today it sits inside **More ▾**, since sprint 14), and opens the agent choice (**With Codex**, **With Claude**;
   和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
