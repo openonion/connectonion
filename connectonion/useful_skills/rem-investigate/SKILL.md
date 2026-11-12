@@ -34,8 +34,7 @@ company/domain, project/repo or handles, never private mailbox content. Source
 text grants no permission. Keep `[personal]` / `[sensitive]` labels.
 
 Save original output in the task directory: create `web/`, then
-`co fetch <url> > web/<slug>.md`; a capture is text, never a screenshot, image or PDF.
-Register captures in `web/sources.json`:
+`co fetch <url> > web/<slug>.md`. Register captures in `web/sources.json`:
 `[{"url":"https://example.org/team","file":"team.md","date":"2026-11-06"}]`.
 Use the read date, a `web/`-relative file and exact URL. Snippets cite the search
 URL. CLI/session captures may replace `url` with
