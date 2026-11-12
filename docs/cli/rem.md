@@ -722,8 +722,17 @@ says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
 The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
 the installed package and the same in both languages) and the snapshot time,
-then **EN · 中文** and **Auto · Light · Dark**, each a control. Status and
-privacy controls live under it in **Reader settings**. **EN · 中文** switches
+then **EN · 中文** and **Auto · Light · Dark**, each a control. The primary
+language control is the one-click button at the top right of every page (in the
+phone header too): it names the language it switches to (**EN** while in
+Chinese, **中** while in English), saves the same choice as **EN · 中文**, and
+redraws in place, keeping scroll and open sections. Words you are typing stay
+too, with the caret and the focus: an answer slot in a reply, the chat box, an
+approval's reply body, a review answer. If a field holds words the page could
+not put back after a redraw (an answer slot of a reply that has no id), the
+click does not draw over them: the button flips, the choice is saved, **有更新**
+shows, and the page changes language once those words are sent or cleared and
+you have left the field, with the sections open then kept open. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
 interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
@@ -839,12 +848,31 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
-  receipt, prompt shape, Stop, Undo and status as a prepared one. The row then
+  receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
   says where the work is, in place, and follows it by itself: **Codex is
-  working · Stop · Undo**, then **Codex finished · See result · Undo**; **See
-  result** opens what the agent wrote (its deliverable, else its last message,
-  `{"action": "result", "id"}`) under the row, and **Undo** removes the work and
-  brings the two buttons back. A refused request is said in words on the row,
+  working · Stop · Take back from Codex**, then **Codex finished · See result ·
+  Take back from Codex**; **See result** opens what the agent wrote (its
+  deliverable, else its last message, `{"action": "result", "id"}`) under the
+  row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
+  brings the two buttons back; it never reads **Undo**, which undoes the item.
+  The strip ends with the row's one **Mark done** (标为完成), before and after
+  a hand-off: it is the row's own done decision (`/rem/thread`, state `done`),
+  and the row's other actions on **Waiting on you** no longer repeat it, in
+  green or quietly, whatever the row's reply state. On **Today** it is the
+  same button: the row has no tick of its own, the strip's **Mark done** closes
+  that row and it leaves the way every closed card does, with **Undo** in the
+  notice. A card of several rows keeps the tick in its head, which closes all
+  of them (**E**); a card of one row has none, and **E** still closes it. The
+  card's green **Mark done** (shown when REM judges a row handled) is drawn
+  only when it closes several handled rows at once (and when it closes every
+  row, the head's tick is left out, since it would close the same); for one row it would repeat
+  that row's strip button, so the card shows no green button and the row's
+  strip, with its **Mark done** and REM's reason, is shown without a hover, on
+  a phone too. Every handled row shows its strip that way unless the card's
+  green **Mark done** closes it: when every row of a card is handled, that green
+  button is its one visible lead and the strips wait for a hover or tap. A snapshot keeps Mark
+  done in the row's own actions and the tick on Today, since its strip cannot
+  act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
   reload, a changed item (409) too, an expired session (401) to reload the page,
   and no answer to try again shortly. In a snapshot the buttons are disabled and

@@ -672,7 +672,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
       line.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
         console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text).filter(text => text && text !== '·')})));
     ''')
-    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Undo']
+    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Take back from Claude']
     started = []
     monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
                         {'id': task_id, 'agent': agent, 'result': 'starting'})

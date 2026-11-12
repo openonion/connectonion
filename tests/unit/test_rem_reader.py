@@ -1431,7 +1431,7 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
       const isDone = () => false, setDone = () => {}, obligationEvidence = () => ({ids: new Set(['thread:gmail:mail:gmail:pilot'])});
@@ -1474,9 +1474,9 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
+                          for name in ['personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
                                        'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
@@ -1628,8 +1628,8 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+                          for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'stripMarksDone', 'morningWords', 'withoutDateClutter'])
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -1941,12 +1941,12 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'personProject',
-        'factList', 'peopleCardMeta', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'translatedRelationBasis',
+        'factList', 'peopleCardMeta', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'stripMarksDone', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2244,9 +2244,9 @@ def test_schedule_reader_states_are_short_and_translated():
 def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadWho', 'cardHead', 'threadRow', 'withoutDateClutter'])
+                          for name in ['threadWho', 'cardHead', 'stripMarksDone', 'threadRow', 'withoutDateClutter'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, classList: {add() {}}});
       const href = r => '#r=' + r.path, morningWords = () => ({words: 'Review the pilot.', context: ''});
@@ -3229,7 +3229,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu']
+        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'stripMarksDone', 'stripDone']
 
 
 def _hand_js(body):
@@ -3246,7 +3246,7 @@ def _hand_js(body):
 ''' + body)
 
 
-def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
+def test_a_handed_row_says_where_the_work_is_with_stop_take_back_and_see_result():
     result = _hand_js(r'''
       const REM = {live: true, today_queue: [row('run', {id: 'a', by: 'rem', agent: 'codex', result: 'running'}),
         row('done', {id: 'b', agent: 'claude', result: 'completed'}),
@@ -3260,22 +3260,22 @@ def test_a_handed_row_says_where_the_work_is_with_stop_undo_and_see_result():
       shown.runLine = line(handOff({key: 'run'}));
       console.log(JSON.stringify(shown));
     ''')
-    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Undo']
-    assert result['done'] == ['Claude finished', 'See result', 'Undo']
-    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Undo']
+    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Take back from Codex']
+    assert result['done'] == ['Claude finished', 'See result', 'Take back from Claude']
+    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Take back from Codex']
     assert result['open'] == ['Hand to Codex', 'Hand to Claude']
     assert result['snapshot'] == ['Codex is working', 'REM started this']
     # One line, a dot between each action, the conversation behind one quiet menu.
     assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude', '·', 'menu']
-    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Undo', '·', 'menu']
+    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex', '·', 'menu']
 
 
-def test_undo_puts_the_hand_buttons_back_on_the_row_in_place():
+def test_take_back_puts_the_hand_buttons_back_on_the_row_in_place():
     result = _hand_js(r'''
       const REM = {live: true, today_queue: [row('done', {id: 'b', agent: 'codex', result: 'completed'})]};
       globalThis.fetch = async (url, options) => ({ok: true, status: 200, json: async () => ({status: 'cancelled'})});
       const node = handOff({key: 'done'});
-      node.children[0].children.find(child => child.text === 'Undo').onclick().then(() =>
+      node.children[0].children.find(child => child.text?.startsWith('Take back from')).onclick().then(() =>
         console.log(JSON.stringify({after: texts(node), task: REM.today_queue[0].task})));
     ''')
     assert result == {'after': ['Hand to Codex', 'Hand to Claude'], 'task': None}
@@ -3403,11 +3403,14 @@ def _rail(language):
     drawn = page[page.index('const ICONS = {'):page.index('function openSettings() {')]
     return _run_reader_js('\n'.join([
         'Object.assign(UI, {en: ' + english + ', zh: ' + chinese + '}); uiLanguage = ' + json.dumps(language) + ';',
-        labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0], r"""
+        labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0],
+        # renderRail names the header's language button too: the page's own function, not a stand-in.
+        re.search(r'function renderLangToggle\(.*?\n\}', page, re.S)[0], r"""
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: (children || []).filter(Boolean)});
       const node = () => ({children: [], replaceChildren(...kids) { this.children = kids.filter(Boolean); },
         querySelectorAll: () => [], setAttribute() {}, classList: {add() {}}});
-      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node()}, toggle = node();
+      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node(),
+        'lang-toggle': {...node(), setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }}}, toggle = node();
       nodes.tabbar.querySelector = () => toggle;
       const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
       const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
@@ -4218,8 +4221,8 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     ''')
     assert result['before'] == ['Ask Codex to look', 'Ask Claude to look']
     assert result['requests'] == [{'url': '/rem/task', 'body': {'action': 'run', 'key': 'projects/private-notes-ab12.md', 'agent': 'codex'}}]
-    assert result['after'] == ['Codex is working', 'Stop', 'Undo'] and result['kept'] == 'starting'
-    assert result['reopened'] == ['Codex finished', 'See result', 'Undo']
+    assert result['after'] == ['Codex is working', 'Stop', 'Take back from Codex'] and result['kept'] == 'starting'
+    assert result['reopened'] == ['Codex finished', 'See result', 'Take back from Codex']
     # A snapshot cannot start it: one sentence, never a command.
     assert result['snapshot']['class'] == 'snapshot-line' and 'co rem' not in json.dumps(result['snapshot'])
 
@@ -4237,7 +4240,7 @@ def test_a_skipped_redraw_says_updates_are_waiting_and_draws_them_when_the_draft
     """A draft holds Today still; a quiet 有更新 says it is behind, and leaving the field or clicking draws it."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in STALE)
-    result = _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
+    result = _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
       let typing = true, unsaved = false, renders = 0, restored = [];
       const typingIn = () => typing, unsavedDraft = () => unsaved, unkeptWords = () => false, render = () => { renders++; };
       const viewState = () => ({open: ['#processing']}), restoreView = state => restored.push(state);
@@ -4275,7 +4278,7 @@ def test_a_redraw_carries_typed_words_caret_and_focus_by_stable_key_and_waits_fo
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['keptFields', 'restoreFields', 'unkeptWords', 'markUpdatesWaiting', 'drawKeepingView'])
-    result = _run_reader_js('let redrawSkipped = true; const editedFields = new Set(), EDITABLE = "textarea";\n' + functions + r"""
+    result = _run_reader_js('let redrawSkipped = true, reopenByPosition = false; const editedFields = new Set(), EDITABLE = "textarea";\n' + functions + r"""
       const field = (keep, value) => ({dataset: keep ? {keep} : {}, value, selectionStart: 2, selectionEnd: 4,
         focus() { document.activeElement = this; }, setSelectionRange(a, b) { this.caret = [a, b]; },
         dispatchEvent(event) { this.fired = event.type; }});
@@ -4303,6 +4306,89 @@ def test_a_redraw_carries_typed_words_caret_and_focus_by_stable_key_and_waits_fo
                                {'value': 'Draft it short', 'fired': 'input', 'caret': [2, 4], 'kept': True}]
     # A field with no stable key: the mark stays and nothing more is drawn.
     assert result['focused'] and result['renders'] == 1 and result['marks'] == 1
+
+
+def _lang_toggle_js(body):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['setInterfaceLanguage', 'renderLangToggle', 'drawKeepingView'])
+    return _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
+      const stored = [], posted = [], order = [], marks = [], restored = [];
+      const REM = {live: true, records: [{readLanguage: 'en'}]}, location = {protocol: 'http:', hash: '#today'};
+      globalThis.fetch = (url, options) => { posted.push([url, JSON.parse(options.body)]); };
+      const readerStorage = (key, value) => stored.push([key, value]), closeEvidence = () => {};
+      const button = {setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }};
+      const named = () => [button.textContent, button.lang, button['aria-label'], button.title];
+      let sections = [{open: true}, {open: false}, {open: true}], unkept = false, redrawn = 3;
+      const document = {getElementById: id => id === 'lang-toggle' ? button : null,
+        querySelectorAll: selector => selector === '#main details' ? sections : []};
+      const unkeptWords = () => unkept, markUpdatesWaiting = () => marks.push('updates-waiting');
+      // What the page held before the click: where it was, the sections open by id, the words in keyed fields.
+      const state = {hash: '#today', y: 640, open: ['#processing'], fields: [{key: 'talk:codex:fern', value: 'Draft it short', focused: true, start: 2, end: 4}]};
+      const viewState = () => state;
+      const render = () => { order.push('render:' + uiLanguage); sections = Array.from({length: redrawn}, () => ({open: false})); };
+      const restoreView = given => restored.push({unchanged: given === state, open: given.open, fields: given.fields.length, y: given.y,
+        reopened: sections.map(node => node.open), language: uiLanguage});
+''' + body)
+
+
+def test_the_language_button_names_its_target_saves_the_choice_and_redraws_keeping_the_view():
+    """One click: the choice is stored and sent like the Settings switch, the button now names the other language,
+    and the page is drawn the way a click on 有更新 draws it: sections reopened by position (their summaries change
+    language), then restoreView with the state untouched, so id-keyed sections, keyed words and scroll come back."""
+    result = _lang_toggle_js(r'''
+      renderLangToggle();
+      const before = named();
+      let prevented = false;
+      button.onmousedown({preventDefault() { prevented = true; }});
+      button.onclick();
+      const after = named(), first = restored.splice(0);
+      redrawn = 2;                       // the other language draws a different number of sections
+      button.onclick();
+      console.log(JSON.stringify({before, after, prevented, uiLanguage, stored, posted, order, first, second: restored,
+        readLanguage: REM.records[0].readLanguage ?? null, redrawSkipped, marks}));
+    ''')
+    assert result['before'] == ['中', 'zh', '切换到中文', '切换到中文']
+    assert result['after'] == ['EN', 'en', 'Switch to English', 'Switch to English']
+    assert result['prevented'] is True                     # the caret stays in the field being typed in
+    assert result['stored'] == [['co-rem-ui-language', 'zh'], ['co-rem-ui-language', 'en']]
+    assert result['posted'] == [['/rem/language', {'language': 'zh'}], ['/rem/language', {'language': 'en'}]]
+    assert result['order'] == ['render:zh', 'render:en'] and result['uiLanguage'] == 'en'
+    assert result['readLanguage'] is None
+    assert result['first'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                'reopened': [True, False, True], 'language': 'zh'}]
+    # A different count: nothing is reopened by position, and the sections known by id still come back.
+    assert result['second'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                 'reopened': [False, False], 'language': 'en'}]
+    assert result['redrawSkipped'] is False and result['marks'] == []
+
+
+def test_the_language_button_never_wipes_words_a_redraw_cannot_put_back():
+    """Words in a field with no stable key: the click still saves the choice and the button flips, so it is seen
+    to have worked; the page is not drawn, 有更新 shows, and the waiting redraw brings the language."""
+    result = _lang_toggle_js(r'''
+      renderLangToggle();
+      unkept = true;
+      button.onclick();
+      const waiting = {label: named()[0], uiLanguage, stored, order: order.splice(0), restored: restored.splice(0), redrawSkipped, marks};
+      sections[1].open = true;            // opened while the words were still there
+      drawKeepingView();                  // what redraw() does once the field is done
+      console.log(JSON.stringify({waiting, later: restored, order}));
+    ''')
+    assert result['waiting'] == {'label': 'EN', 'uiLanguage': 'zh', 'stored': [['co-rem-ui-language', 'zh']], 'order': [], 'restored': [],
+                                 'redrawSkipped': True, 'marks': ['updates-waiting']}
+    # Re-review of #2955: the waited redraw reopens sections by position too, as they stood when it drew.
+    assert result['order'] == ['render:zh']
+    assert result['later'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                'reopened': [True, True, True], 'language': 'zh'}]
+
+
+def test_the_language_button_is_named_before_the_first_render():
+    """The first render waits for the saved choices; the button in the header is never an empty, unnamed control."""
+    page = TEMPLATE.read_text()
+    first_render = page.index('Promise.all([readerStorage("co-rem-ui-language")')
+    assert re.search(r'^renderLangToggle\(\);$', page[:first_render], re.M)
+    assert page.index('id="lang-toggle"') < page.index('function renderLangToggle()')
 
 
 def _youify(lines):

@@ -205,16 +205,95 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     assert rows.count() >= 4
     for i in range(rows.count()):
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Hand to Codex", "Hand to Claude"]
+        assert names == ["Hand to Codex", "Hand to Claude", "Mark done"]  # the row's one Mark done (2026-11-11)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude"]
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done"]
         assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
+
+
+# Every control on a card that says Mark done, wherever it sits and whether or not it shows before the row is
+# hovered: the head's tick (its label), the row's own tick, the strip's button, the green step button.
+MARKS = """() => [...document.querySelectorAll('.today-brief .qcard')].map(card => {
+  const says = node => /^Mark done/.test(node.getAttribute('aria-label') || node.textContent.trim());
+  return {path: card.dataset.path,
+    head: [...card.querySelectorAll('.qhead button')].filter(says).length,
+    step: [...card.querySelectorAll('button')].filter(node => says(node) && !node.closest('.qhead, .qitem')).length,
+    rows: [...card.querySelectorAll('.qitem')].map(row => ({ticks: row.querySelectorAll('.qdone').length,
+      own: [...row.querySelectorAll('button')].filter(says).map(node => node.className)}))};
+})"""
+
+
+def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_row(today):
+    """Review of #2955: the strip put a second Mark done on every Today row, beside the tick it already had,
+    and the two closed the row in different ways. The strip's is now the one, and it leaves like any other."""
+    page, calls, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-08T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)
+    cards = page.evaluate(MARKS, isolated_context=False)
+    assert len(cards) >= 3 and max(len(card["rows"]) for card in cards) > 1
+    for card in cards:
+        assert [row["ticks"] for row in card["rows"]] == [0] * len(card["rows"]), card
+        assert all(row["own"] == ["btn-quiet"] for row in card["rows"]), card     # the strip's, on every row
+        assert card["step"] == 0 or len(card["rows"]) > 1, card                  # a green Mark done only closes several
+        assert card["head"] == (1 if len(card["rows"]) > 1 else 0), card           # the tick only where it closes several
+    mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
+    assert mara.locator(".qitem").count() == 2
+    page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()
+    row = mara.locator(".qitem").filter(has_text="budget forecast")
+    done = row.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True)
+    assert not done.is_visible()                       # the strip is the row's second level: quiet until the row is hovered
+    row.hover()
+    done.click()
+    row.wait_for(state="detached")
+    assert mara.locator(".qitem").count() == 1 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 0
+    posts = [body for path, body in calls if path == "/rem/thread" and body]
+    assert [post["state"] for post in posts] == ["done"] and len(posts[0]["keys"]) == 1 and "budget forecast" in posts[0]["key"]
+    page.get_by_text("Saved in notebook", exact=True).wait_for()
+    assert mara.locator(".qitem").count() == 1          # the Host's answer keeps it closed
+    page.locator("#done-notice").get_by_role("button", name="Undo", exact=True).click()
+    row.wait_for()
+    assert mara.locator(".qitem").count() == 2 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 1
+
+
+# The night decided Inès's mail needs no reply: REM thinks the row is handled, and the card's step is Mark done.
+NO_REPLY = r'''() => {
+  REM.live = true;
+  REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+  REM.drafts = [{id: 'ines-none', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'no_reply',
+    to: 'Ines Halvorsen <ines@example.test>', subject: 'Re: Q3 receipts', gist: 'She confirmed she has the receipts.'}];
+  render();
+}'''
+
+
+def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
+    """Re-review of #2955: the card's green Mark done gave way to the row's own, but that one sat in the part of
+    the row a hover reveals, so the card showed nothing to close it with. A handled row shows its strip at once."""
+    page, _, _ = today
+    page.evaluate(NO_REPLY, isolated_context=False)
+    card = page.locator('.today-brief .qcard[data-path="people/ines-halvorsen.md"]')
+    assert card.get_attribute("data-step") == "done"
+    page.mouse.move(0, 0)
+    assert card.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).count() == 0   # never two
+    assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
+    assert card.get_by_text("No reply needed: She confirmed she has the receipts.").is_visible()
+    page.set_viewport_size({"width": 390, "height": 900})
+    assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
+    # A card whose rows are all handled leads with its one green Mark done; its rows' strips wait for a hover.
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("() => { REM.live = true; window.looksDone = entry => entry.r.path === 'people/mara-ostrowski.md'; render();"
+                  " dealCard('people/mara-ostrowski.md'); }", isolated_context=False)
+    page.mouse.move(0, 0)
+    mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
+    assert mara.locator(".qitem").count() == 2 and mara.get_attribute("data-step") == "done"
+    assert mara.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).is_visible()
+    assert not mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
 
 
 def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_errors(today):
