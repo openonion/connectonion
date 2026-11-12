@@ -78,13 +78,18 @@ def blocked(root, key, *, states=None):
     return value.get('state') in ('done', 'skipped') and not value.get('returned_at')
 
 
+class UnknownThread(RemError):
+    """The mark names no thread of this notebook. Sent again it is refused again, so the Host answers
+    400; its 409 is kept for a notebook that is only busy, which the reader waits out."""
+
+
 def set_state(root, key, state, *, device=None, versions=None, keys=None):
     """Open removes the decision and restores its preserved draft, at any time."""
     requested = list(dict.fromkeys([key, *(keys or [])]))
     if (state not in ('done', 'skipped', 'open') or any(
             not isinstance(item, str) or '\n' not in item or len(item) > 32000
             or not Notebook(root).exists(item.partition('\n')[0]) for item in requested)):
-        raise RemError('Expected a notebook thread key and state done, skipped or open')
+        raise UnknownThread('Expected a notebook thread key and state done, skipped or open')
     with maintenance_lock(root):
         keys = list(dict.fromkeys(item for requested_key in requested for item in _matching_keys(root, requested_key)))
         stamp = now().isoformat()
@@ -117,7 +122,8 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
     if state != 'open':
         if keys and len(keys) > 1:
             value['keys'] = keys
-        value['versions'] = versions if versions is not None else {thread: row['id'] for thread, row in _mail_versions(root, key).items()}
+        # The page names the mail it showed; a cited thread it could not place is held at the notebook's latest.
+        value['versions'] = {**{thread: row['id'] for thread, row in _mail_versions(root, key).items()}, **(versions or {})}
         found[key] = value
     for row in drafts.candidates(root, refresh_index=False):
         if not any(done_key(item['record'], item['text']) == key for item in row['obligations']):

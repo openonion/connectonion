@@ -43,7 +43,9 @@ def test_the_template_names_no_remote_host_and_loads_no_font():
     assert set(re.findall(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)) == {
         'https://mail.google.com', 'https://outlook.live.com'}
     assert not re.search(r'(?:src\s*=\s*["\']|fetch\(["\'])https?://', page)
-    assert "@font-face" not in page and "@import" not in page and "<link" not in page
+    assert "@font-face" not in page and "@import" not in page
+    # The one <link> is the tab icon, a data: drawing; a stylesheet or a font would be a fetch.
+    assert page.count("<link") == 1 and re.findall(r'<link\b[^>]*?\bhref="([^",]*)', page) == ["data:image/svg+xml"]
 
 
 def test_mail_facts_sum_a_person_seen_under_two_addresses(tmp_path):

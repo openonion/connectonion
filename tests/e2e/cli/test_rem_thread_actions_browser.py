@@ -1,4 +1,5 @@
 """Two independent browser contexts share notebook decisions; offline changes reconcile."""
+import json
 import re
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,7 @@ from connectonion.rem.config import prepare
 from connectonion.rem.files import read_json, state_path
 from tests.unit.test_rem_live_reader import call
 from tests.unit.test_rem_proactive import mail_thread
+from tests.unit.test_rem_reader_threads import crowd_the_version_table, thread_key
 
 pytestmark = pytest.mark.skipif(os.environ.get('CO_REM_BROWSER_TEST') != '1', reason='requires Chrome')
 
@@ -226,4 +228,128 @@ def test_returning_to_the_window_keeps_a_reply_being_typed(tmp_path, monkeypatch
           check();
         })""", isolated_context=False)
         assert page.locator('.owner-slot input').first.input_value() == 'Friday'
+        browser.close()
+
+
+def _thread_write(response):
+    return response.request.method == 'POST' and response.url.endswith('/rem/thread')
+
+
+@pytest.mark.parametrize('width', [1280, 375])
+def test_done_and_undo_reach_a_notebook_whose_version_table_is_over_64_kb(tmp_path, monkeypatch, width):
+    """#2936: every mark carried the whole version table; past the Host's 64 KB it answered 400 and
+    the page said "sync pending" for good. A mark names only the mail it cites, at any notebook size."""
+    from patchright.sync_api import sync_playwright
+    root, routes, cookie = _live_notebook(tmp_path, monkeypatch)
+    crowd_the_version_table(root)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': width, 'height': 900})
+        context.route('http://127.0.0.1:8123/**', _serve(routes, cookie))
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        with page.expect_response(_thread_write) as answered:
+            page.locator('.task-band .thread', has_text='pilot review').get_by_role('button', name='Mark done', exact=True).click()
+        sent = answered.value.request.post_data
+        assert read_json(state_path(root, 'threads.json'), {}).get(thread_key(root), {}).get('state') == 'done'
+        assert json.loads(sent)['versions'] == {'mail:gmail:pilot': 'gmail:one'} and len(sent) < 1024
+        with page.expect_response(_thread_write):
+            page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
+        assert thread_key(root) not in read_json(state_path(root, 'threads.json'), {})
+        browser.close()
+
+
+def test_a_done_kept_with_the_whole_table_reaches_the_notebook_on_the_next_load(tmp_path, monkeypatch):
+    """A browser that marked Done before the fix holds that mark in its pending list, whole table and all."""
+    from patchright.sync_api import sync_playwright
+    root, routes, cookie = _live_notebook(tmp_path, monkeypatch)
+    crowd_the_version_table(root)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': 1280, 'height': 900})
+        context.route('http://127.0.0.1:8123/**', _serve(routes, cookie))
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        page.locator('.task-band .thread', has_text='pilot review').wait_for()
+        _wait_for_sync(page)
+        page.evaluate("""key => localStorage.setItem(threadStorageKey(), JSON.stringify({states: {}, pending: {[key]:
+          {state: 'done', at: '2026-11-08T01:00:00.000Z', device: 'test', keys: [key], versions: REM.mail_versions}}}))""",
+                      thread_key(root), isolated_context=False)
+        with page.expect_response(_thread_write) as answered:
+            page.reload()
+        assert answered.value.status == 200 and len(answered.value.request.post_data) < 1024
+        assert read_json(state_path(root, 'threads.json'), {})[thread_key(root)]['state'] == 'done'
+        _wait_for_sync(page)
+        browser.close()
+
+
+def test_a_done_met_by_a_busy_notebook_waits_and_is_saved_on_the_next_load(tmp_path, monkeypatch):
+    """Another writer holds the notebook for a moment: the Host answers 409, which is not a refusal. The mark waits."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.files import maintenance_lock
+    root, routes, cookie = _live_notebook(tmp_path, monkeypatch)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': 1280, 'height': 900})
+        context.route('http://127.0.0.1:8123/**', _serve(routes, cookie))
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        mark = page.locator('.task-band .thread', has_text='pilot review').get_by_role('button', name='Mark done', exact=True)
+        with maintenance_lock(root), page.expect_response(_thread_write) as busy:
+            mark.click()
+        assert busy.value.status == 409
+        page.locator('#done-notice').get_by_text('Saved on this device — sync pending', exact=True).wait_for()
+        assert page.get_by_text('Not saved').count() == 0
+        assert page.evaluate('Object.keys(pendingThreads).length', isolated_context=False) == 1
+        assert read_json(state_path(root, 'threads.json'), {}) == {}
+        with page.expect_response(_thread_write) as saved:
+            page.reload()
+        assert saved.value.status == 200
+        assert read_json(state_path(root, 'threads.json'), {})[thread_key(root)]['state'] == 'done'
+        _wait_for_sync(page)
+        browser.close()
+
+
+@pytest.mark.parametrize('width', [1280, 375])
+def test_a_refused_done_says_not_saved_and_try_again_saves_it(tmp_path, monkeypatch, width):
+    """The Host answered 400: nothing is waiting to sync. The thread comes back, and the notice offers another try."""
+    from patchright.sync_api import sync_playwright
+    root, routes, cookie = _live_notebook(tmp_path, monkeypatch)
+    refusing = True
+    shots = Path('/tmp/frontend-test-screenshots/rem-thread-actions')
+    shots.mkdir(parents=True, exist_ok=True)
+
+    def serve(route):
+        if refusing and route.request.method == 'POST' and route.request.url.endswith('/rem/thread'):
+            route.fulfill(status=400, headers={'content-type': 'application/json'}, body='{"error": "Invalid JSON"}')
+        else:
+            _serve(routes, cookie)(route)
+
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(viewport={'width': width, 'height': 900})
+        context.route('http://127.0.0.1:8123/**', serve)
+        page = context.new_page()
+        page.goto('http://127.0.0.1:8123/rem#view=open')
+        mark = page.locator('.task-band .thread', has_text='pilot review').get_by_role('button', name='Mark done', exact=True)
+        not_saved = page.locator('#done-notice').get_by_text('Not saved · Try again', exact=True)
+        with page.expect_response(_thread_write):
+            mark.click()
+        not_saved.wait_for()
+        page.screenshot(path=str(shots / f'not-saved-{width}.png'))
+        assert mark.is_visible()
+        assert page.get_by_text('sync pending').count() == 0
+        assert page.evaluate('Object.keys(pendingThreads).length', isolated_context=False) == 0
+        assert read_json(state_path(root, 'threads.json'), {}) == {}
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
+        page.locator('#done-notice').wait_for(state='detached', timeout=8000)  # it leaves as the Done notice does
+        mark.click()
+        not_saved.wait_for()
+        refusing = False
+        page.locator('#done-notice').get_by_role('button', name='Try again', exact=True).click()
+        page.get_by_text('Saved in notebook', exact=True).wait_for()
+        assert read_json(state_path(root, 'threads.json'), {})[thread_key(root)]['state'] == 'done'
         browser.close()

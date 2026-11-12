@@ -123,22 +123,39 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
 
 
 def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
-    """N3 (D-123): a 72px icon rail; every place, 更多, settings and you fit a short window, none overlapping."""
+    """D-132: a 72px rail of pictures with their words under them. Its content is 656 tall: a window that tall
+    shows all of it, and in a lower one the rail itself scrolls, so every place, 更多, settings and you stay in reach."""
     page, uri = reader
-    page.set_viewport_size({'width': 960, 'height': 540})
+    page.set_viewport_size({'width': 960, 'height': 700})
     page.goto(uri)
-    boxes = page.locator('.rail .nav').evaluate_all("nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })")
-    assert len(boxes) >= 8 and all(top >= 0 and bottom <= 540 and width == 44 for top, bottom, width in boxes)
-    assert all(a[1] <= b[0] for a, b in zip(boxes, boxes[1:])), boxes
-    assert page.locator('.rail').bounding_box()['width'] == 72
-    # Each icon names its place on hover; the name is in the link, so it reads the same to a screen reader.
+    boxes = "nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })"
+    tall = page.locator('.rail .nav').evaluate_all(boxes)
+    assert len(tall) == 10 and all(top >= 0 and bottom <= 700 and width == 56 for top, bottom, width in tall)
+    assert all(a[1] <= b[0] for a, b in zip(tall, tall[1:])), tall
+    assert page.locator('.rail').evaluate('rail => [rail.scrollHeight, rail.clientHeight, rail.getBoundingClientRect().width]') == [700, 700, 72]
+    page.set_viewport_size({'width': 960, 'height': 540})
+    assert page.locator('.rail').evaluate('rail => [rail.scrollHeight, rail.clientHeight, rail.getBoundingClientRect().width]') == [656, 540, 72]
+    short = page.locator('.rail .nav').evaluate_all(boxes)
+    assert [round(bottom - top) for top, bottom, _ in short] == [round(bottom - top) for top, bottom, _ in tall]  # none squeezed
+    assert all(a[1] <= b[0] for a, b in zip(short, short[1:])), short
+    reached = page.locator('.rail .nav').evaluate_all("""nodes => nodes.map(n => { n.scrollIntoView({block: 'nearest'});
+      const b = n.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })""")
+    assert reached == [True] * 10
+    assert page.evaluate('scrollY') == 0  # the rail scrolled, not the page
+    # Each place is named under its picture without a hover; the full name is the link's accessible name.
     people = page.locator('#nav a[href="#c=people"]')
-    assert people.get_attribute('aria-label') == 'People' and people.locator('.tip').inner_text() == 'People'
-    people.hover()
-    page.wait_for_timeout(400)
-    assert people.locator('.tip').evaluate('n => getComputedStyle(n).opacity') == '1'
+    assert people.get_attribute('aria-label') == 'People' and people.locator('.w').inner_text() == 'People'
+    assert page.locator('.rail .tip').count() == 0
+    words = page.locator('.rail .nav .w').evaluate_all("""words => words.map(w => { const s = getComputedStyle(w), b = w.getBoundingClientRect(),
+      cell = w.parentElement.getBoundingClientRect(), picture = w.parentElement.querySelector('.ic').getBoundingClientRect();
+      return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
+        inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
+    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings']
+    assert all(w['shown'] and w['size'] == '11px' and w['height'] == 14 and w['inside'] and w['under'] for w in words), words
     page.locator('.nav.more').click()
     assert page.locator('#rail-more a[href="#view=changes"]').is_visible()
+    menu = page.locator('#rail-more').bounding_box()
+    assert menu['x'] >= 64 and menu['y'] >= 0 and menu['y'] + menu['height'] <= 540  # beside the rail, none of it cut off
     page.mouse.click(600, 300)
     assert not page.locator('#rail-more').is_visible()
     page.locator('.settings-open').click()
@@ -2074,13 +2091,16 @@ SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organis
 
 
 def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(reader):
-    """N3 (D-123): six places as icons (today, waiting, people, orgs, projects, all records), the rest one 更多 away."""
+    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, all records),
+    the rest one 更多 away."""
     page, _ = reader
     rows = page.locator('#nav > a')
-    names = [text.split('\n')[0].strip() for text in rows.all_inner_texts()]
-    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'All records']  # D-01: the catch-all last
+    names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
+    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records']  # D-01: the catch-all last
+    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
+    assert 'Skills' not in more and 'Decisions' in more  # Skills has its own place now; the rest stay behind 更多
     assert not {'Graph', 'Activity', 'Questions & connections'} & set(names + more)  # D-02, D-03
     # Only Waiting on you carries a number; a category's size is not a task.
     counted = page.locator('#nav a').evaluate_all("rows => rows.filter(row => row.querySelector('.n')).map(row => row.getAttribute('href'))")
@@ -2093,7 +2113,7 @@ def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(r
     tokens = page.evaluate("""() => { const paint = name => { const probe = document.createElement('i'); probe.style.color = 'var(' + name + ')';
         document.body.append(probe); const value = getComputedStyle(probe).color; probe.remove(); return value; };
       return {ink: paint('--ink'), grey: paint('--grey')}; }""")
-    assert {row['width'] for row in style} == {44}
+    assert {row['width'] for row in style} == {56}
     current = [row for row in style if row['current'] == 'page']
     assert len(current) == 1 and current[0]['color'] == tokens['ink'] and current[0]['shadow'] != 'none'  # the raised one
     assert all(row['color'] == tokens['grey'] and row['shadow'] == 'none' for row in style if row['current'] != 'page')
@@ -2144,7 +2164,7 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
     # Owner, 2026-11-08: the catch-all goes last (N3: last of the rail's places). 2026-11-09: Activity is REM's run log, at the foot.
-    assert [a.split('\n')[0] for a in page.locator('#nav > a').all_inner_texts()][-1] == 'All records' and 'Activity' not in labels and 'Graph' not in labels
+    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'All records' and 'Activity' not in labels and 'Graph' not in labels
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
@@ -3398,7 +3418,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.wait_for_function(r'document.documentElement.lang === "zh"')
     if width < 600:
         page.locator('.nav-toggle').click()  # N3: the phone's 更多 tab opens every place
-    assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('人物')
+    assert page.locator('#nav a[href="#c=people"]').get_attribute('aria-label') == '人物'
     prose = r'''node => {
       const copy = node.cloneNode(true); copy.querySelectorAll('.cite').forEach(n => n.remove());
       return copy.textContent;
@@ -3409,7 +3429,7 @@ def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monk
     page.locator('.settings-open').click()
     page.locator('.language-switch').get_by_role('button', name='EN', exact=True).click()
     page.keyboard.press('Escape')
-    assert page.locator('#nav a[href="#c=people"]').inner_text().startswith('People')
+    assert page.locator('#nav a[href="#c=people"]').get_attribute('aria-label') == 'People'
     page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator('.deep-note .note > p').first.inner_text() != ''
     page.locator('details.deep-note').evaluate('d => d.open = true')
