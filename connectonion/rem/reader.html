@@ -2945,7 +2945,7 @@
   .qcard .qitem:is(:hover, :focus-within, .show) .qdone { opacity: 1; }
   .qcard .qdone:hover { background: var(--raised); }
   .qcard .qmore, .qcard.open .qmore { display: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
-  .qcard .qitem:is(:hover, :focus-within, .show) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
+  .qcard .qitem:is(:hover, :focus-within, .show, .handled) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
   .qcard .qkind { gap: var(--u1) var(--u3); }
   .qcard .handoff-line .btn-quiet, .qcard .talk-menu summary { min-height: 30px; color: var(--ink); }
   .task-result { margin: 8px 0 0; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); color: var(--ink); }
@@ -4312,12 +4312,9 @@ function renderLangToggle() {
   button.onmousedown = event => event.preventDefault();  // the caret stays in the field being typed in
   button.onclick = () => setInterfaceLanguage(to, () => {
     renderLangToggle();
-    if (unkeptWords()) { redrawSkipped = true; markUpdatesWaiting(); return; }
-    const open = [...document.querySelectorAll("#main details")].map(node => node.open);
-    drawKeepingView(() => {
-      const sections = document.querySelectorAll("#main details");
-      if (sections.length === open.length) sections.forEach((node, i) => { node.open = open[i]; });
-    });
+    // A redraw that waits for typed words still owes the sections their places by position.
+    if (unkeptWords()) { reopenByPosition = redrawSkipped = true; markUpdatesWaiting(); return; }
+    drawKeepingView(true);
   });
 }
 function togglePrivate() {
@@ -6886,7 +6883,8 @@ function ownerLine(draft) {
   if (uiLanguage === "en" || draft?.private || !["prepared", "no_reply"].includes(draft?.status) || !/\p{Script=Han}/u.test(draft.gist || "")) return null;
   return t(draft.status === "no_reply" ? "No reply needed: " : "REM drafted: ") + draft.gist;
 }
-function cardItem(entry, many, seen = new Set(), more = null) {
+// handled: REM thinks the row is done, so its strip (Mark done, and the reason) shows without a hover.
+function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
@@ -6900,7 +6898,7 @@ function cardItem(entry, many, seen = new Set(), more = null) {
     : el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
   if (done) done.onclick = close;
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
-  const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") }, [
+  const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
       : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close), more]),
@@ -7163,7 +7161,7 @@ function personCard(group, focal, total = 1) {
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more))),
+    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more, cardStep(entry) === "done" && stripMarksDone(entry)))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
@@ -12820,17 +12818,20 @@ function unkeptWords() {
 // A redraw after a sync keeps what the reader opened and where they were. It waits while
 // they type or hold unsent words: threadStates is current, and the next render shows it.
 // A wait leaves the page behind the notebook, so one quiet mark says 有更新 until it draws.
-let redrawSkipped = false;
+let redrawSkipped = false, reopenByPosition = false;
 function redraw() {
   if (typingIn(document.activeElement) || unsavedDraft()) { redrawSkipped = true; markUpdatesWaiting(); return; }
   drawKeepingView();
 }
-function drawKeepingView(reopen) {
-  redrawSkipped = false;
+// byPosition: after a language switch, sections are also reopened by place, since one without an id is known
+// by its summary and that changes language. It is done before the scroll goes back.
+function drawKeepingView(byPosition = reopenByPosition) {
+  redrawSkipped = reopenByPosition = false;
   document.getElementById("updates-waiting")?.remove();
-  const state = viewState();
+  const state = viewState(), open = byPosition ? [...document.querySelectorAll("#main details")].map(node => node.open) : null;
   render();
-  reopen?.();  // the language switch reopens sections by position before the scroll goes back
+  const sections = open ? document.querySelectorAll("#main details") : [];
+  if (open && sections.length === open.length) sections.forEach((node, i) => { node.open = open[i]; });
   restoreView(state);
 }
 // Clicking it draws now and puts typed words back where they were (viewState carries them). A field

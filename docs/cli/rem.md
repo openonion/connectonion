@@ -732,7 +732,7 @@ approval's reply body, a review answer. If a field holds words the page could
 not put back after a redraw (an answer slot of a reply that has no id), the
 click does not draw over them: the button flips, the choice is saved, **有更新**
 shows, and the page changes language once those words are sent or cleared and
-you have left the field. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
+you have left the field, with the sections open then kept open. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
 interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
@@ -866,8 +866,9 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   card's green **Mark done** (shown when REM judges a row handled) is drawn
   only when it closes several handled rows at once (and when it closes every
   row, the head's tick is left out, since it would close the same); for one row it would repeat
-  that row's strip button, so the card leads with **Not done yet** instead and
-  the strip's **Mark done** is the way to close it. A snapshot keeps Mark
+  that row's strip button, so the card shows no green button and the row's
+  strip, with its **Mark done** and REM's reason, is shown without a hover, on
+  a phone too. Every row REM thinks is handled shows its strip that way. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to

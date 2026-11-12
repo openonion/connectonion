@@ -317,6 +317,22 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
     assert result['together'] == [['.qcard', ['feedback', 'slides']]]
 
 
+def test_a_handled_row_shows_its_strip_without_a_hover():
+    """Re-review of #2955: with the green step gone, a row REM judged handled kept its Mark done and the reason
+    in the part of the row that waits for a hover. Such a row is marked so its strip shows at once; others are not."""
+    result = _today_card_js(r'''
+      const rows = card => card.children[1].children.map(item => item.class);
+      const shown = {single: rows(personCard({r, entries: [row('feedback', true)]}, true)),
+        mixed: rows(personCard({r, entries: [row('feedback', true), row('slides')]}, true)),
+        open: rows(personCard({r, entries: [row('slides')]}, true))};
+      REM.live = false;
+      shown.snapshot = rows(personCard({r, entries: [row('feedback', true)]}, true));
+      console.log(JSON.stringify(shown));
+    ''')
+    assert result['single'] == ['qitem handled'] and result['mixed'] == ['qitem handled', 'qitem'] and result['open'] == ['qitem']
+    assert result['snapshot'] == ['qitem']                # nothing to show there: its strip cannot act
+
+
 def test_a_snapshot_today_row_keeps_its_tick_because_its_strip_cannot_act():
     result = _today_card_js(r'''
       REM.live = false;

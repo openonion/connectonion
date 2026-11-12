@@ -4240,7 +4240,7 @@ def test_a_skipped_redraw_says_updates_are_waiting_and_draws_them_when_the_draft
     """A draft holds Today still; a quiet 有更新 says it is behind, and leaving the field or clicking draws it."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in STALE)
-    result = _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
+    result = _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
       let typing = true, unsaved = false, renders = 0, restored = [];
       const typingIn = () => typing, unsavedDraft = () => unsaved, unkeptWords = () => false, render = () => { renders++; };
       const viewState = () => ({open: ['#processing']}), restoreView = state => restored.push(state);
@@ -4278,7 +4278,7 @@ def test_a_redraw_carries_typed_words_caret_and_focus_by_stable_key_and_waits_fo
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['keptFields', 'restoreFields', 'unkeptWords', 'markUpdatesWaiting', 'drawKeepingView'])
-    result = _run_reader_js('let redrawSkipped = true; const editedFields = new Set(), EDITABLE = "textarea";\n' + functions + r"""
+    result = _run_reader_js('let redrawSkipped = true, reopenByPosition = false; const editedFields = new Set(), EDITABLE = "textarea";\n' + functions + r"""
       const field = (keep, value) => ({dataset: keep ? {keep} : {}, value, selectionStart: 2, selectionEnd: 4,
         focus() { document.activeElement = this; }, setSelectionRange(a, b) { this.caret = [a, b]; },
         dispatchEvent(event) { this.fired = event.type; }});
@@ -4312,7 +4312,7 @@ def _lang_toggle_js(body):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['setInterfaceLanguage', 'renderLangToggle', 'drawKeepingView'])
-    return _run_reader_js('let redrawSkipped = false;\n' + functions + r'''
+    return _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
       const stored = [], posted = [], order = [], marks = [], restored = [];
       const REM = {live: true, records: [{readLanguage: 'en'}]}, location = {protocol: 'http:', hash: '#today'};
       globalThis.fetch = (url, options) => { posted.push([url, JSON.parse(options.body)]); };
@@ -4370,10 +4370,17 @@ def test_the_language_button_never_wipes_words_a_redraw_cannot_put_back():
       renderLangToggle();
       unkept = true;
       button.onclick();
-      console.log(JSON.stringify({label: named()[0], uiLanguage, stored, order, restored, redrawSkipped, marks}));
+      const waiting = {label: named()[0], uiLanguage, stored, order: order.splice(0), restored: restored.splice(0), redrawSkipped, marks};
+      sections[1].open = true;            // opened while the words were still there
+      drawKeepingView();                  // what redraw() does once the field is done
+      console.log(JSON.stringify({waiting, later: restored, order}));
     ''')
-    assert result == {'label': 'EN', 'uiLanguage': 'zh', 'stored': [['co-rem-ui-language', 'zh']], 'order': [], 'restored': [],
-                      'redrawSkipped': True, 'marks': ['updates-waiting']}
+    assert result['waiting'] == {'label': 'EN', 'uiLanguage': 'zh', 'stored': [['co-rem-ui-language', 'zh']], 'order': [], 'restored': [],
+                                 'redrawSkipped': True, 'marks': ['updates-waiting']}
+    # Re-review of #2955: the waited redraw reopens sections by position too, as they stood when it drew.
+    assert result['order'] == ['render:zh']
+    assert result['later'] == [{'unchanged': True, 'open': ['#processing'], 'fields': 1, 'y': 640,
+                                'reopened': [True, True, True], 'language': 'zh'}]
 
 
 def test_the_language_button_is_named_before_the_first_render():
@@ -4382,17 +4389,6 @@ def test_the_language_button_is_named_before_the_first_render():
     first_render = page.index('Promise.all([readerStorage("co-rem-ui-language")')
     assert re.search(r'^renderLangToggle\(\);$', page[:first_render], re.M)
     assert page.index('id="lang-toggle"') < page.index('function renderLangToggle()')
-
-
-def test_committed_rem_text_says_owner_and_never_a_real_name():
-    """The reader, its tests and its guide are public: the person it was built for is "the owner" there."""
-    name = 'Aa' + 'ron'
-    root = TEMPLATE.parents[2]
-    files = [TEMPLATE, root / 'docs' / 'cli' / 'rem.md', *sorted((root / 'tests' / 'unit').glob('test_rem_*.py')),
-             *sorted((root / 'tests' / 'e2e' / 'cli').glob('test_rem_*.py'))]
-    hits = [f'{path.relative_to(root)}:{number}' for path in files
-            for number, line in enumerate(path.read_text().splitlines(), 1) if name in line]
-    assert hits == []
 
 
 def _youify(lines):

@@ -262,6 +262,31 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     assert mara.locator(".qitem").count() == 2 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 1
 
 
+# The night decided Inès's mail needs no reply: REM thinks the row is handled, and the card's step is Mark done.
+NO_REPLY = r'''() => {
+  REM.live = true;
+  REM.source_context['outlook:3d5f7b9e1a0c'] = {...REM.source_context['outlook:3d5f7b9e1a0c'], source: 'outlook', thread: 'mail:fixture:ines'};
+  REM.drafts = [{id: 'ines-none', version: 'v1', provider: 'outlook', thread: 'mail:fixture:ines', status: 'no_reply',
+    to: 'Ines Halvorsen <ines@example.test>', subject: 'Re: Q3 receipts', gist: 'She confirmed she has the receipts.'}];
+  render();
+}'''
+
+
+def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
+    """Re-review of #2955: the card's green Mark done gave way to the row's own, but that one sat in the part of
+    the row a hover reveals, so the card showed nothing to close it with. A handled row shows its strip at once."""
+    page, _, _ = today
+    page.evaluate(NO_REPLY, isolated_context=False)
+    card = page.locator('.today-brief .qcard[data-path="people/ines-halvorsen.md"]')
+    assert card.get_attribute("data-step") == "done"
+    page.mouse.move(0, 0)
+    assert card.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).count() == 0   # never two
+    assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
+    assert card.get_by_text("No reply needed: She confirmed she has the receipts.").is_visible()
+    page.set_viewport_size({"width": 390, "height": 900})
+    assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
+
+
 def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_errors(today):
     page, calls, answers = today
     page.evaluate("() => { REM.live = true; setInterfaceLanguage('zh'); render(); }", isolated_context=False)
