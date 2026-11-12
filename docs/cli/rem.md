@@ -393,8 +393,22 @@ The reader calls these **skill-name matches**: invocation attempts in coding
 sessions matched by name. `Run evidence` counts retained evaluation attempts
 separately; it may show zero even when coding sessions contain name matches.
 Neither count proves that this installed version ran or that the task succeeded.
-The Skills list uses a compact usage count and last date; the skill page keeps
-the match details, scope explanation and usage bar.
+The Skills page answers two questions at a glance. **Most used** shows up to
+eight skills as cards, ranked by their skill-name match count over the usage
+window (ties by the latest date), each with one line of what it does and "N
+matches in 180 days · last date". Everything else is an index grouped by name
+family (Lark, LinkedIn, co …; a family of fewer than three skills in all goes
+under Other) that fills the width; a strip of family names above it moves to
+each group and focuses its heading. Cards and rows keep the "last night" marker
+for a page last night's pass rewrote and "N installed copies" when the skill is
+installed in more than one place. Each skill's line is the first
+clause of its description, in the reader's language when the skill has its own
+text in it or a translation is cached; otherwise the original. A skill with no
+description at all is named once on a quiet line at the end ("1 skill has only
+a name: …") instead of being listed. The page has one filter, sized like the
+other directory filters. A skill page keeps the match details, scope
+explanation and usage bar, and names where the skill lives in words (Claude
+Code, Codex, shared agent skills, ConnectOnion) with an "Open SKILL.md" link.
 
 Rerunning the map (`init`, `sync`'s map, or `map-skills`) moves an older
 notebook to this shape. Pages made one per copy are merged into the name's page:

@@ -364,11 +364,33 @@
   .week .w a { color: var(--ink); font-weight: var(--w-bold); }
   .week .meta { font-size: var(--s-meta); color: var(--grey); }
   .week .s { flex-basis: 100%; font: var(--s-body)/1.45 var(--font); color: var(--grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rare-skills > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--grey); font: var(--s-meta) var(--font); }
-  .rare-skills > summary::before { content: "▸"; margin-right: 8px; }
-  .rare-skills[open] > summary::before { content: "▾"; }
-  .skill-groups { max-width: 80ch; }
-  .skill-groups > input { max-width: 100%; margin-bottom: 16px; }
+  /* skills: the most-used as cards, everything else as an index that fills the width (sprint 13) */
+  .skills-find { display: block; width: min(100%, 420px); min-height: 44px; margin: 4px 0 28px; padding: 0 14px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink); font: var(--s-body) var(--font); }
+  .skills-find::placeholder { color: var(--grey); }
+  .skills-view a { color: inherit; text-decoration: none; }
+  .skills-view .skill-name { color: var(--ink); font: var(--w-bold) var(--s-body)/1.35 var(--font); overflow-wrap: anywhere; }
+  .skills-view .skill-line { display: block; color: var(--grey); font: var(--s-ui)/1.45 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .skills-view .skill-uses { color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; }
+  .skills-top .section { margin-top: 0; }
+  .skill-cards { list-style: none; margin: 0 0 28px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .skill-card { display: flex; flex-direction: column; gap: 4px; height: 100%; box-sizing: border-box; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); }
+  .skill-card .skill-line { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .skill-card .skill-uses { margin-top: auto; padding-top: 4px; }
+  .skill-card:hover { box-shadow: var(--e-ink); }
+  .skill-item:hover { background: var(--well); }
+  .skill-shape { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-bottom: 20px; }
+  .skill-shape .k { color: var(--ink); font: var(--w-bold) var(--s-body) var(--font); margin-right: 8px; }
+  .skill-shape button { min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink); font: var(--s-ui) var(--font); cursor: pointer; }
+  .skill-shape .n, .skill-family h3 .n { margin-left: 6px; color: var(--grey); font-weight: var(--w-regular); }
+  .skill-family { margin-bottom: 20px; }
+  .skill-family h3 { margin: 0 0 4px; padding: 8px 0 6px; border-bottom: 1px solid var(--rule); color: var(--ink); font: var(--w-bold) var(--s-body) var(--font); letter-spacing: 0; text-transform: none; }
+  .skill-family ul, .skill-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 40px; }
+  .skill-family li, .skill-grid li { min-width: 0; }
+  .skill-item { display: block; min-height: 44px; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius); }
+  .skill-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+  .skill-family h3:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .skill-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .skills-empty { margin-top: 12px; }
 
   /* ---- open threads: who owes whom ---- */
   .bands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; margin-top: 12px; }
@@ -3567,8 +3589,13 @@ const UI = {
     "Pages written in the first build ({n})": "首次建立时写出的页面（{n}）",
 
     "More columns": "更多列",
-    "Used in the last 30 days": "最近 30 天用过",
-    "Rarely used": "很少使用",
+    "What your agents can do, the ones you use most first.": "你的 agent 会做的事，最常用的在前",
+    "{n} skill": "{n} 个技能", "{n} skills": "{n} 个技能", "Find among {n} skills…": "在 {n} 个技能里找…",
+    "Most used": "最常用", "counted by skill-name matches": "按技能名称匹配计数",
+    "{n} matches in {days} days · last {last}": "近 {days} 天用到 {n} 次 · 最近 {last}", "{n} matches": "{n} 次",
+    "{n} installed copies": "{n} 份安装副本", "Everything they can do": "全部能力", "Lives in": "所在位置", "Open SKILL.md": "打开 SKILL.md",
+    "Claude Code plugin": "Claude Code 插件", "Shared agent skills": "共用 agent 技能",
+    "{n} skill has only a name: ": "{n} 个技能只有名字：", "{n} skills have only a name: ": "{n} 个技能只有名字：",
     "Other": "其他",
     "Fewer columns": "收起更多列",
     "updated last night": "昨夜更新",
@@ -3655,7 +3682,6 @@ const UI = {
     "Mapped only": "待了解",
     "Partly investigated": "还有待了解",
     "Investigated": "已调查",
-    "Source reviewed": "已核对来源",
     "Nothing is waiting on you": "目前没有事项等你处理",
     "One thing is waiting on you": "有 1 件事等你处理",
     "Newest and due first. Quotes keep their words; other lines summarise the obligation.": "优先显示最新和即将到期的事项。引文保留原话，其余文字概述待办。",
@@ -3995,7 +4021,6 @@ const UI = {
     "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。",
     "Companies, teams, and groups we correspond with": "有往来的公司、团队与组织",
     "Why, where are we, how to continue?": "为何做、进展如何、下一步是什么？",
-    "Repeatable procedures, recorded not installed": "可复用的操作流程，仅记录，未安装",
     "What we chose and why": "做了什么决定，为什么",
     "Standing rules we adopted": "已采用的长期原则",
     "What is it, how does it work, when does it apply?": "是什么、如何运作、何时适用？",
@@ -4052,7 +4077,6 @@ const UI = {
     "blocker": "阻碍",
     "Mail": "邮件",
     "File": "文件",
-    "Found by": "发现方式",
     "Related": "相关页面",
     "Review": "审核",
     "Nothing to review": "没有待审核事项",
@@ -4356,7 +4380,7 @@ const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
   orgs: "companies, teams, and groups we correspond with",
   projects: "why, where are we, how to continue?",
-  skills: "repeatable procedures, recorded not installed",
+  skills: "what your agents can do, the ones you use most first.",
   knowledge: "what is it, how does it work, when does it apply?",
   opportunities: "worth exploring, not yet committed",
   decisions: "what we chose and why",
@@ -4969,8 +4993,9 @@ function byActivity(a, b) {
 function statusPill(r) {
   if (r.category === "sessions") return null;
   const st = known(r).status;
-  if (st === "Investigated" && r.category !== "skills") return null;
-  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : ({Mapped: "Getting to know them", "Partly investigated": "More to learn"})[st] || st;
+  // A skill's research state ("Source reviewed", "Getting to know them") is nothing the owner can act on (sprint 13).
+  if (st === "Investigated" || r.category === "skills") return null;
+  const label = ({Mapped: "Getting to know them", "Partly investigated": "More to learn"})[st] || st;
   return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: st === "Partly investigated" ? t("Some sections are filled from sources; the rest are not investigated yet.") : known(r).stamp || label }, [moon(st), t(label)]);
 }
 
@@ -8373,6 +8398,7 @@ function categoryCount(c, counts, total) {
     return t("{n} of {m} qualifying correspondents have a page", { n: covered, m: total })
       + (total ? " · " + Math.round(100 * covered / total) + "%" : "");
   }
+  if (c === "skills") return t(total === 1 ? "{n} skill" : "{n} skills", { n: total });
   const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
 }
@@ -8412,7 +8438,7 @@ function category(c) {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
-  if (c === "skills" && items.length) main.appendChild(skillGroups(items));
+  if (c === "skills" && items.length) main.appendChild(skillsView(items));
   else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
@@ -9862,44 +9888,140 @@ function orgMoment(item) {
     el("span", { class: "ov-w" }, [el("i", { class: mine ? "me" : "" })]), el("span", { class: "ov-x" }, words)]);
 }
 
-// Recent use comes first; old and unobserved skills stay one disclosure away.
-function skillGroups(items) {
-  const box = el("div", { class: "skill-groups" });
-  const find = el("input", { type: "search", class: "sheet-find", placeholder: t("Search"), "aria-label": t("Filter {category}", { category: label("skills").toLowerCase() }) });
+// ---------- skills: what your agents can do, and what you use (sprint 13) ----------
+// The owner came for two answers: what do I rely on, and what can my agents do. 150 skills as one
+// 760px column ran 12 000px and put a 62-use skill under "used in the last 30 days (1)". Now the
+// most-used skills lead by their own count, everything else is a dense index by family that fills
+// the width, and a skill REM can say nothing about is named once at the end, not listed as a row.
+const SKILL_FAMILY_NAMES = { lark: "Lark", linkedin: "LinkedIn", wecomcli: "WeCom", connectonion: "ConnectOnion", co: "co", oo: "oo", x: "X" };
+const SKILL_TOP = 8;
+// One line of what a skill does: the first sentence, cut at the first aside, so the row reads as
+// a verb phrase ("Drive one browser from the shell…") instead of a paragraph about evidence. A cut
+// never falls inside brackets or after an abbreviation ("e.g.", "Mr.", "A.I."), and a description
+// that would cut down to nothing is shown whole rather than dropped.
+const SKILL_NO_DESCRIPTION = /^Unknown\s*—\s*description not provided\.?$/i;
+const SKILL_ABBREVIATION = /(?:\b(?:e\.g|i\.e|vs|etc|cf|approx|Mr|Mrs|Ms|Dr|St|No)|(?:^|[\s(])(?:\p{L}\.)*\p{L})$/iu;
+function skillClause(line) {
+  const whole = plainLine(line).replace(/\s*\((?:user|project|plugin)\)\s*$/i, "").trim();
+  if (!whole || UNFILLED_LINE.test(whole) || SKILL_NO_DESCRIPTION.test(whole)) return "";
+  const text = whole.replace(/^(?:This|The) skill\s+(\w)/i, (_, ch) => ch.toUpperCase());
+  const han = /\p{Script=Han}/u.test(text);
+  let depth = 0, cut = text.length;
+  for (let i = 0; i < text.length && cut === text.length; i++) {
+    const ch = text[i], rest = text.slice(i);
+    if ("([{（【「".includes(ch)) depth++;
+    else if (")]}）】」".includes(ch)) depth = Math.max(0, depth - 1);
+    if (depth || !/[\p{L}\p{N}]/u.test(text.slice(0, i))) continue;
+    const sentence = /^[.!?](?=\s|$)/.test(rest) && !SKILL_ABBREVIATION.test(text.slice(0, i)) || /^[。！？]/.test(rest);
+    const aside = i >= 4 && !/^(?:unknown|not known)$/i.test(text.slice(0, i)) && /^(?:\s[—–]\s|——|;\s|；|,\s(?:with|so|from|which|while|and then)\s)/.test(rest);
+    const longHan = han && text.length > 40 && i >= 8 && /^[：，]/.test(rest);
+    if (sentence || aside || longHan) cut = i;
+  }
+  return text.slice(0, cut).replace(/[\s.。;；,，:：]+$/, "") || text;
+}
+// In the reader's language when the skill has it (its own Chinese description, or a translation
+// already made); otherwise the original, quietly (D-103). Never a model call at render time.
+function skillLine(r) {
+  const what = text => rawSection({ text }, "What it does").split("\n").find(Boolean) || "";
+  const installed = text => (/^- Installed description[:：]\s*(.+)$/m.exec(text) || [])[1] || "";
+  // A regional tag ("zh-CN") reads as the interface language, as cacheChineseInterface() does for pages.
+  const tag = uiLanguage === "en" ? "" : Object.keys(r.translations || {}).find(tag => tag === uiLanguage)
+    || Object.keys(r.translations || {}).find(tag => tag.toLowerCase().startsWith(uiLanguage + "-"));
+  const original = r.original ?? r.text, translated = tag ? r.translations[tag] : "";
+  const lines = [what(translated), what(original), installed(original)].map(skillClause).filter(Boolean);
+  const han = line => /\p{Script=Han}/u.test(line);
+  return (uiLanguage === "zh" ? lines.find(han) : lines.find(line => !han(line))) || lines[0] || "";
+}
+function skillFamily(title) {
+  const prefix = title.split(/[-:]/)[0];
+  return SKILL_FAMILY_NAMES[prefix] || capFirst(prefix);
+}
+const SKILL_HOMES = [[/\/\.claude\/plugins\//, "Claude Code plugin"], [/\/\.claude\//, "Claude Code"], [/\/\.codex\//, "Codex"],
+  [/\/\.cursor\//, "Cursor"], [/\/\.kiro\//, "Kiro"], [/\/\.agents\//, "Shared agent skills"], [/\/connectonion\//, "ConnectOnion"]];
+function skillHome(path) {
+  path = path.replace(/\\/g, "/");  // a Windows install path reads the same as a POSIX one
+  const home = SKILL_HOMES.find(([pattern]) => pattern.test(path));
+  return home ? t(home[1]) : path.split("/").slice(-3, -1).join("/");
+}
+function skillUses(r) { return skillUsage(r)?.count || 0; }
+function bySkillUse(a, b) {
+  return skillUses(b) - skillUses(a) || (skillUsage(b)?.last || "").localeCompare(skillUsage(a)?.last || "") || a.title.localeCompare(b.title);
+}
+// The quiet facts a row carried before the redesign: copies that may differ, and last night's rewrite.
+function skillCopies(r) {
+  const n = r.installations?.length || 0;
+  return n > 1 ? t("{n} installed copies", { n }) : "";
+}
+function skillName(r) {
+  return el("span", { class: "skill-title" }, [el("span", { class: "skill-name", text: r.title }), updatedMarker(r)]);
+}
+// Counts are skill-name matches in the coding sessions of the usage window (docs/cli/rem.md), not runs.
+function skillCard(r) {
+  const u = skillUsage(r), line = skillLine(r);
+  const uses = t("{n} matches in {days} days · last {last}", { n: u.count, days: u.days, last: shortDate(u.last) });
+  return el("li", {}, [el("a", { class: "skill-card", href: href(r), title: skillCopies(r) ? t("{n} installed copies — open to compare sources", { n: r.installations.length }) : null }, [
+    skillName(r),
+    line ? el("span", { class: "skill-line", title: line, text: line }) : null,
+    el("span", { class: "skill-uses", text: [uses, skillCopies(r)].filter(Boolean).join(" · ") })])]);
+}
+function skillItem(r) {
+  const line = skillLine(r), u = skillUsage(r);
+  const meta = [u?.count ? t("{n} matches", { n: u.count }) : "", skillCopies(r)].filter(Boolean).join(" · ");
+  return el("li", {}, [el("a", { class: "skill-item", href: href(r), title: skillCopies(r) ? t("{n} installed copies — open to compare sources", { n: r.installations.length }) : null }, [
+    el("span", { class: "skill-head" }, [skillName(r), meta ? el("span", { class: "skill-uses", text: meta }) : null]),
+    el("span", { class: "skill-line", title: line, text: line })])]);
+}
+// A family's size counts every skill in it, including those shown in Most used: counting only what is
+// left would drop Lark into Other once its busiest members moved to the top.
+function skillFamilies(rows, all) {
+  const size = new Map();
+  for (const r of all) size.set(skillFamily(r.title), (size.get(skillFamily(r.title)) || 0) + 1);
+  const families = new Map();
+  for (const r of rows.sort(bySkillUse)) {
+    const name = size.get(skillFamily(r.title)) >= 3 ? skillFamily(r.title) : t("Other");
+    if (!families.has(name)) families.set(name, []);
+    families.get(name).push(r);
+  }
+  return [...families].sort(([a, x], [b, y]) => (a === t("Other")) - (b === t("Other")) || y.length - x.length || a.localeCompare(b));
+}
+function skillsView(items) {
+  const box = el("div", { class: "skills-view" });
+  const find = el("input", { type: "search", class: "skills-find", placeholder: t("Find among {n} skills…", { n: items.length }),
+    "aria-label": t("Filter {category}", { category: label("skills").toLowerCase() }) });
   const content = el("div");
-  const group = (name, rows) => el("section", { class: "skill-family" }, [
-    el("h2", { class: "section" }, [t(name), el("span", { class: "n", text: String(rows.length) })]),
-    el("ul", { class: "hits skills" }, rows.map(r => row(r)))]);
   const draw = () => {
     content.textContent = "";
     const needle = find.value.trim().toLowerCase();
-    const matched = items.filter(r => !needle || (r.title + " " + r.text).toLowerCase().includes(needle));
-    const used = r => { const u = skillUsage(r); return u?.count && u.last ? daysSince(u.last) : Infinity; };
-    const recent = matched.filter(r => used(r) <= 30).sort((a, b) => skillUsage(b).last.localeCompare(skillUsage(a).last)).slice(0, 10);
-    const recentPaths = new Set(recent.map(r => r.path));
-    const active = matched.filter(r => !recentPaths.has(r.path) && used(r) <= 90).sort((a, b) => a.title.localeCompare(b.title));
-    const rare = matched.filter(r => used(r) > 90).sort((a, b) => a.title.localeCompare(b.title));
-    if (recent.length) content.appendChild(group("Used in the last 30 days", recent));
-    const families = new Map();
-    for (const r of items) {
-      const prefix = r.title.includes("-") ? r.title.split("-")[0] : "";
-      if (prefix) families.set(prefix, (families.get(prefix) || 0) + 1);
+    if (needle) {
+      const hits = items.filter(r => (r.title + " " + skillLine(r) + " " + r.text).toLowerCase().includes(needle)).sort(bySkillUse);
+      if (hits.length) content.appendChild(el("ul", { class: "skill-grid" }, hits.map(skillItem)));
+      else content.appendChild(emptyState("No matching pages", "Clear filters →", "#c=skills", () => { find.value = ""; draw(); find.focus(); }));
+      return;
     }
-    const grouped = new Map();
-    for (const r of active) {
-      const prefix = r.title.split("-")[0], name = families.get(prefix) >= 3 ? prefix : "Other";
-      if (!grouped.has(name)) grouped.set(name, []);
-      grouped.get(name).push(r);
-    }
-    for (const name of [...grouped.keys()].filter(name => name !== "Other").sort()) content.appendChild(group(name, grouped.get(name)));
-    if (grouped.has("Other")) content.appendChild(group("Other", grouped.get("Other")));
-    if (rare.length) {
-      const details = el("details", { class: "rare-skills" }, [el("summary", { text: t("Rarely used") + " (" + rare.length + ")" }),
-        el("ul", { class: "hits skills" }, rare.map(r => row(r)))]);
-      details.open = !!needle;
-      content.appendChild(details);
-    }
-    if (!matched.length) content.appendChild(emptyState("No matching pages", "Clear filters →", "#c=skills", () => { find.value = ""; draw(); find.focus(); }));
+    const top = items.filter(skillUses).sort(bySkillUse).slice(0, SKILL_TOP), shown = new Set(top.map(r => r.path));
+    const nameOnly = items.filter(r => !shown.has(r.path) && !skillLine(r)).sort((a, b) => a.title.localeCompare(b.title));
+    const families = skillFamilies(items.filter(r => !shown.has(r.path) && skillLine(r)), items);
+    if (top.length) content.appendChild(el("section", { class: "skills-top" }, [
+      sectionHead("Most used", "counted by skill-name matches"),
+      el("ul", { class: "skill-cards" }, top.map(skillCard))]));
+    const anchors = families.map(([name], i) => "skill-family-" + i);
+    if (families.length) content.appendChild(el("nav", { class: "skill-shape", "aria-label": t("Everything they can do") }, [
+      el("span", { class: "k", text: t("Everything they can do") }),
+      ...families.map(([name, rows], i) => {
+        const jump = el("button", { type: "button" }, [name, el("span", { class: "n", text: String(rows.length) })]);
+        jump.onclick = () => {
+          const heading = document.getElementById(anchors[i]).querySelector("h3");
+          heading.scrollIntoView({ block: "start" });
+          heading.focus({ preventScroll: true });
+        };
+        return jump;
+      })]));
+    content.appendChild(el("div", { class: "skill-families" }, families.map(([name, rows], i) => el("section", { class: "skill-family", id: anchors[i] }, [
+      el("h3", { tabindex: "-1" }, [name, el("span", { class: "n", text: String(rows.length) })]),
+      el("ul", {}, rows.map(skillItem))]))));
+    if (nameOnly.length) content.appendChild(el("p", { class: "skills-empty quiet-line" }, [
+      t(nameOnly.length === 1 ? "{n} skill has only a name: " : "{n} skills have only a name: ", { n: nameOnly.length }),
+      ...nameOnly.flatMap((r, i) => [i ? ", " : "", el("a", { href: href(r), text: r.title })])]));
   };
   find.oninput = draw;
   box.append(find, content); draw();
@@ -10669,16 +10791,18 @@ function sidePanels(r, k) {
   if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: t("Sessions in the mapping window; archived input coverage can differ."), text: sessions[1] + (first ? t(" since ") + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
     if (r.installation) {
+      // Where it lives, named as the owner knows it ("Claude Code"), not "claude-user" and a path tail.
+      const also = [...(r.original ?? r.text).matchAll(/^- Also installed at[:：]\s*(\S+)/gm)].map(m => skillHome(m[1]));
+      const homes = [...new Set([skillHome(r.installation), ...also])];
       const file = el("dl", {});
-      file.append(el("dt", { text: t("File") }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
-      const disc = /^- Discovery[:：]\s*(.+)$/m.exec(r.text);
-      if (disc) file.append(el("dt", { text: t("Found by") }), el("dd", { class: "mono", text: disc[1] }));
+      file.append(el("dt", { text: t("Lives in") }), el("dd", { text: homes.join(" · ") }),
+        el("dt", { text: t("File") }), el("dd", {}, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: t("Open SKILL.md") })]));
       panels.push(panel("Source", [file]));
     }
   }
   // People, organisations and projects open on their fact card instead.
   const factsPanel = factList(r);
-  if (factsPanel) panels.unshift(factsPanel); else panels.unshift(panel("At a glance", [glance]));
+  if (factsPanel) panels.unshift(factsPanel); else if (glance.children.length || r.category !== "skills") panels.unshift(panel("At a glance", [glance]));
   return panels;
 }
 
