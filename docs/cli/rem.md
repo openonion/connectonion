@@ -487,9 +487,9 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. |
+| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
-| `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
+| `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
 `co rem show NAME` searches people, projects, orgs and skills. An exact page
@@ -660,8 +660,11 @@ mode 700, pages 600, a planted link refused), and serves it at once. Whether it
 is current is a handful of stat calls, never a listing of the notebook: every
 write REM makes touches `.state/reader-changed`; the category folders' times
 catch a page added, renamed or removed by hand; `.state/rem.db` and a nonempty
-WAL hold committed rows; `reader.html` is part of the key, so an upgrade
-re-renders. The notebook's date is part of the key too, so the Today queue turns
+WAL hold committed rows; `reader.html` and the installed version are part of
+the key, so an upgrade re-renders. The version is read from the installed files
+(`_version.py`), not from the running process: a Host started before an upgrade
+kept the old version in memory, never matched the pages the build saved, and
+showed **Updating…** on every page for as long as it ran. The notebook's date is part of the key too, so the Today queue turns
 over at midnight. Every 10 minutes (`REBUILD_INTERVAL` in `reader.py`) the
 background build walks the whole notebook (on a 31,136-file notebook about
 17 s of stat calls, never on the request path), which catches edits other
@@ -714,6 +717,69 @@ pages, and says so; a Host that `co rem open` started and that exited soon
 after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
 rebuilt the whole notebook: on a 31,136-file notebook the key alone took 17 s
 and the render 35 s, plus 73 s for the details.
+
+### Which server serves the reader
+
+`co rem open` reads through a `co ai` on this computer. It asks the port it
+started one on last time (kept in `rem-live-host.json` in the identity folder),
+then `co ai`'s default port 8000, and uses the first whose `/info` gives your
+address **and the installed version**. A `co ai` you run by hand on port 8000
+at the installed version is used as before.
+
+A `co ai` keeps running the version it was started with, so after an upgrade:
+
+- **The one `co rem` started** is stopped and a new one is started on the same
+  port. It is that one only when the pid in `rem-live-host.json` is your process
+  with the recorded command, and the record's `install` (the connectonion package
+  folder that started it) is this one's, so another install sharing this home
+  never takes it for its own. A record from before `install` existed (1.9.5) is
+  matched by the full command line `ps` shows, interpreter included: that works
+  for a uv tool or a venv; on a macOS framework Python (Homebrew, python.org)
+  `ps` shows the binary inside `Python.app`, so that old Host is reported, not
+  replaced. `co rem open` and
+  `co rem open --live` do this when you run them. With a saved page, that page
+  opens at once and the next open is live.
+- **A tab that was already open** needs no command. Its reload asks the old
+  server, which starts the usual background page build; the build is the
+  installed version, and when it has saved the pages it replaces that server on
+  the same port, so the tab's address and link stay good and the page reloads
+  onto the new render. A task started from the reader runs in its own process
+  and continues. An identity selected with `--env-file` is replaced by the next
+  `co rem open`, not by the build.
+- **Not while it is working.** Neither an open nor the build stops it while
+  `session_results.jsonl` holds a turn still `running` or `waiting_approval`
+  (a conversation, an approval being waited for, or a scheduled `run:` turn) or
+  `schedule-state.json` marks a scheduled `exec:` command `running`, nor when
+  the open is itself run from a turn inside it. The open shows the saved page
+  and says the server from before the upgrade is finishing a task. No age makes
+  such a record stale: a Host marks every earlier Host's unfinished work
+  interrupted or failed when it starts, so what is unfinished is the running
+  Host's, an approval waiting overnight included.
+- **Any other `co ai`** of another version that answers as you on port 8000 or
+  the recorded port, including another install's, is not used, never signalled,
+  and no Host is started beside it, because a second Host on one identity folder
+  marks the first one's turns interrupted. The saved page opens with one line
+  naming its port and version; live actions return when that `co ai` is closed.
+
+Limits, one each:
+
+- A Host is replaced at most once per installed version (as `co <provider>
+  listen` restarts, #1878): `python -m` run inside a checkout of another
+  version imports that checkout, so a replacement started from there comes up
+  at the other version again, and the open then says so instead of retrying.
+  The mark (`renewed_for`) is in the replacement's own record, so any later
+  launch clears it.
+- If the new Host exits before it answers (its port was taken between the check
+  and its bind, or it failed to start), the open or the build starts it once
+  more on a free port and the record names it; a tab already open gets no answer
+  until the next `co rem open` prints the new address. A new Host that is slow
+  but running is not moved.
+- A `co ai` of another version on a port other than 8000 or the recorded one
+  is not seen at all.
+- On Windows there is no `ps` to prove a pid is still our Host, so a Host of
+  another version is only reported, never replaced (`live_host._started_here`).
+- A busy Host from before the upgrade keeps serving until its work ends, however
+  long that is.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.

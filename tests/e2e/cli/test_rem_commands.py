@@ -289,7 +289,7 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
     says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -316,7 +316,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
-                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
+                        lambda address, **k: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -326,7 +326,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address, **k: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
     assert result.exit_code == 1, result.output
     output = _plain(result.output)
