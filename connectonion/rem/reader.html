@@ -6883,9 +6883,9 @@ function ownerLine(draft) {
   if (uiLanguage === "en" || draft?.private || !["prepared", "no_reply"].includes(draft?.status) || !/\p{Script=Han}/u.test(draft.gist || "")) return null;
   return t(draft.status === "no_reply" ? "No reply needed: " : "REM drafted: ") + draft.gist;
 }
-// handled: REM thinks the card's only row is done, so its strip (Mark done, and the reason) shows without a hover.
-// A card of several rows leads with its green step instead and keeps the strips behind a hover: three visible
-// Mark done on a phone read as noise (team, re-review of #2955).
+// handled: REM thinks the row is done and no green step on the card closes it, so its strip (Mark done, and the
+// reason) shows without a hover. Where the green step closes it, that step is the card's lead and the strips wait
+// for a hover: three visible Mark done on a phone read as noise (team, re-review of #2955).
 function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
   // One draft answering several items is said once, on the first of them.
@@ -7163,7 +7163,8 @@ function personCard(group, focal, total = 1) {
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more, entries.length === 1 && cardStep(entry) === "done" && stripMarksDone(entry)))),
+    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
+      cardStep(entry) === "done" && stripMarksDone(entry) && !(step && closing.includes(entry))))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);

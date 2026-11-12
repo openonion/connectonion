@@ -319,7 +319,7 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
 
 def test_a_handled_row_shows_its_strip_without_a_hover():
     """Re-review of #2955: with the green step gone, a row REM judged handled kept its Mark done and the reason
-    in the part of the row that waits for a hover. Such a row, alone on its card, is marked so its strip shows at once."""
+    in the part of the row that waits for a hover. Such a row is marked so its strip shows at once, unless the card's green step closes it."""
     result = _today_card_js(r'''
       const rows = card => card.children[1].children.map(item => item.class);
       const shown = {single: rows(personCard({r, entries: [row('feedback', true)]}, true)),
@@ -331,8 +331,9 @@ def test_a_handled_row_shows_its_strip_without_a_hover():
       console.log(JSON.stringify(shown));
     ''')
     assert result['single'] == ['qitem handled'] and result['open'] == ['qitem']
-    # A card of several rows keeps its strips behind a hover: the green step is its lead (team, re-review of #2955).
-    assert result['mixed'] == ['qitem', 'qitem'] and result['both'] == ['qitem', 'qitem']
+    # A handled row shows its strip unless the card's green step already closes it (team, re-review of #2955):
+    # on a mixed card no green step closes the handled row; on an all-handled card the green step is the lead.
+    assert result['mixed'] == ['qitem handled', 'qitem'] and result['both'] == ['qitem', 'qitem']
     assert result['snapshot'] == ['qitem']                # nothing to show there: its strip cannot act
 
 
