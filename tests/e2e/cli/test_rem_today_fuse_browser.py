@@ -450,12 +450,14 @@ def test_the_undo_leaves_when_the_hold_ends_and_the_phone_bar_stays_clear(today)
     card.get_by_role("button", name="Send", exact=True).click()
     note = page.locator(".qsent")
     note.get_by_role("button", name="Undo", exact=True).wait_for()
-    # The next ready reply is open; its Send bar is still pinned though the sent line now leads the list.
+    # The next ready reply is open; its Send stays in the draft's flow (sprint 13: a pinned bar covered the draft),
+    # and a notice never lands on it while it is in view.
     bar = page.locator(".qcard.open .mail-actions")
-    assert bar.evaluate("node => getComputedStyle(node).position") == "fixed"
+    assert bar.evaluate("node => getComputedStyle(node).position") == "static"
     page.evaluate("() => setDone(threadEntries().find(e => e.r.path === 'orgs/fernhill-labs.md'), true)", isolated_context=False)
-    notice = page.locator("#done-notice").bounding_box()
-    assert notice["y"] + notice["height"] <= bar.bounding_box()["y"]
+    bar.evaluate("node => node.scrollIntoView({block: 'center'})")
+    notice, box = page.locator("#done-notice").bounding_box(), bar.bounding_box()
+    assert notice["y"] + notice["height"] <= box["y"] or box["y"] + box["height"] <= notice["y"]
     page.wait_for_timeout(3000)
     assert note.get_by_role("button", name="Undo", exact=True).count() == 0
 
@@ -569,37 +571,6 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
     assert _box_inside(page, send, 16)
-
-
-# What is painted on top at each point from the Send bar's bottom edge to the tab bar's top edge that is neither bar.
-UNDER_THE_SEND_BAR = """() => {
-  const send = document.querySelector('.qcard.focal.open .mail-actions'), tabs = document.getElementById('tabbar');
-  const a = send.getBoundingClientRect(), b = tabs.getBoundingClientRect(), seen = new Set();
-  for (let y = a.bottom; y <= b.top; y++)
-    for (let x = Math.max(a.left, b.left); x < Math.min(a.right, b.right); x++) {
-      const top = document.elementFromPoint(x, y);
-      const words = [...top.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent.trim()).join(' ');
-      if (!send.contains(top) && !tabs.contains(top)) seen.add(`<${top.localName} class="${top.getAttribute('class') || ''}"> ${words}`.trim());
-    }
-  return [...seen];
-}"""
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_nothing_of_the_page_shows_between_the_pinned_send_bar_and_the_tab_bar(today, lang):
-    """#2931: on a phone, with Today at the top, the label of the widget below the raised card showed cut in half in
-    the gap between the two bars. They are one docked unit: every point from one to the other is painted by a bar."""
-    page, _, _ = today
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.evaluate(OVERDUE, isolated_context=False)
-    page.evaluate(DRAFT, True, isolated_context=False)
-    page.evaluate("lang => { setInterfaceLanguage(lang); scrollTo(0, 0); }", lang, isolated_context=False)
-    assert page.locator(".qcard.focal.open .mail-actions").evaluate("node => getComputedStyle(node).position") == "fixed"
-    assert page.locator(".others .wt").count() == 1 and page.evaluate("scrollY", isolated_context=False) == 0
-    shown = page.evaluate(UNDER_THE_SEND_BAR, isolated_context=False)
-    assert not shown, shown
-    if os.environ.get("CO_REM_SHOTS"):
-        page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-phone-docked-{lang}.png"))
 
 
 def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
@@ -751,6 +722,9 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
       // Each person waiting has a rise of their own in the night chart, two hours apart, so each has a face there.
       REM.night_outcomes = todayGroups(threadEntries().filter(e => !isDone(e))).map(({ r }, i) => ({key: r.path, record: r.path, title: r.title,
         kind: 'prepared', prepared_at: new Date(Date.parse('2026-10-08T02:00:00Z') + i * 7200000).toISOString()}));
+      // Two runs in the three nights, so the chart is drawn in full rather than folded to a line (nightSparse).
+      REM.logs = [...REM.logs, {phase: 'sync', started_at: '2026-10-07T03:00:00Z', finished_at: '2026-10-07T03:14:00Z', items: 9},
+        {phase: 'daily-update', started_at: '2026-10-08T03:00:00Z', finished_at: '2026-10-08T03:20:00Z', items: 0}];
       render(); }""", isolated_context=False)
     card = page.locator(".today-brief .qcard.focal")
     start = card.get_attribute("data-path")

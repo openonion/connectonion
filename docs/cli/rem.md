@@ -890,15 +890,17 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   letter's scroll window (the letter keeps a marker that shows your answer):
   buttons when REM wrote the alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a
   text field otherwise; the date after the dash is never split into options.
-  Until every question is answered Send stays disabled, with *Choose above
-  before sending*. The lanes show the five most urgent people on a desktop and
+  Until every question is answered Send stays disabled, and the line beside it
+  names what is left (*1 choice left: Format*, the letter's own label for the
+  slot or REM's words, short); a tap on the name goes to that question. The lanes show the five most urgent people on a desktop and
   three on a phone (always the open card's), then **N more people**; on a phone
   the first screen holds To, Subject, the question and the Send bar, with the
   context line and channel switch behind **More**. **Send** is the page's only
-  green control. On a desktop it sits under the letter in normal flow, inside
-  the first screen; on a phone it is a bar docked on top of the tab bar, the
-  two reading as one panel with nothing of the page between them, and notices
-  rise above it. When the Host lists an approval for the draft, Send holds the
+  green control. It sits under the letter and REM's question in normal flow, on a
+  desktop inside the first screen; on a phone too, so it comes into view with
+  the draft and never covers the message above it or the draft itself (it was
+  pinned above the tab bar until 1.9.6, and on real data sat over the draft's
+  first lines). When the Host lists an approval for the draft, Send holds the
   reply for 10 minutes: the person's card and lane close, the count steps down,
   and the line **Sent to …** keeps one **Undo** until the hold ends, when the
   Undo goes; without an approval the reply goes at once and the line says it
@@ -907,7 +909,23 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   live reader*. Today, **Waiting on you** and **Reader settings** never show a
   command to copy (D-60).
   **What REM did overnight** adds **Replied to N people for you** when REM sent
-  replies itself (`sent_by_rem`), and no row when it did not.
+  replies itself (`sent_by_rem`), and no row when it did not. Its lines count
+  items (**3 things have a reply drafted**, with the people named), so they add
+  up to the side line's **REM handled N things overnight**, and the
+  **Overnight** section opens with the same number in one sentence before it
+  speaks of pages; a page pass older than a day and a half is dated
+  (*Pages were last updated …*) instead of being called last night.
+  **A promise gone stale stops burning**: one whose date passed more than 60
+  days ago, with no message on its thread for 60 days either (the span after
+  which an undated thread goes quiet), is not counted among the people waiting
+  and has no red. The side asks **Maybe over · still open?** with **Mark done**
+  (the usual mark) and **Still open** (kept on this device, like *Not done
+  yet*), which brings it back to the count. The Projects headline names only a
+  live late promise in red and mentions stale ones in grey.
+  **The night chart gives its row back** when the last three nights hold fewer
+  than two runs of reading or rewriting: it becomes one grey line under its
+  title (*Last 3 days: 0 runs of reading or rewriting, 3 replies and tasks
+  prepared*) and the people waiting take the row.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
   quiet text buttons on every unfinished row: Today, and all three bands of
   **Waiting on you** (yours, on others, other open context), whether or not the

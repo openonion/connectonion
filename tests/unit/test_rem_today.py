@@ -501,7 +501,7 @@ def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
       const REM = {owner: 'people/owner.md'};
       const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
       const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];
-      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null;
+      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null, staleEntry = () => false;
       const doneKey = entry => entry.r.path + '\n' + entry.t.text;
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')
