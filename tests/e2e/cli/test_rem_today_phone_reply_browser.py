@@ -1,7 +1,7 @@
 """Today's open reply on a phone: the letter starts on the first screen and the Send bar's words stay whole (opt in).
 
 Seen at 390 after the 1.9.5 overlap fix: with two items on the card, the letter sat under REM's question and began
-behind the fixed Send bar, and "Skip" broke into "Ski / p". The notebook is the invented one in
+behind the then-fixed Send bar, and "Skip" broke into "Ski / p". The notebook is the invented one in
 tests/fixtures/rem_reader_notebook.py, served the same way as test_rem_today_fuse_browser.py.
 """
 
@@ -71,7 +71,8 @@ def test_the_letter_starts_on_the_first_phone_screen_above_the_send_bar(today, l
 def test_more_on_a_phone_brings_back_every_item_and_its_hand_off(today, lang):
     page, _, _ = today
     card = _open(page, lang, "two")
-    assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_hidden()
+    # The first row's strip (and its Mark done, Not now, Ignore) shows from the start (sprint 13); the second row waits.
+    assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_visible()
     card.locator(".qitem .words").first.click()  # a tap opens the row's second level (D-120)
     card.locator(".qfull").click()
     assert card.locator(".qitem").nth(1).is_visible() and card.locator(".handoff").first.is_visible()
@@ -98,10 +99,12 @@ def test_every_word_on_the_phone_send_bar_stays_whole(today, lang, scene):
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_with_motion_on_the_send_bar_sits_just_above_the_tab_bar_not_over_the_card(today, lang):
+def test_with_motion_on_the_send_bar_follows_the_question_inside_the_draft(today, lang):
+    """Sprint 13: Send is no longer pinned over the card; with motion on too, it ends the draft, under REM's question."""
     page, _, _ = today
     page.emulate_media(reduced_motion="no-preference")
     card = _open(page, lang, "two", shot=False)
     page.wait_for_timeout(1000)  # the cards' rise has ended
-    bar, tabs = card.locator(".mail-actions").bounding_box(), page.locator("#tabbar").bounding_box()
-    assert tabs["y"] - 12 <= bar["y"] + bar["height"] <= tabs["y"], (bar, tabs)  # N3: the floating tab bar owns the bottom edge
+    bar, choices = card.locator(".mail-actions").bounding_box(), card.locator(".mail-choices").bounding_box()
+    draft = card.locator(".mailcard").bounding_box()
+    assert choices["y"] + choices["height"] - 0.5 <= bar["y"] and bar["y"] + bar["height"] <= draft["y"] + draft["height"] + 0.5, (bar, choices, draft)

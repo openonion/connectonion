@@ -75,7 +75,7 @@ def listing(root):
 
 def blocked(root, key, *, states=None):
     value = (listing(root) if states is None else states).get(key, {})
-    return value.get('state') in ('done', 'skipped') and not value.get('returned_at')
+    return value.get('state') in ('done', 'skipped', 'ignored') and not value.get('returned_at')
 
 
 class UnknownThread(RemError):
@@ -86,10 +86,11 @@ class UnknownThread(RemError):
 def set_state(root, key, state, *, device=None, versions=None, keys=None):
     """Open removes the decision and restores its preserved draft, at any time."""
     requested = list(dict.fromkeys([key, *(keys or [])]))
-    if (state not in ('done', 'skipped', 'open') or any(
+    # ignored closes like done; it is its own word so the owner's history says 已忽略, not 已完成.
+    if (state not in ('done', 'skipped', 'ignored', 'open') or any(
             not isinstance(item, str) or '\n' not in item or len(item) > 32000
             or not Notebook(root).exists(item.partition('\n')[0]) for item in requested)):
-        raise UnknownThread('Expected a notebook thread key and state done, skipped or open')
+        raise UnknownThread('Expected a notebook thread key and state done, skipped, ignored or open')
     with maintenance_lock(root):
         keys = list(dict.fromkeys(item for requested_key in requested for item in _matching_keys(root, requested_key)))
         stamp = now().isoformat()
@@ -146,3 +147,37 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
         write_json(drafts.path(root, row['id']), {**saved, 'status': status})
     write_json(state_path(root, 'threads.json'), found)
     return value
+
+
+# 忽略 on a Today row can also stop its sender (owner, 2026-11-13: «广告要忽略»). One dated address per line in
+# the notebook's state, beside threads.json, so the owner can read the list and delete a line by hand.
+IGNORED = 'ignored-senders.txt'
+IGNORED_HEAD = ('# Senders ignored in the REM reader: their mail stays out of Today and gets no draft.\n'
+                '# One per line: "2026-11-13 news@example.com", a bare address, or "Name <news@example.com>". Delete a line to see them again.')
+
+
+def ignored_senders(root):
+    """{address: day ignored, or '' for a hand-written line without one}, addresses casefolded."""
+    from .files import EMAIL
+    file = state_path(root, IGNORED)
+    lines = file.read_text(encoding='utf-8').splitlines() if file.is_file() else []
+    found = {}
+    for line in lines:
+        address = EMAIL.search(line) if not line.lstrip().startswith('#') else None
+        if address:
+            day = re.match(r'\s*(\d{4}-\d{2}-\d{2})\s', line)
+            found[address[0].casefold()] = day[1] if day else ''
+    return found
+
+
+def ignore_sender(root, address, *, ignored=True):
+    """Add the sender with today's date, or remove it; the whole list comes back for the reader."""
+    from .files import atomic_write
+    from .service import notebook_today
+    with maintenance_lock(root):
+        found = ignored_senders(root)
+        found.pop(address.casefold(), None)
+        if ignored:
+            found[address.casefold()] = notebook_today(root).isoformat()
+        atomic_write(state_path(root, IGNORED), '\n'.join([IGNORED_HEAD, *(f'{day} {who}'.strip() for who, day in found.items())]) + '\n')
+        return found

@@ -6180,7 +6180,8 @@ def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
     assert line.inner_text().startswith("REM handled 3 things overnight")
     line.locator(".link-btn").click()
     assert page.locator("#night-title").inner_text() == "What REM did overnight"
-    assert done.locator("li b").all_inner_texts() == ["Drafted replies for 2 people", "1 thing needs no reply"]
+    # Each line counts items, so the lines add up to the side line's number (sprint 13); the people are named.
+    assert done.locator("li b").all_inner_texts() == ["2 things have a reply drafted", "1 thing needs no reply"]
     assert done.locator("li").first.locator("a").count() == 2
     page.keyboard.press("Escape")
     cards, aside = page.locator(".today-brief").bounding_box(), line.bounding_box()

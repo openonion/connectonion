@@ -206,7 +206,7 @@ def test_first_build_keeps_failures_and_written_pages_visible(written):
       const REM = {owner: 'people/avery-lin.md'};
       const pass = {claims: [], changed: written ? [{path: 'people/mara-ostrowski.md'}] : [],
         failed: [{error: 'Failed to authenticate: 403 private payload'}, {error: 'TimeoutError'}]};
-      const lastPass = () => pass, firstBuild = () => true, nightlyUpdatesOff = () => true;
+      const lastPass = () => pass, firstBuild = () => true, nightlyUpdatesOff = () => true, nightTallyLine = () => null;
       const known = () => ({status: 'Investigated'}), sectionHead = text => ({text});
       const inline = text => text, remCommand = text => text, commandChip = command => ({command});
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
@@ -1418,7 +1418,7 @@ def test_done_threads_filter_today_and_counts_without_changing_record_threads(bl
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
-      const obligationEvidence = () => ({ids: new Set()});
+      const obligationEvidence = () => ({ids: new Set()}), staleEntry = () => false;
       let threadStates = {}, pendingThreads = {}, saved = {}, rendered = 0;
       const navigator = {platform: "test"};
       const localStorage = {setItem: (key, value) => { if (blocked) throw new Error('Storage blocked'); saved[key] = value; }};
@@ -2223,7 +2223,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
-        'passSummary', 'morningBrief', 'recallPrompt', 'translationNotice'])
+        'passSummary', 'morningBrief', 'pagesLine', 'recallPrompt', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
@@ -2232,7 +2232,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const translationPending = () => false; const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
-      const remCommand = args => 'co rem ' + args;
+      const remCommand = args => 'co rem ' + args, nightTallyLine = () => null, fmtDate = day => day;
       REM.status = {state: 'Stopped — background maintenance is off'};
       const first = firstBuild(), header = passSummary(), brief = morningBrief(), recall = recallPrompt();
       REM.status.state = 'Running in background (launchd)';
@@ -2965,7 +2965,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -3406,7 +3406,7 @@ def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_session
     result = _run_reader_js(functions + r'''
       const pdT = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
       const pdList = names => names.join(', '), pdIn = () => true, projectTicks = () => [], projectSessionDays = () => [];
-      const projectRank = () => 0, projectTier = () => 'quiet', projectLate = () => null, projectMarks = () => [];
+      const projectRank = () => 0, projectTier = () => 'quiet', projectLate = () => null, projectMarks = () => [], projectLateMarks = () => [];
       const fmtTime = () => '', calendarDay = d => d, pdAt = () => 0, projectDot = () => null, projectStrip = () => null, REM = {as_of: '2026-11-09'};
       const pdWho = () => '', pdDay = d => d, el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const all = [{title: 'Harbour'}, {title: 'Lantern'}];

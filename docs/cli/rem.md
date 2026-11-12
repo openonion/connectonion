@@ -817,9 +817,9 @@ interface labels and dates. Your saved choice comes first; otherwise Chinese is 
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
-languages still take precedence. Page prose stays as written. On phones, the brand, search and **Menu** share
-one header row; **Menu** opens the sidebar as a sheet under it. It is not a
-bottom tab bar because Today's Send bar already holds the bottom edge.
+languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
+(Today, Waiting, People, Search, More); **More** opens every other place as a sheet. Today's Send is not
+pinned to that edge: it comes into view with the draft.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
   sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
@@ -853,9 +853,9 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   are, what was agreed, what you owe and since when). **Send** replies in the thread
   from your mailbox; **Write full screen** opens the letter to edit by hand, with
   that background and the thread beside it, and sends your edited text; **Edit in
-  Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
-  skipped until new mail arrives, when it returns with the new message date.
-  Done and Skip offer **Undo** for five seconds; the record page keeps Undo
+  Gmail/Outlook drafts** creates an unsent provider draft; **Not now** keeps it
+  out of Today until new mail arrives, when it returns with the new message date.
+  Done and Not now offer **Undo** for five seconds; the record page keeps Undo
   available later, including a collapsed history if the original thread text
   has changed. Skipping preserves the draft body. The live reader shares these
   decisions through `.state/threads.json`. A mark tells the notebook only which
@@ -904,15 +904,17 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   letter's scroll window (the letter keeps a marker that shows your answer):
   buttons when REM wrote the alternatives (`邮件附件 / 共享文件夹`, `A 还是 B`), a
   text field otherwise; the date after the dash is never split into options.
-  Until every question is answered Send stays disabled, with *Choose above
-  before sending*. The lanes show the five most urgent people on a desktop and
+  Until every question is answered Send stays disabled, and the line beside it
+  names what is left (*1 choice left: Format*, the letter's own label for the
+  slot or REM's words, short); a tap on the name goes to that question. The lanes show the five most urgent people on a desktop and
   three on a phone (always the open card's), then **N more people**; on a phone
-  the first screen holds To, Subject, the question and the Send bar, with the
-  context line and channel switch behind **More**. **Send** is the page's only
-  green control. On a desktop it sits under the letter in normal flow, inside
-  the first screen; on a phone it is a bar docked on top of the tab bar, the
-  two reading as one panel with nothing of the page between them, and notices
-  rise above it. When the Host lists an approval for the draft, Send holds the
+  the context line and channel switch wait behind **More**, and Send comes into view with the draft, right
+  under the question (with a long ask above the draft that is below the first screen). **Send** is the page's only
+  green control. It sits under the letter and REM's question in normal flow, on a
+  desktop inside the first screen; on a phone too, so it comes into view with
+  the draft and never covers the message above it or the draft itself (it was
+  pinned above the tab bar until 1.9.6, and on real data sat over the draft's
+  first lines). When the Host lists an approval for the draft, Send holds the
   reply for 10 minutes: the person's card and lane close, the count steps down,
   and the line **Sent to …** keeps one **Undo** until the hold ends, when the
   Undo goes; without an approval the reply goes at once and the line says it
@@ -921,7 +923,26 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   live reader*. Today, **Waiting on you** and **Reader settings** never show a
   command to copy (D-60).
   **What REM did overnight** adds **Replied to N people for you** when REM sent
-  replies itself (`sent_by_rem`), and no row when it did not.
+  replies itself (`sent_by_rem`), and no row when it did not. Its lines count
+  items (**3 things have a reply drafted**, with the people named), so they add
+  up to the side line's **REM handled N things overnight**, and the
+  **Overnight** section opens with the same number in one sentence before it
+  speaks of pages; a page pass older than a day and a half is dated
+  (*Pages were last updated …*) instead of being called last night.
+  **A promise gone stale stops burning**: one whose date passed more than 60
+  days ago, with no message on its thread for 60 days either (the span after
+  which an undated thread goes quiet), is not counted among the people waiting
+  and has no red. The side asks **Maybe over · still open?** with **Mark done**
+  (the usual mark) and **Still open**, which brings it back to the count; past three, its link *N more in Gone
+  quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
+  A promise with no dated message stays live. **Still open** is kept on this
+  device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
+  quiet threads everywhere else too: not in the Waiting count, not red on **Waiting on you** or the People list.
+  **The night chart gives its row back** when the last three nights hold fewer
+  than two runs of reading or rewriting: it becomes one grey line under its
+  title (*Last 3 days: no mail read and no page rewritten; REM handled 6 things
+  in Today*, the same count as the side line) and the people waiting take the row.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
   quiet text buttons on every unfinished row: Today, and all three bands of
   **Waiting on you** (yours, on others, other open context), whether or not the
@@ -935,8 +956,26 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   deliverable, else its last message, `{"action": "result", "id"}`) under the
   row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
   brings the two buttons back; it never reads **Undo**, which undoes the item.
-  The strip ends with the row's one **Mark done** (标为完成), before and after
-  a hand-off: it is the row's own done decision (`/rem/thread`, state `done`),
+  The strip ends with the row's three ways to close it, as words on screen, never an icon, before and after a
+  hand-off: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
+  (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
+  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
+  closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
+  back*), its history line and the closed list's summary, which names the states it holds, e.g. *Marked done ·
+  Ignored (3)*). On Today all three leave the same way, the row (or a one-row card) sliding out unless motion is
+  reduced. When every mail the row cites came from one sender that looks like a machine or bulk mail (a
+  no-reply or sending-subdomain address, or a notice sender the map set apart), and REM knows the owner's own addresses,
+  Ignore's notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
+  (`POST /rem/sender {"address", "ignored": true}`, the same loopback, cookie and JSON rules as `/rem/thread`), the
+  notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
+  lets the sender back; a save the Host refuses says *Not saved · Try again* and changes nothing. REM never stops a
+  sender by itself, never offers a person-looking address, and relay addresses that carry many different people are
+  never offered. With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
+  only its domain. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
+  can be edited by hand (a bare address or `Name <address>` is read too): Today leaves out an item only when every
+  mail it cites came from listed senders, the night drafts
+  them no reply (an open draft to one says *This sender is ignored*), and **Settings → Ignored senders** lists each with **Show again** (恢复显示). Each notice keeps
+  **Undo**. Mark done
   and the row's other actions on **Waiting on you** no longer repeat it, in
   green or quietly, whatever the row's reply state. On **Today** it is the
   same button: the row has no tick of its own, the strip's **Mark done** closes
@@ -948,9 +987,10 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   row, the head's tick is left out, since it would close the same); for one row it would repeat
   that row's strip button, so the card shows no green button and the row's
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
-  a phone too. Every handled row shows its strip that way unless the card's
-  green **Mark done** closes it: when every row of a card is handled, that green
-  button is its one visible lead and the strips wait for a hover or tap. A snapshot keeps Mark
+  a phone too. Since 1.9.6 every row of the open card shows its strip line (and so Mark done, Not now and Ignore)
+  without a hover or a tap, on a desktop and a phone alike; the notes under it (also on, the draft's reason,
+  a task's result) still open on hover or tap. The card head's **S** button is **Next card** (下一张): it only
+  deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to

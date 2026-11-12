@@ -1474,6 +1474,9 @@
     :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; }
     .thread-actions button { min-height: 44px; }
     .done-notice button { min-height: 44px; }
+    /* On a phone the bottom edge is the tab bar's and Send now sits in the page's flow, often just above it, so the
+       Undo notices drop from the top: they cover the date line for a few seconds, never a tab or Send. */
+    :is(.done-notice, .approval-undo) { top: 12px; bottom: auto; }
   }
   /* An archived app inside the notebook: familiar conversation, quiet hardware. */
   .session-tool-mark { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--ink); background: var(--rule); }
@@ -1740,6 +1743,7 @@
   .pd-seg a.on { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); outline: var(--hair) solid var(--rule); }
   .pd-rem { margin: 34px 0 0; max-width: 900px; }
   .pd-lede { margin: 0; font: var(--w-regular) var(--s-head)/1.65 var(--font); letter-spacing: .005em; color: var(--ink); }
+  .pd-lede .pd-asked { color: var(--grey); }  /* a promise gone stale is asked about, never shouted in red */
   .pd-basis { margin: 10px 0 0; color: var(--grey); font-size: var(--s-meta); }
   .pd-rule { border: 0; border-top: 1px solid var(--ink); margin: 30px 0 0; }
   .pd-legend { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 12px 0; color: var(--grey); font-size: var(--s-meta); }
@@ -2052,6 +2056,7 @@
   .slot-ref { color: var(--grey); border-bottom: var(--hair) dashed var(--pencil); }
   .choose-hint { font-size: var(--s-meta); color: var(--grey); }
   .choose-hint[hidden] { display: none; }
+  .choose-hint .slot-jump { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
   .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
   .qcard .qkind .handoff { margin: 0; }
   .qcard .qkind .handoff .btn-quiet { min-height: 28px; }
@@ -2138,12 +2143,12 @@
     .qcard.focal[data-step="send"]:not(.full) .qitem .qdone { display: none; }
     /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
        lines wait behind More, which stays in place of the first item. */
-    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull)) { display: none; }
-    /* On a phone the open draft's Send is a bar pinned above the bottom edge, however far down the draft starts. */
-    .qcard.focal.open .mail-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: var(--u2) var(--u3) var(--u3); border-top: var(--hair) solid var(--rule); }
-    #main:has(.qcard.focal.open .mail-actions) { padding-bottom: calc(var(--u6) + var(--u5)); }
-    /* Notices rise above the Send bar instead of covering it. */
-    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: calc(var(--u6) + var(--u4)); }
+    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
+    /* On a phone Send stays where the draft ends, right under REM's question, and comes into view with the draft.
+       It was pinned above the tab bar, and on real data it sat over the draft's first lines while the owner was
+       still reading the message above it (sprint 13); a bar that covers what it asks you to approve is worse
+       than one you scroll to. */
+    .qcard.focal.open .mail-actions { order: 3; padding: var(--u2) var(--u3) var(--u3); }
     .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
     /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
     /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
@@ -2151,7 +2156,7 @@
     .qcard.open .mail-actions > button { flex-shrink: 0; white-space: nowrap; }
     .qcard.open .mail-actions > .choose-hint { order: -1; flex-basis: 100%; }
     .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
-    .handoff .btn-quiet { min-height: 44px; }
+    .handoff .btn-quiet, .stale .stale-acts .btn-quiet { min-height: 44px; }
   }
   @keyframes today-rise { from { opacity: 0; transform: translateY(14px); } }
   @keyframes today-slide { from { opacity: 0; transform: translateX(12px); } }
@@ -2802,6 +2807,12 @@
   .reader-settings .foot { display: flex; flex-direction: column; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .set-row { display: flex; align-items: center; justify-content: space-between; gap: var(--u3); padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-k { color: var(--ink); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+  .set-ignored { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
+  .set-ignored ul { list-style: none; margin: 8px 0 0; padding: 0; }
+  .set-ignored li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--u3); padding: 4px 0; overflow-wrap: anywhere; }
+  .set-ignored li > :first-child { flex: 1 1 12em; color: var(--ink); }
+  /* An address has no spaces: on a phone the notice breaks it rather than run past the edge. */
+  .done-notice .sender-ignore { overflow-wrap: anywhere; text-align: left; }
   .set-note, .notebook-languages, .memory-legend, .foot-line { font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .notebook-languages, .set-rem, .memory-legend, .foot-line { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-rem { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -2899,6 +2910,11 @@
   .nh .legend { margin-left: 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
   .night-card:hover .legend, .night-card:focus-within .legend { opacity: 1; }
   .nb { display: flex; align-items: center; gap: 28px; }
+  /* A sparse three nights (nightSparse): one grey line under the title, and the people waiting take the row. */
+  .nh .nt { flex: none; white-space: nowrap; }
+  .nh .night-sum { margin-left: 8px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .night-card.sparse .faces { flex-direction: row; align-items: center; gap: 24px; padding: 6px 0 4px; }
+  .night-card.sparse .frow { flex: 1; min-width: 0; }
   .hyp-wrap { flex: 1; min-width: 0; }
   .hyp { display: block; width: 100%; height: auto; overflow: visible; }
   .hyp .lv line { stroke: var(--rule); stroke-dasharray: 2 4; }
@@ -2966,6 +2982,11 @@
   .qcard .qdone:hover { background: var(--raised); }
   .qcard .qmore, .qcard.open .qmore { display: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .qcard .qitem:is(:hover, :focus-within, .show, .handled) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
+  /* The strip itself (kind · Codex · Claude · 聊一聊 · 标为完成 · 忽略) is always shown on an open card, so Mark done and
+     Ignore are words you can see and tap once; the notes under it (also on, the draft's reason, a task's result)
+     keep the hover or tap reveal. Hover-only, an untouched card had no visible way to close a row (owner, 2026-11-12). */
+  .qcard.open .qitem .qmore:has(.handoff) { display: block; }
+  .qcard.open .qitem:not(:hover, :focus-within, .show, .handled):not(:has(.talk, .handed, .task-result)) .qmore > :not(.qkind) { display: none; }
   .qcard .qkind { gap: var(--u1) var(--u3); }
   .qcard .handoff-line .btn-quiet, .qcard .talk-menu summary { min-height: 30px; color: var(--ink); }
   .task-result { margin: 8px 0 0; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); color: var(--ink); }
@@ -3019,11 +3040,32 @@
   #night-sheet .night-done ul { list-style: none; margin: 0; padding: 0; }
   #night-sheet .night-done li { display: grid; gap: 2px; padding: 12px 0; border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   #night-sheet .night-done li b { color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
+  /* "Maybe over · still open?": grey words, no red, two quiet buttons per promise. */
+  .stale ul { list-style: none; margin: 0; padding: 0; }
+  .stale li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; padding: 8px 0;
+    border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .stale li:first-child { border-top: 0; padding-top: 0; }
+  .stale li > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: var(--w-bold); }
+  .stale :is(.stale-what, .stale-when) { grid-column: 1 / -1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stale .stale-what { color: var(--ink); }
+  .stale .stale-when { color: var(--grey); font-size: var(--s-meta); }
+  .stale .stale-acts { display: flex; gap: 2px; }
+  .stale .stale-acts .btn-quiet { min-height: 32px; padding: 0 8px; }
+  .stale .stale-more { display: inline-block; margin-top: 8px; color: var(--grey); font-size: var(--s-meta); }
 
   /* ---- Today: one fold below the desk ---- */
   .desk-more { display: grid; gap: 4px; margin: 44px 0 0; }
   .desk-more > details > summary, .desk-more .maint > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
   .desk-more > section { padding: 4px 0 12px; }
+  .overnight .night-tally { margin: 0 0 8px; max-width: 72ch; color: var(--ink); font: var(--w-regular) var(--s-body)/1.6 var(--font); }
+  /* Maintenance reads like the folds above it: a triangle, then "Maintenance · Nightly updates are on" as one
+     line. Its own flex row and "+" ran label, state and marker together here ("维护夜间更新已开启+"). */
+  .desk-more .maint > summary { list-style: disclosure-closed inside; }
+  .desk-more .maint[open] > summary { list-style: disclosure-open inside; }
+  .desk-more .maint > summary::after { content: none; }
+  .desk-more .maint > summary h2 { font: inherit; color: inherit; }
+  .desk-more .maint > summary .n { font: inherit; }
+  .desk-more .maint > summary .n:not(:empty)::before { content: " · "; }
 
   @media (max-width: 640px) {
     .night-card { padding: 10px 14px 6px; }
@@ -3042,17 +3084,13 @@
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
-    .today-brief .qcard.focal { padding-top: 14px; animation-name: n3-fade; }  /* no transform: Send is pinned inside it */
-    /* The pinned Send bar sits on the tab bar as one docked unit: flush, square where they meet, so no strip of the
-       page shows from one to the other (#2931). The tab bar paints above it, so its outline is the line between them. */
-    .qcard.focal.open .mail-actions { left: 12px; right: 12px; bottom: 76px; border: 0; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0;
-      background: var(--raised); box-shadow: var(--e3); }
-    body:has(.qcard.focal.open .mail-actions) .tabbar { border-top-left-radius: 0; border-top-right-radius: 0; }
-    body:has(.qcard.focal.open .mail-actions) :is(.done-notice, .approval-undo) { bottom: 164px; }
+    .today-brief .qcard.focal { padding-top: 14px; animation-name: n3-fade; }
     /* A phone's first screen is the faces and the card: the chart opens from its title (D-120). */
     .night-card:not(.chart-open) .hyp-wrap { display: none; }
     .nh .chart-toggle { display: inline-flex; }
     .nh .nt { display: none; }
+    .night-card.sparse .nh .nt { display: inline; }
+    .night-card.sparse .faces { gap: 8px; }
     .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
     .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
     .qdraft .mail-row .v > .addr { display: none; }
@@ -3383,7 +3421,7 @@ const UI = {
     "No one": "无",
     "Type your answer": "写下你的回答",
     "Your call": "我这边",
-    "Choose above before sending.": "先在上面选好，再发送。",
+    "1 choice left: ": "还有 1 处要选：", "{n} choices left: ": "还有 {n} 处要选：",
     "1 more person": "还有 1 人", "{n} more people": "还有 {n} 人",
     "Sent to {name}.": "已发给 {name}。",
     "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
@@ -3448,7 +3486,7 @@ const UI = {
     "Find": "查找",
     "Overnight": "昨夜",
     "REM drafted: ": "REM 已起草：",
-    "What REM did overnight": "昨夜 REM 替你做了", "Replied to 1 person for you": "替你回了 1 个人", "Replied to {n} people for you": "替你回了 {n} 个人", "Drafted a reply for 1 person": "为 1 个人起草了回信", "Drafted replies for {n} people": "为 {n} 个人起草了回信",
+    "What REM did overnight": "昨夜 REM 替你做了", "Replied to 1 person for you": "替你回了 1 个人", "Replied to {n} people for you": "替你回了 {n} 个人", "1 thing has a reply drafted": "1 件起草好了回信", "{n} things have a reply drafted": "{n} 件起草好了回信",
     "Prepared 1 task": "准备好 1 件任务", "Prepared {n} tasks": "准备好 {n} 件任务", "1 thing needs no reply": "1 件不用回", "{n} things need no reply": "{n} 件不用回",
     "1 thing was already handled": "1 件已经办完", "{n} things were already handled": "{n} 件已经办完",
     "Could not draft for 1 person": "有 1 个人没能起草", "Could not draft for {n} people": "有 {n} 个人没能起草",
@@ -3464,9 +3502,14 @@ const UI = {
     "Draft discarded": "草稿已丢弃",
     "No reply needed: ": "不用回：",
     "Marked done": "已完成",
-    "Done or skipped ({n})": "已完成或跳过（{n}）",
+    "{states} ({n})": "{states}（{n}）",
     "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
-    "Skipped — returns with new mail": "已跳过，收到新邮件时回来",
+    "Not now": "暂不处理", "Not now · returns with new mail": "暂不处理 · 有新邮件会回来", "Ignore": "忽略",
+    "Ignored · this one will not come back": "已忽略 · 这一条不会再回来", "Next card": "下一张", "Ignored": "已忽略",
+    "Stop showing mail from {address}": "以后不再显示 {address} 的邮件",
+    "Ignored · mail from {address} no longer shows here": "已忽略 · 以后不再显示 {address} 的邮件",
+    "Ignored senders": "已忽略的发件人", "Show again": "恢复显示", "Ignored {date}": "{date} 忽略",
+    "Their mail stays out of Today and gets no draft.": "他们的邮件不进今天，也不会起草回复。",
     "Saved in notebook": "已保存到笔记本",
     "Saved on this device — sync pending": "已保存在此设备，等待同步",
     "Saving…": "保存中…",
@@ -4113,9 +4156,12 @@ const UI = {
     "0 memories written": "尚未撰写记忆",
     "Browse {n} people →": "浏览 {n} 人 →",
     "{n} possible contacts are held for review and excluded from the People count.": "{n} 位可能的联系人待审核，暂未计入人物数量。",
-    "Nothing about your people or projects changed last night.": "昨夜没有记录到人物或项目的新变化。",
-    " {n} page was reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
-    " {n} pages were reworded; nothing new.": " {n} 页调整了措辞，没有新增内容。",
+    "Pages about your people and projects gained nothing new last night.": "人物和项目页面昨夜没有新增内容。",
+    "Pages about your people and projects gained nothing new last night; 1 page was only reworded.": "人物和项目页面昨夜没有新增内容，1 页只调整了措辞。",
+    "Pages about your people and projects gained nothing new last night; {n} pages were only reworded.": "人物和项目页面昨夜没有新增内容，{n} 页只调整了措辞。",
+    "Pages were last updated {date}: nothing new about your people or projects.": "页面上次更新在 {date}：人物和项目没有新增内容。",
+    "Pages were last updated {date}: nothing new about your people or projects; 1 page was only reworded.": "页面上次更新在 {date}：人物和项目没有新增内容，1 页只调整了措辞。",
+    "Pages were last updated {date}: nothing new about your people or projects; {n} pages were only reworded.": "页面上次更新在 {date}：人物和项目没有新增内容，{n} 页只调整了措辞。",
     "Model access was refused. Restore access before retrying.": "模型访问被拒绝，请恢复访问后再试。",
     "A request timed out.": "一次请求超时。",
     "A model usage limit was reached.": "已达到模型用量限制。",
@@ -4294,11 +4340,17 @@ const UI = {
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
     "Prepared a task for {name}": "为 {name} 备好一件任务", "Drafted a reply to {name}": "起草了给 {name} 的回信",
     "REM's work: {runs} runs, {n} replies and tasks prepared": "REM 的工作：{runs} 次运行，备好 {n} 件回信和任务",
+    "Last {d} days: 1 run of reading or rewriting; REM handled {n} things in Today": "近 {d} 天：读信或整理页面 1 次；今天的事 REM 处理了 {n} 件",
+    "Last {d} days: 1 run of reading or rewriting": "近 {d} 天：读信或整理页面 1 次",
+    "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today": "近 {d} 天没有读信、也没有整理页面；今天的事 REM 处理了 {n} 件",
+    "Last {d} days: no mail read and no page rewritten": "近 {d} 天没有读信、也没有整理页面",
     "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
     "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
+    "Maybe over": "可能已过期", "Maybe over · still open?": "可能已过期 · 还开着吗？", "Still open": "还开着",
+    "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Gone quiet →": "「久未推进」里还有 {n} 件 →",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
 };
@@ -5114,7 +5166,8 @@ function threadEntries() {
     const entries = new Map([...records.values()].flatMap(r => threads(r).items.map(t => [doneKey({r, t}), {r, t}])));
     const rows = REM.today_queue.map(row => {
       const chosen = entries.get(row.key);
-      if (!chosen) return null;
+      // A sender ignored since this page was built leaves at once; the next build leaves it out (today.py).
+      if (!chosen || row.sender && REM.ignored_senders?.[row.sender]) return null;
       const members = row.keys.map(key => entries.get(key)).filter(Boolean);
       const also = [...new Map(members.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
       return {...chosen, t: {...chosen.t, since: row.since, due: row.due, quiet: row.quiet, dir: row.dir}, also, members};
@@ -5210,7 +5263,16 @@ function threadStorageKey() {
 }
 function isDone(entry) {
   const value = threadStates[doneKey(entry)];
-  return ["done", "skipped"].includes(value?.state) && !value.returned_at;
+  return ["done", "skipped", "ignored"].includes(value?.state) && !value.returned_at;
+}
+// What the owner did, in his words: 忽略 is its own state (ignored), so an ignored ad never reads 已完成.
+function stateWord(state) {
+  return t(state === "skipped" ? "Not now" : state === "ignored" ? "Ignored" : "Marked done");
+}
+// A closed list's summary says what is inside it: "Marked done · Ignored (3)", only the states it holds.
+function closedSummary(values) {
+  const states = ["done", "skipped", "ignored"].filter(state => values.some(value => (value?.state || "done") === state));
+  return t("{states} ({n})", { states: states.map(stateWord).join(" · "), n: values.length });
 }
 // A mark names only the mail it cites, at the versions this page showed. It never carries the whole
 // table: past 64 KB the Host refused every Done, Undo and Skip (#2936).
@@ -5299,7 +5361,8 @@ function markDrafts(related, value, done, state) {
     } else if (value.draft_statuses[draft.id]?.version === draft.version) draft.status = value.draft_statuses[draft.id].status;
   }
 }
-function setDone(entry, done, state = "done", entries = [entry]) {
+// extra: one more choice the notice offers after Undo (忽略's "stop showing this sender"; see stripDone).
+function setDone(entry, done, state = "done", entries = [entry], extra = null) {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5314,11 +5377,11 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  const notice = done ? doneNotice(entry, state, entries) : null;
+  const notice = done ? doneNotice(entry, state, entries, extra) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       related.forEach((draft, i) => { draft.status = statuses[i]; });
-      notSavedNotice(() => setDone(entry, done, state, entries), notice);
+      notSavedNotice(() => setDone(entry, done, state, entries, extra), notice);
     }
     if (synced) render();
     // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
@@ -5347,22 +5410,23 @@ function focusRaisedCard() {
 }
 // The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
 // notice goes, the focus returns to the raised card, so the keys go on working.
-function doneNotice(entry, state, entries) {
+// extra: one more worded choice after Undo (忽略's "stop showing this sender"); it gets time to be read and tapped.
+function doneNotice(entry, state, entries, extra) {
   const undo = el("button", { type: "button", text: t("Undo") });
   undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Not now · returns with new mail" : state === "ignored" ? "Ignored · this one will not come back" : "Marked done"), " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
-  noticeLeaves(notice);
+  noticeLeaves(notice, extra ? 12000 : 5000);
   return notice;
 }
-function noticeLeaves(notice) {
+function noticeLeaves(notice, wait = 5000) {
   setTimeout(() => {
     const held = notice.contains(document.activeElement);
     notice.remove();
     if (held) focusRaisedCard();
-  }, 5000);
+  }, wait);
 }
 
 // The one thing to do next: write to the person the thread is with. The address and
@@ -5473,7 +5537,7 @@ function threadActions(entry, onPage = false, strip = false) {
   }
   const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry, !strip);
   return el("div", { class: "thread-actions" }, [
-    undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
+    undo ? el("span", { class: "done-tag", text: stateWord(threadStates[doneKey(entry)]?.state)
       + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : onPage ? quietOnly(primary) : primary,
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), strip && !undo ? null : done]);
 }
@@ -5550,7 +5614,7 @@ function draftNote(draft, entry) {
     return el("p", {class: "quiet-line draft-reason", text});
   }
   if (!draft) return null;
-  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
+  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Not now"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
 }
 // A reply is shown as the mail it will become: who it goes to, the subject, the
@@ -5581,6 +5645,25 @@ function slotChoices(part, fills, i, onChange, keep) {
   }
   return row;
 }
+// What a slot is called beside Send: the label the letter gives it ("Format: 【…】"), else REM's own words, short.
+function slotName(parts, i) {
+  const label = /(?:^|\n)[ \t]*([^\n:：]{1,24}?)[ \t]*[:：][ \t]*$/.exec(parts[i - 1] || "")?.[1];
+  const what = slotWhat(parts[i]).trim();
+  return label || (what.length > 24 ? what.slice(0, 22).replace(/\s+\S*$/, "") + "…" : what);
+}
+// "Choose above" did not say what: the hint names each choice still open, and a tap on a name takes you to it.
+function chooseHint(hint, open) {
+  const zh = uiLanguage === "zh";
+  hint.replaceChildren(t(open.length === 1 ? "1 choice left: " : "{n} choices left: ", { n: open.length }), ...open.flatMap(([name, row], k) => {
+    const jump = el("a", { href: "#", class: "slot-jump", text: name });
+    jump.onclick = event => {
+      event.preventDefault();
+      row.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
+      row.querySelector("button, input")?.focus({ preventScroll: true });
+    };
+    return [k ? (zh ? "、" : ", ") : "", jump];
+  }));
+}
 function replyDraftCard(draft, onSent) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
@@ -5593,9 +5676,12 @@ function replyDraftCard(draft, onSent) {
     status.textContent = "";
     if (REM.live) send.disabled = filled() === null;
     hint.hidden = filled() !== null;
+    const open = parts.map((part, i) => i).filter(i => isSlot(parts[i]) && !fills[i]);
+    if (open.length) chooseHint(hint, open.map(i => [slotName(parts, i), rowAt[i]]));
   };
-  const choiceRows = parts.map((part, i) => isSlot(part) ? slotChoices(part, fills, i, () => syncChoices(), draft.id && "slot:" + draft.id) : null).filter(Boolean);
-  const hint = el("span", { class: "choose-hint", text: t("Choose above before sending.") });
+  const rowAt = {};
+  const choiceRows = parts.map((part, i) => isSlot(part) ? (rowAt[i] = slotChoices(part, fills, i, () => syncChoices(), draft.id && "slot:" + draft.id)) : null).filter(Boolean);
+  const hint = el("span", { class: "choose-hint" });
   const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
@@ -5698,20 +5784,20 @@ function threadDecisionHistory(r) {
   const current = new Set(threads(r).items.map(t => doneKey({ r, t })));
   const saved = Object.entries(threadStates).filter(([key]) => key.startsWith(r.path + "\n") && !current.has(key));
   if (!saved.length) return null;
-  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: t("Done or skipped ({n})", { n: saved.length }) }),
+  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: closedSummary(saved.map(([, value]) => value)) }),
     el("ul", { class: "threads" }, saved.map(([key, value]) => {
       const entry = { r, t: { text: key.slice(r.path.length + 1) } };
       const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
       undo.onclick = () => setDone(entry, false);
       return el("li", {}, [privateFallback(el("span", { text: entry.t.text })), " · ",
-        el("span", { class: "done-tag", text: t(value.state === "skipped" ? "Skipped" : "Marked done")
+        el("span", { class: "done-tag", text: stateWord(value.state)
           + " · " + fmtDate(calendarDay(value.at || REM.as_of)) }), undo]);
     }))]);
 }
 function markedDone(entries) {
   const done = entries.filter(isDone);
   if (!done.length) return null;
-  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: t("Done or skipped ({n})", { n: done.length }) }),
+  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: closedSummary(done.map(entry => threadStates[doneKey(entry)])) }),
     el("p", { class: "quiet-line", text: t(Object.keys(pendingThreads).length
       ? "Saved on this device — sync pending" : "Saved in your notebook. Undo here or on the record page at any time.") }),
     el("ul", { class: "threads" }, done.map(({ r, t, also }) => threadRow(r, t, true, also, true)))]);
@@ -5730,8 +5816,10 @@ function threadCounterpart({ r, t }, person) {
 }
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
-  for (const { t } of threadEntries().filter(entry => !isDone(entry))) {
-    if (t.quiet) counts.quiet++;
+  for (const entry of threadEntries().filter(entry => !isDone(entry))) {
+    const t = entry.t;
+    // A stale promise is counted with the quiet ones, never as waiting (staleEntry).
+    if (t.quiet || staleEntry(entry)) counts.quiet++;
     else { counts[t.dir === "plain" ? "other" : t.dir]++; counts.open++; }
   }
   return counts;
@@ -6483,7 +6571,7 @@ function renderSettings() {
   foot.replaceChildren(
     row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
     row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
-    notebookLanguages(),
+    notebookLanguages(), ignoredSendersList(),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
     el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
       el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
@@ -6494,6 +6582,23 @@ function renderSettings() {
   state.setAttribute("aria-label", t("REM status") + " · " + words);
   state.classList.toggle("off", nightlyUpdatesOff());
   state.onclick = openSettings;
+}
+// Where an ignored sender is let back in: a quiet list, each with a worded button. Only the live page has one.
+function ignoredSendersList() {
+  const found = Object.entries(REM.ignored_senders || {});
+  if (!found.length || !liveHere()) return null;
+  return el("div", { class: "set-ignored" }, [el("div", { class: "set-k", text: t("Ignored senders") }),
+    el("div", { class: "set-note", text: t("Their mail stays out of Today and gets no draft.") }),
+    el("ul", {}, found.map(([address, day]) => {
+      const back = el("button", { type: "button", class: "btn-quiet", text: t("Show again") });
+      back.onclick = async () => {
+        back.disabled = true;
+        if (await saveIgnoredSender(address, false)) return;
+        back.disabled = false;
+        back.textContent = t("Not saved") + " · " + t("Try again");
+      };
+      return el("li", {}, [el("span", { text: shownAddress(address) }), el("span", { class: "set-note", text: t("Ignored {date}", { date: threadDate(day) }) }), back]);
+    }))]);
 }
 // REM's state in words, never a command (D-60): off, needs attention, or when the next pass runs.
 function remStateWords(s) {
@@ -6546,7 +6651,8 @@ function threadRow(r, thread, withPage, also = [], grouped = false, strip = fals
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage, strip && liveHere()), draftNote(threadDraft({ r, t: thread, also }))]),
-    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
+    // A stale promise keeps its date but not the red (staleEntry): it is asked about, not burning.
+    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread }) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
 function emptyLine(thread) {
@@ -6669,23 +6775,42 @@ function overnightChange(claim) {
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(), text: t("source"), title: t("Supported by the cited source") })]);
 }
 // What REM did overnight, one line per kind of work, each naming whom it was for.
-const NIGHT_DONE = [["prepared", "Drafted a reply for 1 person", "Drafted replies for {n} people"],
+const NIGHT_DONE = [["prepared", "1 thing has a reply drafted", "{n} things have a reply drafted"],
   ["task", "Prepared 1 task", "Prepared {n} tasks"], ["no_reply", "1 thing needs no reply", "{n} things need no reply"],
   ["already_handled", "1 thing was already handled", "{n} things were already handled"],
   ["could_not_prepare", "Could not draft for 1 person", "Could not draft for {n} people"]];
-function nightDone() {
+// One tally of what REM did with the open items it went through. The side line's number, the sheet's lines
+// and the Overnight section's sentence all read it, so they cannot disagree: on real data the line gave a count
+// while the section below spoke only of reworded pages. Every kind counts items, so the lines add up to the
+// number; the people are named beside them. What REM could not draft is listed but is not "handled".
+function nightTally() {
   const outcomes = [...new Map((REM.night_outcomes || []).map(o => [o.key, o])).values()].filter(o => byPath(o.record) && !byPath(o.record).private);
-  const rows = NIGHT_DONE.map(([kind, one, many]) => {
-    const records = [...new Set(outcomes.filter(o => o.kind === kind).map(o => o.record))].filter(path => path !== REM.owner).map(byPath);
-    const n = kind === "prepared" || kind === "could_not_prepare" ? records.length : outcomes.filter(o => o.kind === kind).length;
-    return n ? el("li", { "data-kind": kind }, [el("b", { text: t(n === 1 ? one : many, { n }) }), nightNames(records)]) : null;
-  }).filter(Boolean);
-  // Replies REM sent itself after the 10-minute hold (direct send), named first.
+  const kinds = NIGHT_DONE.map(([kind, one, many]) => {
+    const items = outcomes.filter(o => o.kind === kind), records = [...new Set(items.map(o => o.record))].filter(path => path !== REM.owner).map(byPath);
+    return { kind, records, text: n => t(n === 1 ? one : many, { n }), n: kind === "could_not_prepare" ? records.length : items.length };
+  });
+  // Replies REM sent itself after the 10-minute hold (direct send).
   const sent = [...new Set((REM.sent_by_rem || []).map(row => row.title).filter(Boolean))];
+  const n = kinds.filter(kind => kind.kind !== "could_not_prepare").reduce((sum, kind) => sum + kind.n, 0) + sent.length;
+  return { kinds, sent, n };
+}
+function nightDone(tally = nightTally()) {
+  const rows = tally.kinds.map(({ kind, records, text, n }) => n ? el("li", { "data-kind": kind }, [el("b", { text: text(n) }), nightNames(records)]) : null).filter(Boolean);
+  const sent = tally.sent;
   if (sent.length) rows.unshift(el("li", { "data-kind": "sent" }, [el("b", { text: t(sent.length === 1 ? "Replied to 1 person for you" : "Replied to {n} people for you", { n: sent.length }) }),
     el("span", { class: "who", text: sent.join(uiLanguage === "zh" ? "、" : ", ") })]));
   if (!rows.length) return null;
   return el("section", { class: "night-done", "aria-label": t("What REM did overnight") }, [el("h2", { text: t("What REM did overnight") }), el("ul", {}, rows)]);
+}
+// The same tally as one sentence: "REM handled 6 things overnight: 3 things have a reply drafted; …".
+function nightTallyLine(tally = nightTally()) {
+  if (!tally.n) return null;
+  const lower = text => uiLanguage === "zh" ? text : text[0].toLocaleLowerCase() + text.slice(1);
+  const parts = [...(tally.sent.length ? [t(tally.sent.length === 1 ? "Replied to 1 person for you" : "Replied to {n} people for you", { n: tally.sent.length })] : []),
+    ...tally.kinds.filter(kind => kind.kind !== "could_not_prepare" && kind.n).map(kind => kind.text(kind.n))].map(lower);
+  const zh = uiLanguage === "zh";
+  return el("p", { class: "night-tally" }, [t(tally.n === 1 ? "REM handled 1 thing overnight" : "REM handled {n} things overnight", { n: tally.n })
+    + (zh ? "：" : ": ") + parts.join(zh ? "，" : "; ") + (zh ? "。" : ".")]);
 }
 function nightNames(records) {
   const shown = records.slice(0, 3);
@@ -6695,7 +6820,7 @@ function nightNames(records) {
 function morningBrief() {
   const pass = lastPass(), claims = pass?.claims || [];
   const first = firstBuild(), title = first ? "First build" : "Overnight";
-  const brief = el("section", { class: "overnight", "aria-label": t(title) }, [sectionHead(title)]);
+  const brief = el("section", { class: "overnight", "aria-label": t(title) }, [sectionHead(title), nightTallyLine()].filter(Boolean));
   if (first) {
     if (pass.changed.length) brief.appendChild(el("p", { class: "quiet-line", text: t("Your notebook was just built. Overnight changes appear here after the next update.") }));
     if (!pass.failed.length && nightlyUpdatesOff()) brief.appendChild(el("div", { class: "translation-note" }, [
@@ -6704,12 +6829,22 @@ function morningBrief() {
     brief.appendChild(el("ul", { class: "overnight-changes" }, claims.slice(0, 3).map(overnightChange).filter(Boolean)));
     if (claims.length > 3) brief.appendChild(el("a", { class: "brief-more", href: "#view=changes", text: t("All {n} changes →", { n: claims.length }) }));
   } else {
-    const n = pass?.changed?.length || 0;
-    brief.appendChild(el("p", { class: "quiet-line", text: t("Nothing about your people or projects changed last night.") +
-      (n ? t(n === 1 ? " {n} page was reworded; nothing new." : " {n} pages were reworded; nothing new.", { n }) : "") }));
+    brief.appendChild(el("p", { class: "quiet-line pages-line", text: pagesLine(pass) }));
   }
   if (pass?.failed?.length) brief.append(failureSummary(pass), el("a", { class: "brief-more", href: "#view=activity", text: t("Review failed runs →") }));
   return brief;
+}
+// The pages' half of the night, said as pages, so it never reads as "nothing happened" under the tally of
+// what REM handled; a pass older than a day and a half names its date instead of calling itself last night.
+function pagesLine(pass) {
+  const n = pass?.changed?.length || 0, values = { n, date: pass ? fmtDate(calendarDay(new Date(pass.latest).toISOString())) : "" };
+  const dated = pass && Date.parse(REM.as_of) - pass.latest > 36 * HOUR;
+  if (dated) return t(!n ? "Pages were last updated {date}: nothing new about your people or projects."
+    : n === 1 ? "Pages were last updated {date}: nothing new about your people or projects; 1 page was only reworded."
+    : "Pages were last updated {date}: nothing new about your people or projects; {n} pages were only reworded.", values);
+  return t(!n ? "Pages about your people and projects gained nothing new last night."
+    : n === 1 ? "Pages about your people and projects gained nothing new last night; 1 page was only reworded."
+    : "Pages about your people and projects gained nothing new last night; {n} pages were only reworded.", values);
 }
 function failureSummary(pass) {
   // Name the recovery step without exposing private runner output.
@@ -6801,7 +6936,8 @@ function personGroups(entries) {
 }
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
-  entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status));
+  // A promise gone stale is asked about at the side, not counted as someone waiting.
+  entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status) && !staleEntry(entry));
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
@@ -6885,10 +7021,10 @@ function motionStilled() {
   return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("calm");
 }
 // A handled card slides right and fades, then the page re-renders with an Undo.
-function closeEntries(node, entries) {
+function closeEntries(node, entries, state = "done", extra = null) {
   if (!entries.length) return;
   node?.classList.add("leaving");
-  setTimeout(() => setDone(entries[0], true, "done", entries), motionStilled() ? 0 : 240);
+  setTimeout(() => setDone(entries[0], true, state, entries, extra), motionStilled() ? 0 : 240);
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
 // or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
@@ -6902,7 +7038,7 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1 || !st
   const done = tick
     ? el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
-  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Skip") + " · S", title: t("Skip") + " · S" }, [icon("skip")]) : null;
+  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip")]) : null;
   if (skip) skip.onclick = () => dealNext(1);
   return el("div", { class: "qhead" }, [
     el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
@@ -6928,7 +7064,8 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   // way the tick did: the row, or the card when it is the only one, slides out. A snapshot has no strip action
   // and keeps the tick.
   // E closes the whole card, so a row that is one of several does not claim the key.
-  const close = event => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry]);
+  // Mark done, Not now and Ignore all leave this way (state), so the three closes look alike.
+  const close = (event, state = "done", extra = null) => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry], state, extra);
   const done = stripMarksDone(entry) ? null
     : el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
   if (done) done.onclick = close;
@@ -7031,11 +7168,70 @@ function stripMarksDone(entry) {
   // A snapshot keeps Mark done where it always was, on the row itself; the strip there is disabled work.
   return !entry.ask && !!entry.r && !!entry.t && liveHere();
 }
+// Closing an item is Today's core verb (owner, 2026-11-12: «忽略和标记完成很重要，有的任务就是线下说了，或者现在不需要
+// 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
+// 标为完成 — handled, settled offline included (state done);
+// 暂不处理 — not needed now: the notebook's "skipped", which leaves Today and returns when new mail arrives on the thread;
+// 忽略 — an ad or a notification: the state "ignored", which closes like done and never returns, and reads 已忽略. Its
+// notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
+// itself: a relay address carries many different people, so the owner taps it.
 function stripDone(entry, mark) {
   if (!stripMarksDone(entry)) return [];
-  const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
-  done.onclick = mark || (() => setDone(entry, true));
-  return [done];
+  // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.
+  const close = (state, extra = null) => event => mark ? mark(event, state, extra) : setDone(entry, true, state, [entry], extra);
+  const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
+  done.onclick = close("done");
+  const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
+  later.onclick = close("skipped");
+  const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
+  const sender = todayRow(entry)?.sender;
+  ignore.onclick = close("ignored", sender ? () => stopSenderButton(entry, sender) : null);
+  return [done, later, ignore];
+}
+// The notice's "stop showing mail from x": once saved, the notice says what was ignored and its one Undo
+// reopens the item and lets the sender back. A save the Host refused says so, with Try again, and changes nothing.
+function stopSenderButton(entry, address) {
+  const shown = shownAddress(address, entry);
+  const button = el("button", { type: "button", class: "sender-ignore", text: t("Stop showing mail from {address}", { address: shown }) });
+  const stop = async () => {
+    button.disabled = true;
+    if (!await saveIgnoredSender(address, true)) {
+      button.disabled = false;
+      return notSavedNotice(retryReplacing(stop), null);
+    }
+    const notice = document.getElementById("done-notice"), undo = el("button", { type: "button", text: t("Undo") });
+    const back = async () => {
+      if (!await saveIgnoredSender(address, false)) return notSavedNotice(retryReplacing(back), null);
+      document.getElementById("done-notice")?.remove();
+      setDone(entry, false, "done", [entry]);
+      focusRaisedCard();
+    };
+    undo.onclick = back;
+    notice?.replaceChildren(t("Ignored · mail from {address} no longer shows here", { address: shown }), " · ", undo, " · ", t("Saved in notebook"));
+    undo.focus({ preventScroll: true });
+  };
+  button.onclick = stop;
+  return button;
+}
+// Try again replaces the notice's earlier Not saved line instead of adding another.
+function retryReplacing(retry) {
+  return () => { document.querySelector("#done-notice [role=alert]")?.remove(); retry(); };
+}
+// With labelled passages hidden, an address shows only its domain: always in Settings, which cannot tell
+// which row it came from, and in a notice when its row carries a [personal] or [sensitive] passage.
+function shownAddress(address, entry = null) {
+  const hidden = document.documentElement.classList.contains("hide-private");
+  return hidden && (!entry || hasPrivacy(entry.t.originalText || entry.t.text)) ? "•••@" + address.split("@").pop() : address;
+}
+// The Host's list comes back whole; the page redraws from it, so every row from that sender goes or returns together.
+async function saveIgnoredSender(address, ignored) {
+  const reply = await hostPost("/rem/sender", { address, ignored });
+  if (!reply.ok) return false;
+  REM.ignored_senders = reply.ignored || {};
+  threadEntries.cached = null;
+  render();
+  if (document.getElementById("settings")?.open) renderSettings();
+  return true;
 }
 // One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成
 function dotted(nodes) {
@@ -7225,7 +7421,7 @@ function mailboxLink(entry) {
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
-  const items = entries.filter(({ t }) => t.quiet);
+  const items = entries.filter(entry => entry.t.quiet || staleEntry(entry));
   if (!items.length) return null;
   return el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
@@ -7268,7 +7464,7 @@ function taskView(kind) {
   if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
-    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
+    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet && !staleEntry(row));
     const rowFor = row => {
       const node = threadRow(row.r, row.t, true, row.also, true, true);
       node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
@@ -7584,7 +7780,7 @@ function overview() {
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
   main.append(...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts, todayEntries(entries).filter(staleEntry))]),
     todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
@@ -7629,10 +7825,11 @@ function nightCard(groups, current, ticked) {
   const n = groups.length;
   const count = el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(n) }),
     el("span", { text: n ? t(n === 1 ? "person waiting on you" : "people waiting on you") : t("Nobody is waiting on you today.") })]);
-  const chart = nightChart(current);
-  return el("section", { class: "night-card card", "aria-label": t("Night chart") }, [
-    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), chartToggle(), el("span", { class: "legend", text: chart.legend })]) : null,
-    el("div", { class: "nb" + (chart ? "" : " solo") }, [chart?.svg, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+  const chart = nightChart(current), full = !!chart?.svg;
+  return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
+    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
+      el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
+    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
 }
 // The night chart: a hypnogram of REM's real work, read from the run logs (reading mail sits at the first
 // depth, rewriting and translating pages at the deepest) and from when each reply or task was prepared (the
@@ -7670,6 +7867,8 @@ function nightChart(current, narrow = window.innerWidth <= 640) {
   const runs = nightRuns(), rises = nightRises();
   const times = [...runs.map(run => run.from), ...rises.map(rise => rise.at)];
   if (!times.length) return null;
+  const sparse = nightSparse(runs, nightWindow(times, false));
+  if (sparse) return { sparse };
   const { start, end } = nightWindow(times, narrow), x = at => NIGHT_X + (Math.min(end, Math.max(start, at)) - start) / (end - start) * width;
   const shown = runs.filter(run => run.to >= start && run.from <= end).sort((a, b) => a.from - b.from);
   const marks = rises.filter(rise => rise.at >= start && rise.at <= end).sort((a, b) => a.at - b.at);
@@ -7685,6 +7884,19 @@ function nightChart(current, narrow = window.innerWidth <= 640) {
       + esc(when(rise.at) + " · " + t(rise.kind === "task" ? "Prepared a task for {name}" : "Drafted a reply to {name}", { name: threadWho(rise.r) })) + "</title></line>").join("")
     + nightFaces(marks, x, current, width) + nightDays(start, end, x) + '<circle class="now" cx="' + x(end).toFixed(1) + '" cy="' + LEVEL.idle + '" r="4"/></svg>';
   return { svg, legend: t("Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages") };
+}
+// The chart earns the top row only when the three nights hold at least two runs of reading or rewriting: with
+// fewer it is a flat line with a dot or two and says no more than
+// a sentence. Then it is that sentence, and the people waiting take the row. Decided on the desktop's three
+// nights at every width, so a phone's shorter window never folds a chart the desk would draw.
+const NIGHT_MIN_RUNS = 2;
+function nightSparse(runs, { start, end }) {
+  const shown = runs.filter(run => run.to >= start && run.from <= end).length;
+  if (shown >= NIGHT_MIN_RUNS) return null;
+  // Its count of what REM handled is the side line's (nightTally), so the two never read as a contradiction.
+  const n = nightTally().n, values = { d: Math.max(1, Math.round((end - start) / DAY_MS)), n };
+  return t(shown ? (n ? "Last {d} days: 1 run of reading or rewriting; REM handled {n} things in Today" : "Last {d} days: 1 run of reading or rewriting")
+    : n ? "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today" : "Last {d} days: no mail read and no page rewritten", values);
 }
 // One stepped line: runs closer than a few pixels are one stretch at the deepest of their depths.
 function nightPath(spans, width) {
@@ -7726,8 +7938,38 @@ function nightSummary(runs, marks) {
   return t("REM's work: {runs} runs, {n} replies and tasks prepared", { runs: runs.length, n: marks.length });
 }
 // The side column: what others owe and what can be approved at once, a memory to recall, what REM did overnight.
-function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), recallPrompt(), nightLine()].filter(Boolean));
+function todaySide(counts, stale) {
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), staleWidget(stale), recallPrompt(), nightLine()].filter(Boolean));
+}
+// Promises long past their date with no word since (staleEntry): asked about once, quietly, never in red.
+// Mark done closes one the way the card's Mark done does; Still open puts it back among the people waiting.
+function staleWidget(entries) {
+  if (!entries.length) return null;
+  const rows = entries.slice(0, 3).map(entry => {
+    const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
+    const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
+    done.onclick = () => setDone(entry, true);
+    const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open") });
+    keep.onclick = () => keepStale(entry);
+    const { words } = morningWords(entry.t.text, entry.r, entry.t);
+    return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
+      el("p", { class: "stale-what", text: words, title: words }),
+      el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
+  });
+  return el("section", { id: "today-stale", class: "widget stale", "aria-label": t("Maybe over") }, [
+    el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Maybe over · still open?") })]), el("ul", {}, rows),
+    entries.length > 3 ? staleMore(entries.length - 3) : null]);
+}
+// The rest are in Waiting's folded Gone quiet section: the link says so, opens it and brings it into view.
+function staleMore(n) {
+  const link = el("a", { class: "stale-more", href: "#view=open", text: t("{n} more in Gone quiet →", { n }) });
+  link.onclick = () => addEventListener("hashchange", () => requestAnimationFrame(() => {
+    const quiet = document.getElementById("gone-quiet");
+    if (!quiet) return;
+    quiet.open = true;
+    quiet.scrollIntoView({ block: "start" });
+  }), { once: true });
+  return link;
 }
 // What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
 // sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
@@ -7744,10 +7986,8 @@ function othersWidget(counts) {
 }
 // What REM did overnight, as one quiet line; 看 opens the list with every name.
 function nightLine() {
-  const done = nightDone();
+  const tally = nightTally(), done = nightDone(tally), n = tally.n;
   if (!done) return null;
-  const n = [...new Set((REM.night_outcomes || []).filter(o => o.kind !== "could_not_prepare" && byPath(o.record) && !byPath(o.record).private).map(o => o.key))].length
-    + new Set((REM.sent_by_rem || []).map(row => row.title).filter(Boolean)).size;
   const look = el("button", { type: "button", class: "link-btn", text: t("See") });
   look.onclick = () => openNightSheet(done);
   return el("div", { class: "closed" }, [icon("check"), el("span", { text: n ? t(n === 1 ? "REM handled 1 thing overnight" : "REM handled {n} things overnight", { n }) : t("What REM did overnight") }), look]);
@@ -7948,6 +8188,29 @@ function firstName(r) { return r.title.replace(/\(.*?\)/g, "").trim().split(/\s+
 function notDoneStorageKey() { return "co-rem-not-done:" + shortHash(REM.root || ""); }
 function queuedReply(entry) { return (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply; }
 function overdueDays(thread) { return thread.due && thread.due < calendarDay(REM.as_of) ? daysSince(thread.due) : 0; }
+// A promise whose date passed more than 60 days ago, with no message on its thread for 60 days either, is
+// almost always done or dropped, not burning: on real data a months-old promise led Today in red. It
+// leaves the count and the red, and Today asks "still open?" instead. 60 is the span after which an undated
+// thread goes quiet (today.py), so a dated one gets no less patience. A promise with no dated message at all stays
+// live: nothing says the thread went silent. The owner's "still open" is kept on this device with its day
+// (keptOpen) and holds for another 60 days, then Today asks again.
+const STALE_DAYS = 60;
+let keptOpen = {};
+function keptOpenStorageKey() { return "co-rem-kept-open:" + shortHash(REM.root || ""); }
+function stalePromise(due, since) {
+  return !!due && !!since && due < calendarDay(REM.as_of) && daysSince(due) > STALE_DAYS && daysSince(since) > STALE_DAYS;
+}
+function staleEntry(entry) {
+  const kept = keptOpen[doneKey(entry)];
+  return !entry.t.returnedAt && !(kept && daysSince(kept) <= STALE_DAYS) && stalePromise(entry.t.due, entry.t.since);
+}
+function keepStale(entry) {
+  keptOpen[doneKey(entry)] = calendarDay(REM.as_of);
+  readerStorage(keptOpenStorageKey(), JSON.stringify(keptOpen));
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
+}
 // Your later mail looks like it settled the ask; an overdue promise is never settled by it.
 function looksDone(entry) {
   return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
@@ -8295,7 +8558,7 @@ function personTopics(r) {
 }
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
-  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency);
+  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet && !staleEntry(entry)).sort(byUrgency);
 }
 function peopleSpark(r) {
   const weeks = r.index?.relationship?.weekly_messages;
@@ -8466,6 +8729,8 @@ const PD_ZH = {
   "{total} projects on record. Today {ok} are on track and {quiet} are quiet.": "记下 {total} 个项目。今天 {ok} 个正常、{quiet} 个安静。",
   "On {project}, a promise to {who} is {n} days late.": "{project} 上欠 {who} 的一件事已经晚了 {n} 天。",
   "On {project}, a promise is {n} days late.": "{project} 上有一件答应过的事已经晚了 {n} 天。",
+  "1 promise is more than {d} days past its date with no word since; it may be over.": "有 1 件承诺过期超过 {d} 天、之后没有新消息，可能已经结束。",
+  "{n} promises are more than {d} days past their date with no word since; they may be over.": "有 {n} 件承诺过期超过 {d} 天、之后没有新消息，可能已经结束。",
   ", ": "、",
   "REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes":
     "REM {when} 的快照 · 按规则生成，依据 {n} 个项目页、{m} 个会话日与 {k} 条逾期承诺 · 虚线下划线是推测 · 换刻度，这句话跟着换",
@@ -8589,7 +8854,7 @@ function projectMarks(r, today = projectAsOfDay(REM.as_of)) {
   for (const item of projectDueItems(r)) {
     const promise = (item.promised || []).find(p => p.date === item.due);
     (item.promised || []).forEach(p => covered.add(p.date + "|" + p.text));
-    marks.set(item.due + "|" + item.text, { day: item.due, text: promise?.text || projectShort(item.text), owed: true, who: item.who || "", item: item.text });
+    marks.set(item.due + "|" + item.text, { day: item.due, text: promise?.text || projectShort(item.text), owed: true, who: item.who || "", item: item.text, since: projectItemSince(item) });
   }
   for (const p of [...(r.promised || []), ...(r.written_deadlines || [])])
     if (p.date && !covered.has(p.date + "|" + p.text) && !marks.has(p.date + "|" + p.text)) marks.set(p.date + "|" + p.text, { day: p.date, text: p.text, owed: false, who: "" });
@@ -8608,11 +8873,20 @@ function projectItemWhat(text) {
   what = what.split(/\s+[—–]\s+|\s*[“"「]/)[0].trim().replace(/[.。:：]$/, "");
   return what.length > 72 ? what.slice(0, 70).replace(/\s+\S*$/, "") + "…" : what;
 }
+// The thread's last word, as Today reads it (today.py: the latest cited message): project_obligations.py's
+// own since is the request day, which would call a promise stale on Projects while a message last week keeps it
+// live on Today.
+function projectItemSince(item) {
+  const days = (item.sources || []).map(s => REM.source_context?.[s.source]?.time).filter(Boolean).map(calendarDay).sort();
+  return days.at(-1) || item.since || "";
+}
 // The oldest late mark, with its age in days.
 function projectLate(r) {
   const mark = projectMarks(r).find(m => m.state === "late");
   return mark ? { ...mark, days: daysSince(mark.day) } : null;
 }
+// Late marks the headline may shout about, and those it only mentions: Today's rule (stalePromise) decides.
+function projectLateMarks(r, stale) { return projectMarks(r).filter(m => m.state === "late" && stalePromise(m.day, m.since) === stale); }
 
 // ---- sessions: the days an agent session touched the project (relations and session records) ----
 function projectSessionIndex() {
@@ -8741,13 +9015,15 @@ function projectLede(all, win) {
       { total: all.length, first: first.title, date: pdDay(first.started.slice(0, 10), true), ok: counts.ok, quiet: counts.quiet })
       : pdT("{total} projects on record. Today {ok} are on track and {quiet} are quiet.", { total: all.length, ok: counts.ok, quiet: counts.quiet });
   }
-  const worst = all.map(r => [r, projectLate(r)]).filter(([, late]) => late).sort((a, b) => b[1].days - a[1].days)[0];
+  const worst = all.map(r => [r, projectLateMarks(r, false)[0]]).filter(([, mark]) => mark).map(([r, mark]) => [r, { ...mark, days: daysSince(mark.day) }])
+    .sort((a, b) => b[1].days - a[1].days)[0];
   const late = worst ? pdT(pdWho(worst[1].who) ? "On {project}, a promise to {who} is {n} days late." : "On {project}, a promise is {n} days late.",
     { project: worst[0].title, who: pdWho(worst[1].who), n: worst[1].days }) : "";
-  const lates = all.reduce((n, r) => n + projectMarks(r).filter(m => m.state === "late").length, 0);
+  const lates = all.reduce((n, r) => n + projectLateMarks(r, false).length, 0), stale = all.reduce((n, r) => n + projectLateMarks(r, true).length, 0);
+  const asked = stale ? pdT(stale === 1 ? "1 promise is more than {d} days past its date with no word since; it may be over." : "{n} promises are more than {d} days past their date with no word since; they may be over.", { n: stale, d: STALE_DAYS }) : "";
   const sessionDays = all.reduce((n, r) => n + projectSessionDays(r).length, 0);
   return el("section", { class: "pd-rem" }, [
-    el("p", { class: "pd-lede" }, [line, late ? " " : null, late ? el("span", { class: "red", text: late }) : null]),
+    el("p", { class: "pd-lede" }, [line, late ? " " : null, late ? el("span", { class: "red", text: late }) : null, asked ? " " : null, asked ? el("span", { class: "pd-asked", text: asked }) : null]),
     el("p", { class: "pd-basis", text: pdT("REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes",
       { when: fmtTime(REM.as_of), n: all.length, m: sessionDays, k: lates }) })]);
 }
@@ -12797,8 +13073,16 @@ function onTodayCard(path, act) {
   window.addEventListener("hashchange", run, { once: true });
   location.hash = "";
 }
+// A closed dialog leaves the page in its "close" event, which the browser fires a task later. Until then its node is
+// still here: only an open one may stop a second ⌘K, or ⌘K right after a pick or Esc did nothing at all.
+function dropClosed(id) {
+  const old = document.getElementById(id);
+  if (old?.open) return false;
+  old?.remove();
+  return true;
+}
 function openPalette() {
-  if (document.getElementById("palette")) return;
+  if (!dropClosed("palette")) return;
   const items = paletteItems();
   const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-list", autocomplete: "off", spellcheck: "false",
     "aria-label": t("Search or run a command"), placeholder: t("Search people, projects, pages — or type an action") });
@@ -12842,6 +13126,7 @@ function openPalette() {
 }
 const SHORTCUTS = [["J / K", "Next or previous card"], ["S", "Skip to the next card"], ["E", "Mark done (the card in focus)"], ["R", "Reply"], ["⌘K", "Search or run a command"], ["/", "Search"], ["?", "These shortcuts"], ["Esc", "Close"]];
 function openShortcuts() {
+  if (!dropClosed("shortcuts")) return;
   const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
   const dialog = el("dialog", { id: "shortcuts", class: "palette shortcuts", "aria-labelledby": "shortcuts-title" }, [
     el("h2", { id: "shortcuts-title", text: t("Keyboard shortcuts") }),
@@ -13091,11 +13376,12 @@ window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
-  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone]) => {
+  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone, kept]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   morePeopleColumns = columns === "more";
   peopleTable = peopleMode === "table";
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
+  keptOpen = kept ? JSON.parse(kept) : {};
   const fallback = saved ? JSON.parse(saved) : null;
   pendingThreads = fallback?.pending || Object.fromEntries((done ? JSON.parse(done) : []).map(key => [key, { state: "done" }]));
   notebookThreads = { ...REM.threads };

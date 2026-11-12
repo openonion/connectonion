@@ -205,12 +205,12 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     assert rows.count() >= 4
     for i in range(rows.count()):
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Hand to Codex", "Hand to Claude", "Mark done"]  # the row's one Mark done (2026-11-11)
+        assert names == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]  # one of each per row (2026-11-12)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done"]
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]
         assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
@@ -240,7 +240,7 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     assert len(cards) >= 3 and max(len(card["rows"]) for card in cards) > 1
     for card in cards:
         assert [row["ticks"] for row in card["rows"]] == [0] * len(card["rows"]), card
-        assert all(row["own"] == ["btn-quiet"] for row in card["rows"]), card     # the strip's, on every row
+        assert all(row["own"] == ["btn-quiet strip-done"] for row in card["rows"]), card     # the strip's, on every row
         assert card["step"] == 0 or len(card["rows"]) > 1, card                  # a green Mark done only closes several
         assert card["head"] == (1 if len(card["rows"]) > 1 else 0), card           # the tick only where it closes several
     mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
@@ -248,8 +248,8 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()
     row = mara.locator(".qitem").filter(has_text="budget forecast")
     done = row.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True)
-    assert not done.is_visible()                       # the strip is the row's second level: quiet until the row is hovered
-    row.hover()
+    page.mouse.move(0, 0)
+    assert done.is_visible()                           # sprint 13: the strip's words show without a hover (owner, 2026-11-12)
     done.click()
     row.wait_for(state="detached")
     assert mara.locator(".qitem").count() == 1 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 0
@@ -285,7 +285,7 @@ def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
     assert card.get_by_text("No reply needed: She confirmed she has the receipts.").is_visible()
     page.set_viewport_size({"width": 390, "height": 900})
     assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
-    # A card whose rows are all handled leads with its one green Mark done; its rows' strips wait for a hover.
+    # A card whose rows are all handled leads with its one green Mark done; each row still shows its own (sprint 13).
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate("() => { REM.live = true; window.looksDone = entry => entry.r.path === 'people/mara-ostrowski.md'; render();"
                   " dealCard('people/mara-ostrowski.md'); }", isolated_context=False)
@@ -293,7 +293,7 @@ def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
     mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
     assert mara.locator(".qitem").count() == 2 and mara.get_attribute("data-step") == "done"
     assert mara.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).is_visible()
-    assert not mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
+    assert mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
 
 
 def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_errors(today):
@@ -353,7 +353,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
 
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
 def test_send_never_covers_the_draft_head_or_the_choice_row(today, size):
-    """D-10: To, Subject and Send all readable at once; on a phone the pinned Send bar covers neither."""
+    """D-10: To, Subject and Send all readable at once; on a phone the Send bar covers neither."""
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -450,12 +450,19 @@ def test_the_undo_leaves_when_the_hold_ends_and_the_phone_bar_stays_clear(today)
     card.get_by_role("button", name="Send", exact=True).click()
     note = page.locator(".qsent")
     note.get_by_role("button", name="Undo", exact=True).wait_for()
-    # The next ready reply is open; its Send bar is still pinned though the sent line now leads the list.
+    # The next ready reply is open; its Send stays in the draft's flow (sprint 13: a pinned bar covered the draft),
+    # and a notice never lands on it while it is in view.
     bar = page.locator(".qcard.open .mail-actions")
-    assert bar.evaluate("node => getComputedStyle(node).position") == "fixed"
+    assert bar.evaluate("node => getComputedStyle(node).position") == "static"
     page.evaluate("() => setDone(threadEntries().find(e => e.r.path === 'orgs/fernhill-labs.md'), true)", isolated_context=False)
-    notice = page.locator("#done-notice").bounding_box()
-    assert notice["y"] + notice["height"] <= bar.bounding_box()["y"]
+    tabs = page.locator("#tabbar").bounding_box()
+    # Send in the middle, and Send just above the tab bar (where a thumb reaches it): the notice covers neither.
+    for place in ("center", "bottom"):
+        bar.evaluate("""(node, place) => { node.scrollIntoView({block: 'center'});
+          if (place === 'bottom') scrollBy(0, node.getBoundingClientRect().bottom - (innerHeight - 96)); }""", place)
+        notice, box = page.locator("#done-notice").bounding_box(), bar.bounding_box()
+        assert notice["y"] + notice["height"] <= box["y"] or box["y"] + box["height"] <= notice["y"], (place, notice, box)
+        assert notice["y"] + notice["height"] <= tabs["y"]
     page.wait_for_timeout(3000)
     assert note.get_by_role("button", name="Undo", exact=True).count() == 0
 
@@ -524,7 +531,7 @@ def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(tod
 
 def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today):
     """N3 (D-123): on a phone the rail and the ⌘K bar give way to a floating tab bar (今天 · 等你 · 人物 · 搜索 · 更多);
-    Send stays pinned just above it, and 更多 opens every other place as a sheet."""
+    Send sits in the draft above it, and 更多 opens every other place as a sheet."""
     page, _, _ = today
     page.set_viewport_size({"width": 390, "height": 844})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -536,7 +543,10 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     toggle = page.locator(".nav-toggle")
     assert toggle.inner_text().split()[-1] == "More" and toggle.get_attribute("aria-expanded") == "false"
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
-    assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
+    assert _box_inside(page, toggle, 0)
+    # Send is in the draft's flow (sprint 13): brought into view, it sits clear above the tab bar.
+    send.scroll_into_view_if_needed()
+    send.evaluate("node => node.scrollIntoView({block: 'center'})")
     assert send.bounding_box()["y"] + send.bounding_box()["height"] <= tabs.bounding_box()["y"]
     assert toggle.bounding_box()["height"] >= 44
     assert not page.locator(".search").is_visible()
@@ -569,37 +579,6 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
     assert _box_inside(page, send, 16)
-
-
-# What is painted on top at each point from the Send bar's bottom edge to the tab bar's top edge that is neither bar.
-UNDER_THE_SEND_BAR = """() => {
-  const send = document.querySelector('.qcard.focal.open .mail-actions'), tabs = document.getElementById('tabbar');
-  const a = send.getBoundingClientRect(), b = tabs.getBoundingClientRect(), seen = new Set();
-  for (let y = a.bottom; y <= b.top; y++)
-    for (let x = Math.max(a.left, b.left); x < Math.min(a.right, b.right); x++) {
-      const top = document.elementFromPoint(x, y);
-      const words = [...top.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent.trim()).join(' ');
-      if (!send.contains(top) && !tabs.contains(top)) seen.add(`<${top.localName} class="${top.getAttribute('class') || ''}"> ${words}`.trim());
-    }
-  return [...seen];
-}"""
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_nothing_of_the_page_shows_between_the_pinned_send_bar_and_the_tab_bar(today, lang):
-    """#2931: on a phone, with Today at the top, the label of the widget below the raised card showed cut in half in
-    the gap between the two bars. They are one docked unit: every point from one to the other is painted by a bar."""
-    page, _, _ = today
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.evaluate(OVERDUE, isolated_context=False)
-    page.evaluate(DRAFT, True, isolated_context=False)
-    page.evaluate("lang => { setInterfaceLanguage(lang); scrollTo(0, 0); }", lang, isolated_context=False)
-    assert page.locator(".qcard.focal.open .mail-actions").evaluate("node => getComputedStyle(node).position") == "fixed"
-    assert page.locator(".others .wt").count() == 1 and page.evaluate("scrollY", isolated_context=False) == 0
-    shown = page.evaluate(UNDER_THE_SEND_BAR, isolated_context=False)
-    assert not shown, shown
-    if os.environ.get("CO_REM_SHOTS"):
-        page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-phone-docked-{lang}.png"))
 
 
 def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
@@ -751,6 +730,9 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
       // Each person waiting has a rise of their own in the night chart, two hours apart, so each has a face there.
       REM.night_outcomes = todayGroups(threadEntries().filter(e => !isDone(e))).map(({ r }, i) => ({key: r.path, record: r.path, title: r.title,
         kind: 'prepared', prepared_at: new Date(Date.parse('2026-10-08T02:00:00Z') + i * 7200000).toISOString()}));
+      // Two runs in the three nights, so the chart is drawn in full rather than folded to a line (nightSparse).
+      REM.logs = [...REM.logs, {phase: 'sync', started_at: '2026-10-07T03:00:00Z', finished_at: '2026-10-07T03:14:00Z', items: 9},
+        {phase: 'daily-update', started_at: '2026-10-08T03:00:00Z', finished_at: '2026-10-08T03:20:00Z', items: 0}];
       render(); }""", isolated_context=False)
     card = page.locator(".today-brief .qcard.focal")
     start = card.get_attribute("data-path")

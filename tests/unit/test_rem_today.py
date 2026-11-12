@@ -226,10 +226,11 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('stripMarksDone', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const setDone = (entry, done) => calls.push(['setDone', entry.t.text, done]);
+      const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
+      const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
-      const own = stripDone(entry), slide = stripDone(entry, event => calls.push(['close', event]));
-      own[0].onclick(); slide[0].onclick('click');
+      const own = stripDone(entry), slide = stripDone(entry, (event, state) => calls.push(['close', event, state]));
+      own[0].onclick(); own[2].onclick(); slide.forEach(button => button.onclick('click'));
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
@@ -237,8 +238,12 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
       location.protocol = 'http:'; REM.live = false; shown.snapshot = stripDone(entry).length;
       console.log(JSON.stringify(shown));
     ''')
-    assert result['own'] == [['button', 'btn-quiet', 'Mark done']]
-    assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True], ['close', 'click']]
+    assert result['own'] == [['button', 'btn-quiet strip-done', 'Mark done'], ['button', 'btn-quiet strip-later', 'Not now'],
+                             ['button', 'btn-quiet strip-ignore', 'Ignore']]
+    # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
+    assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
     assert {key: result[key] for key in ('ask', 'bare', 'file', 'snapshot')} == {
         'ask': 0, 'bare': 0, 'file': 0, 'snapshot': 0}
 
@@ -290,9 +295,9 @@ def test_a_live_today_row_has_one_mark_done_and_it_slides_the_row_out():
       two.filter(mark => mark.where === 'row').forEach(click);
       console.log(JSON.stringify({one: seen(one), alone, two: seen(two), several: closed}));
     ''')
-    assert result['one'] == [['row', 'btn-quiet', 'Mark done']]
+    assert result['one'] == [['row', 'btn-quiet strip-done', 'Mark done']]
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['two'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done']]
+    assert result['two'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     assert result['several'] == [['.qitem', ['feedback']], ['.qitem', ['slides']]]
 
 
@@ -309,11 +314,11 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
       both.filter(mark => mark.where === 'step').forEach(click);
       console.log(JSON.stringify({single: seen(single), alone, mixed: seen(mixed), both: seen(both), together: closed}));
     ''')
-    assert result['single'] == [['row', 'btn-quiet', 'Mark done']]
+    assert result['single'] == [['row', 'btn-quiet strip-done', 'Mark done']]
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['mixed'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done']]
+    assert result['mixed'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     # Every row handled: the green step closes them all, so the head's tick, which would too, is not drawn (E stays).
-    assert result['both'] == [['row', 'btn-quiet', 'Mark done'], ['row', 'btn-quiet', 'Mark done'], ['step', 'btn-act', 'Mark done']]
+    assert result['both'] == [['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done'], ['step', 'btn-act', 'Mark done']]
     assert result['together'] == [['.qcard', ['feedback', 'slides']]]
 
 
@@ -501,7 +506,7 @@ def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
       const REM = {owner: 'people/owner.md'};
       const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
       const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];
-      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null;
+      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null, staleEntry = () => false;
       const doneKey = entry => entry.r.path + '\n' + entry.t.text;
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')

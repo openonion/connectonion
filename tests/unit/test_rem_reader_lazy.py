@@ -1,6 +1,7 @@
 """Today works without loading the notebook's full records or conversations."""
 
 import json
+from datetime import date, timedelta
 import re
 import shutil
 import subprocess
@@ -66,7 +67,7 @@ def test_offline_startup_finishes_details_without_navigation():
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
-      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done';
+      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();
       const frames = [];
       function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}
@@ -81,11 +82,13 @@ def test_offline_startup_finishes_details_without_navigation():
 def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monkeypatch):
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
     prepare(tmp_path)
-    Notebook(tmp_path).write('people/alice.md', '''# Alice
+    # Ten days late: overdue and red, not yet the stale promise Today only asks about (STALE_DAYS).
+    late = (date.today() - timedelta(days=10)).isoformat()
+    Notebook(tmp_path).write('people/alice.md', f'''# Alice
 ## Facts
 - Email: alice@example.test
 ## Open threads
-- You owe Alice feedback by 2000-01-01 [1].
+- You owe Alice feedback by {late} [1].
 ## Sources
 - [1] gmail:fixture — feedback request
 ''')

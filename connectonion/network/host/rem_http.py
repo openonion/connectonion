@@ -12,7 +12,8 @@ cookie and redirects to the bare /rem, so the token leaves the address bar.
 POST /rem/task hands any unfinished row to Codex or Claude and follows it
 (run, status, stop, undo, result); POST /rem/talk is a conversation with the
 agent about a row or an archived session (begin, say, read); POST /rem/review
-records the owner's verdict on a review in 问题与关联 (reviews.decide).
+records the owner's verdict on a review in 问题与关联 (reviews.decide); POST /rem/sender
+ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender).
 
 Only loopback clients, and only a Host header naming loopback (a rebound DNS
 name gets nothing), are answered. A translation runs in a worker thread; the
@@ -91,7 +92,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -155,15 +156,23 @@ async def _action(scope, receive, send, root, headers):
                              else approvals.approve(root, body["ids"], bodies=body.get("bodies")))
     elif scope["path"] == "/rem/thread":
         if (not isinstance(body.get("key"), str) or "\n" not in body["key"]
-                or body.get("state") not in ("done", "skipped", "open")
+                or body.get("state") not in ("done", "skipped", "ignored", "open")
                 or not isinstance(body.get("device"), (str, type(None)))
                 or not isinstance(body.get("keys"), (list, type(None)))
                 or any(not isinstance(key, str) for key in body.get("keys") or [])
                 or not isinstance(body.get("versions"), (dict, type(None)))
                 or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
-            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped or open"}), "application/json")
+            await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped, ignored or open"}), "application/json")
             return
         operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+    elif scope["path"] == "/rem/sender":
+        from ...rem.files import EMAIL
+        # 忽略 this sender from Today, or undo it: one address, never a pattern that could stop a whole domain.
+        if (not isinstance(body.get("address"), str) or len(body["address"]) > 254
+                or not EMAIL.fullmatch(body["address"]) or not isinstance(body.get("ignored"), bool)):
+            await _reply(send, 400, json.dumps({"error": "Expected one mail address and ignored true or false"}), "application/json")
+            return
+        operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
     elif scope["path"] == "/rem/language":
         from ...rem.config import request_language
         operation = lambda: request_language(root, body.get("language"))
