@@ -666,8 +666,9 @@ def test_payg_refusal_keeps_price_and_safe_dispatch_state(post):
 @patch('requests.get')
 @pytest.mark.parametrize('mutate', [mark_read, mark_unread])
 def test_an_id_from_get_emails_goes_straight_into_mark_read(mock_get, mock_post, mutate, sample_emails_backend_format):
-    """get_emails() returns integer ids; the documented loop passes them back unchanged (#2965)."""
-    mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"emails": sample_emails_backend_format}))
+    """The backend sends integer ids; the documented loop passes them back unchanged (#2965)."""
+    backend = [{**email, "id": 7000 + n} for n, email in enumerate(sample_emails_backend_format)]
+    mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"emails": backend}))
     mock_post.return_value = MagicMock(status_code=200)
 
     emails = get_emails()
