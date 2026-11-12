@@ -373,8 +373,6 @@ def handle_email_default(address: str):
     if not token:
         _print_no_auth()
         raise typer.Exit(1)
-    if address.isdigit():
-        address = _listed_address(int(address))
 
     r = requests.post(
         f"{backend_url()}/api/v1/email/addresses/default",
@@ -387,15 +385,6 @@ def handle_email_default(address: str):
         raise typer.Exit(1)
 
     console.print(f"\n[green]✓[/green] {address} is now the default sender\n")
-
-
-def _listed_address(number: int) -> str:
-    """The Nth row of `co email addresses`, counting from 1."""
-    addresses = _address_settings()[1]["addresses"]
-    if not 1 <= number <= len(addresses):
-        console.print(f"\n[red]✗ No address number {number}; co email addresses lists {len(addresses)}.[/red]\n")
-        raise typer.Exit(1)
-    return addresses[number - 1]["address"]
 
 
 def _address_settings():
@@ -498,20 +487,17 @@ def handle_email_addresses():
         # Plain print, not console.print: Rich expands \t into spaces.
         for a in addresses:
             print(f"{a['address']}\t{'default' if a.get('is_default') else ''}")
-        print('Choose default: co email default <row number or address>')
         print('Add another: co email setup <alias> --domain <domain> (co email domains lists choices)')
         print('Send as one with: co email send <to> "<subject>" "<body>" --from <address>')
         return
 
     table = Table(title="📧 Your addresses", show_header=True, header_style="bold cyan")
-    table.add_column("#")
     table.add_column("Address")
     table.add_column("Default")
     table.add_column("Since")
 
-    for number, a in enumerate(addresses, 1):
+    for a in addresses:
         table.add_row(
-            str(number),
             str(a["address"]),
             "[green]✓[/green]" if a.get("is_default") else "",
             str(a.get("created_at") or "")[:10],

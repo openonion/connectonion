@@ -158,18 +158,3 @@ def test_an_owned_address_is_recognized_when_its_domain_closes_to_new_purchases(
     assert result.exit_code == 0, result.output
     assert result.output.strip() == 'Already owned: iron.share@steadmail.com'
     cloud[1].assert_not_called()
-
-
-@pytest.mark.parametrize('number,chosen', [('1', 'iron.share@mail.openonion.ai')])
-def test_default_accepts_a_row_number_from_the_listing(cloud, number, chosen):
-    cloud[1].return_value = response({'address': chosen, 'is_default': True})
-    result = CliRunner().invoke(app, ['email', 'default', number])
-    assert result.exit_code == 0, result.output
-    assert cloud[1].call_args.kwargs['json'] == {'address': chosen}
-
-
-def test_default_refuses_a_row_number_that_is_not_listed(cloud):
-    result = CliRunner().invoke(app, ['email', 'default', '7'])
-    assert result.exit_code == 1
-    assert 'No address number 7' in result.output
-    cloud[1].assert_not_called()
