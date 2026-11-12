@@ -34,7 +34,8 @@ def notebook_links(origin: str, text: str) -> list[str]:
 def organisation_links(record: str, text: str) -> list[str]:
     from .facts import parse
     label = 'Company' if record.startswith('people/') else 'Organisation'
-    return list(dict.fromkeys(path for fact in parse(text, record).get(label, [])
+    # A labelled Company line is the person's private business: it does not place them in the org.
+    return list(dict.fromkeys(path for fact in parse(text, record).get(label, []) if not PRIVATE.search(fact['value'])
                              for path in notebook_links(record, fact['value']) if path.startswith('orgs/')))
 
 
@@ -290,7 +291,8 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
     edges = {}
     for origin in paths:
         for rel in links.get(origin, []):
-            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths:
+            # A link made only on a labelled line is private: it draws no edge.
+            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths or rel.get('private'):
                 continue
             a, b = sorted((folded.get(origin, origin), folded.get(rel['path'], rel['path'])))
             if a != b:

@@ -1060,11 +1060,16 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   under the title, in the reader's date format; when the file was last
   updated is noted in the Full memory and sources header. An organisation is
   private only when its title carries `[personal]`/`[sensitive]` or its Kind
-  is personal; a labelled passage in its body hides that passage alone, as on
-  a person's page, and a person listed only on a labelled line is not drawn
-  into its structure. A project's folder path stays in its full memory, never
-  as a fact on the page, and session summaries that say "the owner" read as
-  you / 你. In 中文 mode,
+  is personal. A labelled passage in its body shows with its label in the
+  first line, What they do, Lately and the full memory, and hides alone when
+  labelled passages are hidden, as on a person's page; the time line's ticks
+  never carry one. A labelled membership (the org's own roster line, or a
+  Company, Unit or Role in unit line on the person's page) places nobody in
+  the organisation and draws no edge on the map. A project's folder path
+  stays in its full memory, never as a fact on the page. A session summary
+  that opens a sentence with "The owner asked…" or "Owner 询问…" reads as
+  You / 你; "the owner of", "is the owner", present tense and a named owner
+  are left as written. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
   Investigated records omit the redundant status pill; mapped and partly

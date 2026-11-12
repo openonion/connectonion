@@ -4566,17 +4566,13 @@ function youify(text) {
     .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
 }
 // Session summaries are stored with the role word: "The owner asked…", "Owner 询问…". The reader says
-// you / 你 at display time and the notebook keeps its words. Only the role word changes: in "Mara is the
-// Product Owner" or "Product Owner 负责" it is someone's title, so a Latin word before it leaves it alone.
+// You / 你 at display time and the notebook keeps its words. Only the subject of a finished act at the
+// start of a sentence changes: "the owner of the repo", "is the owner", "The owner Ida…", present tense
+// ("The owner wants" would need "You want") and "Mara（owner）" can name someone else, so they stay.
 function ownerAsYou(text) {
-  const you = (T, rest) => (T === "T" ? "Y" : "y") + rest, verb = { has: "have", is: "are", was: "were" };
-  return String(text || "")
-    .replace(/\s*\b[Oo]wner\b\s*/g, (word, at, all) => /^[\p{Script=Han}，。、：；）”]/u.test(all.slice(at + word.length))
-      && !/[A-Za-z]$/.test(all.slice(0, at)) ? "你" : word)
-    .replace(/(^|[.!?]\s+)Owner\b(?= [a-z])/g, "$1The owner")
-    .replace(/\b([Tt])he owner['’]s\b/g, (m, T) => you(T, "our"))
-    .replace(/\b([Tt])he owner (has|is|was)\b/g, (m, T, v) => you(T, "ou " + verb[v]))
-    .replace(/\b([Tt])he owner\b/g, (m, T) => you(T, "ou"));
+  const did = /(^|[.!?]\s+)(?:The owner|Owner)\s+(?=(?:[a-z]+ed|said|sent|made|wrote|gave|took|told|chose|set|put|kept|left|met|paid|found|got|brought|ran|began|saw|led|built|read|spent|won|lost)\b)/g;
+  const didZh = /(^|[。！？]\s*)Owner\s*(?=询问|要求|提出|确认|表示|决定|批准|同意|指出|说明|提到|选择|发送|上传|打开|补充|追问|反馈|分享|转发|安排|指示|让|请)/g;
+  return String(text || "").replace(did, "$1You ").replace(didZh, "$1你");
 }
 // Privacy labels trail a sentence or clause in either writing system. Keep
 // code and link targets atomic so a filename's dot cannot expose its prefix.
@@ -9182,7 +9178,17 @@ function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.tit
 function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
 function orgKind(r) { return r.unit_kind ? orgT(r.unit_kind) : r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
 function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
-function orgRelation(r) { return firstSentence(plainLine(r.to_you || "") || plainLine(facts(r).how || "") || known(r).summary); }
+// The first sentence of what the organisation is to you, labels kept: a labelled passage is held as one
+// token so it never ends the sentence, and orgProse shows it behind its own reveal. The source is the
+// first one with something public in it, so hiding labelled passages never empties the line.
+function orgRelation(r) {
+  const k = known(r), lead = k.intro || (k.kept.find(s => !MECHANICAL.has(s.title.toLowerCase())) || { text: "" }).text;
+  const text = [r.to_you, facts(r).how, lead].find(value => plainLine(value || "")) || "", held = [];
+  const masked = privatePassages(plainLine(text, true), passage => "\u0006" + (held.push(passage) - 1) + "\u0006");
+  return firstSentence(masked).replace(/\u0006(\d+)\u0006/g, (_, i) => held[i]);
+}
+// Organisation prose with each labelled passage in its own .private span, as on a person's page.
+function orgProse(text) { return text ? privateFallback(el("span", { class: "ov-prose", html: inline(text, "") })) : null; }
 function orgHidden(r) {
   const seen = new Set();
   for (let page = r; page && !seen.has(page.path); page = byPath(page.parent)) {
@@ -9325,7 +9331,7 @@ function orgRow(o) {
   const { r, owed } = o, hidden = orgHidden(r), kind = hidden ? "" : orgKind(r);
   const state = owed.some(overdue) ? orgChip("late", orgT("Overdue")) : owed.length > 1 ? orgChip("lamp", orgT("{n} items", { n: owed.length }))
     : owed.length ? el("span", { class: "ov-dot lamp", title: orgT("Waiting on you") }) : null;
-  const meta = hidden ? orgLock() : owed.length ? owedWords(owed[0]).title + (owed.length > 1 ? " · " + orgT("{n} more", { n: owed.length - 1 }) : "") : orgRelation(r);
+  const meta = hidden ? orgLock() : owed.length ? owedWords(owed[0]).title + (owed.length > 1 ? " · " + orgT("{n} more", { n: owed.length - 1 }) : "") : orgProse(orgRelation(r));
   return el("a", { class: "ov-row", href: href(r) }, [orgTile(r), el("div", { class: "ov-body" }, [
     el("div", { class: "ov-t" }, [orgName(r), hidden ? null : updatedMarker(r), kind ? el("small", { class: "ov-kind" + (r.kind ? "" : " unknown"), text: kind }) : null]),
     r.domain ? el("small", { class: "ov-domain", text: r.domain }) : null,
@@ -9438,7 +9444,8 @@ function orgThing(entry) { return owedWords(entry).title.split(/\s+[—–]\s+|[
 function orgSub(r, people) {
   if (known(r).status === "Mapped") return [orgT("Not investigated yet") + " · " + orgT("REM only knows its domain and {n} people", { n: people.length })];
   if (orgUnknown(r) && !r.kind) return [[orgT("Not sure what this is yet"), people.length ? people.slice(0, 2).map(orgFirstName).join("、") + " " + orgT("writes from it") : ""].filter(Boolean).join(" · ")];
-  return [[orgKind(r), datesInProse(orgRelation(r))].filter(Boolean).join(" · ")];
+  const kind = orgKind(r), relation = orgProse(datesInProse(orgRelation(r)));
+  return [kind, kind && relation ? " · " : "", relation].filter(Boolean);
 }
 // A unit's crumb is its whole chain, so a team opens back up to its course and university.
 function orgCrumb(r) {
@@ -9654,13 +9661,14 @@ function orgEventKey(day, words, people) {
 function orgHistory(r, people) {
   const seen = new Set();
   return [r, ...people].flatMap(page => historyItems((section(page, "history") || { text: "" }).text)
-    .filter(item => item.day.length === 10).map(item => ({ ...item, page, words: withoutDateClutter(plainLine(item.text)) })))
+    .filter(item => item.day.length === 10).map(item => ({ ...item, page, words: withoutDateClutter(plainLine(item.text, true)) })))
     .filter(item => /[\p{L}\p{N}]/u.test(item.words))
     .filter(item => { const key = orgEventKey(item.day, item.words, people); return !seen.has(key) && seen.add(key); });
 }
 function orgEvents(r, people) {
-  return orgHistory(r, people).map(item => ({ day: item.day, words: item.words, kind: /^you\b/i.test(item.words) ? "me" : "them" }))
-    .sort((a, b) => a.day.localeCompare(b.day));
+  // The fuse's tooltips are not re-drawn when labelled passages are hidden, so they never carry one.
+  return orgHistory(r, people).map(item => ({ day: item.day, words: unlabelled(item.words).trim(), kind: /^you\b/i.test(item.words) ? "me" : "them" }))
+    .filter(e => /[\p{L}\p{N}]/u.test(e.words)).sort((a, b) => a.day.localeCompare(b.day));
 }
 // Linear from the first dated exchange to today: every tick sits at its real date, nothing is spaced for looks.
 function orgScale(events, today, left, width) {
@@ -9758,8 +9766,8 @@ function orgQuestions(r, people) {
     ...(r.hierarchy_issues || [])].filter(Boolean).slice(0, 3);
 }
 function orgCoda(v) {
-  const r = v.r, fact = name => (parseFacts(r).get(name) || []).map(item => plainLine(item.value)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
-  const about = [["What", fact("What they do")], ["Website", fact("Website").replace(/^https?:\/\/(?:www\.)?|\/$/g, "") || r.domain || ""], ["Where", fact("Location")]].filter(([, value]) => value);
+  const r = v.r, fact = (name, keep = false) => (parseFacts(r).get(name) || []).map(item => plainLine(item.value, keep)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
+  const about = [["What", orgProse(fact("What they do", true))], ["Website", fact("Website").replace(/^https?:\/\/(?:www\.)?|\/$/g, "") || r.domain || ""], ["Where", fact("Location")]].filter(([, value]) => value);
   const sources = sourceList(r).length, unsure = orgQuestions(r, v.people);
   return el("footer", { class: "ov-coda" }, [
     about.length ? el("p", { class: "ov-about" }, about.flatMap(([name, value], i) => [i ? " · " : "", el("span", { class: "ov-meta", text: orgT(name) + " " }), value])) : null,
@@ -9840,6 +9848,13 @@ function orgTimeline(r, people) {
   return el("section", { class: "ov-section" }, [el("h2", {}, [orgT("Lately"), el("span", { class: "ov-hint", text: orgT("newest first") })]), list, more]);
 }
 function orgMoment(item) {
+  if (hasPrivacy(item.words)) {
+    const content = privateFallback(el("span", { class: "ov-x" }, [item.page.category === "people" ? el("b", { text: orgFirstName(item.page) + " " }) : null,
+      el("span", { html: inline(item.words, "") })]));
+    return el("li", { class: "ov-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [
+      el("span", { class: "ov-d", text: uiLanguage === "zh" ? Number(item.day.slice(8)) + "日" : String(Number(item.day.slice(8))) }),
+      el("span", { class: "ov-w" }, [el("i", { class: /^you\b/i.test(item.words) ? "me" : "" })]), content]);
+  }
   const mine = /^you\b/i.test(item.words), name = item.page.category === "people" ? orgFirstName(item.page) : "";
   const lead = mine ? item.words.split(/\s+/)[0] : name && item.words.startsWith(name) ? name : "";
   const words = lead ? [el("b", { text: lead }), item.words.slice(lead.length)] : [name ? el("b", { text: name }) : null, (name ? " " : "") + item.words];
