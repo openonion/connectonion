@@ -1454,6 +1454,9 @@
     :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; }
     .thread-actions button { min-height: 44px; }
     .done-notice button { min-height: 44px; }
+    /* On a phone the bottom edge is the tab bar's and Send now sits in the page's flow, often just above it, so the
+       Undo notices drop from the top: they cover the date line for a few seconds, never a tab or Send. */
+    :is(.done-notice, .approval-undo) { top: 12px; bottom: auto; }
   }
   /* An archived app inside the notebook: familiar conversation, quiet hardware. */
   .session-tool-mark { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--ink); background: var(--rule); }
@@ -5763,8 +5766,10 @@ function threadCounterpart({ r, t }, person) {
 }
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
-  for (const { t } of threadEntries().filter(entry => !isDone(entry))) {
-    if (t.quiet) counts.quiet++;
+  for (const entry of threadEntries().filter(entry => !isDone(entry))) {
+    const t = entry.t;
+    // A stale promise is counted with the quiet ones, never as waiting (staleEntry).
+    if (t.quiet || staleEntry(entry)) counts.quiet++;
     else { counts[t.dir === "plain" ? "other" : t.dir]++; counts.open++; }
   }
   return counts;
@@ -6580,7 +6585,8 @@ function threadRow(r, thread, withPage, also = [], grouped = false, strip = fals
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
       withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage, strip && liveHere()), draftNote(threadDraft({ r, t: thread, also }))]),
-    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
+    // A stale promise keeps its date but not the red (staleEntry): it is asked about, not burning.
+    el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread }) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
 
 function emptyLine(thread) {
@@ -7294,7 +7300,7 @@ function mailboxLink(entry) {
 }
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
-  const items = entries.filter(({ t }) => t.quiet);
+  const items = entries.filter(entry => entry.t.quiet || staleEntry(entry));
   if (!items.length) return null;
   return el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
     home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
@@ -7337,7 +7343,7 @@ function taskView(kind) {
   if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
-    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet);
+    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet && !staleEntry(row));
     const rowFor = row => {
       const node = threadRow(row.r, row.t, true, row.also, true, true);
       node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
@@ -7823,11 +7829,11 @@ function staleWidget(entries) {
     const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
     done.onclick = () => setDone(entry, true);
     const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open") });
-    keep.onclick = () => keepOpen(entry);
+    keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
     return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
       el("p", { class: "stale-what", text: words, title: words }),
-      el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since || entry.t.due) }) })]);
+      el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
   });
   return el("section", { id: "today-stale", class: "widget stale", "aria-label": t("Maybe over") }, [
     el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Maybe over · still open?") })]), el("ul", {}, rows),
@@ -8053,13 +8059,26 @@ function overdueDays(thread) { return thread.due && thread.due < calendarDay(REM
 // A promise whose date passed more than 60 days ago, with no message on its thread for 60 days either, is
 // almost always done or dropped, not burning: on real data a months-old promise led Today in red. It
 // leaves the count and the red, and Today asks "still open?" instead. 60 is the span after which an undated
-// thread goes quiet (today.py), so a dated one gets no less patience. The owner's "still open" (notDoneKeys,
-// the store Not done yet already uses) brings it back.
+// thread goes quiet (today.py), so a dated one gets no less patience. A promise with no dated message at all stays
+// live: nothing says the thread went silent. The owner's "still open" is kept on this device with its day
+// (keptOpen) and holds for another 60 days, then Today asks again.
 const STALE_DAYS = 60;
+let keptOpen = {};
+function keptOpenStorageKey() { return "co-rem-kept-open:" + shortHash(REM.root || ""); }
 function stalePromise(due, since) {
-  return !!due && due < calendarDay(REM.as_of) && daysSince(due) > STALE_DAYS && (!since || daysSince(since) > STALE_DAYS);
+  return !!due && !!since && due < calendarDay(REM.as_of) && daysSince(due) > STALE_DAYS && daysSince(since) > STALE_DAYS;
 }
-function staleEntry(entry) { return !entry.t.returnedAt && !notDoneKeys.has(doneKey(entry)) && stalePromise(entry.t.due, entry.t.since); }
+function staleEntry(entry) {
+  const kept = keptOpen[doneKey(entry)];
+  return !entry.t.returnedAt && !(kept && daysSince(kept) <= STALE_DAYS) && stalePromise(entry.t.due, entry.t.since);
+}
+function keepStale(entry) {
+  keptOpen[doneKey(entry)] = calendarDay(REM.as_of);
+  readerStorage(keptOpenStorageKey(), JSON.stringify(keptOpen));
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
+}
 // Your later mail looks like it settled the ask; an overdue promise is never settled by it.
 function looksDone(entry) {
   return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
@@ -8407,7 +8426,7 @@ function personTopics(r) {
 }
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
-  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet).sort(byUrgency);
+  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet && !staleEntry(entry)).sort(byUrgency);
 }
 function peopleSpark(r) {
   const weeks = r.index?.relationship?.weekly_messages;
@@ -8577,8 +8596,8 @@ const PD_ZH = {
   "{total} projects on record. Today {ok} are on track and {quiet} are quiet.": "记下 {total} 个项目。今天 {ok} 个正常、{quiet} 个安静。",
   "On {project}, a promise to {who} is {n} days late.": "{project} 上欠 {who} 的一件事已经晚了 {n} 天。",
   "On {project}, a promise is {n} days late.": "{project} 上有一件答应过的事已经晚了 {n} 天。",
-  "1 promise is more than 60 days past its date with no word since; it may be over.": "有 1 件承诺过期超过 60 天、之后没有新消息，可能已经结束。",
-  "{n} promises are more than 60 days past their date with no word since; they may be over.": "有 {n} 件承诺过期超过 60 天、之后没有新消息，可能已经结束。",
+  "1 promise is more than {d} days past its date with no word since; it may be over.": "有 1 件承诺过期超过 {d} 天、之后没有新消息，可能已经结束。",
+  "{n} promises are more than {d} days past their date with no word since; they may be over.": "有 {n} 件承诺过期超过 {d} 天、之后没有新消息，可能已经结束。",
   ", ": "、",
   "REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes":
     "REM {when} 的快照 · 按规则生成，依据 {n} 个项目页、{m} 个会话日与 {k} 条逾期承诺 · 虚线下划线是推测 · 换刻度，这句话跟着换",
@@ -8702,7 +8721,7 @@ function projectMarks(r, today = projectAsOfDay(REM.as_of)) {
   for (const item of projectDueItems(r)) {
     const promise = (item.promised || []).find(p => p.date === item.due);
     (item.promised || []).forEach(p => covered.add(p.date + "|" + p.text));
-    marks.set(item.due + "|" + item.text, { day: item.due, text: promise?.text || projectShort(item.text), owed: true, who: item.who || "", item: item.text, since: item.since || "" });
+    marks.set(item.due + "|" + item.text, { day: item.due, text: promise?.text || projectShort(item.text), owed: true, who: item.who || "", item: item.text, since: projectItemSince(item) });
   }
   for (const p of [...(r.promised || []), ...(r.written_deadlines || [])])
     if (p.date && !covered.has(p.date + "|" + p.text) && !marks.has(p.date + "|" + p.text)) marks.set(p.date + "|" + p.text, { day: p.date, text: p.text, owed: false, who: "" });
@@ -8720,6 +8739,13 @@ function projectItemWhat(text) {
     .replace(/^(?:the user owes [^:：]{1,60}|[^:：]{1,60} asked the user)[:：]\s*/i, "");
   what = what.split(/\s+[—–]\s+|\s*[“"「]/)[0].trim().replace(/[.。:：]$/, "");
   return what.length > 72 ? what.slice(0, 70).replace(/\s+\S*$/, "") + "…" : what;
+}
+// The thread's last word, as Today reads it (today.py: the latest cited message): project_obligations.py's
+// own since is the request day, which would call a promise stale on Projects while a message last week keeps it
+// live on Today.
+function projectItemSince(item) {
+  const days = (item.sources || []).map(s => REM.source_context?.[s.source]?.time).filter(Boolean).map(calendarDay).sort();
+  return days.at(-1) || item.since || "";
 }
 // The oldest late mark, with its age in days.
 function projectLate(r) {
@@ -8861,7 +8887,7 @@ function projectLede(all, win) {
   const late = worst ? pdT(pdWho(worst[1].who) ? "On {project}, a promise to {who} is {n} days late." : "On {project}, a promise is {n} days late.",
     { project: worst[0].title, who: pdWho(worst[1].who), n: worst[1].days }) : "";
   const lates = all.reduce((n, r) => n + projectLateMarks(r, false).length, 0), stale = all.reduce((n, r) => n + projectLateMarks(r, true).length, 0);
-  const asked = stale ? pdT(stale === 1 ? "1 promise is more than 60 days past its date with no word since; it may be over." : "{n} promises are more than 60 days past their date with no word since; they may be over.", { n: stale }) : "";
+  const asked = stale ? pdT(stale === 1 ? "1 promise is more than {d} days past its date with no word since; it may be over." : "{n} promises are more than {d} days past their date with no word since; they may be over.", { n: stale, d: STALE_DAYS }) : "";
   const sessionDays = all.reduce((n, r) => n + projectSessionDays(r).length, 0);
   return el("section", { class: "pd-rem" }, [
     el("p", { class: "pd-lede" }, [line, late ? " " : null, late ? el("span", { class: "red", text: late }) : null, asked ? " " : null, asked ? el("span", { class: "pd-asked", text: asked }) : null]),
@@ -13067,11 +13093,12 @@ window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
-  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone]) => {
+  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone, kept]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   morePeopleColumns = columns === "more";
   peopleTable = peopleMode === "table";
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
+  keptOpen = kept ? JSON.parse(kept) : {};
   const fallback = saved ? JSON.parse(saved) : null;
   pendingThreads = fallback?.pending || Object.fromEntries((done ? JSON.parse(done) : []).map(key => [key, { state: "done" }]));
   notebookThreads = { ...REM.threads };

@@ -71,7 +71,8 @@ def test_the_letter_starts_on_the_first_phone_screen_above_the_send_bar(today, l
 def test_more_on_a_phone_brings_back_every_item_and_its_hand_off(today, lang):
     page, _, _ = today
     card = _open(page, lang, "two")
-    assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_hidden()
+    # The first row's strip (and its Mark done, Not now, Ignore) shows from the start (sprint 13); the second row waits.
+    assert card.locator(".qitem").nth(1).is_hidden() and card.locator(".handoff").first.is_visible()
     card.locator(".qitem .words").first.click()  # a tap opens the row's second level (D-120)
     card.locator(".qfull").click()
     assert card.locator(".qitem").nth(1).is_visible() and card.locator(".handoff").first.is_visible()

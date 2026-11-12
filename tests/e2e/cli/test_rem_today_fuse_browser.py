@@ -205,12 +205,12 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     assert rows.count() >= 4
     for i in range(rows.count()):
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Hand to Codex", "Hand to Claude", "Mark done"]  # the row's one Mark done (2026-11-11)
+        assert names == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]  # one of each per row (2026-11-12)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done"]
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]
         assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
@@ -353,7 +353,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
 
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
 def test_send_never_covers_the_draft_head_or_the_choice_row(today, size):
-    """D-10: To, Subject and Send all readable at once; on a phone the pinned Send bar covers neither."""
+    """D-10: To, Subject and Send all readable at once; on a phone the Send bar covers neither."""
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -455,9 +455,14 @@ def test_the_undo_leaves_when_the_hold_ends_and_the_phone_bar_stays_clear(today)
     bar = page.locator(".qcard.open .mail-actions")
     assert bar.evaluate("node => getComputedStyle(node).position") == "static"
     page.evaluate("() => setDone(threadEntries().find(e => e.r.path === 'orgs/fernhill-labs.md'), true)", isolated_context=False)
-    bar.evaluate("node => node.scrollIntoView({block: 'center'})")
-    notice, box = page.locator("#done-notice").bounding_box(), bar.bounding_box()
-    assert notice["y"] + notice["height"] <= box["y"] or box["y"] + box["height"] <= notice["y"]
+    tabs = page.locator("#tabbar").bounding_box()
+    # Send in the middle, and Send just above the tab bar (where a thumb reaches it): the notice covers neither.
+    for place in ("center", "bottom"):
+        bar.evaluate("""(node, place) => { node.scrollIntoView({block: 'center'});
+          if (place === 'bottom') scrollBy(0, node.getBoundingClientRect().bottom - (innerHeight - 96)); }""", place)
+        notice, box = page.locator("#done-notice").bounding_box(), bar.bounding_box()
+        assert notice["y"] + notice["height"] <= box["y"] or box["y"] + box["height"] <= notice["y"], (place, notice, box)
+        assert notice["y"] + notice["height"] <= tabs["y"]
     page.wait_for_timeout(3000)
     assert note.get_by_role("button", name="Undo", exact=True).count() == 0
 
@@ -526,7 +531,7 @@ def test_questions_leave_the_sidebar_and_keep_their_route_and_one_quiet_door(tod
 
 def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today):
     """N3 (D-123): on a phone the rail and the ⌘K bar give way to a floating tab bar (今天 · 等你 · 人物 · 搜索 · 更多);
-    Send stays pinned just above it, and 更多 opens every other place as a sheet."""
+    Send sits in the draft above it, and 更多 opens every other place as a sheet."""
     page, _, _ = today
     page.set_viewport_size({"width": 390, "height": 844})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -538,7 +543,10 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     toggle = page.locator(".nav-toggle")
     assert toggle.inner_text().split()[-1] == "More" and toggle.get_attribute("aria-expanded") == "false"
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
-    assert _box_inside(page, send, 16) and _box_inside(page, toggle, 0)
+    assert _box_inside(page, toggle, 0)
+    # Send is in the draft's flow (sprint 13): brought into view, it sits clear above the tab bar.
+    send.scroll_into_view_if_needed()
+    send.evaluate("node => node.scrollIntoView({block: 'center'})")
     assert send.bounding_box()["y"] + send.bounding_box()["height"] <= tabs.bounding_box()["y"]
     assert toggle.bounding_box()["height"] >= 44
     assert not page.locator(".search").is_visible()

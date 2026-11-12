@@ -205,3 +205,70 @@ def test_every_row_says_its_three_ways_to_close_in_words_without_a_hover(today, 
     row = page.locator(".today-brief .qcard.open .qitem:visible").first
     row.locator(".strip-later").click()
     assert page.locator("#done-notice").inner_text().startswith("暂不处理 · 有新邮件会回来 · 撤销") and states()[-1] == "skipped"
+
+
+# Asked 3 July, due 23 July (70 days late on 1 October), and Tomás wrote on the thread last week ([9], 28 September).
+RECENT_WORD = r'''async () => {
+  const r = byPath('people/tomas-reyes.md');
+  r.original = undefined;
+  REM.source_context['gmail:fixture-van'] = {source: 'gmail', time: '2026-09-28T09:00:00Z', excerpt: 'About the van.'};
+  r.text = r.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1- You owe Tomás the signed van agreement; requested 2026-07-03, due 2026-07-23 [9].\n')
+    .replace(/(^## Sources[^\n]*\n)/mi, '$1- [9] gmail:fixture-van — the van; confidence high; observed 2026-09-28.\n');
+  KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
+}'''
+
+
+def test_a_late_promise_with_a_message_last_week_stays_live_on_today_and_projects(today):
+    """Review of 132fc6b20: Projects read the request day, Today the thread's last message, so one promise was red
+    on Today and "may be over" on Projects. Both read the last cited message now."""
+    page, _, _ = today
+    page.evaluate(RECENT_WORD, isolated_context=False)
+    assert page.evaluate("threadEntries().find(e => /van agreement/.test(e.t.text)).t.since", isolated_context=False) == "2026-09-28"
+    assert "70 d" in _faces(page) and page.locator(f'#today-stale li[data-path="{TOMAS}"]').count() == 0
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.category === 'projects');
+      r.open = [{kind: 'owed', due: '2026-07-23', since: '2026-07-03', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement',
+        sources: [{source: 'gmail:fixture-van'}], promised: []}];
+      location.hash = '#c=projects';
+    }""", isolated_context=False)
+    lede = page.locator(".pd-lede")
+    lede.wait_for()
+    assert "is 70 days late" in lede.locator(".red").inner_text() and lede.locator(".pd-asked").count() == 0
+
+
+def test_a_promise_with_no_dated_message_stays_live(today):
+    page, _, _ = today
+    page.evaluate(r'''async () => {
+      const r = byPath('people/tomas-reyes.md');
+      r.original = undefined;
+      r.text = r.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1- You owe Tomás the signed van agreement; due 2026-04-14.\n');
+      KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
+    }''', isolated_context=False)
+    assert page.evaluate("threadEntries().find(e => /van agreement/.test(e.t.text)).t.since", isolated_context=False) == ""
+    assert page.locator("#today-stale").count() == 0 and "170 d" in _faces(page)
+
+
+def test_still_open_holds_for_sixty_days_then_today_asks_again(today):
+    page, _, _ = today
+    page.evaluate(ANCIENT, isolated_context=False)
+    page.locator(f'#today-stale li[data-path="{TOMAS}"]').get_by_role("button", name="Still open", exact=True).click()
+    assert page.locator("#today-stale").count() == 0
+    kept = page.evaluate("JSON.parse(localStorage.getItem(keptOpenStorageKey()))", isolated_context=False)
+    assert list(kept.values()) == ["2026-10-01"]
+    page.evaluate("() => { REM.as_of = '2026-12-05T12:00:00Z'; threadEntries.cached = null; render(); }", isolated_context=False)
+    assert page.locator(f'#today-stale li[data-path="{TOMAS}"]').count() == 1
+
+
+def test_a_stale_promise_is_never_red_or_waiting_one_click_away(today):
+    page, _, _ = today
+    before = page.evaluate("threadCounts().mine", isolated_context=False)
+    page.evaluate(ANCIENT, isolated_context=False)
+    assert page.evaluate("threadCounts().mine", isolated_context=False) == before
+    assert page.evaluate("waitingOn(byPath('people/tomas-reyes.md')).every(e => !/loan agreement/.test(e.t.text))", isolated_context=False)
+    page.locator("#today-stale a.stale-more, #today-stale").first.wait_for()
+    page.evaluate("location.hash = '#view=open'", isolated_context=False)
+    page.locator(".task-band").first.wait_for()
+    assert page.locator(".task-band li").filter(has_text="loan agreement").count() == 0
+    page.locator("#gone-quiet summary").click()
+    row = page.locator("#gone-quiet li").filter(has_text="loan agreement")
+    assert row.count() == 1 and row.locator(".when.overdue").count() == 0

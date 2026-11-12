@@ -803,9 +803,9 @@ interface labels and dates. Your saved choice comes first; otherwise Chinese is 
 it is among your languages, then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
-languages still take precedence. Page prose stays as written. On phones, the brand, search and **Menu** share
-one header row; **Menu** opens the sidebar as a sheet under it. It is not a
-bottom tab bar because Today's Send bar already holds the bottom edge.
+languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
+(Today, Waiting, People, Search, More); **More** opens every other place as a sheet. Today's Send is not
+pinned to that edge: it comes into view with the draft.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
   sentence count what matters ("1 change overnight · 1 overdue · 1 due soon · 4 waiting
@@ -894,8 +894,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   names what is left (*1 choice left: Format*, the letter's own label for the
   slot or REM's words, short); a tap on the name goes to that question. The lanes show the five most urgent people on a desktop and
   three on a phone (always the open card's), then **N more people**; on a phone
-  the first screen holds To, Subject, the question and the Send bar, with the
-  context line and channel switch behind **More**. **Send** is the page's only
+  the context line and channel switch wait behind **More**, and Send comes into view with the draft, right
+  under the question (with a long ask above the draft that is below the first screen). **Send** is the page's only
   green control. It sits under the letter and REM's question in normal flow, on a
   desktop inside the first screen; on a phone too, so it comes into view with
   the draft and never covers the message above it or the draft itself (it was
@@ -919,9 +919,11 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
   and has no red. The side asks **Maybe over · still open?** with **Mark done**
-  (the usual mark) and **Still open** (kept on this device, like *Not done
-  yet*), which brings it back to the count. The Projects headline names only a
-  live late promise in red and mentions stale ones in grey.
+  (the usual mark) and **Still open**, which brings it back to the count. The Projects headline names
+  only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
+  A promise with no dated message stays live. **Still open** is kept on this
+  device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
+  quiet threads everywhere else too: not in the Waiting count, not red on **Waiting on you** or the People list.
   **The night chart gives its row back** when the last three nights hold fewer
   than two runs of reading or rewriting: it becomes one grey line under its
   title (*Last 3 days: no mail read and no page rewritten; REM handled 6 things
