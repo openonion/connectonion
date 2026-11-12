@@ -8008,7 +8008,8 @@ async function closeAllStale(entries) {
   document.getElementById("done-notice")?.remove();
   const undo = el("button", { type: "button", text: t("Undo") }), status = el("span", { text: t("Saving…") });
   const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done"), " · ", undo, " · ", status]);
-  const reopen = list => () => { list.forEach(mark => markThread(mark.entry, false)); redrawKeepingScroll(); notice.remove(); focusRaisedCard(); };
+  let undone = false;
+  const reopen = list => () => { undone = true; list.forEach(mark => markThread(mark.entry, false)); redrawKeepingScroll(); notice.remove(); focusRaisedCard(); };
   undo.onclick = reopen(marks);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
@@ -8017,8 +8018,11 @@ async function closeAllStale(entries) {
   const failed = marks.filter((mark, i) => results[i] === "refused");
   failed.forEach(mark => mark.restore());
   undo.onclick = reopen(marks.filter(mark => !failed.includes(mark)));
-  status.textContent = t(results.every(Boolean) ? "Saved in notebook" : "Saved on this device — sync pending");
-  if (failed.length) notSavedNotice(() => closeAllStale(failed.map(mark => mark.entry)), notice);
+  // true is the notebook's; false waits on this device; "refused" is not saved, so it never reads as saved.
+  status.textContent = t(results.every(result => result === true) ? "Saved in notebook" : failed.length ? "Not saved" : "Saved on this device — sync pending");
+  // The refusal is added to this notice (own: null), so the Undo for the marks that were saved stays; once Undo ran
+  // there is nothing to try again.
+  if (failed.length && !undone) notSavedNotice(() => closeAllStale(failed.map(mark => mark.entry)), null);
   redrawKeepingScroll();
 }
 function redrawKeepingScroll() {

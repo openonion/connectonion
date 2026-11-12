@@ -187,3 +187,43 @@ def test_a_held_reply_leaves_the_count_the_badge_and_the_waiting_rows_together(t
     band = page.locator(".task-band").filter(has=page.get_by_role("heading", name="Waiting on you")).first
     band.wait_for()
     assert band.locator("ul.threads > li").count() == badge
+
+
+def test_a_refused_mark_in_close_all_keeps_undo_for_the_saved_ones_and_never_says_saved(today):
+    page, calls, answers = today
+    answers["/rem/thread"] = lambda body: ((400, {"error": "unknown thread"}) if "banner" in body["key"]
+                                           else (200, {"state": body["state"], "keys": body["keys"]}))
+    page.evaluate(LIVE, isolated_context=False)
+    page.evaluate(ANCIENT, isolated_context=False)
+    page.evaluate(ANCIENT_TOO, isolated_context=False)
+    page.locator("#today-stale > summary").click()
+    page.get_by_role("button", name="Mark all 2 done", exact=True).click()
+    notice = page.locator("#done-notice")
+    notice.get_by_role("button", name="Try again").wait_for()
+    assert notice.get_by_role("button", name="Undo", exact=True).count() == 1
+    assert "Saved in notebook" not in notice.inner_text()
+
+
+def test_more_closes_on_escape_and_when_a_talk_is_chosen(today):
+    page, _, answers = today
+    answers["/rem/talk"] = [(200, {"id": "a" * 32, "agent": "codex", "state": "idle", "about": {"key": "x"}, "turns": []})] * 3
+    page.evaluate(LIVE, isolated_context=False)
+    more = page.locator(".today-brief .qcard.focal .qitem").first.locator(".strip-more")
+    more.locator(":scope > summary").click()
+    assert more.get_attribute("open") is not None
+    page.keyboard.press("Escape")
+    assert more.get_attribute("open") is None
+    more.locator(":scope > summary").click()
+    more.locator(".talk-menu > summary").click()
+    more.locator('[data-talk="codex"]').click()
+    assert more.get_attribute("open") is None
+
+
+def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
+    page, _, _ = today
+    # Faces still dealt, but nothing of theirs is waiting on you: the zero branch must not name people.
+    page.evaluate("() => { threadCounts = () => ({mine: 0, theirs: 0, other: 0, quiet: 0, open: 0}); render(); }", isolated_context=False)
+    assert page.locator(".deal").count() > 0
+    line = page.locator(".night-card .count-line")
+    assert line.inner_text().split("\n") == ["0", "Nobody is waiting on you today."]
+    assert line.locator(".count-of").count() == 0
