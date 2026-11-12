@@ -1,10 +1,20 @@
 """The evidence directory an investigation searches instead of summarising (#1850)."""
 
 from connectonion.rem.evidence import write_evidence
+from connectonion.rem.files import read_json
 
 
 def item(source, when, text, **extra):
     return {"source": source, "timestamp": when, "text": text, **extra}
+
+
+def test_originals_round_trip_unchanged_in_input_order(tmp_path):
+    items = [item('codex:session-atlas:2', '2026-10-02', 'Atlas demo at example.com',
+                  role='user', metadata={'tags': ['demo', '原文']}),
+             item('codex:session-atlas:1', '2026-10-01', 'Plan Atlas', role='user')]
+    out = write_evidence(tmp_path / 'ev', items)
+    assert out['originals'] == tmp_path / 'ev' / 'originals.json'
+    assert read_json(out['originals'], []) == items
 
 
 def test_a_mail_is_one_file_and_a_session_or_chat_is_one_conversation(tmp_path):

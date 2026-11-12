@@ -1,6 +1,7 @@
 """Start-first defaults. Read-only inspection never initializes the notebook."""
 
 import copy
+import json
 import os
 import re
 from pathlib import Path
@@ -8,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .files import CATEGORIES, RemError, atomic_write, maintenance_lock, read_json, safe_path, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, CATEGORIES, RemError, atomic_write, maintenance_lock, read_json, safe_path, state_path, write_json
 
 
 def local_timezone() -> str:
@@ -29,26 +30,63 @@ def local_timezone() -> str:
 # Every stage runs through co ai. "default" lets the selected harness choose its model.
 RUNNERS = ("codex", "coai", "claude-code")
 
+
+def schedule_runner() -> str:
+    """Prefer persistent exec sessions when the installed CLI can run."""
+    from .runner import ready
+    from .codex_schedule import app_installed
+    return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
+
+
+# The cheapest model that does each kind of call well, measured on the owner's
+# runs 2026-10-10..11-09 (sprint-12/model-levels.md). Level 1 is the weakest.
+LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-terra",
+                "level3": "gpt-6.1-sol", "level4": "gpt-6-astra"}
+STAGE_LEVELS = {
+    # 1: short, structured, checked by code afterwards.
+    "sessions-summary": 1, "topic": 1,
+    # 2: faithful transformation or a narrow judgement over small input.
+    "translate": 2, "extract": 2, "same-person": 2, "plan": 2,
+    # 3: writing pages and drafts the owner reads, from cited evidence.
+    "maintain": 3, "abstract": 3, "init": 3, "investigate": 3, "render": 3,
+    "projects": 3, "reply-draft": 3, "native": 3,
+    # 4: deep rounds, independent audits, and owed work done for the owner.
+    "enrich": 4, "muse": 4, "claim-audit": 4, "insight-critic": 4, "synthesize": 4, "task": 4,
+}
+
+
+# Names before 1.9.3, still accepted by `config set`.
+OLD_NAMES = {"model": "models.level3", "models.summary": "models.level1"}
+
+
+def level_model(config: dict, stage: str) -> str:
+    return config["models"][f"level{STAGE_LEVELS[stage]}"]
+
+
+def describe_levels(config: dict) -> list[str]:
+    """One line per level for status and config: its model, then the stages on it."""
+    return [f"level {n} {config['models'][f'level{n}']} · "
+            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == n) for n in range(1, 5)]
+
+
 def default_config() -> dict:
-    # Spark was the default until Codex 0.155 refused it for ChatGPT logins
-    # ("not supported when using Codex with a ChatGPT account"), which made every
-    # new user's first investigation fail in eleven seconds. gpt-6-luna runs on
-    # a ChatGPT subscription (checked with Codex 0.155.1 on 2026-09-23). It is a
-    # starting name, not a rule: what a model can do -- drive tools, or only
-    # reply with a page -- is measured when the model changes and recorded in
-    # .state/tier.json (tier.py, #1847), never read off its name or generation.
-    # Codex with gpt-6-luna, the owner's choice on 2026-10-11: with both agents
-    # signed in, a fresh install picked Claude Code and announced ~460M input
-    # tokens on the user's Claude plan. Codex wrote 312 of 312 pages on the same
-    # mailbox. A machine without a working Codex gets Claude Code (first_runner).
-    # Saved configs keep their runner.
+    # models: owner decision 2026-11-09, one model per level; STAGE_LEVELS says
+    # which level each model call runs on. `model` is never saved: it is level3's
+    # model, kept beside the levels for code that runs the work level.
     # language: what a page's prose is written in, a BCP 47 tag (en, zh, zh-TW, ja).
     # Headings, Facts labels and markers stay English: code reads them.
     # languages: the languages the owner reads, first in the reader's "Read in"
-    # menu; empty means the ones detected from the owner's own words (languages.py).
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna", "speed": "fast", "language": "en", "languages": [],
-            "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
-                         "timezone": local_timezone()},
+    # menu and translated in the background. Empty means the languages he writes,
+    # detected from his own mail and sessions (D-103), not "translate nothing".
+    # tasks.auto: owed work starts after the night's drafts, with full access and Undo
+    # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+            # Each slot is followed by 15-minute turns for up to three hours. The old six
+            # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
+            # number of slots, bounds what the night spends.
+            "schedule": {"times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00",
+                                   "17:00", "18:00", "19:00", "22:00", "23:00"],
+                         "timezone": local_timezone(), "runner": "codex-exec", "profile": "default"},
             # input_chars_per_batch bounds the source messages plus every notebook page
             # the runner reads back. At 60k the reads ran out five times in six real
             # batches (2026-09-07); 200k is ~50k tokens, small for the runner models.
@@ -61,9 +99,7 @@ def default_config() -> dict:
             # notebook (0.7-1.4M input tokens a call). A page per call costs about
             # 120k, so 6 left one batch a night against a backlog of hundreds of
             # sessions; 30 is less total spend than the old three batches.
-            # 50 since 2026-10-01 (#2032, the owner's choice): the scheduled
-            # slots used 26 of 30 by 06:00 and one manual sync takes about 9,
-            # so a sync started by hand during the day hit the cap.
+            # Native page rounds and their final audits share 200 calls/day.
             # timeout_seconds is one model turn. Codex reads a large material file
             # piece by piece; at 600 two real turns timed out on 2026-09-23/24
             # (a 300k digest chunk, then a project's material).
@@ -71,7 +107,7 @@ def default_config() -> dict:
             # chunk is read through the same 600-second turn, and at 300k a Codex
             # turn reading it piece by piece timed out on 2026-09-23 (Briar, 39
             # mails with attachments) while every 200k investigate turn finished.
-            "limits": {"runner_calls_per_day": 50, "translations_per_day": 10, "items_per_batch": 20,
+            "limits": {"runner_calls_per_day": 200, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
                        # Pages at once for init's first run and investigate CATEGORY;
@@ -100,14 +136,33 @@ def default_config() -> dict:
 
 
 LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+# D-104: schedules are compared night against night (.state/night-stats.jsonl). dense is a
+# slot every 30 minutes from 22:00 to 07:00, each with its 15-minute follow-ups.
+# Times set with `config set schedule.times` win over any profile.
+PROFILES = {"default": default_config()["schedule"]["times"],
+            "dense": sorted(f"{hour:02d}:{minute:02d}" for hour in (*range(22, 24), *range(0, 8))
+                            for minute in (0, 30) if (hour, minute) != (7, 30))}
 
 
 def validate(config: dict) -> dict:
     defaults = default_config()
-    if not isinstance(config, dict) or set(config) != set(defaults) or config["version"] != 1:
+    if not isinstance(config, dict) or set(config) - {"model"} != set(defaults) - {"model"} or config["version"] != 1:
         raise RemError("Invalid co rem config keys or version")
-    if config["runner"] not in RUNNERS or not isinstance(config["model"], str) or not config["model"].strip():
-        raise RemError(f"runner must be one of {', '.join(RUNNERS)}, with a model name or default")
+    if config["runner"] not in RUNNERS:
+        raise RemError(f"runner must be one of {', '.join(RUNNERS)}")
+    if not isinstance(config["tasks"], dict) or set(config["tasks"]) != {"auto"} or type(config["tasks"]["auto"]) is not bool:
+        raise RemError("tasks.auto must be true or false")
+    notify = config["notify"]
+    if (not isinstance(notify, dict) or set(notify) != {"channel", "target"}
+            or notify["channel"] not in ("none", "outlook", "telegram", "lark", "whatsapp", "email")
+            or not isinstance(notify["target"], str)):
+        raise RemError("notify.channel must be none, outlook, telegram, lark, whatsapp or email; notify.target must be text")
+    models = config["models"]
+    if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
+            or any(not isinstance(name, str) or not name.strip() for name in models.values())):
+        raise RemError("models.level1 to models.level4 must each be a model name or default")
+    if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
+        raise RemError("effort must be minimal, low, medium, high or xhigh")
     if config["speed"] not in ("fast", "standard"):
         raise RemError("speed must be fast or standard")
     if not isinstance(config["language"], str) or not LANGUAGE.fullmatch(config["language"]):
@@ -116,8 +171,12 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone"}:
+    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner", "profile"}:
         raise RemError("Schedule requires times and timezone")
+    if schedule["profile"] not in PROFILES:
+        raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
+    if schedule["runner"] not in ("codex-exec", "codex-app"):
+        raise RemError("schedule.runner must be codex-exec or codex-app")
     times = schedule["times"]
     if (not isinstance(times, list) or not times or len(times) != len(set(map(str, times)))
             or any(not isinstance(t, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", t) for t in times)):
@@ -142,23 +201,70 @@ def validate(config: dict) -> dict:
 # the defaults of the day it was made: one from 2026-09-20 ran the refused
 # gpt-5.3-codex-spark for four nights (#1714). A saved value equal to one of
 # these is read as unset, unless the owner chose it with `config set`.
-SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
+SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
-              "limits.runner_calls_per_day": {6, 30},
+              "limits.runner_calls_per_day": {6, 30, 50},
               "limits.investigation_quota_points": {20},
-              "limits.quota_floor_percent": {70}}
+              "limits.quota_floor_percent": {70},
+              # init wrote the rc61 default into every config.yaml; it was never his choice.
+              "tasks.auto": {False},
+              "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
+# Count caps the owner retired on 2026-11-09 (D-104, "启动的时候，数量可以不用受限制"):
+# none of them stops night work any more. A saved value is dropped when read.
+RETIRED = ("tasks_per_night", "drafts_per_night", "jobs_per_round", "translations_per_day")
+RETIRED_NOTE = ("was retired (D-104): count caps no longer stop the night; only the Codex week floor "
+                "(limits.quota_floor_percent) does")
+
+
+OLD_TIMES = ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"]
+# Written once the pin migration ran, and by any later `config set schedule.times`:
+# from then on a pin equal to the old default is the owner's choice.
+PIN_CHECKED = "config-pin-checked.json"
+
+
+def _explicit(root: Path, config: dict) -> set:
+    """Keys the owner set. A schedule.times pin equal to the old default, saved before the
+    pin check, came from a session restore rather than from him, and does not count."""
+    explicit = set(read_json(state_path(root, EXPLICIT), []))
+    schedule = config.get("schedule") if isinstance(config.get("schedule"), dict) else {}
+    if ("schedule.times" in explicit and schedule.get("times") == OLD_TIMES
+            and not state_path(root, PIN_CHECKED).is_file()):
+        explicit.discard("schedule.times")
+    return explicit
+
+
+def migrate_schedule_pin(root: Path) -> None:
+    """Once: unpin a schedule equal to the old default and log it. Caller holds the lock (start)."""
+    if state_path(root, PIN_CHECKED).is_file() or not safe_path(root, "config.yaml").is_file():
+        return
+    saved = yaml.safe_load(safe_path(root, "config.yaml").read_text(encoding="utf-8")) or {}
+    explicit = read_json(state_path(root, EXPLICIT), [])
+    if "schedule.times" in explicit and "schedule.times" not in _explicit(root, saved):
+        write_json(state_path(root, EXPLICIT), [key for key in explicit if key != "schedule.times"])
+        entry = {"at": _now(), "key": "schedule.times", "from": OLD_TIMES, "to": read_config(root)["schedule"]["times"],
+                 "why": "the pinned value was exactly the old default (a session restore, not a choice); "
+                        "co rem config set schedule.times pins times again"}
+        with state_path(root, "config-migrations.jsonl").open("a", encoding="utf-8") as log:
+            log.write(json.dumps(entry) + "\n")
+    write_json(state_path(root, PIN_CHECKED), {"at": _now()})
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _drop_superseded(root: Path, config: dict) -> None:
-    explicit = set(read_json(state_path(root, EXPLICIT), []))
+    explicit = _explicit(root, config)
     defaults = default_config()
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
         saved = config.get(section) if section else config
-        current = defaults[section] if section else defaults
-        if key not in explicit and isinstance(saved, dict) and saved.get(name) in old:
+        current = defaults[section] if section else {"model": LEVEL_MODELS["level3"]}
+        value = saved.get(name) if isinstance(saved, dict) else None
+        if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
             saved[name] = current[name]
 
 
@@ -175,16 +281,39 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # A limit added after this file was written takes its default; the file is
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
-        config["limits"] = {**default_config()["limits"], **config["limits"]}
+        saved = {key: value for key, value in config["limits"].items() if key not in RETIRED}
+        config["limits"] = {**default_config()["limits"], **saved}
+    config.setdefault("notify", {"channel": "none", "target": ""})
+    config.setdefault("tasks", {"auto": True})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")
+    config.setdefault("effort", "medium")
+    if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
+        config['schedule']['runner'] = default_config()['schedule']['runner']
+    if isinstance(config.get("schedule"), dict):
+        config["schedule"].setdefault("profile", "default")
     _drop_superseded(root, config)
-    # Older coai notebooks retained the Codex default even though it was never
-    # forwarded. Preserve their effective behavior when all stages start using COAI.
-    if config.get("runner") == "coai" and config.get("model") == "gpt-6-luna":
-        config["model"] = "default"
+    explicit = _explicit(root, config)
+    if ("schedule.profile" in explicit and "schedule.times" not in explicit
+            and config["schedule"].get("profile") in PROFILES):
+        config["schedule"]["times"] = PROFILES[config["schedule"]["profile"]]
+    _migrate_models(config)
     return validate(config) if validated else config
+
+
+def _migrate_models(config: dict) -> None:
+    """Before 1.9.3 `model` was the work model (now level3) and models.summary
+    the summary model (now level1). A non-Codex notebook keeps its one model on
+    every level its harness can run; a saved level always wins."""
+    work = config.pop("model", None)
+    saved = config.get("models") if isinstance(config.get("models"), dict) else {}
+    levels = dict(LEVEL_MODELS) if config.get("runner") == "codex" else dict.fromkeys(LEVEL_MODELS, work or "default")
+    levels.update({"level3": work} if work else {})
+    levels.update({"level1": saved["summary"]} if "summary" in saved else {})
+    levels.update({key: value for key, value in saved.items() if key in LEVEL_MODELS})
+    config["models"] = levels
+    config["model"] = levels["level3"]
 
 
 def _move_generated_notes(root: Path) -> None:
@@ -213,15 +342,23 @@ def prepare(root: Path) -> None:
     _move_generated_notes(root)
     path = safe_path(root, "config.yaml")
     if not path.exists():
-        atomic_write(path, yaml.safe_dump(first_runner(default_config()), sort_keys=False))
+        atomic_write(path, yaml.safe_dump(saved(first_runner(default_config())), sort_keys=False))
+    migrate_schedule_pin(root)
+
+
+def saved(config: dict) -> dict:
+    """What config.yaml holds: the levels, not the `model` derived from them."""
+    return {key: value for key, value in config.items() if key != "model"}
 
 
 def first_runner(config: dict) -> dict:
     """Codex when it can run; otherwise Claude Code, if that can."""
     from .runner import ready
+    config['schedule']['runner'] = schedule_runner()
     if not ready(config)[0]:
         return config
-    fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5"}
+    fallback = {**config, "runner": "claude-code", "model": "claude-sonnet-5-5",
+                "models": dict.fromkeys(LEVEL_MODELS, "claude-sonnet-5-5")}
     return fallback if not ready(fallback)[0] else config
 
 
@@ -229,35 +366,63 @@ def set_config(root: Path, pairs: list[str]) -> dict:
     if not pairs or len(pairs) % 2:
         raise RemError("config set needs KEY VALUE pairs")
     with maintenance_lock(root):
-        config = copy.deepcopy(read_config(root, validated=False))
-        previous_runner = config["runner"]
-        for key, raw in zip(pairs[::2], pairs[1::2]):
-            parts = key.split(".")
-            target = config
-            if len(parts) == 2 and parts[0] in ("schedule", "limits"):
-                target = config.get(parts[0])
-                if not isinstance(target, dict):
-                    raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
-            elif len(parts) != 1 or key not in ("model", "runner", "speed", "language", "languages"):
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, language, languages, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
-            if parts[-1] not in target:
-                raise RemError(f"{key}: " "not a setting; the keys are model, runner, speed, language, languages, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co rem config`)")
-            if key == "schedule.times":
-                value = sorted(raw.split(","))
-            elif key == "languages":
-                value = [tag.strip() for tag in raw.split(",") if tag.strip()]
-            elif parts[0] == "limits":
-                try:
-                    value = int(raw)
-                except ValueError as error:
-                    raise RemError("Limits must be positive integers") from error
-            else:
-                value = raw
-            target[parts[-1]] = value
-        if config["runner"] != previous_runner and "model" not in pairs[::2]:
-            config["model"] = "default"
-        validate(config)
-        atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
-        explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
-        write_json(state_path(root, EXPLICIT), sorted(explicit))
-        return config
+        return _set_config(root, pairs)
+
+
+def request_language(root: Path, language: str) -> dict:
+    """Persist the owner's reader choice without replacing other languages."""
+    if not isinstance(language, str) or not LANGUAGE.fullmatch(language):
+        raise RemError("language must be a language tag such as en, zh, zh-TW or ja")
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        config = read_config(root)
+        if language in config["languages"]:
+            return config
+        return _set_config(root, ["languages", ",".join([*config["languages"], language])])
+
+
+def _set_config(root: Path, pairs: list[str]) -> dict:
+    migrate_schedule_pin(root)
+    config = copy.deepcopy(read_config(root, validated=False))
+    previous_runner = config["runner"]
+    pairs = [OLD_NAMES.get(part, part) if index % 2 == 0 else part for index, part in enumerate(pairs)]
+    for key, raw in zip(pairs[::2], pairs[1::2]):
+        parts = key.split(".")
+        target = config
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
+            target = config.get(parts[0])
+            if not isinstance(target, dict):
+                raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
+        elif len(parts) != 1 or key not in ("runner", "speed", "effort", "language", "languages"):
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+        if parts[0] == "limits" and parts[-1] in RETIRED:
+            raise RemError(f"{key} {RETIRED_NOTE}")
+        if parts[-1] not in target:
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+        if key == "tasks.auto":
+            if raw not in ("true", "false"):
+                raise RemError("tasks.auto must be true or false")
+            value = raw == "true"
+        elif key == "schedule.times":
+            value = sorted(raw.split(","))
+        elif key == "languages":
+            value = [tag.strip() for tag in raw.split(",") if tag.strip()]
+        elif parts[0] == "limits":
+            try:
+                value = int(raw)
+            except ValueError as error:
+                raise RemError("Limits must be positive integers") from error
+        else:
+            value = raw
+        target[parts[-1]] = value
+    if config["runner"] != previous_runner:
+        # Another harness cannot run these model names; levels this command names stay.
+        config["models"].update({level: LEVEL_MODELS[level] if config["runner"] == "codex" else "default"
+                                 for level in LEVEL_MODELS if f"models.{level}" not in pairs[::2]})
+    explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
+    config["model"] = config["models"]["level3"]
+    validate(config)
+    atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(saved(config), sort_keys=False))
+    write_json(state_path(root, EXPLICIT), sorted(explicit))
+    if "schedule.times" in pairs[::2]:
+        write_json(state_path(root, PIN_CHECKED), {"at": _now()})
+    return config

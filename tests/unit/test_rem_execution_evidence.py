@@ -19,7 +19,8 @@ def boundary(monkeypatch, answer=CHINESE):
         from pathlib import Path
         workspace = Path(options['cwd'])
         if (workspace / 'page.md').exists():
-            (workspace / 'translation.md').write_text(answer)
+            # Translation turns see the prose only; REM keeps the Sources section itself.
+            (workspace / 'translation.md').write_text(answer.partition('## Sources')[0].rstrip() + '\n')
         return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
             'outcome':'natural', 'usage':{'input_tokens':80}}))
     monkeypatch.setattr(runner.subprocess, 'run', execute)
@@ -36,13 +37,14 @@ def test_translation_observes_native_attempt_even_when_page_validation_fails(not
         with pytest.raises(RemError, match='source ids'):
             tr.translate(notebook, 'people/avery-lin.md', 'zh')
     [log] = service.run_logs(notebook)
-    assert len(calls) == 1 and log['runner_attempts'] == 0
-    assert log['execution']['attempts'] == log['execution']['completed'] == 1
+    # A refused translation gets one repair turn; each turn is its own direct attempt.
+    turns = 1 if valid else 2
+    assert len(calls) == turns and log['runner_attempts'] == turns
+    assert log['execution']['attempts'] == log['execution']['completed'] == turns
     assert log['execution']['failed'] == 0
-    assert log['usage']['input_tokens'] == 80
+    assert log['usage']['input_tokens'] == 80 * turns
     assert log['outcome'] == ('completed' if valid else 'failed')
-    assert service.status(notebook)['runner_attempts_today'] == 0
-    assert service.status(notebook)['execution_today']['attempts'] == 1
+    assert service.status(notebook)['execution_today']['attempts'] == turns
 
 
 def test_manual_logged_calls_keep_allowance_zero_and_observe_each_attempt(notebook, monkeypatch):
@@ -63,7 +65,7 @@ def test_nested_daily_translation_has_one_direct_attempt_without_double_allowanc
     from connectonion.rem.daily import _translate_changed
     from connectonion.rem.config import set_config
     boundary(monkeypatch)
-    set_config(notebook, ['languages', 'en,zh', 'limits.translations_per_day', '1'])
+    set_config(notebook, ['languages', 'en,zh'])
     _translate_changed(notebook, read_config(notebook), {}, ['people/avery-lin.md'], None, lambda _:None)
     logs = service.run_logs(notebook)
     child = next(r for r in logs if r.get('phase') == 'translate')
@@ -200,7 +202,7 @@ def test_running_translation_uses_existing_process_liveness_marker(notebook, mon
         assert log['pid'] == os.getpid() and log['host']
         assert service.seen_outcome(log) == 'running' and log['execution']['in_flight'] == 1
         from pathlib import Path
-        (Path(options['cwd'])/'translation.md').write_text(CHINESE)
+        (Path(options['cwd'])/'translation.md').write_text(CHINESE.partition('## Sources')[0].rstrip() + '\n')
         return SimpleNamespace(returncode=0, stderr='', stdout='{"outcome":"natural"}')
     monkeypatch.setattr(runner.subprocess, 'run', process)
     tr.translate(notebook, 'people/avery-lin.md', 'zh')

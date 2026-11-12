@@ -250,7 +250,7 @@ def _my_name() -> str:
 
 
 def _as_name(name: str) -> str:
-    """A one-word, all-lowercase git name ("aaron") signs a mail as "Aaron"; anything else as written."""
+    """A one-word, all-lowercase git name ("ellis") signs a mail as "Ellis"; anything else as written."""
     return name.capitalize() if name.islower() and " " not in name else name
 
 
@@ -1053,7 +1053,7 @@ def _keep(bundle: dict, message: str = "") -> None:
 
 
 def _sender(bundle: dict) -> str:
-    """'Aaron Xie (aaron@…)' from the name the sender's bundle carries, else a saved contact's name, else the address."""
+    """'Ellis Yew (ellis@…)' from the name the sender's bundle carries, else a saved contact's name, else the address."""
     address = bundle["from"]
     names = [bundle["from_name"]] if bundle.get("from_name") else \
         [name for name, entry in transport.contacts().items() if entry["mail"] == address]

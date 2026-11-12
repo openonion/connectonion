@@ -283,12 +283,12 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 ```
 
 **Subcommands:**
-- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`)
+- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`, `--address/-a`)
 - `co email read <#>` - print one message's body; add `--mark-read` to consume it
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)
 - `co email sent read <#>` - print one sent message's body and status
-- `co email name <name> [--buy]` - check or claim a readable address (e.g. `aaron@openonion.ai`), paid from credits
+- `co email name <name> [--buy]` - check or claim a readable address (e.g. `ellis@mail.openonion.ai`), paid from credits
 - `co email upgrade <tier>` - raise your monthly send quota (`plus --keep-address` preserves an existing hosted address; `--domain`/`--alias` selects a new one), paid from credits
 
 The same `send_email` / `get_emails` functions also work as agent tools, so
@@ -1427,14 +1427,16 @@ A server a deploy goes *onto*, so the agent keeps its address, its logs and any 
 made by hand — and answers on its own https hostname.
 
 ```bash
-co server new prod                       # have one created ($30/month, charged yearly)
+co server new prod                       # have one created (from $30/month; shows how it is charged, then asks)
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # reconciled against what you are billed for
+co server invoice prod                   # its invoices, where the backend bills monthly
 co deploy --to prod
 ```
 
 `co server forget` drops the local entry and the machine keeps billing;
-`co server destroy` tears it down and refunds the unused term. Two commands on purpose.
+`co server destroy` tears it down and settles the bill (the used part of the month, or a refund of an
+old 12-month term). Two commands on purpose.
 
 See [server.md](server.md).
 
@@ -1464,6 +1466,7 @@ See [server.md](server.md).
 | `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
 
 ---

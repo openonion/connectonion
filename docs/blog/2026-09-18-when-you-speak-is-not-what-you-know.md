@@ -8,9 +8,9 @@ date: 2026-09-18
 Here is a real exchange in a group, as the people in it saw it:
 
 ```
-14:31  Aaron:  the price sheet is still wrong
-14:32  Aaron:  it's missing the cleaning column
-14:34  Aaron:  @bot recompute it
+14:31  Ellis:  the price sheet is still wrong
+14:32  Ellis:  it's missing the cleaning column
+14:34  Ellis:  @bot recompute it
 ```
 
 And here is everything the bot was handed:

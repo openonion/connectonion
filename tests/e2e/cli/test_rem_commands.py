@@ -3,6 +3,7 @@
 import importlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 import urllib.parse
@@ -18,11 +19,37 @@ from connectonion.cli.main import app
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
 runner = CliRunner()
 
 
 def invoke(root, *args):
     return runner.invoke(app, ["rem", "--root", str(root), *args])
+
+
+@pytest.mark.parametrize("as_json", [False, True])
+@pytest.mark.parametrize("number,reason,second", [
+    (2, "No such file or directory", None),
+    (13, "Permission denied", None),
+    (18, "Invalid cross-device link", "destination.jsonl"),
+])
+def test_rem_os_errors_name_files_and_reason(tmp_path, monkeypatch, as_json, number, reason, second):
+    path = tmp_path / "sessions" / "vanished rollout.jsonl"
+    destination = str(tmp_path / second) if second else None
+
+    def fail(root, **kwargs):
+        raise OSError(number, reason, str(path), None, destination)
+
+    monkeypatch.setattr("connectonion.rem.service.status", fail)
+    result = invoke(tmp_path, *(["--json"] if as_json else []), "status")
+    assert result.exit_code == 1, result.output
+    message = json.loads(result.stdout)["data"] if as_json else Text.from_ansi(result.output).plain
+    assert str(path) in message
+    assert reason in message
+    if destination:
+        assert destination in message
+    assert "config" in (json.loads(result.stdout)["next"] if as_json else result.output)
 
 
 @pytest.mark.parametrize("args", [(), ("status",), ("config",), ("subscriptions",),
@@ -48,6 +75,20 @@ def test_file_listing_show_and_literal_search(tmp_path):
     matches = invoke(tmp_path, "search", "aurora", "--type", "people")
     assert matches.exit_code == 0
     assert "people/alice.md" in matches.output
+
+
+def test_show_project_folder_name_and_cross_kind_ambiguity(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/harbour-a13bd.md", "Harbour Console", ["/fictional/work/harbour"])
+    shown = invoke(tmp_path, "show", "HARBOUR")
+    assert shown.exit_code == 0, shown.output
+    assert "# Harbour Console" in shown.output
+    notebook.write("orgs/harbour.md", "# Harbour\nFictional organisation details.")
+    ambiguous = invoke(tmp_path, "show", "harbour")
+    assert ambiguous.exit_code == 1
+    assert "projects/harbour-a13bd.md" in ambiguous.output and "orgs/harbour.md" in ambiguous.output
+    assert "organisation details" not in ambiguous.output
 
 
 def test_addresses_held_for_review_are_listed_only_when_asked_for(tmp_path):
@@ -248,7 +289,7 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
     says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -257,10 +298,17 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
     assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
     assert opened == [] and asked == []
-    # Rendered on every run, so the page opened is never older than the notebook.
+    # A changed notebook opens the saved page at once, marked while it is rebuilt behind it.
+    from connectonion.rem import reader
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     Notebook(tmp_path / ".co/rem").write("people/bob.md", "# Bob\nJoined yesterday.")
     assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
+    assert "Joined yesterday" not in snapshot.read_text(encoding="utf-8")
+    assert 'id="rem-updating"' in snapshot.read_text(encoding="utf-8")
+    reader.refresh(tmp_path / ".co/rem")                     # what the detached build runs
+    assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
     assert "Joined yesterday" in snapshot.read_text(encoding="utf-8")
+    assert "rem-updating" not in snapshot.read_text(encoding="utf-8")
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
@@ -268,7 +316,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
-                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
+                        lambda address, **k: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -278,7 +326,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address, **k: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
     assert result.exit_code == 1, result.output
     output = _plain(result.output)
@@ -326,15 +374,18 @@ def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
 
 
 class _CliScheduler:
-    installed, uninstalled = [], []
+    installations, uninstalled = [], []
 
     def install(self, root, config):
-        self.installed.append(root)
+        self.installations.append(root)
         return {"scheduler": "fake", "label": "fake", "plist": "/dev/null"}
 
     def uninstall(self, root):
         self.uninstalled.append(root)
         return True
+
+    def installed(self, root):
+        return root in self.installations and root not in self.uninstalled
 
     def describe(self, root):
         return {"installed": True}
@@ -345,7 +396,7 @@ def lifecycle(tmp_path, monkeypatch):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
-    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda: _CliScheduler())
+    monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda *args, **kwargs: _CliScheduler())
     calls = []
 
     def fake_codex(notebook, items, config):
@@ -367,8 +418,46 @@ def test_noninteractive_start_cannot_consent_silently(lifecycle, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     result = invoke(root, "start")
     assert result.exit_code == 1
-    assert "--yes" in result.output and str(sessions) in result.output
+    assert "--yes" in result.output
+    summary = result.output.split("A noninteractive run")[0]
+    assert "codex sessions: 0 found, will be read" in summary
+    assert "gmail: waiting for co auth google" in summary
+    assert "whatsapp: not subscribed" in summary
+    assert len(summary.splitlines()) <= 25
+    assert "Input chars per batch" not in summary
+    assert "/inbox/whatsapp" not in summary and str(sessions) not in summary
     assert not (root / ".state" / "consent.json").exists()
+
+
+def test_terminal_start_prints_summary_and_undo_then_proceeds(lifecycle, monkeypatch):
+    root, sessions, calls = lifecycle
+    # Typer may provide its own streams instead of Click's; use the runner's
+    # actual stdin type so the command takes the interactive path in either.
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), "isatty", lambda self: True)
+        result = runner.invoke(app, ["rem", "--root", str(root), "start"], input="n\n")
+    assert result.exit_code == 0, result.output
+    output = Text.from_ansi(result.output).plain
+    assert "Read these sources with this model and schedule?" not in output
+    assert f"Details: co rem --root {root} config" in output
+    assert f"co rem --root {root} stop" in output
+    assert "Undo REM setup:" in output
+    assert (root / ".state" / "consent.json").exists()
+
+
+def test_terminal_start_prints_only_consent_changes_on_restart(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    assert invoke(root, 'start', '--yes').exit_code == 0
+    from connectonion.rem.config import set_config
+    set_config(root, ['schedule.times', '03:00'])
+    with runner.isolation():
+        monkeypatch.setattr(type(sys.stdin), 'isatty', lambda self: True)
+        result = runner.invoke(app, ['rem', '--root', str(root), 'start'])
+    assert result.exit_code == 0, result.output
+    assert 'Consent changes:' in result.output
+    assert 'schedule.times:' in result.output and '03:00' in result.output
+    assert 'Sources:' not in result.output and 'Permissions:' not in result.output
+    assert 'Read these sources' not in result.output
 
 
 def test_start_yes_then_stop(lifecycle):
@@ -376,10 +465,22 @@ def test_start_yes_then_stop(lifecycle):
     result = invoke(root, "start", "--yes")
     assert result.exit_code == 0, result.output
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed and "status" in result.output.split("Next:")[1]
+    assert _CliScheduler.installations and "status" in result.output.split("Next:")[1]
     stopped = invoke(root, "stop")
     assert stopped.exit_code == 0, stopped.output
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
+
+
+def test_consent_details_stay_available_in_config_and_json(lifecycle):
+    root, sessions, calls = lifecycle
+    human = invoke(root, "config")
+    structured = invoke(root, "--json", "config")
+    assert human.exit_code == structured.exit_code == 0
+    assert "Input chars per batch:" in human.output
+    assert "Depth slot minutes:" in human.output
+    config = json.loads(structured.stdout)["data"]["config"]
+    assert config["limits"]["input_chars_per_batch"] == 200000
+    assert config["limits"]["depth_slot_minutes"] == 60
 
 
 def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):
@@ -394,19 +495,20 @@ def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, 
     assert approved.exit_code == 0, approved.output
     assert json.loads(approved.stdout)["data"]["background"]["started"] is True
     assert (root / ".state" / "consent.json").is_file()
-    assert _CliScheduler.installed[-1] == root.resolve() and calls == []
+    assert _CliScheduler.installations[-1] == root.resolve() and calls == []
+    assert json.loads(approved.stdout)['next'].endswith(' status')
 
 
 def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
     root, sessions, calls = lifecycle
-    _CliScheduler.installed.clear()
+    _CliScheduler.installations.clear()
     for args in (("--estimate-only", "--yes"), ("--no-investigate", "--no-start", "--yes")):
         result = invoke(root, "--json", "init", *args)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["data"]["background"]["started"] is False
     # --yes approves the sources the map scans (#2443: nothing is scanned before
     # consent); neither run installs the schedule.
-    assert _CliScheduler.installed == []
+    assert _CliScheduler.installations == []
 
 
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):
@@ -422,8 +524,11 @@ def test_subscribe_and_unsubscribe_round_trip(lifecycle):
     assert json.loads(invoke(root, "--json", "subscriptions").stdout)["data"]["codex"]["enabled"] is False
 
 
-def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle):
+def test_scheduled_sync_is_quiet_when_no_slot_is_due(lifecycle, monkeypatch):
+    from datetime import datetime, timezone
     root, sessions, calls = lifecycle
+    # Half past the hour: no saved time is within the early-fire window, whatever the zone.
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 11, 4, 10, 30, tzinfo=timezone.utc))
     assert invoke(root, "start", "--yes").exit_code == 0
     result = invoke(root, "--json", "sync", "--scheduled")
     assert result.exit_code == 0, result.output
@@ -441,24 +546,24 @@ def test_sync_all_is_the_backfill(lifecycle):
 def _spend_the_day(root):
     """A run record that used the whole day's cap, as a busy real day leaves."""
     import uuid
-    from datetime import datetime, timezone
-
+    from datetime import timedelta
     from connectonion.rem.config import read_config
     from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.service import now
     record_id = "run_" + uuid.uuid4().hex
     cap = read_config(root)["limits"]["runner_calls_per_day"]   # the cap itself moved (#2032)
     write_json(state_path(root, f"runs/{record_id}.json"),
-               {"id": record_id, "started_at": datetime.now(timezone.utc).isoformat(),
+               {"id": record_id, "started_at": (now() - timedelta(minutes=1)).isoformat(),
                 "runner_attempts": cap, "outcome": "completed", "items": 1})
 
 
-def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle):
+def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle, rem_sydney_slot):
     """#1957: "Next: co rem logs" pointed at a listing with nothing in it."""
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     _spend_the_day(root)
-    rollout(sessions / "rollout-a.jsonl", [("user", "one more thing")])
+    rollout(sessions / "rollout-a.jsonl", [("user", "one more thing")], timestamp=rem_sydney_slot.isoformat())
     refused = invoke(root, "sync")
     assert refused.exit_code == 1 and calls == []
     assert "resets" in refused.output and "limits.runner_calls_per_day" in refused.output
@@ -479,7 +584,7 @@ def _recording_runner(monkeypatch, calls, stop_after=None):
     monkeypatch.setattr("connectonion.rem.runner.run_stage", run_stage)
 
 
-def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch):
+def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch, rem_sydney_slot):
     from connectonion.rem.config import set_config
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
@@ -487,20 +592,22 @@ def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch
     assert invoke(root, "start", "--yes").exit_code == 0
     set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
                       "limits.runner_calls_per_day", "2"])
-    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)],
+            timestamp=rem_sydney_slot.isoformat())
     result = invoke(root, "sync", "--all")
     assert len(calls) == 2 and result.exit_code == 1
     assert "Batch 1:" in result.stderr and "Batch 2:" in result.stderr
     assert "2 batches" in result.output and "resets" in result.output
 
 
-def test_ctrl_c_during_sync_all_says_what_finished(lifecycle, monkeypatch):
+def test_ctrl_c_during_sync_all_says_what_finished(lifecycle, monkeypatch, rem_sydney_slot):
     from connectonion.rem.config import set_config
     from tests.unit.test_rem_source import rollout
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
-    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)],
+            timestamp=rem_sydney_slot.isoformat())
     _recording_runner(monkeypatch, calls, stop_after=1)
     result = invoke(root, "sync", "--all")
     assert result.exit_code == 130
@@ -669,7 +776,7 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     is useless if it forgets the root the user chose (#1635)."""
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: ([
-        {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
+        {'name': 'openonion ai', 'address': 'ellis.a@example.com', 'mails': 106, 'sent': 106,
          'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
@@ -679,13 +786,13 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     asked = json.loads(result.output)['data']['confirm_own_addresses']
     assert len(asked) == 1
     assert '106 sent, none received' in asked[0]
-    assert f"--root '{root}' init --mine aaronplus1996@gmail.com" in asked[0]
+    assert f"--root '{root}' init --mine ellis.a@example.com" in asked[0]
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
     assert '✓ mapped installed skills' in plain.output
     assert '✓ mapped projects' in plain.output
-    assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
+    assert 'ellis.a@example.com' in Text.from_ansi(plain.output).plain
 
 
 def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(tmp_path, monkeypatch):
@@ -699,7 +806,7 @@ def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
     root = tmp_path / 'rem'
-    result = invoke(root, 'init', '--skills-dir', str(empty))
+    result = invoke(root, 'init', '--skills-dir', str(empty), '--no-investigate')
     assert result.exit_code == 0, result.output
     assert "Held for review, not investigated or listed (no name, never replied): 1." in result.output
     assert f"--root {root} list people --review" in result.output
@@ -788,7 +895,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     today = lines.index('Today            1 page changed · 3 items read · 1 run')
     assert lines[today + 1] == '                 91k tokens in · 812 out'
     assert today < lines.index(next(line for line in lines if line.startswith('Notebook')))
-    assert '  People         ●●●●●○○○○○  1 of 2   50%' in lines
+    # Page stubs alone do not establish qualifying correspondents in the archive.
+    assert '  People         ○○○○○○○○○○  0 of 0     —' in lines
+    assert '  People coverage pages for correspondents meeting the page rule in the archive' in lines
     assert '  Skills         ○○○○○○○○○○  0 of 3    0%' in lines
     write = lines.index('  To write next  1 people page not written')
     assert lines[write + 1].startswith('                 → co rem --root ')
@@ -803,8 +912,11 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
         assert internal not in '\n'.join(lines), internal
 
 
-def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch):
+@pytest.mark.parametrize('schedule_runner', ['codex-exec', 'codex-app'])
+def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch, schedule_runner):
     _notebook_with_a_run(tmp_path, monkeypatch)
+    configured = invoke(tmp_path, 'config', 'set', 'schedule.runner', schedule_runner)
+    assert configured.exit_code == 0, configured.output
     verbose = invoke(tmp_path, 'status', '--verbose').output
     assert 'Details' in verbose and 'Known runs: 1' in verbose and 'Schedule times:' in verbose
     assert 'Record: people/alice.md' in verbose
@@ -813,7 +925,12 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
                                  'worker', 'batches_today', 'runner_attempts_today', 'execution_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
-                                 'investigation_this_week', 'quota', 'investigation_quota'}
+                                 'investigation_this_week', 'quota', 'investigation_quota',
+                                 'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
+                                 'round', 'nights'}
+    assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
+    assert data['data']['last_turn'] is None
     evidence = data['data']['execution_today']
     assert evidence['attempts'] == 0 and evidence['records_without_evidence'] == 1
     assert evidence['records_with_evidence'] == 0 and evidence['provider_model_calls'] is None
@@ -990,6 +1107,8 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
+    assert ('No page matches "missing" in people, projects, orgs, skills or topics. '
+            'Search names and paths with `co rem investigate`.') == failed['data']
     assert failed['next'].endswith(' investigate')
 
 
@@ -1127,7 +1246,7 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
     prepare(tmp_path)
     Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
-    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category: [
+    monkeypatch.setattr('connectonion.rem.queue.order', lambda root, category, today=None: [
         {'path': 'people/ada.md', 'recent': False, 'weight': 1, 'unknown': 1,
          'last_investigated': None}])
     from connectonion.rem.runner import RunFailed
@@ -1161,17 +1280,22 @@ def test_start_help_names_the_confinement_and_the_undo():
     assert "co rem stop" in text
 
 
+def test_start_help_explains_linux_systemd_and_linger():
+    result = runner.invoke(app, ["rem", "start", "--help"])
+    assert result.exit_code == 0
+    assert "systemd user timer" in result.output and "loginctl enable-linger" in result.output
+    assert "On Linux and Windows the schedule is not yet installed" not in result.output
+
+
 def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
-    """After stop, `start` resumed the schedule and printed `First batch:
-    Unknown` while its help promised it runs the first update. Only the first
-    start runs one; the output says so and names the command that runs one now."""
+    """After stop, `start` explains that scheduled upkeep will run the next batch."""
     root, sessions, calls = lifecycle
     assert invoke(root, "start", "--yes").exit_code == 0
     assert invoke(root, "stop").exit_code == 0
     again = invoke(root, "start", "--yes")
     assert again.exit_code == 0, again.output
     assert "First batch: Unknown" not in again.output
-    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert "Queued for the next scheduled run." in again.output.split("First batch:")[1].splitlines()[0]
     assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
 
 
@@ -1234,8 +1358,27 @@ def test_investigate_a_bad_file_gives_the_reason_show_gives(tmp_path, make):
     assert reason in investigated.output
 
 
-def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch):
+@pytest.mark.parametrize("environment", ["uv/tools/connectonion", "plain venv"])
+def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch, environment):
     import importlib.util
+    from connectonion._version import __version__
+
+    prefix = tmp_path / environment
+    executable = prefix / "bin" / "python"
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    monkeypatch.setattr(sys, "executable", str(executable))
+    installer = (["uv", "tool", "install", "--force"] if environment.startswith("uv/")
+                 else [str(executable), "-m", "pip", "install"])
+    command = shlex.join([*installer, f"connectonion[rem]=={__version__}"])
+    if environment.startswith("uv/"):
+        prefix.mkdir(parents=True)
+        (prefix / "uv-receipt.toml").write_text(
+            '[tool]\nrequirements = [\n'
+            '  { name = "connectonion", specifier = "==1.9.3rc47" },\n'
+            '  { name = "onionwright" },\n'
+            ']\npython = "3.14"\n'
+        )
+        command += " --with onionwright --python 3.14"
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, 'find_spec',
                         lambda name, *a: None if name == 'openpyxl' else real(name, *a))
@@ -1243,7 +1386,11 @@ def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypa
     lines = result.output.splitlines()
     at = next(n for n, line in enumerate(lines) if 'spreadsheet' in line)
     # 1.9.0a9: ✗ and the check on its line, the fix on the line under it.
-    assert lines[at].startswith('  ✗ spreadsheet support') and "connectonion[rem]" in lines[at + 1]
+    assert lines[at].startswith('  ✗ spreadsheet support')
+    assert lines[at + 1].strip() == f"→ {command}"
+    data = json.loads(invoke(tmp_path, '--json', 'doctor').stdout)['data']
+    sheets = next(check for check in data if check['check'].startswith('spreadsheet support'))
+    assert sheets['fix'] == command
 
 
 def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
@@ -1293,7 +1440,7 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
     assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
-    assert 'sync resumes it from the saved bodies' in status.output
+    assert 'background updates resume it from saved bodies when enabled' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
@@ -1309,6 +1456,7 @@ def test_status_ends_on_the_step_its_first_line_names(tmp_path, monkeypatch):
     assert status_next({"configured": True, "state": "Not started — run `co rem start`"}) == ["start"]
     assert status_next({"configured": True, "state": "Stopped — background maintenance is off"}) == ["start"]
     assert status_next({"configured": True, "state": "Running in background (launchd); next slot 07:00"}) == ["logs"]
+    assert status_next({"configured": True, "state": "Scheduled with systemd; next slot 07:00"}) == ["logs"]
 
 
 # ------------------------------------------- the 1.9.0a7 acceptance run (#2044)
@@ -1386,8 +1534,68 @@ def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
     result = invoke(tmp_path / 'notebook', *args)
     assert result.exit_code == 0, result.output
     text = ' '.join(result.output.split())
-    assert 'Init offers nightly upkeep after the first run' in text
+    assert 'co init asks no questions' in text
+    assert 'grants local Codex / Claude Code sessions and all connected Google/Microsoft mailboxes' in text
+    assert 'installs upkeep and builds in the foreground' in text
+    assert 'Undo: co rem stop; co rem sources remove SOURCE; co auth logout' in text
+    assert 'Use co rem init to rebuild; a terminal prints its summary, undo block and estimate, then proceeds' in text
     assert '--yes' in text and '--no-start' in text
     assert 'It starts no background work' not in text
     assert 'do not treat it as an initialization step' not in text
     assert not (tmp_path / 'notebook').exists()
+
+
+@pytest.mark.parametrize("source", [[], ["--source", "codex"]])
+def test_not_due_sync_explains_served_slot_without_claiming_reads(lifecycle, monkeypatch, source):
+    from datetime import datetime, timezone
+    from connectonion.rem.config import set_config
+    root, _, calls = lifecycle
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "03:00,19:00"])
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 11, 4, 20, 0, tzinfo=timezone.utc))
+    assert invoke(root, "start", "--yes").exit_code == 0
+    calls.clear()
+    result = invoke(root, "sync", "--scheduled", *source)
+    assert result.exit_code == 0, result.output
+    assert "Reading new material" not in result.output
+    assert "Not due:" in result.stdout and "19:00" in result.stdout and "03:00" in result.stdout
+    assert "Due: No" not in result.stdout
+    assert not calls
+    data = json.loads(invoke(root, "--json", "sync", "--scheduled", *source).stdout)["data"]
+    assert data["due"] is False and "03:00" in data["reason"]
+
+
+@pytest.mark.parametrize("source", [[], ["--source", "codex"]])
+@pytest.mark.parametrize("json_output", [False, True])
+def test_stopped_scheduled_sync_restart_keeps_custom_root(tmp_path, source, json_output):
+    root = tmp_path / "custom notebook"
+    prepare(root)
+    result = invoke(root, *(["--json"] if json_output else []), "sync", "--scheduled", *source)
+    assert result.exit_code == 0, result.output
+    reason = json.loads(result.stdout)["data"]["reason"] if json_output else result.stdout
+    command = shlex.join(["co", "rem", "--root", str(root), "start"])
+    assert f"background upkeep is off; run {command} to enable it" in reason
+
+
+def test_sync_totals_session_summary_and_other_stage_usage(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    value = {"outcome": "completed", "maintenance": {
+        "outcome": "completed", "items": 40, "changed": [], "usage": None,
+        "sessions_summary": {"usage": {"input_tokens": 1200, "output_tokens": 20}},
+        "translations": {"usage": {"input_tokens": 400, "output_tokens": 10}}},
+        "run": {"usage": {"input_tokens": 200, "output_tokens": 30}},
+        "same_person": [{"usage": {"input_tokens": 100, "output_tokens": 5}}],
+        "depth": {"rounds": [{"usage": {"input_tokens": 100, "output_tokens": 5}}]}}
+    monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: value)
+    result = invoke(root, "sync")
+    assert result.exit_code == 0, result.output
+    assert "Tokens           2k in · 70 out" in result.stdout
+
+
+@pytest.mark.parametrize("left", [0, 3])
+def test_sync_reports_known_mail_queue_without_claiming_other_sources_empty(lifecycle, monkeypatch, left):
+    root, _, _ = lifecycle
+    value = {"outcome": "completed", "items": 40, "changed": [], "material_remaining": {"gmail": left}}
+    monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: value)
+    result = invoke(root, "sync")
+    assert result.exit_code == 0, result.output
+    assert f"{left} left in gmail for next time" in result.stdout

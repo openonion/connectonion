@@ -497,7 +497,9 @@ def test_a_reply_carries_markdown_as_a_post_and_plain_stays_text(creds, monkeypa
 def test_reaction_and_read_receipt_events_are_acked_and_never_become_messages(creds, monkeypatch, tmp_path):
     """#1618: an app subscribed to reactions or read receipts got
     "processor not found" from the SDK on every one, and Feishu retried
-    them. They are acknowledged now, and none of them is a message to answer.
+    them. They are acknowledged now, and none of them is a message to answer:
+    read receipts and removals are dropped, and a reaction on a message this
+    inbox never saw has no chat to file it under (#2690 records the rest).
     Uses the real lark_oapi dispatcher, so the SDK's own lookup is tested."""
     lark = pytest.importorskip("lark_oapi")
     from connectonion.inbox.store import Inbox
@@ -646,3 +648,112 @@ def test_embedded_media_keeps_original_file_reference_without_treating_cover_as_
     got=Feishu().to_message(event(message_type='post',text=json.dumps(content)))
     assert got.kind=='post'
     assert got.attachments==[{'type':'media','key':'file_video'}]
+
+
+# ---- #2690: every Lark event a WhatsApp listener would record ---------------
+# Payloads are Lark's documented schema-2.0 shapes for each event type, fed
+# through the real lark_oapi dispatcher and the real to_message, so the SDK's
+# own parsing is under test, not a SimpleNamespace stand-in.
+
+def _envelope(event_type, event_id, body):
+    return json.dumps({"schema": "2.0", "header": {
+        "event_id": event_id, "event_type": event_type, "create_time": "1756808267000",
+        "token": "", "app_id": "cli_test", "tenant_key": "t1"}, "event": body}).encode()
+
+
+def _receive(message_id, chat_id, chat_type, message_type, content, root_id=""):
+    return {"sender": {"sender_id": {"union_id": "on_1", "user_id": "u1", "open_id": "ou_1"},
+                       "sender_type": "user", "tenant_key": "t1"},
+            "message": {"message_id": message_id, "root_id": root_id, "parent_id": root_id,
+                        "create_time": "1756808267000", "update_time": "1756808267000",
+                        "chat_id": chat_id, "chat_type": chat_type, "message_type": message_type,
+                        "content": json.dumps(content), "user_agent": ""}}
+
+
+OPERATOR = {"open_id": "ou_1", "union_id": "on_1", "user_id": "u1"}
+LARK_EVENTS = [
+    ("im.message.receive_v1", "ev_file",
+     _receive("om_file", "oc_dm", "p2p", "file", {"file_key": "file_v3_1", "file_name": "invoice.pdf"})),
+    ("im.message.receive_v1", "ev_image",
+     _receive("om_image", "oc_dm", "p2p", "image", {"image_key": "img_v3_1"})),
+    ("im.message.reaction.created_v1", "ev_reaction",
+     {"message_id": "om_file", "reaction_type": {"emoji_type": "THUMBSUP"}, "operator_type": "user",
+      "user_id": OPERATOR, "action_time": "1756808268000"}),
+    ("im.message.recalled_v1", "ev_recall",
+     {"message_id": "om_image", "chat_id": "oc_dm", "recall_time": "1756808269000",
+      "recall_type": "message_owner"}),
+    ("im.chat.member.bot.added_v1", "ev_bot_added",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False,
+      "operator_tenant_key": "t1", "name": "Ops"}),
+    ("im.chat.member.user.added_v1", "ev_user_added",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "name": "Ops", "users": [{"name": "Alice", "tenant_key": "t1",
+                                "user_id": {"open_id": "ou_2", "union_id": "on_2"}}]}),
+    ("im.chat.member.user.deleted_v1", "ev_user_deleted",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "name": "Ops", "users": [{"name": "Bob", "tenant_key": "t1",
+                                "user_id": {"open_id": "ou_3", "union_id": "on_3"}}]}),
+    ("im.chat.updated_v1", "ev_chat_updated",
+     {"chat_id": "oc_group", "operator_id": OPERATOR, "external": False, "operator_tenant_key": "t1",
+      "after_change": {"name": "Ops 2"}, "before_change": {"name": "Ops"}}),
+]
+
+
+def _run_lark_events(monkeypatch, tmp_path, events):
+    lark = pytest.importorskip("lark_oapi")
+    from connectonion.inbox.store import Inbox
+
+    class FakeWs:
+        def __init__(self, *a, event_handler=None, **k):
+            self.handler = event_handler
+            self.on_reconnecting = self.on_reconnected = None
+
+        def start(self):
+            for event_type, event_id, body in events:
+                self.handler._do_without_validation(_envelope(event_type, event_id, body))
+
+    monkeypatch.setattr(lark.ws, "Client", FakeWs)
+    monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
+        {"code": 0, "tenant_access_token": "t", "expire": 7200}))
+    monkeypatch.setattr(feishu_module.requests, "get", lambda *a, **k: FakeResponse(
+        {"code": 0, "bot": {"open_id": "ou_bot", "app_name": "OpsAgent"}}))
+    box = Inbox("lark", home=tmp_path / "lark")
+    Feishu("lark").run(box)
+    ids = [json.loads(line)["id"] for line in box.received.read_text().splitlines()] if box.received.exists() else []
+    assert len(ids) == len(set(ids)), "each event is one record"
+    return box, {i: box.lookup(i) for i in ids}
+
+
+def test_files_images_reactions_recalls_and_group_events_all_reach_the_inbox(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARK_APP_ID", "cli_test")
+    monkeypatch.setenv("LARK_APP_SECRET", "s3cret")
+    box, got = _run_lark_events(monkeypatch, tmp_path, LARK_EVENTS)
+
+    assert got["om_file"].kind == "file" and got["om_file"].mentioned
+    assert got["om_file"].attachments == [{"type": "file", "key": "file_v3_1", "name": "invoice.pdf"}]
+    assert got["om_image"].kind == "image"
+    assert got["om_image"].attachments == [{"type": "image", "key": "img_v3_1"}]
+
+    reaction = got["ev_reaction"]
+    assert (reaction.kind, reaction.chat, reaction.mentioned) == ("reaction", "oc_dm", False)
+    assert "THUMBSUP" in reaction.text and "om_file" in reaction.text
+
+    recall = got["ev_recall"]
+    assert (recall.kind, recall.chat, recall.mentioned) == ("recall", "oc_dm", False)
+    assert "om_image" in recall.text
+
+    joined = got["ev_bot_added"]
+    assert (joined.kind, joined.chat, joined.mentioned) == ("joined", "oc_group", True)
+    assert "Ops" in joined.text
+
+    assert got["ev_user_added"].kind == "group-info" and "Alice" in got["ev_user_added"].text
+    assert got["ev_user_deleted"].kind == "group-info" and "Bob" in got["ev_user_deleted"].text
+    assert got["ev_chat_updated"].kind == "group-info" and not got["ev_chat_updated"].mentioned
+
+
+def test_a_redelivered_group_event_is_recorded_once(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARK_APP_ID", "cli_test")
+    monkeypatch.setenv("LARK_APP_SECRET", "s3cret")
+    added = [e for e in LARK_EVENTS if e[1] == "ev_bot_added"]
+    box, got = _run_lark_events(monkeypatch, tmp_path, added + added)
+    assert list(got) == ["ev_bot_added"]

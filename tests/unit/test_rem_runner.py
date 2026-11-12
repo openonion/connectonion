@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
@@ -29,13 +29,14 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
         next(workdir.glob(f'{stage}-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
         return {'session_id': 'avery-thread', 'usage': {'input_tokens': 10}}
 
-    def judge(book, page, before, candidate, items, config, directory, independent_run):
+    def judge(book, page, before, candidate, items, config, directory, independent_run, *, approved=()):
         calls.append('critic')
+        assert not approved
         assert page == record and independent_run is runner.run_claim_task
         assert candidate.read_text().endswith(bullet + '\n')
         candidate.write_text('# Avery Lin\n\n## Insight\n')
         return {'bullets': [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}],
-                'usage': {'input_tokens': 3}}
+                'usage': {'input_tokens': 3}, 'critic_flips': 1}
 
     def promote(book, page, candidate, *args, **options):
         calls.append('promote')
@@ -52,6 +53,9 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
     assert result['usage'] == {'input_tokens': 13 if stage == 'muse' else 10}
     if stage == 'muse':
         assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
+        assert result['insights_flips'] == 1
+        logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+        assert logged['insights_flips'] == 1
         assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
     else:
         assert 'insights_kept' not in result
@@ -71,7 +75,7 @@ def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch
 
     def critic(*args):
         critics.append(args)
-        if critic_fails and len(critics) == 2:
+        if critic_fails and len(critics) == 4:
             if critic_fails is True:
                 raise RunFailed('Critic failed', {'input_tokens': 3})
             return {'result': '[]' if critic_fails == 'invalid-root' else '{invalid', 'usage': {'input_tokens': 3}}
@@ -93,21 +97,21 @@ def test_muse_repairs_cannot_reintroduce_rejected_insights(notebook, monkeypatch
     if critic_fails:
         with pytest.raises(RunFailed, match='Critic failed|Insight critic returned') as error:
             run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
-        assert error.value.usage == {'input_tokens': 26}
+        assert error.value.usage == {'input_tokens': 32}
     else:
         result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
         assert result['insights_proposed'] == 1 and result['insights_kept'] == 0
         assert result['insights_rejected'] == [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}]
-        assert result['usage'] == {'input_tokens': 26}
+        assert result['usage'] == {'input_tokens': 32}
         assert bullet not in notebook.read(record)
         logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
         assert logged['insights_rejected'] == result['insights_rejected']
-    assert len(turns) == len(critics) == 2
+    assert len(turns) == 2 and len(critics) == 4
     attempts = json.loads(next((notebook.root / '.state/tasks').glob('*/insight-critic.json')).read_text())
     assert len(attempts) == 2 and attempts[0]['bullets'][0]['verdict'] == 'weak'
     if critic_fails:
         assert attempts[1]['error'].startswith(('Critic failed', 'Insight critic returned'))
-        assert attempts[1]['usage'] == {'input_tokens': 3}
+        assert attempts[1]['usage'] == {'input_tokens': 6}
     else:
         assert attempts[1]['bullets'][0]['verdict'] == 'weak'
 
@@ -119,7 +123,7 @@ def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path,
     candidate = tmp_path / 'candidate.md'
     text = f'# Avery Lin\n\n## Insight\n{bullet}\n'
     result = {}
-    verdicts = iter(['weak', 'good'])
+    verdicts = iter(['weak', 'good', 'good', 'good'])
     monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {'result': json.dumps({'bullets': [
         {'bullet': bullet, 'verdict': next(verdicts), 'reason': 'Invented review.', 'open_thread': ''}]})})
     for _ in range(2):
@@ -127,8 +131,86 @@ def test_repaired_good_insight_is_not_also_reported_rejected(notebook, tmp_path,
         runner._review_insights(notebook, record, original, candidate, [], {}, tmp_path, result, None)
     assert result['insights_proposed'] == result['insights_kept'] == 1
     assert result['insights_rejected'] == [] and bullet in candidate.read_text()
+    assert result['insights_flips'] == 1
     attempts = json.loads((tmp_path / 'insight-critic.json').read_text())
     assert [attempt['bullets'][0]['verdict'] for attempt in attempts] == ['weak', 'good']
+
+
+@pytest.mark.parametrize('repair', ['reworded', 'deleted'])
+def test_muse_repairs_keep_approved_insights_without_rejudging(notebook, monkeypatch, repair):
+    from connectonion.rem import insight_critic
+    from connectonion.rem.files import write_json
+    record = 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin')
+    bullet = '- Changed: Avery now pays for Lantern testing before each quarterly renewal. [1][2]'
+    rewrite = '- Changed: Avery pays for Lantern testing before each quarterly renewal. [3][4]'
+    added = '- Now: The meeting is on Tuesday. [1]'
+    turns, packets, promotions = [], [], []
+
+    def run(workdir, prompt, config, stage, **options):
+        turns.append(prompt)
+        if len(turns) == 1:
+            body = bullet + '\n\n## Sources\n- [1] gmail:pilot\n- [2] gmail:renewal\n'
+        else:
+            body = (rewrite + '\n' if repair == 'reworded' else '') + added
+            body += '\n\n## Sources\n- [1] gmail:meeting\n- [3] gmail:pilot\n- [4] gmail:renewal\n'
+        next(workdir.glob('muse-*/candidate.md')).write_text('# Avery Lin\n\n## Insight\n' + body)
+        return {'session_id': 'avery-thread', 'usage': {'input_tokens': len(turns) * 10}}
+
+    def critic(workdir, prompt, config, stage):
+        packet = json.loads(prompt[len(insight_critic.RUBRIC):])
+        expected = [bullet] if len(turns) == 1 else [added]
+        assert packet['bullets'] == expected
+        assert rewrite not in packet['bullets']
+        packets.append(packet)
+        return {'result': json.dumps({'bullets': [
+            {'bullet': expected[0], 'verdict': 'good' if len(turns) == 1 else 'weak',
+             'reason': 'Invented review.', 'open_thread': ''}]}), 'usage': {'input_tokens': 3}}
+
+    def promote(book, page, candidate, original, items, directory, usage, **options):
+        promotions.append(candidate.read_text())
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'errors': ['Cited-claim audit did not pass']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(page, candidate.read_text())
+        return {}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, 'run_claim_task', critic)
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+    text = notebook.read(record)
+    expected = rewrite if repair == 'reworded' else bullet.replace('[1][2]', '[3][4]')
+    assert insight_critic._bullets(text) == [expected]
+    assert '- [1] gmail:meeting' in text and '- [3] gmail:pilot' in text and '- [4] gmail:renewal' in text
+    assert result['insights_kept'] == 1 and result['usage'] == {'input_tokens': 32}
+    assert [row['bullet'] for row in result['insights_rejected']] == [added]
+    assert len(turns) == len(promotions) == 2 and len(packets) == 4
+    logged = json.loads(next((notebook.root / '.state/tasks').glob('*/result.json')).read_text())
+    assert logged['insights_kept'] == 1
+
+
+@pytest.mark.parametrize('final', ['approved', 'removed', 'replaced'])
+def test_muse_counts_approved_insights_on_the_final_page(notebook, monkeypatch, final):
+    record, bullet = 'people/avery-lin.md', '- Changed: Avery now pays for Lantern testing. [1][2]'
+    notebook.stub_person(record, 'Avery Lin')
+    text = f'# Avery Lin\n\n## Insight\n{bullet}\n'
+
+    def run(workdir, *args, **options):
+        next(workdir.glob('muse-*/candidate.md')).write_text(text)
+        return {}
+
+    def promote(book, page, candidate, *args, **options):
+        replacement = '- Now: The meeting is on Tuesday. [1]' if final == 'replaced' else ''
+        book.write(page, text if final == 'approved' else text.replace(bullet, replacement))
+        return {}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: {'result': json.dumps({'bullets': [
+        {'bullet': bullet, 'verdict': 'good', 'reason': 'Invented review.', 'open_thread': ''}]})})
+    monkeypatch.setattr(runner, '_promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(), stage='muse')
+    assert result['insights_kept'] == int(final == 'approved')
 
 
 def test_independent_critic_uses_its_own_read_only_output_schema(tmp_path, monkeypatch):
@@ -443,7 +525,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'alone is not an insight. Each is about the project' in prompts[0]
     assert 'None: `- Unknown`.' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
-    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+    assert 'return the lead ledger with each lookup (tool, query, result)' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
@@ -510,7 +592,7 @@ def test_investigation_does_not_claim_another_concurrent_page_change(notebook, m
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
     config = default_config()
-    config.update(runner=harness, model="default")
+    config.update(runner=harness, model="default", models=dict.fromkeys(LEVEL_MODELS, "default"))
     item = {"role": "page", "record": "notes/old.md", "text": "x" * 300000}
     result = run_stage(notebook, [item], config, stage=stage)
     argv, options = delegate[0]
@@ -924,6 +1006,60 @@ def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
     assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
+@pytest.mark.parametrize('promotion', ['candidate', 'carried', 'last-resort', 'maintenance',
+                                     'large-maintenance', 'raw-correction', 'raw-maintenance'])
+def test_promotion_compares_resolved_mail_sources(notebook, tmp_path, monkeypatch, promotion):
+    from connectonion.rem import page_review
+
+    record, raw, digest = 'people/avery.md', 'gmail:1a02327b9e6d2c51', 'gmail:94449e945db3'
+    monkeypatch.setattr(page_review, '_mail_digest', lambda root, source:
+                        digest if source in (raw, digest) else source)
+    notebook.stub_person(record, 'Avery Lin')
+    lead = '- Avery Lin builds small research tools. [23]'
+    if promotion == 'large-maintenance':
+        lead += '\n' + 'Avery builds tools for researchers to search their own notes. ' * 24 + '[23]'
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## Who they are\n- Unknown', '## Who they are\n' + lead)
+                .replace('- Location: Unknown', '- Location: Sydney [23]')
+                .replace('- (none yet)', f'- [23] {raw} — 2026-08-21'))
+    notebook.write(record, original)
+    text = original.replace(raw, digest).replace('[23]', '[1]')
+    if promotion.startswith('raw-'):
+        text = text.replace(digest, raw).replace('- Location: Sydney [1]', '- Location: Unknown')
+    items = [{'source': digest, 'text': 'Avery Lin builds small research tools in Sydney.'}]
+    reviewed = []
+    validate = page_review.validate
+
+    def review(record, candidate, before, *args, **kwargs):
+        reviewed.append((before, candidate))
+        return validate(record, candidate, before, *args, **kwargs)
+
+    monkeypatch.setattr(page_review, 'validate', review)
+    if 'maintenance' in promotion:
+        before = {r: notebook.read(r) for r in notebook.list()}
+        working = Notebook(tmp_path / 'working')
+        for r, page in before.items():
+            working.write(r, page)
+        working.write(record, text)
+        assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+        assert before[record] == original  # Raw snapshot still guards concurrent writes.
+    else:
+        candidate = tmp_path / 'candidate.md'
+        candidate.write_text(text)
+        runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None,
+                                  carried=original if promotion != 'candidate' else '',
+                                  last_resort=promotion == 'last-resort',
+                                  report='- Removed fact: Location — Unsupported' if promotion == 'raw-correction' else '')
+        assert json.loads((tmp_path / 'review.json').read_text())['accepted']
+
+    assert reviewed and all(page_review.dropped(before, after) == [] for before, after in reviewed)
+    sources = notebook.read(record).partition('\n## Sources\n')[2]
+    assert raw not in sources
+    assert sources.count(digest) == 1
+    assert len(page_review._cited_sources(notebook.read(record))) == 1
+    assert '- Location: Sydney [' in notebook.read(record)
+
+
 @pytest.mark.parametrize('promotion', ['candidate', 'maintenance'])
 def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     record = 'people/avery.md'
@@ -1127,6 +1263,28 @@ def test_runner_claim_audit_carries_only_additive_stages(notebook, monkeypatch, 
         workdir=tmp_path, config={}, stage=stage, run=lambda *args: {})
     assert seen == [original if stage in ('enrich', 'muse', 'maintain') else ''] * 2
     assert result['repairs'] == 1
+
+
+def test_unretained_original_records_unverified_status_without_refusal(notebook, monkeypatch, tmp_path):
+    record = 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = notebook.read(record)
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(original.replace('- Unknown — not investigated yet', '- Unknown')
+                         .replace('## What it is\n- Unknown', '## What it is\nA local demo. [1]')
+                         .replace('- (none yet)', '- [1] codex:session-atlas:42 — 2026-10-01'))
+    items = [{'role': 'user', 'source': 'codex:session-atlas:42', 'text': ''}]
+    monkeypatch.setattr(runner, 'run_claim_task', lambda *args: pytest.fail('No readable originals to audit'))
+
+    runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None,
+                              claim_config=default_config())
+    assert 'A local demo.' in notebook.read(record)
+    report = json.loads((tmp_path / 'claim-review.json').read_text())
+    assert report['verdict'] == 'insufficient' and report['unretained_citations'] == ['1']
+    review = json.loads((tmp_path / 'review.json').read_text())
+    assert review['accepted'] is True
+    assert review['factual_quality'] == ('bounded citation audit insufficient; '
+                                         '1 citations unverified (originals unavailable)')
 
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
@@ -1599,9 +1757,8 @@ def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(n
 
 
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
-    """The model has no network (its sandbox is the defence against mail that
-    carries instructions); it names searches, our code runs them read-only,
-    and the results come back as cited material for one more turn."""
+    """The optional read-only mail bridge adds requested searches and their
+    cited originals to one more turn; direct research is also available."""
     import json as jsonlib
     import re as regex
     from connectonion.rem.config import set_config
@@ -1727,22 +1884,33 @@ def test_material_carries_local_times_without_changing_the_sources(notebook, del
     assert delegate[0][1]["material"] == shown
 
 
-def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
+def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate, monkeypatch):
     """Corin's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
     from connectonion.rem.config import set_config
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 5, 13, 1, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(runner, "datetime", Clock)
     set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
-    today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
-    assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    assert "Today is 2026-11-06 (Australia/Sydney)" in note
+    assert "never an open thread" not in note
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
     handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
-    assert f"Today is {today}" in handed
+    assert "Today is 2026-11-06" in handed
+    assert "A past scheduled date alone does not establish occurrence or completion" in handed
+    assert "an unanswered request remains dated with its outcome unknown" in handed
+    assert "a promise past its due date with no delivery stays overdue and open" in handed
+    assert "answer, delivery, cancellation or withdrawal for the matching ask" in handed
+    assert "do not present a past scheduled event as upcoming" in handed
 
 
 def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):

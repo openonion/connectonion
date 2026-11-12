@@ -135,7 +135,7 @@ tries again.
 
 ```python
 people_table(root, *, company="", query="", open_only=False, recent_days=0,
-             sort="last_contact", descending=True, include_unlisted=False, today=None) -> list[dict]
+             sort="activity", descending=True, include_unlisted=False, today=None) -> list[dict]
 person(root, record) -> dict | None   # the row plus its edges
 thread(root, thread_id, *, bodies=False) -> list[dict]   # in time order
 edges(root, record) -> list[dict]

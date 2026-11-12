@@ -25,7 +25,7 @@ the resulting context still exceeds the budget.
 
 ### When feedback is processed
 
-In the next preview candidate, normal `sync` selects attributed reflection
+Normal `sync` selects attributed reflection
 records and review decisions by their explicit target pages. It keeps raw
 records in the maintenance input; changing the compact view is not a new event.
 Fresh feedback bypasses an older page cooldown or ordinary source-current check.
@@ -61,7 +61,7 @@ or rewritten by installation.
 
 ### Explicit investigation when no new originals are found
 
-In a follow-up candidate, an explicit `co rem investigate PAGE` that finds no new
+In 1.9.3rc17, an explicit `co rem investigate PAGE` that finds no new
 raw material can process eligible attributed feedback for that page in one bounded
 maintenance turn. The log says `mode: feedback_only`, retains `feedback_items` and
 `feedback_deferred`, and reports the stage as `processing attributed feedback`.
@@ -78,8 +78,8 @@ keeps its original date boundary and does not become a feedback review.
 
 Mixed new raw evidence and multi-round investigations still receive their existing
 context; this fallback does not establish managed feedback receipts for those paths.
-It is not an external-agent instant-apply interface. This follow-up candidate is
-not included in the public 1.9.3rc16 preview.
+It is not an external-agent instant-apply interface. The direct-investigation fallback is
+part of 1.9.3rc17 and is not included in 1.9.3rc16.
 
 ## Execution evidence and daily allowance (candidate)
 
@@ -147,8 +147,14 @@ co rem review ID --verdict no --author user --response 'Different constraints'
 For a `question`, pass one subject and later `--verdict answer --response TEXT`.
 Decisions are retained in `.state/reviews.json`; exact rejected candidates do not
 reappear. Maintenance receives answered/accepted/rejected records as evidence.
-Models can propose at most two candidates per pass. The reader's **Questions &
-connections** section displays them and terminal commands; it is a read-only snapshot.
+Models can propose at most two candidates per pass. In the live reader
+(`co rem open`), **Questions & connections** (`#reviews=1`) decides them in place:
+a link has **Yes** / **No** / **Not sure**, a question a box for your answer with
+**Save answer** / **Not sure**. Each posts `{"id", "verdict", "response"?}` to
+`POST /rem/review`, which calls the same `decide` with author `owner`; **Not sure**
+posts nothing and leaves the review pending. A recorded verdict is final, as it is
+here. A snapshot shows the reviews with one line, *This is a snapshot; decide these
+on the live page*, and no command to copy.
 
 Optional local voice input requires **whisper.cpp's `whisper-cli`** and an already
 downloaded local model. Nothing is downloaded or sent to a cloud transcriber:
@@ -183,3 +189,22 @@ existing batch checkpoints; feedback uses the per-target processing receipts abo
 An accepted target stays acknowledged if a later target fails. This preview
 does not implement cross-machine locking, external sharing permissions or automatic
 factual adjudication. The underlying Markdown pages remain local.
+
+## Candidate: retained quotation context (#2687)
+
+A follow-up candidate distinguishes a lost quote from literal words retained
+inside one extended quotation. The words, spacing, case and word boundaries must
+remain exact, and the immediately following citations must resolve to the same
+unambiguous original identities. Dates and privacy labels may stand between the
+quotation and those citations. Renumbering can preserve identity; a matching ID
+elsewhere in Sources, a different binding, missing definition, concatenated
+quotations or paraphrase cannot. This does not establish equivalent meaning or
+correct attribution; the source audit still applies. Exact-quote retention keeps
+its existing behavior.
+
+If introductory evidence really is lost, its restoration stays above the first
+content section and retains the writer's new lead. It is not appended below an
+Uncertainties placeholder. This repair does not remove duplicates authored in the
+candidate, repair saved notebooks or establish real model/native usefulness.
+This repair is prepared for 1.9.3rc27; matching public artifacts and normal
+release acceptance remain required.

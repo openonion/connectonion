@@ -5,6 +5,7 @@ parallel across lanes, leases renewed while a handler runs, and a message that
 keeps coming back is given up rather than retried forever.
 """
 
+import os
 import threading
 import time
 
@@ -125,37 +126,44 @@ class TestLease:
     def test_a_long_handler_keeps_its_lease_so_the_sweep_does_not_take_it_back(self, tmp_path):
         inbox = box(tmp_path)
         put(inbox, "m1")
-        working, release = threading.Event(), threading.Event()
-        renewals = []
+        aged, renewed, release = threading.Event(), threading.Event(), threading.Event()
         real_renew = inbox.renew
 
-        def counted(message_id):
+        def watched(message_id):
+            # Only a renewal that began after the claim was aged counts: the
+            # ageing happened-before `aged` was set, so this touch lands on
+            # top of it.
+            after_ageing = aged.is_set()
             result = real_renew(message_id)
-            renewals.append(message_id)
+            if result and after_ageing:
+                renewed.set()
             return result
 
-        inbox.renew = counted
+        inbox.renew = watched
 
         def handler(message):
-            working.set()
+            # What a handler that has been working for an hour looks like to
+            # the sweep: a claim an hour old. Set here, not waited for, so the
+            # gap between claim and sweep does not depend on the scheduler.
+            [taken] = inbox.cur.iterdir()
+            an_hour_ago = time.time() - 3600
+            os.utime(taken, (an_hour_ago, an_hour_ago))
+            aged.set()
             release.wait(10)
 
         stop, thread = drain(inbox, handler, lease_seconds=0.05)
-        assert working.wait(10)
-        # Wait for renewals to have demonstrably happened, not for a duration.
-        # A fixed sleep asserts that a background thread was scheduled inside
-        # a wall-clock window, which a loaded CI runner does not promise — this
-        # test failed exactly that way on 3.11 before it was written this way.
-        deadline = time.monotonic() + 10
-        while len(renewals) < 2 and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert len(renewals) >= 2, "the lease was never renewed"
-
-        # The claim was made long before the last renewal, so a window that
-        # would have reclaimed it finds nothing: the timestamp moved.
-        assert inbox.release_stale(max_age=0.05) == 0, "the renewal did not move the clock"
-        release.set()
-        settle(inbox, stop, thread, until=lambda: inbox.completed.exists())
+        try:
+            # Wait for the renewal to be signalled, not for a duration. The
+            # earlier version swept with max_age equal to the renewal interval
+            # (0.05 s each), so any stall of this thread longer than one
+            # interval between the renewal and the sweep failed it (#2918 CI).
+            assert renewed.wait(10), "the lease was never renewed"
+            # Claimed an hour ago, renewed moments ago: a ten-minute window
+            # would take an unrenewed claim back, and finds nothing here.
+            assert inbox.release_stale(max_age=600) == 0, "the renewal did not move the clock"
+        finally:
+            release.set()
+            settle(inbox, stop, thread, until=lambda: inbox.completed.exists())
 
     def test_without_a_lease_the_sweep_reclaims_a_slow_handler(self, tmp_path):
         """The opposite case, so the test above proves the renewal and not the clock."""

@@ -1,0 +1,2 @@
+version: v1.9.3rc44
+no_visual_change: "Ordering of later-in-thread mail in the native task view only. No reader layout, CSS or component changes."

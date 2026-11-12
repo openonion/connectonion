@@ -91,7 +91,7 @@ def _write(path: Path, new_block: str) -> None:
 
 def refresh(app=None) -> List[Tuple[Path, Optional[str], str]]:
     """Write the block wherever it is missing or stale and can be written; (file, old, new) for each one changed."""
-    from .skills_commands import writable
+    from .skills_commands import link_missing, writable
     changes = [(path, old) for path, old in stale() if writable(path)]
     if not changes:
         return []
@@ -100,6 +100,7 @@ def refresh(app=None) -> List[Tuple[Path, Optional[str], str]]:
     new_block = block(generate(app))
     for path, _ in changes:
         _write(path, new_block)
+    link_missing()
     return [(path, old, __version__) for path, old in changes]
 
 
@@ -133,7 +134,7 @@ def doctor_rows() -> List[Tuple[str, str]]:
     return rows
 
 
-def handle_skills_index(remove_block: bool = False) -> None:
+def handle_skills_index(remove_block: bool = False, brief: bool = False) -> None:
     """co skills index: print each file changed, and how to undo it."""
     from rich.markup import escape
 
@@ -141,7 +142,8 @@ def handle_skills_index(remove_block: bool = False) -> None:
     out = console()
     if not targets():
         out.print("Neither ~/.codex nor ~/.claude exists here, so nothing was written.", markup=False)
-        out.print(next_line("co skills --help"))
+        if not brief:
+            out.print(next_line("co skills --help"))
         return
     if remove_block:
         removed = remove()
@@ -160,6 +162,7 @@ def handle_skills_index(remove_block: bool = False) -> None:
         else:
             out.print(f"{escape(str(path))} is read-only here, so the index was not written. "
                       "Outside the sandbox: co skills index")
-    out.print("Only the text between <!-- co:begin --> and <!-- co:end --> is ours. "
-              "To take it out: co skills index --remove", markup=False)
-    out.print(next_line("co doctor"))
+    if not brief:
+        out.print("Only the text between <!-- co:begin --> and <!-- co:end --> is ours. "
+                  "To take it out: co skills index --remove", markup=False)
+        out.print(next_line("co doctor"))

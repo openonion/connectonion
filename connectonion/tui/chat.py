@@ -258,7 +258,7 @@ class ThinkingIndicator(Static):
     frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     frame_no = reactive(0)
     message = reactive("Thinking...")
-    function_call = reactive("")  # e.g., search_emails("aaron")
+    function_call = reactive("")  # e.g., search_emails("ellis")
     elapsed = reactive(0)  # Elapsed seconds
     show_elapsed = reactive(True)  # Show elapsed time for LLM thinking
 
@@ -459,7 +459,7 @@ class Chat(App):
                 max_iter = agent.max_iterations
                 chat.call_from_thread(chat._update_status, f"{tool_name} ({iteration}/{max_iter})")
 
-                # Format function call: search_emails("aaron") or Bash("ps -ef")
+                # Format function call: search_emails("ellis") or Bash("ps -ef")
                 def _truncate(v, max_len=30):
                     s = f'"{v}"' if isinstance(v, str) else str(v)
                     return s[:max_len] + "..." if len(s) > max_len else s

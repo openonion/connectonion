@@ -82,13 +82,32 @@ def test_an_org_of_unsubscribe_addresses_is_not_queued_and_an_org_counts_only_re
     assert [(row["path"], row["weight"]) for row in rows] == [("orgs/google.md", 1)]
 
 
-def test_the_owners_own_company_is_not_queued_as_an_organisation(tmp_path):
-    """orgs/openonion-ai was investigated as a counterparty: the owner's own company."""
+def test_the_owners_company_is_queued_even_when_its_contacts_are_excluded(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/me.md", "Me", ["me@openonion.ai"], email="me@openonion.ai")
-    for domain in ("openonion.ai", "unsw.edu.au"):
+    notebook.write("people/avery.md", "# Avery Lin\n\n- Company: Mara Labs\n")
+    for domain in ("maralabs.example", "example.edu.au"):
         notebook.stub_org(f"orgs/{domain}.md", domain, [domain], [])
-    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md",
-                                                            "addresses": ["me@openonion.ai"]}})
-    assert [row["path"] for row in order(tmp_path, "orgs")] == ["orgs/unsw.edu.au.md"]
+    write_json(state_path(tmp_path, "map.json"), {
+        "owner": {"record": "people/avery.md", "addresses": ["avery@maralabs.example"]},
+        "people": [{"record": "people/notices.md", "classification": "automated candidate"}],
+        "orgs": [{"record": "orgs/maralabs.example.md", "people": ["people/notices.md"]}],
+    })
+    assert {row["path"] for row in order(tmp_path, "orgs")} == {
+        "orgs/example.edu.au.md", "orgs/maralabs.example.md"}
+
+
+def test_queue_refresh_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Kiritimati"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 5, 12, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale")
+    book.write("people/robin.md", book.read("people/robin.md").replace(
+        "not investigated yet", "investigated 2026-10-30").replace("- (none yet)", "- [1] gmail:abc"))
+    [row] = order(tmp_path, "people")
+    assert row["recent"] is False  # Seven local dates since the last pass.

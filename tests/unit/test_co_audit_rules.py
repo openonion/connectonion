@@ -49,7 +49,7 @@ def test_each_rule_fails_the_page_it_is_for():
     assert rules(GOOD.replace(" Usage:", " Use:")) == {"usage"}
     assert rules(GOOD.replace(" Example:  co mail send you@example.com --cc boss@example.com", "")) == {"example"}
     assert rules(GOOD.replace("--cc boss", "--bcc boss")) == {"flags"}
-    assert rules(GOOD.replace("you@example.com", "/Users/aaron/notes.txt")) == {"private"}
+    assert rules(GOOD.replace("you@example.com", "/Users/ellis/notes.txt")) == {"private"}
     full_address = "0x" + "3f5a" * 16
     assert rules(GOOD.replace("you@example.com", full_address)) == {"private"}
     assert rules(GOOD.replace("you@example.com", "0x3f5a...c9e1")) == set()
@@ -91,6 +91,21 @@ def test_a_word_whose_page_is_its_parents_page_is_not_a_command():
     printed = {"tool": "Usage: tool\n\nCommands:\n  cp   Copy\n", "tool cp": "Usage: tool cp\n\nModes:\n  sum   Checksum\n"}
     found = audit.pages(["tool"], lambda argv: Page(0, printed.get(" ".join(argv), printed["tool cp"])))
     assert set(found) == {"tool", "tool cp"}
+
+
+def test_the_walk_does_not_follow_a_page_that_repeats_its_parent():
+    # `co rem investigate people` prints its parent's page, which lists people
+    # again: following it ran ~780 extra processes, a third of a CI audit.
+    printed = {"tool": "Usage: tool\n\nCommands:\n  cp   Copy\n",
+               "tool cp": "Usage: tool cp\n\nModes:\n  sum   Checksum\n  md5   Digest\n"}
+    ran = []
+
+    def runner(argv):
+        ran.append(" ".join(argv))
+        return Page(0, printed.get(" ".join(argv), printed["tool cp"]))
+
+    assert set(audit.pages(["tool"], runner)) == {"tool", "tool cp"}
+    assert sorted(ran) == ["tool", "tool cp", "tool cp md5", "tool cp sum"]
 
 
 def test_an_example_that_spells_the_command_by_an_alias_is_this_command():

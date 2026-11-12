@@ -14,7 +14,7 @@ it reached this notebook. `init` had copied every default into the notebook's
 still ran with the settings it was created with (#1714).
 
 Upgrading and re-mapping turned up two more cases of the same kind. The old
-map hadn't known that `aaron@mail.openonion.ai` was the owner, so it had made
+map hadn't known that `ellis@example.com` was the owner, so it had made
 that address a correspondent page, titled with the address and showing one
 mail. The new map recognised the owner and reused that page, but only filled
 sections still marked Unknown, so the owner's page stayed a one-mail stub.

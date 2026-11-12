@@ -27,12 +27,12 @@ machine. The chat message `send` prints is the same block.
 ## The mail and the prompt
 
 The mail is a short note, written for a person who may not know co, in the
-language you wrote in (Chinese or English). The subject is "Aaron Xie passed you
+language you wrote in (Chinese or English). The subject is "Ellis Yew passed you
 some work: <title>", with no co terms in it. The body has one or two sentences:
 who has been working on what with which AI, and the first thing they talked
 through. Then come two ways in, the web page first:
 
-1. **See the context Aaron is passing you**: a button to `https://o.openonion.ai/h/<id>`.
+1. **See the context Ellis is passing you**: a button to `https://o.openonion.ai/h/<id>`.
    The page shows whose context it is, what was discussed, decided and still open,
    the diagram and the conversation, in a browser, with nothing to install. Its
    own copy button does step 2.
@@ -61,7 +61,7 @@ note that a handoff is done, go to that mailbox from itself.
 The line, as a 1.9.2b24 sender writes it:
 
 ```text
-Aaron Xie handed you the context of "Add Kelvin conversion to tempconv.py" with ConnectOnion. Read https://o.openonion.ai/h/Hk3…/codex and do what it says, here in this folder, without waiting for me. If you cannot open it, ask me to allow network access.
+Ellis Yew handed you the context of "Add Kelvin conversion to tempconv.py" with ConnectOnion. Read https://o.openonion.ai/h/Hk3…/codex and do what it says, here in this folder, without waiting for me. If you cannot open it, ask me to allow network access.
 ```
 
 What the page at `/codex` holds is the whole prompt co wrote: install co if it is
@@ -75,7 +75,7 @@ work from it, and `open` on a saved mail reads the prompt from the page.
 The prompt on that page, with the code shortened and the version as a 1.9.2b22 sender wrote it:
 
 ```text
-Aaron Xie handed you the context of "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Aaron Xie with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Aaron Xie was working on and what you did.
+Ellis Yew handed you the context of "Add Kelvin conversion to tempconv.py" (handoff ho-5359a292). If co --version prints nothing or a version older than 1.9.2b22, install co first, which keeps to its own environment (right after a release it can wait a few minutes for PyPI, so let it finish): on macOS or Linux run curl -fsSL https://raw.githubusercontent.com/openonion/connectonion/v1.9.2b22/install.sh | CO_VERSION=1.9.2b22 sh, and on Windows run uv tool install "connectonion==1.9.2b22" then co init --yes. Then run co handoff accept coh3.… yourself; it fetches the handoff and says what to do. Do that here, in this folder, without waiting for me: the work, questions to Ellis Yew with co handoff ask, and co handoff done when it is finished. Then tell me in a few lines what Ellis Yew was working on and what you did.
 ```
 
 That block becomes the first message of the recipient's thread, so it carries
@@ -380,7 +380,7 @@ both shown by `co trust list --global` for your global identity (`~/.co`):
 - **On the recipient's side the sender may send handoffs only.** `co handoff
   accept` puts them on the *handoffs* level: handoffs, questions, answers and
   `done` go through the agent inbox, and a Host that pre-authorises contacts does
-  not count them as one. accept says so: "Aaron can send you handoffs and
+  not count them as one. accept says so: "Ellis can send you handoffs and
   questions; they can't run tools on your machine."
 
 Both changes are in the record (`approvals.jsonl`) with the handoff that made

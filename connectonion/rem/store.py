@@ -119,7 +119,7 @@ def refresh_safely(root: Path) -> dict:
 
 JSON_COLUMNS = ("emails", "facts", "domains", "paths", "recipients")
 FLAGS = ("written", "listed", "held", "service")
-SORTS = ("name", "company", "role", "first_contact", "last_contact", "mails", "open_threads")
+SORTS = ("activity", "name", "company", "role", "first_contact", "last_contact", "mails", "open_threads")
 
 
 def _rows(root: Path, sql: str, parameters=()) -> list:
@@ -155,7 +155,7 @@ def _rows(root: Path, sql: str, parameters=()) -> list:
 
 
 def people_table(root: Path, *, company: str = "", query: str = "", open_only: bool = False,
-                 recent_days: int = 0, sort: str = "last_contact", descending: bool = True,
+                 recent_days: int = 0, sort: str = "activity", descending: bool = True,
                  include_unlisted: bool = False, today: str | None = None) -> list[dict]:
     """One row per person, the CRM columns (#2064). Listed people only, as the census counts them."""
     if sort not in SORTS:
@@ -170,12 +170,21 @@ def people_table(root: Path, *, company: str = "", query: str = "", open_only: b
     if open_only:
         where.append("open_threads > 0")
     if recent_days:
-        since = date.fromisoformat(today or date.today().isoformat()) - timedelta(days=recent_days)
+        from .service import notebook_today
+        since = (date.fromisoformat(today) if today else notebook_today(root)) - timedelta(days=recent_days)
         where.append("last_contact >= ?")
         parameters.append(since.isoformat())
-    order = f"({sort} is null or {sort} = ''), {sort} {'desc' if descending else 'asc'}, name, record"
+    column = "last_contact" if sort == "activity" else sort
+    order = f"({column} is null or {column} = ''), {column} {'desc' if descending else 'asc'}, name, record"
     rows = _rows(root, f"select * from people {'where ' + ' and '.join(where) if where else ''} order by {order}",
                  parameters)
+    from .relationship_stats import relationship_stats
+    stats = relationship_stats(root, rows, today=today)
+    for row in rows:
+        if row["record"] in stats:
+            row["relationship"] = stats[row["record"]]
+    if sort == "activity" and stats:
+        rows.sort(key=lambda row: row.get("relationship", {}).get("last_mail", ""), reverse=descending)
     if sort == "first_contact":
         rows.sort(key=lambda row: (not row["first_contact"],
                                    (-1 if descending else 1) * int((row["first_contact"] or "0").replace("-", "")),
@@ -191,7 +200,12 @@ def edges(root: Path, record: str) -> list[dict]:
 
 def person(root: Path, record: str) -> dict | None:
     found = _rows(root, "select * from people where record = ?", (record,))
-    return {**found[0], "edges": edges(root, record)} if found else None
+    if not found:
+        return None
+    from .relationship_stats import relationship_stats
+    stats = relationship_stats(root, found)
+    return {**found[0], "edges": edges(root, record),
+            **({"relationship": stats[record]} if record in stats else {})}
 
 
 def thread(root: Path, thread_id: str, *, bodies: bool = False) -> list[dict]:

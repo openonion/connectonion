@@ -9,7 +9,6 @@ again on the next request instead of being shown.
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import hashlib
 import re
 import shutil
@@ -22,7 +21,8 @@ from pathlib import Path
 from .config import LANGUAGE
 from .files import Notebook, RemError, atomic_write, state_path, write_json
 
-# Owner glossary changes apply to new translations without invalidating every cached page.
+# Glossary and preservation rules apply to new translations. Keep the version:
+# invalidating every cache would leave existing notebooks in English until retranslated.
 PROMPT_VERSION = 2
 HEADER = re.compile(r"<!-- co rem translation of (\S+) sha256:([0-9a-f]{64}) -->\n")
 CITATION = re.compile(r"[\[［](W?\d{1,3})[\]］]")
@@ -56,9 +56,20 @@ def cached(root: Path, record: str, language: str) -> str | None:
         return None
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
-    if not match or match.group(2) != digest(Notebook(root).read(record)):
+    original = Notebook(root).read(record)
+    if not match or match.group(1) != record or match.group(2) != digest(original):
         return None
-    return saved[match.end():]
+    translation = saved[match.end():]
+    if _reader_sources(translation) != _reader_sources(original):
+        return None
+    return translation
+
+
+def _reader_sources(text: str) -> str:
+    # Match reader.html rawSection, including comments and nonstandard headings.
+    text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    match = re.search(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
+    return match.group(1).strip() if match else ""
 
 
 def cached_languages(root: Path, record: str) -> dict[str, str]:
@@ -74,15 +85,23 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
     return found
 
 
-def prompt(language: str, quotes=(), terms=()) -> str:
+def prompt(language: str, quotes=(), terms=(), names=()) -> str:
     from .runner import language_rules
     # Named one by one: told only the rule, the model still translated “zero-risk things”.
     keep = "".join(f"\n- {quote}" for quote in dict.fromkeys(quotes))
+    keep_names = "".join(f"\n- {name}" for name in dict.fromkeys(names))
     return ("Translate page.md, a Markdown notebook page, into the language tagged "
             f"`{language}` and write the result to translation.md in this folder. Do not edit "
             "page.md and do not read anything else. Translate the prose only: add nothing, drop "
             "nothing, keep every line's Markdown, every link target and every source id like [3] "
-            "where it is. Keep every privacy label such as [personal] and [sensitive] on the same line, "
+            "where it is. Keep every amount, number and currency symbol exactly as written "
+            "(`$50,000`, `A$1,200`, `¥300`); never convert or name a currency the original doesn't name. "
+            "Keep names of people, organisations, projects, products, repositories and tools exactly as written, "
+            "including lowercase project names. The page's own title and every link text name a thing "
+            "and stay as written. Keep email addresses, URLs, file paths, issue/PR numbers (#2345), "
+            "version numbers and code spans unchanged; a line that only lists source ids, such as "
+            "`Sources: codex:…`, stays exactly as written, label included. "
+            "Keep every privacy label such as [personal] and [sensitive] on the same line, "
             "following the same passage; never add, drop or translate a label. "
             "This page is about the reader's own work. Translate \"the user\", \"the owner\" and \"you\" "
             "referring to the notebook owner as the second person of the target language "
@@ -92,8 +111,16 @@ def prompt(language: str, quotes=(), terms=()) -> str:
             "surrounding prose; keep the ASCII colon after a leading date like `2026-10-15:`. " + language_rules() + "These stay in English even mid-sentence: "
             "`Nothing open as of 2026-09-29; Theo canceled` becomes `Nothing open as of 2026-09-29；"
             "Theo 取消了` in Chinese." + (f" These quoted words must appear unchanged:{keep}\n" if keep else "")
+            + (f" Keep these names exactly as written:{keep_names}\n" if keep_names else "")
             + (" Keep these terms in English, as the owner writes them: " + ", ".join(terms) + "." if terms else "")
             + " Then reply DONE.")
+
+
+def page_names(text: str) -> list[str]:
+    """The title and link labels are explicit names, including lowercase repositories."""
+    title = re.search(r"^# ([^\n]+)", text, re.M)
+    links = re.findall(r"\[([^\]\n]+)\](?:\([^\n]*?\)|\[[^\]\n]*\])", text)
+    return list(dict.fromkeys(([title.group(1)] if title else []) + links))[:40]
 
 
 def quoted_passages(text: str) -> Counter:
@@ -105,31 +132,57 @@ def quoted_passages(text: str) -> Counter:
     return Counter(quotes)
 
 
+def _count_changes(before: Counter, after: Counter) -> str:
+    return "; ".join(f"{label} {item} ({count} time(s))"
+                     for label, counts in (("missing", before - after), ("extra", after - before))
+                     for item, count in counts.items())
+
+
+def _check_citations(original: str, translation: str) -> None:
+    before = Counter(f"[{item}]" for item in CITATION.findall(original))
+    after = Counter(f"[{item}]" for item in CITATION.findall(translation))
+    problem = _count_changes(before, after)
+    if problem:
+        raise RemError(f"The translation changed the page's source ids: {problem}; every [n]/[Wn] must appear "
+                       "exactly as many times as in page.md; nothing was cached. Translate again")
+
+
 def checked(original: str, translation: str) -> str:
     """Keep headings, sources, privacy labels and reader markers intact."""
-    headings = [line for line in original.splitlines() if line.startswith("#")]
-    if [line for line in translation.splitlines() if line.startswith("#")] != headings:
-        raise RemError("The translation changed the page's headings; nothing was cached. Translate again")
-    if sorted(CITATION.findall(translation)) != sorted(CITATION.findall(original)):
-        raise RemError("The translation changed the page's source ids; nothing was cached. Translate again")
+    # A Markdown heading has a space after its hashes; "#1037 was fixed" is prose.
+    heading = re.compile(r"#{1,6}\s")
+    headings = [line for line in original.splitlines() if heading.match(line)]
+    translated_headings = [line for line in translation.splitlines() if heading.match(line)]
+    if translated_headings != headings:
+        detail = _count_changes(Counter(headings), Counter(translated_headings)) or "headings are out of order"
+        raise RemError(f"The translation changed the page's headings: {detail}; "
+                       "keep page.md's headings in their original order; nothing was cached. Translate again")
+    _check_citations(original, translation)
 
     def privacy_lines(text):
-        return [(number, Counter(tag.lower() for tag in PRIVACY_TAG.findall(line)))
-                for number, line in enumerate(text.splitlines()) if PRIVACY_TAG.search(line)]
+        return Counter(f"[{tag.lower()}] on line {number}"
+                       for number, line in enumerate(text.splitlines(), 1) for tag in PRIVACY_TAG.findall(line))
 
     if privacy_lines(original) != privacy_lines(translation):
-        raise RemError("The translation changed privacy tags or moved them between lines; nothing was cached. "
-                       "Translate again")
-    if quoted_passages(original) - quoted_passages(translation):
-        raise RemError("The translation changed or dropped a quoted passage; nothing was cached. Translate again")
+        detail = _count_changes(privacy_lines(original), privacy_lines(translation))
+        raise RemError(f"The translation changed privacy tags or moved them between lines: {detail}; "
+                       "nothing was cached. Translate again")
+    missing_quotes = quoted_passages(original) - quoted_passages(translation)
+    if missing_quotes:
+        detail = "; ".join(f"missing quoted passage ({count} time(s)) from page.md line "
+                           f"{original[:original.index(quote)].count(chr(10)) + 1}"
+                           for quote, count in missing_quotes.items())
+        raise RemError(f"The translation changed or dropped a quoted passage: {detail}; "
+                       "keep quoted passages exactly as written; nothing was cached. Translate again")
     for marker in MARKERS:
         if translation.count(marker) < original.count(marker):
-            raise RemError(f"The translation dropped `{marker}`, which the reader reads; nothing was cached. "
+            missing = original.count(marker) - translation.count(marker)
+            raise RemError(f"The translation dropped `{marker}` ({missing} time(s)), which the reader reads; nothing was cached. "
                            "Translate again")
     return translation
 
 
-def translate(root: Path, record: str, language: str) -> str:
+def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
     """The cached translation when current, else one co ai turn on the notebook's runner."""
     from .config import read_config
     from .runner import ready
@@ -140,49 +193,103 @@ def translate(root: Path, record: str, language: str) -> str:
     problem, fix = ready(config)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and translate again")
-    return _run_translation(root, record, language, config, text)
+    return _run_translation(root, record, language, config, text, on_run=on_run)
 
 
-def _run_translation(root, record, language, config, text):
+def _run_translation(root, record, language, config, text, *, on_run=None):
+    from .inquiry import stage_config
+    from .service import now
+    config = stage_config(root, config, "translate")
     from .languages import owner_languages
-    from .runner import run_task
+    from .runner import _add_usage
     from .service import running_marker
     tasks = state_path(root, "tasks")
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     workspace = Path(tempfile.mkdtemp(prefix="translate-", dir=tasks))
-    prose, stamp = STAMP.sub("", text).rstrip() + "\n", STAMP.search(text)
-    (workspace / "page.md").write_text(prose, encoding="utf-8")
-    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
-    run = {"id": "run_" + uuid4().hex, "started_at": datetime.now(timezone.utc).isoformat(),
+    task = prepare(root, record, language, directory=workspace, text=text)
+    prose = task["prose"]
+    run = {"id": "run_" + uuid4().hex, "started_at": now().isoformat(),
            "phase": "translate", "record": record, "language": language, "outcome": "running",
            "usage": None, "harness": config["runner"], "model": config["model"], "runner_attempts": 0, **running_marker()}
+    if on_run:
+        on_run(run["id"])
     started = monotonic()
     from . import execution
     token = execution.begin(run, state_path(root, f"runs/{run['id']}.json"))
     try:
-        envelope = run_task(workspace, prompt(language, quoted_passages(prose), terms), config, "abstract")
-        run["usage"] = envelope.get("usage")
-        translation = _read_translation(workspace, prose, stamp)
-        atomic_write(translation_path(root, record, language),
-                     f"<!-- co rem translation of {record} sha256:{digest(text)} -->\n" + translation)
+        translation = _translate_prose(workspace, prose, task["prompt"], config, run)
+        translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
     finally:
         execution.end(token)
         error = sys.exc_info()[1]
         if error:
-            run.update(outcome="failed", error=str(error), usage=getattr(error, "usage", None) or run["usage"])
-        run.update(finished_at=datetime.now(timezone.utc).isoformat(), seconds=round(monotonic() - started, 3))
+            run.update(outcome="failed", error=str(error), usage=_add_usage(run["usage"], getattr(error, "usage", None)))
+        run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
 
 
-def _read_translation(workspace, prose, stamp):
+def prepare(root, record, language, *, directory, text=None, native=False):
+    from .languages import owner_languages
+    text = Notebook(root).read(record) if text is None else text
+    prose, sources, stamp = _page_parts(text)
+    (directory / "page.md").write_text(prose, encoding="utf-8")
+    terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
+    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose))
+    if native:
+        from .files import write_json
+        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose)}
+        write_json(directory / "translation-constraints.json", constraints, readable=True)
+        instruction = prompt(language).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
+    return {"root": str(root), "record": record, "language": language, "directory": str(directory),
+            "before": {record: text}, "prose": prose, "sources": sources, "stamp": stamp.group(0) if stamp else "",
+            "candidate": str(directory / "translation.md"),
+            "prompt": instruction}
+
+
+def check(task, output):
+    original = task["before"][task["record"]]
+    translation = checked(task["prose"], output["result"])
+    translation += ("\n" + task["sources"] if task["sources"] else "")
+    translation += (("" if task["sources"] else "\n") + task["stamp"] + "\n" if task["stamp"] else "")
+    atomic_write(translation_path(Path(task["root"]), task["record"], task["language"]),
+                 f"<!-- co rem translation of {task['record']} sha256:{digest(original)} -->\n" + translation)
+    return translation
+
+
+def _page_parts(text):
+    stamp = STAMP.search(text)
+    body = text[:stamp.start()] if stamp else text
+    sources = re.search(r"^## Sources[ \t]*$", body, re.M)
+    prose, tail = (body[:sources.start()], body[sources.start():]) if sources else (body, "")
+    return prose.rstrip() + "\n", tail, stamp
+
+
+def _translate_prose(workspace, prose, task_prompt, config, run):
+    from .runner import _add_usage, run_task
+    repair = ""
+    for attempt in range(2):
+        run["runner_attempts"] += 1
+        envelope = run_task(workspace, task_prompt + repair, config, "abstract")
+        run["usage"] = _add_usage(run["usage"], envelope.get("usage"))
+        answer = _read_translation(workspace)
+        # Only a completed translation's structural errors get one repair turn.
+        try:
+            return checked(prose, answer)
+        except RemError as error:
+            if attempt:
+                raise
+            repair = f"\n\nYour translation.md failed validation: {error}. Fix translation.md in place using page.md."
+
+
+def _read_translation(workspace):
     output = workspace / "translation.md"
     answer = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
     if not answer:
         raise RemError("co ai finished without writing a translation; nothing was cached. Translate again")
-    return checked(prose, answer + "\n") + (f"\n{stamp.group(0)}\n" if stamp else "")
+    return answer + "\n"
 
 
 def translate_pages(root: Path, language: str, records, say=None, workers=1, *, translate_one=None) -> dict:
@@ -219,3 +326,80 @@ def written_pages(root: Path) -> list[str]:
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
             or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+
+
+def _waiting_pages(root):
+    """Pages behind the reader's active owner obligations, including their copies."""
+    from . import census, threads
+    from .files import read_json
+    from .service import notebook_today
+    book = Notebook(root)
+    owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+    title = book.read(owner).splitlines()[0].lstrip("# ") if owner and book.exists(owner) else ""
+    first = (title.split() or [""])[0]
+    states, today = threads.listing(root), notebook_today(root)
+    return {row["path"] for row, text, _ in census._thread_items(book, census.pages(root), first)
+            if census.direction(text, first) == "mine" and not census._quiet(text, today)
+            and not threads.blocked(root, threads.done_key(row["path"], text), states=states)}
+
+
+def backlog(root, language, *, changed=()):
+    """Waiting-on-you pages first, then newest page edits; omit current translations.
+
+    Both scheduled paths use this order before applying the shared daily cap.
+    Explicit requests and this round's changes break equal modification times.
+    """
+    from .files import read_json
+    book = Notebook(root)
+    requested = read_json(state_path(root, "translation-requests.json"), {}).get(language, [])
+    requested = {record: position for position, record in enumerate(requested)}
+    waiting, changed = _waiting_pages(root), set(changed)
+    records = sorted(book.list(), key=lambda record: (
+        record not in waiting, -book.path(record).stat().st_mtime_ns,
+        record not in changed, requested.get(record, len(requested)), record))
+    return [record for record in records if cached(root, record, language) is None]
+
+
+def attempts_today(root):
+    from . import service
+    from .config import read_config
+    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(read_config(root)))
+    # Summary records describe the same work as their individual translate runs.
+    return sum(row.get('runner_attempts', 0) for row in runs
+               if row.get('phase') in ('daily-translation', 'translate'))
+
+
+def languages(root):
+    """The languages pages are translated into: the reader's requests, then the configured
+    list, or when that is empty the languages the owner writes, detected (D-103)."""
+    from .files import read_json
+    from .languages import owner_languages
+    requested = read_json(state_path(root, 'translation-requests.json'), {})
+    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
+
+
+def coverage(root, *, next_run=None):
+    """Current coverage and what is queued: every missing page of a requested language (D-104)."""
+    records, targets = Notebook(root).list(), languages(root)
+    directory = state_path(root, "translations")
+    saved = sorted(path.name for path in directory.iterdir()
+                   if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []
+    report = {}
+    for language in dict.fromkeys([*targets, *saved, "zh"]):
+        if language.split("-")[0].lower() == "en":
+            continue
+        done = sum(cached(root, record, language) is not None for record in records)
+        report[language] = {"total": len(records), "translated": done,
+                            "requested": language in targets, "queued": len(records) - done if language in targets else 0}
+    return report
+
+
+def request(root, record, language):
+    from .files import maintenance_lock, read_json
+    checked_language(language)
+    if record not in Notebook(root).list():
+        raise RemError('No such page')
+    with maintenance_lock(root):
+        pending = read_json(state_path(root, 'translation-requests.json'), {})
+        pending[language] = list(dict.fromkeys([record, *pending.get(language, [])]))
+        write_json(state_path(root, 'translation-requests.json'), pending)

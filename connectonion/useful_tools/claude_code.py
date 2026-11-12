@@ -81,17 +81,24 @@ _SENSITIVE_KEY_PARTS = (
     "token",
 )
 _CLAUDE_ENVIRONMENT_KEYS = (
-    "ANTHROPIC_API_KEY",
+    "ALL_PROXY",
     "APPDATA",
-    "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CONFIG_DIR",
+    "CLOUD_ML_REGION",
+    "CLOUDSDK_CONFIG",
     "COMSPEC",
+    "GCLOUD_PROJECT",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT",
     "HOMEDRIVE",
     "HOMEPATH",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
     "LOCALAPPDATA",
+    "NO_PROXY",
     "NODE_EXTRA_CA_CERTS",
     "PATHEXT",
     "PROGRAMDATA",
@@ -99,10 +106,21 @@ _CLAUDE_ENVIRONMENT_KEYS = (
     "SYSTEMROOT",
     "TEMP",
     "TMP",
+    "TMPDIR",
     "USER",
     "USERPROFILE",
     "WINDIR",
+    "all_proxy",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
 )
+# Claude Code's own configuration families: API keys and gateways
+# (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_VERTEX_PROJECT_ID),
+# CLAUDE_CODE_USE_BEDROCK / _VERTEX and the OAuth token, the AWS settings
+# Bedrock signs with, and Vertex's per-model regions. A `claude` that works in
+# the terminal through a proxy, a gateway, Bedrock or Vertex must work here too.
+_CLAUDE_ENVIRONMENT_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_", "AWS_", "VERTEX_REGION_")
 
 
 def claude_code(
@@ -115,9 +133,12 @@ def claude_code(
 ) -> str:
     """Run Claude Code in manual mode and return one stable JSON envelope.
 
-    The permission policy is deliberately absent from this Agent-facing
-    signature. Use ``ClaudeCode(permission_mode=...)`` when an operator needs
-    to bind a different mode before registering the tool.
+    Manual mode with nobody to approve is read-only: Claude asks before each
+    edit or command, the ask is refused, and the refused tools are listed in
+    the envelope's ``permission_denials``. The permission policy is
+    deliberately absent from this Agent-facing signature, so a model cannot
+    widen its own access. Use ``ClaudeCode(permission_mode="acceptEdits")``
+    when an operator wants edits allowed before registering the tool.
     """
     return _run_claude_code(
         prompt=prompt,
@@ -180,8 +201,14 @@ def _run_claude_code(
     workspace: str | Path | None = None,
     bridge_settings: Path | None = None,
     bridge_events: Path | None = None,
+    add_dirs: tuple[str, ...] | list[str] = (),
+    cancelled=None,
 ) -> str:
-    """Private runner shared by safe, configured, and co-ai entry points."""
+    """Private runner shared by safe, configured, and co-ai entry points.
+
+    add_dirs: further directories Claude may work in (`--add-dir`), for an
+    operator caller such as REM, whose deliverable sits beside the workspace.
+    """
     validation = _validate_request(prompt, session_id, cwd, model, timeout)
     if validation:
         return _envelope(session_id if isinstance(session_id, str) else "", error=validation)
@@ -200,10 +227,11 @@ def _run_claude_code(
         return _envelope(session_id, error=error)
 
     argv = _stream_command(
-        command, prompt, session_id, permission_mode, model, bridge_settings
+        command, prompt, session_id, permission_mode, model, bridge_settings, add_dirs
     )
     forwarder = _ClaudeStreamForwarder(agent)
-    cancelled = _provider_cancellation_check(agent)
+    # An operator's stop check (REM's task Stop) stands in for the Agent's Work Room Stop.
+    cancelled = cancelled or _provider_cancellation_check(agent)
 
     def provider_started() -> None:
         forwarder.emit_user_message(prompt)
@@ -270,8 +298,13 @@ def run_co_claude(
     timeout: int = 600,
     agent=None,
     workspace: str | Path | None = None,
+    add_dirs: tuple[str, ...] | list[str] = (),
+    cancelled=None,
 ) -> str:
-    """Run one owned Claude turn with a scoped session-identity Hook."""
+    """Run one owned Claude turn with a scoped session-identity Hook.
+
+    It loads the user's own settings (his CLAUDE.md, skills, settings), not
+    --safe-mode; see _stream_command."""
     approval = None
     if agent is not None and workspace is not None:
         def approval(event):
@@ -288,6 +321,8 @@ def run_co_claude(
             workspace=workspace,
             bridge_settings=settings,
             bridge_events=events,
+            add_dirs=add_dirs,
+            cancelled=cancelled,
         )
         outcome = json.loads(result)
         if outcome["status"] != "completed":
@@ -541,7 +576,7 @@ def _claude_command() -> tuple[list[str] | None, str]:
     return command, ""
 
 
-def _stream_command(command, prompt, session_id, permission_mode, model, bridge_settings=None):
+def _stream_command(command, prompt, session_id, permission_mode, model, bridge_settings=None, add_dirs=()):
     cli_mode = "manual" if permission_mode == "default" else permission_mode
     argv = [
         *command,
@@ -573,6 +608,8 @@ def _stream_command(command, prompt, session_id, permission_mode, model, bridge_
         argv.extend(["--resume", session_id])
     if model:
         argv.extend(["--model", model])
+    for directory in add_dirs:
+        argv.extend(["--add-dir", str(directory)])
     argv.extend(["--", prompt])
     return argv
 
@@ -622,7 +659,19 @@ def _completed_envelope(completed, requested_session: str) -> str:
         exit_code=completed.returncode,
         usage=_bounded_usage(payload.get("usage")),
         total_cost_usd=_finite_number(payload.get("total_cost_usd")),
+        permission_denials=_denied_tools(payload.get("permission_denials")),
+        num_turns=_finite_number(payload.get("num_turns")),
+        duration_ms=_finite_number(payload.get("duration_ms")),
     )
+
+
+def _denied_tools(value: Any) -> list[str]:
+    """Which tools Claude was refused. A headless run with nobody to approve
+    still ends "success", so without this a refused edit looks like a done one."""
+    if not isinstance(value, list):
+        return []
+    return [_bounded_text(item.get("tool_name") or "Tool")
+            for item in value[:_MAX_COLLECTION_ITEMS] if isinstance(item, dict)]
 
 
 def _provider_cancellation_check(agent):
@@ -1285,9 +1334,9 @@ def _claude_environment() -> dict[str, str]:
         for key in ("PATH", "HOME", "SHELL")
         if (value := os.environ.get(key)) and not value.startswith("()")
     }
-    for key in _CLAUDE_ENVIRONMENT_KEYS:
-        value = os.environ.get(key)
-        if value and not value.startswith("()"):
+    for key, value in os.environ.items():
+        wanted = key in _CLAUDE_ENVIRONMENT_KEYS or key.startswith(_CLAUDE_ENVIRONMENT_PREFIXES)
+        if wanted and value and not value.startswith("()"):
             environment[key] = value
     return environment
 
@@ -1502,6 +1551,9 @@ def _envelope(
     exit_code: int = -1,
     usage: dict | None = None,
     total_cost_usd: Any = None,
+    permission_denials: list[str] | None = None,
+    num_turns: int | None = None,
+    duration_ms: int | float | None = None,
 ) -> str:
     return json.dumps(
         {
@@ -1514,6 +1566,9 @@ def _envelope(
             "exit_code": exit_code,
             "usage": usage or {},
             "total_cost_usd": total_cost_usd,
+            "permission_denials": permission_denials or [],
+            "num_turns": num_turns,
+            "duration_ms": duration_ms,
         },
         ensure_ascii=False,
     )

@@ -104,7 +104,7 @@ def test_a_missing_skill_names_what_is_installed(tmp_path, registry):
 
 def test_a_delegate_that_does_not_answer_in_json_becomes_an_error_not_a_crash(monkeypatch):
     monkeypatch.setattr(
-        codex_module, "codex",
+        codex_module, "_run_codex",
         lambda **kwargs: "codex: command not found",
     )
     answer = harness_mod.run("codex", "do it", "")
@@ -114,7 +114,7 @@ def test_a_delegate_that_does_not_answer_in_json_becomes_an_error_not_a_crash(mo
 
 def test_a_nonzero_exit_is_a_failure_even_without_an_error_field(monkeypatch):
     monkeypatch.setattr(
-        codex_module, "codex",
+        codex_module, "_run_codex",
         lambda **kwargs: json.dumps({"last_message": "partial", "exit_code": 3}),
     )
     answer = harness_mod.run("codex", "do it", "")
@@ -123,7 +123,7 @@ def test_a_nonzero_exit_is_a_failure_even_without_an_error_field(monkeypatch):
 
 def test_a_completed_delegate_run_reports_its_own_usage(monkeypatch):
     monkeypatch.setattr(
-        codex_module, "codex",
+        codex_module, "_run_codex",
         lambda **kwargs: json.dumps({
             "last_message": "done", "exit_code": 0, "session_id": "t1",
             "usage": {"input_tokens": 12, "output_tokens": 3},
@@ -149,7 +149,7 @@ def test_claude_code_result_and_subscription_cost_survive_shared_adapter(monkeyp
 
 
 def test_non_object_delegate_json_is_a_reported_error(monkeypatch):
-    monkeypatch.setattr(codex_module, "codex", lambda **kw: "[]")
+    monkeypatch.setattr(codex_module, "_run_codex", lambda **kw: "[]")
     assert harness_mod.run("codex", "do it", "")["outcome"] == "error"
 
 
@@ -172,7 +172,7 @@ def test_cli_speed_reaches_codex_tool(monkeypatch, speed):
         seen.update(kwargs)
         return json.dumps({"last_message": "done", "exit_code": 0})
 
-    monkeypatch.setattr(codex_module, "codex", fake)
+    monkeypatch.setattr(codex_module, "_run_codex", fake)
     result = CliRunner().invoke(app, ["ai", "--harness", "codex", "--speed", speed, "--json", "do it"])
     assert result.exit_code == 0, result.output
     assert seen["speed"] == speed
@@ -243,7 +243,7 @@ def test_the_requested_model_reaches_the_delegate(monkeypatch):
         seen.update(kwargs)
         return json.dumps({"last_message": "ok", "exit_code": 0})
 
-    monkeypatch.setattr(codex_module, "codex", fake)
+    monkeypatch.setattr(codex_module, "_run_codex", fake)
     harness_mod.run("codex", "do it", "gpt-5.6-luna", cwd="/tmp", timeout=30)
     assert seen["model"] == "gpt-5.6-luna"
     assert seen["cwd"] == "/tmp" and seen["timeout"] == 30
@@ -291,7 +291,7 @@ def test_a_turn_that_measured_nothing_reports_nothing_rather_than_zero():
 def test_a_delegate_reporting_no_usage_says_nothing_rather_than_zero(monkeypatch):
     """Codex answers `usage: {}` on a small turn; `{}` must not read as free."""
     monkeypatch.setattr(
-        codex_module, "codex",
+        codex_module, "_run_codex",
         lambda **kwargs: json.dumps({"last_message": "ok", "exit_code": 0, "usage": {}}),
     )
     assert harness_mod.run("codex", "do it", "")["usage"] is None
@@ -304,7 +304,7 @@ def test_the_sandbox_level_reaches_codex(monkeypatch):
         seen.update(kwargs)
         return json.dumps({"last_message": "ok", "exit_code": 0})
 
-    monkeypatch.setattr(codex_module, "codex", fake)
+    monkeypatch.setattr(codex_module, "_run_codex", fake)
     harness_mod.run("codex", "do it", "", sandbox="danger-full-access")
     assert seen["sandbox"] == "danger-full-access"
 
@@ -333,7 +333,7 @@ def test_resume_session_reaches_native_delegate(monkeypatch, harness):
         seen.update(kwargs)
         return json.dumps({"last_message": "done", "result": "done", "exit_code": 0})
 
-    monkeypatch.setattr(module, "codex" if harness == "codex" else "_run_claude_code", fake)
+    monkeypatch.setattr(module, "_run_codex" if harness == "codex" else "_run_claude_code", fake)
     harness_mod.run(harness, "next turn", "", session_id="abc")
     assert seen["session_id"] == "abc"
 
@@ -348,3 +348,32 @@ def test_cli_resume_reaches_shared_delegate(monkeypatch):
     result = CliRunner().invoke(app, ["ai", "--json", "--harness", "codex", "--resume", "abc", "prompt"])
     assert result.exit_code == 0, result.output
     assert seen[0]["session_id"] == "abc"
+
+
+def test_effort_and_extra_directories_reach_each_delegate(monkeypatch):
+    import importlib
+    claude = importlib.import_module("connectonion.useful_tools.claude_code")
+    seen = {}
+    monkeypatch.setattr(codex_module, "_run_codex", lambda **kw: seen.setdefault("codex", kw) and json.dumps(
+        {"last_message": "ok", "exit_code": 0}))
+    monkeypatch.setattr(claude, "_run_claude_code", lambda **kw: seen.setdefault("claude", kw) and json.dumps(
+        {"status": "completed", "result": "ok", "exit_code": 0}))
+    harness_mod.run("codex", "do it", "", effort="high", add_dirs=("/work/out",), sandbox="danger-full-access")
+    harness_mod.run("claude-code", "do it", "", add_dirs=("/work/out",), permission_mode="bypassPermissions")
+    assert seen["codex"]["effort"] == "high" and seen["codex"]["writable_roots"] == ("/work/out",)
+    assert seen["codex"]["sandbox"] == "danger-full-access"
+    assert seen["claude"]["add_dirs"] == ("/work/out",)
+    assert seen["claude"]["permission_mode"] == "bypassPermissions"
+
+
+@pytest.mark.parametrize("harness,envelope", [
+    ("codex", {"status": "timeout", "error": "codex app-server: turn timed out after 2s", "exit_code": -1}),
+    ("claude-code", {"status": "timeout", "error": "Claude Code timed out after 2s.", "exit_code": -1}),
+])
+def test_a_delegate_that_ran_out_of_time_is_a_timeout_not_an_error(monkeypatch, harness, envelope):
+    import importlib
+    claude = importlib.import_module("connectonion.useful_tools.claude_code")
+    monkeypatch.setattr(codex_module, "_run_codex", lambda **kw: json.dumps(envelope))
+    monkeypatch.setattr(claude, "_run_claude_code", lambda **kw: json.dumps(envelope))
+    answer = harness_mod.run(harness, "do it", "", timeout=2)
+    assert answer["outcome"] == "timeout" and "timed out" in answer["error"]

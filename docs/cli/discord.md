@@ -47,7 +47,7 @@ never written into the inbox, and never included in an error. `co status` and
 
 ```json
 {"id":"123456789012345678","chat":"234567890123456789","thread":null,
- "sender":"456789012345678901","sender_name":"Aaron","text":"@OpsBot check the failed deployment",
+ "sender":"456789012345678901","sender_name":"Ellis","text":"@OpsBot check the failed deployment",
  "kind":"text","quoted":null,"mentioned":true,"at":"2026-09-05T05:00:00.000000+00:00"}
 ```
 

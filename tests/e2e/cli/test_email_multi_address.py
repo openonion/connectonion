@@ -42,9 +42,9 @@ def _resp(ok=True, json_data=None, status=200):
 
 
 TWO_MAILBOXES = [
-    {"id": 486, "from": "xietianle@outlook.com", "to": "aaron@mail.openonion.ai",
+    {"id": 486, "from": "ellis@example.org", "to": "ellis@example.com",
      "subject": "deliverability check", "message": "", "timestamp": "2026-09-04T22:53:56", "read": False},
-    {"id": 484, "from": "events@example.com", "to": "aaron.xie@mail.openonion.ai",
+    {"id": 484, "from": "events@example.com", "to": "ellis.yew@example.org",
      "subject": "popular events", "message": "", "timestamp": "2026-09-04T08:29:40", "read": True},
 ]
 
@@ -61,8 +61,8 @@ def test_inbox_names_the_mailbox_when_the_page_spans_two(capsys):
          patch.object(get_emails_module, "get_emails", return_value=TWO_MAILBOXES):
         email_commands.handle_email_inbox()
     out = capsys.readouterr().out
-    assert "aaron@mail.openonion.ai" in out
-    assert "aaron.xie@mail.openonion.ai" in out
+    assert "ellis@example.com" in out
+    assert "ellis.yew@example.org" in out
     assert "--address" in out, "the way to narrow it must be discoverable here"
 
 
@@ -84,15 +84,169 @@ def test_inbox_passes_the_address_filter_through(capsys):
 
     with patch.object(email_commands, "_require_auth", return_value=True), \
          patch.object(get_emails_module, "get_emails", _fake):
-        email_commands.handle_email_inbox(address="aaron@mail.openonion.ai")
-    assert captured["address"] == "aaron@mail.openonion.ai"
+        email_commands.handle_email_inbox(address="ellis@example.com")
+    assert captured["address"] == "ellis@example.com"
 
 
 def test_empty_filtered_inbox_says_which_mailbox_was_empty(capsys):
+    owned = {"addresses": [{"address": "ellis@example.com", "is_default": True}]}
     with patch.object(email_commands, "_require_auth", return_value=True), \
-         patch.object(get_emails_module, "get_emails", return_value=[]):
-        email_commands.handle_email_inbox(address="aaron@mail.openonion.ai")
-    assert "aaron@mail.openonion.ai" in capsys.readouterr().out
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", return_value=_resp(json_data=owned)) as get:
+        email_commands.handle_email_inbox(address="ellis@example.com")
+    out = capsys.readouterr().out
+    assert "no emails at ellis@example.com" in out
+    assert "not one of this account's email addresses" not in out
+    assert get.call_args.args[0].endswith("/api/v1/email/addresses")
+    assert get.call_count == 1
+
+
+def test_inbox_for_an_address_this_account_does_not_own_exits_nonzero(capsys):
+    """The received API returns an empty page for an address it will not confirm.
+
+    That page is not "no mail arrived". `co email default` already refuses an
+    address this account does not own; the inbox filter has to do the same,
+    and name the addresses the account does own (#2671).
+    """
+    owned = {"addresses": [
+        {"address": "ellis@example.com", "is_default": True},
+        {"address": "ellis.yew@example.org", "is_default": False},
+    ]}
+
+    def _get(url, **kwargs):
+        if str(url).endswith("/api/v1/email/share"):
+            return _resp(json_data={"granted_by_me": [], "granted_to_me": []})
+        return _resp(json_data=owned)
+
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]) as fetched, \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", side_effect=_get):
+        with pytest.raises(typer.Exit) as exc_info:
+            email_commands.handle_email_inbox(address="someone@trustxmail.com")
+
+    assert exc_info.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "someone@trustxmail.com is not one of this account's email addresses" in out
+    assert "ellis@example.com" in out
+    assert "ellis.yew@example.org" in out
+    assert "no emails" not in out
+    fetched.assert_called_once()
+
+
+def test_empty_inbox_accepts_an_owned_address_in_any_case(capsys):
+    owned = {"addresses": [{"address": "ellis@example.com"}]}
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", return_value=_resp(json_data=owned)):
+        email_commands.handle_email_inbox(address="Ellis@Example.com")
+    assert "no emails at Ellis@Example.com" in capsys.readouterr().out
+
+
+def test_empty_inbox_for_a_readable_grant_is_still_an_empty_mailbox(capsys):
+    owned = {"addresses": [{"address": "ellis@example.com"}]}
+    granted = [{"address": "leads@mail.openonion.ai", "can_send": False, "can_read": True}]
+
+    def _get(url, **kwargs):
+        if str(url).endswith("/api/v1/email/share"):
+            return _resp(json_data={"granted_by_me": [], "granted_to_me": granted})
+        return _resp(json_data=owned)
+
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", side_effect=_get):
+        email_commands.handle_email_inbox(address="Leads@mail.openonion.ai")
+    out = capsys.readouterr().out
+    assert "no emails at Leads@mail.openonion.ai" in out
+    assert "not one of this account's email addresses" not in out
+
+
+def test_a_send_only_grant_is_not_an_inbox_address(capsys):
+    owned = {"addresses": [{"address": "ellis@example.com"}]}
+    granted = [{"address": "leads@mail.openonion.ai", "can_send": True, "can_read": False}]
+
+    def _get(url, **kwargs):
+        if str(url).endswith("/api/v1/email/share"):
+            return _resp(json_data={"granted_to_me": granted})
+        return _resp(json_data=owned)
+
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", side_effect=_get):
+        with pytest.raises(typer.Exit) as exc_info:
+            email_commands.handle_email_inbox(address="leads@mail.openonion.ai")
+    assert exc_info.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "leads@mail.openonion.ai is not one of this account's email addresses" in out
+    assert "Yours are: ellis@example.com" in out
+    assert "no emails" not in out
+
+
+def test_an_account_with_no_addresses_is_told_the_list_is_empty(capsys):
+    def _get(url, **kwargs):
+        if str(url).endswith("/api/v1/email/share"):
+            return _resp(json_data={"granted_to_me": []})
+        return _resp(json_data={"addresses": []})
+
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", side_effect=_get):
+        with pytest.raises(typer.Exit) as exc_info:
+            email_commands.handle_email_inbox(address="someone@trustxmail.com")
+    assert exc_info.value.exit_code == 1
+    assert "Yours are: (none)" in capsys.readouterr().out
+
+
+def test_unread_filter_of_a_real_page_is_not_an_ownership_error(capsys):
+    page = [dict(ONE_MAILBOX[0], read=True)]
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=page), \
+         patch.object(email_commands.requests, "get") as get:
+        email_commands.handle_email_inbox(address="someone@trustxmail.com", unread=True)
+    out = capsys.readouterr().out
+    assert "no unread emails at someone@trustxmail.com" in out
+    assert "not one of this account's email addresses" not in out
+    get.assert_not_called()
+
+
+def test_address_list_failure_is_not_reported_as_an_empty_inbox(capsys):
+    failed = _resp(ok=False, status=500, json_data={"detail": "boom"})
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", return_value=failed):
+        with pytest.raises(typer.Exit) as exc_info:
+            email_commands.handle_email_inbox(address="ellis@example.com")
+    assert exc_info.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "boom" in out
+    assert "no emails" not in out
+
+
+def test_share_lookup_failure_is_not_reported_as_an_empty_inbox(capsys):
+    owned = {"addresses": [{"address": "ellis@example.com"}]}
+
+    def _get(url, **kwargs):
+        if str(url).endswith("/api/v1/email/share"):
+            return _resp(ok=False, status=503, json_data={"detail": "share down"})
+        return _resp(json_data=owned)
+
+    with patch.object(email_commands, "_require_auth", return_value=True), \
+         patch.object(get_emails_module, "get_emails", return_value=[]), \
+         patch.object(email_commands, "load_api_key", return_value="tok"), \
+         patch.object(email_commands.requests, "get", side_effect=_get):
+        with pytest.raises(typer.Exit) as exc_info:
+            email_commands.handle_email_inbox(address="leads@mail.openonion.ai")
+    assert exc_info.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "share down" in out
+    assert "no emails" not in out
+    assert "not one of this account's email addresses" not in out
 
 
 def test_get_emails_refuses_a_backend_that_ignored_the_filter():
@@ -101,28 +255,28 @@ def test_get_emails_refuses_a_backend_that_ignored_the_filter():
     with patch.object(get_emails_module, "require_ambient_api_key", return_value="tok"), \
          patch.object(get_emails_module.requests, "get", return_value=_resp(json_data=unfiltered)):
         with pytest.raises(RuntimeError, match="does not support filtering received email by address"):
-            get_emails_module.get_emails(address="aaron@mail.openonion.ai")
+            get_emails_module.get_emails(address="ellis@example.com")
 
 
 def test_get_emails_sends_the_address_param_and_returns_to():
     body = {
-        "emails": [{"id": 1, "from": "a@b.c", "to": "aaron@mail.openonion.ai",
+        "emails": [{"id": 1, "from": "a@b.c", "to": "ellis@example.com",
                     "subject": "s", "text": "t", "received_at": "x", "is_read": False}],
         "offset": 0,
-        "address_filter_applied": "aaron@mail.openonion.ai",
+        "address_filter_applied": "ellis@example.com",
     }
     with patch.object(get_emails_module, "require_ambient_api_key", return_value="tok"), \
          patch.object(get_emails_module.requests, "get", return_value=_resp(json_data=body)) as get:
-        emails = get_emails_module.get_emails(address="aaron@mail.openonion.ai")
-    assert get.call_args.kwargs["params"]["address"] == "aaron@mail.openonion.ai"
-    assert emails[0]["to"] == "aaron@mail.openonion.ai"
+        emails = get_emails_module.get_emails(address="ellis@example.com")
+    assert get.call_args.kwargs["params"]["address"] == "ellis@example.com"
+    assert emails[0]["to"] == "ellis@example.com"
 
 
 def test_default_sender_can_be_changed(capsys):
     with patch.object(email_commands, "load_api_key", return_value="tok"), \
          patch.object(email_commands.requests, "post", return_value=_resp(json_data={"success": True})) as post:
-        email_commands.handle_email_default("aaron@mail.openonion.ai")
-    assert post.call_args.kwargs["json"] == {"address": "aaron@mail.openonion.ai"}
+        email_commands.handle_email_default("ellis@example.com")
+    assert post.call_args.kwargs["json"] == {"address": "ellis@example.com"}
     assert "default sender" in capsys.readouterr().out
 
 

@@ -138,14 +138,14 @@ Captured with `python scripts/capture_rem_reader.py --readme docs/assets/rem-rea
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.2
+### Try co rem · 1.9.5
 
 Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.2'
+pip install --upgrade 'connectonion==1.9.5'
 # build your map and first pages; approve nightly upkeep when prompted
 co rem init
 # read the local notebook
@@ -332,9 +332,18 @@ the result back as a patch. Neither side gets more than the handoff. See
 [openonion/handoff](https://github.com/openonion/handoff) and
 [the guide](docs/cli/handoff.md).
 
+### REM does the work · 1.9.3
+
+Overnight, co rem reads your new mail, drafts the replies you owe and runs the
+tasks you approved. In the morning every unfinished item in the reader has
+"Hand to Codex", "Hand to Claude" and "Talk it over": your own agent does the
+work while you watch the row, Stop and Undo stay one click away, and the result
+opens in place. Replies to people you trust can go on their own through a
+10-minute hold. See [the 1.9.3 notes](docs/releases/1.9.3.md).
+
 ## Project
 
-**Stable 1.9.2** is what `pip install connectonion` installs; previews
+**Stable 1.9.5** is what `pip install connectonion` installs; previews
 remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)

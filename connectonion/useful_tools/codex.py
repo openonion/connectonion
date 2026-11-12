@@ -99,16 +99,33 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
         timeout: Seconds before timeout (default: 600)
         speed: "fast" selects the priority service tier; "standard" (default)
             leaves the user's configured tier unchanged
-        approval: "manual" asks the operator when Codex requests permission;
-            "auto" runs without prompts inside the selected sandbox and fails
-            closed on unexpected approval callbacks; "deny" also refuses every
-            unexpected permission request. With no frontend, or in a hosted
-            session whose requester is not an admin, manual fails closed. The
-            policy is reapplied on resume.
+        approval: "manual" asks the operator before each change Codex makes;
+            with no frontend to ask, it works inside the sandbox without
+            asking and refuses only requests to leave it. "auto" runs without
+            prompts inside the selected sandbox and fails closed on unexpected
+            approval callbacks; "deny" also refuses every unexpected
+            permission request. In a hosted session whose requester is not an
+            admin, manual fails closed. The policy is reapplied on resume.
 
     Returns:
-        JSON string with provider, session_id, resumed, last_message,
-        usage, exit_code — and error when something went wrong.
+        JSON string with provider, session_id, resumed, last_message (Codex's
+        final message), usage, exit_code, approvals_denied — and status and
+        error when something went wrong.
+    """
+    return _run_codex(prompt=prompt, session_id=session_id, cwd=cwd, sandbox=sandbox, model=model,
+                      timeout=timeout, approval=approval, agent=agent, speed=speed)
+
+
+def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", model="", timeout=600,
+               approval="manual", agent=None, speed="standard", effort="", writable_roots=(),
+               cancelled=None):
+    """codex() plus the operator-only thread settings an Agent must not choose.
+
+    effort: model_reasoning_effort for the thread; empty keeps the user's own.
+    writable_roots: directories beside cwd that workspace-write may also write,
+    as `codex exec --add-dir` does. Never on the Agent-facing tool: a model
+    choosing it could widen its own sandbox.
+    cancelled: an operator's stop check, used instead of the Agent's Work Room Stop.
     """
     if sandbox not in SANDBOX_LEVELS:
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
@@ -128,23 +145,37 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     if command is None:
         return _envelope(session_id, error="codex CLI not found. Install it (npm install -g @openai/codex) or set $CODEX_CMD.")
 
-    chunks = []
+    messages = []
+    denied = []
+    thread_config = {}
+    if effort:
+        thread_config["model_reasoning_effort"] = effort
+    if writable_roots:
+        thread_config["sandbox_workspace_write"] = {"writable_roots": [str(root) for root in writable_roots]}
 
     def on_event(event):
-        if event.get("kind") == "agent_message":
-            chunks.append(event.get("text", ""))
+        # Each completed agentMessage is a whole message; the last one is the
+        # answer, the earlier ones are commentary ("I'll add a line...").
+        if event.get("kind") == "agent_message" and event.get("text"):
+            messages.append(event["text"])
         _forward_ui(agent, event, workspace=working_directory)
 
+    def last_message():
+        return messages[-1] if messages else ""
+
     def on_approval(method, params):
-        return _approval_allowed(
+        allowed = _approval_allowed(
             method,
             params,
             approval,
             agent,
             fallback_cwd=working_directory,
         )
+        if not allowed:
+            denied.append(method)
+        return allowed
 
-    cancelled = _provider_cancellation_check(agent)
+    cancelled = cancelled or _provider_cancellation_check(agent)
     working_directory = cwd or "."
     cancellation_check = cancelled if callable(cancelled) else None
     client = None
@@ -155,7 +186,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     turn = {}
     try:
         has_prompt = bool(prompt.strip())
-        approval_policy = "untrusted" if approval == "manual" else "never"
+        approval_policy = _approval_policy(approval, agent)
         if session_id and has_prompt:
             client = _take_open_thread(
                 session_id,
@@ -196,6 +227,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                     approval_policy=approval_policy,
                     timeout=_remaining(deadline),
                     speed=speed,
+                    **({"config": thread_config} if thread_config else {}),
                 )
                 resumed = True
             else:
@@ -205,6 +237,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
                     approval_policy=approval_policy,
                     timeout=_remaining(deadline),
                     speed=speed,
+                    **({"config": thread_config} if thread_config else {}),
                 )
                 resumed = False
         if not has_prompt:
@@ -256,11 +289,15 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
             sid,
             status="cancelled",
             error=f"codex app-server: {e}",
+            approvals_denied=len(denied),
         )
+    except TimeoutError as e:
+        return _envelope(sid, last_message=last_message(), status="timeout",
+                         error=f"codex app-server: {e}", approvals_denied=len(denied))
     except Exception as e:
-        return _envelope(sid, last_message="".join(chunks),
+        return _envelope(sid, last_message=last_message(),
                          usage=(turn or {}).get("usage", {}), status=(turn or {}).get("status", ""),
-                         error=f"codex app-server: {e}")
+                         error=f"codex app-server: {e}", approvals_denied=len(denied))
     finally:
         if client is not None and not keep_open:
             if force_close:
@@ -271,10 +308,27 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
     turn = turn or {}
     status = turn.get("status", "")
     if status in ("", "completed", "success", "ok"):
-        return _envelope(sid, resumed=resumed, last_message="".join(chunks),
-                         usage=turn.get("usage", {}), exit_code=0)
-    return _envelope(sid, resumed=resumed, last_message="".join(chunks),
-                     usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}")
+        return _envelope(sid, resumed=resumed, last_message=last_message(),
+                         usage=turn.get("usage", {}), exit_code=0, approvals_denied=len(denied))
+    return _envelope(sid, resumed=resumed, last_message=last_message(),
+                     usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}",
+                     approvals_denied=len(denied))
+
+
+def _approval_policy(approval, agent):
+    """Codex's approvalPolicy for our approval mode.
+
+    "manual" asks before every patch ("untrusted") only when someone can
+    answer: an agent with io. With nobody there each ask was refused and a
+    headless run changed nothing yet reported success (#2904), so it becomes
+    "on-request": edits and commands inside the sandbox go ahead, and only a
+    request to leave it is asked, refused and counted in approvals_denied.
+    """
+    if approval != "manual":
+        return "never"
+    if getattr(agent, "io", None) is None:
+        return "on-request"
+    return "untrusted"
 
 
 def _thread_config(cwd, sandbox, model, approval_policy, speed):
@@ -383,11 +437,17 @@ def _remaining(deadline):
 
 
 def _base_command():
-    """codex launch argv: $CODEX_CMD (space-split) else PATH lookup, + app-server."""
+    """Codex launch argv: CODEX_CMD override, else the shared CLI resolution."""
     env = os.environ.get("CODEX_CMD")
     if env:
+        # A resolved executable path may contain spaces. Preserve that one
+        # argument; keep legacy command+arguments behavior for other values.
+        expanded = os.path.expanduser(env)
+        if os.path.isfile(expanded):
+            return [os.path.abspath(expanded), "app-server"]
         return env.split() + ["app-server"]
-    found = shutil.which("codex")
+    from ..codex_cli import resolve_codex
+    found = resolve_codex()
     return [found, "app-server"] if found else None
 
 
@@ -1063,7 +1123,7 @@ def _display_cwd(value):
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
               usage: dict = None, exit_code: int = -1, error: str = "",
-              opened: bool = False, status: str = "") -> str:
+              opened: bool = False, status: str = "", approvals_denied: int = 0) -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -1072,6 +1132,8 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
         "last_message": last_message,
         "usage": usage or {},
         "exit_code": exit_code,
+        # A refused edit still ends the turn "completed"; say it was refused.
+        "approvals_denied": approvals_denied,
     }
     if opened:
         result["opened"] = True
@@ -1273,11 +1335,14 @@ class CodexAppServer:
         approval_policy="on-request",
         timeout=60,
         speed="standard",
+        config=None,
     ):
         params = {"cwd": self.cwd or ".", "sandbox": sandbox,
                   "approvalPolicy": approval_policy, "approvalsReviewer": "user"}
         if model:
             params["model"] = model
+        if config:
+            params["config"] = config
         if speed == "fast":
             params["serviceTier"] = "priority"
         result = self.request("thread/start", params, timeout=timeout)
@@ -1291,6 +1356,7 @@ class CodexAppServer:
         approval_policy="on-request",
         timeout=60,
         speed="standard",
+        config=None,
     ):
         params = {
             "threadId": thread_id,
@@ -1301,6 +1367,8 @@ class CodexAppServer:
         }
         if model:
             params["model"] = model
+        if config:
+            params["config"] = config
         if speed == "fast":
             params["serviceTier"] = "priority"
         result = self.request("thread/resume", params, timeout=timeout)

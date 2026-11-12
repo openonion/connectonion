@@ -34,7 +34,7 @@ from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomi
                     write_json)
 from .investigate import project_paths
 from .scan import project_exclusion
-from .source import KINDS, SKIPPED, UNFAMILIAR, timestamp
+from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
 LOOKBACK_DAYS = 180
@@ -140,7 +140,7 @@ def _file_material(data: bytes, path, kind, parse, read_meta, since) -> dict:
                 continue
             turns.append(at)
             session = item.get("session") or meta.get("id") or path.stem
-            messages.append((at, {"source": f"{kind}:{session}:{at}", "tool": kind,
+            messages.append((at, {"source": session_source(kind, session, at, item["text"]), "tool": kind,
                 "timestamp": timestamp(item["timestamp"]).isoformat(),
                 "cwd": item.get("cwd") or meta.get("cwd") or "",
                 "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
@@ -403,7 +403,7 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
         source, body = item.get("source"), item.get("text")
         if (source not in cited or item.get("role") != "user"
                 or not isinstance(source, str)
-                or not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source)
+                or not parse_session_source(source)
                 or not isinstance(body, str)):
             continue
         text = SECRET_SHAPES.sub(REDACTED, body)
@@ -419,7 +419,7 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
 def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
     """A cited original unavailable in the mapped archive, from the accepted run."""
     from .reader_model import PRIVATE
-    if not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source):
+    if not parse_session_source(source):
         return None
     path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
     saved = read_json(path, {})
@@ -496,6 +496,7 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         indexed = refresh_safely(root)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
             "pages": pages, "created": created, "filed_rows": filed_rows,
+            "conflicts": sorted({source for page in pages for source in page["conflicts"]}),
             "workspace": workspace, "unmapped": index["unmapped"],
             "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
             "unfamiliar_skipped": counts["unfamiliar"], "store": indexed}
@@ -552,8 +553,22 @@ def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetim
     folder = _private_dir(_folder(root, record))
     state = page_state(root, record)
     old = [] if full else stored(root, record)
-    seen = {m["source"] for m in old}
-    added = [m for m in new if m["source"] not in seen]
+    seen = {m["source"]: m["text"] for m in old}
+    added, conflicts = [], set()
+    for message in new:
+        source, text = message["source"], message["text"]
+        if source in seen:
+            if seen[source] != text:
+                conflicts.add(source)
+            continue
+        parsed = parse_session_source(source)
+        if parsed and parsed[0] == "codex":
+            kind, session, offset = parsed
+            legacy = f"{kind}:{session}:{offset}"
+            if source != legacy and seen.get(legacy) == text:
+                continue
+        seen[source] = text
+        added.append(message)
     merged = sorted(old + added, key=lambda m: (m["timestamp"], m["source"]))
     merged, dropped = _keep_newest(merged, MAX_STORED_CHARS)
     if added or full or not (folder / "messages.md").is_file():
@@ -569,7 +584,7 @@ def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetim
         "extracted_at": now.isoformat()})
     state.setdefault("written_through", "")
     write_json(folder / "state.json", state)
-    return {"record": record, "added": len(added), "messages": len(merged),
+    return {"record": record, "added": len(added), "messages": len(merged), "conflicts": sorted(conflicts),
             "last_activity": state["last_activity"], "written_through": state["written_through"]}
 
 
