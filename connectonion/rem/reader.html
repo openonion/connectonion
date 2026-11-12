@@ -6563,8 +6563,13 @@ function ignoredSendersList() {
     el("div", { class: "set-note", text: t("Their mail stays out of Today and gets no draft.") }),
     el("ul", {}, found.map(([address, day]) => {
       const back = el("button", { type: "button", class: "btn-quiet", text: t("Show again") });
-      back.onclick = async () => { back.disabled = true; if (!await saveIgnoredSender(address, false)) back.disabled = false; };
-      return el("li", {}, [el("span", { text: address }), el("span", { class: "set-note", text: t("Ignored {date}", { date: threadDate(day) }) }), back]);
+      back.onclick = async () => {
+        back.disabled = true;
+        if (await saveIgnoredSender(address, false)) return;
+        back.disabled = false;
+        back.textContent = t("Not saved") + " · " + t("Try again");
+      };
+      return el("li", {}, [el("span", { text: shownAddress(address) }), el("span", { class: "set-note", text: t("Ignored {date}", { date: threadDate(day) }) }), back]);
     }))]);
 }
 // REM's state in words, never a command (D-60): off, needs attention, or when the next pass runs.
@@ -7151,27 +7156,39 @@ function stripDone(entry, mark) {
   return [done, later, ignore];
 }
 // The notice's "stop showing mail from x": once saved, the notice says what was ignored and its one Undo
-// reopens the item and lets the sender back in.
+// reopens the item and lets the sender back. A save the Host refused says so, with Try again, and changes nothing.
 function stopSenderButton(entry, address) {
-  const button = el("button", { type: "button", class: "sender-ignore", text: t("Stop showing mail from {address}", { address }) });
-  button.onclick = async () => {
+  const shown = shownAddress(address, entry);
+  const button = el("button", { type: "button", class: "sender-ignore", text: t("Stop showing mail from {address}", { address: shown }) });
+  const stop = async () => {
     button.disabled = true;
     if (!await saveIgnoredSender(address, true)) {
       button.disabled = false;
-      button.textContent = t("Not saved") + " · " + t("Try again");
-      return;
+      return notSavedNotice(retryReplacing(stop), null);
     }
     const notice = document.getElementById("done-notice"), undo = el("button", { type: "button", text: t("Undo") });
-    undo.onclick = async () => {
-      notice.remove();
-      await saveIgnoredSender(address, false);
+    const back = async () => {
+      if (!await saveIgnoredSender(address, false)) return notSavedNotice(retryReplacing(back), null);
+      document.getElementById("done-notice")?.remove();
       setDone(entry, false, "done", [entry]);
       focusRaisedCard();
     };
-    notice?.replaceChildren(t("Ignored · mail from {address} no longer shows here", { address }), " · ", undo, " · ", t("Saved in notebook"));
+    undo.onclick = back;
+    notice?.replaceChildren(t("Ignored · mail from {address} no longer shows here", { address: shown }), " · ", undo, " · ", t("Saved in notebook"));
     undo.focus({ preventScroll: true });
   };
+  button.onclick = stop;
   return button;
+}
+// Try again replaces the notice's earlier Not saved line instead of adding another.
+function retryReplacing(retry) {
+  return () => { document.querySelector("#done-notice [role=alert]")?.remove(); retry(); };
+}
+// With labelled passages hidden, an address shows only its domain: always in Settings, which cannot tell
+// which row it came from, and in a notice when its row carries a [personal] or [sensitive] passage.
+function shownAddress(address, entry = null) {
+  const hidden = document.documentElement.classList.contains("hide-private");
+  return hidden && (!entry || hasPrivacy(entry.t.originalText || entry.t.text)) ? "•••@" + address.split("@").pop() : address;
 }
 // The Host's list comes back whole; the page redraws from it, so every row from that sender goes or returns together.
 async function saveIgnoredSender(address, ignored) {

@@ -15,13 +15,17 @@ from pathlib import Path
 
 import pytest
 
+from connectonion.rem import threads
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
 
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-SHOP, AD = "orgs/sale-shop.md", "deals@sale-shop.example"
+SHOP, AD = "orgs/sale-shop.md", "deals@mail.sale-shop.example"  # a sending subdomain: bulk mail
+# The Host refuses /rem/sender while a test puts "sender" here (a busy notebook, a stopped Host).
+REFUSE = set()
 
 
 def _offer(root, number, words):
@@ -54,7 +58,12 @@ def reader(tmp_path, monkeypatch):
         return data
 
     monkeypatch.setattr(rem_reader, "snapshot", fixed_snapshot)
+    REFUSE.clear()
     root = build(tmp_path / "rem", frozen)
+    # 忽略 offers a sender only when it knows the owner's own addresses; the invented notebook's map names none.
+    mapped = json.loads((root / ".state" / "map.json").read_text())
+    mapped["owner"]["addresses"] = ["avery@lin.example"]
+    (root / ".state" / "map.json").write_text(json.dumps(mapped))
     _offer(root, 1, "spring sale")
     calls, errors = [], []
 
@@ -67,6 +76,8 @@ def reader(tmp_path, monkeypatch):
         calls.append((path, body))
         if path == "/rem/thread" and body:
             reply = threads.set_state(root, body["key"], body["state"], device=body.get("device"), keys=body.get("keys"))
+        elif path == "/rem/sender" and "sender" in REFUSE:
+            return route.fulfill(status=409, body=json.dumps({"error": "busy"}), content_type="application/json")
         elif path == "/rem/sender":
             reply = {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
         else:
@@ -111,7 +122,8 @@ def test_ignore_offers_to_stop_the_sender_and_a_new_offer_never_reaches_today(re
     row.get_by_role("button", name="忽略", exact=True).click()
     notice = page.locator("#done-notice")
     stop = notice.get_by_role("button", name=f"以后不再显示 {AD} 的邮件")
-    assert stop.is_visible() and notice.inner_text().startswith("已忽略 · 这一条不会再回来 · 撤销 · 以后不再显示")
+    stop.wait_for(state="visible")
+    assert notice.inner_text().startswith("已忽略 · 这一条不会再回来 · 撤销 · 以后不再显示")
     box = stop.bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= size[0]
     stop.click()
@@ -145,7 +157,7 @@ def test_undo_on_the_notice_reopens_the_item_and_lets_the_sender_back(reader):
     notice.get_by_role("button", name="Undo").click()
     page.wait_for_function("() => !document.getElementById('done-notice')")
     page.wait_for_timeout(300)
-    assert (root / ".state" / "ignored-senders.txt").read_text().count("@") == 0
+    assert threads.ignored_senders(root) == {}
     _open(page, "en")
     assert "spring sale" in _today(page)
 
@@ -157,3 +169,46 @@ def test_a_row_with_no_mail_sender_offers_nothing_more_than_its_own_ignore(reade
     row = page.locator('#main .today-brief .qcard[data-path="people/ines-halvorsen.md"] .qitem:visible').first
     row.get_by_role("button", name="Ignore", exact=True).click()
     assert page.locator("#done-notice .sender-ignore").count() == 0
+
+
+def _ignore_and_stop(page):
+    row = page.locator(f'#main .today-brief .qcard[data-path="{SHOP}"] .qitem:visible').first
+    row.get_by_role("button", name="Ignore", exact=True).click()
+    stop = page.locator("#done-notice .sender-ignore")
+    stop.wait_for(state="visible")
+    return stop
+
+
+def test_a_refused_save_says_not_saved_and_changes_nothing(reader):
+    """Stop and its Undo used to go on as if saved: the sender stayed listed while the item came back."""
+    page, root, _ = reader
+    _open(page, "en")
+    REFUSE.add("sender")
+    _ignore_and_stop(page).click()
+    alert = page.locator("#done-notice [role=alert]")
+    alert.wait_for(state="visible")
+    assert alert.inner_text() == "Not saved · Try again"
+    assert not (root / ".state" / "ignored-senders.txt").exists()
+    REFUSE.clear()
+    alert.get_by_role("button", name="Try again").click()
+    assert _notice_says(page, f"Ignored · mail from {AD} no longer shows here · Undo")
+    REFUSE.add("sender")
+    page.locator("#done-notice").get_by_role("button", name="Undo").click()
+    page.locator("#done-notice [role=alert]").wait_for(state="visible")
+    # Still ignored, and the notice that says so is still there to try again from.
+    assert AD in (root / ".state" / "ignored-senders.txt").read_text()
+    assert page.locator("#done-notice").inner_text().startswith(f"Ignored · mail from {AD}")
+
+
+def test_with_labelled_passages_hidden_a_labelled_rows_sender_shows_only_its_domain(reader):
+    page, root, _ = reader
+    page_file = root / SHOP
+    page_file.write_text(page_file.read_text().replace("spring sale.", "spring sale for her clinic [personal]."))
+    _open(page, "en")
+    page.evaluate("() => document.documentElement.classList.add('hide-private')", isolated_context=False)
+    stop = _ignore_and_stop(page)
+    assert stop.inner_text() == "Stop showing mail from •••@mail.sale-shop.example"
+    stop.click()
+    assert _notice_says(page, "Ignored · mail from •••@mail.sale-shop.example no longer shows here")
+    page.evaluate("() => { document.getElementById('done-notice')?.remove(); openSettings(); }", isolated_context=False)
+    assert "deals@" not in page.locator("#settings .set-ignored").inner_text()

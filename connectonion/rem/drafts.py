@@ -283,6 +283,8 @@ def promote(root, draft):
 def _current(root, draft_id, refresh_index=True):
     saved = read_json(path(root, draft_id), {})
     row = next((row for row in candidates(root, refresh_index=refresh_index) if row['id'] == draft_id), None)
+    if not row and saved.get('to', '').casefold() in threads.ignored_senders(root):
+        raise RemError('This sender is ignored; Show again in Settings to reply to them')
     if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved

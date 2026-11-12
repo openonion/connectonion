@@ -949,14 +949,18 @@ pinned to that edge: it comes into view with the draft.
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
   back*), its history line and the closed list's summary, which names the states it holds, e.g. *Marked done ·
   Ignored (3)*). On Today all three leave the same way, the row (or a one-row card) sliding out unless motion is
-  reduced. When the row cites a mail whose sender has an address, Ignore's
-  notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
+  reduced. When every mail the row cites came from one sender that looks like a machine or bulk mail (a
+  no-reply or sending-subdomain address, or a notice sender the map set apart), and REM knows the owner's own addresses,
+  Ignore's notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
   (`POST /rem/sender {"address", "ignored": true}`, the same loopback, cookie and JSON rules as `/rem/thread`), the
   notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
-  lets the sender back. REM never stops a sender by itself, and relay addresses that carry many different
-  people are never offered. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
-  can be edited by hand: Today leaves out every item whose cited mail came from a listed sender, the night drafts
-  them no reply, and **Settings → Ignored senders** lists each with **Show again** (恢复显示). Each notice keeps
+  lets the sender back; a save the Host refuses says *Not saved · Try again* and changes nothing. REM never stops a
+  sender by itself, never offers a person-looking address, and relay addresses that carry many different people are
+  never offered. With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
+  only its domain. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
+  can be edited by hand (a bare address or `Name <address>` is read too): Today leaves out an item only when every
+  mail it cites came from listed senders, the night drafts
+  them no reply (an open draft to one says *This sender is ignored*), and **Settings → Ignored senders** lists each with **Show again** (恢复显示). Each notice keeps
   **Undo**. Mark done
   and the row's other actions on **Waiting on you** no longer repeat it, in
   green or quietly, whatever the row's reply state. On **Today** it is the
