@@ -158,7 +158,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 1.9.6rc5: no handoff transport change; the recipient installs this release too.
 # 1.9.6rc6: no handoff transport change; the recipient installs this release too.
 # 1.9.6rc7: no handoff transport change; the recipient installs this release too.
-MIN_VERSION = "1.9.6rc7"
+# 1.9.6rc8: no handoff transport change; the recipient installs this release too.
+MIN_VERSION = "1.9.6rc8"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 

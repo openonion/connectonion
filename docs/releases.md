@@ -25,7 +25,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
+Release candidate **1.9.6rc8**: `co server new` charges the first month of a server now and each next
+month as it starts, and `co server destroy` refunds the unused part with a credit note. rc7 described
+the other way round and cannot create a server. See [1.9.6rc8 notes](releases/1.9.6rc8.md).
+
+Before it, release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
 Ignore in words, and Ignore can keep an advertiser out of Today for good. Records carry real names,
 record pages show the record, and the Skills page fits on one screen. See
 [1.9.6rc7 notes](releases/1.9.6rc7.md).
@@ -57,7 +61,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc7'
+python -m pip install --upgrade 'connectonion==1.9.6rc8'
 ```
 
 ## Previous stable
