@@ -1,6 +1,7 @@
 # Old words are not an unchanged claim
 
-Candidate repair for #2639. Not released.
+Repair for #2639 in 1.9.3rc17. This journal records its development; availability
+requires the matching public PyPI package and GitHub prerelease.
 
 REM protects accepted content while new evidence is added: a small source packet
 cannot re-prove the whole relationship on every turn. But the source audit used

@@ -10,6 +10,71 @@ from connectonion.rem.files import Notebook, RemError, read_json, state_path, wr
 from connectonion.rem.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_rem_source import rollout
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
+@pytest.mark.parametrize('results,last_message,blocked,visible', [
+    (['failed', 'timed-out'], '', False, True),
+    (['completed', 'completed'], 'The first attempt could not start; I retried and completed the round.', False, False),
+    (['completed', 'completed'], 'Earlier MAINTENANCE_BUSY; retried and completed the round.', False, False),
+    (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
+    (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
+    (['failed', 'completed'], 'Finished the work.', False, False),
+    (['completed', 'failed'], '', False, False),
+    (['failed', 'running'], '', False, False),
+])
+def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
+    from connectonion.cli.commands.rem_status import _today
+    from connectonion.rem.reader import snapshot
+    root, _ = rem
+    for index, result in enumerate(results):
+        last = state_path(root, f'turns/turn-{index}.last.md')
+        last.parent.mkdir(exist_ok=True)
+        last.write_text(last_message if index == 1 else '')
+        turn = {'started_at': f'2026-11-0{index + 1}T03:00:00Z', 'result': result,
+                'last_message': str(last), 'blocked': blocked if index == 1 else False,
+                'reason': last_message if blocked else 'fictional timeout',
+                **({'finished_at': f'2026-11-0{index + 1}T04:00:00Z'} if result != 'running' else {})}
+        write_json(state_path(root, f'turns/turn-{index}.json'), turn)
+    write_json(state_path(root, 'last-turn.json'), turn)
+    value = status(root)
+    line = value.get('schedule_failure', '')
+    assert bool(line) == visible
+    if visible:
+        from rich.text import Text
+        assert line == {'code': 'blocked' if blocked else 'repeated_failure',
+                        'evidence': last_message if blocked else 'fictional timeout'}
+        output = Text.from_markup(_today(root, value)[0]).plain
+        assert output.startswith('Last scheduled turn did not finish:')
+        assert ('run co rem start' if blocked else 'Retried automatically') in output
+        assert line['evidence'] in output
+        assert snapshot(root)['status']['schedule_failure'] == line
+
+
+@pytest.mark.parametrize('message,blocked', [
+    ('The first attempt could not start; I retried and completed the round.', False),
+    ('Earlier MAINTENANCE_BUSY; the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; the earlier attempt failed, but the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled. '
+     'Report this message and end the turn without retrying.', True),
+])
+def test_turn_receipt_records_terminal_busy_outcome(rem, monkeypatch, message, blocked):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec
+    root, _ = rem
+    monkeypatch.setattr(codex_exec, '_start_command', lambda root, last: ['fictional-codex', str(last)])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda self, root: False)
+
+    def run(command, **kwargs):
+        from pathlib import Path
+        Path(command[1]).write_text(message)
+        return CompletedProcess(command, 0)
+
+    codex_exec.run_turn(root, run=run)
+    receipt = read_json(state_path(root, 'last-turn.json'), {})
+    assert receipt['blocked'] is blocked
+    assert bool(status(root).get('schedule_failure')) is blocked
+
 
 @pytest.fixture
 def rem(tmp_path, monkeypatch):
@@ -18,7 +83,7 @@ def rem(tmp_path, monkeypatch):
     sessions.mkdir()
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
     monkeypatch.setattr("connectonion.rem.service.claude_projects_root", lambda: tmp_path / "no-claude")
-    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
     prepare(root)
     approve_sources(root)
     return root, sessions
@@ -320,6 +385,58 @@ def _runner_recording(calls):
     return runner
 
 
+def test_systemd_start_enables_worker_and_status_then_stop_removes_timer(rem, tmp_path, monkeypatch):
+    from connectonion.rem.service import start, stop, worker_state
+    from tests.unit.test_rem_schedule import make_systemd
+    root, sessions = rem
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "linux")
+    monkeypatch.setattr("connectonion.rem.schedule.Systemd", lambda: scheduler)
+    monkeypatch.setattr("connectonion.rem.codex_history.archive_history", lambda *a, **kw: {})
+    state_path(root, "consent.json").unlink()  # exercise the first batch, not a previously approved start
+    rollout(sessions / "rollout-a.jsonl", [("user", "remember this")])
+    result = start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording([]))
+    assert result["started"] and result["first_batch"]["outcome"] == "completed"
+    assert worker_state(root)["enabled"] is True and worker_state(root)["scheduler"] == "systemd"
+    shown = status(root)
+    assert "Scheduled with systemd" in shown["state"] and shown["next_run"]
+    assert shown["last_run"]["outcome"] == "completed" and "awake" not in shown["state"]
+    stop(root, scheduler=scheduler)
+    assert worker_state(root)["enabled"] is False and not scheduler.installed(root)
+    assert status(root)["state"].startswith("Stopped")
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_systemd_status_does_not_claim_an_absent_or_inactive_timer_is_scheduled(rem, tmp_path, monkeypatch, missing):
+    from tests.unit.test_rem_schedule import make_systemd
+    root, _ = rem
+    scheduler, _ = make_systemd(tmp_path, monkeypatch, active=False)
+    monkeypatch.setattr("connectonion.rem.schedule.Systemd", lambda: scheduler)
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "systemd"})
+    if not missing:
+        scheduler.install(root, read_config(root))
+    shown = status(root)
+    assert shown["next_run"] is None and "co rem start" in shown["state"]
+    assert ("Not scheduled here" if missing else "Background needs attention") in shown["state"]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_linux_consent_names_systemd_without_mac_awake_wording(rem, monkeypatch, available):
+    from connectonion.cli.commands.rem_output import render
+    from connectonion.rem.service import consent_summary
+    root, _ = rem
+    monkeypatch.setattr("connectonion.rem.service.sys.platform", "linux")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/systemctl" if available else None)
+    summary = consent_summary(root)
+    text = render(summary, "start — source access and schedule")
+    for shown in (summary["background"], text):
+        if available:
+            assert "systemd user timer" in shown and "loginctl enable-linger" in shown
+        else:
+            assert "manual sync or cron" in shown and "systemd user timer" not in shown
+        assert "awake" not in shown and "launchd" not in shown
+
+
 def test_declined_start_reads_nothing_and_installs_nothing(tmp_path, monkeypatch):
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"
@@ -470,12 +587,12 @@ def test_stop_does_not_wait_for_a_running_batch(tmp_path, monkeypatch):
         holder.kill()
 
 
-def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch):
+def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch, rem_sydney_slot):
     """Otherwise the job's run-at-load batch and the foreground batch race for the lock."""
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"
     monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
-    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")], timestamp=rem_sydney_slot.isoformat())
     order = []
 
     class Ordered(FakeScheduler):
@@ -488,6 +605,26 @@ def test_first_batch_runs_before_the_clock_is_installed(tmp_path, monkeypatch):
         return {"usage": None, "changed": []}
     start(root, confirm=lambda s: True, scheduler=Ordered(), runner=runner)
     assert order == ["batch", "install"]
+
+
+@pytest.mark.parametrize("zone", ["UTC", "Australia/Sydney"])
+@pytest.mark.parametrize("clock,items", [("04:59", 1), ("05:00", 1), ("05:01", 0),
+                                         ("05:35", 0), ("05:51", 0), ("06:05", 0)])
+def test_first_batch_respects_the_sixty_day_lookback_in_any_zone(tmp_path, monkeypatch, zone, clock, items):
+    """September 7 05:00Z material expires after November 6 05:00Z, independently of slots."""
+    from connectonion.rem.service import start
+
+    moment = datetime.fromisoformat(f"2026-11-06T{clock}+00:00")
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: moment)
+    monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: zone)
+    sessions = tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls = []
+    result = start(tmp_path / "rem", confirm=lambda summary: True, scheduler=FakeScheduler(),
+                   runner=_runner_recording(calls))
+    assert result["first_batch"]["items"] == items
+    assert len(calls) == items
 
 
 def test_sigterm_during_a_batch_is_recorded_as_interrupted(rem):
@@ -542,6 +679,134 @@ def test_scheduled_sync_runs_once_per_slot_and_coalesces_missed_ones(tmp_path, m
     assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
     assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None  # one catch-up, not two
     assert len(calls) == 2
+
+
+def test_a_scheduled_tick_a_minute_early_serves_the_coming_slot(tmp_path, monkeypatch):
+    """Codex fired the 03:00 slot at 02:59; REM saw last night's slot already served
+    and skipped the run, so the slot was lost."""
+    from datetime import datetime, timezone
+
+    from connectonion.rem.service import start
+    root, sessions = tmp_path / "rem", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    clock = {"now": datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc)}  # 16:30 Sydney
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: clock["now"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "schedule.times", "17:00,18:00"])
+    calls = []
+    start(root, confirm=lambda s: True, scheduler=FakeScheduler(), runner=_runner_recording(calls))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    clock["now"] = datetime(2026, 9, 7, 6, 59, tzinfo=timezone.utc)   # 16:59 Sydney, a minute early
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls))["outcome"] == "completed"
+    clock["now"] = datetime(2026, 9, 7, 7, 3, tzinfo=timezone.utc)    # 17:03: the same slot, served
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None
+    assert read_json(state_path(root, "worker.json"), {})["last_scheduled_slot"] == "2026-09-07T17:00:00+10:00"
+
+
+@pytest.mark.parametrize("phase", ["sync", "daily-investigation", "daily-update"])
+@pytest.mark.parametrize("alive", [True, False])
+def test_scheduled_sync_leaves_slot_owed_while_a_local_run_is_alive(rem, monkeypatch, phase, alive):
+    import os
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    write_json(state_path(root, "worker.json"), worker)
+    path = state_path(root, "runs/run_" + "a" * 32 + ".json")
+    started = "2026-09-07T11:00:00+00:00"
+    write_json(path, {"id": "run_" + "a" * 32, "started_at": started, "phase": phase,
+                      "outcome": "running", **service.running_marker(),
+                      "pid": os.getpid() if alive else 2 ** 22 + 7})
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("no model needed"))
+
+    result = run_sync(root, scheduled=True)
+
+    if alive:
+        assert result == {"outcome": "busy", "reason": f"a scheduled sync started at {started} is still running"}
+        assert service.worker_state(root) == worker
+        assert read_json(path, {})["outcome"] == "running"
+    else:
+        assert result["outcome"] == "no_change"
+        assert read_json(path, {})["outcome"] == "abandoned"
+        assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_scheduled_busy_cli_prints_reason_and_next_and_starts_no_daily_work(rem, monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"})
+    started = "2026-09-07T11:00:00+00:00"
+    write_json(state_path(root, "runs/run_" + "b" * 32 + ".json"), {
+        "started_at": started, "outcome": "running", "phase": "daily-investigation", **service.running_marker()})
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("busy must stop"))
+
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "sync", "--scheduled"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines() == [f"a scheduled sync started at {started} is still running",
+                                                f"Next: co rem --root {root} logs"]
+
+
+def test_scheduled_ownership_covers_gaps_between_stage_records_and_retries_next_tick(rem, monkeypatch):
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00,13:00"])
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    write_json(state_path(root, "worker.json"), worker)
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a, **kw: pytest.fail("no model needed"))
+
+    def between_stages():
+        monkeypatch.setattr(service, "now", lambda: datetime(2026, 9, 7, 13, tzinfo=timezone.utc))
+        nested = run_sync(root, scheduled=True)
+        assert nested == {"outcome": "busy", "reason": "a scheduled sync started at 2026-09-07T12:00:00+00:00 is still running"}
+        assert service.worker_state(root)["last_scheduled_slot"] == worker["last_scheduled_slot"]
+        return {"outcome": "completed"}
+
+    assert service.run_scheduled(root, between_stages)["outcome"] == "completed"
+    assert "scheduled_run" not in service.worker_state(root)
+    assert run_sync(root, scheduled=True)["outcome"] == "no_change"
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T13:00:00+00:00"
+
+
+def test_two_scheduled_ticks_cannot_both_claim_the_same_slot(rem, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, local
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True})
+    barrier, thread, due = Barrier(2), local(), service._scheduled_slot
+    calls = []
+
+    def simultaneous_tick(root):
+        if not getattr(thread, "checked", False):
+            thread.checked = True
+            barrier.wait(timeout=5)
+        return due(root)
+
+    monkeypatch.setattr(service, "_scheduled_slot", simultaneous_tick)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ticks = [pool.submit(service.run_scheduled, root, lambda: calls.append("ran") or {"outcome": "no_change"})
+                 for _ in range(2)]
+        errors = [tick.exception(timeout=10) for tick in ticks]
+        assert all(error is None or isinstance(error, RemError) and "busy" in str(error) for error in errors)
+        results = [tick.result() for tick, error in zip(ticks, errors) if error is None]
+    assert calls == ["ran"]
+    assert sum(row is not None and row["outcome"] == "no_change" for row in results) == 1
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_dead_scheduled_worker_claim_does_not_block_the_owed_slot(rem):
+    from connectonion.rem import service
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduled_run": {
+        "phase": "daily-sync", "outcome": "running", "started_at": "2026-09-07T11:00:00+00:00",
+        **service.running_marker(), "pid": 2 ** 22 + 7}})
+    assert run_sync(root, scheduled=True)["outcome"] == "no_change"
+    assert "scheduled_run" not in service.worker_state(root)
 
 
 def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path, monkeypatch):
@@ -1020,6 +1285,12 @@ def test_the_consent_summary_says_which_tools_unattended_investigations_can_use(
     summary = consent_summary(tmp_path)
     assert flag in summary["model_permissions"] and "local repository" in summary["model_permissions"]
     assert "co rem stop" in summary["background"]
+    from connectonion.cli.commands.rem_output import render
+    text = render(summary, "start — source access and schedule")
+    assert flag in next(line for line in text.splitlines() if line.startswith("Permissions:"))
+    assert "co rem stop" in next(line for line in text.splitlines() if line.startswith("Background:"))
+    assert len(text.splitlines()) <= 25
+    assert "Input chars per batch" not in text and "/inbox/whatsapp" not in text
 
 
 def test_a_batch_that_wrote_its_pages_before_failing_is_not_run_and_paid_for_again(rem):
@@ -1112,10 +1383,15 @@ def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, 
     from connectonion.rem.service import consent_summary
     prepare(tmp_path)
     set_config(tmp_path, ["runner", runner])
-    receives = consent_summary(tmp_path)["model_receives"]
+    summary = consent_summary(tmp_path)
+    receives = summary["model_receives"]
     assert f"your own {login} login" in receives
     other = "Claude Code" if login == "Codex" else "Codex"
     assert other not in receives
+    from connectonion.cli.commands.rem_output import render
+    model = next(line for line in render(summary, "start — source access and schedule").splitlines()
+                 if line.startswith("Model:"))
+    assert model == f"Model: {runner} · {summary['model']} · through your own {login} login (no API key)"
 
 
 def test_a_spent_day_serves_the_slot_instead_of_retrying_it_every_tick(tmp_path, monkeypatch):
@@ -1218,15 +1494,27 @@ def test_a_mailbox_the_owner_removed_is_not_offered_again(tmp_path, monkeypatch)
     assert consent_summary(tmp_path)["sources"]["gmail"]["state"] == "unsubscribed"
 
 
+def test_a_mailbox_never_connected_is_told_how_to_connect_not_called_unsubscribed(tmp_path, monkeypatch):
+    """The consent prompt said "unsubscribed" for a mailbox the owner had simply not
+    connected yet; nothing on that screen said `co auth google` was the step."""
+    from connectonion.rem.service import consent_summary
+    prepare(tmp_path)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    assert consent_summary(tmp_path)["sources"]["gmail"]["state"] == "waiting for co auth google"
+    assert consent_summary(tmp_path)["sources"]["outlook"]["state"] == "waiting for co auth microsoft"
+
+
 def test_stale_running_records_are_marked_abandoned_by_the_next_writer(tmp_path, monkeypatch):
     """Two records said "running" for days on the owner's notebook."""
     import os
     from connectonion.rem.service import abandon_stale_runs, run_logs
+    monkeypatch.setattr("connectonion.rem.service._boot_time", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
     prepare(tmp_path)
     runs = state_path(tmp_path, "runs")
     runs.mkdir(parents=True, exist_ok=True)
-    old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    fresh = datetime.now(timezone.utc).isoformat()
+    from connectonion.rem.service import now
+    old = (now() - timedelta(days=3)).isoformat()
+    fresh = now().isoformat()
     write_json(runs / f"run_{'a' * 32}.json", {"id": f"run_{'a' * 32}", "started_at": old, "outcome": "running",
                                               "runner_attempts": 1})
     write_json(runs / f"run_{'b' * 32}.json", {"id": f"run_{'b' * 32}", "started_at": fresh, "outcome": "running",
@@ -1259,16 +1547,34 @@ def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path)
     assert report["by_model"]["m"]["input_tokens_per_1k_chars"] == 250.0
 
 
+@pytest.mark.parametrize("approved", [False, True])
+def test_stalled_archive_opens_only_approved_mailboxes(rem, monkeypatch, approved):
+    from connectonion.rem import service
+    root, _ = rem
+    sources = {"gmail": {"enabled": True, "consented": True},
+               "outlook": {"enabled": approved, "consented": approved}}
+    monkeypatch.setattr(service, "subscriptions", lambda root: sources)
+    monkeypatch.setattr(service, "archive_state", lambda *a, **kw: {"stalled": True})
+    monkeypatch.setattr(service, "mail_available", lambda kind: True)
+    monkeypatch.setattr(service, "mail_client", lambda kind: kind)
+    monkeypatch.setattr(service, "resume_stalled", lambda root, clients, **kw: clients)
+    assert set(service._resume_archive(root)) == ({"gmail", "outlook"} if approved else {"gmail"})
+
+
 def test_a_sync_resumes_a_stalled_init_archive_and_status_stops_mentioning_it(rem, monkeypatch):
     """#2035: only `init` resumed the archive; a day of investigations asked the servers instead."""
     from connectonion.rem.mail_archive import archive_init
+    from connectonion.rem.source import Batch
     from tests.unit.test_rem_mail_archive import T0, Bodies, Clock, _inventory
     root, _ = rem
+    toggle_source(root, "gmail", True)
+    approve_sources(root)
     archive_init(root, _inventory(root), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
     mail = Bodies()
     monkeypatch.setattr("connectonion.rem.service.now", lambda: T0 + timedelta(hours=20))
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
     monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: mail)
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch([], {}))
     assert status(root)["mail_archive"]["stalled"]                      # said before anything resumes it
     record = run_sync(root, runner=lambda *a, **kw: {"usage": {}})
     assert record["mail_archive"]["phase"] == "complete" and record["mail_archive"]["reused"] == 2
@@ -1331,6 +1637,7 @@ def test_a_job_launchd_never_started_is_not_reported_as_a_failed_investigation(t
     # A real Mac, 2026-10-07 to 10-11: the job was loaded, `runs = 0`, 18 slots
     # passed, and status said "the last scheduled investigation failed; run co rem logs".
     from connectonion.rem.schedule import Launchd
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 10, 11, 12, tzinfo=timezone.utc))
     root = tmp_path / "rem"
     prepare(root)
     write_json(state_path(root, "consent.json"), {})
@@ -1371,3 +1678,217 @@ def test_usage_report_survives_a_run_whose_instruction_size_is_one_number(tmp_pa
     stages = usage_report(tmp_path)["by_stage"]
 
     assert stages["investigate"]["instructions_chars_mean"] == 13_000
+
+
+@pytest.mark.parametrize("count", [2, 5])
+def test_sync_reports_mail_still_queued_after_bounded_batch(rem, monkeypatch, count):
+    from connectonion.rem.source import Batch
+    root, _ = rem
+    set_config(root, ["limits.extract_items_per_batch", "2"])
+    monkeypatch.setattr("connectonion.rem.service._selected_sources", lambda *a: {
+        "gmail": {"kind": "gmail", "enabled": True, "consented": True}})
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind: object())
+    items = [{"source": f"gmail:{n}", "role": "user", "text": "Fictional project note"} for n in range(2)]
+    monkeypatch.setattr("connectonion.rem.service.collect_mail", lambda *a, **kw: Batch(
+        items, {"pending": {"rowan@example.org": [{"id": str(n)} for n in range(count - 2)]}}))
+    record = run_sync(root, runner=lambda *a, **kw: {"changed": [], "usage": None})
+    assert record["items"] == 2
+    assert record["material_remaining"] == {"gmail": count - 2}
+
+
+def test_not_due_reason_skips_the_slot_already_served_early(rem):
+    from connectonion.rem.service import scheduled_skip
+    root, _ = rem
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "03:00,19:00"])
+    write_json(state_path(root, "worker.json"), {
+        "enabled": True, "last_scheduled_slot": "2026-09-07T19:00:00+00:00"})
+    result = scheduled_skip(root)
+    assert "19:00 slot was already served" in result["reason"]
+    assert "next slot 2026-09-08T03:00+00:00" in result["reason"]
+
+
+@pytest.mark.parametrize("boot_known", [True, False])
+def test_live_run_does_not_expire_without_progress(tmp_path, monkeypatch, boot_known):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    moment = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    boot = moment - timedelta(days=4) if boot_known else None
+    monkeypatch.setattr(service, "_boot_time", lambda: boot)
+    record = {"id": "run_live", "started_at": (moment - timedelta(days=3)).isoformat(),
+              "outcome": "running", **service.running_marker()}
+    path = state_path(tmp_path, "runs/run_live.json")
+    write_json(path, record)
+
+    assert service.abandon_stale_runs(tmp_path) == []
+    assert read_json(path, {}) == record
+
+
+@pytest.mark.parametrize("progress", [False, True])
+def test_live_pid_from_before_boot_is_abandoned_even_with_recent_progress(tmp_path, monkeypatch, progress):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    moment = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    monkeypatch.setattr(service, "_boot_time", lambda: moment - timedelta(minutes=10))
+    record = {"id": "run_reused", "started_at": (moment - timedelta(minutes=30)).isoformat(),
+              "outcome": "running", **service.running_marker()}
+    if progress:
+        record["stage_updated_at"] = moment.isoformat()
+    path = state_path(tmp_path, "runs/run_reused.json")
+    write_json(path, record)
+
+    assert service.abandon_stale_runs(tmp_path) == ["run_reused"]
+    assert read_json(path, {})["outcome"] == "abandoned"
+    assert "restart" in read_json(path, {})["reason"]
+
+
+@pytest.mark.parametrize("minute", [49, 50, 59])
+def test_next_slot_keeps_an_unserved_slot_during_its_early_window(monkeypatch, minute):
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 2, minute, tzinfo=timezone.utc))
+    config = {"schedule": {"times": ["03:00", "17:00"], "timezone": "UTC"}}
+    assert service.next_slot(config, timezone.utc) == "2026-11-06T03:00+00:00"
+
+
+@pytest.mark.parametrize("location", ["worker", "runs"])
+def test_live_pid_from_before_boot_does_not_block_the_next_round(rem, monkeypatch, location):
+    from connectonion.rem import service
+
+    root, _ = rem
+    moment = service.now()
+    monkeypatch.setattr(service, "_boot_time", lambda: moment - timedelta(minutes=10))
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "11:00,12:00"])
+    record = {"id": "run_reused", "phase": "daily-sync", "outcome": "running",
+              "started_at": (moment - timedelta(minutes=30)).isoformat(), **service.running_marker()}
+    worker = {"enabled": True, "last_scheduled_slot": "2026-09-07T11:00:00+00:00"}
+    if location == "worker":
+        worker["scheduled_run"] = record
+    else:
+        write_json(state_path(root, "runs/run_reused.json"), record)
+    write_json(state_path(root, "worker.json"), worker)
+    assert service.run_scheduled(root, lambda: {"outcome": "no_change"}) == {"outcome": "no_change"}
+    assert "scheduled_run" not in service.worker_state(root)
+
+
+@pytest.mark.parametrize("boot_known", [True, False])
+def test_long_scheduled_round_keeps_its_claim_while_session_summaries_run(rem, monkeypatch, boot_known):
+    from connectonion.rem import service
+
+    root, _ = rem
+    started = service.now()
+    boot = started - timedelta(days=4) if boot_known else None
+    monkeypatch.setattr(service, "_boot_time", lambda: boot)
+    set_config(root, ["schedule.timezone", "UTC", "schedule.times", "12:00,14:00"])
+    write_json(state_path(root, "worker.json"), {"enabled": True})
+
+    def summarize():
+        worker = service.worker_state(root)
+        monkeypatch.setattr(service, "now", lambda: started + timedelta(minutes=150))
+        summary = {"id": "run_summary", "phase": "sessions-summary", "outcome": "running",
+                   "started_at": started.isoformat(), **service.running_marker()}
+        path = state_path(root, "runs/run_summary.json")
+        write_json(path, summary)
+        result = service.run_scheduled(root, lambda: pytest.fail("overlapping scheduled round"))
+        assert result["outcome"] == "busy"
+        assert service.worker_state(root) == worker
+        assert read_json(path, {}) == summary
+        return {"outcome": "completed"}
+
+    assert service.run_scheduled(root, summarize) == {"outcome": "completed"}
+    assert service.worker_state(root)["last_scheduled_slot"] == "2026-09-07T12:00:00+00:00"
+
+
+def test_next_slot_keeps_tomorrows_midnight_slot_after_its_early_window_opens(monkeypatch):
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 23, 58, tzinfo=timezone.utc))
+    config = {"schedule": {"times": ["00:05"], "timezone": "UTC"}}
+    assert service.next_slot(config, timezone.utc) == "2026-11-07T00:05+00:00"
+
+
+@pytest.mark.parametrize("served, expected", [(False, "03:00"), (True, "17:00")])
+def test_status_next_run_respects_an_early_served_slot(tmp_path, monkeypatch, served, expected):
+    from connectonion.rem import service
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "UTC", "schedule.times", "03:00,17:00"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 2, 59, tzinfo=timezone.utc))
+    write_json(state_path(tmp_path, "consent.json"), {})
+    worker = {"enabled": True, "scheduler": "fake"}
+    if served:
+        worker["last_scheduled_slot"] = "2026-11-06T03:00:00+00:00"
+    write_json(state_path(tmp_path, "worker.json"), worker)
+    assert bool(service._scheduled_slot(tmp_path)) is not served
+    assert service.status(tmp_path)["next_run"] == f"2026-11-06T{expected}+00:00"
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_boot_time_reads_the_platform_source(monkeypatch, platform):
+    from subprocess import CompletedProcess
+    from connectonion.rem import service
+
+    moment = datetime(2026, 11, 6, 10, tzinfo=timezone.utc)
+    seconds = int(moment.timestamp())
+    monkeypatch.setattr(service.sys, "platform", platform)
+    if platform == "darwin":
+        def sysctl(args, **kwargs):
+            assert args == ["sysctl", "-n", "kern.boottime"]
+            return CompletedProcess(args, 0, f"{{ sec = {seconds}, usec = 123 }} Fri Nov 6 10:00:00 2026\n")
+        monkeypatch.setattr(service.subprocess, "run", sysctl)
+    else:
+        def proc_stat(path):
+            assert str(path) == "/proc/stat"
+            return f"cpu 1 2 3 4\nbtime {seconds}\nprocesses 900\n"
+        monkeypatch.setattr(service.Path, "is_file", lambda path: str(path) == "/proc/stat")
+        monkeypatch.setattr(service.Path, "read_text", proc_stat)
+    assert service._boot_time() == moment
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_boot_time_unavailable_leaves_live_pids_trusted(monkeypatch, platform):
+    from connectonion.rem import service
+
+    def never(*args, **kwargs):
+        raise AssertionError("no boot-time source should be read")
+
+    monkeypatch.setattr(service.sys, "platform", platform)
+    monkeypatch.setattr(service.shutil, "which", lambda name: None)
+    monkeypatch.setattr(service.Path, "is_file", lambda path: False)
+    monkeypatch.setattr(service.subprocess, "run", never)
+    monkeypatch.setattr(service.Path, "read_text", never)
+    assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform):
+    from subprocess import CompletedProcess
+    from connectonion.rem import service
+
+    monkeypatch.setattr(service.sys, "platform", platform)
+    monkeypatch.setattr(service.subprocess, "run", lambda *a, **kw: CompletedProcess(a, 1, ""))
+    monkeypatch.setattr(service.shutil, "which", lambda name: "/usr/sbin/sysctl")
+    monkeypatch.setattr(service.Path, "is_file", lambda path: True)
+    monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
+    assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("code,message,fix", [
+    ("reauth_required", "Microsoft authorization expired or was revoked.", "co auth microsoft"),
+    ("broker_auth_failed", "OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    ("record_changed", "The selected credential record changed during this operation.", "co status"),
+    ("permission_denied", "Microsoft permission denied for this operation.", "co auth microsoft"),
+    ("invalid_response", "Authorization service returned invalid credentials; saved record kept.", "co status"),
+])
+def test_source_read_preserves_credential_code_and_recovery(rem, monkeypatch, code, message, fix):
+    from connectonion.rem import service
+    from connectonion.provider_credentials import ProviderCredentialError
+    root, _ = rem
+    failure = service._collection_failure("outlook", ProviderCredentialError(code, message, fix))
+    assert code in failure["error"] and message in failure["error"] and fix in failure["error"]
+    service._record_source_read(root, "outlook", failure["error"])
+    reason, _ = service._mailbox_read_failure(root, "outlook")
+    assert code in reason and message in reason and fix in reason

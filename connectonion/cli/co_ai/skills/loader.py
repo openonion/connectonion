@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ....project import project_co_dir
+from ....environment import global_config_dir
 from ....skill_requirements import SkillRequirements, parse_skill_requirements
 from ....skills_catalog import default_skill_files
 from ....subscription_paths import active_subscription_skills
@@ -106,7 +107,7 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
         search_paths.append(project_co_dir() / "skills")
 
     # User-level skills
-    home_skills = Path.home() / ".co" / "skills"
+    home_skills = global_config_dir() / "skills"
     if home_skills.exists():
         search_paths.append(home_skills)
 

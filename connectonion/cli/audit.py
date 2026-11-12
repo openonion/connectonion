@@ -289,18 +289,21 @@ def pages(root: list, runner=help_page) -> dict:
             following = []
             for path in level:
                 page = found[path]
-                if page.code != 0:
+                if page.code != 0 or _repeats_parent(path, found):
                     continue
                 for name in listed_commands(page.text):
                     child = f"{path} {name}"
                     if child not in found and child not in following:
                         following.append(child)
             level = following
-    # A "subcommand" whose page is its parent's page word for word was a word
-    # in the parent's text (gh codespace cp lists "mod" and "sum" as examples
-    # of its arguments), not a command.
-    return {path: page for path, page in found.items()
-            if " " not in path or page.text != found.get(path.rsplit(" ", 1)[0], Page(0, "")).text}
+    return {path: page for path, page in found.items() if not _repeats_parent(path, found)}
+
+
+def _repeats_parent(path: str, found: dict) -> bool:
+    """A "subcommand" whose page is its parent's page word for word was a word
+    in the parent's text (gh codespace cp lists "mod" and "sum" as examples of
+    its arguments), not a command; its own listed words are the same again."""
+    return " " in path and found[path].text == found.get(path.rsplit(" ", 1)[0], Page(0, "")).text
 
 
 def examples(text: str, name: str):

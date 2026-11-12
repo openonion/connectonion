@@ -546,7 +546,8 @@ def resolve_agent_identity(co_dir: Path) -> dict:
     if own:
         return own
 
-    inherited = address.load(Path.home() / ".co")
+    from ...environment import global_config_dir
+    inherited = address.load(global_config_dir())
     if inherited:
         return inherited
 
@@ -1397,9 +1398,11 @@ def host(
     # localhost still has recurring work to do, and tying its clock to whether
     # it happens to be announced would make "it stopped running at night" a
     # networking question.
+    from .rem_http import approval_tick
     sched_startup, sched_shutdown = create_schedule_lifespan(
         co_dir, create_agent, storage, result_ttl, console=Console(),
-        extra_tick=(route_handlers['control_center'].tick if route_handlers['control_center'] else None),
+        extra_tick=approval_tick(route_handlers['rem_root'], create_agent, storage, result_ttl,
+                                 route_handlers['control_center'].tick if route_handlers['control_center'] else None),
     )
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first

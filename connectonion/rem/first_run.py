@@ -36,12 +36,19 @@ DEFAULTS = {"owner": {"input_tokens": 6_500_000, "seconds": 2105},
             "project": {"input_tokens": 630_000, "seconds": 133},
             "org": {"input_tokens": 2_030_000, "seconds": 510},
             "skill": {"input_tokens": 800_000, "seconds": 205},
-            # 2026-10-21: Codex gpt-6-luna, 74k–80k input and 22–40 s per page.
-            "translation": {"input_tokens": 80_000, "seconds": 35}}
+            # 2026-10-21, a real 297-page notebook, 16 workers, Codex gpt-6-luna: median
+            # 186 s per page (one turn alone takes 22-40 s; concurrent turns share the
+            # model's throughput), 90k input per page with repairs, 66 minutes in all.
+            "translation": {"input_tokens": 90_000, "seconds": 200}}
 # More workers than this did not finish sooner: 48 wrote what 16 wrote in the
 # same 66 minutes (1.9.2b3), each turn three times slower. The model's own
 # throughput is the limit, so the estimate never divides by more.
 PACE = 16
+
+# Planning assumption, not a measured source count: 2,000 mapped mail items or
+# usable sessions reach the full owner rate. Small maps use a proportional
+# share; empty maps cost nothing. Both owner turns use the same share.
+OWNER_MATERIAL_BASELINE = 2_000
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
@@ -75,7 +82,8 @@ def page_costs(rate: dict, kind: str, count: int) -> list[dict]:
     return [heavy] * first + [rate] * (count - first)
 
 
-def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0, skills: int = 0,
+def plan(runs: list[dict], *, owner: bool, people: int, projects: int, owner_material: int = 0,
+         orgs: int = 0, skills: int = 0,
          workers: int, translation: str = "", abstract_pages: int = 0) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
 
@@ -83,10 +91,14 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
     interleaved people, projects and organizations. Simulate that queue; dividing
     total work by worker count misses the last slow page in a batch.
     """
+    owner = owner and owner_material > 0
     counts = {"owner": int(owner), "person": people, "project": projects, "org": orgs}
     if skills:
         counts["skill"] = skills
     rates = {kind: per_page(runs, kind) for kind in counts}
+    share = min(max(owner_material, 0) / OWNER_MATERIAL_BASELINE, 1)
+    rates["owner"] = {**rates["owner"], **{
+        key: ceil(rates["owner"][key] * share) for key in ("input_tokens", "seconds")}}
     pages = {kind: page_costs(rates[kind], kind, counts[kind]) for kind in counts if kind != "owner"}
     queue = ([rates["owner"]["seconds"]] if owner else []) + [
         page["seconds"] for group in zip_longest(*pages.values()) for page in group if page is not None]
@@ -97,7 +109,7 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
     translated = sum(counts.values()) + abstract_pages if translation else 0
     rate = per_page(runs, "translation")
     translation_seconds = ceil(translated / max(workers, 1)) * rate["seconds"]
-    return {"pages": sum(counts.values()), "counts": counts,
+    return {"pages": sum(counts.values()), "counts": counts, "owner_material": owner_material,
             "translation": {"language": translation, "pages": translated, **rate},
             "input_tokens": (translated * rate["input_tokens"] + 2 * counts["owner"] * rates["owner"]["input_tokens"]
                              + sum(page["input_tokens"] for kind in pages for page in pages[kind])),
@@ -129,6 +141,8 @@ def announce(total: dict, where: str) -> str:
              "from this notebook's runs where it has them, measured defaults otherwise")
     if total['counts'].get('skill') and not measured.get('skill'):
         basis += "; skill time and tokens are planning estimates from sampled runs"
+    if total['counts']['owner']:
+        basis += f"; owner rate scaled by {total['owner_material']} mapped mail items and usable sessions"
     translated = (f" Includes {translation['pages']} translations into {translation['language']} after the page queue."
                   if translation.get("language") else "")
     return (f"About {total['pages']} page{'s' if total['pages'] != 1 else ''} ({_pages(total['counts'])}), "

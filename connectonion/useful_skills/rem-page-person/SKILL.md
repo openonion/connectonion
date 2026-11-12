@@ -5,12 +5,9 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 # A person's page
 
-Read supplied page/material. Write, check, fix once, stop; use this format.
+Read the material; write, check, fix once, stop.
 
-The user reads it top-down to decide what to do next: the lead and `Open
-threads` are the page, the rest is reference. Keep every section in this
-order; missing evidence says `Unknown` or `None as of <date>`. Every factual
-sentence cites `[n]` into `Sources`. Placeholders are not evidence.
+Lead and `Open threads` guide the next action; the rest is reference. Keep this order. Missing evidence: `Unknown` or `None as of <date>`. Cite every fact `[n]` into `Sources`; placeholders prove nothing.
 
 ```markdown
 # <observed name>
@@ -22,6 +19,8 @@ sentence cites `[n]` into `Sources`. Placeholders are not evidence.
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
+- Unit: Unknown
+- Role in unit: Unknown
 - Location: Unknown
 - Time zone: Unknown
 - Links: Unknown
@@ -58,17 +57,16 @@ Rules:
 - **Lead: three cited sentences**; the last contact date lives in `Facts` only.
   (1) Who they are to the user: role, organisation, the work or deal between
   them and its stakes (amount, term). (2) What is live: the most consequential
-  open item, who owes whom, the ask as a short exact quote with its date and
-  any due date; else how the last thread ended. (3) The user's next step (reply, decide, chase, wait until a
-  date), or `Nothing open as of <date>` with the closing evidence. Never open
-  on a gap or a doubt.
+  open item in the `Open threads` wording (never "owes" unagreed),
+  the ask quoted with its date; else how the last thread ended. (3) The user's
+  next action on that item (reply, send, decide, chase, wait until a date), not
+  how to reach them, or `Nothing open as of <date>`. Never open on a doubt.
 - **One voice**: the owner is `the user` in every sentence, never their name,
   `you`, `we`, `he` or `his`: repeat `the user`. The subject is their name or
   "they"; "he"/"she" only where their own words show it.
 - **`Facts` is data, written first.** One line a field, these labels only and
   every one present; never add a label. A missing value is exactly `Unknown`.
-  Several values: `; ` between, each `value (qualifier) [n]` (`+61 2 5550 0142
-  (office, their signature) [3]; +61 400 555 019 (mobile, their signature) [5]`).
+  Separate values with `; `, each `value (qualifier) [n]`, e.g. `+61 400 555 019 (mobile, their signature) [5]`.
   Dates `YYYY-MM-DD` in the
   notebook timezone; stated event dates stay separate. Every value is cited
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
@@ -84,9 +82,9 @@ Rules:
   (`2024-02 (internship began, per the user) [n]`). `Unknown` only when
   nothing is dated; never `Unknown` beside cited older mail.
 - **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`,
-  `Changed:`, `At stake:` or `Pattern:`**: a finding no single message shows:
+  `Changed:`, `At stake:`, `Pattern:` or `Inference:`**: a finding no single message shows:
   what moved, what is at risk, a pattern over time (reply speed, topics, who
-  chases whom). Each rests on two or more messages or dates; one message
+  chases whom). Each rests on two or more messages, dates or outside sources; one message
   retold is the lead's or `Open threads`' job. At most one `Now:`. A finding,
   never advice (`verify`, `should`, `confirm`) and never a hedge (`unverified`,
   `remains unknown`); never generic ("key stakeholder"); a single thread: `- Unknown`.
@@ -95,6 +93,7 @@ Rules:
   not email”) and lists no channel they did not offer or use.
 - **`Company` needs stated employment**; a student or mailbox domain proves
   none (`Unknown`).
+- `Unit`: repeat cited org-page links; `Role in unit`: the same link — role. Legacy `Team` means `Unit`; `Company` stays top-level. Domains place nobody; conflicting codes go to review questions.
 - **`Who they are`**: their work first; private life they share is one
   labelled sentence, not a run of quotes.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
@@ -104,9 +103,9 @@ Rules:
   its date. Keep each local link with its
   citations and privacy markers. Separate events, separate lines.
 - **`History` is the short true story**:
-  one line per thread, at most sixteen, newest first by date, checked before
-  you finish, `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`; older
-  threads fold into one line a year, at the bottom; a thread that
+  one line per thread, at most sixteen, newest first by date,
+  `- YYYY-MM-DD: <what it was about> — <how it ended> [n]`, dated
+  by that thread; only threads over a year old fold into one line a year; a thread that
   stopped says `no reply after <date>`. Not a send or a newsletter.
 - **`Open threads` lists only what the user and this person still owe each
   other**, the user's debts
@@ -121,7 +120,8 @@ Rules:
   for 60 days goes to `History` as `went quiet`, but only after `rg` for its
   people and object finds nothing later. Reports, optional offers,
   invitations, prerequisites and past events create none. Keep an explicit
-  due date and any permission to proceed without a reply. Every ask or
+  due date and any permission to proceed without a reply. The user's own
+  "I'll …" with no delivery after it is `The user owes`. Every ask or
   promise under 60 days old with no reply about it and no delivery is a line
   here, its due date passed or not; only then `Nothing open as of <date>`.
 - **Say each thing once, plainly.** A fact lives in one section; the lead and
@@ -139,5 +139,9 @@ Rules:
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels: code reads them by name. Preserve the runner's
-`Investigation:` line unchanged.
+Keep headings, `Facts` labels and the runner's `Investigation:` line exact.
+
+Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
+evidence supports the reasoning; it need not be a literal statement in a source.
+Outside research may answer identity or state in the lead/Insight. Keep exact
+quotes exact; never leave an answered research question in `Uncertainties`.

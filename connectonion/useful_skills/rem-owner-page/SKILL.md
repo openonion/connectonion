@@ -15,8 +15,7 @@ Before `Facts`, write 2–4 cited sentences:
 - **Start with what they are working on now and why the next step matters.**
   If `owner-work-evidence` shows an explicit reversal, lead with it and cite
   both messages. Newer questions are not a change. Otherwise name a blocker
-  or unresolved choice. Replace the generic lead; put the
-  latest request in the next step. `recent-projects` ranks, not proves shipping.
+  or unresolved choice. `recent-projects` ranks, not proves shipping.
   List projects in `Who they are`.
 - Add a firm, due-soon commitment or blocker. Put distant invitations and
   unrelated mail in `Open threads`.
@@ -33,7 +32,7 @@ threads` line, `Last contact` or `Cadence`.
 
 - `Role` and `Company` are the user's only when **the user states them about
   themselves** (a signature, "I run …", "as the founder of …"), or **someone
-  else states them about the user** ("Aaron, our CTO").
+  else states them about the user** ("Ellis, our CTO").
 - **A role in a list the user writes about someone else is that person's, not
   the user's.** "Corin: partner at OpenOnion, runs marketing, Airbnb co-host" in
   the user's mail describes Corin. Leave it off this page.

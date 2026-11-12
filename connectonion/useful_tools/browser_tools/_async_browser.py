@@ -185,7 +185,9 @@ def _profile_dir() -> Path:
 
 def _paid_profile_dir():
     """Where the paid engine keeps its profile: inside CO_BROWSER_PROFILE_DIR
-    when that is set, or True for onionwright's own per-address default.
+    when that is set, or True for onionwright's own default. Since onionwright
+    0.0.15 that default on macOS is WTF Browser.app's own profile, so co and a
+    double-click share one login (openonion/onionwright#74).
 
     1.8.8b11 always passed True, so an isolated run's paid browser wrote
     ~/.onionwright/profiles/<addr> under the real HOME. A subdirectory, not the

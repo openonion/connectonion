@@ -23,7 +23,7 @@ What that costs, observed on this operator's machine on 2026-08-11:
     cd ~/project/… && co email inbox   ->  full inbox (0x10e6…)
 
 Same command, same machine, two mailboxes — and the empty one is indistinguishable
-from a quiet week. Both files carried the same `AGENT_EMAIL=aaron.xie@…`, so the
+from a quiet week. Both files carried the same `AGENT_EMAIL=ellis.yew@…`, so the
 declared identity agreed everywhere; only the key differed, and the key is what
 picks the mailbox. It reads as "no mail arrived", never as "you are someone else".
 

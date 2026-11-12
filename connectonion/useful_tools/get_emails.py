@@ -163,17 +163,17 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
     } for email in response.json().get("emails", [])]
 
 
-def mark_read(email_ids: Union[str, List[str]]) -> bool:
+def mark_read(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as read.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as read
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:
@@ -202,17 +202,17 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     return True
 
 
-def mark_unread(email_ids: Union[str, List[str]]) -> bool:
+def mark_unread(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as unread.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as unread
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:
@@ -239,3 +239,36 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
         response.raise_for_status()
 
     return True
+
+
+def _message_id(email_id: Union[str, int]) -> int:
+    if isinstance(email_id, bool) or not str(email_id).isdigit() or int(email_id) < 1:
+        raise ValueError('email_id must be a positive integer from the mailbox listing')
+    return int(email_id)
+
+
+def _read_message(kind: str, email_id: Union[str, int]) -> Dict:
+    message_id = _message_id(email_id)
+    token = require_ambient_api_key()
+    response = requests.get(
+        f'{backend_url()}/api/v1/email/{kind}/{message_id}',
+        headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def get_email(email_id: Union[str, int]) -> Dict:
+    """Read a received message by ID, including older pages; leave unread state unchanged."""
+    email = _read_message('received', email_id)
+    return {'id': email.get('id', ''), 'from': email.get('from', email.get('from_email', '')),
+            'to': email.get('to', email.get('to_email', '')), 'subject': email.get('subject', ''),
+            'message': email.get('text') or email.get('text_body') or email.get('html') or email.get('html_body', ''),
+            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False)}
+
+
+def get_sent_email(email_id: Union[str, int]) -> Dict:
+    """Read one sent message directly; it need not be among the newest 100."""
+    email = _read_message('sent', email_id)
+    return {**email, 'timestamp': email.get('sent_at', '')}

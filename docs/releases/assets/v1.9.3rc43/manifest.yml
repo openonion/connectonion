@@ -1,0 +1,2 @@
+version: v1.9.3rc43
+no_visual_change: "One tidy guard: links whose target is not notebook content are left alone. No reader layout, CSS or component changes."

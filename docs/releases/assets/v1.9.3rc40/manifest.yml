@@ -1,0 +1,2 @@
+version: v1.9.3rc40
+no_visual_change: "Scheduling change only: one scheduled sync at a time, a one-line busy message, same-person skips a vanished pair. No reader layout, CSS or component changes."

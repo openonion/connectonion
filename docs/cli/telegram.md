@@ -80,7 +80,7 @@ co telegram log -f                 # everything, as it arrives
 ```
 
 ```json
-{"id":"-100123.55","chat":"-100123","thread":null,"sender":"4242","sender_name":"Aaron Xi",
+{"id":"-100123.55","chat":"-100123","thread":null,"sender":"4242","sender_name":"Ellis Yew",
  "text":"@OpsBot look at the deploy","kind":"text","quoted":null,"mentioned":true,
  "at":"2026-09-02T10:31:07Z"}
 ```

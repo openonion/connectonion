@@ -9,6 +9,32 @@ from connectonion.rem.reader import snapshot
 from connectonion.rem.reader_model import relationships
 
 
+@pytest.mark.parametrize("budget", [40_000, 20])
+@pytest.mark.parametrize("per_thread,expected", [
+    (4, ["beta-1", "alpha-1", "alpha-2", "beta-2"]),
+    (1, ["alpha-2", "beta-2"]),
+])
+def test_later_in_threads_is_oldest_first_before_budget(rem_mail_threads, budget, per_thread, expected):
+    from connectonion.rem.reader_model import later_in_threads
+
+    sources = ["gmail:alpha-0", "gmail:beta-0"]
+    tails = later_in_threads(rem_mail_threads, sources, budget=budget, per_thread=per_thread)
+    assert tails == later_in_threads(rem_mail_threads, sources[::-1], budget=budget, per_thread=per_thread)
+    assert tails == later_in_threads(rem_mail_threads, sources + sources, budget=budget, per_thread=per_thread)
+    assert [row["timestamp"] for row in tails] == sorted(row["timestamp"] for row in tails)
+    assert "".join(row["text"] for row in tails) == "".join(f"Reply {message_id}." for message_id in expected)[:budget]
+
+
+def test_numbered_card_source_definitions_keep_free_text_and_typed_ids():
+    from connectonion.rem.reader_model import SOURCE, source_definitions
+
+    card = 'Business card handed over at the Lantern meetup — photo on 2026-11-01 (https://example.com/card)'
+    sources = f'1. {card}\n- [2] gmail:card-followup — 2026-11-02\n\n## Notes\n9. Not a source\n'
+    assert {n: value.strip() for n, value in source_definitions(sources)} == {
+        '1': card, '2': 'gmail:card-followup — 2026-11-02'}
+    assert SOURCE.findall(sources) == [('2', 'gmail:card-followup')]
+
+
 def test_attachment_citation_with_spaces_reads_current_file_without_claiming_old_capture(tmp_path):
     from connectonion.rem.config import prepare
     from connectonion.rem.files import state_path
@@ -62,6 +88,30 @@ def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
     calls.clear()
     assert extract_text(path, limit=None).endswith('Later clause.')
     assert calls == ['first', 'second']
+
+
+def test_an_unchanged_attachment_is_extracted_once_per_process(tmp_path, monkeypatch):
+    """The live reader rebuilt every PDF preview on each load: 33 PDFs, 66 s on a real notebook."""
+    import os
+    from connectonion.rem import attachments
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+
+    prepare(tmp_path)
+    source = 'gmail:123456789abc:terms.txt'
+    path = state_path(tmp_path, 'attachments/gmail/123456789abc/terms.txt')
+    path.parent.mkdir(parents=True)
+    path.write_text('Net 30 days.')
+    calls = []
+    original = attachments.extract_text
+    monkeypatch.setattr(attachments, 'extract_text', lambda *a, **k: calls.append(a[0]) or original(*a, **k))
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
+    assert len(calls) == 1
+    path.write_text('Net 45 days, signed.')
+    os.utime(path, ns=(1, 1))
+    assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 45 days, signed.'
+    assert len(calls) == 2
 
 
 def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
@@ -478,3 +528,78 @@ def test_numbered_source_links_do_not_gain_alias_evidence_identity():
     records[0]['text'] = '[current reference](../people/current.md#src-1) [7].'
     links = relationships(records, aliases={'people/current.md': 'projects/pilot.md'})
     assert links['projects/pilot.md'][0]['path'] == 'people/current.md'
+@pytest.fixture
+def cited_session(tmp_path):
+    """Invented session: its late messages must never replace a cited early turn."""
+    import json
+    import sqlite3
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    refresh(tmp_path)
+    path = state_path(tmp_path, 'projects/fiction/messages.jsonl')
+    path.parent.mkdir(parents=True)
+    messages = [{'source': f'codex:fiction:{i}', 'text': f'Example turn {i}'} for i in range(24)]
+    messages[4]['text'] = '[personal] Excluded example'
+    messages[6]['text'] = '［sensitive］ Excluded example'
+    path.write_text(''.join(json.dumps(row) + '\n' for row in messages))
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        for i, message in enumerate(messages):
+            db.execute('insert into messages (id, source, thread, sender, time, subject, body_path, body_line) '
+                       'values (?, ?, ?, ?, ?, ?, ?, ?)',
+                       (message['source'], 'codex', 'session:codex:fiction', 'people/owner.md',
+                        f'2026-10-01T10:{i:02}:00Z', 'projects/fiction.md',
+                        'projects/fiction/messages.jsonl', i + 1))
+    return tmp_path
+
+
+def test_cited_conversations_window_is_around_each_verified_citation(cited_session):
+    from connectonion.rem.reader_model import cited_conversations
+
+    thread = 'session:codex:fiction'
+    contexts = {f'codex:fiction:{i}': {'thread': thread} for i in (5, 18)}
+    result = cited_conversations(cited_session, contexts, private=True)[thread]
+    assert [message['id'] for message in result['messages']] == [
+        f'codex:fiction:{i}' for i in [3, 4, 5, 6, 7, 16, 17, 18, 19, 20]]
+    assert result['windows']['codex:fiction:5'] == [f'codex:fiction:{i}' for i in range(3, 8)]
+    assert result['cited_ids'] == ['codex:fiction:5', 'codex:fiction:18']
+    assert result['total'] == 24
+    assert {m['sender'] for m in result['messages']} == {'You'}
+
+
+def test_cited_conversations_exclude_private_neighbors_and_unverified_threads(cited_session):
+    from connectonion.rem.reader_model import cited_conversations
+
+    thread = 'session:codex:fiction'
+    result = cited_conversations(cited_session, {'codex:fiction:5': {'thread': thread}})[thread]
+    assert [m['id'] for m in result['messages']] == [f'codex:fiction:{i}' for i in (3, 5, 7)]
+    assert result['windows']['codex:fiction:5'] == [f'codex:fiction:{i}' for i in (3, 5, 7)]
+    assert cited_conversations(cited_session, {'codex:missing:5': {'thread': thread}}) == {}
+    assert cited_conversations(cited_session, {'codex:fiction:5': {'thread': 'session:other'}}) == {}
+    assert cited_conversations(cited_session, {'codex:fiction:4': {'thread': thread}}) == {}
+
+
+def test_hashed_mail_conversation_window_keeps_the_native_cited_id(tmp_path):
+    import hashlib
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+    from connectonion.rem.reader_model import cited_context, cited_conversations
+    from connectonion.rem.store import refresh
+    import json
+
+    prepare(tmp_path)
+    native = 'fiction/provider-message'
+    source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    write_json(message_path(tmp_path, 'outlook', native),
+               {'id': native, 'provider': 'outlook', 'body': 'Example agreement.'})
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({
+        'type': 'mail', 'source': 'outlook', 'id': native, 'from': 'Nora <nora@example.test>',
+        'to': ['owner@example.test'], 'date': '2026-10-01', 'subject': 'Example'}) + '\n')
+    refresh(tmp_path)
+    contexts = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])
+    conversation = cited_conversations(tmp_path, contexts)[contexts[source]['thread']]
+    assert conversation['cited_ids'] == ['outlook:' + native]
+    assert conversation['windows'][source] == ['outlook:' + native]

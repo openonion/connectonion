@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import MAP_DAYS, Notebook, atomic_write, maintenance_lock, read_json, state_path
+from .files import MAP_DAYS, Notebook, archive_path, atomic_write, maintenance_lock, read_json, state_path
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
@@ -137,14 +137,15 @@ def _write_only(row: dict) -> bool:
     if row.get('received') or row.get('sent', 0) < WRITE_ONLY_MIN:
         return False
     address = row['address']
-    return not (AUTOMATED_HINT.search(address) or BULK.search(address)
+    return not (AUTOMATED_HINT.search(address) or re.match(r"^(?:hello|info|team|support|updates)@", address, re.I)
+                or BULK.search(address)
                 or RELAY.search(address) or AGENT_ADDRESS.search(address))
 
 
 def owner_tokens(addresses, name: str) -> set[str]:
     """Words of the owner's own: the local parts of addresses already theirs, and their name.
 
-    Four letters or more, so "Xie" or "Wu" alone never makes a stranger the owner.
+    Four letters or more, so "Yew" or "Wu" alone never makes a stranger the owner.
     """
     generic = {'account', 'owner', 'mail', 'gmail', 'outlook'}
     words = {part for address in addresses for part in re.split(r'[^a-z]+', address.split('@')[0].casefold())}
@@ -153,7 +154,7 @@ def owner_tokens(addresses, name: str) -> set[str]:
 
 
 def spells_owner(address: str, owner_name: str) -> bool:
-    """The address's local part is the owner's full name: aaron.xie@ for "Aaron Xie" (#2078).
+    """The address's local part is the owner's full name: ellis.yew@ for "Ellis Yew" (#2078).
 
     Replies or not: the owner's agents and aliases answer mail too. Two words at
     least, so a first name alone never makes a stranger the owner."""
@@ -183,12 +184,12 @@ def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
 
 
 def worth_a_page(sent: int, received: int) -> bool:
-    """Someone the owner corresponds with: mail both ways, or the owner wrote to them twice.
+    """Mail both ways, two sent, or three received; service and notice filters still apply.
 
-    On the owner's 367 correspondents: 41 both ways, 31 written to twice or
-    more; the other 295 were one cold mail, a newsletter, a booking (#2057).
+    One unanswered introduction waits; three inbound mails qualify even before
+    the owner replies. Service and notice senders are filtered separately.
     """
-    return bool((sent and received) or sent >= 2)
+    return bool((sent and received) or sent >= 2 or received >= 3)
 
 
 def _notice(row: dict) -> bool:
@@ -196,7 +197,7 @@ def _notice(row: dict) -> bool:
 
     "Never hears back" is nearly never for a notification address: replying to
     a GitHub notification by mail once made notifications@github.com (95 in,
-    1 out, display name "Aaron") a person page named after the owner.
+    1 out, display name "Ellis") a person page named after the owner.
     """
     address = row['address']
     if RELAY.search(address):
@@ -216,7 +217,7 @@ def _service(group: list[dict]) -> bool:
     "Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.com>,
     "X" <notify@x.com>: no address says no-reply, so 1.9.0a3 made each a people
     page. The display name's first word is the domain's own name. A person on a
-    domain named after them writes from their name (aaron@aaron.dev), and a desk
+    domain named after them writes from their name (ellis@ellis.dev), and a desk
     the owner answers as often as it writes stays a correspondent.
     """
     if any(institutional_name(str(row.get('name') or '')) for row in group):
@@ -255,7 +256,7 @@ def _named_by_domain(address: str) -> bool:
 
     A person writes from their own name; a service puts its brand on the
     mailbox. Only for an address the owner never wrote to (`_service`), and
-    never the bare name (aaron@aaron.dev is a person on a domain named after them).
+    never the bare name (ellis@ellis.dev is a person on a domain named after them).
     """
     domain = _domain(address)
     brand = organisation(domain).split('.')[0] if domain else ''
@@ -296,7 +297,7 @@ def service_page(title: str, emails: list[str], row: dict | None, automated: set
 def _people_groups(rows: list[dict]) -> list[list[dict]]:
     """Rows that are one person: the same full display name (two words or more).
 
-    A single first name ("Aaron", "John") is too common to join on, so it keeps its
+    A single first name ("Ellis", "John") is too common to join on, so it keeps its
     own page. Most mail first, so the busiest address leads its group.
 
     A relay carries the person's name but is the platform's address: joined by
@@ -337,9 +338,9 @@ def _session_state(subscription: dict, projects: list) -> str:
 def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
     """What the owner is called: what they said, else what others call them, else their sent From name.
 
-    A real account's configured name was "Aaron x", and Outlook stamps it on
-    every mail sent, so the sent From name said "Aaron x" too; the people
-    writing to him put "Aaron Xie" on his address (#2008). The name others use
+    For example, a mailbox's configured name is "Ellis y", and Outlook stamps it on
+    every mail sent, so the sent From name said "Ellis y" too; the people
+    writing to him put "Ellis Yew" on his address (#2008). The name others use
     comes first (spellings that differ only in case are one name), then the
     sent From name, then a mailbox's configured name.
     """
@@ -431,7 +432,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     original = page
     # A page nobody has investigated holds only what a map wrote, so the map
     # may rewrite it. That matters on an upgraded notebook: an older map, not
-    # knowing aaron@… was the owner, made it a correspondent page -- titled by
+    # knowing ellis@… was the owner, made it a correspondent page -- titled by
     # the address, History "Observed mail count: 1", marked unassessed -- and
     # when the owner was recognised that page was reused as-is, still empty.
     mapped_only = 'not investigated yet' in next(
@@ -539,6 +540,11 @@ def _scratch_identity(path: str) -> str:
 
 
 def _mapped_only(page: str) -> bool:
+    from .facts import UNIT_KINDS, parse
+    fields = parse(page, 'orgs/unit.md')
+    if any(v['citations'] for v in fields['Parent']) and any(
+            v['citations'] and v['value'] in UNIT_KINDS for v in fields['Kind']):
+        return False  # Cited inferred structure is knowledge, not a disposable domain stub.
     return 'not investigated yet' in next(
         (line for line in page.splitlines() if line.startswith('Investigation:')), '')
 
@@ -555,15 +561,16 @@ def _held(group: list[dict], page: str) -> bool:
 
     Except one the owner only ever writes to (`_write_only`), with no name:
     the shape of their own other mailbox, which 1.9.0a3 listed as a person
-    (aaron@openonion.ai, 10 sent, none received). It is still asked about with
+    (ellis.work@example.org, 10 sent, none received). It is still asked about with
     `init --mine`, and held until that is answered or it replies (#1987).
 
-    Since #2057 an address the owner never wrote to gets no page at all, so the
-    write-only case is the one that still arrives here.
+    Three inbound mails qualify even without a display name. The write-only
+    case remains held until its identity is clearer.
     """
     title = page.split('\n', 1)[0]
     return '@' in title and _mapped_only(page) and (
-        not any(row.get('sent') for row in group) or all(_write_only(row) for row in group))
+        (not any(row.get('sent') for row in group) and sum(row.get('received', 0) for row in group) < 3)
+        or all(_write_only(row) for row in group))
 
 
 def needs_review(root: Path) -> set[str]:
@@ -618,7 +625,7 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     moved += [record for record in notebook.list('orgs')
               if record not in used and _mapped_only(notebook.read(record))]
     for record in moved:
-        target = notebook.root / '.state' / 'archived' / record
+        target = archive_path(notebook.root, record, new=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         notebook.path(record).replace(target)
     return sorted(moved)
@@ -905,6 +912,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     state.parent.mkdir(parents=True, exist_ok=True)
     # An upgraded notebook is tidied first, from the map before this one (#1999).
     from .tidy import tidy
+    from .org_inference import reconcile
+    report['hierarchy'] = reconcile(notebook, lock_held=True)
+    report['created'] += report['hierarchy']['created']
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
@@ -997,7 +1007,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
             row for row in group if spells_owner(row['address'], known_name)]
         if not kept and own and len(own) == len(group):
             # The owner's own mailbox is not a person (#2078): a fresh init made
-            # pages for aaronplus1996@ (108 sent, none back) and aaron@. It is
+            # pages for ellis.a@ (108 sent, none back) and ellis@. It is
             # still asked about, on the owner's page and in init's summary; it
             # just gets no page of its own. An agent address stays a person
             # (#1844): it may be someone else's agent.
@@ -1076,7 +1086,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if report['without_page']:
         report['coverage'].append(f"{len(report['without_page'])} correspondents with mail one way only, and at "
                                   "most one from the owner, listed in .state/map.json without people pages; a page "
-                                  "comes when mail goes both ways or the owner writes twice")
+                                  "comes with mail both ways, two sent mails, or three inbound mails")
     # Why a mailbox is not here is the command layer's knowledge, not the map's:
     # from inside, a mailbox nobody connected, one the user unsubscribed, and one
     # that failed to open are all equally absent. It says what it was told, and
@@ -1088,6 +1098,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if progress:
         progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
+    from .mail_archive import mail_metadata
+    hierarchy = reconcile(notebook, inventory.records if inventory else mail_metadata(root), lock_held=True)
+    report['created'] += hierarchy['created']
+    report['hierarchy']['created'] += hierarchy['created']
+    report['hierarchy']['reviews'] += hierarchy['reviews']
     report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organisation identity unverified; existing organisation pages preserved')
@@ -1127,6 +1142,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
+    from .topic_map import map_topics
+    report['topics'], created_topics = map_topics(notebook)
+    report['created'] += created_topics
     # And tidied again after (#2018): the acceptance run's map made pages that
     # tidy, run only before it, never saw. Tidy reads this map's rows. The
     # owner's own addresses wait for the next run: this map has just asked

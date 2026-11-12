@@ -97,8 +97,10 @@ def test_stale_gmail_number_names_the_refresh_command(capsys):
 
 
 def test_stale_email_id_names_the_step_after_the_refresh(capsys):
+    import requests
+    missing=requests.HTTPError(response=Mock(status_code=404))
     with patch.object(email_commands, "load_api_key", return_value="tok"), \
-         patch.object(_get_module, "get_emails", return_value=[]):
+         patch.object(_get_module, "get_email", side_effect=missing):
         with pytest.raises(typer.Exit):
             email_commands.handle_email_read("999")
     out = " ".join(capsys.readouterr().out.split())  # Rich wraps at 80 columns

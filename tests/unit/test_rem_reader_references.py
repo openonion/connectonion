@@ -2,10 +2,10 @@
 import json
 import re
 
-from connectonion.rem.reader import TEMPLATE
-
-from connectonion.rem.reader_model import relationships
 from test_rem_reader import _run_reader_js
+
+from connectonion.rem.reader import TEMPLATE
+from connectonion.rem.reader_model import relationships
 
 
 def run_js(script, *names):
@@ -167,7 +167,7 @@ def test_original_passage_composes_real_inline_chips_and_popup_against_displayed
       let CITES = {from:page.path,sources:{'9':'outlook:other — 2026-10-21'}};
       const tetherCitations = text => text, uncertainCitations = text => text, quoteSpans = text => text,
         youify = text => text, shortHash = text => text, sourceSender = () => '',
-        safeHref = () => null, isNotebookLink = () => false;
+        safeHref = () => null, isNotebookLink = () => false, calendarDay = day => String(day).slice(0, 10), fmtDate = day => day;
       const chip = originalReferenceInline('Original finding [9].', page, 'abcdef12345678901234');
       const after = citationSource(page, '9');
       const captured = [], panel = {parentElement:{hidden:true},
@@ -183,7 +183,7 @@ def test_original_passage_composes_real_inline_chips_and_popup_against_displayed
     '''.replace('PAGE', json.dumps(page))
     result = run_js(script, 'byPath', 'esc', 'listItems', 'rawSection', 'sourceList', 'sourceId',
                     'citationSource', 'sourceChannel', 'citationDay', 'chipLabel', 'citationDate',
-                    'citeRun', 'citeChip', 'inline', 'originalCitationPage', 'originalReferenceInline', 'openEvidence')
+                    'citeRun', 'citationId', 'citeChip', 'inline', 'originalCitationPage', 'originalReferenceInline', 'openEvidence')
     from html.parser import HTMLParser
 
     class Links(HTMLParser):

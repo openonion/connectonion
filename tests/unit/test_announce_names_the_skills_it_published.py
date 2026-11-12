@@ -38,7 +38,7 @@ def announce(monkeypatch, tmp_path):
 
     skills = tmp_path / "skills"
     skills.mkdir()
-    monkeypatch.setattr(announce_commands, "SKILLS_DIR", skills)
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
     return announce_commands, skills
 
 

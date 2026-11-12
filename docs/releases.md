@@ -13,17 +13,332 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.9.2** is the default production channel. Hand a coding session to someone else's
-agent: you see exactly what leaves, with private sentences taken out by your own agent; they paste
-one line, and the result comes back as a patch. Neither side gets more than the handoff. See
-[1.9.2 notes](releases/1.9.2.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.2).
+Stable **1.9.5** is the default production channel. A fresh install works again (typer 0.29.0
+broke every `co` command; it is capped below 0.29); REM reads each slot's mail while the Codex weekly
+floor holds investigation work; nothing in the reader asks you to copy a command. See
+[1.9.5 notes](releases/1.9.5.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.5).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.2'
+python -m pip install --upgrade 'connectonion==1.9.5'
 ```
 
 ## Current preview
+
+Release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
+Ignore in words, and Ignore can keep an advertiser out of Today for good. Records carry real names,
+record pages show the record, and the Skills page fits on one screen. See
+[1.9.6rc7 notes](releases/1.9.6rc7.md).
+
+Before it, release candidate **1.9.6rc6**: in the REM reader, Mark done sits with the other row actions and one
+button switches the reader between 中文 and English. After an upgrade the reader is served by the
+installed version: the old Host co rem started is replaced on its port when nothing is running. See
+[1.9.6rc6 notes](releases/1.9.6rc6.md).
+
+Before it, release candidate **1.9.6rc5**: the REM reader's rail names every place under its picture (Today,
+Waiting on you, People, Organisations, Projects, Skills, All records), Skills has its own place on it, and
+REM has its own mark and tab icon. See [1.9.6rc5 notes](releases/1.9.6rc5.md).
+
+Before it, release candidate **1.9.6rc4**: in the REM reader, Done, Undo and Skip reach the notebook however
+much mail it holds, and a refused mark says "Not saved". Organisations, Projects, All records and
+Skills load while REM builds a newer reader. See [1.9.6rc4 notes](releases/1.9.6rc4.md).
+
+Before it, release candidate **1.9.6rc3**: on macOS co's own WTF Browser start and a double-click share one
+profile and one Keychain, so a login made in either works in both (sign in once in the app; old
+logins are not moved). On a phone the Send bar sits on the tab bar. See
+[1.9.6rc3 notes](releases/1.9.6rc3.md).
+
+Before it, release candidate **1.9.6rc2**: the REM reader's new desk, phase 1 of 3. An icon rail and one search
+pill on a desktop, a floating tab bar on a phone; Today opens on a night chart, the count of people
+waiting and one raised reply card; a person's record is a card with their face and a grid of what REM
+knows. Lists and the other records keep their old layouts until phases 2 and 3. Before it,
+**1.9.6rc1** made Today's open reply show whole lines on a desktop and start on screen on a phone.
+Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
+[1.9.6rc1 notes](releases/1.9.6rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.6rc7'
+```
+
+## Previous stable
+
+Stable **1.9.4** was a hotfix on 1.9.3, in which the first
+`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
+waits on a build; a saved page opens at once marked "Updating…". See
+[1.9.4 notes](releases/1.9.4.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
+
+## Previous previews
+
+Release candidate **1.9.5rc1**: nothing in the reader asks you to copy a command any more; a page that
+waited while you typed says "Updates waiting" and keeps your words; a headless `co claude run`
+edits files in its folder by default. See [1.9.5rc1 notes](releases/1.9.5rc1.md).
+
+Stable **1.9.3** is the default production channel. REM does the work: overnight it reads new
+mail, drafts the replies you owe and runs the tasks you approved through `co claude` or Codex; in
+the reader any unfinished item can be handed to Codex or Claude, or talked over with them in a
+conversation that resumes the agent's own session. Replies to people you trust can go through a
+10-minute hold, and `co rem open` serves the last page at once. See
+[1.9.3 notes](releases/1.9.3.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.3).
+
+Release candidate **1.9.3rc64** is the candidate for stable 1.9.3: owed tasks run through `co claude` or Codex with Hand to Codex / Hand to Claude on every pending item, direct send for people you trust, no count caps, translation into the languages you write, four model levels, a designed morning email, and a reader that opens at once in the Fuse design. Before it, **1.9.3rc63** is 1.9.3rc62 republished: rc62 was tagged but never published, because its release workflow's coverage leg ran past its time limit. Before it, **1.9.3rc62** (tagged, never published) keeps REM reading new mail at every slot and through the night, lets replies to people you trust go through the 10-minute hold, makes Today a front page of who waits and what REM did, gives projects a timeline, list and board, adds a knowledge graph with topic pages and an opt-in morning message; approved owed work is recorded but not run in this version. Before it, **1.9.3rc61** redesigns Today as one card per person with one statement and one green action, a Cmd-K palette and keyboard keys; makes organisation and person pages records of who they are, leaving to-dos to Today; and adds topics, named weekly by the summary model and filed only on evidence. Before it, **1.9.3rc60** makes the night round give every owed item an outcome, adds Approve all with a 10-minute hold, dispatches owed work to Codex with receipts, redesigns People, Organisations, Projects and Sessions, and runs REM on the top model with only summaries on the small one. Before it, **1.9.3rc59** was a hotfix on 1.9.3rc58: the claim audit completes when a cited original is not in the archive, naming the unverified citation instead of retrying forever (#2879). Before it, **1.9.3rc58** was a hotfix on 1.9.3rc57: a page task was refused on every retry because a mail source id had been rewritten to its digest form and the retention check compared spellings (#2877). Before it, **1.9.3rc57** was a hotfix on 1.9.3rc56 (tagged, never published: offline `co init` waited 80 s on npm): installer fallback stops when there is no network. Before it, **1.9.3rc56** makes Done and Skip decisions persist in the notebook, opens the reader before the whole notebook is parsed, gives dates and labels one plain grammar, ends overrunning scheduled turns with their process tree, and lets `co init` proceed without a browser login (#2861, #2864, #2865, #2870). Before it, **1.9.3rc55** (tagged, never published: its release workflow failed on a `co init` that waited for a browser login) made the reader's front page one queue of actions and shows each reply as the mail it becomes, drafted on a fixed skill in your own voice with the background beside it, with Send, a full-screen writer and a channel switch (#2861, #2862); it also carries attachments, browser history, relationship statistics, run memory, tidy, the sessions page and `co init` installing Codex (#2844). Before it, **1.9.3rc54** was a hotfix: on 1.9.3rc53 every scheduled `codex exec` turn stopped at its first mail read because Codex's sandbox blocked the network; turns now run with network access. Before it, **1.9.3rc53** ran scheduled REM on macOS through `codex exec`, so one session keeps working across a round, lets `co init` set REM up without questions, and fills basic contact facts from the mail itself (#2844, #2856). Before it, **1.9.3rc52** kept scheduled REM working after its saved time: 15-minute follow-ups continue the pending task, refusals say exactly what to fix, and schedule changes no longer invalidate a pending task (#2814). Before it, **1.9.3rc51** made REM investigations research beyond the mailbox (web search, `co browser`, `gh`, Feishu) and lead each page with what they found (#2810), keeps the native schedule from losing a slot while `co rem next` prepares (#2812), and limits mailbox consent to `--mail` (#2809). Before it, **1.9.3rc50** replaced real people's names and addresses in tests, docs and examples with fictional ones and adds a test that keeps them out (#2804); there is no behaviour change. Before it, **1.9.3rc49** closed the remaining REM audit items before stable: a run whose PID was reused after a reboot no longer shows as running, dates follow the notebook's zone, page merges keep their sections, and sync, status and the guide say what actually happened (#2802, #2803). Before it, **1.9.3rc48** made `co rem doctor` name an install command that fixes the running co, keeping a uv tool's companion packages (#2798), and steadies the macOS release checks (#2797). Before it, **1.9.3rc47** stopped old translations from holding the native REM schedule: a new scheduled slot logs an old round's untranslated pages as skipped and starts reading new material, where before one translation per slot kept new mail and sessions waiting for days (#2794). Before it, **1.9.3rc46** gave REM a background schedule on Linux: `co rem start` installs a systemd user timer that runs `co rem sync --scheduled` every five minutes, where before it stopped with "macOS-only" after the first batch and no slot ever ran (#2790). Before it, **1.9.3rc45** made the native REM schedule survive a cold start: the wake job opened Codex hidden and a hidden Codex runs no automations, so every slot was missed until the window was shown; it now opens Codex visible but not in front (#2785). A scheduled `co rem next` that stops at the daily cap now leaves a run record, so `co rem logs` shows the slot was visited (#2786), and the `co rem` help pages were rewritten plainly after `co audit --review` (#2782). Users on rc44 or earlier with the native schedule run `co rem start` once after upgrading. Before it, **1.9.3rc44** made the native REM path work on a real notebook: `co rem submit` accepts what `co rem next` prepared, because later-in-thread mail is now ordered deterministically instead of following each process's hash seed (#2778). Before it, **1.9.3rc43** was a hotfix: on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped at once on a notebook whose pages link to a path outside notebook content; tidy now leaves such links alone (#2773). Before it, **1.9.3rc42** carried the four pre-stable audit fixes (#2754, #2771): scheduled-round writes wait for the lock, the daily cap is "daily cap reached" rather than a failure, the same-person stage charges the week once, archives are never overwritten; and `co rem logs` reads a dead run as interrupted (#2770). Before it, **1.9.3rc41** made the first run honest and short: a one-screen consent summary, an estimate that follows the material and says Nothing to write yet on an empty map, skip reasons for sessions, and `co rem show NAME` across every page kind (#2765, #2766). Before it, **1.9.3rc40** ran one scheduled REM sync at a time (a second tick says busy and keeps its slot) and lets the same-person stage skip a page that vanished (#2763). Before it, **1.9.3rc39** let the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
+Linux `co host` becomes `agent.py`, so no orphan is left holding the port. Stable
+remains **1.9.2**.
+
+See [the candidate notes](releases/1.9.3rc64.md), [1.9.3rc63](releases/1.9.3rc63.md), [1.9.3rc62](releases/1.9.3rc62.md), [1.9.3rc61](releases/1.9.3rc61.md) and [1.9.3rc60](releases/1.9.3rc60.md).
+
+Release candidate **1.9.3rc36** lets a scheduled REM run that Codex fires a few
+minutes early serve its slot. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc36'
+```
+
+See [the candidate notes](releases/1.9.3rc36.md).
+
+Release candidate **1.9.3rc35** counts REM's same-person judgements like every
+other model call, and lets a pair that fails wait a day. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc35'
+```
+
+See [the candidate notes](releases/1.9.3rc35.md).
+
+Release candidate **1.9.3rc34** folds REM people pages that are one person: code
+finds lookalike pages and a model decides from both pages and their own mail.
+Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc34'
+```
+
+See [the candidate notes](releases/1.9.3rc34.md).
+
+Release candidate **1.9.3rc33** opens a closed Codex desktop 15 minutes before each
+scheduled REM run, so an early-firing slot is no longer missed. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc33'
+```
+
+See [the candidate notes](releases/1.9.3rc33.md).
+
+Release candidate **1.9.3rc32** keeps the REM owner's own page current: the daily
+round now refreshes it once a day from what they sent. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc32'
+```
+
+See [the candidate notes](releases/1.9.3rc32.md).
+
+Release candidate **1.9.3rc31** adds Outlook drafts (`--draft`, `co outlook drafts`,
+`send-draft`, `delete-draft`), keeps REM pages free of filler hedges, and opens
+business-card sources from their citations. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc31'
+```
+
+See [the candidate notes](releases/1.9.3rc31.md).
+
+Release candidate **1.9.3rc30** makes REM pages say only what their sources say:
+related-page cards keep their own citations, translations keep their Sources,
+quote checks keep word boundaries, overdue items stay overdue, and a name shared
+by several people picks none. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc30'
+```
+
+See [the candidate notes](releases/1.9.3rc30.md).
+
+Release candidate **1.9.3rc29** keeps paid WTF Browser sessions on macOS alive
+past their first fifteen-minute period: the runtime now asks for Chromium
+154.0.8037.100, which renews every period. Linux stays on 154.0.8037.58.
+Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc29'
+```
+
+See [the candidate notes](releases/1.9.3rc29.md).
+
+Release candidate **1.9.3rc28** repairs REM's sync rotation and native
+schedule. A failed source is recorded and the round continues with the next one;
+a queued message deleted from the mailbox leaves the queue and is counted; Outlook
+reads use immutable ids. A small launchd job opens a closed Codex desktop at each
+saved REM time. Stable remains **1.9.2**.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc28'
+```
+
+See [the candidate notes](releases/1.9.3rc28.md).
+
+Release candidate **1.9.3rc27** is a backend repair candidate for retained
+quotation context and Claude loopback bridge startup. Literal words in an extended
+quote require the same immediately bound originals to count as retained. Genuinely
+missing introductory prose stays introductory. The scoped Claude Hook receiver
+uses its numeric address without reverse DNS. No global DNS or permissions change.
+Stable remains **1.9.2**. Matching public package and prerelease are required.
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc27'
+```
+
+See [the candidate notes](releases/1.9.3rc27.md).
+
+Release candidate **1.9.3rc26** repairs old REM investigation conversations in
+Codex's active history and fixes initialization omissions. Approved REM startup
+archives proven old internal traces through Codex's native API. Bundled skill
+links into older installations are refreshed, incomplete profiles are repaired,
+and malformed metadata reports an actionable error. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc26'
+```
+
+See [the candidate notes](releases/1.9.3rc26.md).
+
+Release candidate **1.9.3rc25** is the freeze candidate for 1.9.3: rc24 plus
+one release-blocking fix. `co lark listen` no longer loses messages silently:
+history recovery is bounded and runs only at start and reconnect, a rejected
+conversation is skipped instead of stopping recovery, a message that reached
+another client on the same app is reported by `co lark check`, and reactions,
+recalls and group events reach the inbox. If rc25 holds up end to end it is
+promoted unchanged to 1.9.3. Stable remains **1.9.2**.
+
+Opt-in installation:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc25'
+```
+
+See [the candidate notes](releases/1.9.3rc25.md).
+
+
+Release candidate **1.9.3rc24** froze the 1.9.3 line: after it, only
+release-blocking fixes land. It adds the REM citation, translation, company-scope and
+diary-folder privacy fixes merged after rc23, a macOS user service for
+`co host`, and an error for `co email inbox --address` with an address you do
+not own. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc24'
+```
+
+See [the candidate notes](releases/1.9.3rc24.md).
+
+Release candidate **1.9.3rc23** adds generic `co asr` and Python `asr()`.
+Codex is the default provider; existing co configuration can select
+ConnectOnion. Long files are prepared locally in resumable windows. Both
+providers upload audio; the Codex endpoint is unofficial. No Watch connector
+or automatic REM ingestion is included. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc23'
+```
+
+See [the candidate notes](releases/1.9.3rc23.md) and
+[ASR configuration and recovery](asr.md).
+
+Release candidate **1.9.3rc22** activates Codex Scheduled after native registration
+and confirms timer changes before handing off the old clock. Normal-profile
+execution and automatic initialization after a desktop restart passed; newer
+account-managed registration and exact requested-minute timing remain unverified.
+All initialization entry points now repair the profile, skill links and command
+index together. Stable remains **1.9.2**; Python **3.11+** is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc22'
+```
+
+See [the preview notes](releases/1.9.3rc22.md) and their acceptance boundaries.
+
+Release candidate **1.9.3rc21** moves eligible Codex notebooks on macOS to
+Codex desktop Scheduled, verifies registration before replacing the old clock,
+and archives completed maintenance conversations. Other timezones, headless Macs
+and other runners retain launchd. Keep the app open and computer awake.
+Stable remains **1.9.2**; this preview requires Python **3.11+**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc21'
+```
+
+See [the preview notes](releases/1.9.3rc21.md) and their native execution evidence.
+
+Release candidate **1.9.3rc20** recognizes already-owned addresses during
+repeat email setup even if that domain no longer accepts new purchases. It
+retains multi-address setup, domain discovery, account-wide defaults and the
+merged inbox. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc20'
+```
+
+See [the preview notes](releases/1.9.3rc20.md). Currently enabled choices come
+from the cloud; unready reserved domains are not offered for new purchases.
+
+
+Release candidate **1.9.3rc19** strengthens mailbox setup regression coverage:
+no purchase after authentication/settings failures or for domains the backend
+has not enabled. It includes rc18's multi-address setup and the corrected quota
+examples. Stable remains **1.9.2**; Python 3.11+ is required.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc19'
+```
+
+See [the preview notes](releases/1.9.3rc19.md). At rc19 publication,
+steadmail.com and oakinbox.com had not passed incoming delivery. They were
+enabled after live tests on 2026-10-23; the cloud lists all four hosted domains.
+
+Release candidate **1.9.3rc18** exposes hosted-domain discovery and setup of
+additional email aliases on the same cloud account. It retains sender selection,
+account defaults and mailbox filtering. Stable remains **1.9.2**.
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc18'
+```
+
+See [the preview notes](releases/1.9.3rc18.md). Domain infrastructure acceptance
+is recorded separately from package tests.
+
+Release candidate **1.9.3rc17** processes eligible explicit feedback when
+there is no new raw material, narrows inherited-claim audit exemptions and keeps
+supplied argument names in tool error hints. Synthetic retry tests avoid real
+waiting. Stable remains 1.9.2; Python 3.11+ and existing dependency floors remain.
+This backend preview does not establish current REM model or native UI acceptance.
+See [1.9.3rc17 notes](releases/1.9.3rc17.md).
+
+After publication, install its exact pin:
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.3rc17'
+```
 
 Release candidate **1.9.3rc16** skips stale click-approach waypoints under slow
 pointer dispatch, lets supervised local browser jobs pin their existing daemon, and
@@ -37,7 +352,6 @@ After publication, install its exact pin:
 python -m pip install --upgrade 'connectonion==1.9.3rc16'
 ```
 
-## Previous previews
 
 Release candidate **1.9.3rc15** preserves file and image references, message kinds
 and typed sender IDs through Feishu/Lark inbox consumption and Host input.

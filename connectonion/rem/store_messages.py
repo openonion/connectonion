@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from .files import read_json, state_path
@@ -99,7 +100,8 @@ def archived_message(root: Path, row: dict):
     if not path.is_file():
         return None
     if row.get("body_line"):
-        lines = path.read_text(encoding="utf-8").splitlines()
+        stat = path.stat()
+        lines = _jsonl_lines(path, stat.st_mtime_ns, stat.st_size)
         number = row["body_line"]
         saved = json.loads(lines[number - 1]) if 0 < number <= len(lines) else None
         return saved if saved and saved.get("source") == row.get("id") else None
@@ -109,6 +111,12 @@ def archived_message(root: Path, row: dict):
             saved.get("provider") != provider or f"{provider}:{saved.get('id')}" != row.get("id")):
         return None
     return saved
+
+
+@lru_cache(maxsize=8)
+def _jsonl_lines(path: Path, mtime_ns: int, size: int) -> tuple[str, ...]:
+    """One read per project JSONL while it is unchanged: the reader cites thousands of its lines."""
+    return tuple(path.read_text(encoding="utf-8").splitlines())
 
 
 def body(root: Path, row: dict):

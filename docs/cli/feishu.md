@@ -54,12 +54,23 @@ that lists the ones you own. To use an existing one, configure it by hand:
    groups it is in. Add `im:message.p2p_msg:readonly` if people will message
    the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
-   `im.message.receive_v1`. No request URL is needed. That is the only event
-   the listener turns into messages. If the application is also subscribed to
-   `im.message.reaction.created_v1`, `im.message.reaction.deleted_v1` or
-   `im.message.message_read_v1`, those are acknowledged and dropped: they
-   never wake the agent. Any other event gets the SDK's
+   `im.message.receive_v1`. No request URL is needed. Every message type it
+   carries becomes an inbox record with its own `kind`: text, post, image,
+   file, audio, media, sticker and the rest; files and images keep their
+   resource keys in `attachments`. Optionally also subscribe to the chat
+   events the WhatsApp listener records, and they arrive the same way:
+
+   | Lark event | inbox `kind` | addressed to the bot |
+   |---|---|---|
+   | `im.message.reaction.created_v1` | `reaction` (on a message this inbox knows) | no |
+   | `im.message.recalled_v1` | `recall` | no |
+   | `im.chat.member.bot.added_v1` | `joined` | yes |
+   | `im.chat.member.bot.deleted_v1`, `im.chat.member.user.added_v1` / `deleted_v1` / `withdrawn_v1`, `im.chat.updated_v1`, `im.chat.disbanded_v1` | `group-info` | no |
+
+   `im.message.reaction.deleted_v1` and `im.message.message_read_v1` are
+   acknowledged and dropped. Any other event gets the SDK's
    `processor not found` in the log, and Feishu retries it; unsubscribe it.
+   Lark has no message-edit event for bots, so edits are not delivered.
 4. Publish it to your tenant, then write its credentials into
    `~/.co/keys.env` — `co env set` refuses these two names by default, because
    a hand-typed app secret came from somewhere it cannot check, so say where
@@ -537,7 +548,22 @@ restarting: deleting it discards that recovery boundary.
 Every history page passes through the same message-ID deduplication and durable
 completion records as WebSocket events. A successful pass advances the checkpoint;
 a failed page, denied permission, or storage failure leaves it unchanged and is
-retried after 60 seconds. `co lark check` reports an outstanding recovery failure.
+tried again at the next reconnect or restart — never on a timer, because every
+history page is an API call against the tenant's quota. One run makes at most
+40 calls, newest conversations first, at most 2 pages (100 messages) per
+conversation. A conversation Lark rejects (230001 invalid container, 230002 bot
+not in the chat) is logged once and skipped; the others still recover. Only a
+real thread id (`omt_…`) is read as a thread. `co lark check` reports an
+outstanding recovery failure.
+
+**Another client on the same app.** Lark delivers each event to only one long
+connection per app_id. If a second process (another machine, an old script)
+connects as the same bot, it silently takes a share of the messages. When a
+recovery run finds a message addressed to the bot that was sent while this
+listener was connected, it logs
+`WARNING message <id> reached the bot but not this listener — another client may be connected with this app_id`
+and `co lark check` shows it. The message itself is delivered by recovery; the
+fix is to stop the other client.
 This work runs outside the WebSocket callback so fetching history does not delay
 live-event acknowledgements.
 

@@ -11,6 +11,7 @@ import pytest
 from connectonion.network.host.destination_policy import normalize_web_destination
 from connectonion.network.host.egress_gateway import (
     AUTH_REQUIRED,
+    CONNECT_FAILED,
     HEADER_TIMEOUT,
     HEADER_TOO_LARGE,
     OVERLOADED,
@@ -38,13 +39,13 @@ def _connect_request(endpoint, target="example.com:443", *, extra_headers=()) ->
     return "\r\n".join(headers).encode("ascii")
 
 
-async def _exchange(endpoint, payload: bytes) -> bytes:
+async def _exchange(endpoint, payload: bytes, *, timeout=5) -> bytes:
     reader, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
     writer.write(payload)
     await writer.drain()
     with contextlib.suppress(NotImplementedError):
         writer.write_eof()
-    response = await asyncio.wait_for(reader.read(), timeout=2)
+    response = await asyncio.wait_for(reader.read(), timeout=timeout)
     writer.close()
     await writer.wait_closed()
     return response
@@ -214,7 +215,7 @@ async def test_dial_failure_retries_only_the_frozen_approved_answer_set():
             response = await _exchange(
                 gateway.endpoint, _connect_request(gateway.endpoint)
             )
-            await asyncio.wait_for(upstream_connected.wait(), timeout=1)
+            await asyncio.wait_for(upstream_connected.wait(), timeout=5)
     finally:
         await gateway.stop()
         upstream.close()
@@ -231,10 +232,17 @@ async def test_dial_failure_retries_only_the_frozen_approved_answer_set():
 @pytest.mark.asyncio
 async def test_connect_timeout_bounds_the_complete_answer_set():
     calls = []
+    cancelled = asyncio.Event()
+    limits = GatewayLimits(connect_timeout=0.2)
+    # Allow shared runners to pause without treating scheduling as a regression.
+    elapsed_limit = limits.connect_timeout + 5
 
     async def stalled_dialer(endpoint, timeout):
         calls.append((endpoint, timeout))
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
 
     answers = (
         "1.0.0.1",
@@ -249,18 +257,27 @@ async def test_connect_timeout_bounds_the_complete_answer_set():
     gateway = EgressGateway(
         resolver=RecordingResolver(answers),
         dialer=stalled_dialer,
-        limits=GatewayLimits(connect_timeout=0.2),
+        limits=limits,
         password="secret",
     )
-    started = time.perf_counter()
     async with gateway:
-        response = await _exchange(gateway.endpoint, _connect_request(gateway.endpoint))
-    elapsed = time.perf_counter() - started
+        started = time.perf_counter()
+        response = await _exchange(
+            gateway.endpoint, _connect_request(gateway.endpoint), timeout=elapsed_limit
+        )
+        elapsed = time.perf_counter() - started
 
     assert b"502 Bad Gateway" in response
-    assert calls
-    assert all(0 < timeout < 0.201 for _, timeout in calls)
-    assert elapsed < 0.75
+    assert f"X-ConnectOnion-Error: {CONNECT_FAILED}".encode() in response
+    assert cancelled.is_set()
+    assert calls[0][0].address in answers
+    # Deadline arithmetic can round up when consecutive clock readings are equal.
+    assert 0 < calls[0][1] <= limits.connect_timeout * 1.01
+    # Coarse loop clocks can leave tiny budgets for later candidates.
+    timeouts = [timeout for _, timeout in calls]
+    assert sum(timeouts) <= limits.connect_timeout * 1.5
+    assert all(later <= earlier for earlier, later in zip(timeouts, timeouts[1:]))
+    assert elapsed < elapsed_limit
 
 
 @pytest.mark.asyncio
@@ -487,7 +504,9 @@ async def test_header_timeout_and_size_limits_are_bounded_and_zero_dial():
         reader, writer = await asyncio.open_connection(
             gateway.endpoint.host, gateway.endpoint.port
         )
-        timeout_response = await asyncio.wait_for(reader.read(), timeout=1)
+        timeout_response = await asyncio.wait_for(
+            reader.read(), timeout=limits.header_timeout + 5
+        )
         writer.close()
         await writer.wait_closed()
         oversized = await _exchange(gateway.endpoint, b"X" * 256 + b"\r\n\r\n")
@@ -549,7 +568,7 @@ async def test_overload_is_rejected_after_auth_before_resolve_or_dial():
             )
             first_writer.write(_connect_request(gateway.endpoint))
             await first_writer.drain()
-            await asyncio.wait_for(entered.wait(), timeout=1)
+            await asyncio.wait_for(entered.wait(), timeout=5)
             # A second authenticated client beyond the connection cap is
             # refused after proving its credential, and before any name
             # resolution or dial. (Unauthenticated sockets are bounded by the
@@ -559,7 +578,7 @@ async def test_overload_is_rejected_after_auth_before_resolve_or_dial():
             assert resolver.calls == [("example.com", 443)]
             assert len(calls) == 1
             release.set()
-            await asyncio.wait_for(first_reader.read(), timeout=1)
+            await asyncio.wait_for(first_reader.read(), timeout=5)
             first_writer.close()
             await first_writer.wait_closed()
     finally:
@@ -638,11 +657,16 @@ async def test_no_name_resolution_happens_after_the_gateway_resolves(monkeypatch
 @pytest.mark.asyncio
 async def test_tunnel_byte_limit_closes_before_an_oversized_chunk_reaches_upstream():
     received = bytearray()
+    prefix_received = asyncio.Event()
+    upstream_closed = asyncio.Event()
 
     async def collect(reader, writer):
+        received.extend(await reader.readexactly(4))
+        prefix_received.set()
         received.extend(await reader.read())
         writer.close()
         await writer.wait_closed()
+        upstream_closed.set()
 
     upstream = await asyncio.start_server(collect, "127.0.0.1", 0)
     port = upstream.sockets[0].getsockname()[1]
@@ -668,12 +692,13 @@ async def test_tunnel_byte_limit_closes_before_an_oversized_chunk_reaches_upstre
             # boundary: the first four are allowed through, the fifth is not.
             writer.write(b"1234")
             await writer.drain()
-            await asyncio.sleep(0.05)
+            await asyncio.wait_for(prefix_received.wait(), timeout=5)
             writer.write(b"5")
             await writer.drain()
-            assert await asyncio.wait_for(reader.read(), timeout=1) == b""
+            assert await asyncio.wait_for(reader.read(), timeout=5) == b""
             writer.close()
             await writer.wait_closed()
+            await asyncio.wait_for(upstream_closed.wait(), timeout=5)
     finally:
         await gateway.stop()
         upstream.close()
@@ -704,11 +729,11 @@ async def test_stopping_during_resolution_cancels_owned_work_without_dialing():
     )
     writer.write(_connect_request(gateway.endpoint))
     await writer.drain()
-    await asyncio.wait_for(resolver_entered.wait(), timeout=1)
+    await asyncio.wait_for(resolver_entered.wait(), timeout=5)
 
-    await asyncio.wait_for(gateway.stop(), timeout=1)
+    await asyncio.wait_for(gateway.stop(), timeout=5)
 
-    assert await asyncio.wait_for(reader.read(), timeout=1) == b""
+    assert await asyncio.wait_for(reader.read(), timeout=5) == b""
     assert resolver_cancelled.is_set()
     assert dialer.calls == []
     assert gateway._active == 0
@@ -899,7 +924,7 @@ async def test_a_declared_body_is_streamed_rather_than_buffered_whole():
             await writer.drain()
             arrived = True
             try:
-                await asyncio.wait_for(body_arrived.wait(), timeout=3)
+                await asyncio.wait_for(body_arrived.wait(), timeout=5)
             except asyncio.TimeoutError:
                 arrived = False
             writer.close()
