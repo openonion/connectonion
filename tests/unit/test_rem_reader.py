@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from urllib.parse import unquote
 
 import pytest
 
@@ -442,7 +443,8 @@ def test_reader_lists_unreviewed_mail_contacts_without_making_empty_pages(tmp_pa
 def test_render_is_self_contained_with_no_remote_assets(tmp_path):
     page = render(tmp_path)
     assert not re.search(r'(src|href)\s*=\s*["\']https?://', page)
-    assert "<link" not in page  # styles are inline; a stylesheet would be a fetch
+    # Styles are inline; a stylesheet would be a fetch. The one <link> is the tab icon, and it is a data: drawing.
+    assert page.count('<link') == 1 and re.findall(r'<link\b[^>]*?\bhref="([^",]*)', page) == ['data:image/svg+xml']
     assert "@import" not in page
 
 
@@ -3377,6 +3379,105 @@ def test_the_old_graph_address_lands_on_all_records():
       console.log(JSON.stringify({graph, activity: railActive()}));
     ''')
     assert result == {'graph': 'all', 'activity': 'activity'}
+
+
+# The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
+RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'archive', 'ellipsis', 'settings']
+RAIL = {
+    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records', 'More', 'Settings'],
+           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings'],
+           'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
+    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+           'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
+}
+
+
+def _rail(language):
+    """The rail, its foot and the phone tab bar as the reader's own functions build them, over a stand-in DOM."""
+    page = TEMPLATE.read_text()
+    english = re.search(r'\n  en: (\{.*?\}),', page)[1]
+    chinese = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    labels = re.search(r'const CATEGORY_LABEL = \{.*?\n\};', page, re.S)[0]
+    drawn = page[page.index('const ICONS = {'):page.index('function openSettings() {')]
+    return _run_reader_js('\n'.join([
+        'Object.assign(UI, {en: ' + english + ', zh: ' + chinese + '}); uiLanguage = ' + json.dumps(language) + ';',
+        labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0], r"""
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: (children || []).filter(Boolean)});
+      const node = () => ({children: [], replaceChildren(...kids) { this.children = kids.filter(Boolean); },
+        querySelectorAll: () => [], setAttribute() {}, classList: {add() {}}});
+      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node()}, toggle = node();
+      nodes.tabbar.querySelector = () => toggle;
+      const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
+      const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
+      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'knowledge', 'notes']};
+      const byPath = () => ({path: 'people/ada.md', title: 'Ada Example'}), href = r => '#r=' + r.path, route = () => ({});
+      const face = name => ({tag: 'span', class: 'face', text: name}), threadCounts = () => ({mine: 2});
+      const inCategory = () => [{}], openSettings = () => {}, renderSettings = () => {};
+    """, drawn, r"""
+      renderRail('skills');
+      const child = (entry, cls) => entry.children.find(c => (c.class || '').split(' ').includes(cls));
+      const picture = entry => Object.keys(ICONS).find(name => entry.children.some(c => c.html && c.html.includes('>' + ICONS[name] + '<'))) || null;
+      const cell = entry => ({name: entry['aria-label'], word: child(entry, 'w')?.text ?? null, wordHidden: child(entry, 'w')?.['aria-hidden'] ?? null,
+        tip: !!child(entry, 'tip'), title: entry.title ?? null, picture: picture(entry), href: entry.href ?? null, active: entry.class.includes('active'),
+        badge: child(entry, 'n')?.text ?? null});
+      const cells = [...nodes.nav.children, ...nodes['rail-end'].children].filter(n => n.class.split(' ').includes('nav'));
+      const menu = nodes.nav.children.find(n => n.id === 'rail-more');
+      const tabs = [...nodes.tabbar.children.slice(0, 4), {children: toggle.children}];
+      console.log(JSON.stringify({cells: cells.map(cell), menu: menu.children.map(a => a.href),
+        tabs: tabs.map(tab => [picture(tab), tab.children.find(c => c.tag === 'span' && c.text && !c.class)?.text]),
+        drawings: JSON.stringify([cells, tabs])}));
+    """]))
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
+    """Owner, #2953: the rail's shapes could not be told apart. Each entry now says its word without a hover."""
+    rail, expected = _rail(language), RAIL[language]
+    cells, you = rail['cells'][:-1], rail['cells'][-1]
+    assert [cell['name'] for cell in cells] == expected['names']  # the accessible name stays the full name
+    assert [cell['word'] for cell in cells] == expected['words']  # and the word is in the markup, always visible
+    assert all(cell['wordHidden'] == 'true' for cell in cells)  # read once: aria-label names the entry, not the word too
+    assert not any(cell['tip'] for cell in rail['cells'])  # no name lives only in a hover tip
+    # A word shorter than the name keeps the name one hover away; a word that is the name needs no second copy.
+    assert [cell['title'] for cell in cells] == [name if name != word else None for name, word in zip(expected['names'], expected['words'])]
+    assert you['name'] == you['title'] == expected['you'] and you['word'] is None  # your face is the picture; it has no word
+    assert [cell['picture'] for cell in cells] == RAIL_PICTURES
+    assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
+    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 7
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
+    rail = _rail(language)
+    links = [cell['href'] for cell in rail['cells'][:7]]
+    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=all']
+    assert [cell['active'] for cell in rail['cells'][:7]] == [link == '#c=skills' for link in links]
+    assert rail['menu'] == ['#view=changes', '#c=knowledge']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_the_phone_tab_bar_uses_the_rail_pictures_and_keeps_its_words(language):
+    assert _rail(language)['tabs'] == list(map(list, zip(['sun', 'message-square-reply', 'users', 'search', 'ellipsis'], RAIL[language]['tabs'])))
+
+
+def test_the_mark_is_the_sleeping_face():
+    """Owner, #2953: the circle, square and triangle in the corner said nothing. REM's mark is two closed eyes on an ink tile."""
+    brand = re.search(r'<a class="brand".*?</a>', TEMPLATE.read_text(), re.S)[0]
+    assert brand.count('A4.8 4.8 0 0 0') == 2  # two eyelids
+    assert '<circle' not in brand and 'M5 29 11 20l6 9z' not in brand
+    assert 'aria-label="co rem, contents"' in brand  # the mark is a picture; the link keeps its name
+
+
+def test_the_reader_has_a_tab_icon_that_fetches_nothing_and_follows_the_system_theme(tmp_path):
+    head = render(tmp_path).split('</head>')[0]
+    icons = re.findall(r'<link\b[^>]*\brel="icon"[^>]*>', head)
+    assert len(icons) == 1
+    drawing = unquote(re.search(r'href="data:image/svg\+xml,([^"]*)"', icons[0])[1])
+    assert drawing.startswith('<svg xmlns="http://www.w3.org/2000/svg"') and drawing.endswith('</svg>')
+    assert '@media (prefers-color-scheme:dark)' in drawing  # the tab strip follows the system, not the reader's theme
+    assert drawing.count('A4.6 4.6 0 0 0') == 2  # the same sleeping face, drawn for 16 px
 
 
 WORKING_STORAGE = "{getItem: key => saved[key] ?? null, setItem: (key, value) => { saved[key] = value; }}"

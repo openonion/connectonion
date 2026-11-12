@@ -16,6 +16,11 @@ style attributes (quoted or not), SVG and legacy HTML attributes, url() data,
 the script and the strings it builds. Media-query breakpoints are exempt
 because CSS cannot read var() there.
 
+One drawing writes its colours out: the tab icon, a data: SVG in <link rel="icon">.
+The browser paints it outside the page and by the system's theme, so it can
+read neither var() nor the reader's own theme. It is held to the sheet another
+way: every colour in it must be the sheet's ink or paper, light or dark.
+
 Out of scope, on purpose: a value that only exists at run time (a named colour
 held in a JS variable and then assigned, a size computed into a variable),
 currentColor, CSS escapes inside identifiers, user-agent defaults such as <h1>
@@ -25,6 +30,7 @@ not a regex.
 """
 
 import re
+from urllib.parse import unquote
 
 from connectonion.rem.reader import TEMPLATE
 
@@ -72,6 +78,7 @@ DESIGN_CAMEL = r'fontSize|fontWeight|font|borderRadius|boxShadow|textShadow|font
 COLOUR_CAMEL = r'color|background|backgroundColor|borderColor|outlineColor|fill|stroke'
 # Namespaces earlier rounds added; each must stay gone, not come back beside the sheet.
 RETIRED = re.compile(r'--(?:r4-|ov-|gx-|today-font\b|bg\b|surface\b)')
+TAB_ICON = re.compile(r'<link\b[^>]*\brel\s*=\s*["\']?icon\b[^>]*>', re.I)
 
 
 def _html():
@@ -165,11 +172,20 @@ def _resolve_interpolation(js):
     return ''.join(out) + js[i:]
 
 
+def _tab_icon_violations(markup, sheet):
+    """The tab icon's colours are literals (see the module docstring); each must be the sheet's ink or paper."""
+    allowed = {props[name].lower() for props in _blocks(sheet).values() for name in ('--ink', '--paper') if name in props}
+    drawing = unquote(''.join(TAB_ICON.findall(markup))).lower()
+    paints = re.findall(r'(?<![\w-])(?:fill|stroke)\s*[:=]\s*["\']?([^;}"\'\s/>]+)', drawing)
+    paints += [hit.group(0) for hit in COLOUR.finditer(drawing)]
+    return [f"tab icon paints {value[:24]}, not the sheet's ink or paper" for value in paints if value not in allowed | {'none'}]
+
+
 def _violations(html=None):
     sheet, css, js, markup, inline = _parts(html)
     css, inline = css.lower(), inline.lower()  # CSS is case-insensitive: FONT-SIZE is font-size
     tokens = _tokens(html)
-    found = []
+    found = _tab_icon_violations(markup, sheet)
     declared = css + ' ; ' + inline + ' ; ' + js
     layout = '|'.join(re.escape(v) for v in sorted(LAYOUT_VARS))
     for where, text in (('css', css + ' ; ' + inline), ('js', js)):
@@ -182,7 +198,7 @@ def _violations(html=None):
     for value in re.findall(r'font-variation-settings\s*:\s*([^;{}]+)', declared):
         if value.strip() != 'normal':
             found.append(f'font-variation-settings: {value[:40]}')
-    for where, text in (('css', css), ('inline', inline), ('js', js), ('markup', markup)):
+    for where, text in (('css', css), ('inline', inline), ('js', js), ('markup', TAB_ICON.sub('', markup))):
         for hit in COLOUR.finditer(text):
             found.append(f'{where}: colour {text[hit.start():hit.start() + 24]!r}')
         for args in re.findall(r'color-mix\(([^;{}]*?)\)\s*[;}"\'`]', text):
@@ -386,6 +402,10 @@ PLANTS = {
     'shape-outside round': ('</style>', '.zz{shape-outside:inset(0 round 8px)}</style>'),
     '<link> stylesheet': ('<main id="main"', '<link rel="stylesheet" href="data:text/css,.zz{font-size:30px}"><main id="main"'),
     'concatenated size in a style string': ('</script>', "el('b',{style:'font-size:'+n+'px'});</script>"),
+    'tab icon colour that is not ink or paper': ('%23121512', '%23ff0000'),
+    'tab icon named colour': ('fill%3A%23121512', 'fill%3Atomato'),
+    'tab icon rgb()': ('stroke%3A%23ffffff', 'stroke%3Argb(255%2C0%2C0)'),
+    'hex in markup beside the tab icon': ('<main id="main"', '<link rel="prefetch" href="data:image/svg+xml,%23ff0000"><main id="main"'),
 }
 
 
