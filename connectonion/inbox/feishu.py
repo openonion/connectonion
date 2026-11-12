@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: run(inbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → inbox.deliver(); reaction/recall/chat-member/chat-updated events → event_message() → inbox.deliver(); start/reconnect → HistoryRecovery.reconcile() (bounded, no timer) | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
   State/Effects: reads FEISHU_APP_ID/FEISHU_APP_SECRET (LARK_* for Lark) from the environment | one outbound WebSocket that dials out, so no port is opened | caches the tenant token in memory for its lifetime
   Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable inbox write; storage failures remain retryable
-  Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the pip command
+  Errors: check() returns the missing item and the next action instead of raising | send() raises RuntimeError with Feishu's own code and message, after retrying a rate limit three times | a missing SDK is reported with the command that reinstalls connectonion
 """
 
 import hashlib
@@ -18,6 +18,7 @@ from typing import Optional
 
 import requests
 
+from .._version import __version__
 from .store import Inbox, Message, iso_utc
 from .recovery import HistoryRecovery, LarkError, MissingScope
 
@@ -26,7 +27,15 @@ DOMAINS = {
     "lark": "https://open.larksuite.com",
 }
 
-SDK_MISSING = "The Feishu SDK is not installed. Run: pip install lark-oapi"
+# lark-oapi is a dependency of connectonion (#2163), so a missing SDK means the
+# environment co runs in lost it. A bare `pip install lark-oapi` can land in a
+# different Python from co's own (uv tool installs co in its own environment), so
+# the answer reinstalls this exact connectonion, which brings the SDK back.
+SDK_MISSING = (
+    "The Feishu SDK (lark-oapi) ships with connectonion but is missing from this environment. "
+    f"Reinstall connectonion: uv tool install --force 'connectonion=={__version__}' "
+    f"(installed with pip: pip install 'connectonion=={__version__}')"
+)
 
 # Feishu's reply endpoint dedupes on this for an hour, so a retried reply to
 # the same message cannot post twice even across processes.

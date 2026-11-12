@@ -12,9 +12,11 @@ OpenOnion credential, and nothing billed.
 ## Setup
 
 ```bash
-pip install lark-oapi
 co auth feishu
 ```
+
+The Feishu SDK (`lark-oapi`) ships with connectonion, so there is nothing
+else to install.
 
 `co auth feishu` prints a QR code and a link. Scan it with Feishu or Lark,
 approve, and the application exists — in your own tenant, owned by you — with
