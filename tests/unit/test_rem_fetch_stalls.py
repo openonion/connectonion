@@ -103,7 +103,7 @@ def notebook(tmp_path, monkeypatch, rem_clock):
     return root
 
 
-def round_of(root, monkeypatch, people, *, error=read_timeout):
+def round_of(root, monkeypatch, people, *, error=read_timeout, listing_error=None):
     """People pages whose preparation fails on Outlook, then the Heron project page, which needs no mail."""
     book = Notebook(root)
     book.stub_project("projects/heron.md", "Heron")
@@ -116,6 +116,8 @@ def round_of(root, monkeypatch, people, *, error=read_timeout):
 
     class Outlook:
         def list_between(self, start, end, limit):
+            if listing_error:
+                raise listing_error()
             return []  # the round's new-correspondent listing, before any page
 
         def list_attachments(self, key):
@@ -222,3 +224,36 @@ def test_the_owners_reader_carries_the_stall_and_a_shared_one_does_not(tmp_path,
     night = snapshot(root, local=True, today=True)["night_stall"]
     assert night["provider"] == "Outlook" and night["reason"] == "not_found" and night["pages"] == 1
     assert snapshot(root, local=False, today=True)["night_stall"] is None
+
+
+def test_a_mailbox_failing_to_list_new_correspondents_is_stopped_and_the_round_still_starts(notebook, monkeypatch):
+    """The round's first mailbox call lists who wrote since the last round; it failed outside any page."""
+    asked = round_of(notebook, monkeypatch, ["people/ivy.md"], listing_error=read_timeout)
+    task = native.next_task(notebook)
+    assert task["outcome"] == "task" and task["record"] == "projects/heron.md", task
+    assert asked == []  # Ivy's page needs Outlook: it waits for the next round, unasked
+    assert fetch_stalls.stopped(notebook) == {"outlook": "timeout"}
+    event = read_json(state_path(notebook, fetch_stalls.LEDGER), {})["events"][-1]
+    assert event["provider"] == "outlook" and event["stopped"] and event["record"] == ""
+    assert any("Outlook timed out while listing new correspondents" in notice for notice in task["notices"])
+    assert fetch_stalls.last_night(notebook)["stopped"]
+
+
+def test_a_slot_mail_read_that_fails_stops_that_mailbox_and_the_next_slot_reads_the_rest(notebook, monkeypatch):
+    """Four nights read no mail: a failing mailbox was asked again at every slot and every turn."""
+    monkeypatch.setattr(service, "_selected_sources", lambda root, name: {
+        "fixture-outlook": {"kind": "outlook"}, "fixture-codex": {"kind": "codex"}})
+    asked = []
+
+    def sync(root, selected, progress, config, **kwargs):
+        asked.append(sorted(selected))
+        failed = [{"source": "fixture-outlook", "error": "Outlook read failed: ReadTimeout"}] if "fixture-outlook" in selected else []
+        return {"done": True, "record": {"source_failures": failed} if failed else {}}
+
+    monkeypatch.setattr(service, "prepare_sync", sync)
+    cursor = {}
+    native_round.read_new_mail(notebook, cursor, read_config(notebook), service.now())
+    assert fetch_stalls.stopped(notebook) == {"outlook": "timeout"}
+    assert any("Outlook timed out while reading new mail" in notice for notice in cursor["set_aside"])
+    native_round.read_new_mail(notebook, cursor, read_config(notebook), service.now())
+    assert asked == [["fixture-outlook"], ["fixture-codex"]]

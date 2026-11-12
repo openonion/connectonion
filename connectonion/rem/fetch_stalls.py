@@ -145,6 +145,36 @@ def park(root, job: dict, error) -> str | None:
     return notice
 
 
+def mailbox_down(root, provider: str, reason: str, while_doing: str) -> str:
+    """A mailbox failed outside any one page (listing who wrote, reading a slot's mail).
+
+    That is the mailbox, not a page: it is not asked again in this turn, and the
+    night card says so. Four nights read no mail on the owner's notebook while a
+    failing read was tried again at every slot."""
+    ledger, moment = _ledger(root), service.now()
+    ledger["turn"]["stopped"][provider] = reason
+    cutoff = (moment - timedelta(days=EVENT_DAYS)).isoformat()
+    ledger["events"] = [event for event in ledger["events"] if event["at"] >= cutoff] + [
+        {"at": moment.isoformat(), "provider": provider, "reason": reason, "record": "", "stopped": True}]
+    write_json(state_path(root, LEDGER), ledger)
+    name = NAMES.get(provider, provider)
+    return f"{name} {PHRASES[reason]} while {while_doing}; {name} is not asked again in this turn"
+
+
+def failure_in_words(text: str, code: str = "") -> str:
+    """A source read's recorded failure ("Outlook read failed: ReadTimeout"), as one word of PHRASES."""
+    import re
+    if code in _CREDENTIAL:
+        return _CREDENTIAL[code]
+    lowered = text.lower()
+    if "timeout" in lowered or "timed out" in lowered:
+        return "timeout"
+    if "connect" in lowered or "network" in lowered:
+        return "network"
+    status = re.search(r"\b([45]\d\d)\b", text)
+    return _by_status(int(status[1])) if status else "unavailable"
+
+
 def hold(root, job: dict, providers: dict) -> None:
     """A page that needs a mailbox stopped for this turn waits for the next round, with no back-off:
     it was never asked, so it did not fail."""
@@ -198,7 +228,7 @@ def last_night(root) -> dict | None:
     provider = _most(row["provider"] for row in rows)
     return {"provider": NAMES.get(provider, provider),
             "reason": _most(row["reason"] for row in rows if row["provider"] == provider),
-            "times": len(events), "pages": len({row["record"] for row in rows}),
+            "times": len(events), "pages": len({row["record"] for row in rows if row["record"]}),
             "stopped": any(event.get("stopped") for event in events), "parked": parked}
 
 

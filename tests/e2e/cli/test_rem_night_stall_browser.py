@@ -36,6 +36,9 @@ def test_a_stalled_night_says_why_in_one_plain_sentence_and_folds_what_waits(tod
     page.evaluate(STUCK, stall(), isolated_context=False)
     line = page.locator(".night-card .night-stall > summary")
     assert line.is_visible()
+    if size[0] < 640:
+        # The fold opens with a thumb: a full touch target on a phone.
+        assert line.bounding_box()["height"] >= 44
     assert line.inner_text().startswith(
         "Last night REM got stuck on Outlook: timed out 14 times; it set that page aside and did the rest")
     # Never an exception name or a command on screen.

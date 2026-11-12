@@ -2573,6 +2573,12 @@ tried the same page again, and four nights read no mail.
   `next` typed by hand is a turn of its own). Pages that would ask it wait for
   the next round without back-off, and work that needs no mail (projects,
   summaries, translations) goes on.
+- **A mailbox failing outside any one page** — listing who wrote since the last
+  round when a round starts, or reading a slot's new mail — is recorded the same
+  way (an event in `.state/fetch-parked.json`, the night card's sentence) and is
+  not asked again in that turn; the other mailboxes are still listed and the
+  sessions are still read. Four nights read no mail while a failing mailbox was
+  read again at every slot.
 
 Today's night card says why in one plain sentence under its title, in the
 reader's language, and folds the pages set aside with when each is tried again:

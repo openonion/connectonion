@@ -3100,6 +3100,8 @@
     .nh .nt { display: none; }
     .night-card.sparse .nh .nt { display: inline; }
     .night-card.sparse .faces { gap: 8px; }
+    /* The fold under the night line opens with a thumb: a full 44px target (it measured 33). */
+    .night-stall > summary { display: flex; align-items: center; min-height: 44px; }
     .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
     .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
     .qdraft .mail-row .v > .addr { display: none; }

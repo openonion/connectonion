@@ -39,7 +39,8 @@ def prepare(root, config, *, scheduled):
     # co rem next never calls a model: the native round reuses this week's proposal only.
     topics = backfill_topics(Notebook(root), lock_held=True)
     progress = read_json(state_path(root, "progress.json"), {})
-    batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
+    set_aside = []
+    batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
     basics_changed = refresh_basics(root)
     from .direct_send import refresh as set_direct_send
@@ -51,9 +52,9 @@ def prepare(root, config, *, scheduled):
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
-              "jobs": _with_parked(root, _jobs(root, first, logs, sources)), "job_index": 0, "current": None,
+              "jobs": _with_parked(root, _jobs(root, first, logs, sources, set_aside)), "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
-              "mail_slot": slot.isoformat() if slot else None}
+              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -71,13 +72,46 @@ def read_new_mail(root, cursor, config, slot):
     mailbox unread since morning. The batch runs before the round's remaining jobs.
     """
     # A slot's read is one source batch; the coding sessions are read when a round begins.
-    selected = service._selected_sources(root, "")
+    stopped = fetch_stalls.stopped(root)
+    selected = {name: source for name, source in service._selected_sources(root, "").items()
+                if source.get("kind") not in stopped}
     mailboxes = {name: source for name, source in selected.items() if source.get("kind") in service.MAIL_KINDS}
-    batch = service.prepare_sync(root, mailboxes or selected, read_json(state_path(root, "progress.json"), {}), config)
+    batch = _read_sources(root, mailboxes or selected, read_json(state_path(root, "progress.json"), {}), config,
+                          cursor.setdefault("set_aside", []))
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
+
+
+def _read_sources(root, selected, progress, config, set_aside):
+    """One source batch; a mailbox whose read failed is recorded and not asked again this turn.
+
+    prepare_sync already keeps one source's failure from ending the batch; without
+    this the same failing mailbox was read again at every slot and every turn."""
+    batch = service.prepare_sync(root, selected, progress, config)
+    for row in batch["record"].get("source_failures", []):
+        kind = selected.get(row["source"], {}).get("kind")
+        if kind in service.MAIL_KINDS:
+            reason = fetch_stalls.failure_in_words(row.get("error", ""), row.get("code", ""))
+            set_aside.append(fetch_stalls.mailbox_down(root, kind, reason, "reading new mail"))
+    return batch
+
+
+def _admit_correspondents(root, sources, since, set_aside):
+    """List who wrote since the last round; a mailbox that fails is stopped for the turn and the rest are listed."""
+    from .people_pages import correspondents_since
+    clients = {kind: client for kind, client in daily._clients(sources).items()
+               if kind not in fetch_stalls.stopped(root)}
+    while True:
+        try:
+            return correspondents_since(root, fetch_stalls.labelled(clients), since=since, lock_held=True)
+        except Exception as error:  # noqa: BLE001 -- anything not a known mailbox's failure is re-raised
+            reason, kind = fetch_stalls.failure(error), getattr(error, "rem_provider", None)
+            if reason is None or kind not in clients:
+                raise
+            set_aside.append(fetch_stalls.mailbox_down(root, kind, reason, "listing new correspondents"))
+            clients.pop(kind)
 
 
 def prepare_translation_round(root, config, *, scheduled):
@@ -93,12 +127,12 @@ def prepare_translation_round(root, config, *, scheduled):
             "same_new_left": 0, "translations": [], "translated": 0, "run": record}
 
 
-def _jobs(root, first, logs, sources):
+def _jobs(root, first, logs, sources, set_aside=None):
     from datetime import datetime, timedelta
-    from .people_pages import correspondents_since, queue as people_queue
+    from .people_pages import queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
-    correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous), lock_held=True)
+    _admit_correspondents(root, sources, datetime.fromisoformat(previous), [] if set_aside is None else set_aside)
     if first:
         resting = daily._found_nothing_lately(root)
         return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
