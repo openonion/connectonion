@@ -76,14 +76,16 @@ def test_rem_sender_endpoint_has_the_thread_routes_gates_and_undo(host):
         assert call(host.routes, 'POST', '/rem/sender', cookie=cookie, body=json.dumps(value).encode())[0] == 400
 
 
-def test_a_relay_that_carries_peoples_messages_is_never_a_sender_to_ignore(tmp_path, rem_clock):
-    # Guests write through express@airbnb.com; ignoring it would silence every one of them.
+def test_a_relay_that_carries_peoples_messages_is_never_a_sender_to_ignore(tmp_path, rem_clock, monkeypatch):
+    # Many people write through one relay address; ignoring it would silence every one of them.
+    import re
+    monkeypatch.setattr('connectonion.rem.map.RELAY', re.compile(r'^relay@stays\.example$'))
     prepare(tmp_path)
     write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/avery.md', 'addresses': [OWNER]}})
     Notebook(tmp_path).write('people/ivo.md', '# Ivo\n\n## Open threads\n- You owe Ivo a call time. [1]\n\n'
-                             '## Sources\n- [1] gmail:guest\n')
-    retain_message(tmp_path, 'gmail', {'id': 'guest', 'from': 'express@airbnb.com', 'to': [OWNER], 'thread': 'guest',
-                                       'subject': 'guest', 'date': '2026-11-06T03:00:00+00:00'},
+                             '## Sources\n- [1] gmail:relayed\n')
+    retain_message(tmp_path, 'gmail', {'id': 'relayed', 'from': 'relay@stays.example', 'to': [OWNER], 'thread': 'relayed',
+                                       'subject': 'relayed', 'date': '2026-11-06T03:00:00+00:00'},
                    'Which day suits?', fetched_at='2026-11-08T00:00:00+00:00')
     refresh(tmp_path)
     assert [row['sender'] for row in today.queue(tmp_path, as_of=date(2026, 11, 8))] == ['']

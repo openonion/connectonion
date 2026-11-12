@@ -171,8 +171,8 @@ def _entries(root, records, today, contexts, states, db):
 def _sender(sources, text, owner, db):
     """Who wrote the first cited mail that is not the owner's own: the address 忽略 can stop.
 
-    A relay is nobody's address (guests write through express@airbnb.com; on the owner's notebook
-    Today rows were people behind it), and an Exchange path is no address at all: neither is offered."""
+    A relay address that carries many different people (map.RELAY, the relays REM already keeps out of
+    people pages) is nobody's to stop, and an Exchange path is no address at all: neither is offered."""
     from .files import EMAIL
     from .map import RELAY
     from .reader_model import _cited_row

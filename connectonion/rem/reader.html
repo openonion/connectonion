@@ -7136,7 +7136,7 @@ function stripMarksDone(entry) {
 // 暂不处理 — not needed now: the notebook's "skipped", which leaves Today and returns when new mail arrives on the thread;
 // 忽略 — an ad or a notification: the state "ignored", which closes like done and never returns, and reads 已忽略. Its
 // notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
-// itself: a relay carries people (on the owner's notebook, Today rows from guests came through express@airbnb.com), so the owner taps it.
+// itself: a relay address carries many different people, so the owner taps it.
 function stripDone(entry, mark) {
   if (!stripMarksDone(entry)) return [];
   // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.

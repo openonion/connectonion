@@ -953,8 +953,8 @@ pinned to that edge: it comes into view with the draft.
   notice also offers **Stop showing mail from** *address* (以后不再显示 *address* 的邮件); one tap saves the sender
   (`POST /rem/sender {"address", "ignored": true}`, the same loopback, cookie and JSON rules as `/rem/thread`), the
   notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
-  lets the sender back. REM never stops a sender by itself, and never offers a relay that carries people
-  (`express@airbnb.com`, Luma). The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
+  lets the sender back. REM never stops a sender by itself, and relay addresses that carry many different
+  people are never offered. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
   can be edited by hand: Today leaves out every item whose cited mail came from a listed sender, the night drafts
   them no reply, and **Settings → Ignored senders** lists each with **Show again** (恢复显示). Each notice keeps
   **Undo**. Mark done
