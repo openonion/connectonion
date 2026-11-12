@@ -396,7 +396,8 @@ Neither count proves that this installed version ran or that the task succeeded.
 The Skills page answers two questions at a glance. **Most used** shows up to
 eight skills as cards, ranked by their skill-name match count over the usage
 window (ties by the latest date), each with one line of what it does and "N
-matches in 180 days · last date". Everything else is an index grouped by name
+matches in 180 days · last date"; the cards say what the number is, so
+the section has no caption. Everything else is an index grouped by name
 family (Lark, LinkedIn, co …; a family of fewer than three skills in all goes
 under Other) that fills the width; a strip of family names above it moves to
 each group and focuses its heading. Cards and rows keep the "last night" marker
@@ -1052,6 +1053,12 @@ pinned to that edge: it comes into view with the draft.
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
   Graph labels are cut by width, so a Chinese title stays inside its card.
+  **All records**' **Most connected** leaves your own page out: you are every
+  page's hub by definition (the notebook's owner field, not a name).
+- **An organisation's link to Today**, **N things in Today involve X**, counts
+  what Today counts: the items waiting on you (not done, not quiet, not a
+  stale promise, not a reply already sent or held) whose rows belong to the
+  organisation or its units, so it never exceeds Today's own number.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1096,7 +1103,11 @@ pinned to that edge: it comes into view with the draft.
   A short legend lives in **Reader settings**.
 - **A person's page is their record** (owner, 2026-11-08): no list of what
   you owe and no **Mark done** there; one quiet link, **N items in Today**,
-  when Today holds something of theirs. The name is the page's one large mark;
+  when Today holds something of theirs. Right under the header comes
+  **Open topics** (**还没结的话题**), what is still open with them, because it
+  is what you open a person for: the top three, and **All N entries**
+  (**全部 N 条**) opens the rest in place. On a phone the face stays in the
+  header beside the name and the contact buttons take the row below. The name is the page's one large mark;
   it carries its script as `lang` and hyphenates (where the browser has no
   hyphenation dictionary and a word would overflow, the reader adds soft
   hyphens at likely syllable joins; copying the name drops them). Under it
@@ -1109,9 +1120,9 @@ pinned to that edge: it comes into view with the draft.
   from their last mail, and only once that is past your own median reply time
   in synced mail, and never while Today has her items handled, looking
   handled or needing no reply; without that data it is never red. Then mails,
-  first exchange, your median reply and last contact; **Open topics**
-  (**还没结的话题**), the record's open threads as words and a date with
-  nothing to click (marking them happens in Today); **In their words**,
+  first exchange, your median reply and last contact (Open topics, above
+  them, are the record's open threads as words and a date with nothing to
+  click; marking them happens in Today); **In their words**,
   their own archived mail said to you personally: you on To or Cc (your
   addresses from the map and mail archive; unknown addresses quote nothing),
   at most eight recipients, not an auto-reply, cited by a public passage and
@@ -1141,10 +1152,14 @@ pinned to that edge: it comes into view with the draft.
   when they exist, and otherwise show the original with a 原文 mark.
   Investigated records omit the redundant status pill; mapped and partly
   investigated records keep it, and reviewed skills say **Source reviewed**.
-  A page with no translation yet shows a quiet **Original** (原文) mark, whose
-  tooltip says whether it is queued for the next pass or background updates
-  are off. Opening the page only queues it, so the reader never says
-  "translating": one small grey mark in the crumb above the name, never a line of its own; cached translations preserve the original Sources lines.
+  A person, organisation or project page with no translation yet carries no
+  mark above its name (the old 原文 chip read as jargon). When its translation
+  is on its way (opening it in the live reader queues it, or the reader's
+  language is a nightly translation target) one quiet meta-size line under
+  the header says **中文版还没好，先看原文**; its tooltip says whether it is
+  queued for the next pass or background updates are off. A page simply in
+  English with nothing requested says nothing. Opening the page only queues
+  it, so the reader never says "translating"; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never
@@ -2364,8 +2379,9 @@ backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
-The reader marks an untranslated page with a quiet **Original** (原文) while
-showing the original. Opening it in a non-English interface queues that language for the
+The reader shows an untranslated page's original with one quiet line under
+its header, **中文版还没好，先看原文**, while its translation is on its way.
+Opening it in a non-English interface queues that language for the
 next pass, even if it was not detected among the owner's languages. The Read in
 menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
@@ -2397,7 +2413,8 @@ Each page prints `translated`, `cached`, or `failed: reason`, followed by counts
 A page's reported translation failure does not stop the next page; any failures
 make the command exit 1. `--json` returns the outcomes and counts instead.
 Open or refresh the reader afterward: 中文 mode shows current cached prose, with
-quotes in their original language. An untranslated record still shows **原文**.
+quotes in their original language. An untranslated record still says
+**中文版还没好，先看原文** under its header.
 
 
 Each model translation records a `translate` run with its language, page,

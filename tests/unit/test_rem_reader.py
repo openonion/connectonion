@@ -4502,3 +4502,47 @@ def test_the_night_chart_window_never_ends_before_it_starts():
     ''')
     assert result['ahead'][0] >= 3600000
     assert result['phone'] == 30 and result['desk'] == 3
+
+
+def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
+    """Sprint 15: the org page said 16 things while Today's header said less. The org's number is Today's
+    waiting-on-you rule kept to its own rows: done, quiet, stale and answered items have left Today."""
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['orgWaiting'])
+    result = _run_reader_js(functions + r'''
+      const r = {path: 'people/mara-ostrowski.md'}, other = {path: 'people/tomas-reyes.md'};
+      const doneKey = entry => entry.r.path + '\n' + entry.t.text;
+      const make = (text, extra = {}, page = r) => ({r: page, t: {text, dir: 'mine', ...extra}});
+      const entries = [make('addendum'), make('export', {dir: 'theirs'}), make('quiet', {quiet: true}), make('stale'),
+        make('done'), make('held'), make('elsewhere', {}, other), make('merged copy')];
+      entries[7].members = [make('member of org row')];
+      const threadEntries = () => entries, isDone = entry => entry.t.text === 'done', staleEntry = entry => entry.t.text === 'stale';
+      const threadDraft = entry => entry.t.text === 'held' ? {status: 'held'} : null;
+      const row = text => ({row: {key: 'people/mara-ostrowski.md\n' + text}});
+      const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'member of org row'].map(row);
+      console.log(JSON.stringify(orgWaiting({owed}).map(entry => entry.t.text)));
+    ''')
+    assert result == ['addendum', 'merged copy']
+
+
+def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_nothing():
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+                          for name in ['translationLine'])
+    result = _run_reader_js(functions + r'''
+      UI.zh = {'Not translated yet — showing the original': '中文版还没好，先看原文'};
+      const el = (tag, attrs) => ({tag, ...attrs});
+      let queued = false, REM = {status: {worker: {enabled: true}}};
+      const translationQueued = () => queued, page = {path: 'people/mara-ostrowski.md'};
+      uiLanguage = 'zh';
+      const plain = translationLine(page);
+      queued = true;
+      const pending = translationLine(page), translated = translationLine({...page, translations: {zh: '#'}});
+      const chinese = translationLine({...page, written_in: 'zh-Hans'});
+      queued = false; REM.status.translation_coverage = {zh: {requested: true}};
+      const nightly = translationLine(page);
+      uiLanguage = 'en';
+      console.log(JSON.stringify({plain, pending, translated, chinese, nightly, english: translationLine(page)}));
+    ''')
+    assert result['plain'] is None and result['translated'] is None and result['chinese'] is None and result['english'] is None
+    for key in ('pending', 'nightly'):
+        assert result[key]['text'] == '中文版还没好，先看原文' and result[key]['class'] == 'translation-line'

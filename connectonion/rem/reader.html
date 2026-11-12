@@ -940,6 +940,9 @@
   .person-head h1 { margin-bottom: 12px; }
   .person-lead { max-width: 72ch; margin: 0 0 12px; font: var(--s-body)/1.5 var(--font); }
   .contact-line.leadrow { margin: 0; color: var(--grey); }
+  /* A translation on its way: one quiet worded line under a record's header (D-103, sprint 15). */
+  .translation-line { margin: 10px 0 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
@@ -3126,8 +3129,8 @@
   .bento > :nth-child(2) { animation-delay: var(--t-stagger); }
   .bento > :nth-child(3) { animation-delay: calc(var(--t-stagger) * 2); }
   .bento > :nth-child(4) { animation-delay: calc(var(--t-stagger) * 3); }
-  .bento .wt h2 { margin: 0; color: inherit; font: inherit; }
-  .bento .wt .end { margin-left: auto; }
+  :is(.bento, .n3-person > .r4-topics) .wt h2 { margin: 0; color: inherit; font: inherit; }
+  :is(.bento, .n3-person > .r4-topics) .wt .end { margin-left: auto; }
   .bento .r4-sec { margin: 0; padding: 18px 20px; border: 0; }
   .rh-row { display: flex; align-items: flex-end; gap: 22px; }
   .rh { flex: 1; min-width: 0; }
@@ -3160,7 +3163,8 @@
   .n3-person .r4-topics li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 6px 0; border: 0; }
   .n3-person .r4-topics li .d { color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
   .rel-slot:empty { display: none; }
-  .bento .r4-topics { grid-column: 1 / -1; }
+  /* Open topics lead the page under the header (sprint 15); the widgets follow. */
+  .n3-person > .r4-topics { margin: 16px 0 0; padding: 18px 20px; border: 0; }
   .bento .person-sessions { grid-column: span 2; }
   .person-sessions ul { list-style: none; margin: 0; padding: 0; }
   .person-sessions .wt a { color: var(--grey); }
@@ -3179,10 +3183,11 @@
 
   @media (max-width: 640px) {
     .n3-person .hero { flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 20px 18px; }
-    .n3-person .hero .face.xl { width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
-    .hero-who { flex: 1 1 100%; order: -1; }  /* the name leads with the card's whole width: a long word hyphenates instead of breaking */
-    .hero-acts { width: auto; flex: 1; }
-    .hero-acts { justify-content: flex-start; gap: 6px; }
+    /* The face stays in the header beside the name, as on a contact card; the contact buttons take the row
+       below (sprint 15: it had sat among them). A long name hyphenates instead of breaking. */
+    .n3-person .hero .face.xl { align-self: flex-start; width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+    .hero-who { flex: 1 1 0; }
+    .hero-acts { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
     .n3-person .r4-today { margin-left: auto; padding: 0 12px; }
     .round { width: 40px; height: 40px; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -3302,6 +3307,7 @@ const UI = {
     "{n} more items": "其余 {n} 件",
     "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
+    "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
@@ -3634,7 +3640,7 @@ const UI = {
     "More columns": "更多列",
     "What your agents can do, the ones you use most first.": "你的 agent 会做的事，最常用的在前",
     "{n} skill": "{n} 个技能", "{n} skills": "{n} 个技能", "Find among {n} skills…": "在 {n} 个技能里找…",
-    "Most used": "最常用", "counted by skill-name matches": "按技能名称匹配计数",
+    "Most used": "最常用",
     "{n} matches in {days} days · last {last}": "近 {days} 天用到 {n} 次 · 最近 {last}", "{n} matches": "{n} 次",
     "{n} installed copies": "{n} 份安装副本", "Everything they can do": "全部能力", "Lives in": "所在位置", "Open SKILL.md": "打开 SKILL.md",
     "Claude Code plugin": "Claude Code 插件", "Shared agent skills": "共用 agent 技能",
@@ -6709,16 +6715,16 @@ function memoryConnection(records) {
   }
   return null;
 }
-// The crumb's mark for a page not yet in the reader's language: a quiet 原文 (D-103). Opening the page
-// only moves it up the nightly queue (translate.request); nothing translates it while it is open and the
-// page never reloads its translation, so a 翻译中 here stayed for ever. The title says what happens next.
-// Meta size, grey, beside the crumb; never a line of its own above the name.
-function translationMark(r) {
-  if (uiLanguage === "en" || r.translations?.[uiLanguage]) return null;
-  const mark = originalMark(), queued = translationQueued(r) || REM.status?.translation_coverage?.[uiLanguage]?.requested;
-  if (!REM.status?.worker?.enabled) mark.title = t("Translation pending — background updates off");
-  else if (queued) mark.title = t("Queued for the next translation pass");
-  return mark;
+// A record page not yet in the reader's language shows its original quietly (D-103). The owner read the old
+// 原文 chip above every name as jargon (sprint 15): a page simply in English with no translation on its way says
+// nothing, and one on its way says so in words, one meta-size line under the header, by the body it describes.
+// Opening the page only moves it up the nightly queue (translate.request); nothing translates it while it is
+// open, so the line never says "translating". The title says what happens next.
+function translationLine(r) {
+  if (uiLanguage === "en" || r.translations?.[uiLanguage] || r.written_in?.toLowerCase().split("-")[0] === uiLanguage) return null;
+  if (!translationQueued(r) && !REM.status?.translation_coverage?.[uiLanguage]?.requested) return null;
+  return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
+    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
 }
 function originalMark() {
   return el("span", { class: "lang-status", text: t("Original"), title: t("No Chinese translation yet; showing original") });
@@ -8307,7 +8313,7 @@ function personHead(r) {
   const late = group ? groupLate(group) : 0;
   return el("header", { class: "r4-head person-head hero" }, [fusedFace(r, late, "xl"),
     el("div", { class: "hero-who" }, [
-      el("div", { class: "hero-marks" }, [updatedMarker(r, true), translationMark(r)]),
+      el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
       el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
     el("div", { class: "hero-acts" }, [...personContacts(r), personTodayLink(r, late)])]);
 }
@@ -8388,11 +8394,12 @@ function personStats(r, d = personFuseData(r)) {
     f.last ? [fmtDate(f.last), last, d?.wait ? "late" : ""] : null].filter(Boolean);
   return cells.length ? el("div", { class: "r4-stats" }, cells.map(([value, label, cls]) => el("div", { class: cls || "" }, [el("b", { class: "big", text: value }), el("span", { text: label })]))) : null;
 }
+// What is still open with them leads, right under the header: it is what the owner opens a person for (sprint 15).
 // The rest of the record as widgets; the full note with every source stays below them.
 function personPage(r) {
-  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r),
+  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), translationLine(r), personTopics(r),
     el("div", { class: "bento" }, [personFuse(r), personQuotes(r), personTimeline(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
-      el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r), personTopics(r)].filter(Boolean))]);
+      el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r)].filter(Boolean))].filter(Boolean));
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
 // exchange in the record. Positions are the real dates; nothing is spaced for looks.
@@ -8544,7 +8551,7 @@ function personSessions(r) {
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 3).map(s => sessionContextRow(s, r.title)))]);
 }
 // What is still open between you, as facts of the record (D-30: no to-do UI here; D-36: not folded).
-// The words and the date only; marking, replying and closing happen in Today.
+// The words and the date only; marking, replying and closing happen in Today. The top three show; 全部 N 条 opens the rest.
 function personTopics(r) {
   const items = threads(r).items.filter(item => item.dir !== "third");
   const rows = items.map(item => {
@@ -8552,9 +8559,9 @@ function personTopics(r) {
     return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
       el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
   }).filter(Boolean);
-  rows.slice(2).forEach(row => row.classList.add("later"));
-  const list = el("ul", { class: rows.length > 2 ? "" : "all" }, rows);
-  return rows.length ? el("section", { class: "widget r4-sec r4-topics" }, [widgetHead("activity", t("Open topics"), rows.length > 2 ? expandChip(list, t("Show all {n} entries", { n: rows.length })) : el("span", { text: String(rows.length) })), list]) : null;
+  rows.slice(3).forEach(row => row.classList.add("later"));
+  const list = el("ul", { class: rows.length > 3 ? "" : "all" }, rows);
+  return rows.length ? el("section", { class: "widget r4-sec r4-topics" }, [widgetHead("activity", t("Open topics"), rows.length > 3 ? expandChip(list, t("All {n} entries", { n: rows.length })) : el("span", { text: String(rows.length) })), list]) : null;
 }
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
@@ -9448,7 +9455,7 @@ const ORG_UI_ZH = {
   "{n} days without mail": "{n} 天没有邮件", "{n}% less mail in the last 30 days": "最近 30 天少了 {n}%",
   "REM has {n} questions for you": "REM 还有 {n} 个问题想问你", "Where this sits": "所在位置", "{n} units": "{n} 个单位",
   "In touch since {date}": "{date}起有往来", "Last contact {date}": "最近往来 {date}", "Most recently in touch": "最近联系的人",
-  "{n} things in Today involve {org} →": "今天里有 {n} 件和 {org} 有关的事 →", "How {org} is built": "{org} 的结构",
+  "1 thing in Today involves {org} →": "今天里有 1 件和 {org} 有关的事 →", "{n} things in Today involve {org} →": "今天里有 {n} 件和 {org} 有关的事 →", "How {org} is built": "{org} 的结构",
   "Size = people you know there": "大小 = 你在那里认识的人数", "In touch within 45 days": "45 天内有往来", "When you were in touch": "你们什么时候有往来",
   "First contact": "第一次往来", "Latest contact": "最近一次往来", "{n} people here": "{n} 人", "Units and people": "分支与团队",
   "{n} units · {m} people": "{n} 个单位 · {m} 人", "Projects with {org}": "和 {org} 有关的项目"
@@ -9758,14 +9765,14 @@ function orgCrumb(r) {
   return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
 }
 function orgOver(r) {
-  return el("header", { class: "ov-over" }, [orgCrumb(r), translationMark(r),
+  return el("header", { class: "ov-over" }, [orgCrumb(r),
     !orgHidden(r) && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null]);
 }
 function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }), updatedMarker(r, true),
-      el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
+      translationLine(r), el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
@@ -9786,8 +9793,17 @@ function orgKeyPeople(v) {
       el("span", { class: "ov-meta", text: [orgPersonRole(p), fmtDate(orgLast(p))].filter(Boolean).join(" · ") })])))]);
 }
 // What you owe lives in Today: one quiet line, never a ledger or a button here.
+// The link counts what Today counts (sprint 15): the items waiting on you, by the rule Today's header and badge use
+// (threadCounts().mine; waitingOnYou once sprint14/today-hierarchy lands), kept to this organisation's rows. What
+// is done, quiet, stale or answered has left Today, so it leaves here too and the number never exceeds Today's.
+function orgWaiting(v) {
+  const keys = new Set(v.owed.flatMap(entry => entry.row.keys || [entry.row.key]));
+  return threadEntries().filter(entry => !isDone(entry) && entry.t.dir === "mine" && !entry.t.quiet && !staleEntry(entry)
+    && !["held", "sent"].includes(threadDraft(entry)?.status) && [entry, ...(entry.members || [])].some(member => keys.has(doneKey(member))));
+}
 function orgTodayLink(v) {
-  return v.owed.length ? el("a", { class: "ov-today", href: "#view=open", text: orgT("{n} things in Today involve {org} →", { n: v.owed.length, org: orgName(v.r) }) }) : null;
+  const n = orgWaiting(v).length;
+  return n ? el("a", { class: "ov-today", href: "#view=open", text: orgT(n === 1 ? "1 thing in Today involves {org} →" : "{n} things in Today involve {org} →", { n, org: orgName(v.r) }) }) : null;
 }
 
 // ---------- the X-ray: square = branch, circle = team, dot = person; ring = in touch lately ----------
@@ -10278,7 +10294,7 @@ function skillsView(items) {
     const nameOnly = items.filter(r => !shown.has(r.path) && !skillLine(r)).sort((a, b) => a.title.localeCompare(b.title));
     const families = skillFamilies(items.filter(r => !shown.has(r.path) && skillLine(r)), items);
     if (top.length) content.appendChild(el("section", { class: "skills-top" }, [
-      sectionHead("Most used", "counted by skill-name matches"),
+      sectionHead("Most used"),
       el("ul", { class: "skill-cards" }, top.map(skillCard))]));
     const anchors = families.map(([name], i) => "skill-family-" + i);
     if (families.length) content.appendChild(el("nav", { class: "skill-shape", "aria-label": t("Everything they can do") }, [
@@ -11482,7 +11498,7 @@ function activityPanel(r, recent = false) {
 
 function recordEyebrow(r, person) {
   const k = known(r), children = [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
-    updatedMarker(r, true), translationMark(r)];
+    updatedMarker(r, true)];
   const status = !person && statusPill(r);
   if (status) children.push(el("span", { class: "sep", text: "/" }), status);
   if (!person && !["projects", "orgs"].includes(r.category)) children.push(el("span", { class: "when", text:
@@ -11503,7 +11519,7 @@ function record(path, heading) {
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
-  translationQueued(r);  // asks for the translation; the crumb's small mark says it is under way
+  translationQueued(r);  // asks for the translation; the line under the header says it is under way
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
@@ -11525,6 +11541,8 @@ function record(path, heading) {
     main.appendChild(recordEyebrow(r, person));
     head.appendChild(leadRow(r));
     main.appendChild(head);
+    const line = translationLine(r);
+    if (line) main.appendChild(line);
     main.appendChild(recordFocus(r));
   }
   const decisions = threadDecisionHistory(r);
@@ -12341,7 +12359,8 @@ function graphPanel() {
 }
 function graphPanelGuide() {
   const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
-  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
+  // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
+  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && n.r?.path !== REM.owner).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
   const count = n => graphT("{n} links", { n: graphDegree(n) });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
       topics.length ? el("p", { text: graphT("Knowledge is the thread between people, organisations and projects. Start with one entry.") }) : null]),
