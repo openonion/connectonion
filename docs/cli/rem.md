@@ -1058,14 +1058,21 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   beside **Mark done**; it is kept on this device, and the item stays in
   Today and on the People list. Project and organisation pages show each date once,
   under the title, in the reader's date format; when the file was last
-  updated is noted in the Full memory and sources header. In 中文 mode,
+  updated is noted in the Full memory and sources header. An organisation is
+  private only when its title carries `[personal]`/`[sensitive]` or its Kind
+  is personal; a labelled passage in its body hides that passage alone, as on
+  a person's page, and a person listed only on a labelled line is not drawn
+  into its structure. A project's folder path stays in its full memory, never
+  as a fact on the page, and session summaries that say "the owner" read as
+  you / 你. In 中文 mode,
   Facts values and Related pages snippets come from cached translations
   when they exist, and otherwise show the original with a 原文 mark.
   Investigated records omit the redundant status pill; mapped and partly
   investigated records keep it, and reviewed skills say **Source reviewed**.
-  A missing page translation shows **Translation pending** with its queue or
-  background-off state, or **Translating** once the live reader has asked for
-  it: one small grey mark in the crumb above the name, never a line of its own; cached translations preserve the original Sources lines.
+  A page with no translation yet shows a quiet **Original** (原文) mark, whose
+  tooltip says whether it is queued for the next pass or background updates
+  are off. Opening the page only queues it, so the reader never says
+  "translating": one small grey mark in the crumb above the name, never a line of its own; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never
@@ -2285,8 +2292,8 @@ backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
-The reader marks an untranslated page **Translation pending** while showing the
-original. Opening it in a non-English interface queues that language for the
+The reader marks an untranslated page with a quiet **Original** (原文) while
+showing the original. Opening it in a non-English interface queues that language for the
 next pass, even if it was not detected among the owner's languages. The Read in
 menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.

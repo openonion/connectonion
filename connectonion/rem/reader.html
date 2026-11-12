@@ -855,8 +855,6 @@
   .record-focus.skills:has(~ .missing.primary) .focus-head { padding-bottom: 16px; }
   .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .focus-fact { min-width: 0; }
-  .focus-facts dd.local-path { display: block; overflow: visible; overflow-wrap: anywhere; word-break: normal; }
-  .local-path .path-segment { display: inline-block; max-width: 100%; vertical-align: top; }
   .focus-facts dt { font: var(--w-bold) var(--s-meta) var(--font); text-transform: none; letter-spacing: 0; color: var(--grey); }
   .focus-facts dd { margin: 6px 0 0; font-size: var(--s-meta); color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .contact-strip dd { display: block; }
@@ -3295,7 +3293,6 @@ const UI = {
     "Another job was holding the notebook, so the last round did not run; the next round tries again.": "另一项任务占着笔记本，上一轮没跑成；下一轮会再试。",
     "The last scheduled round could not finish and is waiting for its blocker to clear.": "上一轮定时任务被挡住了，没有跑完，正在等阻塞解除。",
     "The last two scheduled rounds did not finish; REM retries them automatically.": "最近两轮定时任务都没有跑完；REM 会自动重试。",
-    "Translating": "翻译中",
     "Pages are translated when you open them.": "打开页面时会翻译成中文。",
     "Getting to know them": "待了解",
     "More to learn": "还有待了解",
@@ -3435,7 +3432,6 @@ const UI = {
     "Could not draft for 1 person": "有 1 个人没能起草", "Could not draft for {n} people": "有 {n} 个人没能起草",
     "Supported by the cited source": "有引用来源支持",
     "Original": "原文",
-    "Translation pending": "翻译待处理",
     "Queued for the next translation pass": "已排入下一轮翻译",
     "Translation pending — queued for tonight": "翻译待处理，已排入今晚队列",
     "Prepared reply draft": "已准备回复草稿",
@@ -3799,7 +3795,6 @@ const UI = {
     "Next step": "下一步",
     "What this is": "项目简介",
     "View all decisions →": "查看全部决定 →",
-    "Local path": "本地路径",
     "Last mapped session": "最近会话",
     "Mapped sessions": "会话数",
     "Not investigated yet: ": "尚未调查：",
@@ -4569,6 +4564,19 @@ function youify(text) {
       (m, between, word) => between + (ALSO_VERBS.has(word.replace("’", "'").toLowerCase()) ? plural(word.replace("’", "'")) : word))
     .replace(/\u0004/g, "")
     .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
+}
+// Session summaries are stored with the role word: "The owner asked…", "Owner 询问…". The reader says
+// you / 你 at display time and the notebook keeps its words. Only the role word changes: in "Mara is the
+// Product Owner" or "Product Owner 负责" it is someone's title, so a Latin word before it leaves it alone.
+function ownerAsYou(text) {
+  const you = (T, rest) => (T === "T" ? "Y" : "y") + rest, verb = { has: "have", is: "are", was: "were" };
+  return String(text || "")
+    .replace(/\s*\b[Oo]wner\b\s*/g, (word, at, all) => /^[\p{Script=Han}，。、：；）”]/u.test(all.slice(at + word.length))
+      && !/[A-Za-z]$/.test(all.slice(0, at)) ? "你" : word)
+    .replace(/(^|[.!?]\s+)Owner\b(?= [a-z])/g, "$1The owner")
+    .replace(/\b([Tt])he owner['’]s\b/g, (m, T) => you(T, "our"))
+    .replace(/\b([Tt])he owner (has|is|was)\b/g, (m, T, v) => you(T, "ou " + verb[v]))
+    .replace(/\b([Tt])he owner\b/g, (m, T) => you(T, "ou"));
 }
 // Privacy labels trail a sentence or clause in either writing system. Keep
 // code and link targets atomic so a filename's dot cannot expose its prefix.
@@ -5850,7 +5858,6 @@ function facts(r) {
     domain: contact.website || r.domain || plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
     people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
       .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
-    repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions[:：]\s*(\d+)/)) || null
   };
   // The index (#2067) supplies derived columns; explicit page Company/Role fields
@@ -6575,14 +6582,19 @@ function memoryConnection(records) {
   }
   return null;
 }
-// The crumb's mark for a page not yet in the reader's language: 翻译中 once the live reader has asked
-// for it, else 翻译待处理. Meta size, grey, beside the crumb; never a line of its own above the name.
+// The crumb's mark for a page not yet in the reader's language: a quiet 原文 (D-103). Opening the page
+// only moves it up the nightly queue (translate.request); nothing translates it while it is open and the
+// page never reloads its translation, so a 翻译中 here stayed for ever. The title says what happens next.
+// Meta size, grey, beside the crumb; never a line of its own above the name.
 function translationMark(r) {
   if (uiLanguage === "en" || r.translations?.[uiLanguage]) return null;
-  return translationQueued(r) ? el("span", { class: "lang-status", text: t("Translating") }) : originalMark(true);
+  const mark = originalMark(), queued = translationQueued(r) || REM.status?.translation_coverage?.[uiLanguage]?.requested;
+  if (!REM.status?.worker?.enabled) mark.title = t("Translation pending — background updates off");
+  else if (queued) mark.title = t("Queued for the next translation pass");
+  return mark;
 }
-function originalMark(pending = false) {
-  return el("span", { class: "lang-status", text: t(pending ? "Translation pending" : "Original"), title: t(pending ? REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off" : "No Chinese translation yet; showing original") });
+function originalMark() {
+  return el("span", { class: "lang-status", text: t("Original"), title: t("No Chinese translation yet; showing original") });
 }
 function claimValue(claim, r, after, compact = false) {
   let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
@@ -9888,7 +9900,7 @@ function sessionText(r) {
   if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
   const clean = text => unlabelled(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
-  const fields = { title: clean(r.session_title || r.title), summary: clean(r.session_summary),
+  const fields = { title: clean(r.session_title || r.title), summary: ownerAsYou(clean(r.session_summary)),
     tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
   fields.lower = Object.values(fields).join("\n").toLowerCase();
   SESSION_TEXT.set(r.path, fields);
@@ -10129,7 +10141,7 @@ function sessionStopped(records) {
     el("p", { class: "session-stopped-kicker" }, [el("span", { class: "chip lamp", text: t("Unfinished") }),
       [t("You stopped here"), fmtDate(r.session_date), sessionPlace(r), tool.name].join(" · ")]),
     el("h2", {}, [el("a", { href: href(r), text: sessionPreview(sessionText(r).title) })]),
-    el("p", { class: "session-stopped-summary", text: plainLine(r.session_summary) }),
+    el("p", { class: "session-stopped-summary", text: ownerAsYou(plainLine(r.session_summary)) }),
     todos.length ? el("ul", { class: "session-stopped-todos" }, todos.map(item => el("li", { text: item }))) : null,
     el("div", { class: "session-stopped-actions" }, [
       el("a", { class: "btn-act play", href: href(r) + "&h=session-continue", text: t("Continue in {tool}", { tool: tool.name }) }),
@@ -10212,7 +10224,7 @@ function sessionOrder(a, b) {
 function sessionContextRow(r, find = "") {
   return el("li", { class: "session-context-row" }, [
     el("a", { href: href(r) + (find ? "&find=" + encodeURIComponent(find) : ""), text: sessionPreview(r.title) }),
-    el("span", { class: "session-context-summary", text: sessionPreview(r.session_summary || r.session_reply || sessionText(r).agent) }),
+    el("span", { class: "session-context-summary", text: sessionPreview(ownerAsYou(r.session_summary || r.session_reply || sessionText(r).agent)) }),
     el("time", { text: fmtDate(r.session_date) }),
     el("span", { class: "session-tags" }, (r.session_tags || []).slice(0, 3).map(tag => el("a", {
       href: sessionHash({ project: r.session_project, tag }), text: tag })))]);
@@ -10396,7 +10408,7 @@ function sessionRecord(r, heading) {
   const main = document.getElementById("main"), project = byPath(r.session_project), messages = sessionMessages(r);
   const attachment = sessionFrame(r);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
-  const summary = unlabelled(r.session_summary || sessionSection(r, "Summary")), followups = sessionSection(r, "Follow-ups");
+  const summary = ownerAsYou(unlabelled(r.session_summary || sessionSection(r, "Summary"))), followups = sessionSection(r, "Follow-ups");
   const page = el("article", { class: "session-page" }, [
     el("div", { class: "eyebrow" }, [el("a", { href: lastSessionListHash, text: label("sessions") }),
       project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
@@ -10793,9 +10805,6 @@ function threadWords(text, r) {
   const words = text.replaceAll("**", "").replace(/^[^:;!?：；！？]+?\s+owes?\s+(?:the user|user|you)\b\s*:?\s*/i, "");
   return name ? words.replace(new RegExp("^(?:the user|user|you)\\s+(?:owes?|asked)\\s+(?:" + name + ")\\b\\s*:?\\s*", "i"), "") : words;
 }
-function localPath(value) {
-  return String(value).split("/").map(part => '<span class="path-segment">' + esc(part) + "</span>").join("/<wbr>");
-}
 function projectLimit(r) {
   if (r.category !== "projects" || known(r).status === "Mapped" || newestStanding(r)) return null;
   const insight = section(r, "insight");
@@ -10889,14 +10898,15 @@ function recordFacts(r) {
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
-    : r.category === "projects" ? [["Mapped sessions", f.sessions], ["Local path", f.repo]]
+    // A project's folder path is the machine's, not something the owner reads (D-60): it stays in the full memory.
+    : r.category === "projects" ? [["Mapped sessions", f.sessions]]
       : r.category === "orgs" ? (r.domain ? [] : [["Domain", f.domain]])
       : [];
   const shown = labels.filter(([, value]) => knownValue(value)).slice(0, 3);
   return shown.length ? el("dl", { class: "focus-facts" }, shown.map(([key, value]) => {
     const text = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? fmtDate(value) : String(value);
     return el("div", { class: "focus-fact" }, [el("dt", { text: t(key) }),
-      changedValue(el("dd", { class: key === "Local path" ? "local-path" : "", html: key === "Local path" ? localPath(value) : inline(text, r.path), title: plainLine(text) }), r, key)]);
+      changedValue(el("dd", { html: inline(text, r.path), title: plainLine(text) }), r, key)]);
   })) : null;
 }
 function recordContext(r) {
@@ -11375,7 +11385,7 @@ function bestMatch(r) {
     ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], [mappedContact(r) ? "Last contact in map" : "Last contact", k.last ? fmtDate(k.last) : ""]]
     : r.category === "orgs"
       ? [["What they do", plainValue(first("What they do") || f.what)], ["Website", plainValue(first("Website") || f.domain)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
-      : [[first("Repository") ? "Repository" : "Local path", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
+      : [["Repository", plainValue(first("Repository"))], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
   const open = f.open[0];
   return el("section", { class: "best" }, [
     el("div", { class: "best-head" }, [el("span", { class: "lead", text: t("Best match") }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
@@ -11698,6 +11708,7 @@ function graphGlyph(kind, size = 14, privateNode = false) {
 // ---------- canvas ----------
 function graphCanvas() { return document.querySelector(".gx-map .gx-canvas"); }
 function graphResize() {
+  graphStage();
   const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
   canvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -11780,6 +11791,16 @@ function graphLabels(ctx, order, colours) {
   }
 }
 function graphPanelWidth() { return graphPhone() ? 0 : 396; }
+// The canvas starts under the heading and ends above the legend: a canvas under a see-through heading
+// drew nodes on the tabs and the title, and panning could push any node there. On a phone the stage
+// is already its own block between the heading and the panel.
+function graphStage() {
+  const map = document.querySelector(".gx-map"), stage = map.querySelector(".gx-stage");
+  if (graphPhone()) { stage.style.top = stage.style.bottom = ""; return; }
+  const head = map.querySelector(".gx-head"), foot = Math.min(...[".gx-legend", ".gx-zoom"].map(selector => map.querySelector(selector).offsetTop));
+  stage.style.top = head.offsetTop + head.offsetHeight + 12 + "px";
+  stage.style.bottom = map.clientHeight - foot + 8 + "px";
+}
 // Fit what is shown, leaving room for the heading above, the panel at the right and the legend below.
 function graphFit() {
   const { focus, near1, near2, W, H } = graphState, phone = graphPhone();
@@ -11787,7 +11808,7 @@ function graphFit() {
   const points = GRAPH.linked.filter(n => ids ? ids.has(n.id) : graphVisible(n));
   if (!points.length) return;
   const [x0, x1] = d3.extent(points, n => n.x), [y0, y1] = d3.extent(points, n => n.y);
-  const L = phone ? 16 : 40, R = phone ? 16 : graphPanelWidth() + 24, top = phone ? 20 : 170, bottom = phone ? 20 : 56;
+  const L = phone ? 16 : 40, R = phone ? 16 : graphPanelWidth() + 24, top = 20, bottom = 20;
   const k = Math.min((W - L - R) / ((x1 - x0) || 1), (H - top - bottom) / ((y1 - y0) || 1), ids ? 2 : 4) * (ids ? .8 : .92);
   graphState.T = d3.zoomIdentity.translate(L + (W - L - R) / 2 - k * (x0 + x1) / 2, top + (H - top - bottom) / 2 - k * (y0 + y1) / 2).scale(k);
   if (graphState.zoom) d3.select(graphCanvas()).call(graphState.zoom.transform, graphState.T);
