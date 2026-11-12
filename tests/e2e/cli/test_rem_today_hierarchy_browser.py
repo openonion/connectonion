@@ -49,6 +49,7 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     assert batch.evaluate("node => node.tagName") == "BUTTON"
     batch.click()
     assert page.locator("#approval-sheet").is_visible()
+    assert page.locator("#approval-title").inner_text() == "Approve all 2"   # the sheet says the button's number
     page.keyboard.press("Escape")
     waiting = others.locator("a.waiting-more")
     assert waiting.get_attribute("href") == "#view=open"
@@ -160,7 +161,8 @@ def test_long_quiet_promises_are_one_folded_line_below_the_desk_with_close_all_a
     stale.locator("summary").click()
     for row in stale.locator("li").all():
         assert row.get_by_role("button").all_inner_texts() == ["Mark done", "Still open"]
-    stale.get_by_role("button", name="Mark all done", exact=True).click()
+    assert stale.get_attribute("aria-label") is None                         # its words are on screen
+    stale.get_by_role("button", name="Mark all 2 done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
     marks = page.evaluate("() => Object.values(threadStates).map(value => value.keys.length)", isolated_context=False)
     assert marks == [1, 1], marks                                            # two marks, never one linked thread
@@ -173,3 +175,15 @@ def test_today_no_longer_asks_what_to_remember_without_a_reason(today):
     page.evaluate(LIVE, isolated_context=False)
     assert page.locator(".recall").count() == 0
     assert "What should you remember" not in page.locator("#main").inner_text()
+
+
+def test_a_held_reply_leaves_the_count_the_badge_and_the_waiting_rows_together(today):
+    page, _, _ = today
+    page.evaluate(DRAFT, True, isolated_context=False)
+    page.evaluate("() => { REM.drafts[0].status = 'held'; threadEntries.cached = null; render(); }", isolated_context=False)
+    badge = int(page.locator("#nav .n.waiting").inner_text())
+    assert int(page.locator(".night-card .count").inner_text()) == badge
+    page.evaluate("location.hash = '#view=open'", isolated_context=False)
+    band = page.locator(".task-band").filter(has=page.get_by_role("heading", name="Waiting on you")).first
+    band.wait_for()
+    assert band.locator("ul.threads > li").count() == badge

@@ -1414,7 +1414,7 @@ def test_written_thread_dates_and_evidence_backed_request_groups():
 @pytest.mark.parametrize('blocked', [False, True])
 def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
     page = TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'answered', 'waitingOnYou', 'threadCounts']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
@@ -1602,17 +1602,17 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['nightCard', 'countLine', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
+                          for name in ['nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
       const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null;
       let mine = 5;
-      const threadCounts = () => ({mine});
+      const threadCounts = () => ({mine}), staleEntry = () => false, threadDraft = () => null;
       const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const face = name => ({tag: 'span', text: name.slice(0, 2), children: [], append(node) { this.children.push(node); }});
-      const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
-        {r: {path: 'b', title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]},
-        {r: {path: 'c', title: 'Cy'}, entries: [{t: {since: '2026-10-20'}}]}];
+      const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}, {t: {dir: 'mine', due: '2026-10-18'}}]},
+        {r: {path: 'b', title: 'Bea'}, entries: [{t: {dir: 'mine', due: '2026-10-19'}}, {t: {dir: 'mine', due: '2026-10-23'}}]},
+        {r: {path: 'c', title: 'Cy'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}]}];
       const card = nightCard(groups, 'b');
       mine = 0;
       const quiet = nightCard([], null);
@@ -1642,7 +1642,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'countLine', 'faceStrip', 'fusedFace', 'groupLate']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1651,7 +1651,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       let OWING = null;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
-      const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7});
+      const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7}), threadDraft = () => null, staleEntry = () => false;
       const icon = () => null, nightChart = () => null, threadAge = () => 'new', overdueDays = () => 0;
       const face = name => ({tag: 'span', text: name, append() {}});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
@@ -3120,7 +3120,7 @@ def approval_functions(*names):
 
 
 def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'readyCount', 'openApprovalSheet', 'approvalUndoBar') + r'''
 (async () => {
   openApprovalSheet(REM.approval_outcomes);
   const sheet = document.getElementById('approval-sheet'), checks = sheet.querySelectorAll('input');
@@ -3156,7 +3156,7 @@ def test_approval_undo_failure_can_be_retried_before_expiry():
 
 
 def test_static_approval_cta_and_durable_failure_copy():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'readyCount', 'approvalProblems') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
@@ -3168,7 +3168,7 @@ def test_static_approval_cta_and_durable_failure_copy():
 
 
 def test_approval_header_reads_restored_outcomes_when_reopened():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'readyCount', 'approvalProblems') + r'''
       let opened;
       const openApprovalSheet = items => {opened = items.map(item => item.id);};
       const restored = REM.approval_outcomes[0];
@@ -3191,7 +3191,7 @@ def test_static_snapshot_never_offers_live_undo():
 
 def test_approval_request_freezes_all_controls_until_response():
     dom = APPROVAL_DOM.replace('const approvalRequest = async payload =>', 'let approvalRequest = async payload =>')
-    result = _run_reader_js(dom + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar') + r'''
+    result = _run_reader_js(dom + approval_functions('approvalStatus', 'readyCount', 'openApprovalSheet', 'approvalUndoBar') + r'''
 (async () => {
   let settle;
   approvalRequest = payload => new Promise(resolve => {settle = resolve;});

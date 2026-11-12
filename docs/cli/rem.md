@@ -885,13 +885,15 @@ pinned to that edge: it comes into view with the draft.
   headline, the lanes or the overnight names. Since sprint 14 the large number
   is the one "waiting on you" count, the same as the sidebar's (and the phone
   tab's) **Waiting on you** badge: the items in Waiting on you that need you
-  (**21 things waiting on you**, 21 件在等你). The faces beside it are a subset
+  (**21 things waiting on you**, 21 件在等你), and the rows of that band on Waiting on you are exactly
+  those items: a reply sent or held for its 10 minutes leaves all three together (the hold's **Undo** bar shows on
+  Waiting on you too), and with none waiting the header says *Nobody is waiting on you today.*. The faces beside it are a subset
   and say so in words under it (**Start with these 5 people**, 先看这 5 个人;
   a phone keeps the words of the count and leaves the faces to speak). The side
   has no large numbers to stare at: what can be approved at once is a worded
   button, **Approve all N** (一键批准这 N 件), counting only items that can go
   now (a reply waiting for you to fill a gap is not among them) and opening the
-  approval sheet; what others owe is a worded link to its list, **See the N
+  approval sheet, whose title says the same N; what others owe is a worded link to its list, **See the N
   waiting on others →** (看 N 件在等谁 →); with nothing on others the link
   reads **Everything open**. With nothing that can go at once there is no
   button at all, never a greyed one or a zero. Today no longer asks **What
@@ -941,8 +943,10 @@ pinned to that edge: it comes into view with the draft.
   which an undated thread goes quiet), is not counted among the people waiting
   and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
   desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
-  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all done** (都标为完成)
-  closes every one of them, each as its own mark (never linked as one thread), with one **Undo** for the batch;
+  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all N done**
+  (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
+  (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
+  any it refused get one *Not saved · Try again* for just those;
   past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this

@@ -502,7 +502,7 @@ def test_today_card_speaks_chinese_where_rem_already_wrote_it():
 
 def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
     """Build 3b re-review: an owner row that names nobody is dropped before the five places are counted."""
-    result = _run_reader_js(reader_functions('personGroups', 'todayGroups') + r'''
+    result = _run_reader_js(reader_functions('personGroups', 'answered', 'waitingOnYou', 'todayGroups') + r'''
       const REM = {owner: 'people/owner.md'};
       const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
       const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];

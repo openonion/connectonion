@@ -3033,7 +3033,7 @@
   #night-sheet .night-done ul { list-style: none; margin: 0; padding: 0; }
   #night-sheet .night-done li { display: grid; gap: 2px; padding: 12px 0; border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   #night-sheet .night-done li b { color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
-  /* "Maybe over · still open?": grey words, no red, two quiet buttons per promise. */
+  /* Long-quiet promises, folded under the desk: grey words, no red, two quiet buttons per promise. */
   .stale ul { list-style: none; margin: 0; padding: 0; }
   .stale li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; padding: 8px 0;
     border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -3312,7 +3312,7 @@ const UI = {
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "一键批准这 {n} 件", "{n} items to approve in one go": "{n} 件可一键批准", "1 item to approve in one go": "1 件可一键批准",
+    "Approve all {n}": "一键批准这 {n} 件",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -3464,7 +3464,6 @@ const UI = {
     "Review the reply to {name}": "看给 {name} 的回信",
     "Approve": "批准",
     "Reply to {name}": "回复 {name}",
-    "Open {name}": "打开 {name}",
     "One reply can answer both.": "一封回信可以同时答复这两件。",
     "One reply can answer all {n}.": "一封回信可以答复这 {n} 件。",
     "Draft a reply to {name}": "给 {name} 起草回信",
@@ -4334,10 +4333,10 @@ const UI = {
     "sessions import": "导入会话",
     // N3 "Desk" (D-123): the shell, Today and a person
     "Settings": "设置", "Reduce motion": "减少动态效果", "REM status": "REM 状态", "Waiting": "等你",
-    "Night chart": "夜图", "person waiting on you": "人在等你", "people waiting on you": "人在等你", "{n} d": "{n} 天",
+    "Night chart": "夜图", "{n} d": "{n} 天",
     "thing waiting on you": "件在等你", "things waiting on you": "件在等你", "Start with this 1 person": "先看这 1 个人", "Start with these {n} people": "先看这 {n} 个人",
     "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
-    "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成",
+    "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
     "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
     "Prepared a task for {name}": "为 {name} 备好一件任务", "Drafted a reply to {name}": "起草了给 {name} 的回信",
@@ -4346,12 +4345,12 @@ const UI = {
     "Last {d} days: 1 run of reading or rewriting": "近 {d} 天：读信或整理页面 1 次",
     "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today": "近 {d} 天没有读信、也没有整理页面；今天的事 REM 处理了 {n} 件",
     "Last {d} days: no mail read and no page rewritten": "近 {d} 天没有读信、也没有整理页面",
-    "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
+    "Around today": "今天的其他事",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
     "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
-    "Maybe over": "可能已过期", "Maybe over · still open?": "可能已过期 · 还开着吗？", "Still open": "还开着",
+    "Still open": "还开着",
     "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Gone quiet →": "「久未推进」里还有 {n} 件 →",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
@@ -5364,7 +5363,9 @@ function markDrafts(related, value, done, state) {
   }
 }
 // extra: one more choice the notice offers after Undo (忽略's "stop showing this sender"; see stripDone).
-function setDone(entry, done, state = "done", entries = [entry], extra = null) {
+// One mark, without drawing: the thread's state here and on its way to the notebook. restore() gives the drafts it
+// set aside their statuses back when the notebook refuses it.
+function markThread(entry, done, state = "done", entries = [entry]) {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5375,6 +5376,10 @@ function setDone(entry, done, state = "done", entries = [entry], extra = null) {
     if (done) threadStates[memberKey] = value;
     else delete threadStates[memberKey];
   }
+  return { saved, restore: () => related.forEach((draft, i) => { draft.status = statuses[i]; }) };
+}
+function setDone(entry, done, state = "done", entries = [entry], extra = null) {
+  const { saved, restore } = markThread(entry, done, state, entries);
   const scroll = window.scrollY;
   render();
   window.scrollTo(0, scroll);
@@ -5382,7 +5387,7 @@ function setDone(entry, done, state = "done", entries = [entry], extra = null) {
   const notice = done ? doneNotice(entry, state, entries, extra) : null;
   return saved.then(synced => {
     if (synced === "refused") {
-      related.forEach((draft, i) => { draft.status = statuses[i]; });
+      restore();
       notSavedNotice(() => setDone(entry, done, state, entries, extra), notice);
     }
     if (synced) render();
@@ -5816,14 +5821,20 @@ function threadCounterpart({ r, t }, person) {
   const words = obligationWords(named.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")), title = obligationWords(person.title);
   return !!title && (words === title || words.startsWith(title + " "));
 }
+// A reply sent, or held for its 10 minutes, answers the item until Undo.
+function answered(entry) { return ["held", "sent"].includes(threadDraft(entry)?.status); }
+// The one "waiting on you": an item you owe, not quiet, not a stale promise (asked about apart), not answered.
+// Today's header, the rail badge and the rows of Waiting on you all read it, so they never disagree (sprint 14).
+function waitingOnYou(entry) {
+  return entry.t.dir === "mine" && !entry.t.quiet && !staleEntry(entry) && !answered(entry);
+}
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
   for (const entry of threadEntries().filter(entry => !isDone(entry))) {
     const t = entry.t;
     // A stale promise is counted with the quiet ones, never as waiting (staleEntry).
     if (t.quiet || staleEntry(entry)) counts.quiet++;
-    // A reply sent, or held for its 10 minutes, answers the item: Today's header and the badge step down together.
-    else if (t.dir === "mine" && ["held", "sent"].includes(threadDraft(entry)?.status)) continue;
+    else if (t.dir === "mine") { if (waitingOnYou(entry)) { counts.mine++; counts.open++; } }
     else { counts[t.dir === "plain" ? "other" : t.dir]++; counts.open++; }
   }
   return counts;
@@ -6449,7 +6460,6 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
   quote: '<path d="M7 17c-2 0-3-1.6-3-3.5C4 10 6.5 7.5 9 7M17 17c-2 0-3-1.6-3-3.5 0-3.5 2.5-6 5-6.5"/>',
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
-  flip: '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
   right: '<polyline points="9 6 15 12 9 18"/>',
   down: '<polyline points="6 9 12 15 18 9"/>',
   activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
@@ -6941,7 +6951,7 @@ function personGroups(entries) {
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   // A promise gone stale is asked about at the side, not counted as someone waiting.
-  entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status) && !staleEntry(entry));
+  entries = entries.filter(entry => entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry));
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
@@ -6991,7 +7001,7 @@ function stepAction({ entry, step }, group, cls) {
   }
   if (step === "write") return mailtoLink(threadContact(entry), cls, t("Write to {name}", { name }), true);
   if (step === "live") return liveReaderAction(cls);
-  if (step === "open") return el("a", { class: cls, href: href(group.r) + "&h=open-threads", text: t("Open {name}", { name }) });
+  if (step === "open") return null;  // the name above already opens the page; opening it does nothing about the item
   const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
     text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
   button.onclick = event => {
@@ -7280,6 +7290,12 @@ function handButtons(entry, show, panel, mark, lead) {
 function todayStrip(agents, talk, closes) {
   const more = talk ? el("details", { class: "talk-menu strip-more" }, [el("summary", {}, [t("More"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })]),
     el("div", { class: "talk-choices" }, [talk])]) : null;
+  if (more) more.onkeydown = event => {
+    if (event.key !== "Escape" || !more.open) return;
+    event.stopPropagation();
+    more.open = false;
+    more.querySelector("summary").focus();
+  };
   return [...closes, ...agents, more];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
@@ -7346,6 +7362,7 @@ function talkMenu(entry, panel) {
     button.disabled = !liveHere();
     button.onclick = () => {
       menu.open = false;
+      menu.closest(".strip-more")?.removeAttribute("open");  // on Today the talk sits inside 更多: both fold
       const talk = talkPanel({ action: "begin", agent, key: obligationKey(entry) });
       OPEN_TALKS.set(obligationKey(entry), talk);
       panel.replaceChildren(talk);
@@ -7411,9 +7428,10 @@ function personCard(group, focal, total = 1) {
   // approves; a debt REM prepared as a task goes to Codex (principle 8); anything else is closed. "Open {name}" is
   // not a step: the name above already opens the page, and opening it does nothing about the item.
   const task = rowTask(next.entry), byAgent = liveHere() && !!task && !handed(task) && !["send", "draft", "approve"].includes(next.step);
-  const closesHere = (closing.length === 1 && stripMarksDone(closing[0])) || (next.step === "open" && stripMarksDone(next.entry));
+  const closesHere = closing.length === 1 && stripMarksDone(closing[0]);
   const step = byAgent || closesHere ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
-  const leadEntry = step || draft ? null : closing[0] || next.entry, leadKind = byAgent ? "task" : "done";
+  // The bold lead sits on the row it is about: the task's own row, else the row that closes.
+  const leadEntry = step || draft ? null : byAgent ? next.entry : closing[0] || next.entry, leadKind = byAgent ? "task" : "done";
   // When every row is handled, that green step and the head's tick would both close all of them: the green step
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
@@ -7476,6 +7494,7 @@ function taskView(kind) {
     return;
   }
   main.appendChild(el("h1", { text: t("Open threads") }));
+  approvalUndoBar(false);
   const snapshot = snapshotLine();
   if (snapshot) main.appendChild(snapshot);
   const all = threadEntries(), entries = all.filter(entry => !isDone(entry)), counts = threadCounts();
@@ -7490,7 +7509,7 @@ function taskView(kind) {
   if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
-    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet && !staleEntry(row));
+    const items = entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
     const rowFor = row => {
       const node = threadRow(row.r, row.t, true, row.also, true, true);
       node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
@@ -7551,7 +7570,7 @@ function approvalHeader() {
   // The batch is a worded button that names what it does (owner: «数字给我能点的»), counting only what can go now:
   // an item waiting for the owner to fill a gap is not approved by it. With none that can go there is no button,
   // never a greyed one or a "0" (TOP10 #9); an Undo that brings items back draws the widget again, button and all.
-  const ready = items.filter(item => !item.blocked).length;
+  const ready = readyCount(items);
   const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve all {n}", {n: ready})}) : null;
   if (button) {
     button.disabled = !REM.live;
@@ -7559,6 +7578,9 @@ function approvalHeader() {
   }
   return el("div", {class: "approval-header"}, [button, approvalProblems()]);
 }
+// What can go now: an item waiting for the owner to fill a gap is not approved by the batch. The button and the
+// sheet's title both say this number.
+function readyCount(items) { return items.filter(item => !item.blocked).length; }
 function approvalStatus(value) {
   return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
 }
@@ -7570,7 +7592,7 @@ function openApprovalSheet(items) {
   const notice = el("p", {class: "quiet-line", role: "status"});
   const list = el("div", {class: "approval-list"});
   const dialog = el("dialog", {id: "approval-sheet", "aria-labelledby": "approval-title"}, [
-    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: items.length})}), close]),
+    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: readyCount(items)})}), close]),
     el("p", {class: "quiet-line", text: t("Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.")}),
     list, el("footer", {}, [confirm, notice])]);
   const sync = () => {confirm.disabled = busy || !rows.some(row => row.check.checked && !row.check.disabled);};
@@ -7647,11 +7669,13 @@ function openApprovalSheet(items) {
   document.body.appendChild(dialog); sync(); dialog.showModal();
 }
 let approvalTimer;
-function approvalUndoBar() {
+// onToday: Today's "Sent to …" line carries its own Undo, so the bar leaves that reply out there; on Waiting on you,
+// where a held reply's row has left with the count, the bar is its Undo.
+function approvalUndoBar(onToday = true) {
   clearInterval(approvalTimer);
   document.getElementById("approval-undo")?.remove();
   if (!REM.live) return;
-  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now() && !todaySent?.ids?.includes(item.id));
+  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now() && !(onToday && todaySent?.ids?.includes(item.id)));
   if (!held.length) return;
   const status = el("span", {role: "status"});
   let undoFailure = "";
@@ -7817,9 +7841,10 @@ function faceStrip(groups, current) {
 }
 // The one "waiting on you" number is the rail badge's: the items in Waiting on you that need the owner. The faces
 // beside it are a subset, and say so in words, so the header, the badge and the list never disagree (sprint 14 #4).
-function countLine(people, ticked) {
-  const mine = threadCounts().mine;
-  if (!mine && !people) return el("h1", { class: "count-line" }, [el("b", { class: "count", text: "0" }), el("span", { class: "count-words", text: t("Nobody is waiting on you today.") })]);
+function countLine(groups, ticked) {
+  // Both numbers read waitingOnYou: never "0 waiting on you · start with these 2 people".
+  const mine = threadCounts().mine, people = groups.filter(group => group.entries.some(waitingOnYou)).length;
+  if (!mine) return el("h1", { class: "count-line" }, [el("b", { class: "count", text: "0" }), el("span", { class: "count-words", text: t("Nobody is waiting on you today.") })]);
   return el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(mine) }),
     el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") }),
     people ? el("span", { class: "count-of", text: t(people === 1 ? "Start with this 1 person" : "Start with these {n} people", { n: people }) }) : null]);
@@ -7831,7 +7856,7 @@ function chartToggle() {
   return button;
 }
 function nightCard(groups, current, ticked) {
-  const n = groups.length, count = countLine(n, ticked);
+  const n = groups.length, count = countLine(groups, ticked);
   const chart = nightChart(current), full = !!chart?.svg;
   return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
@@ -7955,7 +7980,8 @@ function todaySide(counts) {
 // of them at once, with the page's one Undo.
 function staleWidget(entries) {
   if (!entries.length) return null;
-  const all = el("button", { type: "button", class: "btn-quiet stale-all", text: t("Mark all done") });
+  // The count is in the words: the fold shows three, and this closes every one of them.
+  const all = el("button", { type: "button", class: "btn-quiet stale-all", text: t("Mark all {n} done", { n: entries.length }) });
   all.onclick = () => closeAllStale(entries);
   const rows = entries.slice(0, 3).map(entry => {
     const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
@@ -7969,21 +7995,36 @@ function staleWidget(entries) {
       el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
   });
   const n = entries.length;
-  return el("details", { id: "today-stale", class: "stale fold", "aria-label": t("Maybe over") }, [
+  return el("details", { id: "today-stale", class: "stale fold" }, [
     el("summary", { text: t(n === 1 ? "1 has gone quiet for a long time · Look" : "{n} have gone quiet for a long time · Look", { n }) }),
     el("ul", {}, rows), el("div", { class: "stale-foot" }, [all, n > 3 ? staleMore(n - 3) : null])]);
 }
 // Each promise is its own mark: one setDone over all of them would link unrelated rows as one thread in the
-// notebook, so a later Undo of any one would reopen every one. One notice, one Undo, for the whole batch.
-function closeAllStale(entries) {
-  entries.forEach(entry => setDone(entry, true));
+// notebook, so a later Undo of any one would reopen every one. The page is drawn once and says it once: one notice,
+// one Undo that reopens only the marks the notebook kept, and for any it refused one Try again for just those.
+async function closeAllStale(entries) {
+  const marks = entries.map(entry => ({ entry, ...markThread(entry, true) }));
+  redrawKeepingScroll();
   document.getElementById("done-notice")?.remove();
-  const undo = el("button", { type: "button", text: t("Undo") });
-  undo.onclick = () => { entries.forEach(entry => setDone(entry, false)); focusRaisedCard(); };
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done"), " · ", undo]);
+  const undo = el("button", { type: "button", text: t("Undo") }), status = el("span", { text: t("Saving…") });
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done"), " · ", undo, " · ", status]);
+  const reopen = list => () => { list.forEach(mark => markThread(mark.entry, false)); redrawKeepingScroll(); notice.remove(); focusRaisedCard(); };
+  undo.onclick = reopen(marks);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
   noticeLeaves(notice);
+  const results = await Promise.all(marks.map(mark => mark.saved));
+  const failed = marks.filter((mark, i) => results[i] === "refused");
+  failed.forEach(mark => mark.restore());
+  undo.onclick = reopen(marks.filter(mark => !failed.includes(mark)));
+  status.textContent = t(results.every(Boolean) ? "Saved in notebook" : "Saved on this device — sync pending");
+  if (failed.length) notSavedNotice(() => closeAllStale(failed.map(mark => mark.entry)), notice);
+  redrawKeepingScroll();
+}
+function redrawKeepingScroll() {
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
 }
 // The rest are in Waiting's folded Gone quiet section: the link says so, opens it and brings it into view.
 function staleMore(n) {

@@ -36,7 +36,7 @@ def test_reader_keeps_old_deadlines_in_active_counts_and_today(tmp_path):
     rows = queue(tmp_path, records=[{'path': 'people/avery.md', 'text': '# Avery\n\n' + original, 'title': 'Avery'}], as_of=date(2026, 10, 20))
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
-             'rawSection', 'todayEntries', 'threadCounts']
+             'rawSection', 'todayEntries', 'answered', 'waitingOnYou', 'threadCounts']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     import json
     result = _run_reader_js(functions + 'const queue = ' + json.dumps(rows) + ';\n' + r'''

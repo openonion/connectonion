@@ -4189,7 +4189,8 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    action = page.locator('.qcard.open .card-acts .btn-act').first
+    # The card's first action: its green step, or in a snapshot with no step the row's own tick (sprint 14).
+    action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .qdone)').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()
