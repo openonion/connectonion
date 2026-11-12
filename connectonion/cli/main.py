@@ -1945,9 +1945,9 @@ def email_setup(
     handle_email_setup(alias, domain=domain, buy=buy, make_default=make_default)
 
 
-@email_app.command("default", epilog="Examples:  co email addresses  (copy an address from the list)  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
+@email_app.command("default", epilog="Examples:  co email default 1  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="An address exactly as co email addresses prints it, including the 0x… one derived from your key"),
+    address: str = typer.Argument(..., help="Row number N = the Nth address co email addresses lists right now (its # column; same order in script output), or an address as it prints it, including the 0x… one derived from your key"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default

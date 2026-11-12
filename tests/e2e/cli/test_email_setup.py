@@ -175,3 +175,18 @@ def test_name_buy_follows_the_same_default_rule(cloud, flags, changed, expected)
     assert cloud[1].call_args.args[0].endswith('/email/purchase-name')
     assert cloud[1].call_args.kwargs['json'] == {'name': 'wren', 'make_default': changed}
     assert expected in result.output
+
+
+def test_default_accepts_a_row_number_from_the_listing(cloud):
+    chosen = 'iron.share@mail.openonion.ai'
+    cloud[1].return_value = response({'address': chosen, 'is_default': True})
+    result = CliRunner().invoke(app, ['email', 'default', '1'])
+    assert result.exit_code == 0, result.output
+    assert cloud[1].call_args.kwargs['json'] == {'address': chosen}
+
+
+def test_default_refuses_a_row_number_that_is_not_listed(cloud):
+    result = CliRunner().invoke(app, ['email', 'default', '7'])
+    assert result.exit_code == 1
+    assert 'No address number 7' in result.output
+    cloud[1].assert_not_called()
