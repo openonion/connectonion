@@ -585,6 +585,11 @@ class TestServerLsReconcilesWithBilling:
 
 
 class TestServerDestroy:
+    @pytest.fixture(autouse=True)
+    def _no_billing_lookup(self, monkeypatch):
+        """destroy reads the server's billing record first; these tests are about the delete."""
+        monkeypatch.setattr(sc, "_fetch_billed_servers", lambda: None)
+
     def test_a_mistyped_confirmation_destroys_nothing(self, servers_file):
         """It asks for the name back rather than y/N: a reflex 'y' is exactly how
         someone deletes production while meaning to tidy their config."""

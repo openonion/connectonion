@@ -291,6 +291,7 @@ def handle_server_list() -> bool:
         console.print("[dim]co server add <name> --ssh <target>   to use one from here[/dim]")
         console.print("[dim]co server destroy <name>              to stop paying for one[/dim]")
     _print_moved_addresses(servers, billed or [])
+    _print_grace(billed or [])
     _print_balance_cover(billed or [])
 
     console.print(f"\n[dim]{_short(SERVERS_FILE)}[/dim]")
@@ -363,6 +364,38 @@ def _print_moved_addresses(servers: Dict[str, dict], billed: list) -> None:
                           f"not {entry['ssh']}.[/yellow]")
             console.print(f"[dim]co server add {record['name']} --ssh {target}   "
                           f"to update this machine's entry[/dim]")
+
+
+def _print_grace(billed: list) -> None:
+    """For a server that owes a month: when it stops and when it is deleted.
+
+    The days come from `pricing.unpaid`, counted from the end of the unpaid
+    month. A server that is still running and owes is in its first unpaid
+    month (it stops three days in, by default), whose end is where its open
+    month began.
+    """
+    owing = [s for s in billed
+             if s.get("billing") == "monthly_in_arrears" and s.get("unpaid_usd")]
+    if not owing:
+        return
+    timeline = (_fetch_pricing() or {}).get("unpaid")
+    if not timeline:
+        return
+    for record in owing:
+        console.print(f"\n[yellow]{_grace_line(record, timeline)}[/yellow]")
+
+
+def _grace_line(record: dict, timeline: dict) -> str:
+    from datetime import datetime, timedelta
+
+    owes = f"{record['name']} owes ${record['unpaid_usd']:.2f}"
+    if not record.get("period_start"):
+        return (f"{owes} and is stopped; it is deleted {timeline['delete_after_days']} days "
+                f"after its month went unpaid unless you top up.")
+    unpaid_since = datetime.fromisoformat(record["period_start"])
+    stop = (unpaid_since + timedelta(days=timeline["stop_after_days"])).date()
+    delete = (unpaid_since + timedelta(days=timeline["delete_after_days"])).date()
+    return f"{owes}: it stops on {stop} and is deleted on {delete} unless you top up."
 
 
 def _print_balance_cover(billed: list) -> None:
@@ -617,11 +650,12 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
                       "operation.\n")
         return False
 
+    record = {s["name"]: s for s in (_fetch_billed_servers() or [])}.get(name)
     if not yes:
         console.print(f"\n[red]This destroys the machine '{name}' and everything on it.[/red]")
         console.print("[dim]The disk, the agent's identity, its logs — none of it is "
                       "recoverable.[/dim]")
-        console.print(f"[dim]{_destroy_terms(name)}[/dim]")
+        console.print(f"[dim]{_destroy_terms(record)}[/dim]")
         console.print()
 
         import questionary
@@ -660,45 +694,62 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
     console.print(f"[green]✓ {name} destroyed[/green]")
     result = response.json() if response.content else {}
     if result.get("billing") == "monthly_in_arrears":
-        _print_final_charge(name, result)
+        _print_final_charge(name, result, (record or {}).get("unpaid_usd") or 0)
     else:
         _print_refund(result)
     return True
 
 
-def _destroy_terms(name: str) -> str:
+def _destroy_terms(record: Optional[dict]) -> str:
     """What destroying this server does to the money, said before it happens.
 
     Read from the backend's own record of the server: a monthly one is charged
     for the part of the month it ran, a year bought on the old term refunds
     what is left of it. When the lookup fails we do not guess which.
     """
-    record = {s["name"]: s for s in (_fetch_billed_servers() or [])}.get(name)
     if record is None:
         return "Whatever it owes or is owed is settled now and shown below."
     if record.get("billing") == "monthly_in_arrears":
-        owed = (f" The ${record['unpaid_usd']:.2f} already unpaid stays owed."
-                if record.get("unpaid_usd") else "")
-        return (f"The used part of this month (about ${record['accrued_usd']:.2f}) "
-                f"is charged now, and the monthly billing stops.{owed}")
+        return _monthly_destroy_terms(record.get("accrued_usd") or 0, record.get("unpaid_usd") or 0)
     if record.get("billing") == "prepaid_12_months":
         return "The unused part of the year it was bought for is refunded to your credit."
     return "The unused part of the term is refunded to your credit."
 
 
-def _print_final_charge(name: str, result: dict) -> None:
-    """The used part of the month: the amount, the invoice, or what is still owed."""
+def _monthly_destroy_terms(accrued: float, owed: float) -> str:
+    """A server that already owes is not charged at a destroy: the used part joins the debt."""
+    if owed and accrued:
+        return (f"The used part of this month (about ${accrued:.2f}) is added to what you "
+                f"owe (${owed:.2f} unpaid), and the monthly billing stops.")
+    if owed:
+        return f"The monthly billing stops; the ${owed:.2f} unpaid stays owed."
+    if accrued:
+        return (f"The used part of this month (about ${accrued:.2f}) is charged now, and "
+                f"the monthly billing stops.")
+    return "The monthly billing stops."
+
+
+def _print_final_charge(name: str, result: dict, owed_before: float) -> None:
+    """What the backend did with the used part, then everything still owed for this server.
+
+    The response's `unpaid_usd` is only this destroy's part; what the server
+    already owed was read before the delete, so the total is said once more.
+    """
+    if result.get("charged_usd"):
+        console.print(f"[dim]${result['charged_usd']:.2f} charged for the used part of this "
+                      f"month — invoice {result.get('invoice_number')}.[/dim]")
+        console.print(f"[dim]co server invoice {name} {result.get('invoice_number')}   "
+                      f"to see it[/dim]")
     if result.get("unpaid_usd"):
         console.print(f"[yellow]${result['unpaid_usd']:.2f} for the used part of this month "
-                      f"could not be paid from your balance.[/yellow]")
-        console.print("[dim]It is recorded and charged at your next top-up.[/dim]\n")
-        return
-    if not result.get("charged_usd"):
-        console.print("[dim]Nothing charged.[/dim]\n")
-        return
-    console.print(f"[dim]${result['charged_usd']:.2f} charged for the used part of this "
-                  f"month — invoice {result.get('invoice_number')}.[/dim]")
-    console.print(f"[dim]co server invoice {name}   to see it[/dim]\n")
+                      f"was recorded as unpaid.[/yellow]")
+    owed = owed_before + (result.get("unpaid_usd") or 0)
+    if owed:
+        console.print(f"[yellow]You still owe ${owed:.2f} for {name}; it is charged at your "
+                      f"next top-up: https://discord.gg/4xfD9k8AUF[/yellow]")
+    if not result.get("charged_usd") and not owed:
+        console.print("[dim]Nothing charged.[/dim]")
+    console.print()
 
 
 def _print_refund(result: dict) -> None:
@@ -1165,7 +1216,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         return False
 
     if response.status_code != 200:
-        _report_failure(response)
+        _report_failure(response, monthly=_monthly(pricing))
         return False
 
     server = response.json()
@@ -1213,8 +1264,12 @@ def _fetch_balance(api_key: str) -> Optional[float]:
     return None
 
 
-def _report_failure(response) -> None:
-    """Say what happened to the money, first."""
+def _report_failure(response, monthly: bool = False) -> None:
+    """Say what happened to the money, first.
+
+    On the monthly backend `balance` in an insufficient-credits refusal is what
+    is left after a month of every other live server, so it is labelled so.
+    """
     try:
         detail = response.json().get("detail", {})
     except ValueError:
@@ -1226,12 +1281,15 @@ def _report_failure(response) -> None:
 
     error = detail.get("error")
     if error == "insufficient_credits":
+        have = "left after your other servers' months" if monthly else "have"
+        need = "this server's month" if monthly else "need"
+        width = max(len(have), len(need), len("short by"))
         console.print("\n[red]Not enough credit.[/red]")
-        console.print(f"  have      ${detail.get('balance', 0):.2f}")
-        console.print(f"  need      ${detail.get('required', 0):.2f}")
-        console.print(f"  short by  [bold]${detail.get('shortfall', 0):.2f}[/bold]")
+        console.print(f"  {have:<{width}}  ${detail.get('balance', 0):.2f}")
+        console.print(f"  {need:<{width}}  ${detail.get('required', 0):.2f}")
+        console.print(f"  {'short by':<{width}}  [bold]${detail.get('shortfall', 0):.2f}[/bold]")
         if detail.get("message"):
-            console.print(f"[dim]{detail['message']}[/dim]")
+            console.print(detail["message"], style="dim", markup=False)
         console.print("\n[dim]Nothing was created or charged.[/dim]")
         console.print("[dim]https://discord.gg/4xfD9k8AUF to top up.[/dim]\n")
     elif error == "unpaid_server_months":
@@ -1252,17 +1310,39 @@ def _report_failure(response) -> None:
 
 
 MONTH_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+INVOICE_NUMBER_PATTERN = re.compile(r"^[A-Z]+-\d{4}-\d{2}-\d+$")
 
 
-def handle_server_invoice(name: Optional[str] = None, month: Optional[str] = None,
-                          every: bool = False, pdf: Optional[str] = None,
-                          as_json: bool = False) -> bool:
+def invoice_usage_error(name: Optional[str], number: Optional[str], month: Optional[str],
+                        every: bool, pdf: Optional[str], as_json: bool) -> Optional[str]:
+    """Why these arguments cannot go together, or None. The caller exits 2 on one."""
+    if every and (name or number):
+        return "--all is every server's invoices; leave out the server name and number."
+    if not every and not name:
+        return "Name a server, or pass --all. Example: co server invoice prod"
+    if name and not SERVER_NAME_PATTERN.match(name):
+        return f"'{name}' is not a server name. co server ls lists yours."
+    if number and not (number.isdigit() or INVOICE_NUMBER_PATTERN.match(number)):
+        return (f"'{number}' is not an invoice: give its row (#) from co server invoice {name}, "
+                f"or its number, e.g. SRV-2026-12-000123.")
+    if number and month:
+        return "Pass an invoice number or --month, not both."
+    if month and not MONTH_PATTERN.match(month):
+        return f"--month takes YYYY-MM, e.g. 2026-12 (got {month})."
+    if pdf and as_json:
+        return "Pass --pdf or --json, not both."
+    return None
+
+
+def handle_server_invoice(name: Optional[str] = None, number: Optional[str] = None,
+                          month: Optional[str] = None, every: bool = False,
+                          pdf: Optional[str] = None, as_json: bool = False) -> bool:
     """Show the invoices the backend issued for a server's monthly charges.
 
     Rendered, never recomputed: every amount and line is the backend's, so the
     total printed is `total_usd` and nothing a rounding here could move.
     """
-    api_key = _invoice_preflight(name, month, every)
+    api_key = _invoice_preflight()
     if not api_key:
         return False
     if every:
@@ -1270,16 +1350,21 @@ def handle_server_invoice(name: Optional[str] = None, month: Optional[str] = Non
         found = _get_json(api_key, "/api/v1/invoices", {"month": month})
         return found is not None and _show_invoices(found["invoices"], pdf, as_json,
                                                     f"issued in {month}")
+    if number and not number.isdigit():
+        found = _get_json(api_key, f"/api/v1/servers/{name}/invoices/{number}")
+        return found is not None and _show_invoices([found], pdf, as_json, number)
 
     found = _get_json(api_key, f"/api/v1/servers/{name}/invoices")
     if found is None:
         return False
     summaries = found["invoices"]
+    if number:
+        return _show_row(api_key, name, summaries, int(number), pdf, as_json)
     if not month and not pdf:
         return _show_invoice_list(name, summaries, as_json)
-    # --pdf alone is the latest invoice: what the invoice email's command means.
-    picked = ([s for s in summaries if s["issued_at"][:7] == month] if month
-              else summaries[-1:])
+    picked = [s for s in summaries if s["issued_at"][:7] == month] if month else summaries
+    if not month and len(picked) > 1:
+        return _refuse_to_guess(name, picked)
     invoices = [_get_json(api_key, f"/api/v1/servers/{name}/invoices/{s['number']}")
                 for s in picked]
     if None in invoices:
@@ -1288,17 +1373,32 @@ def handle_server_invoice(name: Optional[str] = None, month: Optional[str] = Non
                           f"for {name}" + (f" issued in {month}" if month else ""))
 
 
-def _invoice_preflight(name: Optional[str], month: Optional[str], every: bool) -> Optional[str]:
-    """The API key, once the arguments make sense and this backend issues invoices."""
+def _show_row(api_key: str, name: str, summaries: list, row: int, pdf: Optional[str],
+              as_json: bool) -> bool:
+    """The invoice in row `row` of the list (1 = oldest), as the list numbers them."""
+    if not 1 <= row <= len(summaries):
+        console.print(f"\n[red]{name} has no invoice #{row}; it has {len(summaries)}.[/red]")
+        console.print(f"[dim]co server invoice {name}   to list them[/dim]\n")
+        return False
+    number = summaries[row - 1]["number"]
+    found = _get_json(api_key, f"/api/v1/servers/{name}/invoices/{number}")
+    return found is not None and _show_invoices([found], pdf, as_json, number)
+
+
+def _refuse_to_guess(name: str, summaries: list) -> bool:
+    """--pdf with neither a number nor a month, and more than one invoice to pick from."""
+    console.print(f"\n[red]{name} has {len(summaries)} invoices; say which one.[/red]")
+    for s in summaries:
+        console.print(f"  co server invoice {name} {s['number']} --pdf {s['number']}.pdf",
+                      markup=False)
+    console.print()
+    return False
+
+
+def _invoice_preflight() -> Optional[str]:
+    """The API key, once we know this backend issues invoices."""
     from .project_cmd_lib import load_api_key
 
-    if not name and not every:
-        console.print("\n[red]Name a server, or pass --all for every server's invoices.[/red]")
-        console.print("[dim]co server invoice prod  ·  co server invoice --all --month 2026-12[/dim]\n")
-        return None
-    if month and not MONTH_PATTERN.match(month):
-        console.print(f"\n[red]--month takes YYYY-MM, e.g. 2026-12 (got {month}).[/red]\n")
-        return None
     api_key = load_api_key()
     if not api_key:
         console.print("\n[red]Not authenticated.[/red]")
@@ -1327,7 +1427,7 @@ def _get_json(api_key: str, path: str, params: Optional[dict] = None) -> Optiona
     if response.status_code == 200:
         return response.json()
     console.print(f"\n[red]{path} answered {response.status_code}.[/red]")
-    console.print(f"[dim]{response.text[:300]}[/dim]\n", markup=False)
+    console.print(response.text[:300] + "\n", style="dim", markup=False)
     return None
 
 
@@ -1343,16 +1443,17 @@ def _show_invoice_list(name: str, summaries: list, as_json: bool) -> bool:
                       f"first month ends, or when it is destroyed.[/dim]\n")
         return True
     table = Table(box=None, padding=(0, 2))
-    for column in ("NUMBER", "ISSUED", "PERIOD", "AMOUNT", "STATUS"):
-        table.add_column(column, justify="right" if column == "AMOUNT" else "left")
-    for s in summaries:
-        table.add_row(s["number"], s["issued_at"][:10],
+    for column in ("#", "NUMBER", "ISSUED", "PERIOD", "AMOUNT", "STATUS"):
+        table.add_column(column, justify="right" if column in ("#", "AMOUNT") else "left")
+    for row, s in enumerate(summaries, 1):
+        table.add_row(str(row), s["number"], s["issued_at"][:10],
                       f"{s['period_start'][:10]} to {s['period_end'][:10]}",
                       f"${s['amount_usd']:.2f}", s["status"])
     console.print()
     console.print(table)
-    console.print(f"\n[dim]Full invoice:[/dim] [bold]co server invoice {name} --month "
-                  f"{summaries[-1]['issued_at'][:7]}[/bold]  [dim](add --pdf invoice.pdf to save it)[/dim]\n")
+    latest = summaries[-1]["number"]
+    console.print(f"\n[dim]Full invoice:[/dim] [bold]co server invoice {name} {len(summaries)}[/bold]  "
+                  f"[dim](the row, or its number; add --pdf {latest}.pdf to save it)[/dim]\n")
     return True
 
 
@@ -1412,11 +1513,16 @@ def _invoice_line_table(invoice: dict) -> list:
     return rows
 
 
+# 9pt Courier is 5.4pt a character; 95 of them fit between 40pt margins on A4.
+PDF_LINE_CHARS = 95
+PDF_LINES_PER_PAGE = 64
+
+
 def _write_invoice_pdf(invoices: list, path: Path) -> None:
-    """One A4 page per invoice, in Courier so the columns line up.
+    """A4 pages in Courier so the columns line up; an invoice starts on a new page.
 
     Built with pypdf, already a dependency, and the PDF base-14 font, so no
-    font file and no new package. The page carries exactly `_invoice_text`.
+    font file and no new package. The pages carry `_invoice_text`, wrapped.
     """
     from pypdf import PdfWriter
     from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -1427,14 +1533,46 @@ def _write_invoice_pdf(invoices: list, path: Path) -> None:
                              NameObject("/Encoding"): NameObject("/WinAnsiEncoding")})
     writer = PdfWriter()
     for invoice in invoices:
-        page = writer.add_blank_page(width=595, height=842)
-        page[NameObject("/Resources")] = DictionaryObject(
-            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
-        stream = DecodedStreamObject()
-        stream.set_data(_pdf_text_ops(_invoice_text(invoice)))
-        page.replace_contents(stream)
+        lines = _pdf_lines(invoice)
+        for top in range(0, len(lines), PDF_LINES_PER_PAGE):
+            page = writer.add_blank_page(width=595, height=842)
+            page[NameObject("/Resources")] = DictionaryObject(
+                {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
+            stream = DecodedStreamObject()
+            stream.set_data(_pdf_text_ops(lines[top:top + PDF_LINES_PER_PAGE]))
+            page.replace_contents(stream)
     with open(path, "wb") as handle:
         writer.write(handle)
+
+
+def _shows_in_pdf(text: str) -> bool:
+    """Can the base-14 font's encoding (cp1252) draw every character of this?"""
+    return text.encode("cp1252", "replace") == text.encode("cp1252", "ignore")
+
+
+def _pdf_lines(invoice: dict) -> list:
+    """The invoice's lines, wrapped to the page, with a bill-to the font cannot draw left out.
+
+    Courier carries no Chinese, Japanese or other non-Latin glyphs. Rather than
+    a row of question marks where a company name should be, the page names the
+    account address and says where the full name is.
+    """
+    import textwrap
+
+    bill_to = invoice["bill_to"]
+    hidden = [k for k in ("name", "address") if bill_to.get(k) and not _shows_in_pdf(bill_to[k])]
+    shown = {**invoice, "bill_to": {**bill_to, **{k: None for k in hidden}}}
+    lines = _invoice_text(shown)
+    if hidden:
+        at = next(i for i, line in enumerate(lines) if line.startswith("Bill to")) + 1
+        lines.insert(at, f"          (bill-to {' and '.join(hidden)} not shown: this PDF's font "
+                         f"cannot draw it; co server invoice {invoice['server']['name']} "
+                         f"{invoice['number']} prints it)")
+    wrapped = []
+    for line in lines:
+        wrapped += textwrap.wrap(line, PDF_LINE_CHARS, subsequent_indent=" " * 10,
+                                 drop_whitespace=False, replace_whitespace=False) or [""]
+    return wrapped
 
 
 def _pdf_text_ops(lines: list) -> bytes:

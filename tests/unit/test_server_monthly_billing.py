@@ -190,6 +190,11 @@ class TestServerLs:
         assert "$222.40/mo · next charge 2026-12-12 · $74.13 so far" in out
         assert "covers the next month" in out
 
+    @pytest.fixture(autouse=True)
+    def _no_pricing(self):
+        with patch.object(sc, "_fetch_pricing", return_value=None):
+            yield
+
     def test_unpaid_and_suspended_are_named(self, servers_file, capsys):
         owing = {**RUNNING, "unpaid_usd": 30.0}
         stopped = {**RUNNING, "name": "lab", "status": "suspended", "next_charge_at": None}
@@ -213,6 +218,19 @@ class TestServerLs:
                    "prepaid_until": "2027-07-31T00:00:00+00:00"}], 500.0)
 
         assert "prepaid until 2027-07-31" in _out(capsys)
+
+    def test_a_server_in_grace_shows_when_it_stops_and_is_deleted(self, servers_file, capsys):
+        owing = {**RUNNING, "unpaid_usd": 222.4, "period_start": "2026-12-12T09:00:00+00:00"}
+        stopped = {**RUNNING, "name": "lab", "status": "suspended", "unpaid_usd": 30.0,
+                   "period_start": None, "next_charge_at": None}
+        with patch.object(sc, "_fetch_pricing", return_value={
+                **MONTHLY, "unpaid": {"warn_days_before": 3, "stop_after_days": 3,
+                                      "delete_after_days": 30}}):
+            self._ls([owing, stopped], 500.0)
+        out = _out(capsys)
+
+        assert "prod owes $222.40: it stops on 2026-12-15 and is deleted on 2027-01-11" in out
+        assert "lab owes $30.00 and is stopped; it is deleted 30 days after" in out
 
     def test_the_old_backend_shows_the_expiry_and_no_balance_claim(self, servers_file, capsys):
         with patch.object(sc, "_fetch_balance") as balance:
@@ -248,8 +266,43 @@ class TestServerDestroy:
     def test_an_amount_the_balance_could_not_pay_is_said_to_be_owed(self, servers_file, capsys):
         self._destroy(RUNNING, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
                                 "unpaid_usd": 111.2, "invoice_number": None})
+        out = _out(capsys)
 
-        assert "$111.20 for the used part of this month could not be paid" in _out(capsys)
+        assert "$111.20 for the used part of this month was recorded as unpaid" in out
+        assert "You still owe $111.20 for prod" in out
+
+    def test_a_server_that_owes_is_told_the_used_part_joins_the_debt(self, servers_file, capsys):
+        """The backend does not charge a server that already owes; it records the part."""
+        owing = {**RUNNING, "accrued_usd": 12.5, "unpaid_usd": 30.0}
+        self._destroy(owing, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
+                              "unpaid_usd": 12.5, "invoice_number": None})
+        out = _out(capsys)
+
+        assert "about $12.50) is added to what you owe ($30.00 unpaid)" in out
+        assert "is charged now" not in out
+        assert "You still owe $42.50 for prod" in out
+
+    def test_nothing_accrued_drops_the_charge_sentence(self, servers_file, capsys):
+        stopped = {**RUNNING, "status": "suspended", "accrued_usd": 0.0, "unpaid_usd": 30.0}
+        self._destroy(stopped, {"billing": "monthly_in_arrears", "charged_usd": 0.0,
+                                "unpaid_usd": 0.0, "invoice_number": None})
+        out = _out(capsys)
+
+        assert "used part" not in out
+        assert "the $30.00 unpaid stays owed" in out
+        assert "You still owe $30.00 for lab" not in out
+        assert "You still owe $30.00 for prod" in out
+        assert "Nothing charged" not in out
+
+    def test_yes_still_reports_what_is_owed(self, servers_file, capsys):
+        owing = {**RUNNING, "unpaid_usd": 30.0}
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_billed_servers", return_value=[owing]), \
+             patch("requests.delete", return_value=_response(200, {
+                 "billing": "monthly_in_arrears", "charged_usd": 0.0, "unpaid_usd": 5.0})):
+            assert sc.handle_server_destroy("prod", yes=True) is True
+
+        assert "You still owe $35.00 for prod" in _out(capsys)
 
     def test_the_old_backend_still_reports_its_refund(self, servers_file, capsys):
         self._destroy({"name": "prod", "expires_at": "2027-07-31"},
@@ -288,7 +341,20 @@ class TestServerInvoice:
 
         assert ok is True
         assert "SRV-2026-12-000123" in out
-        assert "co server invoice prod --month 2026-12" in out
+        assert "co server invoice prod 1" in out
+
+    def test_a_row_number_selects_that_invoice(self, capsys):
+        ok, calls = self._invoice(name="prod", number="1")
+
+        assert ok is True
+        assert calls.call_args.args[0].endswith("/servers/prod/invoices/SRV-2026-12-000123")
+        assert "Total USD $222.40" in _out(capsys)
+
+    def test_a_row_past_the_end_is_refused(self, capsys):
+        ok, _ = self._invoice(name="prod", number="2")
+
+        assert ok is False
+        assert "no invoice #2; it has 1" in _out(capsys)
 
     def test_a_month_prints_the_backends_total_and_lines(self, capsys):
         ok, _ = self._invoice(name="prod", month="2026-12")
@@ -327,15 +393,44 @@ class TestServerInvoice:
         assert "SRV-2026-12-000123" in text
         assert "$222.40" in text
 
-    def test_pdf_alone_writes_the_latest_invoice(self, tmp_path):
-        """The invoice email says `co server invoice <name> --pdf <number>.pdf`."""
+    def test_a_number_selects_that_invoice(self, tmp_path):
+        """The invoice email says `co server invoice <name> <number> --pdf <number>.pdf`."""
         from pypdf import PdfReader
 
         target = tmp_path / "SRV-2026-12-000123.pdf"
+        ok, calls = self._invoice(name="prod", number="SRV-2026-12-000123", pdf=str(target))
+
+        assert ok is True
+        assert calls.call_args.args[0].endswith("/servers/prod/invoices/SRV-2026-12-000123")
+        assert "SRV-2026-12-000123" in PdfReader(target).pages[0].extract_text()
+
+    def test_pdf_alone_writes_the_only_invoice(self, tmp_path):
+        target = tmp_path / "only.pdf"
         ok, _ = self._invoice(name="prod", pdf=str(target))
 
         assert ok is True
-        assert len(PdfReader(target).pages) == 1
+        assert target.exists()
+
+    def test_pdf_alone_refuses_to_guess_between_several(self, tmp_path, capsys):
+        newer = {**SUMMARY, "number": "SRV-2027-01-000200", "issued_at": "2027-01-12T09:10:00+00:00"}
+        target = tmp_path / "which.pdf"
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_pricing", return_value=MONTHLY), \
+             patch("requests.get", return_value=_response(200, {"invoices": [SUMMARY, newer]})):
+            ok = sc.handle_server_invoice(name="prod", pdf=str(target))
+        out = _out(capsys)
+
+        assert ok is False
+        assert not target.exists()
+        assert "co server invoice prod SRV-2027-01-000200 --pdf SRV-2027-01-000200.pdf" in out
+
+    def test_a_backend_error_prints_its_text_not_markup(self, capsys):
+        with patch("requests.get", return_value=_response(404, {"detail": "No such invoice"})):
+            assert sc._get_json("k", "/api/v1/servers/prod/invoices/X") is None
+        out = capsys.readouterr().out
+
+        assert "No such invoice" in out
+        assert "[dim]" not in out
 
     def test_the_old_backend_says_it_issues_none(self, capsys):
         ok, calls = self._invoice(pricing=PREPAID, name="prod")
@@ -344,11 +439,69 @@ class TestServerInvoice:
         assert "does not issue server invoices yet" in _out(capsys)
         calls.assert_not_called()
 
-    def test_a_malformed_month_is_refused_locally(self, capsys):
-        ok, calls = self._invoice(name="prod", month="2026-13")
+    @pytest.mark.parametrize("args, says", [
+        (dict(name="prod", month="2026-13"), "YYYY-MM"),
+        (dict(name="prod", pdf="a.pdf", as_json=True), "--pdf or --json"),
+        (dict(name="prod", every=True), "--all"),
+        (dict(name="Not/A/Server"), "not a server name"),
+        (dict(name="prod", number="../x"), "is not an invoice"),
+        (dict(name="prod", number="SRV-2026-12-000123", month="2026-12"), "not both"),
+        (dict(), "Name a server"),
+    ])
+    def test_arguments_that_cannot_go_together_are_refused(self, args, says):
+        full = dict(name=None, number=None, month=None, every=False, pdf=None, as_json=False)
+        assert says in sc.invoice_usage_error(**{**full, **args})
 
-        assert ok is False
-        calls.assert_not_called()
+    def test_the_cli_exits_2_on_a_usage_error(self):
+        from typer.testing import CliRunner
+
+        from connectonion.cli.main import app
+
+        result = CliRunner().invoke(app, ["server", "invoice", "prod", "--json", "--pdf", "x.pdf"])
+
+        assert result.exit_code == 2
+        assert "--pdf or --json" in result.output
+
+
+class TestInvoicePdf:
+    def test_long_lines_wrap_to_the_page(self):
+        long = {**INVOICE, "bill_to": {**INVOICE["bill_to"], "address": "A" * 300}}
+
+        lines = sc._pdf_lines(long)
+
+        assert max(len(line) for line in lines) <= sc.PDF_LINE_CHARS
+        assert sum(line.count("A") for line in lines) >= 300
+
+    def test_a_name_the_font_cannot_draw_shows_the_account_and_says_so(self, tmp_path):
+        from pypdf import PdfReader
+
+        foreign = {**INVOICE, "bill_to": {**INVOICE["bill_to"], "name": "示例科技有限公司"}}
+        target = tmp_path / "x.pdf"
+        sc._write_invoice_pdf([foreign], target)
+        text = PdfReader(target).pages[0].extract_text()
+
+        assert "0xabc" in text
+        assert "not shown" in text
+        assert "???" not in text
+
+    def test_a_western_name_with_accents_is_kept(self):
+        accented = {**INVOICE, "bill_to": {**INVOICE["bill_to"], "name": "Café Ficticio S.A."}}
+
+        assert any("Café Ficticio S.A." in line for line in sc._pdf_lines(accented))
+
+
+class TestRefusalsOnCreate:
+    def test_insufficient_credit_on_the_monthly_backend_says_what_the_balance_is(self, capsys):
+        response = _response(402, {"detail": {
+            "error": "insufficient_credits", "balance": 20.0, "required": 30.0,
+            "shortfall": 10.0, "message": "Your balance must cover [this] server's month."}})
+
+        sc._report_failure(response, monthly=True)
+        out = _out(capsys)
+
+        assert "left after your other servers' months $20.00" in out
+        assert "this server's month $30.00" in out
+        assert "[this]" in out
 
 
 class TestTheCreateRequest:

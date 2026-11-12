@@ -1427,15 +1427,16 @@ A server a deploy goes *onto*, so the agent keeps its address, its logs and any 
 made by hand — and answers on its own https hostname.
 
 ```bash
-co server new prod                       # have one created (from $30/month, charged at each month end)
+co server new prod                       # have one created (from $30/month; shows how it is charged, then asks)
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # reconciled against what you are billed for
-co server invoice prod                   # its monthly invoices
+co server invoice prod                   # its invoices, where the backend bills monthly
 co deploy --to prod
 ```
 
 `co server forget` drops the local entry and the machine keeps billing;
-`co server destroy` tears it down and charges the used part of the month. Two commands on purpose.
+`co server destroy` tears it down and settles the bill (the used part of the month, or a refund of an
+old 12-month term). Two commands on purpose.
 
 See [server.md](server.md).
 

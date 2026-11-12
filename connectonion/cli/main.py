@@ -1257,7 +1257,7 @@ def server_add(
 
 @server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to and what each server costs: price, next charge, accrued so far, anything unpaid, and whether your balance covers the next month. Read-only."""
+    """Show what you can deploy to, and what each server costs as the backend reports it. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
@@ -1283,7 +1283,7 @@ def server_new(
                                             "(default 20; larger ones add to the monthly price)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
-    """Have a server created for you. Creates the machine and bills it from your credits at the end of each month; nothing is charged at create, and your balance must cover one month. Shows the price and asks first."""
+    """Have a server created for you. Creates the machine and charges your credits for it; shows the price and how it is charged, then asks."""
     from .commands.server_commands import handle_server_new
     if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes, disk_gb=disk):
         raise typer.Exit(1)
@@ -1331,19 +1331,24 @@ def server_destroy(
         raise typer.Exit(1)
 
 
-@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod --month 2026-12 --pdf prod-2026-12.pdf  |  co server invoice --all --month 2026-12")
+@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod 1  |  co server invoice prod SRV-2026-12-000123 --pdf SRV-2026-12-000123.pdf  |  co server invoice --all --month 2026-12")
 def server_invoice(
-    name: Optional[str] = typer.Argument(None, help="Server name (leave out with --all)"),
+    name: Optional[str] = typer.Argument(None, help="Server name, as co server ls lists it (leave out with --all)"),
+    number: Optional[str] = typer.Argument(None, help="One invoice: its row (#) in the list, e.g. 1, or its number from the invoice email"),
     month: Optional[str] = typer.Option(None, "--month", metavar="YYYY-MM",
-                                        help="Show the full invoices issued in this UTC month"),
+                                        help="The invoices issued in this UTC month, in full"),
     every: bool = typer.Option(False, "--all", help="Every server's invoices for --month (default: this month)"),
     pdf: Optional[Path] = typer.Option(None, "--pdf", metavar="FILE",
-                                       help="Write the invoices for --month (without it, the latest) to this PDF, one page each"),
+                                       help="Write the chosen invoices to this PDF instead of printing them"),
     as_json: bool = typer.Option(False, "--json", help="Print the backend's invoice JSON instead"),
 ):
-    """Show the invoices for a server's monthly charges. Without --month, lists them; with --month, prints each in full. Read-only, except that --pdf writes FILE."""
-    from .commands.server_commands import handle_server_invoice
-    if not handle_server_invoice(name=name, month=month, every=every,
+    """Show the invoices for a server's monthly charges. With a name only, lists them; with a number or --month, prints them in full. Read-only, except that --pdf writes FILE."""
+    from .commands.server_commands import handle_server_invoice, invoice_usage_error
+    problem = invoice_usage_error(name, number, month, every, pdf, as_json)
+    if problem:
+        console.print(problem, style="red", markup=False)
+        raise typer.Exit(2)
+    if not handle_server_invoice(name=name, number=number, month=month, every=every,
                                  pdf=str(pdf) if pdf else None, as_json=as_json):
         raise typer.Exit(1)
 

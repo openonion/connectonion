@@ -7,7 +7,7 @@ thrown away each time.
 co server new prod                       # have one created for you
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # what you can deploy to, and what each costs
-co server invoice prod                   # its monthly invoices
+co server invoice prod                   # its invoices (monthly billing)
 co server check prod                     # preflight
 co server ssh prod                        # a shell on it
 co deploy --to prod                       # put an agent there
@@ -35,7 +35,19 @@ touched, so all three hold.
 
 ## co server new
 
-Has a server created for you, and registers it locally so you never type an IP.
+Has a server created for you, and registers it locally so you never type an IP. It
+shows the price and how it is charged, then asks.
+
+How a server is charged is the backend's decision, and the prompt states whichever
+one applies. The CLI reads it from `/servers/pricing` and never quotes one way of
+charging while the backend is about to use the other:
+
+- **Monthly, in arrears** (oo-api with monthly billing): nothing is charged when the
+  server is created; each month is charged from your credits when it ends.
+- **12 months up front** (the backend before it): the year is charged at create,
+  and the prompt says `$30 / month — $360.00 for 12 months, charged now`.
+
+On the monthly backend:
 
 ```
 $ co server new prod --machine e2-standard-4 --disk 200
@@ -45,14 +57,13 @@ $ co server new prod --machine e2-standard-4 --disk 200
   machine       e2-standard-4 — 4 vCPU, 16 GB
   disk          200 GB pd-balanced — 20 GB included, $0.18 / GB / month beyond
   cost          $222.40 / month — charged at the end of each month from credits; nothing is charged now
-  your balance  $500.00 — covers one month, which is required
+  your balance  $500.00 — must cover a month of every server you have, plus anything unpaid
 
 ? Create it? (y/N)
 ```
 
-**Servers are billed monthly, in arrears.** Nothing is charged when the server is
-created. Each month is charged from your credits when it ends, and the first charge
-date is printed once the server exists. Your balance has to cover one month to
+Nothing is charged when the server is created. Each month is charged from your
+credits when it ends, and the first charge date is printed once the server exists. Your balance has to cover one month to
 create one, on top of a month of each server you already have, and nothing may be
 unpaid; when it is short the command stops (before asking, when it can tell) and
 nothing is created.
@@ -82,10 +93,8 @@ it:
 co server new backup --region asia-southeast1
 ```
 
-**Against a backend that still charges 12 months up front**, the prompt says so —
-`$30 / month — $360.00 for 12 months, charged now` — and `--disk` is refused rather
-than ignored. The CLI reads which kind of backend it is talking to from
-`/servers/pricing` and never quotes one while the other is about to charge you.
+Against the 12-months-up-front backend, `--disk` is refused rather than ignored, and
+the balance line shows what is left after the charge.
 
 ---
 
@@ -117,6 +126,8 @@ ghost    co@9.9.9.9       not registered here   $30.00/mo · next charge 2026-12
   co server add <name> --ssh <target>   to use one from here
   co server destroy <name>              to stop paying for one
 
+lab owes $30.00 and is stopped; it is deleted 30 days after its month went unpaid unless you top up.
+
 Balance $100.00 does not cover the next month of these servers ($282.40).
 A month left unpaid stops the server, then deletes it. Top up before 2026-12-01.
 ```
@@ -130,7 +141,8 @@ Creating another server is refused while any month is unpaid, and the balance it
 needs is this server's month on top of a month of every server you already have.
 
 A month your balance cannot pay suspends the server (stopped, disk kept) and, if
-it stays unpaid, deletes it. A resumed server comes back on a new IP; `ls` notices
+it stays unpaid, deletes it. For a server that owes, `ls` prints the date it stops
+and the date it is deleted, from the backend's `pricing.unpaid` timeline. A resumed server comes back on a new IP; `ls` notices
 the address no longer matches your local entry and prints the `co server add`
 line that updates it.
 
@@ -170,7 +182,7 @@ Two commands on purpose, because one of them stops the billing and the other doe
 | | what it does | the machine |
 |---|---|---|
 | `co server forget prod` | drops the local entry | keeps running, keeps billing |
-| `co server destroy prod` | tears it down | gone; the used part of this month is charged |
+| `co server destroy prod` | tears it down | gone; the used part of this month is charged (old 12-month term: the unused part is refunded) |
 
 A single "remove" would mean one of two failures depending on which it implemented:
 you believe you stopped paying and are still billed, or you tidy your config and
@@ -183,14 +195,20 @@ amount and the invoice afterwards:
 ```
 $ co server destroy prod
 This destroys the machine 'prod' and everything on it.
-The used part of this month (about $74.13) is charged now, and the monthly billing stops.
+The disk, the agent's identity, its logs — none of it is recoverable.
+The used part of this month (about $111.20) is charged now, and the monthly billing stops.
 
+? Type the server name to confirm (prod): prod
+
+Destroying prod …
 ✓ prod destroyed
 $111.20 charged for the used part of this month — invoice SRV-2026-11-000124.
+co server invoice prod SRV-2026-11-000124   to see it
 ```
 
-If your balance cannot pay it, the amount is recorded as unpaid and charged at your
-next top-up, and the command says so. A server on the old 12-month term refunds the
+A server that already owes is not charged at a destroy: the prompt says the used part
+"is added to what you owe ($30.00 unpaid)", and afterwards the command says what was
+recorded and the total you still owe for it, which is charged at your next top-up. A server on the old 12-month term refunds the
 unused part of its year instead, as an amount: `$150.41 of $360.00 refunded`.
 
 ---
@@ -200,12 +218,13 @@ unused part of its year instead, as an amount: `$150.41 of $360.00 refunded`.
 Every monthly charge, and the final part-month of a destroyed server, has an invoice.
 
 ```bash
-co server invoice prod                             # list them
-co server invoice prod --month 2026-12             # print the ones issued that month
-co server invoice prod --month 2026-12 --pdf prod-2026-12.pdf
-co server invoice prod --pdf latest.pdf            # just the latest one
-co server invoice --all --month 2026-12            # every server's, for one month
-co server invoice prod --month 2026-12 --json      # the backend's JSON
+co server invoice prod                                  # list them
+co server invoice prod 1                                # print one, by its row in the list
+co server invoice prod SRV-2026-12-000123               # or by its number
+co server invoice prod SRV-2026-12-000123 --pdf SRV-2026-12-000123.pdf
+co server invoice prod --month 2026-12                  # print the ones issued that month
+co server invoice --all --month 2026-12                 # every server's, for one month
+co server invoice prod --month 2026-12 --json           # the backend's JSON
 ```
 
 ```
@@ -223,7 +242,15 @@ e2-standard-4 server                                             1     $190.00  
 
 The months are UTC and select by the date the invoice was issued. `--all` without
 `--month` means this month. Every amount and line is the backend's; the CLI adds
-nothing up. `--pdf` writes one A4 page per invoice with exactly that text. A
+nothing up. `--pdf` writes that text to A4 pages, each invoice starting on its own
+page, long lines wrapped. `--pdf` with no number or month writes the one invoice a
+server has, and refuses to guess when there are more. `--pdf` and `--json` do not
+combine, and `--all` takes no server name.
+
+The PDF uses the built-in Courier font, which draws Western European text only
+(the cp1252 character set). A bill-to name or address in another script, such as
+Chinese, is left out of the PDF with a line saying so, and the account address is
+shown in its place; `co server invoice <name> <number>` prints the full text. A
 backend that still bills 12 months up front issues no server invoices, and the
 command says so.
 
