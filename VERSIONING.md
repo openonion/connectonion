@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc5
+## Current Version: 1.9.6rc6
+
+Release candidate 1.9.6rc6 for 1.9.6: in the REM reader, Mark done sits in each row's action strip
+with Codex, Results, Undo and Talk, and one button beside the day/night switch changes the reader
+between 中文 and English (#2955). After an upgrade, `co rem open` uses only a co ai of the installed
+version: the Host co rem started before the upgrade is replaced on its own port when no run is in
+flight, and any other co ai of another version is left alone and named in one sentence (#2959, fixes
+#2937). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc6.md).
+
+- 1.9.6rc6 (Mark done in the action strip; one-click language; no old server serves the reader).
+
+### Previous candidate: 1.9.6rc5
 
 Release candidate 1.9.6rc5 for 1.9.6: the REM reader's rail shows a picture with its word under each
 place, so no place needs a hover to be told apart; Skills moves out of More onto the rail; a window lower
