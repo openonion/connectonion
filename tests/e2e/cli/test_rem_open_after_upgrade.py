@@ -21,6 +21,7 @@ import connectonion
 from connectonion import address
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
+from tests import host_leak_guard
 
 # co ai, started before the upgrade: it says the version it was started with.
 OLD_CO_AI = '''
@@ -39,7 +40,7 @@ def _info(port):
 
 
 @pytest.fixture
-def upgraded(tmp_path, monkeypatch):
+def upgraded(tmp_path, tmp_path_factory, monkeypatch):
     """(old Host process, its port, the identity's address, the record): a co ai
     that `co rem open` started and recorded, and the package upgraded under it."""
     home = Path(os.environ["HOME"])                 # this test's own home (conftest)
@@ -56,8 +57,11 @@ def upgraded(tmp_path, monkeypatch):
         port = probe.getsockname()[1]
     args = [sys.executable, str(script), "ai", "--port", str(port), "--no-listen", "--no-launch"]
     with open(tmp_path / "old-host.log", "ab") as log:
+        # The checkout under test, not whatever the interpreter has installed: a
+        # script's own folder, not the current one, is first on its path.
+        checkout = str(Path(connectonion.__file__).resolve().parents[1])
         old = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                               start_new_session=True)
+                               start_new_session=True, env={**os.environ, "PYTHONPATH": checkout})
     try:
         deadline = time.monotonic() + 60
         while not (_info(port) or {}).get("version") == "0.0.1":
@@ -68,7 +72,8 @@ def upgraded(tmp_path, monkeypatch):
                                       "command": " ".join(args[1:])}))
         yield old, port, identity["address"], record
     finally:
-        # The new Host is the one this home recorded: the leak guard stops it. The old one is this test's.
+        # The new Host is the one this home recorded; this test started it, so it stops it.
+        host_leak_guard.stop_recorded(tmp_path_factory.getbasetemp(), str(home))
         old.kill()
         old.wait()
 
@@ -76,7 +81,7 @@ def upgraded(tmp_path, monkeypatch):
 def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(upgraded):
     old, port, owner, record = upgraded
     opened = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "rem", "open", "--no-launch"],
-                            capture_output=True, text=True, timeout=120)
+                            capture_output=True, text=True, timeout=50)   # under the suite's 60 s
     assert opened.returncode == 0, opened.stdout + opened.stderr
     assert old.poll() is not None, "the Host started before the upgrade is still running"
     saved = json.loads(record.read_text())
