@@ -322,11 +322,63 @@ def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
     ("stonefield.example", "Stone and Field are separate words.", ""),
     ("brightlane.example", "brightlane is lowercase.", ""),
     ("brightlane.example", "No name.\n\n## Sources\nBrightlane is only a source.\n\n## History\nNothing new.", ""),
+    # A domain that shortens the name: each capitalised word gives a prefix, "of" gives none.
+    ("unibright.example", "Talks went through the University of Brightlane’s office.", "University of Brightlane"),
+    ("unibright.example", "UniBright is short for University of Brightlane.", "UniBright"),
+    ("ub.example", "The University of Brightlane hosts it.", ""),
+    ("stonefield.example", "Stone and the Field are separate words.", ""),
 ])
 def test_org_prose_name_matches_capitalised_runs_and_most_frequent_spelling(domain, text, expected):
     from connectonion.rem.reader import _org_name
 
     assert _org_name(domain, f"# {domain}\n\n{text}\n") == expected
+
+
+def test_snapshot_names_an_org_its_page_spells_out_and_keeps_the_mark_for_one_nobody_names(tmp_path):
+    from connectonion.rem.reader import snapshot
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write("orgs/unibright-example-5.md", "# unibright.example\n\n## Who they are\n"
+                   "The correspondence identifies the University of Brightlane as the host.\n")
+    notebook.write("orgs/quietharbour-example-6.md", "# quietharbour.example\n\n## Who they are\n"
+                   "- Domain candidate; organisation identity unverified.\n")
+    records = {r["path"]: r for r in snapshot(tmp_path)["records"]}
+    assert records["orgs/unibright-example-5.md"]["title"] == "University of Brightlane"
+    assert records["orgs/unibright-example-5.md"]["domain"] == "unibright.example"
+    assert records["orgs/quietharbour-example-6.md"]["title"] == "quietharbour.example"
+
+
+def test_every_record_on_screen_is_named_by_what_it_is_not_a_generic_heading(tmp_path):
+    """A stub called "The draft" became the top knowledge node, joined to people by the phrase alone."""
+    from connectonion.rem.reader import snapshot
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    stub = "\n## What it is\n- Unknown — not investigated yet\n"
+    notebook.write("knowledge/the-draft.md", "# The draft\n\n- Also known as: The draft\n" + stub)
+    notebook.write("knowledge/lease-draft.md", "# The draft\n\n- Also known as: The draft; Harbour lease draft\n" + stub)
+    notebook.write("knowledge/thermal-storage.md", "#\n\nNo heading text.\n")
+    notebook.write("people/mara.md", "# Mara\n\nMara sent the draft back on 2026-01-02 [1].\n\n"
+                   "## Sources\n[1]: gmail:m1 2026-01-02\n")
+    data = snapshot(tmp_path)
+    records = {r["path"]: r for r in data["records"]}
+    assert records["knowledge/lease-draft.md"]["title"] == "Harbour lease draft"
+    assert records["knowledge/thermal-storage.md"]["title"] == "thermal storage"
+    # Nothing names it: still openable by path, but off every list and out of the graph.
+    assert records["knowledge/the-draft.md"]["needs_review"]
+    assert "knowledge/the-draft.md" not in {n["id"] for n in data["graph"]["nodes"]}
+    assert not [e for e in data["graph"]["edges"] if "knowledge/the-draft.md" in (e["source"], e["target"])]
+    assert all(n["title"].casefold() not in ("the draft", "") for n in data["graph"]["nodes"] if not n["private"])
+
+
+def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card():
+    """A one-hop label of 18 Chinese characters ran across the neighbouring card."""
+    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    cases = [["Dina Morrow", 18], ["Brightlane annual planning review", 18],
+             ["接收港湾租约邮件订单处理项目交接", 18], ["接收港湾租约邮件订单处理项目交接", 10]]
+    out = _run_reader_js(short + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map(([t, n]) => graphShort(t, n))));")
+    assert out == ["Dina Morrow", "Brightlane annual…", "接收港湾租约邮件…", "接收港湾…"]
 
 
 def test_org_company_name_uses_the_most_common_linked_company_fact():

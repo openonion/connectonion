@@ -31,29 +31,60 @@ BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
 def _title(record: str, text: str) -> str:
-    for line in text.splitlines():
-        if line.startswith("#"):
-            return line.lstrip("#").strip() or record
-    return Path(record).stem.replace("-", " ")
+    """The page's heading, else an alias that names one thing, else the file's readable stem.
+
+    A topic stub headed "The draft" was the top knowledge node; a bare "#" showed the path.
+    """
+    from .reader_model import PRIVATE
+    from .topic_map import generic_name, topic_aliases
+    stem = Path(record).stem.replace("-", " ")
+    heading = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
+    names = [heading, *topic_aliases(text), stem]
+    return next((name for name in names if not generic_name(PRIVATE.sub("", name))), heading or stem)
 
 
 def _org_name(domain: str, text: str) -> str:
-    """Find a capitalised spelling of the first domain label in the page itself."""
+    """Find the organisation's name in the page itself: a capitalised spelling of the first
+    domain label ("Stone Field"), else a name the label shortens ("University of Brightlane").
+    """
     body = re.sub(r"^## Sources[ \t]*\n.*?(?=^## |\Z)", "", text, flags=re.I | re.M | re.S)
     body = re.sub(r"^#[ \t]+.*$", "", body, flags=re.M)
     label = re.sub(r"[^a-z]", "", domain.split(".")[0])
-    tokens = list(re.finditer(r"(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]*(?:[’']s)?(?![A-Za-z0-9])", body))
-    names = Counter()
+    tokens = list(re.finditer(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:[’']s)?(?![A-Za-z0-9])", body))
+    spelled, shortened = Counter(), Counter()
     for start, first in enumerate(tokens):
+        if not first.group()[0].isupper():
+            continue
         words, end = [], first.start()
-        for token in tokens[start:start + 4]:
-            if words and not body[end:token.start()].isspace():
+        for token in tokens[start:start + 7]:
+            word = re.sub(r"[’']s$", "", token.group())
+            if words and not body[end:token.start()].isspace() or not word[0].isupper() and word not in ORG_JOINERS:
                 break
-            words.append(re.sub(r"[’']s$", "", token.group()))
+            words.append(word)
             end = token.end()
-            if re.sub(r"[^a-z]", "", "".join(words).lower()) == label:
-                names[" ".join(words)] += 1
+            capitals = [re.sub(r"[^a-z]", "", w.lower()) for w in words if w[0].isupper()]
+            if len(capitals) > 4:
+                break
+            if not word[0].isupper():
+                continue
+            if len(capitals) == len(words) and "".join(capitals) == label:
+                spelled[" ".join(words)] += 1
+            elif len(label) >= 4 and _shortens(label, capitals):
+                shortened[" ".join(words)] += 1
+    names = spelled or shortened
     return names.most_common(1)[0][0] if names else ""
+
+
+# Lowercase words a long name keeps between its capitals; "and" joins two names, not one.
+ORG_JOINERS = ("of", "the", "for", "de")
+
+
+def _shortens(label: str, words: list[str]) -> bool:
+    """`label` is a non-empty prefix of every word, in order: unibright <- University of Brightlane."""
+    if not words:
+        return not label
+    return any(label.startswith(words[0][:n]) and _shortens(label[n:], words[1:])
+               for n in range(1, min(len(words[0]), len(label)) + 1))
 
 
 def _org_company_name(path: str, records: list[dict]) -> str:
@@ -164,6 +195,10 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                         **({'private': True} if private_topic else {})})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
+    # A topic nothing names but a common noun ("The draft") joined unrelated people by the
+    # phrase alone. It stays openable by path; it is not a thing to list or draw.
+    from .topic_map import generic_name
+    unnamed = {r["path"] for r in records if r["category"] == "knowledge" and generic_name(PRIVATE.sub("", r["title"]))}
     # What is counted, written, and when it was last active comes from one
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages, written
@@ -181,7 +216,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record["mail"] = mail[record["path"]]
         if record["path"] in index:
             record["index"] = index[record["path"]]
-        record["needs_review"] = record["path"] in held
+        record["needs_review"] = record["path"] in held or record["path"] in unnamed
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
@@ -235,8 +270,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                                'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
                                'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
                                'mentions': topic_mentions(candidate, record_paths, owner)}
-    graph = {} if today else graph_snapshot(records, links, {r['path']: [m['path'] for m in r['topic']['mentions']]
-                                                             for r in records if 'topic' in r})
+    graph = {} if today else graph_snapshot([r for r in records if r['path'] not in unnamed], links,
+                                            {r['path']: [m['path'] for m in r['topic']['mentions']]
+                                             for r in records if 'topic' in r})
     # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
     context_records = [{**r, 'text': _today_text(r['text'])} for r in records
                        if r['category'] in ('people', 'orgs', 'projects')

@@ -11572,7 +11572,15 @@ function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 function graphHidden(n) { return n.private && (!n.r || document.documentElement.classList.contains("hide-private")); }
 function graphTitle(n) { return graphHidden(n) ? graphT("Personal") : topicName(n.r?.title || n.title || n.id).replace(" (automated candidate)", ""); }
 function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
-function graphShort(text, n = 22) { text = text.replace(/\s*\([^)]*\)\s*$/, ""); return [...text].length > n ? [...text].slice(0, n - 1).join("") + "…" : text; }
+// `n` counts Latin letters; a CJK glyph is as wide as two, so a Chinese session title is cut at half the count.
+function graphShort(text, n = 22) {
+  text = text.replace(/\s*\([^)]*\)\s*$/, "");
+  const wide = ch => /[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/.test(ch) ? 2 : 1;
+  if ([...text].reduce((sum, ch) => sum + wide(ch), 0) <= n) return text;
+  let out = "", used = 0;
+  for (const ch of text) { if ((used += wide(ch)) > n - 1) break; out += ch; }
+  return out.trimEnd() + "…";
+}
 function graphRadius(n) {
   const d = GRAPH.adj.get(n.id)?.size || 0;
   if (n.k === "sessions") return 1.8;
@@ -12087,7 +12095,9 @@ function graphLocal(r) {
     const x = cx + Math.cos(angle) * radius, y = cy + Math.sin(angle) * radius;
     lines.push(svgEl("line", { x1: cx, y1: cy, x2: x, y2: y, class: n.k === "knowledge" || centre.k === "knowledge" ? "topic" : "" }));
     marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6));
-    if (labelled.has(n.id) && !n.private) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), 18))]));
+    // A label gets the room between its mark and the card's edge (about 6.5 units per letter), not a fixed 18.
+    const room = Math.floor(((Math.cos(angle) >= 0 ? W - x : x) + 5) / 6.5);
+    if (labelled.has(n.id) && !n.private) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), Math.min(18, room)))]));
   });
   const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
     graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);

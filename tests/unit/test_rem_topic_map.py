@@ -64,6 +64,20 @@ def test_generic_vendor_and_existing_entity_aliases_are_excluded(tmp_path):
         assert scan_topics(notebook) == []
 
 
+def test_a_common_noun_behind_an_article_is_not_a_topic_name(tmp_path):
+    """"The draft" named seven unrelated drafts; a topic needs a name that says which one."""
+    from connectonion.rem.topic_map import generic_name, scan_topics
+    notebook = Notebook(tmp_path)
+    for name in ('The draft', 'the Draft', 'Draft', 'Notes', 'a summary', '-', ''):
+        assert generic_name(name), name
+    for name in ('Thermal storage', 'The Harbour lease', 'Brightlane pilot', 'the draft lease'):
+        assert not generic_name(name), name
+    path = topic(notebook, name='The draft', aliases='')
+    assert scan_topics(notebook) == []
+    path.write_text(path.read_text().replace('The draft', 'The Harbour lease'))
+    assert [row['name'] for row in scan_topics(notebook)] == ['The Harbour lease']
+
+
 def test_alias_groups_are_transitive_and_doubtful_pages_become_reviews(tmp_path):
     from connectonion.rem.topic_map import map_topics, scan_topics
     from connectonion.rem.reviews import listing, decide

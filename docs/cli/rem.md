@@ -985,6 +985,16 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
 - **Knowledge with no entries yet** says *REM files knowledge from your records
   on its night run* (the round's `backfill_topics`), with no command to copy
   (#2910).
+- **Names on screen** come from the page's own heading; a heading that names a
+  kind rather than one thing ("The draft", "Notes") gives way to an alias that
+  does, then to the file's name. A topic nothing names but such a phrase stays
+  openable by its path but is left off the lists and out of the graph, and the
+  night run no longer files one. An organisation titled by its domain shows the
+  name its page spells, either in full ("Stone Field" for `stonefield.example`)
+  or as the name the domain shortens ("University of Brightlane" for
+  `unibright.example`), else its people's **Company** link; it is marked
+  *not yet clear what this is* only when nothing in the notebook names it.
+  Graph labels are cut by width, so a Chinese title stays inside its card.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
