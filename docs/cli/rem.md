@@ -728,21 +728,50 @@ at the installed version is used as before.
 
 A `co ai` keeps running the version it was started with, so after an upgrade:
 
-- **The one `co rem` started** (the pid in `rem-live-host.json`, checked to be
-  your process with the recorded command) is stopped and a new one is started on
-  the same port. `co rem open` and `co rem open --live` do this when you run
-  them. With a saved page, that page opens at once and the next open is live.
+- **The one `co rem` started** is stopped and a new one is started on the same
+  port. It is that one only when the pid in `rem-live-host.json` is your process
+  and `ps` shows exactly the command this install starts, its interpreter
+  included; another install sharing this home starts its Host with another
+  interpreter, so it is never taken for ours. `co rem open` and
+  `co rem open --live` do this when you run them. With a saved page, that page
+  opens at once and the next open is live.
 - **A tab that was already open** needs no command. Its reload asks the old
   server, which starts the usual background page build; the build is the
   installed version, and when it has saved the pages it replaces that server on
   the same port, so the tab's address and link stay good and the page reloads
-  onto the new render. It does this only when no conversation, approval or
-  scheduled run is in flight there; otherwise a later build or the next
-  `co rem open` does. A task started from the reader runs in its own process and
-  continues. An identity selected with `--env-file` is replaced by the next
+  onto the new render. A task started from the reader runs in its own process
+  and continues. An identity selected with `--env-file` is replaced by the next
   `co rem open`, not by the build.
-- **Any other `co ai`** of another version, on port 8000 or elsewhere, is not
-  used and never stopped or signalled: `co rem open` starts its own beside it.
+- **Not while it is working.** Neither an open nor the build stops it while
+  `session_results.jsonl` holds a turn still `running` or `waiting_approval`
+  (a conversation, an approval being waited for, or a scheduled `run:` turn) or
+  `schedule-state.json` marks a scheduled `exec:` command `running`, nor when
+  the open is itself run from a turn inside it. The open shows the saved page
+  and says the server from before the upgrade is finishing a task. An unfinished
+  record older than an hour, the longest the Host lets a turn go unheard
+  (`session/active.py`), is taken as stale: that server is replaced and the open
+  names what stopped with it.
+- **Any other `co ai`** of another version that answers as you on port 8000 or
+  the recorded port, including another install's, is not used, never signalled,
+  and no Host is started beside it, because a second Host on one identity folder
+  marks the first one's turns interrupted. The saved page opens with one line
+  naming its port and version; live actions return when that `co ai` is closed.
+
+Limits, one each:
+
+- A Host is replaced at most once per installed version (as `co <provider>
+  listen` restarts, #1878): `python -m` run inside a checkout of another
+  version imports that checkout, so a replacement started from there comes up
+  at the other version again, and the open then says so instead of retrying.
+- If the new Host cannot take the port (taken between the check and its bind)
+  or does not start, the build tries once more on a free port and the record
+  names it; a tab already open gets no answer until the next `co rem open`
+  prints the new address.
+- A `co ai` of another version on a port other than 8000 or the recorded one
+  is not seen at all.
+- On Windows there is no `ps` to prove a pid is still our Host, so a Host of
+  another version is only reported, never replaced (`live_host._started_here`).
+- A turn still running after an hour is treated as stale even if it is working.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.

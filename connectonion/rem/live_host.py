@@ -1,7 +1,6 @@
 """Start the existing co ai Host when the owner explicitly opens live REM."""
 
 import os
-import re
 import secrets
 import signal
 import socket
@@ -13,22 +12,34 @@ from pathlib import Path
 from .files import RemError, read_json, write_json
 
 
-def installed_version() -> str:
-    """The connectonion version on disk: what a process started now would run.
+def version_on_disk() -> str:
+    """The connectonion version in the installed files: what a process started now runs.
 
     A Host started before an upgrade keeps the old `__version__` for as long as
     it lives, while the files under it are already the new release: the reader's
-    Host served two days and two releases that way (#2937). Read from the file,
-    because the installed distribution's metadata names the version at install
-    time for an editable checkout.
+    Host served two days and two releases that way (#2937). Not the installed
+    distribution's metadata (cli/commands/listen_commands.py installed_version):
+    for an editable checkout that names the version at install time, and /info
+    reports `__version__`, which is this file.
     """
+    import runpy
     import connectonion
+    return runpy.run_path(str(Path(connectonion.__file__).with_name("_version.py")))["__version__"]
+
+
+def _ps(*args):
     try:
-        text = Path(connectonion.__file__).with_name("_version.py").read_text(encoding="utf-8")
-    except OSError:
-        return connectonion.__version__
-    found = re.search(r"""^__version__\s*=\s*["']([^"']+)["']""", text, re.M)
-    return found.group(1) if found else connectonion.__version__
+        return subprocess.run(["ps", *args], capture_output=True, text=True, timeout=2)
+    except subprocess.TimeoutExpired as error:
+        raise OSError("could not verify the existing Host process; retry `co ai`") from error
+
+
+def _command_line(pid: int) -> str | None:
+    """This user's process `pid` as `ps` prints its command line; None when there is none."""
+    result = _ps("-ww", "-p", str(pid), "-o", "uid=", "-o", "command=")
+    fields = result.stdout.strip().split(maxsplit=1)
+    ours = result.returncode == 0 and len(fields) == 2 and fields[0] == str(os.getuid())
+    return fields[1] if ours else None
 
 
 def _alive(saved) -> bool:
@@ -36,15 +47,29 @@ def _alive(saved) -> bool:
     pid, command = saved.get("pid"), saved.get("command")
     if not isinstance(pid, int) or pid <= 0 or not command:
         return False
-    try:
-        result = subprocess.run(["ps", "-ww", "-p", str(pid), "-o", "uid=", "-o", "command="],
-                                capture_output=True, text=True, timeout=2)
-    except subprocess.TimeoutExpired as error:
-        raise OSError("could not verify the existing Host process; retry `co ai`") from error
-    fields = result.stdout.strip().split(maxsplit=1)
-    return (result.returncode == 0 and len(fields) == 2
-            and fields[0] == str(os.getuid())
-            and fields[1].endswith(command))
+    line = _command_line(pid)
+    return line is not None and line.endswith(command)
+
+
+# Windows has no ps: see _started_here.
+NO_PS = os.name == "nt"
+
+
+def _started_here(saved) -> bool:
+    """The recorded Host is alive and is exactly what this install's _spawn runs:
+    this interpreter (sys.executable, which ps prints as _spawn passed it) and then
+    the recorded command. Another install on the same home has another interpreter,
+    so its Host is never ours to stop; a record a 1.9.5 Host wrote has no other
+    field and needs none. A `uv tool upgrade` keeps the tool's interpreter path.
+
+    Never on Windows: there is no ps to tell that a pid is still that Host, and a
+    process is not signalled on a guess. There a Host of another version is only
+    reported, never replaced.
+    """
+    pid, command = saved.get("pid"), saved.get("command")
+    if NO_PS or not isinstance(pid, int) or pid <= 0 or not command:
+        return False
+    return _command_line(pid) == f"{sys.executable} {command}"
 
 
 def _spawn(directory: Path, port: int | None = None):
@@ -76,12 +101,16 @@ def _stop(process):
         process.wait(timeout=3)
 
 
-def ensure_online(address: str, *, timeout: float = 20.0, beside: bool = False) -> str | None:
-    """Reuse one Host per identity; return an actionable reason on startup failure.
+class Notice(str):
+    """One sentence for the owner, shown beside the snapshot as it is: not a failure.
+    A server of another version keeps the reader, and this says which and why."""
 
-    Our own Host of another version is replaced. `beside` starts ours although
-    the identity is online, when what is online is a co ai of another version
-    that is not ours to stop (ensure_local).
+
+def ensure_online(address: str, *, timeout: float = 20.0, say=None) -> str | None:
+    """Reuse one Host per identity; return an actionable reason on startup failure,
+    or a Notice when a server of another version keeps the reader (_upgrade).
+
+    Our own idle Host of another version is replaced; `say` hears what stopped with it.
     """
     from ..cli.co_ai.main import _owner_invite_lock
     from ..project import selected_identity_dir
@@ -90,13 +119,18 @@ def ensure_online(address: str, *, timeout: float = 20.0, beside: bool = False) 
     directory = selected_identity_dir()
     state = directory / "rem-live-host.json"
     log = directory / "rem-live-host.log"
-    # ours_only: online is not enough, because the old Host is what was online.
-    process, saved, ours_only = None, {}, beside
+    # renewed: online is not enough, because the old Host is what was online.
+    process, saved, renewed = None, {}, False
     with _owner_invite_lock(directory):
         saved = read_json(state, {})
-        if _outdated(saved, address):
-            process, ours_only = _renew(directory, saved, address), True
-        elif not beside and host_online(address):
+        held = _upgrade(directory, saved, address)
+        if isinstance(held, Notice):
+            return held
+        if held is not None:
+            process, renewed = _renew(directory, saved, address, wait=timeout / 2), True
+            if held and say:
+                say(_stopped(held))
+        elif host_online(address):
             return None
         elif saved.get("address") != address or not _alive(saved):
             process = _launch(directory, address)
@@ -107,7 +141,7 @@ def ensure_online(address: str, *, timeout: float = 20.0, beside: bool = False) 
         port = _port(process.args) if process is not None else saved.get("port")
         if port and answers(port, address):
             return None
-        if not ours_only and host_online(address, timeout=min(1.0, max(0.01, deadline - time.monotonic()))):
+        if not renewed and host_online(address, timeout=min(1.0, max(0.01, deadline - time.monotonic()))):
             return None
         time.sleep(0.2)
     if process is not None:
@@ -129,24 +163,28 @@ def _launch(directory: Path, address: str, *, background: bool = False, port: in
     return process
 
 
+# How long each signal is given: SIGTERM first, then SIGKILL.
+STOP_SECONDS = 5.0
+
+
 def _retire(saved) -> None:
     """End the Host this record names: asked first, forced when it does not go.
 
-    Only that process. Before each signal the pid must still be this user's
-    process with the recorded command (_alive), so a pid the system has since
-    given to something else is never signalled.
+    Only that process. Before each signal the pid must still be the Host this
+    install started (_started_here), so a pid the system has since given to
+    something else is never signalled.
     """
-    for sign, wait in ((signal.SIGTERM, 5.0), (getattr(signal, "SIGKILL", signal.SIGTERM), 2.0)):
-        if not _alive(saved):
+    for sign in (signal.SIGTERM, getattr(signal, "SIGKILL", signal.SIGTERM)):
+        if not _started_here(saved):
             return
         try:
             os.kill(saved["pid"], sign)
         except ProcessLookupError:
             return
-        deadline = time.monotonic() + wait
-        while time.monotonic() < deadline and _alive(saved):
+        deadline = time.monotonic() + STOP_SECONDS
+        while time.monotonic() < deadline and _started_here(saved):
             time.sleep(0.1)
-    if _alive(saved):
+    if _started_here(saved):
         raise OSError(f"the co ai started before the upgrade (pid {saved['pid']}) did not stop")
 
 
@@ -161,68 +199,181 @@ def _free(port: int) -> bool:
     return True
 
 
-def _renew(directory: Path, saved, address: str, *, background: bool = False):
+def _renew(directory: Path, saved, address: str, *, background: bool = False, wait: float | None = None):
     """Stop our own Host of another version and start the installed one, on the
     same port when it is free again: a reader tab that was open keeps its address
     (its token is a file beside the key, so it is still good). The caller holds
-    the lock and has just had _alive confirm the pid is that Host."""
+    the lock and has had _upgrade decide.
+
+    With `wait`, the new Host must answer within it; when it does not (the port
+    was taken between the check and its bind, or it failed to start) it is
+    stopped and started once more on a free port, which the record then names.
+    """
+    _mark_renewed(directory)
     _retire(saved)
     port = saved.get("port")
-    return _launch(directory, address, background=background,
-                   port=port if isinstance(port, int) and _free(port) else None)
+    process = _launch(directory, address, background=background,
+                      port=port if isinstance(port, int) and _free(port) else None)
+    if wait is None or _comes_up(process, address, wait):
+        return process
+    _stop(process)
+    return _launch(directory, address, background=background)
 
 
-def _busy(directory: Path) -> bool:
-    """A turn is in flight in the Host that keeps its sessions here: a conversation,
-    an approval being waited for, or a scheduled run (they share this record)."""
+def _comes_up(process, address: str, wait: float) -> bool:
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline and process.poll() is None:
+        if answers(_port(process.args), address):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+# Never twice for one installed version (precedent: restart.json in
+# cli/commands/listen_commands.py, #1878). A Host that is still another version
+# after one replacement is one a replacement cannot fix: `python -m` run in a
+# checkout of another version imports that checkout, and two checkouts sharing
+# one interpreter would otherwise replace each other's Host on every open.
+RENEWED = "rem-live-host-renewed.json"
+
+
+def _renewed_for(directory: Path) -> list:
+    return read_json(directory / RENEWED, {}).get("for", [])
+
+
+def _mark_renewed(directory: Path) -> None:
+    write_json(directory / RENEWED, {"for": [*_renewed_for(directory), version_on_disk()]})
+
+
+# The Host gives up on a running turn it has not heard from in an hour
+# (network/host/session/active.py, cleanup_expired): the longest a turn may run.
+TURN_LIMIT = 3600
+
+BUSY = Notice("The server from before the upgrade is finishing a task; the page switches by itself afterwards.")
+
+
+def _in_flight(directory: Path) -> tuple[list, list]:
+    """(live, stale): the unfinished work of the Host that keeps its records here.
+
+    Read: session_results.jsonl rows still `running` or `waiting_approval` (a
+    conversation, an approval being waited for, or a scheduled `run:` turn, which
+    takes the same path), and schedule-state.json entries marked `running` (a
+    scheduled `exec:` command, which writes no session row). One last written
+    more than TURN_LIMIT ago is stale.
+    """
+    from datetime import datetime
+    from ..network.host.schedule import load_state
     from ..network.host.session.storage import SessionStorage
+    now, live, stale = time.time(), [], []
     path = directory / "session_results.jsonl"
-    return path.exists() and any(session.status in SessionStorage.UNFINISHED
-                                 for session in SessionStorage(path).list())
+    sessions = [s for s in (SessionStorage(path).list() if path.exists() else [])
+                if s.status in SessionStorage.UNFINISHED]
+    for session in sessions:
+        age = now - (session.updated_at or session.created or 0)
+        (live if age < TURN_LIMIT else stale).append(f'the turn "{session.prompt[:60]}"')
+    turns = {session.session_id for session in sessions}
+    for name, entry in load_state(directory).items():
+        if isinstance(entry, dict) and entry.get("status") == "running" and entry.get("session_id") not in turns:
+            age = now - datetime.fromisoformat(entry["last_run"]).timestamp()
+            (live if age < TURN_LIMIT else stale).append(f'the scheduled run "{name}"')
+    return live, stale
+
+
+def _inside(pid: int) -> bool:
+    """This process descends from `pid`. Parents are walked, because a turn's shell
+    runs in a session of its own (useful_tools/bash.py), so the session id differs."""
+    current = os.getppid()
+    while current > 1:
+        if current == pid:
+            return True
+        result = _ps("-o", "ppid=", "-p", str(current))
+        if result.returncode != 0 or not result.stdout.strip().isdigit():
+            raise OSError(f"could not read the parent of process {current}, so co ai was left as it is")
+        current = int(result.stdout.strip())
+    return False
+
+
+def _named(version) -> str:
+    return f"version {version}" if version else "a version that does not say which"
+
+
+def _upgrade(directory: Path, saved, address, *, build: bool = False):
+    """What to do about servers of another version answering as this identity on
+    the ports co rem knows. None: there are none. A Notice: one stays, and why;
+    nothing is signalled and nothing is started beside it. A list: the Host this
+    install started is idle and is replaced; the list names stale work stopping with it.
+
+    An open run inside that Host (a turn running `co rem open`) is that Host's own
+    work, whatever its age. The page `build` is a child of that Host too, started
+    for this, so for it that is not work in flight.
+    """
+    installed = version_on_disk()
+    others = [(port, info.get("version")) for port in _known_ports()
+              if (info := _info(port)) and info.get("address") == address and info.get("version") != installed]
+    if not others:
+        return None
+    ours = saved.get("address") == address and _started_here(saved)
+    for port, version in others:
+        if not (ours and port == saved.get("port")):
+            return Notice(f"A co ai of {_named(version)} that co rem did not start here answers as you on port "
+                          f"{port}; it is not used, and live actions return when that co ai is closed.")
+    port, version = others[0]
+    if installed in _renewed_for(directory):
+        return Notice(f"The server co rem started on port {port} still runs {_named(version)} after it was "
+                      f"replaced once for {installed}; it is not replaced again.")
+    live, stale = _in_flight(directory)
+    return BUSY if live or not build and _inside(saved["pid"]) else stale
+
+
+def _stopped(stale: list) -> str:
+    return (f"Replaced the server from before the upgrade; {', '.join(stale)} had not finished "
+            "after an hour and stopped with it.")
+
+
+# How long the build waits for the new Host before trying once on a free port.
+RENEW_WAIT = 30.0
 
 
 def renew_idle() -> None:
-    """Replace our own Host of another version when no turn is in flight.
+    """Replace our own idle Host of another version, from the detached page build.
 
-    Called by the detached page build, which is the one piece of installed code
-    a Host started before an upgrade still runs (a new Python each time). So a
-    reader tab that was open before the upgrade works again on a reload with no
-    command typed (D-60): its request starts a build, and the build ends here.
-    A task started from the reader runs in its own process and is not touched;
-    a busy Host is left for a later build or the next `co rem open`.
+    The build is the one piece of installed code a Host started before an upgrade
+    still runs (a new Python each time). So a reader tab that was open before the
+    upgrade works again on a reload with no command typed (D-60): its request
+    starts a build, and the build ends here. A busy Host, or one this install did
+    not start, is left as it is (_upgrade). Nothing on Windows (_started_here).
     """
+    if NO_PS:
+        return
     from ..project import selected_identity_dir
     directory = selected_identity_dir()
 
     def due():
         saved = read_json(directory / "rem-live-host.json", {})
-        return saved if _outdated(saved, saved.get("address")) and not _busy(directory) else None
+        held = _upgrade(directory, saved, saved.get("address"), build=True) if saved.get("address") else None
+        return (saved, held) if isinstance(held, list) else None
     if not due():  # without the lock: nearly every build ends here
         return
     from ..cli.co_ai.main import _owner_invite_lock
     with _owner_invite_lock(directory):
-        if saved := due():  # again: another build, or an open, may have replaced it meanwhile
-            _renew(directory, saved, saved["address"], background=True)
-
-
-def _outdated(saved, address) -> bool:
-    """The Host this record names is ours, alive, and says it is another version
-    than the installed one: the only process co rem ever stops."""
-    return bool(address) and saved.get("address") == address and _alive(saved) and _other_version(saved.get("port"), address)
+        if found := due():  # again: another build, or an open, may have replaced it meanwhile
+            saved, stale = found
+            process = _renew(directory, saved, saved["address"], background=True, wait=RENEW_WAIT)
+            print(_stopped(stale) if stale else "Replaced the server from before the upgrade.",
+                  f"Started co ai pid {process.pid} on port {_port(process.args)}.")
 
 
 def outdated(address: str) -> bool:
-    """This identity's Host that co rem started is still the one from before an upgrade."""
-    from ..project import selected_identity_dir
-    return _outdated(read_json(selected_identity_dir() / "rem-live-host.json", {}), address)
+    """A server of another version answers as this identity on a port co rem knows."""
+    return any(_other_version(port, address) for port in _known_ports())
 
 
 def saved_host_dead(address: str) -> bool:
     """This identity's Host was started before and cannot serve the reader: its
-    process is gone, or it is another version's, which the next start replaces."""
+    process is gone, or another version answers on its port."""
     from ..project import selected_identity_dir
     saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
-    return saved.get("address") == address and (not _alive(saved) or _outdated(saved, address))
+    return saved.get("address") == address and (not _alive(saved) or _other_version(saved.get("port"), address))
 
 
 # A Host co rem open started in the background and found dead this soon after
@@ -233,15 +384,20 @@ STARTUP_WINDOW = 600
 def start(address: str) -> str | None:
     """Start this identity's Host unless ours is alive at the installed version, and
     return without waiting: `co rem open` shows the saved page meanwhile. Returns
-    what to tell the owner when the Host it started last time exited soon after."""
+    what to tell the owner: the Host it started last time exited soon after, a
+    server of another version keeps the reader (a Notice), or what stopped with
+    the one replaced."""
     from ..cli.co_ai.main import _owner_invite_lock
     from ..project import selected_identity_dir
     directory = selected_identity_dir()
     with _owner_invite_lock(directory):
         saved = read_json(directory / "rem-live-host.json", {})
-        if _outdated(saved, address):
+        held = _upgrade(directory, saved, address)
+        if isinstance(held, Notice):
+            return held
+        if held is not None:
             _renew(directory, saved, address, background=True)
-            return None
+            return Notice(f"{_stopped(held)} {STARTING}") if held else None
         if saved.get("address") == address and _alive(saved):
             return None
         exited = (saved.get("address") == address and isinstance(saved.get("started_at"), (int, float))
@@ -280,14 +436,14 @@ def answers(port: int, address: str) -> bool:
     page was "Internal Server Error" (#2937).
     """
     info = _info(port)
-    return bool(info) and info.get("address") == address and info.get("version") == installed_version()
+    return bool(info) and info.get("address") == address and info.get("version") == version_on_disk()
 
 
 def _other_version(port, address: str) -> bool:
     """A server on this port says it is this identity's Host at a version that is
     not the installed one. No answer is not that: a Host still starting is current."""
     info = _info(port) if isinstance(port, int) else None
-    return bool(info) and info.get("address") == address and info.get("version") != installed_version()
+    return bool(info) and info.get("address") == address and info.get("version") != version_on_disk()
 
 
 def _known_ports() -> list:
@@ -313,16 +469,13 @@ STARTING = "The live reader is starting; this time shows the saved page, and the
 LOCAL_WAIT = 5.0
 
 
-def ensure_local(address: str) -> tuple[str | None, str | None]:
+def ensure_local(address: str, say=None) -> tuple[str | None, str | None]:
     """(url, None) for the live reader on this computer, starting co ai when none
-    runs; (None, reason) when there is no Host here to read through."""
+    runs; (None, reason) when there is no Host here to read through, a Notice when
+    a server of another version keeps it (#2937)."""
     from ..project import selected_identity_dir
     if not (base := local_reader(address)):
-        # A co ai of another version answers as this identity (#2937). It is why
-        # the identity reads as online, and it is not used: ours is started beside
-        # it. One that is not ours is never stopped; the owner may be using it.
-        beside = any(_other_version(port, address) for port in _known_ports())
-        if failure := (ensure_online(address, beside=True) if beside else ensure_online(address)):
+        if failure := ensure_online(address, say=say):
             return None, failure
         base = local_reader(address) or _ours_coming_up(address)
     if base is STARTING:

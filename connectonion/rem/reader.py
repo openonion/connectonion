@@ -439,13 +439,13 @@ def reader_version(root: Path) -> list:
     never met, so every page said "Updating…" and every request started a build.
     """
     from .files import CHANGED
-    from .live_host import installed_version
+    from .live_host import version_on_disk
     state = root / ".state"
     paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
              state / "rem.db", state / "rem.db-wal", TEMPLATE]
     from .service import notebook_today
     # The Today queue and every "overdue" turn over at the notebook's midnight.
-    key = [str(root.resolve()), str(TEMPLATE), installed_version(),
+    key = [str(root.resolve()), str(TEMPLATE), version_on_disk(),
            str(notebook_today(root)) if root.is_dir() else None]
     for path in paths:
         try:
@@ -658,8 +658,8 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
 
 
 def _release() -> str:
-    from .live_host import installed_version
-    return installed_version()
+    from .live_host import version_on_disk
+    return version_on_disk()
 
 
 def _checked(root: Path, build: str, moment: float) -> None:
@@ -779,9 +779,12 @@ def main(argv) -> None:
         _keep_failure(root)
         raise  # the traceback is the log's last lines
     # After the pages are saved, and outside the build's failure: a Host that
-    # could not be replaced is not a failed build (its traceback still ends the log).
+    # could not be replaced is not a failed build, and the log says why in a line.
     from .live_host import renew_idle
-    renew_idle()
+    try:
+        renew_idle()
+    except (OSError, RemError) as error:
+        print(f"The pages are saved; the server from before the upgrade was not replaced: {error}")
 
 
 def _spawn_refresh(root: Path, builds) -> bool:
@@ -1015,7 +1018,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import STARTING, ensure_local, local_reader, saved_host_dead, start
+    from .live_host import STARTING, Notice, ensure_local, local_reader, saved_host_dead, start
     if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
         # No Host answers: the saved page now, co ai starting behind it. Waiting
         # for it (up to 20 s) before the first paint was most of a cold open.
@@ -1025,11 +1028,11 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
             return open_snapshot(root, launch=launch, say=say, live=f"could not start co ai: {error}; run `co ai` to diagnose")
         return open_snapshot(root, launch=launch, say=say, live=failed or STARTING)
     try:
-        url, failure = ensure_local(address)
+        url, failure = ensure_local(address, say=say)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
-    if failure == STARTING:
-        return open_snapshot(root, launch=launch, say=say, live=STARTING)
+    if failure == STARTING or isinstance(failure, Notice):
+        return open_snapshot(root, launch=launch, say=say, live=failure)
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
         return open_snapshot(root, launch=launch, say=say, live=f"Live reader unavailable: {failure}; showing a snapshot")
@@ -1049,12 +1052,14 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None)
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
-    from .live_host import ensure_online, outdated
+    from .live_host import Notice, ensure_online, outdated
     try:
-        # Online is not enough when what is online is our own Host from before an upgrade.
-        failure = ensure_online(address) if not host_online(address) or outdated(address) else None
+        # Online is not enough when what is online is a server from before an upgrade.
+        failure = ensure_online(address, say=say) if not host_online(address) or outdated(address) else None
     except (OSError, RemError) as error:
         failure = f"could not start co ai: {error}; run `co ai` to diagnose"
+    if isinstance(failure, Notice):
+        return open_snapshot(root, launch=launch, say=say, live=failure)
     if failure:
         return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
                              live_startup_failed=True)

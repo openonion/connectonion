@@ -4,11 +4,18 @@ loopback-only, and able to ask co ai for a translation it then polls."""
 import asyncio
 import json
 import re
+import socket
+import subprocess
+import sys
+import time
+from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
+import connectonion
 from connectonion.network.host import rem_http
 from connectonion.network.host.http_router import handle_http
 from connectonion.rem import live_host, reader
@@ -157,7 +164,7 @@ def test_the_reader_token_is_private_and_stable(tmp_path):
 
 
 def test_bare_open_starts_the_local_reader(tmp_path, monkeypatch):
-    monkeypatch.setattr(live_host, "ensure_local", lambda address: ("http://127.0.0.1:9/rem?token=t", None))
+    monkeypatch.setattr(live_host, "ensure_local", lambda address, **k: ("http://127.0.0.1:9/rem?token=t", None))
     opened = []
     monkeypatch.setattr(reader.webbrowser, "open", opened.append)
     result = reader.local_or_snapshot(tmp_path, "owner", launch=True)
@@ -166,7 +173,7 @@ def test_bare_open_starts_the_local_reader(tmp_path, monkeypatch):
 
 def test_bare_open_falls_back_to_the_snapshot_and_says_why(tmp_path, monkeypatch):
     prepare(tmp_path)
-    monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr(live_host, "ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = reader.local_or_snapshot(tmp_path, "owner", launch=False)
     # The snapshot the owner asked to see still opens: a fallback, not a failure.
     assert result["link"].startswith("file://") and "live_startup_failed" not in result
@@ -179,7 +186,7 @@ def test_ensure_local_uses_a_running_host_and_never_starts_a_second(tmp_path, mo
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
     live_host.write_json(tmp_path / "rem-live-host.json", {"address": "owner", "pid": 1, "port": 9123})
     monkeypatch.setattr(live_host, "answers", lambda port, address: port == 9123)
-    monkeypatch.setattr(live_host, "ensure_online", lambda address: pytest.fail("started a Host"))
+    monkeypatch.setattr(live_host, "ensure_online", lambda address, **k: pytest.fail("started a Host"))
     url, failure = live_host.ensure_local("owner")
     assert failure is None and url == f"http://127.0.0.1:9123/rem?token={live_host.reader_token(tmp_path)}"
 
@@ -188,7 +195,7 @@ def test_ensure_local_starts_co_ai_when_nothing_answers(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
     started = []
 
-    def online(address):
+    def online(address, **k):
         started.append(address)
         live_host.write_json(tmp_path / "rem-live-host.json", {"address": address, "pid": 1, "port": 9124})
     monkeypatch.setattr(live_host, "ensure_online", online)
@@ -199,7 +206,7 @@ def test_ensure_local_starts_co_ai_when_nothing_answers(tmp_path, monkeypatch):
 
 def test_a_host_on_an_unknown_port_is_named_not_duplicated(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
-    monkeypatch.setattr(live_host, "ensure_online", lambda address: None)
+    monkeypatch.setattr(live_host, "ensure_online", lambda address, **k: None)
     monkeypatch.setattr(live_host, "answers", lambda port, address: False)
     url, failure = live_host.ensure_local("owner")
     assert url is None and "co rem open --live" in failure
@@ -688,7 +695,7 @@ def test_a_host_this_open_just_started_is_called_starting_not_someone_elses(tmp_
     the open blamed "a co ai not on a port co rem knows" for REM's own Host."""
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
 
-    def online(address):  # starts ours, then the relay sees it
+    def online(address, **k):  # starts ours, then the relay sees it
         live_host.write_json(tmp_path / "rem-live-host.json",
                              {"address": address, "pid": 4242, "port": 9128, "command": "-m connectonion.cli.main ai"})
     monkeypatch.setattr(live_host, "ensure_online", online)
@@ -699,7 +706,7 @@ def test_a_host_this_open_just_started_is_called_starting_not_someone_elses(tmp_
     assert url is None and failure == live_host.STARTING
     assert "port co rem knows" not in failure and "`" not in failure and "co rem open" not in failure
     prepare(tmp_path / "rem")
-    monkeypatch.setattr(live_host, "ensure_local", lambda address: (None, live_host.STARTING))
+    monkeypatch.setattr(live_host, "ensure_local", lambda address, **k: (None, live_host.STARTING))
     note = reader.local_or_snapshot(tmp_path / "rem", "owner", launch=False)["live"]
     assert note == live_host.STARTING                               # said plainly, not as "unavailable"
 
@@ -773,8 +780,50 @@ def test_a_host_older_than_the_installed_package_does_not_say_updating_for_ever(
     assert cache == []
 
 
-def test_the_page_build_checks_the_host_after_the_pages_are_saved(host, cache, monkeypatch):
-    seen = []
-    monkeypatch.setattr(live_host, "renew_idle", lambda: seen.append(bool(reader.saved(host.root, "live"))))
-    reader.main([str(host.root), "live"])
-    assert seen == [True]
+@pytest.fixture
+def old_host_here(host, monkeypatch):
+    """The Host co rem started before an upgrade, recorded in this identity folder:
+    a stub answering /info as 0.0.1, with the reader's Host command."""
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: host.routes["identity_dir"])
+    stub = Path(__file__).resolve().parents[1] / "rem_host_stub.py"
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    args = [sys.executable, str(stub), "owner", "0.0.1", "ai", "--port", str(port), "--no-listen", "--no-launch"]
+    process = subprocess.Popen(args, stdin=subprocess.DEVNULL)
+    deadline = time.monotonic() + 20
+    while not live_host._info(port):
+        assert process.poll() is None and time.monotonic() < deadline, "the stub Host did not answer"
+    live_host.write_json(host.routes["identity_dir"] / "rem-live-host.json", {
+        "address": "owner", "pid": process.pid, "port": port, "command": " ".join(args[1:])})
+    yield process, port
+    process.kill()
+    process.wait()
+
+
+def test_the_page_build_replaces_the_old_host_once_its_pages_are_saved(host, cache, old_host_here, monkeypatch):
+    from tests.rem_host_stub import serving
+    process, port = old_host_here
+    started = []
+
+    def spawn(directory, port_wanted=None):   # the installed version comes up on the port asked for
+        started.append(bool(reader.saved(host.root, "live")))
+        running.enter_context(serving("owner", connectonion.__version__, port=port_wanted))
+        return SimpleNamespace(pid=4242, poll=lambda: None, args=["python", "-m", "connectonion.cli.main",
+                                                                  "ai", "--port", str(port_wanted)])
+    monkeypatch.setattr(live_host, "_spawn", spawn)
+    with ExitStack() as running:
+        reader.main([str(host.root), "live"])
+        assert live_host.answers(port, "owner")             # the tab's address, now the installed version
+    assert process.wait(timeout=10) is not None and started == [True]
+
+
+def test_a_host_that_cannot_be_replaced_does_not_fail_the_saved_build(host, cache, old_host_here, monkeypatch, capsys):
+    def refuse(saved):
+        raise OSError("the co ai started before the upgrade (pid 7) did not stop")
+    monkeypatch.setattr(live_host, "_retire", refuse)
+    reader.main([str(host.root), "live"])                  # returns: the build itself succeeded
+    assert reader.saved(host.root, "live") and reader.failure(host.root) is None
+    assert capsys.readouterr().out.strip().splitlines()[-1] == (
+        "The pages are saved; the server from before the upgrade was not replaced: "
+        "the co ai started before the upgrade (pid 7) did not stop")

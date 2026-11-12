@@ -3587,9 +3587,9 @@ def test_a_new_install_changes_the_saved_pages_key_even_with_the_same_template(t
     prepare(root)
     # The version on disk, which is what an install changes: a Host that was
     # running through it keeps the old one in memory (#2937).
-    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.3")
+    monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.3")
     key = reader.reader_version(root)
-    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.4")
+    monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.4")
     assert reader.reader_version(root) != key
 
 
@@ -3981,7 +3981,7 @@ def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice Example\n")
-    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.3")
+    monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.3")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     reader.cached_page(root, "live.html")
     reader.refresh(root)
@@ -3989,7 +3989,7 @@ def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
         manifest = json.loads(reader._cached(root, "current.json").read_text())
         (reader._cache_dir() / manifest["files"].pop("file.html")).unlink()
         reader._cached(root, "current.json").write_text(json.dumps(manifest))
-    monkeypatch.setattr("connectonion.rem.live_host.installed_version", lambda: "1.9.4")   # the upgrade
+    monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.4")   # the upgrade
     return reader, root
 
 
