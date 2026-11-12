@@ -412,6 +412,42 @@ def handle_email_domains():
     console.print("Set one up: co email setup <alias> --domain <domain>\n")
 
 
+# Phrases check-name uses when the local part itself cannot be sold. A name
+# that is only taken uses a different reason and still gets a price preview.
+_NAME_REFUSAL_MARKS = ("reserved", "can only contain", "must be", "too short", "too long", "invalid")
+
+
+def _name_rule_refuses(reason: str) -> bool:
+    text = reason.casefold()
+    return any(mark in text for mark in _NAME_REFUSAL_MARKS)
+
+
+def _unsellable_name_reason(token: str, name: str) -> str | None:
+    """Why check-name rejects this local part, or None if a price may be quoted.
+
+    /email/check-name is the read-only form of the validator purchase uses
+    (length, letters and single dots, the reserved list, the automatic 0x
+    mailbox). Which domain is free stays a buy-time question.
+    """
+    checked = requests.get(
+        f"{backend_url()}/api/v1/email/check-name",
+        params={"name": name},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if not checked.ok:
+        return _err(checked)
+    body = checked.json()
+    if body.get("available") is True:
+        return None
+    reason = str(body.get("reason") or "")
+    if body.get("available") is False and not _name_rule_refuses(reason):
+        return None
+    if _name_rule_refuses(reason):
+        return reason
+    return "Could not check whether this name can be purchased."
+
+
 def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False):
     """Add an address without replacing this account's existing mailboxes."""
     token, settings = _address_settings()
@@ -422,6 +458,10 @@ def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool 
         return
     if domain not in settings["domains"]:
         console.print("Unknown hosted domain. Choose one with: co email domains")
+        raise typer.Exit(1)
+    refusal = _unsellable_name_reason(token, alias)
+    if refusal:
+        console.print(f"\n[red]✗ {refusal}[/red]\n")
         raise typer.Exit(1)
     if not buy:
         console.print(f"{address}: ${settings['prices']['add']:.2f} one-time, from credits.", markup=False)
