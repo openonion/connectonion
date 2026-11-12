@@ -144,6 +144,14 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
 FACES = "faces => faces.map(face => face.dataset.path)"
 
 
+def _hand(strip, name):
+    """On a Today card the agents that are not the row's lead fold under its worded More (sprint 14)."""
+    button = strip.get_by_role("button", name=name)
+    if not button.is_visible():
+        strip.locator(".strip-more > summary").click()
+    button.click()
+
+
 def _burn(page, path):
     """How much of a face's fuse ring is burnt, as a share of the circle (dasharray's first number / 314.16)."""
     burn = page.locator(f'.deal[data-path="{path}"] .ring .burn')
@@ -157,7 +165,10 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     headline = page.locator(".night-card .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
-    assert int(headline) == len(people) == faces.count()
+    # The large number is the badge's; the people are its subset, said in words (sprint 14 #4).
+    assert int(headline) == page.evaluate("threadCounts().mine", isolated_context=False)
+    assert len(people) == faces.count()
+    assert page.locator(".night-card .count-of").inner_text() == f"Start with these {len(people)} people"
     assert page.locator(".deal.on").get_attribute("data-path") == people[0]
     # One raised card: only the dealt card is shown; the others wait behind their faces.
     assert page.locator(".today-brief .qcard:visible").count() == 1
@@ -167,7 +178,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     assert _burn(page, "projects/harbour.md") == 0 and "late" not in undated.locator(".dd").get_attribute("class")
     # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
     assert "items waiting on you" not in page.locator(".night-card").inner_text()
-    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others")
+    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others →")
 
 
 def test_a_face_deals_its_card_and_skip_deals_the_next(today):
@@ -204,8 +215,10 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     rows = page.locator(".today-brief .qitem")
     assert rows.count() >= 4
     for i in range(rows.count()):
+        # On Today the row leads with one control; the agents that are not the lead fold under More (sprint 14).
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]  # one of each per row (2026-11-12)
+        folded = rows.nth(i).locator(".handoff-line > .strip-more button[data-agent]").all_text_contents()
+        assert names[-3:] == ["Mark done", "Not now", "Ignore"] and sorted(names[:-3] + folded) == ["Hand to Claude", "Hand to Codex"]
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
@@ -220,7 +233,7 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
 # Every control on a card that says Mark done, wherever it sits and whether or not it shows before the row is
 # hovered: the head's tick (its label), the row's own tick, the strip's button, the green step button.
 MARKS = """() => [...document.querySelectorAll('.today-brief .qcard')].map(card => {
-  const says = node => /^Mark done/.test(node.getAttribute('aria-label') || node.textContent.trim());
+  const says = node => /^Mark (all )?done/.test(node.getAttribute('aria-label') || node.textContent.trim());
   return {path: card.dataset.path,
     head: [...card.querySelectorAll('.qhead button')].filter(says).length,
     step: [...card.querySelectorAll('button')].filter(node => says(node) && !node.closest('.qhead, .qitem')).length,
@@ -240,7 +253,7 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     assert len(cards) >= 3 and max(len(card["rows"]) for card in cards) > 1
     for card in cards:
         assert [row["ticks"] for row in card["rows"]] == [0] * len(card["rows"]), card
-        assert all(row["own"] == ["btn-quiet strip-done"] for row in card["rows"]), card     # the strip's, on every row
+        assert all(row["own"] in (["btn-quiet strip-done"], ["btn-quiet strip-done strip-lead"]) for row in card["rows"]), card  # the strip's, on every row
         assert card["step"] == 0 or len(card["rows"]) > 1, card                  # a green Mark done only closes several
         assert card["head"] == (1 if len(card["rows"]) > 1 else 0), card           # the tick only where it closes several
     mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
@@ -259,7 +272,7 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     assert mara.locator(".qitem").count() == 1          # the Host's answer keeps it closed
     page.locator("#done-notice").get_by_role("button", name="Undo", exact=True).click()
     row.wait_for()
-    assert mara.locator(".qitem").count() == 2 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 1
+    assert mara.locator(".qitem").count() == 2 and mara.locator(".qhead").get_by_role("button", name="Mark all done · E").count() == 1
 
 
 # The night decided Inès's mail needs no reply: REM thinks the row is handled, and the card's step is Mark done.
@@ -303,7 +316,7 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     key = page.evaluate("obligationKey(todayGroups(threadEntries().filter(e => !isDone(e)))[0].entries[0])", isolated_context=False)
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".qitem").first.hover()  # the row's actions are its second level (D-120)
-    card.locator(".handoff").first.get_by_role("button", name="交给 Claude").click()
+    _hand(card.locator(".handoff").first, "交给 Claude")
     card.get_by_text("Claude 正在做").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
     assert card.get_by_role("button", name="停止").is_visible()
@@ -312,7 +325,7 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     page.locator(f'.deal[data-path="{other}"]').click()
     second = page.locator(".today-brief .qcard.focal")
     second.locator(".qitem").first.hover()
-    second.locator(".handoff").first.get_by_role("button", name="交给 Codex").click()
+    _hand(second.locator(".handoff").first, "交给 Codex")
     second.get_by_text("REM 认不出这件事。请刷新页面再试。").wait_for()
     assert calls[-1][1]["agent"] == "codex"
     assert "Expected the item key" not in second.inner_text()
@@ -413,9 +426,9 @@ def test_counts_name_their_unit(today):
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
-    assert page.locator("#approve-all").inner_text().split() == ["2", "可一键批准"]
+    assert page.locator("#approve-all").inner_text() == "一键批准这 2 件"
     assert "件等你处理" not in page.locator(".night-card").inner_text()  # the sidebar's 等你处理 says it
-    assert page.locator(".others .waiting-more").inner_text().split()[1] == "等对方回"
+    assert page.locator(".others .waiting-more").inner_text().startswith("看 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件在等谁 →")
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
@@ -429,7 +442,7 @@ def test_hand_off_failures_are_plain_words(today, status, words):
         answers["/rem/task"] = [(status, {"error": "Traceback: KeyError 'key' in tasks.dispatch"})]
     card = page.locator(".today-brief .qcard").first
     card.locator(".qitem").first.hover()
-    card.locator(".handoff").first.get_by_role("button", name="交给 Codex").click()
+    _hand(card.locator(".handoff").first, "交给 Codex")
     card.get_by_text(words).wait_for()
     assert "Traceback" not in card.inner_text() and "KeyError" not in card.inner_text()
 
@@ -597,7 +610,8 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     slot.fill("Thursday afternoon")
     row = card.locator(".qitem").first
     row.hover()
-    row.locator(".talk-menu > summary").click()
+    row.locator(".strip-more > summary").click()
+    row.locator(".strip-more .talk-menu > summary").click()
     row.locator('[data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
@@ -701,7 +715,7 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
 # and the face ringed in the night chart.
 RAISED = """() => {
   const shows = node => node.getClientRects().length > 0;
-  const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act')].some(shows));
+  const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act, .strip-lead')].some(shows));
   // Faces that rose close together share one ring: its initials are the raised person's, its title names them all.
   const waiting = [...document.querySelectorAll('.today-brief .qcard')].map(card => byPath(card.dataset.path));
   const ringed = [...document.querySelectorAll('.night-card .fc.sel')].flatMap(ring => waiting.filter(r =>
@@ -712,8 +726,8 @@ RAISED = """() => {
 
 
 def _raised_everywhere(page):
-    shown = page.locator(".today-brief .qcard.focal .btn-act").evaluate_all("nodes => nodes.filter(node => node.getClientRects().length).length")
-    assert shown == 1, "the raised card shows exactly one green action"
+    shown = page.locator(".today-brief .qcard.focal :is(.btn-act, .strip-lead)").evaluate_all("nodes => nodes.filter(node => node.getClientRects().length).length")
+    assert shown == 1, "the raised card shows exactly one primary: green, or the row's lead in bold"
     return page.evaluate(RAISED, isolated_context=False)
 
 
@@ -806,7 +820,7 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     page.locator("#approval-undo").get_by_role("button", name="Undo", exact=True).click()
     page.locator("#approve-all").wait_for()
     assert calls[-1] == ("/rem/approve", {"action": "undo", "ids": ["reply:ines"]})
-    assert page.locator("#approve-all").inner_text().split()[0] == "1" and page.locator("#approve-all").is_enabled()
+    assert page.locator("#approve-all").inner_text() == "Approve all 1" and page.locator("#approve-all").is_enabled()
     assert page.locator(".side .nothing-open").count() == 0
     assert "Cancelled" in page.locator("#approval-undo").inner_text()
 

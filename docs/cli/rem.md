@@ -795,8 +795,7 @@ Limits, one each:
 - A busy Host from before the upgrade keeps serving until its work ends, however
   long that is.
 
-The reader returns the context REM carried forward, then helps you recall an
-older page before showing its answer. It remains a point-in-time snapshot.
+The reader returns the context REM carried forward. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
@@ -883,13 +882,21 @@ pinned to that edge: it comes into view with the draft.
   with no due date has no red and says **No due date**. A row on your own page
   belongs to the person it names (who asked, or who is owed); a row that names
   nobody is your own note and is not counted as a person waiting, in the
-  headline, the lanes or the overnight names. The links beside the date count
-  *items* (**60 on others**, **22 items to approve in one go**), so they never
-  contradict the count of people. Your own items total is the sidebar's
-  **Waiting on you** number and is not said again on the first screen (one
-  number says one thing); with nothing on others the link reads **Everything
-  open**. A count of zero never shows: with nothing to approve there is no
-  approve link. A failed or stopped scheduled round shows one line above the
+  headline, the lanes or the overnight names. Since sprint 14 the large number
+  is the one "waiting on you" count, the same as the sidebar's (and the phone
+  tab's) **Waiting on you** badge: the items in Waiting on you that need you
+  (**21 things waiting on you**, 21 件在等你). The faces beside it are a subset
+  and say so in words under it (**Start with these 5 people**, 先看这 5 个人;
+  a phone keeps the words of the count and leaves the faces to speak). The side
+  has no large numbers to stare at: what can be approved at once is a worded
+  button, **Approve all N** (一键批准这 N 件), counting only items that can go
+  now (a reply waiting for you to fill a gap is not among them) and opening the
+  approval sheet; what others owe is a worded link to its list, **See the N
+  waiting on others →** (看 N 件在等谁 →); with nothing on others the link
+  reads **Everything open**. With nothing that can go at once there is no
+  button at all, never a greyed one or a zero. Today no longer asks **What
+  should you remember about X?**: it picked a page REM already knew well, gave
+  no reason and took no answer, so the card was removed rather than dressed up. A failed or stopped scheduled round shows one line above the
   date in the reader's language (*One round last night ran too long and was
   stopped; the next round continues.*), never the runner's own English, which
   stays on the line's tooltip. The cards lead with the first
@@ -932,9 +939,11 @@ pinned to that edge: it comes into view with the draft.
   **A promise gone stale stops burning**: one whose date passed more than 60
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
-  and has no red. The side asks **Maybe over · still open?** with **Mark done**
-  (the usual mark) and **Still open**, which brings it back to the count; past three, its link *N more in Gone
-  quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
+  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
+  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all done** (都标为完成)
+  closes every one of them, each as its own mark (never linked as one thread), with one **Undo** for the batch;
+  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -989,8 +998,14 @@ pinned to that edge: it comes into view with the draft.
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
   a phone too. Since 1.9.6 every row of the open card shows its strip line (and so Mark done, Not now and Ignore)
   without a hover or a tap, on a desktop and a phone alike; the notes under it (also on, the draft's reason,
-  a task's result) still open on hover or tap. The card head's **S** button is **Next card** (下一张): it only
-  deals the next card and records nothing. A snapshot keeps Mark
+  a task's result) still open on hover or tap. Since sprint 14 each card has one primary, chosen by what the
+  item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
+  handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
+  **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
+  *(lead) · Mark done · Not now · Ignore · More ▾*: the three closes stay words, and the agents and **Talk it
+  over** that are not the lead fold under the worded **More** (更多), so on a phone the strip is one line. The card
+  head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
+  **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to

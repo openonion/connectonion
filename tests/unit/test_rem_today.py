@@ -273,7 +273,7 @@ def _today_card_js(body):
       const marks = (node, place = 'card', found = []) => {
         if (!node || typeof node !== 'object') return found;
         const here = node.class?.startsWith('qitem') ? 'row' : node.class === 'qhead' ? 'head' : node.class === 'card-acts' ? 'step' : place;
-        const label = node.text === 'Mark done' ? node.text : node['aria-label']?.startsWith('Mark done') ? node['aria-label'] : null;
+        const label = node.text === 'Mark done' ? node.text : /^Mark (all )?done/.test(node['aria-label'] || '') ? node['aria-label'] : null;
         if (node.tag === 'button' && label) found.push({where: here, cls: node.class, label, click: node.onclick});
         (node.children || []).forEach(child => marks(child, here, found));
         return found;
@@ -295,9 +295,9 @@ def test_a_live_today_row_has_one_mark_done_and_it_slides_the_row_out():
       two.filter(mark => mark.where === 'row').forEach(click);
       console.log(JSON.stringify({one: seen(one), alone, two: seen(two), several: closed}));
     ''')
-    assert result['one'] == [['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['one'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]  # nothing else to do: the row's Mark done leads, in bold (sprint 14)
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['two'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['two'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     assert result['several'] == [['.qitem', ['feedback']], ['.qitem', ['slides']]]
 
 
@@ -314,9 +314,9 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
       both.filter(mark => mark.where === 'step').forEach(click);
       console.log(JSON.stringify({single: seen(single), alone, mixed: seen(mixed), both: seen(both), together: closed}));
     ''')
-    assert result['single'] == [['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['single'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['mixed'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['mixed'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     # Every row handled: the green step closes them all, so the head's tick, which would too, is not drawn (E stays).
     assert result['both'] == [['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done'], ['step', 'btn-act', 'Mark done']]
     assert result['together'] == [['.qcard', ['feedback', 'slides']]]

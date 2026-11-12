@@ -44,6 +44,7 @@ def test_reader_keeps_old_deadlines_in_active_counts_and_today(tmp_path):
       REM.today_queue = queue;
       const doneKey = entry => entry.r.path + '\n' + entry.t.originalText;
       const calendarDay = day => day, direction = () => 'mine', staleEntry = () => false;
+      const threadDraft = () => null;  // no reply drafted: counts stay the items'
       const daysSince = day => (Date.parse(REM.as_of) - Date.parse(day)) / DAY_MS;
       const original = '## Open threads\n' +
         '- You owe a draft since 2026-07-01; due 2026-10-15.\n' +

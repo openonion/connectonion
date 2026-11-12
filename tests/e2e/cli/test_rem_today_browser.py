@@ -35,8 +35,10 @@ def test_today_is_one_card_per_person_with_one_green_action(reader):
     assert paths[0] == first
     visible_green = page.evaluate('''() => [...document.querySelectorAll('#main button, #main a')]
       .filter(node => node.getClientRects().length && /rgb\\((34, 210, 122|59, 227, 143)\\)/.test(getComputedStyle(node).backgroundColor)).length''', isolated_context=False)
-    assert visible_green == 1
-    assert page.locator('.night-card .count-line').inner_text().endswith('waiting on you')
+    # One primary per card (sprint 14): green, or the row's lead in bold where the card has no green step.
+    lead = page.locator('#main .qcard.focal .strip-lead').evaluate_all('nodes => nodes.filter(node => node.getClientRects().length).length')
+    assert visible_green + lead == 1
+    assert page.locator('.night-card .count-words').inner_text().endswith('waiting on you')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
 
 
