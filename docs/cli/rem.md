@@ -813,8 +813,9 @@ not put back after a redraw (an answer slot of a reply that has no id), the
 click does not draw over them: the button flips, the choice is saved, **有更新**
 shows, and the page changes language once those words are sent or cleared and
 you have left the field, with the sections open then kept open. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
-interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
-it is among your languages, then a Chinese browser language, then English.
+interface labels and dates. Your saved choice comes first; otherwise Chinese when it is
+your language (the first non-English one among your languages, the rule drafts and the
+night's translation use too), then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
@@ -2349,23 +2350,28 @@ shows them under Reader settings, and `co rem config` shows any configured list.
 Detection uses your sent mail and typed sessions.
 `co rem config set languages zh,en` overrides detection; an empty list restores
 it. `co rem init --languages zh,en` sets the same validated configuration before
-the map. The first non-English tag supplies automatic translations, including a
-secondary Chinese language. 中文 mode also reads regional Chinese caches such
+the map. Your language is the first non-English tag among them, so `en,zh` and
+`zh,en` both mean Chinese and only an English-only list means English; that one
+rule decides the reader's interface, the language of a reply draft's gist, why and
+【需要你：…】 slots (the body stays in the thread's language), and the language
+translated first each night. The gist column is titled **要点** (Gist), with its
+language added when the writer used another one (**要点 · English**). 中文 mode also reads regional Chinese caches such
 as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 
 ### Cached page languages
 
-Every daily run works through all missing or stale translations. Opened pages
-requesting a translation and pages changed this round come first, then your own
-page, people by recent activity, organisations/projects, decisions/agenda, and
-sessions last. Current caches spend no budget. There is no daily translation count (D-104):
+Every daily run works through all missing or stale translations, in this order:
+the pages behind the rows Today shows (at most 8, in Today's order), then the
+other pages with something waiting on you, then the newest page edits; opened
+pages requesting a translation and pages changed this round break ties. Current caches spend no budget. There is no daily translation count (D-104):
 after every 8 investigation turns translation gets a share sized from its
 backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
 The reader marks an untranslated page with a quiet **Original** (原文) while
-showing the original. Opening it in a non-English interface queues that language for the
+showing the original; a Today or Maybe over row whose words are not yet in a
+non-English interface's language starts with the same mark. Opening it in a non-English interface queues that language for the
 next pass, even if it was not detected among the owner's languages. The Read in
 menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.

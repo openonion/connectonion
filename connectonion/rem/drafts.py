@@ -198,7 +198,7 @@ def _owner_samples(root, row):
 
 
 def prepare(root, row, config, *, directory):
-    from .languages import owner_languages
+    from .languages import native_name, owner_language
     from .runner import today_note
     material = directory / 'reply-material.json'
     identities = _identities(root, row)
@@ -208,12 +208,15 @@ def prepare(root, row, config, *, directory):
         write_json(directory / 'verdict.json', {'kind': 'reply', 'send': 'now' if tier in ('partner', 'close') else 'owner'})
     write_json(material, {**row, 'channel': row.get('channel', 'mail'), **identities, 'owner_samples': _owner_samples(root, row)})
     candidate = directory / 'candidate.json'
-    language = next(iter(owner_languages(root)['languages']), config['language'])
+    language = owner_language(root) or config['language']
     skill = useful_skills_dir() / 'rem-reply-draft' / 'SKILL.md'
     voice = owner_skill('email-writing')
     prompt = (f'Read {skill} and follow it. '
               + (f'The owner\'s own writing skill is {voice}; it comes first for voice and wording. ' if voice else '')
-              + f'The material is {material}; the owner\'s language is {language}. '
+              # Named twice, the code alone read as a hint: an en-first list once drafted the gist in English.
+              + f'The material is {material}; the owner reads {native_name(language)} ({language}): write gist, why '
+              'and every 【需要你：…】 slot in it, even when the thread and the body are in another language; '
+              'the body stays in the thread\'s language. '
               + today_note(root) + ' '
               f'Write JSON to {candidate} as the skill says. Never send or contact anyone. Reply DONE.')
     return {'row': row, 'person': identities['person'], 'verdict': read_json(directory / 'verdict.json', {}),

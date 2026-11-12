@@ -534,8 +534,13 @@ def test_language_is_the_owners_detected_one_not_config_language(morning_book):
     write_json(state_path(morning_book, 'map.json'), {'owner': {'languages': {
         'languages': ['zh', 'en'], 'shares': {'zh': 0.75, 'en': 0.25}, 'english_terms': []}}})
     assert morning.preview(morning_book)['message'].startswith('昨夜：')
+    # The reader's and the drafts' rule (languages.owner_language): Chinese among his languages is his
+    # language even when he writes more English, so the morning note matches the page it links to.
     write_json(state_path(morning_book, 'map.json'), {'owner': {'languages': {
         'languages': ['en', 'zh'], 'shares': {'en': 0.6, 'zh': 0.4}, 'english_terms': []}}})
+    assert morning.preview(morning_book)['message'].startswith('昨夜：')
+    write_json(state_path(morning_book, 'map.json'), {'owner': {'languages': {
+        'languages': ['en'], 'shares': {'en': 0.95, 'zh': 0.05}, 'english_terms': []}}})
     value = morning.preview(morning_book)
     assert value['message'].startswith('Overnight: ') and value['subject'].startswith('REM morning · ')
 

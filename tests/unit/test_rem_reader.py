@@ -823,6 +823,11 @@ def test_reader_browser_evaluate_strings_compile():
     assert _run_reader_js(script) == len(scripts)
 
 
+def owner_language(tags):
+    """languages.owner_language over a list, as reader.py hands it to the page."""
+    return next((tag for tag in tags if not tag.startswith('en')), next(iter(tags), None))
+
+
 @pytest.mark.parametrize('languages,browser,expected', [
     (['en', 'zh'], 'en-AU', 'zh'), (['ja', 'en', 'zh'], 'en-AU', 'zh'),
     (['en'], 'zh-CN', 'zh'), ([], 'zh-TW', 'zh'),
@@ -832,7 +837,7 @@ def test_reader_interface_language_default(languages, browser, expected):
     page = TEMPLATE.read_text()
     default = page[page.index('let uiLanguage ='):page.index('let morePeopleColumns =')]
     result = _run_reader_js('\n'.join([
-        '(() => { const REM = {your_languages: ' + json.dumps(languages) + '};',
+        '(() => { const REM = ' + json.dumps({'your_languages': languages, 'owner_language': owner_language(languages)}) + ';',
         'const navigator = {language: ' + json.dumps(browser) + '};', default,
         'console.log(JSON.stringify(uiLanguage)); })();',
     ]))
@@ -1495,7 +1500,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1539,8 +1544,8 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
 def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'draftNowButton', 'mailtoLink'])
+                          for name in ['personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -1693,7 +1698,7 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'stripMarksDone', 'morningWords', 'withoutDateClutter'])
+                          for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'morningWords', 'withoutDateClutter'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
@@ -2965,7 +2970,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard'])
+                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -4199,7 +4204,7 @@ def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_do
     for languages, browser in ((["zh", "en"], "en-AU"), (["en"], "zh-CN"), (["en"], "en-AU")):
         shown[f"{languages[0]}/{browser}"] = _run_reader_js(
             "const node = {}; const document = {getElementById: () => node};"
-            f"const window = {{REM: {{your_languages: {json.dumps(languages)}}}}};"
+            f"const window = {{REM: {json.dumps({'your_languages': languages, 'owner_language': owner_language(languages)})}}};"
             f"const navigator = {{language: {json.dumps(browser)}}};" + mark
             + "\nconsole.log(JSON.stringify(node.textContent));")
     assert shown == {"zh/en-AU": "正在更新…", "en/zh-CN": "正在更新…", "en/en-AU": "Updating…"}

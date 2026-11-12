@@ -445,8 +445,8 @@ def test_the_undo_leaves_when_the_hold_ends_and_the_phone_bar_stays_clear(today)
     soon = lambda: (datetime.now(timezone.utc) + timedelta(seconds=2.5)).isoformat()
     answers["/rem/approve"] = lambda body: (200, {"release_at": soon(), "results": [
         {"id": i, "status": "held", "release_at": soon()} for i in body["ids"]]})
+    # Mara's draft needs nothing from the owner, so it is on top (deckOrder) and goes first; Ines's opens next.
     card = page.locator(".qcard.open")
-    card.locator(".owner-slot").get_by_role("button", name="共享文件夹").click()
     card.get_by_role("button", name="Send", exact=True).click()
     note = page.locator(".qsent")
     note.get_by_role("button", name="Undo", exact=True).wait_for()
@@ -761,9 +761,10 @@ def test_a_click_in_a_dealt_card_never_folds_its_draft_and_send_away(today):
     page.evaluate("""() => { REM.drafts.push({...REM.drafts[0], id: 'mara', thread: 'mail:fixture:harbour-renewal', to: 'Mara <mara@example.test>',
       body: 'Signed today.'}); REM.approval_outcomes.push({...REM.approval_outcomes[0], id: 'reply:mara', draft_id: 'mara', blocked: false}); render(); }""",
                   isolated_context=False)
-    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == "people/ines-halvorsen.md"
-    page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()
-    card = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
+    # Mara's draft needs nothing from the owner, so it is on top (deckOrder); the deal raises Ines's.
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == "people/mara-ostrowski.md"
+    page.locator('.deal[data-path="people/ines-halvorsen.md"]').click()
+    card = page.locator('.today-brief .qcard[data-path="people/ines-halvorsen.md"]')
     draft, send = card.locator(".qdraft"), card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
     assert draft.is_visible() and send.is_visible()
     for plain in (".qhead .qage", ".qitem .words"):  # the head's age, then a row's words, whose click reaches the card

@@ -152,6 +152,20 @@ def native_name(language: str) -> str:
     return NATIVE.get(language, language)
 
 
+def owner_language(root: Path) -> str | None:
+    """The one language the owner reads REM's own words in. Drafts (gist, why, slots), the
+    reader's interface and the first language translated at night all use this, never a pick
+    of their own: three rules once made the same `en, zh` owner an English draft under a 中文
+    reader.
+
+    The first non-English tag of his languages (set, else detected): an owner who writes a
+    second language writes English too, and the reader appends what he chooses, so `en` often
+    comes first by accident. Only a list with no other language means English; None while
+    nothing is set or detected."""
+    tags = owner_languages(root)["languages"]
+    return next((tag for tag in tags if tag.split("-")[0].lower() != "en"), next(iter(tags), None))
+
+
 def owner_languages(root: Path) -> dict:
     """What the reader offers first: the configured list, else the detected one."""
     from .config import read_config

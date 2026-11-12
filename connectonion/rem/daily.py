@@ -319,7 +319,6 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
-    from .languages import owner_languages
     from .runner import ready
     from .translate import backlog, cached, translate
     from .translate import languages
