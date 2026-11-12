@@ -9,9 +9,12 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from tests import host_leak_guard
 
@@ -27,8 +30,9 @@ def _host(home: Path):
     process = subprocess.Popen([sys.executable, str(STUB), "owner", "0.0.1", "ai", "--port", str(port),
                                 "--no-listen", "--no-launch"], stdin=subprocess.DEVNULL,
                                env={**os.environ, "HOME": str(home)})
+    deadline = time.monotonic() + 20
     while True:   # until it is the stub, not still the fork of this process
-        assert process.poll() is None, "the stub Host exited"
+        assert process.poll() is None and time.monotonic() < deadline, "the stub Host did not answer"
         try:
             httpx.get(f"http://127.0.0.1:{port}/info", timeout=1.0)
             return process
@@ -57,3 +61,17 @@ def test_only_a_host_under_this_runs_temp_directory_is_listed_and_stopped(tmp_pa
         for process in (ours, theirs):
             process.kill()
             process.wait()
+
+
+@pytest.mark.parametrize("returncode,stdout,stderr", [(1, "", "ps: illegal option"), (0, "", "")])
+def test_a_ps_that_fails_or_lists_nothing_is_an_error_not_a_clean_run(tmp_path, monkeypatch, returncode, stdout, stderr):
+    monkeypatch.setattr(host_leak_guard.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr))
+    with pytest.raises(RuntimeError, match="ps could not list processes"):
+        host_leak_guard.hosts_under(tmp_path)
+
+
+def test_pids_that_have_all_exited_are_none_left(tmp_path):
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    assert host_leak_guard.hosts_under(tmp_path, [gone.pid]) == []

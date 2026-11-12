@@ -44,8 +44,15 @@ def hosts_under(root: Path, pids=None) -> list:
         return []
     # One BSD-style word: macOS takes a second word ("ax") for an argument.
     which = ["eww", "-p", ",".join(str(pid) for pid in pids)] if pids else ["axeww"]
-    listing = subprocess.run(["ps", *which, "-o", "pid=", "-o", "uid=", "-o", "command="],
-                             capture_output=True, text=True, timeout=30).stdout
+    result = subprocess.run(["ps", *which, "-o", "pid=", "-o", "uid=", "-o", "command="],
+                            capture_output=True, text=True, timeout=30)
+    # A failing or empty ps is not "no Hosts": the guard would report a clean run.
+    # Every process listed is never empty (this one is in it); pids that have all
+    # exited print nothing and exit 1 with nothing on stderr.
+    gone = pids and result.returncode == 1 and not result.stdout.strip() and not result.stderr.strip()
+    if not gone and (result.returncode != 0 or not result.stdout.strip()):
+        raise RuntimeError(f"ps could not list processes (exit {result.returncode}): {result.stderr.strip()}")
+    listing = result.stdout
     root, found = os.path.realpath(root), []
     for line in listing.splitlines():
         fields = line.split(maxsplit=2)
