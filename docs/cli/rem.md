@@ -730,9 +730,13 @@ A `co ai` keeps running the version it was started with, so after an upgrade:
 
 - **The one `co rem` started** is stopped and a new one is started on the same
   port. It is that one only when the pid in `rem-live-host.json` is your process
-  and `ps` shows exactly the command this install starts, its interpreter
-  included; another install sharing this home starts its Host with another
-  interpreter, so it is never taken for ours. `co rem open` and
+  with the recorded command, and the record's `install` (the connectonion package
+  folder that started it) is this one's, so another install sharing this home
+  never takes it for its own. A record from before `install` existed (1.9.5) is
+  matched by the full command line `ps` shows, interpreter included: that works
+  for a uv tool or a venv; on a macOS framework Python (Homebrew, python.org)
+  `ps` shows the binary inside `Python.app`, so that old Host is reported, not
+  replaced, once. `co rem open` and
   `co rem open --live` do this when you run them. With a saved page, that page
   opens at once and the next open is live.
 - **A tab that was already open** needs no command. Its reload asks the old
@@ -747,10 +751,10 @@ A `co ai` keeps running the version it was started with, so after an upgrade:
   (a conversation, an approval being waited for, or a scheduled `run:` turn) or
   `schedule-state.json` marks a scheduled `exec:` command `running`, nor when
   the open is itself run from a turn inside it. The open shows the saved page
-  and says the server from before the upgrade is finishing a task. An unfinished
-  record older than an hour, the longest the Host lets a turn go unheard
-  (`session/active.py`), is taken as stale: that server is replaced and the open
-  names what stopped with it.
+  and says the server from before the upgrade is finishing a task. No age makes
+  such a record stale: a Host marks every earlier Host's unfinished work
+  interrupted or failed when it starts, so what is unfinished is the running
+  Host's, an approval waiting overnight included.
 - **Any other `co ai`** of another version that answers as you on port 8000 or
   the recorded port, including another install's, is not used, never signalled,
   and no Host is started beside it, because a second Host on one identity folder
@@ -763,15 +767,19 @@ Limits, one each:
   listen` restarts, #1878): `python -m` run inside a checkout of another
   version imports that checkout, so a replacement started from there comes up
   at the other version again, and the open then says so instead of retrying.
-- If the new Host cannot take the port (taken between the check and its bind)
-  or does not start, the build tries once more on a free port and the record
-  names it; a tab already open gets no answer until the next `co rem open`
-  prints the new address.
+  The mark (`renewed_for`) is in the replacement's own record, so any later
+  launch clears it.
+- If the new Host exits before it answers (its port was taken between the check
+  and its bind, or it failed to start), the open or the build starts it once
+  more on a free port and the record names it; a tab already open gets no answer
+  until the next `co rem open` prints the new address. A new Host that is slow
+  but running is not moved.
 - A `co ai` of another version on a port other than 8000 or the recorded one
   is not seen at all.
 - On Windows there is no `ps` to prove a pid is still our Host, so a Host of
   another version is only reported, never replaced (`live_host._started_here`).
-- A turn still running after an hour is treated as stale even if it is working.
+- A busy Host from before the upgrade keeps serving until its work ends, however
+  long that is.
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.

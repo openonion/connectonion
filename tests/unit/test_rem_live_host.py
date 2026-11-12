@@ -179,7 +179,7 @@ def old_host(startup):
     interpreter it runs under (another install's, when it is not this one's)."""
     started = []
 
-    def run(version="0.0.1", python=sys.executable, deaf=False):
+    def run(version="0.0.1", python=sys.executable, deaf=False, install=None):
         for _ in range(3):   # a port picked free can be taken before the stub binds it
             port = _free_port()
             args = [python, *(["-c", DEAF] if deaf else []), str(STUB), "owner", version,
@@ -187,8 +187,10 @@ def old_host(startup):
             if process := _stub(args, port):
                 break
         started.append(process)
+        # No "install": a record a 1.9.5 Host wrote, the one an owner has after the upgrade.
         write_json(startup / "rem-live-host.json", {"address": "owner", "pid": process.pid, "port": port,
-                                                    "command": " ".join(args[1:])})
+                                                    "command": " ".join(args[1:]),
+                                                    **({"install": install} if install else {})})
         return process, port
     yield run
     for process in started:
@@ -261,6 +263,30 @@ def test_our_own_host_of_another_version_is_stopped_and_replaced_on_its_port(sta
     assert spawned == [port]                        # an open tab keeps its address
     saved = live_host.read_json(startup / "rem-live-host.json", {})
     assert (saved["pid"], saved["port"]) == (4242, port)
+    assert saved["renewed_for"] == live_host.version_on_disk()      # the mark lives with the Host it names
+    assert not (startup / "rem-live-host-renewed.json").exists()
+
+
+def _other_interpreter(tmp_path):
+    """This Python under another path, as ps shows a macOS framework Python (Python.app)."""
+    other = tmp_path / "other-install" / "bin"
+    other.mkdir(parents=True)
+    (other / "python").symlink_to(sys.executable)
+    return str(other / "python")
+
+
+def test_a_record_naming_this_install_is_ours_whatever_ps_shows_as_the_interpreter(startup, old_host, tmp_path, monkeypatch):
+    """Homebrew and python.org Pythons re-exec Python.app, so ps never shows sys.executable."""
+    process, port = old_host(python=_other_interpreter(tmp_path), install=live_host._install())
+    monkeypatch.setattr(live_host, "_spawn", _new_host(port, []))
+    assert live_host.start("owner") is None
+    assert process.wait(timeout=10) is not None
+
+
+def test_a_record_naming_another_install_is_not_ours_with_the_same_interpreter(startup, old_host, untouchable):
+    process, port = old_host(install="/elsewhere/site-packages/connectonion")
+    notice = live_host.start("owner")
+    assert isinstance(notice, live_host.Notice) and f"port {port}" in notice and process.poll() is None
 
 
 def test_a_live_open_replaces_our_own_old_host_although_it_is_online(startup, old_host, monkeypatch):
@@ -400,13 +426,38 @@ def test_a_scheduled_command_in_flight_keeps_the_old_host(startup, old_host, unt
     assert live_host.start("owner") == live_host.BUSY and process.poll() is None
 
 
-def test_unfinished_work_older_than_a_turn_may_run_is_replaced_and_named(startup, old_host, monkeypatch):
+def test_unfinished_work_of_any_age_keeps_the_old_host(startup, old_host, untouchable):
+    """The Host marks an earlier Host's unfinished rows interrupted when it starts, so
+    an unfinished row is this Host's: an approval waiting overnight, a long turn."""
+    process, _ = old_host()
+    _unfinished(startup, "waiting_approval", age=2 * 86400)
+    live_host.renew_idle()
+    assert live_host.start("owner") == live_host.BUSY and process.poll() is None
+
+
+def test_a_stop_that_failed_does_not_spend_the_one_replacement(startup, old_host, monkeypatch):
+    monkeypatch.setattr(live_host, "STOP_SECONDS", 0.2)
     process, port = old_host()
-    _unfinished(startup, age=live_host.TURN_LIMIT + 60)
+    with monkeypatch.context() as patch:
+        patch.setattr(live_host.os, "kill", lambda *a: None)
+        with pytest.raises(OSError, match="did not stop"):
+            live_host.start("owner")
     monkeypatch.setattr(live_host, "_spawn", _new_host(port, []))
-    said = live_host.start("owner")
-    assert 'the turn "Summarise the week"' in said and "stopped with it" in said
+    assert live_host.start("owner") is None
     assert process.wait(timeout=10) is not None
+
+
+def test_an_explicit_open_does_not_move_a_new_host_that_is_slow_but_running(startup, old_host, monkeypatch):
+    process, port = old_host()
+    tries = []
+
+    def spawn(directory, port_wanted=None):
+        tries.append(port_wanted)
+        return SimpleNamespace(pid=4242, poll=lambda: None, terminate=lambda: None, wait=lambda **k: 0,
+                               args=["python", "-m", "connectonion.cli.main", "ai", "--port", str(port_wanted)])
+    monkeypatch.setattr(live_host, "_spawn", spawn)
+    assert "did not become reachable" in live_host.ensure_online("owner", timeout=0.5)
+    assert tries == [port]                              # an open tab's address is kept
 
 
 def test_the_page_build_replaces_an_old_host_only_when_it_is_idle(startup, old_host, monkeypatch):
@@ -431,18 +482,28 @@ def test_a_host_still_another_version_after_one_replacement_is_not_replaced_agai
     """`python -m` run in a checkout of another version imports that checkout, so its
     replacement is another version again: once per installed version (#1878)."""
     first, port = old_host()
-    with ExitStack() as running:
-        monkeypatch.setattr(live_host, "_spawn", _new_host(port, [], running))
-        live_host.start("owner")
-    assert first.wait(timeout=10) is not None
-    again, port = old_host()                  # what came up is the old version again
-    with monkeypatch.context() as patch:
-        patch.setattr(live_host.os, "kill", lambda *a: pytest.fail("replaced twice"))
-        patch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("replaced twice"))
-        notice = live_host.start("owner")
-        live_host.renew_idle()
-    assert isinstance(notice, live_host.Notice) and "not replaced again" in notice
-    assert again.poll() is None
+    replacements = []
+
+    def spawn(directory, port_wanted=None):   # what comes up is the old version again
+        args = [sys.executable, str(STUB), "owner", "0.0.1", "ai", "--port", str(port_wanted),
+                "--no-listen", "--no-launch"]
+        replacements.append(_stub(args, port_wanted))
+        return replacements[-1]
+    monkeypatch.setattr(live_host, "_spawn", spawn)
+    try:
+        assert live_host.start("owner") is None
+        assert first.wait(timeout=10) is not None
+        with monkeypatch.context() as patch:
+            patch.setattr(live_host.os, "kill", lambda *a: pytest.fail("replaced twice"))
+            patch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("replaced twice"))
+            notice = live_host.start("owner")
+            live_host.renew_idle()
+        assert isinstance(notice, live_host.Notice) and "not replaced again" in notice
+        assert replacements[0].poll() is None
+    finally:
+        for process in replacements:
+            process.kill()
+            process.wait()
 
 
 # A Host's turn that runs `co rem open` (useful_skills/rem-use/SKILL.md): the turn's
@@ -504,3 +565,4 @@ def test_on_windows_an_old_host_is_reported_and_nothing_runs_ps(startup, old_hos
         live_host.renew_idle()
         notice = live_host.start("owner")
     assert isinstance(notice, live_host.Notice) and f"port {port}" in notice and process.poll() is None
+    assert "did not start" not in notice and "Windows" in notice     # it may well be ours: say what is true

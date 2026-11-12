@@ -827,3 +827,12 @@ def test_a_host_that_cannot_be_replaced_does_not_fail_the_saved_build(host, cach
     assert capsys.readouterr().out.strip().splitlines()[-1] == (
         "The pages are saved; the server from before the upgrade was not replaced: "
         "the co ai started before the upgrade (pid 7) did not stop")
+
+
+def test_a_half_written_upgrade_under_the_build_is_one_line_not_a_failed_build(host, cache, monkeypatch, capsys):
+    def half_written():
+        raise SyntaxError("unexpected EOF while parsing (_version.py, line 11)")
+    monkeypatch.setattr(live_host, "renew_idle", half_written)
+    reader.main([str(host.root), "live"])
+    assert reader.saved(host.root, "live") and reader.failure(host.root) is None
+    assert "was not replaced" in capsys.readouterr().out.strip().splitlines()[-1]

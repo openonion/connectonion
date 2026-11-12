@@ -780,10 +780,13 @@ def main(argv) -> None:
         raise  # the traceback is the log's last lines
     # After the pages are saved, and outside the build's failure: a Host that
     # could not be replaced is not a failed build, and the log says why in a line.
+    # Any error, because the expected one is an upgrade still being written under
+    # this build (a half-written _version.py raises SyntaxError, a module mid-copy
+    # ImportError); a stop that failed is OSError. The next build tries again.
     from .live_host import renew_idle
     try:
         renew_idle()
-    except (OSError, RemError) as error:
+    except Exception as error:
         print(f"The pages are saved; the server from before the upgrade was not replaced: {error}")
 
 
@@ -1028,7 +1031,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
             return open_snapshot(root, launch=launch, say=say, live=f"could not start co ai: {error}; run `co ai` to diagnose")
         return open_snapshot(root, launch=launch, say=say, live=failed or STARTING)
     try:
-        url, failure = ensure_local(address, say=say)
+        url, failure = ensure_local(address)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
     if failure == STARTING or isinstance(failure, Notice):
@@ -1055,7 +1058,7 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None)
     from .live_host import Notice, ensure_online, outdated
     try:
         # Online is not enough when what is online is a server from before an upgrade.
-        failure = ensure_online(address, say=say) if not host_online(address) or outdated(address) else None
+        failure = ensure_online(address) if not host_online(address) or outdated(address) else None
     except (OSError, RemError) as error:
         failure = f"could not start co ai: {error}; run `co ai` to diagnose"
     if isinstance(failure, Notice):
