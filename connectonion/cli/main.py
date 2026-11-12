@@ -1933,34 +1933,36 @@ def email_domains():
     handle_email_domains()
 
 
-@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy  |  co email setup iron.share --domain steadmail.com --buy --default")
 def email_setup(
     alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
     domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
     buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the new address the default sender; without it the default stays as it is"),
 ):
     """Set up another mailbox on this account. Shows price; --buy Charges credits."""
     from .commands.email_commands import handle_email_setup
-    handle_email_setup(alias, domain=domain, buy=buy)
+    handle_email_setup(alias, domain=domain, buy=buy, make_default=make_default)
 
 
-@email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
+@email_app.command("default", epilog="Examples:  co email default 1  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. ellis@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="Row number N = the Nth address co email addresses lists right now (its # column; same order in script output), or an address as it prints it, including the 0x… one derived from your key"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy  |  co email name ellis --buy --default")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the name the default sender; without it the default stays as it is"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
     from .commands.email_commands import handle_email_name
-    handle_email_name(name, buy=buy)
+    handle_email_name(name, buy=buy, make_default=make_default)
 
 
 @email_app.command("share", epilog="Examples:  co email share you@mail.openonion.ai --with teammate@example.com --can send,read  |  co email share --list")
