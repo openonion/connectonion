@@ -318,7 +318,7 @@ def test_a_host_another_install_started_is_never_signalled_or_used(startup, old_
     process, port = old_host(python=str(other / "python"))
     for opening in (live_host.start, live_host.ensure_online):
         notice = opening("owner")
-        assert isinstance(notice, live_host.Notice) and f"port {port}" in notice
+        assert isinstance(notice, live_host.Notice) and f"port {port} (pid {process.pid})" in notice
     live_host.renew_idle()
     assert process.poll() is None
 

@@ -736,7 +736,7 @@ A `co ai` keeps running the version it was started with, so after an upgrade:
   matched by the full command line `ps` shows, interpreter included: that works
   for a uv tool or a venv; on a macOS framework Python (Homebrew, python.org)
   `ps` shows the binary inside `Python.app`, so that old Host is reported, not
-  replaced, once. `co rem open` and
+  replaced. `co rem open` and
   `co rem open --live` do this when you run them. With a saved page, that page
   opens at once and the next open is live.
 - **A tab that was already open** needs no command. Its reload asks the old

@@ -309,7 +309,7 @@ def _upgrade(directory: Path, saved, address, *, build: bool = False):
     ours = saved.get("address") == address and _started_here(saved)
     for port, version in others:
         if not (ours and port == saved.get("port")):
-            return Notice(_kept(port, version, recorded=port == saved.get("port")))
+            return Notice(_kept(port, version, pid=saved.get("pid") if port == saved.get("port") else None))
     port, version = others[0]
     if saved.get("renewed_for") == installed:
         return Notice(f"The server co rem started on port {port} to replace the one from before the upgrade "
@@ -321,15 +321,18 @@ def _upgrade(directory: Path, saved, address, *, build: bool = False):
 REPLACE = "replace"
 
 
-def _kept(port: int, version, *, recorded: bool) -> str:
-    """Why a co ai of another version on `port` is not stopped, in words that are true."""
+def _kept(port: int, version, *, pid) -> str:
+    """Why a co ai of another version on `port` is not stopped, in words that are true.
+    `pid` is the record's, when the record names that port: the process to close."""
+    recorded = pid is not None
     if NO_PS and recorded:
         why = "on Windows co rem cannot check that the process is still the one it started, so it is not stopped"
     elif recorded:
         why = "this install cannot confirm it started it, so it is not stopped"
     else:
         why = "co rem did not start it, so it is not stopped"
-    return (f"A co ai of {_named(version)} answers as you on port {port}; {why}, "
+    which = f"port {port} (pid {pid})" if recorded else f"port {port}"
+    return (f"A co ai of {_named(version)} answers as you on {which}; {why}, "
             "and live actions return when that co ai is closed.")
 
 
