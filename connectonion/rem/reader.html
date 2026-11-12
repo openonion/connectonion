@@ -12095,14 +12095,19 @@ function graphLocal(r) {
     const x = cx + Math.cos(angle) * radius, y = cy + Math.sin(angle) * radius;
     lines.push(svgEl("line", { x1: cx, y1: cy, x2: x, y2: y, class: n.k === "knowledge" || centre.k === "knowledge" ? "topic" : "" }));
     marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6));
-    // A label gets the room between its 7px offset and the card's edge (about 6.5 per letter), not a fixed 18.
-    const room = Math.floor(((Math.cos(angle) >= 0 ? W - x : x) - 7) / 6.5);
-    if (labelled.has(n.id) && !n.private && room >= 3) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(graphShort(graphTitle(n), Math.min(18, room)))]));
+    const text = labelled.has(n.id) && !n.private ? graphLocalLabel(graphTitle(n), x, W, Math.cos(angle) >= 0) : "";
+    if (text) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(text)]));
   });
   const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
     graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);
   return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), svg,
     el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]);
+}
+// A label gets the room between its 7px offset and the card's edge (about 6.5 per letter), not a fixed 18;
+// under three letters it is only "…", so none.
+function graphLocalLabel(title, x, W, right) {
+  const room = Math.floor(((right ? W - x : x) - 7) / 6.5);
+  return room < 3 ? "" : graphShort(title, Math.min(18, room));
 }
 function graphLocalMark(n, x, y, r, centre = false) {
   const shape = graphSvgMark(n.k, x, y, n.k === "sessions" ? Math.min(r, 4) : r, n.private);

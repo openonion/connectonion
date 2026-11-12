@@ -993,9 +993,9 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   night run no longer files one. An organisation titled by its domain shows the
   name its page spells, either in full ("Stone Field" for `stonefield.example`)
   or as the name the domain shortens ("University of Brightlane" for
-  `unibright.example`, only when said at least twice with *of*, *for*, *de* or
-  *the* between words, each giving two letters or more, and never a person's
-  name), else its people's **Company** link; it is marked
+  `unibright.example`, only with *of*, *for*, *de* or *the* between words, each
+  giving two letters or more, never a person's name, and only when it is the
+  one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
   Graph labels are cut by width, so a Chinese title stays inside its card.
 - **Merged threads**: the same request copied onto several pages is shown

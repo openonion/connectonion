@@ -47,10 +47,11 @@ def _org_name(domain: str, text: str, people: frozenset[str] = frozenset()) -> s
     """Find the organisation's name in the page itself: a capitalised spelling of the first
     domain label ("Stone Field"), else a name the label shortens ("University of Brightlane").
 
-    A shortened name is a guess, so it must look like an institution's name and be repeated:
-    two capitalised words joined by of/for/de/the, each giving two letters or more, said at
-    least twice. "Microsoft" for micro.example or "Team Coordination" for teamco.example was
-    unrelated prose. A person's name (`people`, folded) is never an organisation's.
+    A shortened name is a guess, so it must look like an institution's name: two capitalised
+    words joined by of/for/de/the, each giving two letters or more, and the only such name that
+    fits. "Microsoft" for micro.example or "Team Coordination" for teamco.example was unrelated
+    prose. A person's name (`people`, folded) is never a shortened org name; a full spelling
+    may be one (a founder-named org).
     """
     body = re.sub(r"^## Sources[ \t]*\n.*?(?=^## |\Z)", "", text, flags=re.I | re.M | re.S)
     body = re.sub(r"^#[ \t]+.*$", "", body, flags=re.M)
@@ -76,9 +77,12 @@ def _org_name(domain: str, text: str, people: frozenset[str] = frozenset()) -> s
                 spelled[" ".join(words)] += 1
             elif 1 < len(capitals) < len(words) and _shortens(label, capitals):
                 shortened[" ".join(words)] += 1
-    names = [name for name, _ in spelled.most_common() if name.casefold() not in people]
-    names += [name for name, seen in shortened.most_common() if seen > 1 and name.casefold() not in people]
-    return names[0] if names else ""
+    if spelled:
+        return spelled.most_common(1)[0][0]
+    # One fitting name is the answer; two that both fit ("University of Brightlane" and "of
+    # Brightwater" for unibright) is a guess either way.
+    fits = [name for name in shortened if name.casefold() not in people]
+    return fits[0] if len(fits) == 1 else ""
 
 
 # Lowercase words a long name keeps between its capitals; "and" joins two names, not one.
