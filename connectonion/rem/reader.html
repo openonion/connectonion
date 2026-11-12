@@ -3165,6 +3165,7 @@
   .rel-slot:empty { display: none; }
   /* Open topics lead the page under the header (sprint 15); the widgets follow. */
   .n3-person > .r4-topics { margin: 16px 0 0; padding: 18px 20px; border: 0; }
+  .n3-person > .r4-topics[hidden] { display: none; }
   .bento .person-sessions { grid-column: span 2; }
   .person-sessions ul { list-style: none; margin: 0; padding: 0; }
   .person-sessions .wt a { color: var(--grey); }
@@ -4397,6 +4398,7 @@ function renderLangToggle() {
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
   document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
+  document.querySelectorAll(".r4-topics").forEach(section => section.refreshTopics?.());
   document.querySelectorAll(".session-find").forEach(bar => bar.refreshSessionFind?.());
   if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
@@ -6722,7 +6724,9 @@ function memoryConnection(records) {
 // open, so the line never says "translating". The title says what happens next.
 function translationLine(r) {
   if (uiLanguage === "en" || r.translations?.[uiLanguage] || r.written_in?.toLowerCase().split("-")[0] === uiLanguage) return null;
-  if (!translationQueued(r) && !REM.status?.translation_coverage?.[uiLanguage]?.requested) return null;
+  // Only when one can arrive: queued from this live page, or a nightly target with background updates on.
+  const queued = translationQueued(r), nightly = REM.status?.worker?.enabled && REM.status?.translation_coverage?.[uiLanguage]?.requested;
+  if (!queued && !nightly) return null;
   return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
     title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
 }
@@ -8559,9 +8563,20 @@ function personTopics(r) {
     return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
       el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
   }).filter(Boolean);
-  rows.slice(3).forEach(row => row.classList.add("later"));
-  const list = el("ul", { class: rows.length > 3 ? "" : "all" }, rows);
-  return rows.length ? el("section", { class: "widget r4-sec r4-topics" }, [widgetHead("activity", t("Open topics"), rows.length > 3 ? expandChip(list, t("All {n} entries", { n: rows.length })) : el("span", { text: String(rows.length) })), list]) : null;
+  if (!rows.length) return null;
+  // With labelled passages hidden, the top three and the count are of the rows shown: the card neither leads
+  // the page empty nor tells how many hidden rows there are, and it leaves when none is shown.
+  const section = el("section", { class: "widget r4-sec r4-topics" });
+  section.refreshTopics = () => {
+    const hidden = document.documentElement.classList.contains("hide-private");
+    const shown = rows.filter(row => !hidden || !row.classList.contains("private-entry"));
+    shown.forEach((row, i) => row.classList.toggle("later", i >= 3));
+    const list = el("ul", { class: shown.length > 3 ? "" : "all" }, shown);
+    section.hidden = !shown.length;
+    section.replaceChildren(widgetHead("activity", t("Open topics"), shown.length > 3 ? expandChip(list, t("All {n} entries", { n: shown.length })) : el("span", { text: String(shown.length) })), list);
+  };
+  section.refreshTopics();
+  return section;
 }
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
@@ -9772,7 +9787,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }), updatedMarker(r, true),
-      translationLine(r), el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
+      el("p", { class: "ov-sub" }, orgSub(r, v.people)), translationLine(r), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
@@ -9794,7 +9809,7 @@ function orgKeyPeople(v) {
 }
 // What you owe lives in Today: one quiet line, never a ledger or a button here.
 // The link counts what Today counts (sprint 15): the items waiting on you, by the rule Today's header and badge use
-// (threadCounts().mine; waitingOnYou once sprint14/today-hierarchy lands), kept to this organisation's rows. What
+// (threadCounts().mine), kept to this organisation's rows. What
 // is done, quiet, stale or answered has left Today, so it leaves here too and the number never exceeds Today's.
 function orgWaiting(v) {
   const keys = new Set(v.owed.flatMap(entry => entry.row.keys || [entry.row.key]));
@@ -12360,7 +12375,7 @@ function graphPanel() {
 function graphPanelGuide() {
   const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
   // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
-  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && n.r?.path !== REM.owner).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
+  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && !(REM.owner && n.id === REM.owner)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
   const count = n => graphT("{n} links", { n: graphDegree(n) });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
       topics.length ? el("p", { text: graphT("Knowledge is the thread between people, organisations and projects. Start with one entry.") }) : null]),

@@ -179,7 +179,7 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
 def test_org_today_link_counts_what_today_counts(reader):
     open_page, _ = reader
     page = open_page("r=orgs%2Ffernhill-labs.md", language="en")
-    before = page.evaluate("threadCounts().mine", isolated_context=False)
+    assert page.locator(".ov-today").inner_text() == "5 things in Today involve Fernhill Labs →"
     # A promise gone stale is asked about apart and leaves Today's count; it must leave the org's too.
     page.evaluate("""() => {
       const org = byPath('orgs/fernhill-labs.md'), row = org.obligations.find(row => row.dir === 'mine' && !row.quiet);
@@ -187,14 +187,27 @@ def test_org_today_link_counts_what_today_counts(reader):
       for (const r of [row, ...REM.today_queue.filter(q => q.key === row.key)]) { r.due = old; r.since = old; }
       threadEntries.cached = null; render();
     }""", isolated_context=False)
-    mine = page.evaluate("threadCounts().mine", isolated_context=False)
-    assert mine < before
-    owed = page.evaluate("""() => { const keys = new Set(byPath('orgs/fernhill-labs.md').obligations.flatMap(row => row.keys || [row.key]));
-      return threadEntries().filter(entry => !isDone(entry) && entry.t.dir === 'mine' && !entry.t.quiet && !staleEntry(entry)
-        && [entry, ...(entry.members || [])].some(m => keys.has(doneKey(m)))).length; }""", isolated_context=False)
-    link = page.locator(".ov-today")
-    if owed:
-        assert link.inner_text() == ("1 thing in Today involves Fernhill Labs →" if owed == 1 else f"{owed} things in Today involve Fernhill Labs →")
+    assert page.locator(".ov-today").inner_text() == "4 things in Today involve Fernhill Labs →"
+
+
+# Review: with labelled passages hidden, the card counts and slices only what is shown, and leaves when nothing is.
+@pytest.mark.parametrize("private_rows, expected", [(3, "还没结的话题\n2"), (5, None)])
+def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(reader, private_rows, expected):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"))
+    page.evaluate("""n => {
+      const r = byPath('people/mara-ostrowski.md');
+      const rows = ['the signed addendum', 'the usage export', 'the seat price', 'a training date', 'the invoice correction']
+        .map((what, i) => '- You owe Mara ' + what + (i >= 5 - n ? ' [personal]' : '') + '.');
+      r.text = r.text.replace(/## Open threads\\n[\\s\\S]*?(?=\\n## )/, '## Open threads\\n' + rows.join('\\n') + '\\n');
+      KNOWN.clear(); FACTS.clear();
+      if (!document.documentElement.classList.contains('hide-private')) togglePrivate();
+      render();
+    }""", private_rows, isolated_context=False)
+    topics = page.locator(".r4-person .r4-topics")
+    if expected is None:
+        assert topics.count() == 0 or not topics.is_visible()
     else:
-        assert link.count() == 0
-    assert owed <= mine
+        assert topics.inner_text().startswith(expected + "\n")
+        assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
+    assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()

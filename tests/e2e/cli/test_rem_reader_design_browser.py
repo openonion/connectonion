@@ -3838,7 +3838,8 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
     # A static page with no translation asked for is simply in English: no 原文 chip, no line (sprint 15).
-    assert page.locator('.hero-marks .lang-status, #main .translation-line').count() == 0
+    header = page.locator('.person-head').inner_text() + page.locator('#main').inner_text().split('完整记忆与来源')[0]
+    assert '原文' not in header and '中文版还没好' not in header
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4066,7 +4067,9 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.search-group').count() == 0
         page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
-        assert page.locator('.hero-marks .lang-status').count() == 0
+        page.locator('.person-head').wait_for()
+        main = page.locator('#main').inner_text().split('完整记忆与来源')[0]
+        assert '原文' not in main and '中文版还没好' not in main
         assert not errors, errors
         browser.close()
 
@@ -5887,7 +5890,7 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
-    owed = page.evaluate("orgWaiting(orgView(byPath('orgs/fernhill-university.md'))).length", isolated_context=False)
+    owed = 5  # the fixture's items waiting on you about the university, as in the English test below
     today = page.locator(".ov-say a.ov-today")
     assert today.inner_text() == f"今天里有 {owed} 件和 Fernhill University 有关的事 →" and today.get_attribute("href") == "#view=open"
     assert page.locator(".ov-key li").count() == 3

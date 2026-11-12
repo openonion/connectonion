@@ -4540,9 +4540,14 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
       const chinese = translationLine({...page, written_in: 'zh-Hans'});
       queued = false; REM.status.translation_coverage = {zh: {requested: true}};
       const nightly = translationLine(page);
+      REM.status.worker.enabled = false;
+      const off = translationLine(page);  // background updates off and not live: nothing will arrive
+      queued = true;
+      const offLive = translationLine(page);
       uiLanguage = 'en';
-      console.log(JSON.stringify({plain, pending, translated, chinese, nightly, english: translationLine(page)}));
+      console.log(JSON.stringify({plain, pending, translated, chinese, nightly, off, offLive, english: translationLine(page)}));
     ''')
     assert result['plain'] is None and result['translated'] is None and result['chinese'] is None and result['english'] is None
+    assert result['off'] is None and result['offLive']['text'] == '中文版还没好，先看原文'
     for key in ('pending', 'nightly'):
         assert result[key]['text'] == '中文版还没好，先看原文' and result[key]['class'] == 'translation-line'
