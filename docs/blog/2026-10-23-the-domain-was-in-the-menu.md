@@ -4,6 +4,8 @@ tags: [Email, API Design, Testing]
 
 # The domain was in the menu
 
+Mailbox addresses are anonymized below.
+
 The owner asked whether one account could hold several email addresses on
 different domains. There was code for that, they remembered. The natural next
 step seemed to be finding the command and showing how to use it.
@@ -71,8 +73,8 @@ Later the same day, both remaining zones received Cloudflare MX/SPF records
 through the DNS token and catch-all rules through the dedicated email token.
 That avoided the zone-settings endpoint, which the dedicated token could not
 call. A real provider message reached an internal test recipient on each
-domain. Aaron then added `aaron@steadmail.com` and `aaron@oakinbox.com` beside
-his existing `aaron@trustxmail.com` and primary address. A real message to each
+domain. Aaron then added `ellis@second.example.org` and `ellis@third.example.org` beside
+his existing `ellis@first.example.org` and primary address. A real message to each
 branded owned address appeared in the same authenticated inbox, with one result
 per address filter. All four domains are now offered. The account's monthly
 send quota remained exhausted, so these provider-to-inbox tests do not claim a

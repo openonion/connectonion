@@ -46,6 +46,8 @@ def headings(record: str, owner: bool = False) -> tuple[str, ...]:
         return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
     if record.startswith('skills/catalog/'):
         return SKILL_CORE
+    if record.startswith('knowledge/'):
+        return Notebook.TOPIC_SECTIONS
     return ()
 
 
@@ -302,32 +304,141 @@ def subject_scope_changed(record: str, original: str, candidate: str) -> bool:
     return bool(renamed and not (_subject_handles(record, original) & _subject_handles(record, candidate)))
 
 
-def restore_missing_facts(record: str, candidate: str, original: str) -> str:
-    """A Facts label the turn left out comes back from the page before it, or as Unknown.
+def fact_removals(record: str, candidate: str, original: str, report: str) -> set[str]:
+    """Explicit correction reasons live in the existing lookup ledger, not on the page."""
+    reasons = {label.strip() for label, reason in
+               re.findall(r'(?m)^- Removed fact: ([^\n—]+) — ([^\n]+)$', report) if reason.strip()}
+    before, sources = _cited_sources(original), set(_cited_sources(candidate).values())
+    removed = set()
+    for label, raw in facts._lines(original).items():
+        values = facts.values(raw)
+        cited = {before.get(number) for value in values for number in value['citations']}
+        if label in reasons and cited and None not in cited and not cited & sources:
+            removed.add(label)
+    return removed
+
+
+def fact_regressions(record: str, candidate: str, original: str, removed=frozenset()) -> list[str]:
+    """Check the final page too: later cleanup must not silently empty supported fields."""
+    if not facts.fields(record) or subject_scope_changed(record, original, candidate):
+        return []
+    before, after = facts._lines(original), facts._lines(candidate)
+    return [f'Filled fact became Unknown: {label}; restore its supported value or explain its citation removal'
+            for label, value in before.items()
+            if facts.values(value) and not facts.values(after.get(label, '')) and label not in removed]
+
+
+def restore_missing_facts(record: str, candidate: str, original: str, removed=frozenset()) -> str:
+    """Restore omitted fields and supported values accidentally replaced with Unknown.
 
     2026-10-20 upkeep A/B: a turn dropped `Location` and the whole update was
     refused for a missing field, twice in three runs.
     """
-    labels = facts.fields(record)
+    before, after = facts._lines(original), facts._lines(candidate)
+    labels = tuple(dict.fromkeys((*facts.fields(record), *before)))
     span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
     if not labels or not span:
         return candidate
     body = span[1].rstrip('\n').split('\n')
+    same_subject = not subject_scope_changed(record, original, candidate)
     for at, label in enumerate(labels):
-        if any(line.startswith(f'- {label}:') for line in body):
+        present = next((n for n, line in enumerate(body) if line.startswith(f'- {label}:')), None)
+        if present is not None and (facts.values(after.get(label, '')) or not facts.values(before.get(label, ''))
+                                    or not same_subject or label in removed):
             continue
-        kept = re.search(rf'^- {re.escape(label)}:.*$', original, re.M)
-        line, candidate_with = _restore_citations(kept[0], candidate, original) if kept else ('', candidate)
+        kept = f'- {label}: {before[label]}' if label in before and same_subject and label not in removed else ''
+        line, candidate_with = _restore_citations(kept, candidate, original) if kept else ('', candidate)
         if line:
             candidate = candidate_with
             span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', candidate)
+        if present is not None:
+            body[present] = line or body[present]
+            continue
         later = next((n for n, row in enumerate(body) for after in labels[at + 1:] if row.startswith(f'- {after}:')),
                      len(body))
         body.insert(later, line or f'- {label}: Unknown')
     return candidate[:span.start(1)] + '\n'.join(body) + '\n\n' + candidate[span.end(1):].lstrip('\n')
 
 
-def restore_runner_fields(record: str, candidate: str, original: str) -> str:
+# Offline, deliberately bounded: countries with several zones are not defaults.
+LOCATION_ZONES = {
+    'Australia/Sydney': r'Sydney|NSW|New South Wales|Canberra|ACT',
+    'Australia/Melbourne': r'Melbourne|VIC',
+    'Australia/Brisbane': r'Brisbane|QLD|Queensland|Gold Coast|Sunshine Coast|Cairns|Townsville',
+    'Australia/Perth': r'Perth|Western Australia',
+    'Australia/Adelaide': r'Adelaide|South Australia',
+    'Australia/Hobart': r'Hobart|TAS|Tasmania|Launceston',
+    'Australia/Darwin': r'Darwin|NT|Northern Territory|Alice Springs',
+    'Asia/Shanghai': r'Beijing|Shanghai|China',
+    'Asia/Hong_Kong': r'Hong Kong',
+    'Asia/Singapore': r'Singapore',
+    'Asia/Tokyo': r'Tokyo',
+    'Europe/London': r'London|UK|United Kingdom',
+    'America/New_York': r'New York|NYC|Boston|Massachusetts',
+    'America/Los_Angeles': r'Los Angeles|San Francisco|California|Seattle',
+    'America/Chicago': r'Chicago|Illinois',
+    'America/Toronto': r'Toronto|Ottawa|Montreal',
+    'America/Vancouver': r'Vancouver',
+}
+LOCATION_SUFFIXES = {
+    'Australia/': r'Australia|AU|NSW|VIC|WA|SA|QLD|NT|TAS|ACT|Victoria',
+    'Asia/Shanghai': r'China|CN', 'Asia/Hong_Kong': r'China|HK',
+    'Asia/Singapore': r'SG', 'Asia/Tokyo': r'Japan|JP',
+    'Europe/London': r'UK|United Kingdom|England|GB',
+    'America/New_York': r'USA?|United States|NY|MA',
+    'America/Los_Angeles': r'USA?|United States|CA|WA|Washington',
+    'America/Chicago': r'USA?|United States|IL',
+    'America/Toronto': r'Canada|ON|QC|Ontario|Quebec',
+    'America/Vancouver': r'Canada|BC|British Columbia',
+}
+
+
+def _location_zone(location: str) -> str:
+    location = re.sub(r'\[([^]]+)\]\([^)]+\)', r'\1', location)
+    # Hong Kong, China names the special region; Beijing / Hong Kong still conflicts.
+    if re.search(r'\bHong Kong\b', location, re.I):
+        location = re.sub(r'\bChina\b', '', location, flags=re.I)
+    zones = {zone for zone, names in LOCATION_ZONES.items()
+             if re.search(rf'\b(?:{names})\b', location, re.I)}
+    # London, Ontario and Melbourne, Florida are not the default cities above.
+    north_america = re.search(r'\b(?:USA?|United States|Canada|Ontario|Florida)\b', location, re.I)
+    if north_america and any(not zone.startswith('America/') for zone in zones):
+        return ''
+    if len(zones) != 1:
+        return ''
+    zone = next(iter(zones))
+    matches = list(re.finditer(rf'\b(?:{LOCATION_ZONES[zone]})\b', location, re.I))
+    if re.search(r'[,/;]|\b(?:or|and)\b', location[:matches[0].start()], re.I):
+        return ''
+    # Permit familiar region/country/postcode suffixes, not another unmapped place.
+    suffix = location[matches[0].end():]
+    allowed = LOCATION_SUFFIXES.get(zone, LOCATION_SUFFIXES['Australia/'])
+    suffix = re.sub(rf'\b(?:{LOCATION_ZONES[zone]}|{allowed})\b', '', suffix, flags=re.I)
+    return zone if not re.search(r'[^\d\s,./()\-]', suffix) else ''
+
+
+def timezone_from_location(record: str, text: str) -> str:
+    """Fill an Unknown person time zone only from a cited, unambiguous Facts location."""
+    if not record.startswith('people/'):
+        return text
+    raw = facts._lines(text)
+    locations = facts.values(raw.get('Location', ''))
+    if facts.values(raw.get('Time zone', '')) or not locations:
+        return text
+    zones = {_location_zone(row['value']) for row in locations}
+    if '' in zones or len(zones) != 1 or any(not row['citations'] for row in locations):
+        return text
+    citations = ''.join(f'[{number}]' for number in dict.fromkeys(
+        number for row in locations for number in row['citations']))
+    span = facts._bounds(text, 'Facts')
+    if not span:
+        return text
+    body = re.sub(r'(?m)^- Time zone:[^\n]*$',
+                  f'- Time zone: {next(iter(zones))} (from location) {citations}', text[span[0]:span[1]])
+    return text[:span[0]] + body + text[span[1]:]
+
+
+def restore_runner_fields(record: str, candidate: str, original: str, removed=frozenset()) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
     The Investigation status line and a project's mapped Sessions / First seen /
@@ -345,6 +456,8 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
         if before and after:
             body = after[1]
             for label in ('First contact', 'Last contact'):
+                if label in removed:
+                    continue
                 # "(earliest mail found)" is part of the value since 1.9.3rc8.
                 kept = re.search(r'^- ' + label + r': \d{4}-\d{2}-\d{2}(?: \([^()\n]+\))?(?:[ \t]*\[W?\d+\])+$',
                                  before[1], re.M)
@@ -607,6 +720,49 @@ def number_inline_sources(text: str) -> str:
     return head + marker + sources + ('\n' + rest if rest else '')
 
 
+ENTITY_IDENTIFIER = re.compile(
+    r'\b(?:ABN|ACN|company (?:number|no\.?)|registration number)[:# \t]*'
+    r'([A-Z]?\d(?:[ \t-]?\d){5,13})(?!\d)', re.I)
+
+
+def drop_foreign_identifiers(notebook, record: str, text: str) -> tuple[str, list[str]]:
+    """An organisation's registered identifiers belong only on its own page."""
+    from .investigate import company_owner, org_domains
+
+    foreign = set()
+    for other in notebook.list('orgs'):
+        if other == record:
+            continue
+        legal = re.search(r'^- Legal entity: (.*)$', notebook.read(other), re.M)
+        if legal:
+            foreign.update(re.sub(r'\W', '', m[1]).casefold() for m in ENTITY_IDENTIFIER.finditer(legal[1]))
+    if record.startswith('orgs/') and notebook.path(record).is_file():
+        current = notebook.read(record)
+        legal = re.search(r'^- Legal entity: (.*)$', current, re.M)
+        if legal and company_owner(notebook, org_domains(current)):
+            # A pre-existing wrong copy must not strip the rightful owner's page.
+            foreign.difference_update(re.sub(r'\W', '', m[1]).casefold()
+                                      for m in ENTITY_IDENTIFIER.finditer(legal[1]))
+    head, marker, sources = text.partition('\n## Sources\n')
+    kept, removed = [], []
+    for line in head.splitlines(keepends=True):
+        matches = [m[0] for m in ENTITY_IDENTIFIER.finditer(line)
+                   if re.sub(r'\W', '', m[1]).casefold() in foreign]
+        if not matches:
+            kept.append(line)
+            continue
+        removed.extend(matches)
+        for value in matches:
+            line = line.replace(value, '')
+        line = re.sub(r'[ \t]*;[ \t]*(?=\[W?\d+\]|$)', ' ', line)
+        content = CITATION.sub('', line).strip(' -*;\r\n')
+        if content == 'Legal entity:':
+            line = '- Legal entity: Unknown\n'
+        if content:
+            kept.append(line)
+    return ''.join(kept) + marker + sources, sorted(set(removed))
+
+
 IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
 
 
@@ -790,14 +946,15 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
-CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
+CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:attachments-index", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
                    "investigation:original-evidence", "investigation:timeline", "investigation:earlier-insights",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
 def _known_sources(items: list[dict]) -> set:
-    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
+    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'
+             and i.get('role') != 'attachments-index'}
     # Fact extraction reads all gathered mail before a quick turn samples it.
     # A restored field may cite mail outside that sample; its provenance is in
     # the facts item even though the raw mail is absent from this turn.
@@ -910,7 +1067,7 @@ def resolve_sources(root: Path, record: str, text: str) -> str:
 
 
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
-    if PRIVATE_STORE.search(value):
+    if PRIVATE_STORE.search(value) or value.strip().startswith('investigation:attachments-index:'):
         return False
     if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
         from .project_pages import live_source_snapshot
@@ -1220,13 +1377,19 @@ def size_note(page_chars: int) -> str:
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
-             owner: bool = False, root: Path | None = None) -> list[str]:
+             owner: bool = False, root: Path | None = None, removed_facts=frozenset()) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
+    if record.startswith('knowledge/'):
+        from .reader_model import PRIVATE, REFERENCE, _destination
+        if PRIVATE.search(original.split('\n', 1)[0]) and not PRIVATE.search(candidate.split('\n', 1)[0]):
+            errors.append('Preserve topic privacy on the title line')
+        if any(_destination(record, raw).startswith(('sessions/', 'skills/')) for _, raw in REFERENCE.findall(body)):
+            errors.append('Topic sessions and skills are counted, not linked')
     if record.startswith('skills/catalog/'):
         old_title = re.search(r'^# (.+)$', prose(original), re.M)
         new_title = re.search(r'^# (.+)$', body, re.M)
@@ -1259,10 +1422,18 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                     errors.append(f'Cited file needs a hash or exact Git commit in a mapped repository: {source}')
     if record.startswith('projects/'):
         if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
+            external = {item['source'] for item in items if item.get('source') and item.get('text')
+                        and not item['source'].startswith(('investigation:', 'codex:', 'claude-code:'))}
+            if root is not None:
+                external.update(source for source in cited_texts(root, candidate, items)
+                                if not source.startswith(("investigation:", "codex:", "claude-code:")))
+            numbers = _cited_sources(candidate)
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
                 if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
-                    errors.append(f'No assigned project session inputs: keep {heading} Unknown')
+                    lines = [line for line in section[1].splitlines() if line.strip()]
+                    if not all(any(numbers.get(n) in external for n in CITATION.findall(line)) for line in lines):
+                        errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
             pattern = r'^- ' + re.escape(label) + r': [0-9-]+$'
             previous = re.findall(pattern, prose(original), re.M)
@@ -1304,6 +1475,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
         # from the page and the coverage note -- nothing about the subject.
         errors.append('Page cites only the page itself and the coverage note; nothing about the subject was read')
     errors += fact_errors(record, candidate, original)
+    errors += fact_regressions(record, candidate, original, removed=removed_facts)
     return errors
 
 
@@ -1408,6 +1580,29 @@ def add_missing_sections(record: str, text: str, owner: bool = False) -> str:
 
 def _placeholder(body: str) -> bool:
     return not body.strip() or bool(re.fullmatch(r'(?:- )?(?:Unknown|None)\b[^\n]*', body.strip()))
+
+
+def merge_insight_shapes(text: str) -> str:
+    """One bullet per Insight prefix, preserving each finding and its citations."""
+    span = re.search(r'(?ms)^## Insight[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    if not span:
+        return text
+    prefixes = '|'.join(re.escape(kind) for kind in facts.INSIGHT_KINDS)
+    first, blocks, seen = {}, [], set()
+    # A bullet's indented continuation (including quoted evidence) moves with it.
+    for block in re.split(r'(?m)(?=^- )', span[1]):
+        match = re.fullmatch(rf'- ({prefixes}):[ \t]*(.*)', block.rstrip(), re.S)
+        if not match:
+            blocks.append(block)
+            continue
+        key, finding = match.groups()
+        if key not in first:
+            first[key] = len(blocks)
+            blocks.append(block)
+        elif (key, finding) not in seen:
+            blocks[first[key]] = blocks[first[key]].rstrip() + '\n  ' + finding + '\n'
+        seen.add((key, finding))
+    return text[:span.start(1)] + ''.join(blocks).rstrip() + '\n\n' + text[span.end(1):]
 
 
 def merge_duplicate_sections(record: str, text: str, owner: bool = False) -> str:

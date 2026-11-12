@@ -225,14 +225,14 @@ def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template: co-ai, custom (default: config only)"),
-    yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts; global REM storage only, without source consent or scheduling"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip project prompts; global setup always runs without questions"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
     background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and the same REM setup'),
     no_rem: bool = typer.Option(False, '--no-rem', help='Skip REM setup during global initialization'),
 ):
-    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup asks for source consent, installs upkeep and builds the first REM notebook in the foreground after an estimate confirmation. Without a terminal or with --yes, only REM storage is created. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
+    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup never asks questions: it grants local session and connected mailbox access, installs upkeep and builds the first REM notebook in the foreground. The cost estimate is informational; --yes and no terminal behave the same. Future connected mailboxes join automatically. Ends with undo commands and the notebook path. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -245,7 +245,13 @@ def init(
         if background and sys.platform != 'darwin':
             console.print('Background Mac setup requires macOS. Next: co init', markup=False)
             raise typer.Exit(2)
+        from .codex_setup import setup_codex
+        codex = setup_codex()
         handle_global_init(key=key)
+        console.print(codex["summary"], markup=False, soft_wrap=True)
+        console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
+        if not codex["ready"]:
+            console.print(f"Codex login pending. Run: {codex['next_action']}; then co rem start", markup=False, soft_wrap=True)
         if background:
             from .mac_bootstrap import prepare_mac_host
             from .host_service import HostServiceError
@@ -260,7 +266,7 @@ def init(
             from .commands.rem_commands import init_global_rem
             from ..rem.files import RemError
             try:
-                init_global_rem(yes=yes)
+                init_global_rem(yes=yes, codex=codex)
             except RemError as error:
                 # The one place co init calls REM outside _handle: say it in one line,
                 # not a traceback (#2758). Consent is recorded, so the retry is cheap.
@@ -268,7 +274,8 @@ def init(
                 raise typer.Exit(1) from None
         if background and not result['codex_ready']:
             console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
-            raise typer.Exit(1)
+            if codex['ready']:
+                raise typer.Exit(1)
         return
     if background:
         console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)
@@ -580,11 +587,24 @@ def claude_run(
     cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
     session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
     model: str = typer.Option("", "--model", help="Claude model override"),
-    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+    timeout: int = typer.Option(600, "--timeout", min=1, max=3600, help="Maximum run time in seconds"),
+    # acceptEdits by default (#2904): the person who typed the command is the
+    # only one who could approve, and nobody is asked mid-run, so "default"
+    # (ask, then refuse) changed nothing while reporting success. acceptEdits
+    # lets Claude change files inside --cwd and still refuses other commands,
+    # which are listed in permission_denials; bypassPermissions stays opt-in.
+    permission_mode: str = typer.Option(
+        "acceptEdits", "--permission-mode", metavar="acceptEdits|default|plan|...",
+        help="acceptEdits (the default) lets Claude change files in --cwd but not run other commands; "
+             "default asks before each edit or command and, with nobody to ask, refuses them; "
+             "plan only reads; bypassPermissions runs anything, so opt in only when you mean it. "
+             "Refused tools are listed in permission_denials."),
 ):
     """Experimental: send one prompt to Claude Code and print the result as JSON (reply, status, cost, session ID). Runs Claude Code in --cwd; --session resumes an earlier session."""
-    from ..useful_tools.claude_code import run_co_claude
+    from ..useful_tools.claude_code import PERMISSION_MODES, run_co_claude
 
+    if permission_mode not in PERMISSION_MODES:
+        raise typer.BadParameter(f"use one of {', '.join(PERMISSION_MODES)}", param_hint="--permission-mode")
     result = run_co_claude(
         prompt=prompt,
         cwd=str(cwd),
@@ -592,6 +612,7 @@ def claude_run(
         model=model,
         timeout=timeout,
         workspace=cwd,
+        permission_mode=permission_mode,
     )
     print(result)
     import json
@@ -630,9 +651,15 @@ class _BrowserCommand(typer.core.TyperCommand):
     """
 
     def parse_args(self, ctx, args):
+        if _browser_verb(args) == "history" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_history import history_parser
+            from .style import console, markup
+            console().print(markup(history_parser().format_help()))
+            ctx.exit(0)
         if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
             from .commands.browser_import import IMPORT_HELP
-            print(IMPORT_HELP)
+            from .style import console, markup
+            console().print(markup(IMPORT_HELP))
             ctx.exit(0)
         return super().parse_args(ctx, args)
 
@@ -660,7 +687,13 @@ def browser(
     give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
+    cookies · close. Local Chrome data: {history,import} — history lists visits;
+    import carries Chrome logins into this browser.
+    `co browser help` shows how to use each one."""
+    if args and args[0] == "history":
+        from .commands.browser_history import handle_browser_history
+        raise typer.Exit(handle_browser_history(args[1:]))
+
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
@@ -1224,7 +1257,7 @@ def server_add(
 
 @server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to. Read-only."""
+    """Show what you can deploy to, and what each server costs as the backend reports it. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
@@ -1245,11 +1278,14 @@ def server_new(
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
     region: Optional[str] = typer.Option(None, "--region",
                                          help="Where to provision (default: australia-southeast1)"),
+    disk: Optional[int] = typer.Option(None, "--disk", metavar="GB",
+                                       help="Disk size in GB, one of the sizes co server new lists "
+                                            "(default 20; larger ones add to the monthly price)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
-    """Have a server created for you. Charges 12 months of credit up front."""
+    """Have a server created for you. Creates the machine and charges your credits for it; shows the price and how it is charged, then asks."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes, disk_gb=disk):
         raise typer.Exit(1)
 
 
@@ -1286,12 +1322,34 @@ def server_forget(
 
 @server_app.command("destroy", epilog="Example:  co server destroy prod")
 def server_destroy(
-    name: str = typer.Argument(..., help="Server to tear down"),
+    name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; the unused term is refunded."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; charges the used part of this month, or refunds the unused part of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
+        raise typer.Exit(1)
+
+
+@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod 1  |  co server invoice prod SRV-2026-12-000123 --pdf SRV-2026-12-000123.pdf  |  co server invoice --all --month 2026-12")
+def server_invoice(
+    name: Optional[str] = typer.Argument(None, help="Server name, as co server ls lists it (leave out with --all)"),
+    number: Optional[str] = typer.Argument(None, help="One invoice: its row (#) in the list, e.g. 1, or its number from the invoice email"),
+    month: Optional[str] = typer.Option(None, "--month", metavar="YYYY-MM",
+                                        help="The invoices issued in this UTC month, in full"),
+    every: bool = typer.Option(False, "--all", help="Every server's invoices for --month (default: this month)"),
+    pdf: Optional[Path] = typer.Option(None, "--pdf", metavar="FILE",
+                                       help="Write the chosen invoices to this PDF instead of printing them"),
+    as_json: bool = typer.Option(False, "--json", help="Print the backend's invoice JSON instead"),
+):
+    """Show the invoices for a server's monthly charges. With a name only, lists them; with a number or --month, prints them in full. Read-only, except that --pdf writes FILE."""
+    from .commands.server_commands import handle_server_invoice, invoice_usage_error
+    problem = invoice_usage_error(name, number, month, every, pdf, as_json)
+    if problem:
+        console.print(problem, style="red", markup=False)
+        raise typer.Exit(2)
+    if not handle_server_invoice(name=name, number=number, month=month, every=every,
+                                 pdf=str(pdf) if pdf else None, as_json=as_json):
         raise typer.Exit(1)
 
 
@@ -1900,34 +1958,36 @@ def email_domains():
     handle_email_domains()
 
 
-@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy  |  co email setup iron.share --domain steadmail.com --buy --default")
 def email_setup(
     alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
     domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
     buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the new address the default sender; without it the default stays as it is"),
 ):
     """Set up another mailbox on this account. Shows price; --buy Charges credits."""
     from .commands.email_commands import handle_email_setup
-    handle_email_setup(alias, domain=domain, buy=buy)
+    handle_email_setup(alias, domain=domain, buy=buy, make_default=make_default)
 
 
-@email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
+@email_app.command("default", epilog="Examples:  co email default 1  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="Row number N = the Nth address co email addresses lists right now (its # column; same order in script output), or an address as it prints it, including the 0x… one derived from your key"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy  |  co email name ellis --buy --default")
 def email_name(
-    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@mail.openonion.ai"),
+    name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the name the default sender; without it the default stays as it is"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
     from .commands.email_commands import handle_email_name
-    handle_email_name(name, buy=buy)
+    handle_email_name(name, buy=buy, make_default=make_default)
 
 
 @email_app.command("share", epilog="Examples:  co email share you@mail.openonion.ai --with teammate@example.com --can send,read  |  co email share --list")
@@ -1956,7 +2016,7 @@ def email_unshare(
 def email_upgrade(
     tier: str = typer.Argument(..., help="Tier: plus or pro"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
-    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'aaron'"),
+    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'ellis'"),
     keep_address: bool = typer.Option(
         False,
         "--keep-address",

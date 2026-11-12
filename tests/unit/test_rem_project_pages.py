@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from connectonion.rem import project_material, project_pages
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.files import Notebook, RemError
 from connectonion.rem.project_material import extract, mark_written, page_state, stored
 from connectonion.rem.project_pages import PROMPT_CHARS, queue, write_page, write_pages
@@ -352,7 +352,7 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     extract(world.root, world.subs)
     source = stored(world.root, "projects/tide.md")[0]["source"]
     run = _fake_runner(lambda prompt: _page_citing(source))
-    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default"}, run=run)
+    out = write_page(world.root, "projects/tide.md", config={**default_config(), "model": "default", "models": dict.fromkeys(LEVEL_MODELS, "default")}, run=run)
     page = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
@@ -444,7 +444,7 @@ def test_project_quote_round_carries_saved_page_note_and_whole_first_write_mater
     turns, directories, saved = [], [], []
 
     def page_from(prompt):
-        candidate = Path(re.search(r"NEW file (\S+candidate\.md)", prompt)[1])
+        candidate = Path(re.search(r"existing page at (\S+candidate\.md)", prompt)[1])
         directory = candidate.parent
         directories.append(directory)
         turns.append(json.loads((directory / "material.json").read_text()))
@@ -685,7 +685,8 @@ def test_projects_shows_the_order_and_the_cost_and_spends_nothing(world, monkeyp
     assert result.exit_code == 0, result.output
     assert "projects/tide.md  (last active" in result.stdout and "first write" in result.stdout
     assert "Cost: 1 model call(s)" in result.stdout and "Nothing was spent." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def _two_active_projects(world):
@@ -729,7 +730,8 @@ def test_ctrl_c_in_projects_write_names_what_was_written_and_the_next_command(wo
     result = CliRunner().invoke(app, ["rem", "--root", str(world.root), "projects", "write"])
     assert result.exit_code == 130
     assert f"Stopped: 1 page written before the stop ({done[0]}), and kept." in result.stdout
-    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+    assert "Work queued for the next scheduled run." not in result.stdout
+    assert result.stdout.rstrip().endswith(f"Next: co rem --root {world.root} projects write")
 
 
 def test_one_new_message_is_singular(world):

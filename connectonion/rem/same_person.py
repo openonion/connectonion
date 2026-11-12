@@ -16,15 +16,16 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
 from pathlib import Path
 
+from .service import notebook_today
 from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock, read_json, state_path, write_json
 
 SKILL = "rem-same-person"
 VERDICTS = "same-person.json"
 # Pairs judged per daily run: one model call each.
 PAIRS_PER_RUN = 2
+NEW_PAIRS_PER_RUN = 10
 # Each page's own mail shown to the judge: enough to see how they write.
 MAILS_PER_PAGE = 6
 MAIL_CHARS = 1500
@@ -55,7 +56,7 @@ def _alike(one: dict, other: dict) -> str:
     return ""
 
 
-def candidates(root: Path) -> list[dict]:
+def candidates(root: Path, *, uninvestigated: bool | None = None) -> list[dict]:
     """Pairs of people pages that look alike and have not been judged, by code alone."""
     from .merge import aliases
     state = read_json(state_path(root, "map.json"), {})
@@ -65,6 +66,8 @@ def candidates(root: Path) -> list[dict]:
     judged = read_json(state_path(root, VERDICTS), {})
     folded = aliases(root)
     roster = [person for person in Notebook(root).people() if person["path"] != owner and person["path"] not in folded]
+    new = {person["path"] for person in roster
+           if uninvestigated is not None and "· not investigated yet" in Notebook(root).read(person["path"])}
     pairs = {}
     for i, one in enumerate(roster):
         for other in roster[i + 1:]:
@@ -73,7 +76,8 @@ def candidates(root: Path) -> list[dict]:
                 email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
             why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
                 or _alike(one, other)
-            if why and _due(judged.get(key)):
+            has_new = one["path"] in new or other["path"] in new
+            if why and (uninvestigated is None or has_new == uninvestigated) and _due(root, judged.get(key)):
                 pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
 
@@ -92,9 +96,9 @@ def _skipped(pair, usage=None, say=lambda text: None, *, asked=False):
             "runner_attempts": int(asked)}
 
 
-def _due(verdict: dict | None) -> bool:
+def _due(root: Path, verdict: dict | None) -> bool:
     """Never judged, or a judgement that failed before today: answered pairs are not asked again."""
-    return not verdict or ("same" not in verdict and verdict.get("failed", "") < date.today().isoformat())
+    return not verdict or ("same" not in verdict and verdict.get("failed", "") < notebook_today(root).isoformat())
 
 
 def _own_mail(root: Path, record: str, emails: list[str]) -> list[dict]:
@@ -109,7 +113,7 @@ def _own_mail(root: Path, record: str, emails: list[str]) -> list[dict]:
              "subject": item["subject"], "text": item["text"][:MAIL_CHARS]} for item in items[:MAILS_PER_PAGE]]
 
 
-def packet(root: Path, pair: dict) -> str:
+def packet(root: Path, pair: dict, *, directory=None) -> str:
     """The skill, then both pages and each one's own mail."""
     from ..skills_catalog import useful_skills_dir
     notebook = Notebook(root)
@@ -117,6 +121,12 @@ def packet(root: Path, pair: dict) -> str:
     pages = [{"record": record, "page": notebook.read(record),
               "own_mail": _own_mail(root, record, roster[record]["emails"])} for record in pair["pages"]]
     skill = (useful_skills_dir() / SKILL / "SKILL.md").read_text(encoding="utf-8")
+    if directory is not None:
+        from .runner import readable_material
+        write_json(directory / "material.json", pages, readable=True)
+        (directory / "material.md").write_text(readable_material([
+            {"record": page["record"], "text": page["page"], "own_mail": page["own_mail"]} for page in pages]), encoding="utf-8")
+        return skill + f"\nWhy code put them side by side: {pair['why']}\nRead {directory / 'material.md'} in pieces with sed/rg."
     return skill + "\n\n---\n\nWhy code put them side by side: " + pair["why"] + "\n\n" + json.dumps(
         pages, ensure_ascii=False, indent=1)
 
@@ -129,20 +139,23 @@ def _verdict(result: dict) -> dict:
         answer = json.loads(text[text.find("{"):text.rfind("}") + 1])
     except json.JSONDecodeError as error:
         raise RunFailed("Same-person judgement returned invalid JSON", result.get("usage")) from error
-    if not isinstance(answer, dict) or not isinstance(answer.get("same"), bool) or answer.get("address_role") not in ROLES:
+    if not isinstance(answer, dict) or not isinstance(answer.get("same"), bool) or not isinstance(answer.get("address_role"), str):
         raise RunFailed("Same-person judgement returned an invalid answer", result.get("usage"))
     return answer
 
 
-def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None) -> list[dict]:
+def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say=lambda text: None,
+          uninvestigated: bool | None = None) -> list[dict]:
     """Ask about up to `limit` pairs; fold the ones answered yes. Returns one row per pair asked."""
+    from .inquiry import stage_config
     from .runner import RunFailed, run_claim_task
     run = run or run_claim_task
+    config = stage_config(root, config, "same-person")
     rows = []
     for _ in range(limit):
         # Found again after every answer: a fold removes a page that later pairs named.
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-            pair = next(iter(candidates(root)), None)
+            pair = next(iter(candidates(root, uninvestigated=uninvestigated)), None)
         if not pair:
             break
         say(f"Same person? {pair['pages'][0]} and {pair['pages'][1]}")
@@ -167,9 +180,10 @@ def judge(root: Path, config: dict, *, run=None, limit: int = PAIRS_PER_RUN, say
 
 def prepare(root, pair, *, directory):
     output = directory / "candidate.json"
+    prompt = packet(root, pair, directory=directory).replace("Do not edit any file.", "Read the supplied material with tools; do not edit notebook pages.", 1)
     return {"root": str(root), "pair": pair, "candidate": str(output),
             "before": {record: Notebook(root).read(record) for record in pair["pages"]},
-            "prompt": packet(root, pair) + f"\nWrite only the JSON answer to {output}."}
+            "prompt": prompt + f"\nWrite only the JSON answer to {output}."}
 
 
 def prepare_verdict(task, result, *, say=lambda text: None):
@@ -180,7 +194,8 @@ def prepare_verdict(task, result, *, say=lambda text: None):
         return {"merge": None, "verdicts": verdicts,
                 "result": _skipped(pair, result.get("usage"), say, asked=True)}
     answer = _verdict(result)
-    row = {**pair, **answer, "date": date.today().isoformat(), "usage": result.get("usage")}
+    answer["same"] = answer["same"] and answer["address_role"] == "their own"
+    row = {**pair, **answer, "date": notebook_today(root).isoformat(), "usage": result.get("usage")}
     notebook, merge = Notebook(root), None
     if answer["same"]:
         kept, old = sorted(pair["pages"], key=lambda record: (weight(notebook.read(record)), record), reverse=True)
@@ -209,7 +224,7 @@ def check(task, result, *, lock_held=False, say=lambda text: None):
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         verdicts = read_json(state_path(root, VERDICTS), {})
-        verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": date.today().isoformat(),
+        verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": notebook_today(root).isoformat(),
                                              "error": str(error)[:300]}
         write_json(state_path(root, VERDICTS), verdicts)
     return {**pair, "outcome": "failed", "error": str(error)[:300], "usage": getattr(error, "usage", None)}

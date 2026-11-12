@@ -469,3 +469,80 @@ def test_claim_rewordings_set_aside_source_qualifications_and_added_words():
     for old, new in [("Stable 1.9.1", "Stable 1.9.2"), ("waiting on Liesel", "waiting on you"),
                      ("Python project", "project Python"), ("waiting waiting", "waiting")]:
         assert not _same(old, new), (old, new)
+
+
+@pytest.fixture
+def cited_session(tmp_path):
+    """Invented session: its late messages must never replace a cited early turn."""
+    import json
+    import sqlite3
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    refresh(tmp_path)
+    path = state_path(tmp_path, 'projects/fiction/messages.jsonl')
+    path.parent.mkdir(parents=True)
+    messages = [{'source': f'codex:fiction:{i}', 'text': f'Example turn {i}'} for i in range(24)]
+    messages[4]['text'] = '[personal] Excluded example'
+    messages[6]['text'] = '［sensitive］ Excluded example'
+    path.write_text(''.join(json.dumps(row) + '\n' for row in messages))
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        for i, message in enumerate(messages):
+            db.execute('insert into messages (id, source, thread, sender, time, subject, body_path, body_line) '
+                       'values (?, ?, ?, ?, ?, ?, ?, ?)',
+                       (message['source'], 'codex', 'session:codex:fiction', 'people/owner.md',
+                        f'2026-10-01T10:{i:02}:00Z', 'projects/fiction.md',
+                        'projects/fiction/messages.jsonl', i + 1))
+    return tmp_path
+
+
+def test_cited_conversations_window_is_around_each_verified_citation(cited_session):
+    from connectonion.rem.reader_model import cited_conversations
+
+    thread = 'session:codex:fiction'
+    contexts = {f'codex:fiction:{i}': {'thread': thread} for i in (5, 18)}
+    result = cited_conversations(cited_session, contexts, private=True)[thread]
+    assert [message['id'] for message in result['messages']] == [
+        f'codex:fiction:{i}' for i in [3, 4, 5, 6, 7, 16, 17, 18, 19, 20]]
+    assert result['windows']['codex:fiction:5'] == [f'codex:fiction:{i}' for i in range(3, 8)]
+    assert result['cited_ids'] == ['codex:fiction:5', 'codex:fiction:18']
+    assert result['total'] == 24
+    assert {m['sender'] for m in result['messages']} == {'You'}
+
+
+def test_cited_conversations_exclude_private_neighbors_and_unverified_threads(cited_session):
+    from connectonion.rem.reader_model import cited_conversations
+
+    thread = 'session:codex:fiction'
+    result = cited_conversations(cited_session, {'codex:fiction:5': {'thread': thread}})[thread]
+    assert [m['id'] for m in result['messages']] == [f'codex:fiction:{i}' for i in (3, 5, 7)]
+    assert result['windows']['codex:fiction:5'] == [f'codex:fiction:{i}' for i in (3, 5, 7)]
+    assert cited_conversations(cited_session, {'codex:missing:5': {'thread': thread}}) == {}
+    assert cited_conversations(cited_session, {'codex:fiction:5': {'thread': 'session:other'}}) == {}
+    assert cited_conversations(cited_session, {'codex:fiction:4': {'thread': thread}}) == {}
+
+
+def test_hashed_mail_conversation_window_keeps_the_native_cited_id(tmp_path):
+    import hashlib
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+    from connectonion.rem.reader_model import cited_context, cited_conversations
+    from connectonion.rem.store import refresh
+    import json
+
+    prepare(tmp_path)
+    native = 'fiction/provider-message'
+    source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    write_json(message_path(tmp_path, 'outlook', native),
+               {'id': native, 'provider': 'outlook', 'body': 'Example agreement.'})
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({
+        'type': 'mail', 'source': 'outlook', 'id': native, 'from': 'Nora <nora@example.test>',
+        'to': ['owner@example.test'], 'date': '2026-10-01', 'subject': 'Example'}) + '\n')
+    refresh(tmp_path)
+    contexts = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])
+    conversation = cited_conversations(tmp_path, contexts)[contexts[source]['thread']]
+    assert conversation['cited_ids'] == ['outlook:' + native]
+    assert conversation['windows'][source] == ['outlook:' + native]

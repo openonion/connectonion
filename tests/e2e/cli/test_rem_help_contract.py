@@ -20,8 +20,8 @@ from connectonion.cli.main import app
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "investigate", "enrich", "muse", "deepen", "open", "list", "show", "search", "start", "stop", "status",
-                 "sync", "next", "submit", "sources", "config", "logs", "doctor", "history"]
-ADVANCED = ["scan", "map-skills", "import", "stub", "merge", "translate", "reflect", "reflections", "propose", "review", "abstract", "capture",
+                 "sync", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
+ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "translate", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",
@@ -38,6 +38,21 @@ def resolve(words):
 
 def help_of(words):
     return runner.invoke(app, ["rem", *words, "--help"], terminal_width=200).stdout
+
+
+def test_rem_init_options_document_repeatable_mail_selection():
+    options = help_of(["init"]).split("Options:", 1)[1].split("Output:", 1)[0]
+    line = next((line for line in options.splitlines() if "--mail " in line), "")
+    assert "gmail|outlook" in line
+    assert "repeatable" in line
+    assert "consent" in options and "subscribe" in options
+
+
+def test_rem_start_and_init_help_match_terminal_no_prompt_behavior():
+    assert 'diff' in help_of(['start'])
+    assert 'without prompting' in help_of(['start'])
+    assert 'pauses at the estimate' not in help_of(['init'])
+    assert 'estimate pause unless' not in help_of([])
 
 
 @pytest.mark.parametrize("name", sorted(pages()))
@@ -66,6 +81,7 @@ def test_every_command_is_on_the_root_page_the_advanced_page_or_is_an_old_name()
     assert listed == ROOT_COMMANDS
     assert re.findall(r"^  ([a-z][a-z-]*)\s{2,}\S", pages()["co rem advanced"], re.M) == ADVANCED
     assert set(REM.commands) == {*ROOT_COMMANDS, *ADVANCED, "advanced", *OLD_NAMES}
+    assert "until 1.9.0" not in help_of([])
     for old, new in OLD_NAMES.items():
         assert REM.commands[old].help.startswith(f"Old name for `co rem {new.split(' --')[0]}"), old
     for name in [*ROOT_COMMANDS, *ADVANCED]:
@@ -109,6 +125,8 @@ def test_help_never_runs_the_command(tmp_path, monkeypatch):
 def test_an_old_name_still_works_and_says_its_new_name(tmp_path, old, new):
     args = {"subscribe": ["codex"], "unsubscribe": ["codex"]}.get(old, [])
     result = runner.invoke(app, ["rem", "--root", str(tmp_path), old, *args])
+    assert "works until" not in result.stderr
+    assert "works until" not in help_of([old])
     assert f"is now `co rem --root {tmp_path} {new.split(' --')[0]}" in result.stderr \
         or f"is now `co rem --root {tmp_path} {new}" in result.stderr, result.stderr
 

@@ -30,13 +30,13 @@ def test_merging_a_recreated_page_keeps_both_archives_and_the_latest_alias(tmp_p
 
 def test_two_pages_sharing_an_address_or_naming_each_other_are_listed_never_merged(tmp_path):
     """A real 1.9.2b2 notebook: Corin had two pages on one Gmail; 子亚 and Zia Tanaka
-    shared zia@openonion.ai; Fenwick's page listed the handle of linmu0507@example.com."""
+    shared zia@example.org; Fenwick's page listed the handle of linmu0507@example.com."""
     nb = notebook(tmp_path)
-    nb.stub_person("people/corin.md", "Corin", ["zhouodywork@gmail.com", "zhouody@gmail.com", "Corin Marsh"],
-                   email="zhouodywork@gmail.com; zhouody@gmail.com")
-    nb.stub_person("people/corin-marsh.md", "Corin Marsh", ["zhouodywork@gmail.com"], email="zhouodywork@gmail.com")
-    nb.stub_person("people/fenwick.md", "Kim Fenwick", ["larryleework7@gmail.com", "linmu"],
-                   email="larryleework7@gmail.com")
+    nb.stub_person("people/corin.md", "Corin", ["corin.work@example.org", "corin@example.com", "Corin Marsh"],
+                   email="corin.work@example.org; corin@example.com")
+    nb.stub_person("people/corin-marsh.md", "Corin Marsh", ["corin.work@example.org"], email="corin.work@example.org")
+    nb.stub_person("people/fenwick.md", "Kim Fenwick", ["fenwick.work@example.org", "linmu"],
+                   email="fenwick.work@example.org")
     nb.stub_person("people/linmu.md", "linmu0507@example.com", ["linmu0507@example.com"],
                    email="linmu0507@example.com")
     nb.stub_person("people/colin.md", "Colin", ["colin@a.example"], email="colin@a.example")
@@ -45,16 +45,16 @@ def test_two_pages_sharing_an_address_or_naming_each_other_are_listed_never_merg
     pairs = {frozenset((p["kept"], p["other"])): p["why"] for p in likely_pairs(nb)}
     assert set(pairs) == {frozenset(("people/corin.md", "people/corin-marsh.md")),
                           frozenset(("people/fenwick.md", "people/linmu.md"))}
-    assert "zhouodywork@gmail.com" in pairs[frozenset(("people/corin.md", "people/corin-marsh.md"))]
+    assert "corin.work@example.org" in pairs[frozenset(("people/corin.md", "people/corin-marsh.md"))]
     assert "linmu" in pairs[frozenset(("people/fenwick.md", "people/linmu.md"))]
     assert {record: nb.read(record) for record in nb.list("people")} == before   # a first name alone pairs nothing
 
 
 def test_the_page_with_more_written_is_the_one_to_keep(tmp_path):
     nb = notebook(tmp_path)
-    nb.stub_person("people/zi.md", "子亚", ["zia@openonion.ai"], email="zia@openonion.ai")
-    nb.write("people/zia.md", "# Zia Tanaka\n\n## Facts\n- Email: zia@openonion.ai; zia.tanaka@unsw.edu.au\n\n"
-             "## History\n- Brought the ARC Hub to Aaron. [1]\n\n## Sources\n- [1] mail:x\n\n"
+    nb.stub_person("people/zi.md", "子亚", ["zia@example.org"], email="zia@example.org")
+    nb.write("people/zia.md", "# Zia Tanaka\n\n## Facts\n- Email: zia@example.org; zia.tanaka@unsw.edu.au\n\n"
+             "## History\n- Brought the ARC Hub to Ellis. [1]\n\n## Sources\n- [1] mail:x\n\n"
              "Investigation: investigated 2026-10-09\n")
     [pair] = likely_pairs(nb)
     assert (pair["kept"], pair["other"]) == ("people/zia.md", "people/zi.md")
@@ -70,3 +70,44 @@ def test_a_merged_fact_is_one_line_that_keeps_a_comma_inside_its_value_and_its_c
     assert "- Location: Sydney, Australia [1]; Melbourne, Australia [2]\n" in facts
     assert "- Email: a@x.example; b@y.example\n" in facts
     assert "- Also known as: Rob\n" in facts and "Unknown\n- Also" not in facts
+
+
+def test_merge_keeps_generated_blocks_without_importing_the_other_pages_blocks(tmp_path):
+    from connectonion.rem.merge import merge_into
+
+    nb = notebook(tmp_path)
+    kept, old = "skills/catalog/tide.md", "skills/catalog/tide-copy.md"
+    generated = "<!-- rem-usage -->\n## Usage\n- Own count: 12 [99]\n<!-- /rem-usage -->\n"
+    metadata = "<!-- wiki-source-metadata -->\n- Own source: /tide/SKILL.md\n<!-- /wiki-source-metadata -->\n"
+    quoted = f"```md\n{generated}```\n"
+    nb.write(kept, f"# Tide\n\n{quoted}\n{metadata}\n## Notes\n- Own finding [1]\n\n{generated}\n"
+                   "## Sources\n- [1] mail:one\n\nInvestigation: investigated 2026-11-01\n")
+    nb.write(old, "# Tide copy\n\n## Notes\n- Other finding [1]\n\n"
+                  "<!-- rem-usage -->\n- Stale count: 999\n<!-- /rem-usage -->\n\n"
+                  "## Sources\n- [1] mail:two\n")
+    merge_into(nb, kept, old, "one skill")
+    page = nb.read(kept)
+    assert generated in page and metadata in page and quoted in page
+    assert page.count(generated) == 2
+    assert "Stale count" not in page
+    assert "- Other finding [2]" in page and "- [2] mail:two" in page
+    from connectonion.rem.merge import sections
+    parts = dict(sections(page)[1])
+    assert "- Other finding [2]" in parts["Notes"]
+    assert "Other finding" not in parts["Usage"]
+
+
+def test_merge_stamps_and_aliases_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+    from connectonion.rem.merge import aliases, merge_into
+
+    nb = notebook(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    nb.write("people/robin.md", "# Robin\n\n## History\n- Unknown\n\nInvestigation: mapped 2040-11-01\n")
+    nb.write("people/robin-copy.md", "# Robin copy\n\n## History\n- Builds sensors\n")
+    merge_into(nb, "people/robin.md", "people/robin-copy.md", "same person")
+    assert "merged 2040-11-05" in nb.read("people/robin.md")
+    assert aliases(tmp_path)["people/robin-copy.md"]["date"] == "2040-11-05"

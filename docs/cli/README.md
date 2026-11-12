@@ -288,7 +288,7 @@ co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
 - `co email send <to> <subject> <message>` - send from your agent address
 - `co email sent` - list sent email (`--last/-n`, `--to`)
 - `co email sent read <#>` - print one sent message's body and status
-- `co email name <name> [--buy]` - check or claim a readable address (e.g. `aaron@openonion.ai`), paid from credits
+- `co email name <name> [--buy]` - check or claim a readable address (e.g. `ellis@mail.openonion.ai`), paid from credits
 - `co email upgrade <tier>` - raise your monthly send quota (`plus --keep-address` preserves an existing hosted address; `--domain`/`--alias` selects a new one), paid from credits
 
 The same `send_email` / `get_emails` functions also work as agent tools, so
@@ -1427,14 +1427,16 @@ A server a deploy goes *onto*, so the agent keeps its address, its logs and any 
 made by hand — and answers on its own https hostname.
 
 ```bash
-co server new prod                       # have one created ($30/month, charged yearly)
+co server new prod                       # have one created (from $30/month; shows how it is charged, then asks)
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # reconciled against what you are billed for
+co server invoice prod                   # its invoices, where the backend bills monthly
 co deploy --to prod
 ```
 
 `co server forget` drops the local entry and the machine keeps billing;
-`co server destroy` tears it down and refunds the unused term. Two commands on purpose.
+`co server destroy` tears it down and settles the bill (the used part of the month, or a refund of an
+old 12-month term). Two commands on purpose.
 
 See [server.md](server.md).
 

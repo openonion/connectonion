@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.3rc45"
+version = "1.9.6rc7"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -62,7 +62,7 @@ dependencies = [
     "ifaddr>=0.2.0",
     "beautifulsoup4>=4.12.0",
     "pyyaml>=6.0.0",
-    "typer>=0.20.0",
+    "typer>=0.20.0,<0.29",  # 0.29.0 (2026-11-09) breaks every co command: TyperOption rejects `type=`
     "bashlex>=0.18",
     "uvicorn>=0.20.0",
     "textual>=0.86.0",
@@ -105,7 +105,7 @@ dependencies = [
 # demand too, so this is for anyone who would rather pin it in their own
 # requirements than have a command reach for pip.
 wtf = [
-    "onionwright>=0.0.14",
+    "onionwright>=0.0.15",
 ]
 synology = [
     "keyring>=25,<26",

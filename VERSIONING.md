@@ -39,7 +39,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
+The published stable line is 1.9.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
@@ -400,7 +400,294 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.3rc45
+## Current Version: 1.9.6rc7
+
+Release candidate 1.9.6rc7 for 1.9.6: every Today row in the REM reader closes with Mark done, Not now
+and Ignore in words, Ignore can stop a bulk sender for good (`.state/ignored-senders.txt`), stale
+promises stop counting as people waiting, and the night counts agree (#2977); every record is named by
+what it is (#2970); record pages show the record (#2973); the Skills page puts what you use first and
+fits on a screen (#2975). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc7.md).
+
+- 1.9.6rc7 (worded Mark done · Not now · Ignore; ignored senders; real names; Skills on one screen).
+
+### Previous candidate: 1.9.6rc6
+
+Release candidate 1.9.6rc6 for 1.9.6: in the REM reader, Mark done sits in each row's action strip
+with Codex, Results, Undo and Talk, and one button beside the day/night switch changes the reader
+between 中文 and English (#2955). After an upgrade, `co rem open` uses only a co ai of the installed
+version: the Host co rem started before the upgrade is replaced on its own port when no run is in
+flight, and any other co ai of another version is left alone and named in one sentence (#2959, fixes
+#2937). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc6.md).
+
+- 1.9.6rc6 (Mark done in the action strip; one-click language; no old server serves the reader).
+
+### Previous candidate: 1.9.6rc5
+
+Release candidate 1.9.6rc5 for 1.9.6: the REM reader's rail shows a picture with its word under each
+place, so no place needs a hover to be told apart; Skills moves out of More onto the rail; a window lower
+than the rail scrolls the rail; REM has its own sleeping-face mark and an inline tab icon (#2960, fixes
+#2953). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc5.md).
+
+- 1.9.6rc5 (the reader's rail names every place; REM's own mark).
+
+### Previous candidate: 1.9.6rc4
+
+Release candidate 1.9.6rc4 for 1.9.6: in the REM reader, Done, Undo and Skip reach the notebook
+whatever the size of its mail version table (past 64 KB they were refused while the page showed them
+as saved), and a refused mark says "Not saved" (#2944, fixes #2936). While REM builds a newer render,
+the "Updating…" banner goes on the HTML pages only, so /rem/data.json stays JSON and Organisations,
+Projects, All records and Skills load (#2954). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc4.md).
+
+- 1.9.6rc4 (REM marks saved at any size; deferred pages load while REM updates).
+
+### Previous candidate: 1.9.6rc3
+
+Release candidate 1.9.6rc3 for 1.9.6: on macOS, co's own WTF Browser start and a double-click now open
+one profile with one Keychain, so a login made in either is the same login in both (Onionwright
+0.0.15, openonion/onionwright#74). Old logins in `~/.onionwright/profiles/browser-owned` are not
+moved; sign in once in the app. The WTF Browser.app in /Applications is kept at the build co runs
+(#2932). On a phone the REM reader's Send bar now sits on the tab bar with no
+gap (#2933). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc3.md).
+
+- 1.9.6rc3 (one WTF Browser profile for people and co; Send bar docked on a phone).
+
+### Previous candidate: 1.9.6rc2
+
+Release candidate 1.9.6rc2 for 1.9.6: the REM reader's new desk, phase 1 of 3. The shell is an icon
+rail with one search pill on a desktop and a floating tab bar on a phone; Today opens on a night
+chart, the count of people waiting and one raised reply card whose Send is the only green on the
+page; a person's record is a card with their face and a grid of what REM knows. Lists and the other
+records keep their 1.9.6rc1 layouts until phases 2 and 3. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc2.md).
+
+- 1.9.6rc2 (the new desk, phase 1 of 3: shell, Today and a person's record).
+
+### Previous candidate: 1.9.6rc1
+
+Release candidate 1.9.6rc1 for 1.9.6: on a desktop, Today's open reply shows whole lines of the
+letter and nothing overlaps the slot question or the row below. On a phone the letter starts on the
+first screen above the Send bar, Send's buttons keep their words whole, and less-used actions wait
+under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.md).
+
+- 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
+
+## Current stable: 1.9.5
+
+Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
+command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly
+floor holds investigation work, and says why a round waits. Nothing in the reader asks you to copy
+a command; a page that waited while you typed says "Updates waiting" and keeps your words; a
+headless `co claude run` edits files in its folder by default. See [1.9.5 notes](docs/releases/1.9.5.md).
+
+- 1.9.5 (fresh installs work, mail every slot past the floor, no command to copy).
+
+## Previous preview: 1.9.5rc1
+
+Release candidate 1.9.5rc1 for 1.9.5: nothing in the reader asks you to copy a command any more (a
+private project gets "Ask Codex to look" in place); a page that waited while you typed says
+"Updates waiting" and keeps your typed words; a question to you reads "Have you…", not "Has
+you…"; a headless `co claude run` edits files in its folder by default and keeps proxy and
+Bedrock/Vertex settings. Stable remains 1.9.4. See [candidate notes](docs/releases/1.9.5rc1.md).
+
+- 1.9.5rc1 (no command to copy, Updates waiting, headless co claude run does the work).
+
+## Previous stable: 1.9.4
+
+Stable 1.9.4 is a hotfix on 1.9.3: the first `co rem open` after upgrading from 1.9.3rc64 could wait
+minutes (17 measured) for a rebuild, because rc64's saved-page manifest did not list the file page.
+The reader now never waits on a build: any saved page, an older release's included, opens at once
+marked "Updating…" and rebuilds behind it; with no page at all it prints progress. A tested tag
+also gets its GitHub Release again. See [1.9.4 notes](docs/releases/1.9.4.md).
+
+- 1.9.4 (co rem open never waits on a build).
+
+## Previous stable: 1.9.3
+
+Stable 1.9.3: REM does the work. Overnight it reads new mail at every slot, drafts and holds replies,
+sends to people you trust through the 10-minute hold, and runs owed tasks you approved through
+`co claude` or Codex. In the reader every unfinished item can be handed to Codex or Claude, or talked
+through with them in a conversation that resumes the agent's own session; agent replies render as
+safe Markdown; the reviews page answers in place; Today hides empty states; the sidebar keeps one
+count and shows the version; `co rem open` serves the last page at once and works on Windows.
+Releases publish from the tag's green main Tests run. See [1.9.3 notes](docs/releases/1.9.3.md).
+
+- 1.9.3 (REM does the work).
+
+## Previous preview: 1.9.3rc64
+
+The candidate for stable 1.9.3. REM does the work: owed tasks run through `co claude` or Codex with
+Hand to Codex / Hand to Claude on every pending item; direct send for people you trust; no count
+caps; translation into the languages you write; four model levels; a designed morning email; the
+reader opens at once and moves to the Fuse design (Today, people and organisations as records).
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc64.md).
+
+- 1.9.3rc64 (tasks run, Hand to Codex/Claude, model levels, morning email, fast open, Fuse design).
+
+### Previous candidate: 1.9.3rc63
+
+1.9.3rc62 republished. rc62 was merged and tagged but never published: its release workflow's
+coverage leg (test 3.12) outran the 15-minute backstop at 98% with no failure, so publish was
+skipped. That leg now has 25 minutes. Everything in rc62 ships here. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc63.md).
+
+- 1.9.3rc63 (rc62 republished; coverage leg timeout).
+
+### Previous candidate: 1.9.3rc62 (tagged, never published)
+
+REM reads new mail at every slot and covers the night; replies to people you trust can go through
+the 10-minute hold; Today becomes a front page of who waits and what REM did; projects get a
+timeline, list and board; a knowledge graph and topic pages; an opt-in morning message. Approved
+owed work is recorded but not run in this version. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc62.md).
+
+- 1.9.3rc62 (mail every slot, night schedule, direct send, Today front page, project views, graph, morning message).
+
+### Previous candidate: 1.9.3rc61
+
+Today becomes one card per person with one statement and one green action, a Cmd-K palette and
+J/K/E/R keys; organisation and person pages become records, with to-dos left to Today; topics are
+named weekly by the summary model and filed only on evidence. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc61.md).
+
+- 1.9.3rc61 (Today redesign, records-first organisation and person pages, topics).
+
+### Previous candidate: 1.9.3rc60
+
+The night round gives every owed item an outcome; Approve all with a 10-minute hold; owed work
+dispatched to Codex with receipts; People, Organisations, Projects and Sessions redesigned; REM on
+the top model with summaries on the small one; scheduled Outlook token provenance fixed. Stable
+remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc60.md).
+
+- 1.9.3rc60 (night outcomes, approve all, task dispatch, page redesigns).
+
+### Previous candidate: 1.9.3rc59
+
+Hotfix on 1.9.3rc58: the claim audit demanded a checkpoint for a citation whose original is not in
+the archive, so one page task retried every 15 minutes without end; such citations are now named as
+unavailable and do not block completion (#2879). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc59.md).
+
+- 1.9.3rc59 (hotfix: audit completes with unavailable originals named).
+
+### Previous candidate: 1.9.3rc58
+
+Hotfix on 1.9.3rc57: the promotion validator compared source ids as raw strings, so a mail id
+`resolve_sources` had rewritten to its digest form counted as dropped and one page task was refused
+on every scheduled retry (#2877). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc58.md).
+
+- 1.9.3rc58 (hotfix: resolved source ids in the retention check).
+
+### Previous candidate: 1.9.3rc57
+
+Hotfix on 1.9.3rc56 (tagged, never published): offline `co init --yes` spent 80 s in `npm install`
+through a dead proxy and the release workflow's installed-wheel check timed out; the installer
+fallback now stops when the official installer cannot be downloaded. Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc57.md).
+
+- 1.9.3rc57 (hotfix: offline init is fast).
+
+### Previous candidate: 1.9.3rc56 (tagged, not published)
+
+Done and Skip decisions persist in the notebook; the reader opens before the notebook is parsed;
+one date grammar and plain labels; overrunning scheduled turns end with their process tree and
+failures show on Today; `co init` proceeds without a browser login; the drafting skill may say no
+reply is needed (#2861, #2864, #2865, #2870). Stable remains 1.9.2. See
+[candidate notes](docs/releases/1.9.3rc56.md).
+
+- 1.9.3rc56 (decisions persist; fast open; plain words; steady schedule).
+
+### Previous candidate: 1.9.3rc55 (tagged, not published)
+
+Today is one queue of actions; a reply is shown as the mail it becomes, drafted on the
+`rem-reply-draft` skill in the owner's voice with the background beside it, with Send, a full-screen
+writer and a Mail/Lark/WhatsApp switch (#2861, #2862). Also attachments (#2832), browser history
+(#2831), relationship statistics (#2843), run memory (#2828), tidy (#2833), the sessions page and
+`co init` installing Codex (#2844). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc55.md).
+
+- 1.9.3rc55 (Today is one queue; replies look like mail).
+
+### Previous candidate: 1.9.3rc54
+
+Hotfix: scheduled `codex exec` turns run with network access. On 1.9.3rc53 each one stopped at its first
+mail read with a DNS error from Codex's sandbox. Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc54.md).
+
+- 1.9.3rc54 (scheduled codex exec turns reach the network).
+
+### Previous candidate: 1.9.3rc53
+
+Scheduled REM runs through `codex exec` on macOS (#2844, #2856): one ephemeral session per saved time keeps
+working across the round, `co init` sets REM up without questions and survives a missing scheduler, basic
+contact facts come from the mail itself, and citations open only the cited part of a thread.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc53.md).
+
+- 1.9.3rc53 (scheduled REM runs through codex exec).
+
+### Previous candidate: 1.9.3rc52
+
+Scheduled REM keeps working after its saved time (#2814): 15-minute follow-ups continue the
+pending task, refusals print what to fix and resume as small repairs, schedule changes no longer
+invalidate a pending task, and the claim auditor jumps straight to each cited original.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc52.md).
+
+- 1.9.3rc52 (scheduled REM keeps working after its saved time).
+
+### Previous candidate: 1.9.3rc51
+
+REM investigations research beyond the mailbox (#2810): question-driven, with web search, co browser
+(never LinkedIn pages), gh and Feishu, verified captures, and pages edited rather than rewritten. The
+native schedule no longer loses a slot when next takes longer than the first tool yield (#2812).
+--mail limits mailbox consent and OS errors name the file (#2809). Clock-pinned REM tests (#2811).
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc51.md).
+
+- 1.9.3rc51 (REM researches beyond the mailbox; native slots wait for next).
+
+### Previous candidate: 1.9.3rc50
+
+Fictional people in fixtures, docs and examples (#2804): tests, the docs that ship in the wheel and
+source examples no longer use the maintainer's or other real people's names and addresses, and a
+test keeps them out. No behaviour change.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc50.md).
+
+- 1.9.3rc50 (fictional people in fixtures, docs and examples).
+
+### Previous candidate: 1.9.3rc49
+
+REM audit follow-ups (#2802): a run whose PID was reused after a reboot no longer shows as running,
+dates use the notebook zone, merges keep generated blocks and section placement, and status shows
+the slot the scheduler will serve. Sync, status and docs say what happened (#2803). A Windows-safe
+egress budget test (#2800). Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc49.md).
+
+- 1.9.3rc49 (REM audit follow-ups; clearer sync and status output).
+
+### Previous candidate: 1.9.3rc48
+
+`co rem doctor` (#2798) now names an install command that fixes the running co: on a uv tool it
+keeps the receipt's --with packages and --python. The macOS remote-browser-egress CI checks (#2797)
+assert timeouts by behaviour with a per-test watchdog instead of a tight wall-clock bound.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc48.md).
+
+- 1.9.3rc48 (doctor install advice for uv tools; steadier release checks).
+
+### Previous candidate: 1.9.3rc47
+
+Native REM schedule (#2794): the scheduled Codex session finished about one translation per slot,
+and the old round kept every later slot, so no new material was read for days. A new scheduled
+slot now logs the old round's untranslated pages as skipped, closes it and starts a fresh round.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc47.md).
+
+- 1.9.3rc47 (a new scheduled slot no longer waits on an old round's translations).
+
+### Previous candidate: 1.9.3rc46
+
+REM on Linux (#2790): `co rem start` ran the first batch and then raised "macOS-only" at the
+scheduler install, so no Linux notebook ever ran a scheduled slot. Linux with systemd now gets a
+user timer that runs `co rem sync --scheduled` every five minutes, like the launchd job.
+Stable remains 1.9.2. See [candidate notes](docs/releases/1.9.3rc46.md).
+
+- 1.9.3rc46 (REM schedules on Linux with a systemd user timer).
+
+### Previous candidate: 1.9.3rc45
 
 REM native schedule (#2785): the wake job started Codex hidden, and a hidden Codex does not run
 its automations, so a cold start missed every slot; it now opens Codex visible but not in front.
@@ -923,7 +1210,7 @@ version (#2512). See [1.9.3b1 notes](docs/releases/1.9.3b1.md).
 
 - 1.9.3b1 (The recipient runs the release that sent it).
 
-## Stable release: 1.9.2
+## Previous stable: 1.9.2
 
 Stable 1.9.2 hands a coding session to someone else's agent. `co handoff send` drafts it from the
 session (Codex, Claude Code, Gemini CLI, opencode, droid, Cursor or Grok), has the sender's own
@@ -2433,9 +2720,17 @@ When releasing a new version:
 - [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
 - [ ] Review and merge the exact version commit, then create and push its immutable
       `vX.Y.Z` tag. Do not upload from a workstation in the normal release path.
-- [ ] Let `.github/workflows/release.yml` rerun the full matrix, build once,
+- [ ] Let `.github/workflows/release.yml` prove the commit, build once,
       publish through PyPI Trusted Publishing, install the public package,
       compare public artifacts byte-for-byte, and create the GitHub Release.
+      Its gate (`.github/scripts/release_test_gate.py`) accepts the main-push
+      Tests run on the exact tagged SHA only when every job of it passed,
+      waits up to 25 minutes for one still running, refuses to publish over a
+      red one (re-run it, then retry with workflow_dispatch), and runs the full
+      matrix itself only when the commit was never tested. The exact wheel is
+      smoke-tested offline (`co --version`, `co --help`, `co init --yes`)
+      before upload. Tag after main's Tests run is green and tag-to-PyPI is
+      about 4 minutes; tag straight after the merge and it waits for that run.
 - [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
       installs remain on stable, and an exact pin alone
       (`pip install --upgrade 'connectonion==X.YbN'`) installs the preview.

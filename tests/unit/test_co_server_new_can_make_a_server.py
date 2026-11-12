@@ -68,7 +68,7 @@ class TestTheDerivationItself:
                                                       encoding="utf-8")
         monkeypatch.setattr(server_commands.Path, "home", classmethod(lambda cls: tmp_path))
         monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: co_dir)
-        monkeypatch.setattr(keys_commands, "SSH_PRIVATE_KEY", co_dir / "ssh" / "id_ed25519")
+        monkeypatch.setattr(keys_commands.Path, "home", staticmethod(lambda: co_dir.parent))
 
         line = server_commands._ensure_ssh_key("rel160-e2e")
 
@@ -90,6 +90,6 @@ class TestTheDerivationItself:
                                                       encoding="utf-8")
         monkeypatch.setattr(server_commands.Path, "home", classmethod(lambda cls: tmp_path))
         monkeypatch.setattr(keys_commands, "_find_co_dir", lambda: co_dir)
-        monkeypatch.setattr(keys_commands, "SSH_PRIVATE_KEY", co_dir / "ssh" / "id_ed25519")
+        monkeypatch.setattr(keys_commands.Path, "home", staticmethod(lambda: co_dir.parent))
 
         assert server_commands._ensure_ssh_key("one") != server_commands._ensure_ssh_key("two")

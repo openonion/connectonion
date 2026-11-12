@@ -78,8 +78,11 @@ def last_activity(root: Path, record: str, *, state: dict | None = None, activit
     """The newest mail with this person the notebook knows of: the map's, or a later listing's."""
     state = _map(root) if state is None else state
     activity = _activity(root) if activity is None else activity
-    row = next((r for r in state.get("people", []) if r.get("record") == record), {})
-    stamps = [s for s in (_stamp(row.get("last")), _stamp(activity.get(record))) if s]
+    from .merge import aliases, resolve
+    records = {record, *(old for old in aliases(root) if resolve(root, old) == record)}
+    values = [row.get("last") for row in state.get("people", []) if row.get("record") in records]
+    values += [activity.get(key) for key in records]
+    stamps = [stamp for value in values if (stamp := _stamp(value))]
     return max(stamps).isoformat() if stamps else ""
 
 
@@ -92,13 +95,15 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     is after it: what the daily round's later runs follow.
     """
     from .queue import excluded_people, last_investigated, order
+    from .service import notebook_zone
+    zone = notebook_zone(read_config(root))
     now = now or datetime.now(timezone.utc)
-    today = now.date()
+    today = now.astimezone(zone).date()
     cutoff = (now - timedelta(days=recent_days)).isoformat()
     state, activity = _map(root), _activity(root)
     done = read_json(state_path(root, "people/investigated.json"), {})
     excluded = excluded_people(state)
-    unfinished = {row["path"]: row for row in order(root, "people")}
+    unfinished = {row["path"]: row for row in order(root, "people", today=today)}
     from .merge import resolve
     mapped = {resolve(root, row.get("record") or ""): row for row in state.get("people", [])}
     excluded = {resolve(root, record) for record in excluded if record}
@@ -112,14 +117,14 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         investigated = last_investigated(status)
         # The exact time this code last investigated the page, when it did: the
         # status line keeps only a date, and mail later that day is still new.
-        at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), timezone.utc)
+        at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), zone)
                                           if investigated else None)
         hollow = unfinished.get(record, {}).get("hollow")
         if hollow:
             # Stamped by a run that read nothing (#1974): read again in full.
             mode, window, investigated = "full", FIRST_WINDOW_DAYS, None
         elif at and last and _stamp(last) > at:
-            mode, window = "update", max(1, (today - at.date()).days + 1)
+            mode, window = "update", max(1, (today - at.astimezone(zone).date()).days + 1)
         elif record in unfinished and not unfinished[record]["recent"]:
             mode, window = "full", FIRST_WINDOW_DAYS
         else:
@@ -229,6 +234,9 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
                                     record=row["record"])
     cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
     for item in items:
+        if item.get("role") == "attachments-index":
+            older += len(item["attachments"])
+            continue
         if item.get("role") == "attachment":
             older += 1
             continue
@@ -249,44 +257,109 @@ def mark_investigated(root: Path, record: str, when: datetime, *, lock_held=Fals
         write_json(folder / "investigated.json", done)
 
 
-def correspondents_since(root: Path, clients: dict, *, since: datetime, now: datetime | None = None) -> dict:
-    """Which mapped people have mail since the last listing: one metadata listing per mailbox.
+def _count_correspondents(state: dict, listings: dict, own: set) -> dict:
+    """Retain counts for unmapped correspondents, including old role-address classifications."""
+    from .mail import _address, _addresses, correspondent, is_own
+    from .scan import _display_name
+    known = {address.casefold() for row in state.get("people", []) for address in row.get("addresses", [])}
+    waiting = {row["address"]: row for row in state.get("without_page", [])}
+    notices = {row["address"]: row for row in state.get("automated_correspondents", [])}
+    for kind, rows in listings.items():
+        for mail in rows:
+            sent = is_own(_address(mail.get("from", "")), own)
+            addresses = _addresses(mail.get("to")) + _addresses(mail.get("cc")) if sent else [correspondent(mail, own)]
+            for address in dict.fromkeys(addresses):
+                if "@" not in address or address in own or address in known:
+                    continue
+                row = waiting.setdefault(address, dict(notices.get(address) or {
+                    "address": address, "mails": 0, "sent": 0, "received": 0}))
+                row["name"] = row.get("name") or _display_name(mail, address)
+                row["mails"] += 1
+                row["sent" if sent else "received"] += 1
+                row["one_way"] = not (row["sent"] and row["received"])
+                stamp = str(mail.get("date") or "")[:10]
+                row["first"] = min(row.get("first") or stamp, stamp)
+                row["last"] = max(row.get("last") or stamp, stamp)
+                row["boxes"] = sorted({*row.get("boxes", []), kind})
+    return waiting
 
-    Searching every person on the server each run is one query per person;
-    listing the mailbox since the last run and matching addresses is one
-    listing however many people there are. The newest date per person is kept
-    in `.state/people/activity.json`, the cursor in `.state/people/refresh.json`;
-    both are metadata, never a body. Returns {"records": [...], "listed": {kind: n}}.
-    """
+
+def _new_pages(root: Path, state: dict, listings: dict, own: set) -> None:
+    """Apply the map's person rule and stub qualifying pages before building the queue."""
+    from .map import _notice, _record, _service, looks_own, owner_tokens, spells_owner, worth_a_page
+    from .scan import AUTOMATED_HINT
+    waiting, notebook = _count_correspondents(state, listings, own), Notebook(root)
+    owner = (state.get("owner") or {}).get("record")
+    owner_name = notebook.read(owner).splitlines()[0].lstrip("# ") if owner and notebook.exists(owner) else ""
+    tokens = owner_tokens(own, owner_name)
+    possible = {row["address"] for row in state.get("possible_own_addresses", [])}
+    for address, row in list(waiting.items()):
+        if (not worth_a_page(row["sent"], row["received"]) or AUTOMATED_HINT.search(address)
+                or _notice(row) or _service([row])):
+            continue
+        suspect = (looks_own([row], tokens) if tokens else []) or spells_owner(address, owner_name)
+        if suspect or (address in possible and not row["received"]):
+            if address not in possible:
+                state.setdefault("possible_own_addresses", []).append({"address": address, "sent": row["sent"],
+                    "record": row.get("record"), "confirm": "co rem init --mine " + address})
+            continue
+        name = row.get("name") or address
+        existing = next((person["path"] for person in notebook.people() if address in person["emails"]), None)
+        record = existing or _record("people", name, address)
+        notebook.stub_person(record, name, [address], email=address)
+        state.setdefault("people", []).append({**row, "record": record, "addresses": [address],
+                                                "classification": "unassessed"})
+        del waiting[address]
+        state["automated_correspondents"] = [notice for notice in state.get("automated_correspondents", [])
+                                             if notice["address"] != address]
+    state["without_page"] = list(waiting.values())
+    write_json(state_path(root, "map.json"), state)
+
+
+def correspondents_since(root: Path, clients: dict, *, since: datetime, now: datetime | None = None,
+                         lock_held=False) -> dict:
+    """Admit qualifying correspondents and record activity from one listing per mailbox."""
     from .mail import _address, _addresses, _list_all
+    from .merge import resolve
     now = now or datetime.now(timezone.utc)
-    state = _map(root)
-    own = {a.casefold() for a in (state.get("owner") or {}).get("addresses", [])}
-    by_address = {address.casefold(): row["record"] for row in state.get("people", [])
-                  for address in row.get("addresses", []) if row.get("record") and address.casefold() not in own}
-    folder = state_path(root, "people")
-    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    folder.chmod(0o700)
-    cursor = read_json(folder / "refresh.json", {})
-    activity = _activity(root)
-    found, listed = set(), {}
-    for kind, client in clients.items():
-        start = (timestamp(cursor[kind]) - OVERLAP) if cursor.get(kind) else since
-        rows = _list_all(client, start, now) if start < now else []
-        listed[kind] = len(rows)
-        for row in rows:
-            when = _stamp(row.get("date"))
-            involved = {_address(row.get("from", ""))} | set(_addresses(row.get("to"))) | set(_addresses(row.get("cc")))
-            for address in involved:
-                record = by_address.get(address)
-                if record and when:
-                    found.add(record)
-                    old = _stamp(activity.get(record))
-                    activity[record] = max(when, old).isoformat() if old else when.isoformat()
-        cursor[kind] = now.isoformat()
-    write_json(folder / "activity.json", activity)
-    write_json(folder / "refresh.json", cursor)
-    return {"records": sorted(found), "listed": listed}
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        state = _map(root)
+        own = {a.casefold() for a in (state.get("owner") or {}).get("addresses", [])}
+        folder = state_path(root, "people")
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        folder.chmod(0o700)
+        cursor = read_json(folder / "refresh.json", {})
+        seen = cursor.setdefault("seen", {})
+        listings, fresh = {}, {}
+        for kind, client in clients.items():
+            start = timestamp(cursor[kind]) - OVERLAP if cursor.get(kind) else since
+            rows = _list_all(client, start, now) if start < now else []
+            listings[kind] = rows
+            # Init already counted mail before its start; subsequent checks retain
+            # ids in the overlap so an unanswered sender reaches three exactly once.
+            baseline = _stamp(state.get("started")) if not cursor.get(kind) else None
+            fresh[kind] = [row for row in rows if row["id"] not in seen.get(kind, [])
+                           and (baseline is None or timestamp(row["date"]) >= baseline)]
+            seen[kind] = [row["id"] for row in rows if timestamp(row["date"]) >= now - OVERLAP]
+            cursor[kind] = now.isoformat()
+        if listings:
+            _new_pages(root, state, fresh, own)
+        by_address = {address.casefold(): resolve(root, row["record"]) for row in state.get("people", [])
+                      for address in row.get("addresses", []) if row.get("record") and address.casefold() not in own}
+        activity, found = _activity(root), set()
+        for rows in listings.values():
+            for row in rows:
+                when = _stamp(row.get("date"))
+                involved = {_address(row.get("from", ""))} | set(_addresses(row.get("to"))) | set(_addresses(row.get("cc")))
+                for address in involved:
+                    record = by_address.get(address)
+                    if record and when:
+                        found.add(record)
+                        old = _stamp(activity.get(record))
+                        activity[record] = max(when, old).isoformat() if old else when.isoformat()
+        write_json(folder / "activity.json", activity)
+        write_json(folder / "refresh.json", cursor)
+    return {"records": sorted(found), "listed": {kind: len(rows) for kind, rows in listings.items()}}
 
 
 def write_pages(rows: list[dict], *, write, gate=None, on_page=None, workers: int = 1) -> dict:

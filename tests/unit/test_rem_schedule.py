@@ -3,12 +3,16 @@
 import os
 import plistlib
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 
 from connectonion.rem.config import default_config
 from connectonion.rem.files import RemError
 from connectonion.rem.schedule import LABEL, Launchd, Unsupported, label_for
+
+
+pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
 class Calls:
@@ -213,3 +217,145 @@ def test_an_installed_package_s_job_has_no_pythonpath(tmp_path, monkeypatch):
     monkeypatch.setattr(connectonion, "__file__", "/venv/lib/python3.12/site-packages/connectonion/__init__.py")
     plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
     assert "PYTHONPATH" not in plist["EnvironmentVariables"]
+
+
+class SystemdCalls(Calls):
+    def __init__(self, *, fail=None, active=True, linger="yes"):
+        super().__init__()
+        self.fail, self.active, self.linger = fail, active, linger
+
+    def __call__(self, command, **kwargs):
+        super().__call__(command, **kwargs)
+        if command[0] == "loginctl":
+            return CompletedProcess(command, 0, f"Linger={self.linger}\n", "")
+        action = command[2]
+        output = "NextElapseUSecRealtime=Thu 2026-11-05 03:05:00 UTC\n" if action == "show" else ""
+        code = 1 if action == self.fail or action == "is-active" and not self.active else 0
+        return CompletedProcess(command, code, output, "Failed to connect to bus" if code else "")
+
+
+def make_systemd(tmp_path, monkeypatch, **kwargs):
+    from connectonion.rem.schedule import Systemd
+    monkeypatch.setattr("shutil.which", lambda name: f"/opt/{name}/bin/{name}")
+    calls = SystemdCalls(**kwargs)
+    return Systemd(units_dir=tmp_path / "units", run=calls, command=["/venv/bin/co"]), calls
+
+
+def test_systemd_render_runs_the_saved_installation_every_tick(tmp_path, monkeypatch):
+    from connectonion.rem.schedule import TICK_SECONDS
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    root = tmp_path / "my notebook"
+    monkeypatch.setattr("connectonion.rem.schedule._checkout_path", lambda: "/work/checkout")
+    units = scheduler.render(root, default_config())
+    service, timer = units["service"], units["timer"]
+    assert f'ExecStart="/venv/bin/co" "rem" "--root" "{root}" "sync" "--scheduled"' in service
+    assert "Type=oneshot" in service
+    assert 'Environment="PATH=/venv/bin:/opt/codex/bin:/opt/claude/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"' in service
+    assert f'Environment="HOME={Path.home()}"' in service
+    assert 'Environment="PYTHONPATH=/work/checkout"' in service
+    for stream in ("StandardOutput", "StandardError"):
+        assert f'{stream}=append:{root}/.state/scheduler.log' in service
+    assert f"OnCalendar=*:00/{TICK_SECONDS // 60}" in timer
+    assert "Persistent=true" in timer and "WantedBy=timers.target" in timer
+
+
+def test_systemd_defaults_to_co_command_and_omits_installed_package_pythonpath(tmp_path, monkeypatch):
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    scheduler.command = None
+    monkeypatch.setattr("connectonion.rem.runner.co_command", lambda: ["/venv/bin/python", "-m", "connectonion.cli.main"])
+    monkeypatch.setattr("connectonion.rem.schedule._checkout_path", lambda: "")
+    service = scheduler.render(tmp_path, default_config())["service"]
+    assert 'ExecStart="/venv/bin/python" "-m" "connectonion.cli.main" "rem"' in service
+    assert "PYTHONPATH" not in service
+
+
+def test_systemd_escapes_systemd_specifiers_variables_and_quotes(tmp_path, monkeypatch):
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    root = tmp_path / 'notes %n $HOME "quoted" \\'
+    scheduler.command.append("newline\nnext")
+    service = scheduler.render(root, default_config())["service"]
+    command = next(line for line in service.splitlines() if line.startswith("ExecStart="))
+    assert 'notes %%n $$HOME \\"quoted\\" \\\\' in command
+    assert '"newline\\nnext"' in command
+    assert "$HOME" not in command.replace("$$HOME", "")
+
+
+def test_systemd_install_writes_private_units_and_enables_timer(tmp_path, monkeypatch):
+    scheduler, calls = make_systemd(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    result = scheduler.install(root, default_config())
+    assert result["scheduler"] == "systemd" and result["label"] == label_for(root)
+    assert "note" not in result
+    paths = [tmp_path / "units" / f"{label_for(root)}.{suffix}" for suffix in ("service", "timer")]
+    assert all(path.is_file() and path.stat().st_mode & 0o777 == 0o600 for path in paths)
+    assert (root / ".state").is_dir()
+    assert calls.commands[:2] == [["systemctl", "--user", "daemon-reload"],
+                                 ["systemctl", "--user", "enable", "--now", f"{label_for(root)}.timer"]]
+    scheduler.install(root, default_config())
+    assert len(list((tmp_path / "units").iterdir())) == 2
+
+
+def test_systemd_install_holds_the_maintenance_lock(tmp_path, monkeypatch):
+    from connectonion.rem.files import maintenance_lock
+    scheduler, _ = make_systemd(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    with maintenance_lock(root):
+        with pytest.raises(RemError, match="busy"):
+            scheduler.install(root, default_config())
+    assert not (tmp_path / "units").exists()
+
+
+@pytest.mark.parametrize("action", ["daemon-reload", "enable"])
+def test_systemd_install_failure_explains_how_to_restore_the_user_bus(tmp_path, monkeypatch, action):
+    scheduler, _ = make_systemd(tmp_path, monkeypatch, fail=action)
+    with pytest.raises(RemError, match="systemctl --user") as error:
+        scheduler.install(tmp_path / "rem", default_config())
+    assert "loginctl enable-linger" in str(error.value) and "bus" in str(error.value)
+
+
+def test_systemd_install_notes_when_linger_is_off(tmp_path, monkeypatch):
+    scheduler, _ = make_systemd(tmp_path, monkeypatch, linger="no")
+    result = scheduler.install(tmp_path / "rem", default_config())
+    assert "loginctl enable-linger" in result["note"] and "logged out" in result["note"]
+
+
+def test_systemd_uninstall_disables_and_removes_both_units(tmp_path, monkeypatch):
+    scheduler, calls = make_systemd(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    scheduler.install(root, default_config())
+    assert scheduler.installed(root)
+    assert scheduler.uninstall(root) is True
+    assert not scheduler.installed(root) and not list((tmp_path / "units").iterdir())
+    assert calls.commands[-2:] == [["systemctl", "--user", "disable", "--now", f"{label_for(root)}.timer"],
+                                  ["systemctl", "--user", "daemon-reload"]]
+    assert scheduler.uninstall(root) is False
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_systemd_describe_reports_timer_health_and_next_tick(tmp_path, monkeypatch, active):
+    scheduler, _ = make_systemd(tmp_path, monkeypatch, active=active)
+    root = tmp_path / "rem"
+    scheduler.install(root, default_config())
+    info = scheduler.describe(root)
+    assert info["scheduler"] == "systemd" and info["label"] == label_for(root)
+    assert info["installed"] and info["loaded"] is active and info["active"] is active
+    assert info["next_run"] == "Thu 2026-11-05 03:05:00 UTC"
+    assert info["log"] == str(root / ".state/scheduler.log")
+
+
+def test_default_scheduler_selects_systemd_only_on_linux_with_systemctl(monkeypatch):
+    from connectonion.rem.schedule import default_scheduler
+    monkeypatch.setattr("connectonion.rem.schedule.sys.platform", "linux")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/systemctl" if name == "systemctl" else None)
+    assert type(default_scheduler()).__name__ == "Systemd"
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    assert isinstance(default_scheduler(), Unsupported)
+    monkeypatch.setattr("connectonion.rem.schedule.sys.platform", "win32")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/systemctl")
+    assert isinstance(default_scheduler(), Unsupported)
+
+
+def test_unsupported_scheduler_no_longer_claims_scheduling_is_macos_only(tmp_path):
+    with pytest.raises(RemError) as error:
+        Unsupported().install(tmp_path, default_config())
+    assert "macOS-only" not in str(error.value) and "cron" in str(error.value)

@@ -1,32 +1,9 @@
-"""Background maintenance uses Codex Scheduled or the OS; no REM timer daemon.
+"""OS clocks for REM: launchd exec or Codex desktop on macOS, systemd on Linux.
 
-Codex notebooks use the desktop's native file scheduler when the application
-is installed on macOS. Other runners and headless Macs retain launchd.
-
-`co rem daily` uses sync's lock, attempt cap and incremental
-checkpoint, so the only thing the background needs is something that survives a
-closed terminal and a reboot and wakes us now and then. launchd is that on
-macOS: one declarative job file. A worker process of ours would still need a
-login launcher per OS and would add a process on top -- so the per-OS part is
-kept to this one file, and everything else stays one implementation in `sync`.
-
-The job is a tick, and it is set twice, because each trigger has been
-measured dead on one macOS. 2026-09-07, macOS 26: a `StartCalendarInterval`
-job -- array or dict form, plain /bin/sh, with or without ProcessType -- never
-fired in three experiments, while `StartInterval` fired to the second.
-2026-10-11, macOS 14.1: the installed job had runs = 0 a day after install, a
-60 s `StartInterval` test job ran 0 times in four minutes, and a calendar job
-bootstrapped the same way ran every minute. So the job carries both: every
-TICK_SECONDS, and on every matching minute of the clock. So launchd runs `co rem sync --scheduled` (formerly `daily --scheduled`, which still works)
-every TICK_SECONDS, and `sync` decides whether one of the saved times has come
-due since the last scheduled batch, in the saved timezone rather than the
-machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
-first tick after wake, and a tick that finds nothing due exits at once without
-touching the notebook. RunAtLoad is off: the first tick is the catch-up, and
-nothing races the foreground batch `start` just ran.
-
-Known launchd behaviour (measured 2026-08-18): a job still running when its
-interval elapses is skipped silently -- harmless here, the next tick catches up.
+Exec uses exact saved fire times and follow-ups. Legacy child-runner jobs use
+five-minute ticks so sync can coalesce due slots in the saved timezone.
+launchd skips a job still running at its next fire; exec also holds a process
+lock so a manual fire or replacement job cannot overlap the previous turn.
 """
 
 import hashlib
@@ -171,8 +148,10 @@ class Launchd:
             binary = shutil.which(name)
             if binary:
                 dirs.append(str(Path(binary).parent))
+        dirs += os.environ.get("PATH", "").split(os.pathsep)
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
         pythonpath = _checkout_path()
         if pythonpath:
             # The job must run the same connectonion the user is running now; a
@@ -212,6 +191,8 @@ class Launchd:
         native = CodexNative(launcher=self, run=self.run)
         if native.installed(root):
             native.uninstall(root)
+            if config['schedule']['runner'] == 'codex-exec':
+                native.definition_path(root).unlink(missing_ok=True)
         path = self.plist_path(root)
         self._write_plist(path, self.render(root, config))
         self._remove_legacy(root)  # one job per root, not the old label beside the new
@@ -243,7 +224,8 @@ class Launchd:
     def install_wake(self, root: Path, config: dict, app: Path) -> Path:
         """Open Codex shortly before each saved local time; only Codex executes REM."""
         path = self.wake_path(root)
-        times = [wake_time(value) for value in config["schedule"]["times"]]
+        from .codex_schedule import fire_times
+        times = [wake_time(value) for value in fire_times(config)]
         job = {"Label": path.stem, "ProgramArguments": wake_command(app),
                "StartCalendarInterval": times, "RunAtLoad": False, "ProcessType": "Background"}
         self._write_plist(path, plistlib.dumps(job, sort_keys=False).decode())
@@ -314,12 +296,209 @@ class Launchd:
         return info
 
 
+class CodexExec(Launchd):
+    """launchd owns the clock; a separate lock spans the whole Codex turn."""
+
+    def render(self, root: Path, config: dict) -> str:
+        from .codex_schedule import desktop_timezone, fire_times
+        from .codex_exec import _codex_command
+        if config['schedule']['timezone'] != desktop_timezone():
+            raise RemError('codex-exec fire times use this computer’s timezone; set schedule.timezone to the local timezone')
+        root = Path(root).resolve()
+        job = plistlib.loads(super().render(root, config).encode())
+        job['ProgramArguments'] = ['/usr/bin/caffeinate', '-i', sys.executable,
+                                   '-m', 'connectonion.rem.codex_exec', '--root', str(root)]
+        job.pop('StartInterval')
+        job['StartCalendarInterval'] = [dict(zip(('Hour', 'Minute'), map(int, t.split(':'))))
+                                        for t in fire_times(config)]
+        if os.environ.get('CODEX_HOME'):
+            job['EnvironmentVariables']['CODEX_HOME'] = os.environ['CODEX_HOME']
+        # Pin the delegate, not only PATH: login-shell overrides and launchd's
+        # later environment must never redirect this job back to its launcher.
+        delegate = _codex_command()
+        job['EnvironmentVariables']['CODEX_CMD'] = delegate[0] if len(delegate) == 1 else shlex.join(delegate)
+        return plistlib.dumps(job, sort_keys=False).decode()
+
+    def _install(self, root, config):
+        from .codex_schedule import CodexNative
+        lagging = CodexNative(launcher=self, run=self.run).pause_for_exec(root)
+        path = self.plist_path(root)
+        self._write_plist(path, self.render(root, config))
+        self._remove_legacy(root)
+        self._load(path)
+        note = ("Desktop task paused in its definition; Codex will pick it up." if lagging else "")
+        return {"scheduler": "codex-exec", "label": label_for(root), "plist": str(path),
+                "times": list(config["schedule"]["times"]), **({"note": note} if note else {})}
+
+    def install(self, root: Path, config: dict) -> dict:
+        from .runner import ready
+        problem, fix = ready({**config, 'runner': 'codex'})
+        if problem:
+            raise RemError(f'{problem}; {fix}')
+        # Validate before pausing the other clock.
+        self.render(root, config)
+        result = super().install(root, config)
+        return {**result, 'runner': 'codex-exec',
+                'note': ' '.join(filter(None, [result.get('note'),
+                    'Codex exec keeps working across tasks in one turn; desktop automation turns can end early. Keep this computer awake.']))}
+
+    def describe(self, root: Path) -> dict:
+        from .files import read_json, state_path
+        return {**super().describe(root), 'runner': 'codex-exec',
+                'last_turn': read_json(state_path(root, 'last-turn.json'), None)}
+
+
+class Systemd:
+    """Linux user timer; no root, with linger needed to run while logged out."""
+
+    def __init__(self, units_dir=None, run=subprocess.run, command=None):
+        self.units_dir = Path(units_dir or Path.home() / ".config/systemd/user")
+        self.run = run
+        self.command = command
+
+    def unit_path(self, root: Path, suffix: str) -> Path:
+        return self.units_dir / f"{label_for(root)}.{suffix}"
+
+    @staticmethod
+    def _quote(value: str) -> str:
+        # Unit specifiers expand even inside quotes. ExecStart also expands $
+        # (escaped separately below); Environment does not.
+        escaped = value.replace("%", "%%").translate(str.maketrans({
+            "\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t",
+        }))
+        return '"' + escaped + '"'
+
+    def _environment(self, command: list[str]) -> dict:
+        dirs = [str(Path(command[0]).parent)]
+        for name in ("codex", "claude"):
+            binary = shutil.which(name)
+            if binary:
+                dirs.append(str(Path(binary).parent))
+        dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
+        env.update({key: os.environ[key] for key in ("CODEX_HOME", "CODEX_CMD") if os.environ.get(key)})
+        pythonpath = _checkout_path()
+        if pythonpath:
+            env["PYTHONPATH"] = pythonpath
+        return env
+
+    def render(self, root: Path, config: dict) -> dict:
+        from .runner import co_command
+        root = Path(root).resolve()
+        command = self.command or co_command()
+        arguments = [*command, "rem", "--root", str(root), "sync", "--scheduled"]
+        execute = " ".join(self._quote(arg.replace("$", "$$")) for arg in arguments)
+        env = ["Environment=" + self._quote(f"{key}={value}")
+               for key, value in self._environment(command).items()]
+        # StandardOutput/StandardError take raw paths, not quoted words.
+        log = str(root / ".state/scheduler.log").replace("%", "%%")
+        if "\n" in log or "\r" in log:
+            raise RemError("systemd scheduling requires a notebook path without line breaks")
+        service = "\n".join([
+            "[Unit]", "Description=ConnectOnion REM maintenance", "", "[Service]",
+            "Type=oneshot", f"ExecStart={execute}", *env,
+            f"StandardOutput=append:{log}", f"StandardError=append:{log}", "",
+        ])
+        timer = "\n".join([
+            "[Unit]", "Description=ConnectOnion REM tick", "", "[Timer]",
+            f"OnCalendar=*:00/{TICK_SECONDS // 60}", "Persistent=true", "",
+            "[Install]", "WantedBy=timers.target", "",
+        ])
+        return {"service": service, "timer": timer}
+
+    def _systemctl(self, *args):
+        return self.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=30)
+
+    def _check(self, *args) -> None:
+        result = self._systemctl(*args)
+        if result.returncode:
+            raise RemError(f"systemctl --user {' '.join(args)} failed: {result.stderr.strip()}. "
+                           "Log into a systemd user session and check `systemctl --user status`; "
+                           "for a missing user bus or logged-out operation, run `loginctl enable-linger` "
+                           "for your user, then retry `co rem start`")
+
+    def _write_unit(self, path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=".co-rem-", dir=path.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(text)
+        os.chmod(name, 0o600)
+        os.replace(name, path)
+
+    def install(self, root: Path, config: dict) -> dict:
+        from .files import maintenance_lock
+        root = Path(root).resolve()
+        with maintenance_lock(root):
+            for suffix, content in self.render(root, config).items():
+                self._write_unit(self.unit_path(root, suffix), content)
+            self._check("daemon-reload")
+            self._check("enable", "--now", f"{label_for(root)}.timer")
+        info = {"scheduler": "systemd", "label": label_for(root),
+                "service": str(self.unit_path(root, "service")), "timer": str(self.unit_path(root, "timer")),
+                "times": list(config["schedule"]["times"])}
+        if shutil.which("loginctl"):
+            linger = self.run(["loginctl", "show-user", str(os.getuid()), "-p", "Linger"],
+                              capture_output=True, text=True, timeout=30)
+            if linger.returncode == 0 and linger.stdout.strip() != "Linger=yes":
+                info["note"] = "Run `loginctl enable-linger` to keep the systemd user timer running while logged out."
+        return info
+
+    def uninstall(self, root: Path) -> bool:
+        paths = [self.unit_path(root, suffix) for suffix in ("service", "timer")]
+        removed = any(path.exists() for path in paths)
+        # Do not mark a live timer stopped if the user manager cannot disable it.
+        if removed:
+            self._check("disable", "--now", f"{label_for(root)}.timer")
+        else:
+            self._systemctl("disable", "--now", f"{label_for(root)}.timer")
+        for path in paths:
+            path.unlink(missing_ok=True)
+        self._check("daemon-reload")
+        return removed
+
+    def installed(self, root: Path) -> bool:
+        return all(self.unit_path(root, suffix).is_file() for suffix in ("service", "timer"))
+
+    def describe(self, root: Path) -> dict:
+        label = label_for(root)
+        active = self._systemctl("is-active", f"{label}.timer").returncode == 0
+        info = {"scheduler": "systemd", "label": label, "installed": self.installed(root),
+                "loaded": active, "active": active, "log": str(Path(root).resolve() / ".state/scheduler.log")}
+        result = self._systemctl("show", f"{label}.timer", "-p", "NextElapseUSecRealtime")
+        if result.returncode == 0:
+            value = result.stdout.strip().removeprefix("NextElapseUSecRealtime=")
+            if value and value != "n/a":
+                info["next_run"] = value
+        return info
+
+
+def exec_round(root, *, scheduled=True):
+    from . import native, runner
+    from .codex_schedule import CodexNative
+    from .config import read_config
+    if scheduled and CodexNative().recent_desktop_fire(root):
+        return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+    task = native.next_task(root, scheduled=scheduled)
+    while task.get("outcome") == "task":
+        if scheduled and CodexNative().recent_desktop_fire(root):
+            return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+        from .inquiry import stage_config
+        config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
+        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
+        task = native.submit(root, task["id"], usage=result.get("usage"))
+        if task.get("outcome") == "refused":
+            return task
+        if task.get("outcome") != "task":
+            task = native.next_task(root, scheduled=scheduled)
+    return task
+
+
 class Unsupported:
-    """Everything but macOS in this milestone: the notebook still works by hand."""
+    """Platforms without a supported OS scheduler still work by hand."""
 
     def install(self, root, config):
-        raise RemError("Background scheduling is macOS-only in this milestone; "
-                        "run `co rem sync` yourself or schedule it with cron/systemd")
+        raise RemError("No supported background scheduler is available; "
+                       "run `co rem sync` yourself or schedule it with cron")
 
     def uninstall(self, root):
         return False
@@ -332,6 +511,8 @@ class Unsupported:
 
 
 def default_scheduler(root=None, *, for_start=False):
+    if sys.platform == "linux" and shutil.which("systemctl"):
+        return Systemd()
     if sys.platform != "darwin":
         return Unsupported()
     if root is not None:
@@ -343,10 +524,15 @@ def default_scheduler(root=None, *, for_start=False):
                                            or native.describe(root).get("observed_active")):
                 return native
             if Launchd().installed(root):
+                path = Launchd().plist_path(root)
+                if path.is_file() and 'connectonion.rem.codex_exec' in plistlib.loads(path.read_bytes()).get('ProgramArguments', []):
+                    return CodexExec()
                 return Launchd()
             if native.installed(root):
                 return native
         config = read_config(root)
+        if config.get("runner") == "codex" and config["schedule"]["runner"] == "codex-exec":
+            return CodexExec()
         if (config.get("runner") == "codex" and app_installed()
                 and config["schedule"]["timezone"] == desktop_timezone()):
             return native

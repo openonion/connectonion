@@ -119,7 +119,7 @@ how much a well-evidenced block can carry:
     precise, "Regards, Elodie"), brief practical Mandarin for operations
     ("收到"). Itemised, fast, proposes exact contract language.
     Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; sections
+  - How the user writes to them: opens "Elodie，你好，", signs "Ellis"; sections
     long contract mails `== N. 标题 ==` and translates every clause into what
     it means for her; leads with the reassuring conclusion then the math.
   - Cadence: near-daily same-day replies through the 2026-08-05→07 sprint, on

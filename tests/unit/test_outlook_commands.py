@@ -43,7 +43,7 @@ from connectonion.cli.commands.outlook_commands import (
 CONNECTED_ENV = {
     "MICROSOFT_ACCESS_TOKEN": "test-token",
     "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-    "MICROSOFT_EMAIL": "aaron@example.com",
+    "MICROSOFT_EMAIL": "ellis@example.com",
 }
 
 CONNECTED_CONTACT_ENV = {
@@ -170,7 +170,7 @@ class TestResolveEmailId:
 
     def test_short_number_resolves_from_its_listing(self, tmp_path):
         from connectonion.cli.commands.gmail_listings import save_listing
-        token = save_listing(tmp_path / "outlook-listings", "aaron@example.com", "messages",
+        token = save_listing(tmp_path / "outlook-listings", "ellis@example.com", "messages",
                              ["msg-1", "msg-2"], provider="outlook")
 
         outlook = MagicMock()

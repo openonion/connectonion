@@ -52,7 +52,8 @@ class HostService:
             return
         if 'CODEX_HOME' in self.provider_paths:
             self.provider_paths['CODEX_HOME'] = str(Path(self.provider_paths['CODEX_HOME']).expanduser().resolve())
-        command = self.provider_paths.get('CODEX_CMD') or shutil.which('codex')
+        from ..codex_cli import resolve_codex
+        command = self.provider_paths.get('CODEX_CMD') or resolve_codex()
         if command:
             expanded = Path(command).expanduser()
             if expanded.is_file():

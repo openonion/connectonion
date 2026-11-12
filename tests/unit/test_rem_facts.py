@@ -90,7 +90,7 @@ def test_a_page_written_before_facts_is_read_from_its_contact_section():
 def test_a_project_and_an_org_have_their_own_fields():
     assert facts.fields("projects/x.md")[0] == "Repository"
     assert "Last activity" in facts.fields("projects/x.md")
-    assert facts.fields("orgs/x.md")[0] == "What they do"
+    assert facts.fields("orgs/x.md")[:3] == ("Kind", "To you", "What they do")
     assert facts.fields("notes/x.md") == ()
 
 
@@ -226,8 +226,8 @@ def test_also_known_as_keeps_names_not_addresses():
     # A turn copies the Email line into Also known as; the reader then shows the
     # same address three times (Corin, 1.9.2b3 review).
     from connectonion.rem.facts import names_not_addresses
-    page = ("# Corin Marsh\n\n## Facts\n- Email: zhouody@gmail.com [1]\n"
-            "- Also known as: Corin; 周泽凯 [2]; zhouody@gmail.com; zhouodywork@gmail\n\n## Sources\n")
+    page = ("# Corin Marsh\n\n## Facts\n- Email: corin@example.com [1]\n"
+            "- Also known as: Corin; 周泽凯 [2]; corin@example.com; corin.work@example\n\n## Sources\n")
     assert "- Also known as: Corin; 周泽凯 [2]\n" in names_not_addresses("people/corin.md", page)
     only = page.replace("Corin; 周泽凯 [2]; ", "")
     assert "- Also known as: Unknown\n" in names_not_addresses("people/corin.md", only)

@@ -38,6 +38,18 @@ automated senders, and vendors whose domain also sends notices. The overview
 map's, a floor for what the 150-day read finds; see
 [rem-investigation-correctness.md](rem-investigation-correctness.md).
 
+## New correspondents
+
+Every scheduled round checks new mail metadata for correspondents without a
+page. Mail both ways, two mails sent by the owner, or three inbound mails
+qualify. Existing service and notice filters still apply. Generic addresses
+such as `hello@`, `info@`, `team@`, `support@` and `updates@` can belong to people;
+REM reads their mail rather than discarding it by address alone.
+
+Qualified correspondents get a stub and a row in `.state/map.json`, then enter
+the existing people queue in priority order. Counts below the threshold carry
+forward across rounds. Mail from a merged-away address updates the kept page.
+
 ## One person, two pages (#2724)
 
 The map makes a page per address, so someone who writes from two addresses,
@@ -49,13 +61,15 @@ Skill and answers yes or no. Yes folds the less written page into the more
 written one (archived, aliased, links rewritten); no keeps both, with the
 reason and what the shared address is (their own, an assistant's, a shared
 mailbox ...) in `.state/same-person.json`, so a pair is asked once; a judgement that fails is asked again the next day, after the pairs behind it. The daily
-round asks about two pairs a run, as a `same-person` run of its own: in `co rem logs --usage`, the day's call count and the week's points, inside the same budget floor.
+round judges up to ten pairs involving an uninvestigated page before its
+investigation jobs. After a merge, the native round retargets the queued job
+to the kept page and removes duplicate jobs. Written-page pairs keep their
+later slot (up to two in-process, three native). In-process judgements appear
+as a `same-person` run in `co rem logs --usage`; all judgements count against
+the day's calls and the week's budget floor.
 
-Measured on a copy of a real notebook (2026-11-03): nine pairs found, five
-answered yes (one person writing from two addresses, an agent mailbox, a
-nickname page, a Chinese-name page), three answered no (three first names
-shared by different people: different organisations, roles and threads). The
-ninth pair disappeared when an earlier yes folded one of its pages.
+A yes merges only when `address_role` is `their own`. A yes describing a
+delegate, shared mailbox, team inbox or unclear role is recorded as no.
 
 ## Windows: only what is new
 
@@ -148,3 +162,37 @@ the agent to stop after about 30 tool calls) wrote the same person's page in
 0.67M input tokens and 5 min 40 s of model time, with 52 citations. It was
 dropped so that there is one investigation path, #1942's; the gap is mostly
 the quoted threads and attachments #1942 keeps whole.
+
+### Mail relationship stats
+
+The reader's People table and each person header show a 52-week contact
+sparkline and warming/cooling. **More columns** also shows who writes first
+and reply times; the header shows all four. The default People order uses
+newest indexed mail first, regardless of whether a page has been investigated.
+People whose last indexed mail is over 90 days old appear under **Quiet**.
+People without indexed mail appear separately; missing history is not inactivity.
+
+These are deterministic recounts of `.state/rem.db`, available immediately
+after the existing map/sync refresh. Reading the table recomputes the windows
+without a model call, so quiet periods keep aging between syncs. Only mail
+between a person's indexed email addresses and an owner mailbox counts
+(including To/Cc recipients); third-party messages in the same thread do not.
+Multiple matching addresses count a message once per person.
+
+- **Contact**: messages in both directions, in 52 rolling seven-day UTC bins,
+  oldest first, through the notebook's current day (UTC midnight boundaries).
+- **Who writes first**: the percentage of threads whose first indexed message
+  was a direct exchange from them versus you, for threads starting in the
+  last 90 days. Threads beginning outside that exchange (for example, with a
+  third party) are excluded rather than assigned an inferred initiator.
+- **Reply times**: median elapsed time each way across all indexed history.
+  A reply is a change of sender direction within a thread, measured from the
+  preceding message. Unanswered messages have no reply time. Missing medians
+  are shown as a dash.
+- **Warming/cooling**: daily message rate in the last 30 days versus the
+  preceding 90 days: `(recent * 3 / prior - 1) * 100`. With no prior messages,
+  show **New contact** or **No recent mail** instead of inventing a percentage.
+
+Counts describe retained indexed mail, not the entire relationship. Provider
+thread IDs are used when available; older mail may use the existing subject
+and correspondent fallback. Partial history can miss a thread's real start.

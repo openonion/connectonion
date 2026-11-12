@@ -7,6 +7,16 @@ from connectonion.rem.runner import instructions, maintenance_instructions
 from connectonion.rem.extract import extraction_instructions
 
 
+def test_reply_draft_allows_undated_requests_within_its_instruction_budget():
+    from connectonion.skills_catalog import useful_skills_dir
+
+    text = (useful_skills_dir() / 'rem-reply-draft/SKILL.md').read_text()
+    assert len(text) < 6_000
+    assert 'date not agreed' in text and 'no earlier agreement' in text
+    assert 'days from Today if dated, else unknown' in text
+    assert 'Dates must be in `material`' in text
+
+
 def test_shared_writing_note_limits_hedges_to_consequential_uncertainty(tmp_path):
     from connectonion.rem.runner import today_note
 
@@ -103,7 +113,7 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
     assert len(given) < len(instructions("investigate")) - 10_000
 
 
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
     """#1960: "read the CLI reference first" was obeyed on every run, a 12.6k
     `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
@@ -127,11 +137,14 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 
 # 16.5k until 1.9.3rc7: quote-first page rules (2026-10-20 trial: quotes per
 # first-run person page 6.8 -> 9.8-17.2 over four reruns, First contact filled 1/5 -> 5/5).
-INSTRUCTION_BUDGET = 18_500
+# Additive research/tool and capture rules preserve every existing rule (owner, 2026-11-06).
+# 24k from 1.9.3rc55: attachment reading (#2832) and run memory (#2828) added two
+# rule blocks to rem-investigate; the trialled text is kept rather than condensed.
+INSTRUCTION_BUDGET = 24_000
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
     """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
     investigation and 22.9k for maintenance; rationale now lives in
@@ -184,13 +197,13 @@ def test_no_turn_is_pointed_at_the_rationale_docs(stage):
 
 
 @pytest.mark.parametrize("source", ["codex", "whatsapp"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_maintaining_extract_notes_stays_within_15k_whatever_the_source(tmp_path, source, kind):
     """#2000: a one-page maintain turn was 17.5k with the codex or whatsapp Skill
     appended, though it reads extraction notes, not the source."""
     from connectonion.rem.runner import task_prompt
 
-    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog'}[kind]}/x.md",
+    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog', 'topic': 'knowledge'}[kind]}/x.md",
               "text": "# X", "one_page": True},
              {"role": "extract", "source": f"{source}:s +3", "text": "## Projects\n- **X** — note"}]
     task_prompt(tmp_path, items, "maintain", source)
@@ -227,7 +240,7 @@ def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_
 
 def test_the_owner_flag_on_the_page_item_is_what_composes_it(tmp_path):
     from connectonion.rem.runner import task_prompt
-    page = {"role": "page", "record": "people/aaron.md", "text": "# Aaron", "owner": True}
+    page = {"role": "page", "record": "people/ellis.md", "text": "# Ellis", "owner": True}
     task_prompt(tmp_path, [page], "investigate")
     assert "# Your own page" in (tmp_path / "instructions.md").read_text()
     task_prompt(tmp_path, [{**page, "owner": False}], "investigate")

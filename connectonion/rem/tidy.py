@@ -5,18 +5,22 @@ notebook kept services as people (Apple ID, notify@x.com, GitHub's unsub+
 reply addresses), two of the owner's own addresses queued as people, three
 pairs of pages for one skill, and old pages carrying `web: not searched` and
 `investigation:coverage` citations. Every map and every sync calls `tidy`
-first, and a map calls it again at its end (#2018). It is idempotent and calls no model. Nothing is deleted: pages move to
+first, and a map calls it again at its end (#2018). It is idempotent and calls no model. Pages move to
 `.state/archived/` (folded ones leave an alias, as `merge.merge_into` does),
 and every action -- each removed line with its text -- is appended to
-`.state/tidy.json`. A page someone investigated is never moved or folded.
+`.state/tidy.json`. Disposable task material, old uncited attachments and
+finished-run evidence are pruned. Written pages are preserved, including
+organisation pages moved out of People.
 """
 
 from __future__ import annotations
 
 import json
+import posixpath
 import re
+import shutil
 from contextlib import nullcontext
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import (WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock, notebook_path,
@@ -30,6 +34,44 @@ COVERAGE = re.compile(r"^\s*- \[(W?\d+)\] investigation:coverage\b.*$")
 RUNNER_COVERAGE = "source-collection record for this investigation"
 
 
+def notebook_checks(root: Path) -> list[dict]:
+    """Read-only doctor findings: broken affiliations and entities filed as people."""
+    from .census import pages
+    from .reader_model import organisation_links
+    book, checks = Notebook(root), []
+    found = pages(root)
+    paths = set(book.list())
+    for person in book.people():
+        path = person['path']
+        if found[path]['service']:
+            checks.append({'check': 'non-person page', 'ok': False, 'detail': path,
+                           'fix': f'Review {path}; move this entity out of people/ to orgs/ or notes/ and update its links.'})
+        for org in organisation_links(path, book.read(path)):
+            if org not in paths:
+                checks.append({'check': 'organisation link', 'ok': False, 'detail': f'{path} → {org}',
+                               'fix': f'Correct Company in {path} to an existing orgs/ page, or create {org} from cited evidence.'})
+    from . import facts
+    from .org_hierarchy import structure
+    from .reader_model import notebook_links
+    orgs = [{'path': path, 'category': 'orgs', 'text': book.read(path),
+             'facts': facts.parse(book.read(path), path), 'people': []}
+            for path in book.list('orgs')]
+    structure(orgs)
+    for org in orgs:
+        for problem in org['hierarchy_issues']:
+            checks.append({'check': 'organisation hierarchy', 'ok': False,
+                           'detail': f"{org['path']}: {problem}",
+                           'fix': f"Correct Parent in {org['path']} to one cited, existing org without a cycle; use a unit Kind."})
+    units = {org['path'] for org in orgs if org['unit_kind']}
+    for person in book.people():
+        for value in facts.parse(book.read(person['path']), person['path'])['Unit']:
+            for unit in notebook_links(person['path'], value['value']):
+                if unit not in units:
+                    checks.append({'check': 'unit link', 'ok': False, 'detail': f"{person['path']} → {unit}",
+                                   'fix': f"Correct Unit in {person['path']} to a cited unit orgs/ page, or create {unit} from evidence."})
+    return checks
+
+
 def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> dict:
     """Tidy under the notebook lock; returns {action: [pages]} for what changed."""
     root = Path(root)
@@ -38,6 +80,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook, actions = Notebook(root), []
         state = read_json(state_path(root, "map.json"), {})
+        actions += _non_people(notebook, state)
         actions += _services(notebook, state)
         actions += _strangers(notebook, state)
         actions += _empty_orgs(notebook, state)
@@ -49,14 +92,119 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _map_history(notebook)
         actions += _dead_links(notebook)
         actions += _link_people(notebook, state)
+        actions += _storage(notebook)
         if not actions:
             return {}
         log = read_json(state_path(root, LOG), [])
-        write_json(state_path(root, LOG), log + [{"date": date.today().isoformat(), **action} for action in actions])
+        from .service import notebook_today
+        write_json(state_path(root, LOG), log + [{"date": notebook_today(root).isoformat(), **action} for action in actions])
         summary = {}
         for action in actions:
             summary.setdefault(action["action"], []).append(action["page"])
         return {key: sorted(set(pages)) for key, pages in summary.items()}
+
+
+def _non_people(notebook: Notebook, state: dict) -> list[dict]:
+    """Explicit organisations and written service pages keep their text outside People."""
+    from .census import written
+    from .map import service_page
+    actions = []
+    owner = (state.get("owner") or {}).get("record")
+    rows = {row.get("record"): row for row in state.get("people", []) if row.get("address")}
+    automated = {row["address"].casefold() for row in state.get("automated_correspondents", []) if row.get("address")}
+    for person in notebook.people():
+        record = person["path"]
+        text = notebook.read(record)
+        org = bool(re.search(r"^## Domains\n- [A-Za-z0-9.-]+\s*$", text, re.M))
+        service = written(text) and service_page(person["title"], person["emails"], rows.get(record), automated)
+        if record == owner or not (org or service):
+            continue
+        target = ("orgs/" if org else "notes/") + Path(record).name
+        if notebook.path(target).exists():
+            continue  # A collision needs a merge decision, never an overwrite.
+        notebook.path(target).parent.mkdir(parents=True, exist_ok=True)
+        notebook.path(record).replace(notebook.path(target))
+        _moved_links(notebook, record, target)
+        actions.append({"action": "moved non-person page", "page": record, "into": target})
+    return actions
+
+
+def _moved_links(notebook: Notebook, old: str, new: str) -> None:
+    for page in notebook.list():
+        origin = old if page == new else page
+
+        def relink(match):
+            linked = _normal(f"{Path(origin).parent}/{match[2]}{match[3]}")
+            if not notebook_path(linked) or (linked != old and page != new):
+                return match[0]
+            linked = new if linked == old else linked
+            return f"[{match[1]}]({posixpath.relpath(linked, str(Path(page).parent))}{match[4] or ''})"
+
+        original = notebook.read(page)
+        updated = MOVED_LINK.sub(relink, original)
+        if updated != original:
+            notebook.write(page, updated)
+
+
+def _storage(notebook: Notebook) -> list[dict]:
+    """Drop disposable copies; pages and their cited originals remain authoritative."""
+    from .runner import scrub_finished_tasks
+    tasks = state_path(notebook.root, "tasks")
+    before = {path for path in tasks.glob("*") if path.is_dir() and not path.is_symlink()}
+    if tasks.is_dir():
+        scrub_finished_tasks(tasks)
+    actions = [{"action": "removed task workspace", "page": path.relative_to(notebook.root).as_posix()}
+               for path in sorted(before) if not path.exists()]
+    pages = [notebook.path(record) for record in notebook.list()]
+    pages += [path for path in state_path(notebook.root, "archived").rglob("*.md") if not path.is_symlink()]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in pages)
+    return actions + _attachments(notebook.root, text) + _evidence(notebook.root)
+
+
+def _attachments(root: Path, pages: str) -> list[dict]:
+    from .service import now
+    cutoff = (now() - timedelta(days=30)).timestamp()
+    actions = []
+    for path in state_path(root, "attachments").glob("*/*/*"):
+        if (any(p.is_symlink() for p in (path, path.parent, path.parent.parent))
+                or not path.is_file() or path.name == ".fetched"):
+            continue
+        provider, message = path.parts[-3:-1]
+        source = f"{provider}:{message}:{path.name}"
+        relative = path.relative_to(root).as_posix()
+        if source in pages or relative in pages or path.as_uri() in pages:
+            continue
+        stat = path.stat()
+        if max(stat.st_atime, stat.st_mtime) < cutoff:
+            path.unlink()
+            actions.append({"action": "pruned attachment", "page": relative})
+    return actions
+
+
+def _evidence(root: Path) -> list[dict]:
+    from .service import run_logs, seen_outcome
+    runs = run_logs(root)
+    finished = [datetime.fromisoformat(run["finished_at"]).timestamp() for run in runs
+                if run.get("finished_at") and run.get("outcome") not in ("running", "pending")]
+    if not finished:
+        return []
+    # UUID evidence directories predate per-run ownership. Only prune copies
+    # older than a finished run, and never material from an unfinished run.
+    cutoff = min([max(finished), *(datetime.fromisoformat(run["started_at"]).timestamp()
+                                  for run in runs if seen_outcome(run) in ("running", "pending"))])
+    actions = []
+    for path in state_path(root, "evidence").glob("*"):
+        if path.is_symlink():
+            continue
+        contents = [path, *(path.rglob("*") if path.is_dir() else [])]
+        if any(p.is_symlink() for p in contents) or max(p.stat().st_mtime for p in contents) >= cutoff:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        actions.append({"action": "pruned evidence", "page": path.relative_to(root).as_posix()})
+    return actions
 
 
 def _archive(notebook: Notebook, record: str, into: str = "") -> str:
@@ -76,6 +224,7 @@ def _archive(notebook: Notebook, record: str, into: str = "") -> str:
 
 
 LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)\)")
+MOVED_LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)(#[^)]*)?\)")
 
 
 def _dead_links(notebook: Notebook) -> list[dict]:

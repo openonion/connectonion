@@ -187,3 +187,25 @@ def test_daily_same_person_skips_a_pair_archived_after_selection(root, monkeypat
     assert run["runner_attempts"] == (when == "during_model")
     if calls:
         assert run["usage"] == {"input_tokens": 10}
+
+
+@pytest.mark.parametrize("zone, moment, day", [
+    ("Pacific/Honolulu", "2026-11-06T01:00:00+00:00", "2026-11-05"),
+    ("Pacific/Kiritimati", "2026-11-05T12:00:00+00:00", "2026-11-06"),
+])
+def test_verdict_dates_and_failed_retries_use_the_notebook_day(root, monkeypatch, zone, moment, day):
+    from datetime import datetime, timedelta
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+
+    set_config(root, ["schedule.timezone", zone])
+    moment = datetime.fromisoformat(moment)
+    monkeypatch.setattr(service, "now", lambda: moment)
+    [pair] = same_person.candidates(root)
+    same_person._failed(root, pair, ValueError("fixture failure"))
+    assert read_json(state_path(root, same_person.VERDICTS), {})["|".join(pair["pages"])]["failed"] == day
+    assert same_person.candidates(root) == []
+    moment += timedelta(days=1)
+    assert same_person.candidates(root) == [pair]
+    [row] = same_person.judge(root, {}, run=_answer(False))
+    assert row["date"] == (datetime.fromisoformat(day) + timedelta(days=1)).date().isoformat()

@@ -28,6 +28,33 @@ def notebook(tmp_path):
     return book
 
 
+@pytest.mark.parametrize("stage", ["investigate", "continue"])
+@pytest.mark.parametrize("metadata", ["phase", "stage", "audit"])
+def test_prior_runs_reuses_latest_completed_native_page_report(notebook, stage, metadata):
+    fields = {"phase": stage} if metadata == "phase" else {"phase": "daily-investigation", "stage": stage}
+    if metadata == "audit":
+        fields.update(stage="claim-audit", render_stage=stage)
+    for number, record, outcome, report in (
+        (1, RECORD, "completed", "Old next question"),
+        (2, RECORD, "completed", "next: which team owns the rollout?"),
+        (3, "people/morgan-vale.md", "completed", "Other page"),
+        (4, RECORD, "refused", "Refused report"),
+        (5, RECORD, "pending", "Pending report"),
+        (6, RECORD, "completed", ""),
+    ):
+        write_json(state_path(notebook.root, f"runs/run_{number:032x}.json"),
+                   {"started_at": f"2026-11-0{number}T10:00:00", **fields,
+                    "record": record, "outcome": outcome, "report": report})
+    write_json(state_path(notebook.root, "runs/run_00000000000000000000000000000007.json"),
+               {"started_at": "2026-11-07T10:00:00", "phase": stage, "record": RECORD,
+                "outcome": "completed", "pending_review": True, "report": "Unreviewed report"})
+    items = feature._prior_runs(notebook.root, RECORD)
+    assert len(items) == 1
+    assert "next: which team owns the rollout?" in items[0]["text"]
+    for excluded in ("Old next", "Other page", "Refused report", "Pending report", "Unreviewed report"):
+        assert excluded not in items[0]["text"]
+
+
 def test_new_insight_bullets_ignore_changed_citations_and_whitespace():
     before = '# Avery Lin\n\n## Insight\n- Pattern: Avery reads before replying. [1]\n'
     carried = '- Pattern: Avery  reads before replying. [W2][3]'
@@ -377,7 +404,7 @@ def test_command_resolves_page_and_prints_report(notebook, monkeypatch, stage):
 def test_unknown_page_uses_resolver_error(notebook, stage):
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook.root), stage, "missing"])
     assert result.exit_code == 1
-    assert 'No page matches "missing" in people, projects, orgs or skills' in result.output
+    assert 'No page matches "missing" in people, projects, orgs, skills or topics' in result.output
 
 
 @pytest.mark.parametrize("harness,expected", [("codex", {"input_tokens": 7, "output_tokens": 2}),

@@ -4,6 +4,8 @@ import copy
 import json
 import textwrap
 
+import pytest
+
 from connectonion.cli.commands.rem_output import render
 from connectonion.rem.config import prepare, read_config
 from connectonion.rem.service import consent_summary
@@ -43,7 +45,7 @@ def test_consent_with_four_sources_fits_one_screen(tmp_path, monkeypatch):
     assert 'Permissions: ' in text and 'danger-full-access' in text
     assert 'Schedule: ' + ', '.join(summary['schedule']['times']) in text
     assert summary['schedule']['timezone'] in text
-    assert 'Daily cap: 50 runner calls/day; stop at 90% weekly quota used' in text
+    assert 'Daily cap: 200 runner calls/day; stop at 90% weekly quota used' in text
     assert 'Background: ' in text and 'co rem stop' in text
     assert text.endswith('Details: co rem config')
     assert summary == original
@@ -67,3 +69,34 @@ def test_consent_keeps_connected_mail_and_chat_scope_on_one_line():
         '  gmail: connected; will be read if approved (automated senders skipped)')
     assert _consent_source('whatsapp', chat) == (
         "  whatsapp: will read 2 chat(s), both sides, the agent's own replies left out")
+
+
+def test_default_mail_summary_and_recorded_approval_stay_unchanged(tmp_path, monkeypatch):
+    from connectonion.rem import service
+    from connectonion.rem.files import read_json, state_path
+    monkeypatch.setattr(service, 'mail_available', lambda kind: True)
+    prepare(tmp_path)
+    service.subscribe_read_mail(tmp_path, ['gmail'])
+    summary = service.consent_summary(tmp_path)
+    assert summary['sources']['gmail']['state'] == 'will be read (automated senders skipped)'
+    assert summary['sources']['outlook']['state'] == (
+        'connected; read from now on if you approve (automated senders skipped). '
+        'Keep it out with co rem sources remove outlook')
+    assert service.ensure_consent(tmp_path, confirm=lambda summary: True)
+    fingerprint = service.summary_fingerprint(tmp_path)
+    assert read_json(state_path(tmp_path, 'consent.json'), {})['summary'] == fingerprint
+    assert service.ensure_consent(tmp_path, confirm=lambda summary: pytest.fail('repeat approval'))
+    assert service.summary_fingerprint(tmp_path) == fingerprint
+
+
+def test_scoped_consent_does_not_approve_an_existing_waiting_mailbox(tmp_path, monkeypatch):
+    from connectonion.rem import service
+    monkeypatch.setattr(service, 'mail_available', lambda kind: True)
+    prepare(tmp_path)
+    service.subscribe_read_mail(tmp_path, ['gmail', 'outlook'])
+    assert service.ensure_consent(tmp_path, mail=['gmail'], confirm=lambda summary: True)
+    sources = service.subscriptions(tmp_path)
+    assert sources['gmail']['consented']
+    assert not sources['outlook']['consented']
+    assert service.ensure_consent(tmp_path, mail=['gmail'],
+                                  confirm=lambda summary: pytest.fail('repeat approval'))

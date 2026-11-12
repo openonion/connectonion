@@ -238,9 +238,9 @@ def test_unconsented_mail_is_never_listed():
 def test_quoted_reply_chains_are_cut_off():
     """A reply carries the whole thread below it; the maintainer already saw those mails."""
     from connectonion.rem.mail import strip_quoted
-    body = ("Thanks Alice, Friday works.\n\nBest,\nAaron\n\n"
+    body = ("Thanks Alice, Friday works.\n\nBest,\nEllis\n\n"
             "On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote:\n> Can we do Friday?\n> ...")
-    assert strip_quoted(body).strip() == "Thanks Alice, Friday works.\n\nBest,\nAaron"
+    assert strip_quoted(body).strip() == "Thanks Alice, Friday works.\n\nBest,\nEllis"
     outlook = "Agreed.\n\n________________________________\nFrom: Alice <alice@example.com>\nSent: Tuesday\nSubject: Re: Aurora\n\nCan we?"
     assert strip_quoted(outlook).strip() == "Agreed."
     assert strip_quoted("No quote here.") == "No quote here."
@@ -253,9 +253,9 @@ def test_quotes_are_cut_even_when_the_client_flattened_the_body_to_one_line():
     """Outlook's HTML-to-text turns a mail into one long line, so `^From: … Sent:` and
     `wrote:$` never matched and every reply carried the whole thread beneath it."""
     from connectonion.rem.mail import strip_quoted
-    flat = ("Hi Aaron,I'm connecting you with Ines and Odette.Thank you,Rowan Ashdown UNSW Global Program Manager"
-            "From: Rowan Ashdown <rowan.ashdown@unsw.edu.au>Sent: 10 July 2026 11:56To: xietianle Subject: US Students Dear Aaron,Thank you for your interest")
-    assert strip_quoted(flat).endswith("Program Manager") and "Dear Aaron,Thank you for your interest" not in strip_quoted(flat)
+    flat = ("Hi Ellis,I'm connecting you with Ines and Odette.Thank you,Rowan Ashdown UNSW Global Program Manager"
+            "From: Rowan Ashdown <rowan.ashdown@unsw.edu.au>Sent: 10 July 2026 11:56To: ellis Subject: US Students Dear Ellis,Thank you for your interest")
+    assert strip_quoted(flat).endswith("Program Manager") and "Dear Ellis,Thank you for your interest" not in strip_quoted(flat)
     flat2 = "Agreed, Friday works. On Tue, 2 Sep 2026 at 09:00, Alice Chen <alice@example.com> wrote: Can we do Friday?"
     assert strip_quoted(flat2).strip() == "Agreed, Friday works."
 
@@ -265,18 +265,18 @@ def test_an_outlook_quote_header_on_its_own_lines_is_cut():
     lines with no rule above them; his signature, LinkedIn and office line stayed in
     her text and landed on her page, Tess's and Rowan's (#2349)."""
     from connectonion.rem.mail import strip_quoted
-    body = ("Dear Aaron,\nAll slots are allocated.\nThanks and warm regards,\nMargot\nMargot Duval\n"
-            "Program Coordinator\nFrom: Aaron x <aaron@example.com>\nSent: Friday, 2 October 2026 18:40\n"
-            "To: Colin Drake <colin@example.edu>\nSubject: RE: Invitation\nHi Colin,\nCheers,\nAaron\n"
+    body = ("Dear Ellis,\nAll slots are allocated.\nThanks and warm regards,\nMargot\nMargot Duval\n"
+            "Program Coordinator\nFrom: Ellis y <ellis@example.com>\nSent: Friday, 2 October 2026 18:40\n"
+            "To: Colin Drake <colin@example.edu>\nSubject: RE: Invitation\nHi Colin,\nCheers,\nEllis\n"
             "From: Colin Drake <colin@example.edu>\nSent: Thursday\nKind regards,\nColin\nColin Drake\n"
             "https://www.linkedin.com/in/colin-drake-/")
     assert strip_quoted(body).rstrip().endswith("Program Coordinator")
-    header = "From: Margot <c@example.edu>\nTo: aaron@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
+    header = "From: Margot <c@example.edu>\nTo: ellis@example.com\nSubject: Re: x\nDate: 2026-10-05\n\nHello"
     assert strip_quoted(header) == header
-    apple = ("No, I have not.\nBest,\nAaron\nFrom: Colin Drake <colin@example.edu>\nDate: Tuesday, March 31\n"
-             "To: aaron\nCc: Rowan Ashdown <rowan@example.edu>\nSubject: Decent Capital?\nT: +61 2 9000 0157")
-    assert strip_quoted(apple).rstrip().endswith("Aaron")
-    forward = "\n\nFrom: Nikhil Bhatt\nSent: Tuesday\nSubject: Aaron <> SFz\nWhere: Bondi Junction station"
+    apple = ("No, I have not.\nBest,\nEllis\nFrom: Colin Drake <colin@example.edu>\nDate: Tuesday, March 31\n"
+             "To: ellis\nCc: Rowan Ashdown <rowan@example.edu>\nSubject: Decent Capital?\nT: +61 2 9000 0157")
+    assert strip_quoted(apple).rstrip().endswith("Ellis")
+    forward = "\n\nFrom: Nikhil Bhatt\nSent: Tuesday\nSubject: Ellis <> SFz\nWhere: Bondi Junction station"
     assert strip_quoted(forward) == forward
 
 
@@ -417,3 +417,20 @@ def test_a_mailbox_error_other_than_a_deleted_message_still_fails_the_read():
 
     with pytest.raises(HttpError):
         collect_mail(subscription(), {}, 10, 100000, Down([mail(1, "2026-09-02T09:00:00+00:00")]), now=NOW)
+
+
+@pytest.mark.parametrize('subject', ['Invoice 42', 'Receipt for pilot', 'Tax invoice', 'ABN details',
+                                    'Billing update', 'Payment received'])
+def test_org_mail_admits_domain_billing_notices(subject):
+    from connectonion.rem.mail import org_mail
+    row = {'from': 'billing@lantern.example', 'to': ['me@example.org'], 'subject': subject}
+    assert org_mail(row, ['lantern.example'], {'me@example.org'}, {'billing@lantern.example'}, set(), set())
+
+
+@pytest.mark.parametrize('sender,subject', [('billing@other.example', 'Invoice for lantern.example'),
+    ('billing@lantern.example', 'News from our team'), ('billing@notlantern.example', 'Payment received'),
+    ('billing@lantern.example', 'Cabinet updates')])
+def test_org_mail_does_not_admit_unrelated_notices(sender, subject):
+    from connectonion.rem.mail import org_mail
+    row = {'from': sender, 'to': ['me@lantern.example'], 'subject': subject}
+    assert not org_mail(row, ['lantern.example'], {'me@lantern.example'}, {sender}, set(), set())

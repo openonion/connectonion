@@ -144,8 +144,10 @@ git push origin vX.Y.Z
 ### 5d. Let the reviewed tag workflow publish
 
 Pushing the tag starts `.github/workflows/release.yml`. Wait for that exact run
-to rerun the matrix, build once, publish through PyPI Trusted Publishing, verify
-the public artifacts, and create the GitHub Release. A manual dispatch may retry
+to prove the commit (it reuses the green main-push Tests run on the exact SHA,
+waits for one still running, refuses a red one, and runs the full matrix only
+for a commit never tested), build once, publish through PyPI Trusted Publishing,
+verify the public artifacts, and create the GitHub Release. A manual dispatch may retry
 the existing tag; it must never select an arbitrary branch. Never publish package
 bytes from the workstation or race the workflow with a second registry writer.
 

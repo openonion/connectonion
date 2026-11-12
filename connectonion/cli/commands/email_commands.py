@@ -212,8 +212,8 @@ def handle_email_inbox(
     table.add_column("From")
     if show_to:
         # Fold, never ellipsize: a half-printed address is the one thing this
-        # column exists to disambiguate, and "aaron@mail.op…" and
-        # "aaron.xie@mail.op…" are the same string once Rich truncates them.
+        # column exists to disambiguate: the owner's aliases (e.g.
+        # ellis@example.com and ellis.yew@example.org) must stay readable.
         table.add_column("To", overflow="fold")
     table.add_column("Subject")
     table.add_column("Received")
@@ -373,6 +373,8 @@ def handle_email_default(address: str):
     if not token:
         _print_no_auth()
         raise typer.Exit(1)
+    if address.isdigit():
+        address = _listed_address(int(address))
 
     r = requests.post(
         f"{backend_url()}/api/v1/email/addresses/default",
@@ -385,6 +387,15 @@ def handle_email_default(address: str):
         raise typer.Exit(1)
 
     console.print(f"\n[green]✓[/green] {address} is now the default sender\n")
+
+
+def _listed_address(number: int) -> str:
+    """The Nth row of `co email addresses`, counting from 1."""
+    addresses = _address_settings()[1]["addresses"]
+    if not 1 <= number <= len(addresses):
+        console.print(f"\n[red]✗ No address number {number}; co email addresses lists {len(addresses)}.[/red]\n")
+        raise typer.Exit(1)
+    return addresses[number - 1]["address"]
 
 
 def _address_settings():
@@ -412,7 +423,7 @@ def handle_email_domains():
     console.print("Set one up: co email setup <alias> --domain <domain>\n")
 
 
-def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False):
+def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool = False, make_default: bool = False):
     """Add an address without replacing this account's existing mailboxes."""
     token, settings = _address_settings()
     alias, domain = alias.strip().lower(), domain.strip().lower()
@@ -426,20 +437,38 @@ def handle_email_setup(alias: str, domain: str = "mail.openonion.ai", buy: bool 
     if not buy:
         console.print(f"{address}: ${settings['prices']['add']:.2f} one-time, from credits.", markup=False)
         console.print("Availability is checked when you buy; a taken address is not charged.")
-        print(f"Add it: co email setup {alias} --domain {domain} --buy")
+        print(f"Add it: co email setup {alias} --domain {domain} --buy{' --default' if make_default else ''}")
+        print("Buying keeps your current default sender; add --default to send from the new address by default.")
         return
     response = requests.post(
         f"{backend_url()}/api/v1/email/addresses",
         headers={"Authorization": f"Bearer {token}"},
-        json={"local_part": alias, "domain": domain}, timeout=15,
+        json={"local_part": alias, "domain": domain, "make_default": make_default}, timeout=15,
     )
     if not response.ok:
         console.print(f"\n[red]✗ {_err(response)}[/red]\n")
         raise typer.Exit(1)
     result = response.json()
     console.print(result["message"], markup=False)
-    print(f"Choose default: co email default {result['address']}")
+    _print_default_after_buy(result)
     print(f'Send once: co email send <to> "<subject>" "<body>" --from {result["address"]}')
+
+
+def _print_default_after_buy(result: dict):
+    """Say whether the purchase moved the default sender (openonion/oo-api#288).
+
+    A backend from before #288 does not report it, and there a first purchase
+    could silently become the default — so point at `co email addresses`
+    rather than guess.
+    """
+    if "default_changed" not in result:
+        print("Check the default sender: co email addresses  (change it: co email default <address>)")
+        return
+    if result["default_changed"]:
+        print(f"Default sender is now {result['default_address']}")
+        return
+    print(f"Default sender is still {result['default_address']}")
+    print(f"Make the new one default: co email default {result['address']}")
 
 
 def handle_email_addresses():
@@ -469,17 +498,20 @@ def handle_email_addresses():
         # Plain print, not console.print: Rich expands \t into spaces.
         for a in addresses:
             print(f"{a['address']}\t{'default' if a.get('is_default') else ''}")
+        print('Choose default: co email default <row number or address>')
         print('Add another: co email setup <alias> --domain <domain> (co email domains lists choices)')
         print('Send as one with: co email send <to> "<subject>" "<body>" --from <address>')
         return
 
     table = Table(title="📧 Your addresses", show_header=True, header_style="bold cyan")
+    table.add_column("#")
     table.add_column("Address")
     table.add_column("Default")
     table.add_column("Since")
 
-    for a in addresses:
+    for number, a in enumerate(addresses, 1):
         table.add_row(
+            str(number),
             str(a["address"]),
             "[green]✓[/green]" if a.get("is_default") else "",
             str(a.get("created_at") or "")[:10],
@@ -593,7 +625,7 @@ def handle_email_unshare(address: str, *, with_: str):
     console.print(f"\n[green]✓ Revoked {with_}'s access to {address}[/green]\n")
 
 
-def handle_email_name(name: str, buy: bool = False):
+def handle_email_name(name: str, buy: bool = False, make_default: bool = False):
     """Check whether a custom email name is available, or claim it (deducts credits)."""
     token = load_api_key()
     if not token:
@@ -610,18 +642,21 @@ def handle_email_name(name: str, buy: bool = False):
         data = r.json()
         if data.get("available"):
             console.print(f"\n[green]✓ {data['email']} is available[/green] — [bold]${data['price']:.2f}[/bold] one-time, from credits")
-            console.print(f"[dim]Claim it:[/dim] [bold]co email name {name} --buy[/bold]\n")
+            console.print(f"[dim]Claim it:[/dim] [bold]co email name {name} --buy{' --default' if make_default else ''}[/bold]")
+            console.print("[dim]Buying keeps your current default sender; add --default to send from it by default.[/dim]\n")
         else:
             console.print(f"\n[yellow]✗ {data['email']} — {data.get('reason', 'unavailable')}[/yellow]\n")
         return
 
-    r = requests.post(f"{backend_url()}/api/v1/email/purchase-name", json={"name": name}, headers=headers, timeout=15)
+    r = requests.post(f"{backend_url()}/api/v1/email/purchase-name",
+                      json={"name": name, "make_default": make_default}, headers=headers, timeout=15)
     if not r.ok:
         console.print(f"\n[red]✗ {_err(r)}[/red]\n")
         raise typer.Exit(1)
     data = r.json()
     console.print(f"\n[green]✓ {data['message']}[/green]")
     console.print(f"  Your address: [cyan]{data['email']}[/cyan]")
+    _print_default_after_buy({**data, "address": data["email"]})
     console.print(f'[dim]Send from it:[/dim] [bold]co email send <to> "<subject>" "<body>" --from {data["email"]}[/bold]\n')
 
 

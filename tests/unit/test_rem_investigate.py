@@ -11,6 +11,15 @@ from connectonion.rem import investigate as inv
 from connectonion.rem.config import prepare, read_config, set_config
 
 
+def _save_web_capture(directory):
+    """The fake investigator saves its synthetic lookup exactly as a real writer must."""
+    web = directory / 'web'
+    web.mkdir(exist_ok=True)
+    (web / 'team.md').write_text('Rowan works at UNSW.')
+    (web / 'sources.json').write_text(json.dumps([{
+        'url': 'https://www.unsw.edu.au/staff/rowan-ashdown', 'file': 'team.md', 'date': '2026-09-23'}]))
+
+
 class Quiet:
     """One mail from Rowan: an investigation with nothing about its subject stops before the model (#1974)."""
     def my_addresses(self): return {"me@x.y"}
@@ -108,7 +117,7 @@ def company_mail(tmp_path, request):
         def list_between(self, start, end, limit):
             return [row for row in rows if start <= row['date'] < end]
         def get_email_body(self, key): return bodies[key]
-        def download_attachments(self, key, directory):
+        def list_attachments(self, key):
             attachments.append(key)
             return []
 
@@ -405,12 +414,13 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         # The least a finished page is (#2008): one cited fact, every other section a bare Unknown.
         path.write_text(page.replace("## Who they are\n- Unknown — not investigated yet",
                                      "## Who they are\n- Rowan works at UNSW. [W1]", 1)
                         .replace("## Sources\n- (none yet)",
-                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
                         .replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -458,19 +468,23 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
         "recording result"]
 
 
-def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path):
-    project = tmp_path / 'project'
+@pytest.mark.parametrize('parent', ['workspace', 'rem-workspace'])
+@pytest.mark.parametrize('guide', ['docs/rem-guide.md', 'docs/rem/guide.md'])
+def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path, parent, guide):
+    project = tmp_path / parent / 'project'
     (project / 'docs').mkdir(parents=True)
     (project / '.git').mkdir()
     for name in ('README.md', 'password.txt', '.env', 'a.py'):
         (project / name).write_text('fixture')
-    (project / 'docs' / 'rem-guide.md').write_text('fixture')
+    guide_path = project / guide
+    guide_path.parent.mkdir(parents=True, exist_ok=True)
+    guide_path.write_text('fixture')
     (project / '.git' / 'config').write_text('fixture')
     page = f'# Project\n## Paths\n- {project}\n- Sessions: 1\n## Sources\n'
     leads = inv.project_file_inventory(page, max_files=2)
     assert len(leads) == 2
     assert leads[0].endswith('/README.md')
-    assert any(path.endswith('/rem-guide.md') for path in leads)
+    assert any(path.endswith('/' + guide) for path in leads)
     assert not any('password' in path or '/.git/' in path or '/.env' in path for path in leads)
     cited = page.replace(f'- {project}\n', f'- {project} [1][2]\n')
     assert inv.project_paths(cited) == [str(project)]
@@ -770,18 +784,21 @@ def test_an_investigation_the_user_starts_has_tools_authorized(tmp_path, co_ai, 
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner):
+def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner, rem_clock):
     from connectonion.rem.daily import run_daily
+    from connectonion.rem.service import approve_sources, toggle_source
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
     monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
     root = _pinned_notebook(tmp_path, runner)
+    toggle_source(root, "outlook", True)
+    approve_sources(root)
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
     assert result["run"]["outcome"] == "completed", result
     assert [argv[1:-1] for argv in co_ai] == [PINNED[runner]]
 
 
-def test_a_daily_run_says_each_step_as_it_starts(tmp_path, co_ai, monkeypatch):
+def test_a_daily_run_says_each_step_as_it_starts(tmp_path, co_ai, monkeypatch, rem_clock):
     """#2033: off a terminal, a sync printed nothing for 25 minutes, then everything."""
     from connectonion.rem.daily import run_daily
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
@@ -1306,12 +1323,13 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Rowan works at UNSW. [W1]", 1)
         page = page.replace("## Sources\n- (none yet)",
                             "## Sources\n- [1] Existing page people/rowan.md, prior context only.\n"
-                            "- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+                            "- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
         path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -1338,7 +1356,7 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
     root = Path(tempfile.mkdtemp()) / "rem"
     prepare(root)
     notebook = Notebook(root)
-    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin"], email="zhouodywork@gmail.com")
+    notebook.stub_person("people/corin.md", "Corin Marsh", ["corin"], email="corin.work@example.org")
     original = notebook.read("people/corin.md")
     chunk = [{"source": "gmail:3a7a430fcee5", "timestamp": "2026-08-01T00:00:00+00:00", "text": "a"},
              {"source": "gmail:db0abd133958:Draft_v8.docx", "timestamp": "2026-08-02T00:00:00+00:00", "text": "b"}]
@@ -1361,7 +1379,7 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
 
 
 def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monkeypatch):
-    """Briar's page listed xietianle@outlook.com -- the user's own Outlook -- as her
+    """Briar's page listed ellis@example.org -- the user's own Outlook -- as her
     email and handle, from mail the two of them exchanged. The owner's addresses
     are known; they are removed mechanically, the rest of the page is kept."""
     from pathlib import Path
@@ -1370,12 +1388,13 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+        _save_web_capture(path.parent)
         page = next(Path(cwd).glob('investigate-*/notebook/people/rowan.md')).read_text()
         page = re.sub(r'^- Email: .*$', '- Email: rowan.ashdown@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
         page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Rowan works at UNSW. [W1]", 1).replace(
-            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown, observed 2026-09-23.", 1)
+            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/rowan-ashdown — 2026-09-23", 1)
         path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
@@ -1539,11 +1558,11 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     from datetime import date, timedelta
     root = _notebook(tmp_path, "codex")
     notebook = inv.Notebook(root)
-    assert inv.window_since(notebook.read("people/rowan.md")) == 730        # never investigated: two years
+    assert inv.window_since(notebook.read("people/rowan.md"), root=root) == 730        # never investigated: two years
     ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
     page = notebook.read("people/rowan.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
     notebook.write("people/rowan.md", page)
-    assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
+    assert 10 <= inv.window_since(page, root=root) <= 12                               # UTC vs local date at the edges
 
     seen = {}
     # One new mail: with none, the run stops before the model (#1974).
@@ -1561,14 +1580,15 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
-def test_a_page_written_from_its_sources_starts_the_next_window_too():
+def test_a_page_written_from_its_sources_starts_the_next_window_too(tmp_path):
     """#1983: `projects write` stamped `written <date>`, which the window did not
     count, so the next investigation re-read 150 days (1.58M tokens)."""
     from datetime import date, timedelta
+    root = tmp_path
     written = (date.today() - timedelta(days=2)).isoformat()
     page = f"# Proj\n\nInvestigation: mapped 2026-09-01 · written {written} (own messages: codex)\n"
     assert inv.last_investigated(page) == date.fromisoformat(written)
-    assert 2 <= inv.window_since(page) <= 4
+    assert 2 <= inv.window_since(page, root=root) <= 4
 
 
 def test_only_whole_addresses_are_searched_on_the_mail_server():
@@ -2240,7 +2260,7 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     assert not any(item["role"] == "owner-work-evidence" for item in seen)
 
 
-def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch):
+def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch, rem_clock):
     """#2044: outcomes appeared only in a 200-line dump at the end, and "Seconds: Unknown".
     #2043: a daily run's tokens had no stage in logs --usage."""
     from connectonion.rem.daily import outcome_line, run_daily
@@ -2296,7 +2316,7 @@ def test_gather_clamps_only_coding_sessions_to_the_cached_window(tmp_path, monke
 
     seen = []
     before = datetime.now(timezone.utc)
-    monkeypatch.setattr(inv, "_window_items", lambda read, scoped, *args: seen.append(scoped) or ([], 0))
+    monkeypatch.setattr(inv, "_window_items", lambda read, scoped, *args, **kwargs: seen.append(scoped) or ([], 0))
     _, coverage = inv.gather("Rowan", ["Rowan"], days=days, clients={}, subscriptions={
         kind: {"kind": kind, "root": str(tmp_path), "chats": ["Rowan"]}})
     since = datetime.fromisoformat(seen[0]["since"])
@@ -2648,26 +2668,6 @@ def test_a_page_with_no_hedged_lines_gets_no_editing_turn(tmp_path, monkeypatch)
                           extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
 
     assert not any(n.startswith("Final round") for n in notes) and out["hedged_lines"] == [0, 0]
-
-
-def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
-    """One provider call per archived mail, in sequence, was most of a heavy
-    page's 15-minute gather on a real 1.9.0 init (2026-10-08)."""
-    calls = []
-
-    class Mail:
-        def download_attachments(self, email_id, out_dir):
-            calls.append(email_id)
-            if email_id == "with":
-                (Path(out_dir) / "offer.pdf").write_bytes(b"%PDF")
-                return [str(Path(out_dir) / "offer.pdf")]
-            return []
-
-    first = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
-    again = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
-    assert calls == ["with", "without"]
-    assert [paths for _, paths, _ in again] == [paths for _, paths, _ in first]
-    assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
 
 
 def test_a_search_the_provider_refuses_is_reported_not_fatal(tmp_path):
@@ -3502,3 +3502,131 @@ def test_a_diary_session_line_naming_a_friend_never_reaches_the_friends_page(tmp
                           subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path), "enabled": True}},
                           record="people/mia-chen.md")
     assert [item["source"] for item in items] == ["claude-code:s:20"]
+
+
+def test_investigation_window_uses_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 6, 1, tzinfo=timezone.utc))
+    assert inv.window_since("Investigation: investigated 2026-11-04", root=tmp_path) == 2
+
+
+@pytest.mark.parametrize('kind', ['gmail', 'outlook'])
+@pytest.mark.parametrize('archived', [False, True])
+def test_gather_indexes_attachment_metadata_without_downloading(tmp_path, kind, archived):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+
+    now = datetime.now(timezone.utc)
+    row = {'id': 'message-with-documents', 'from': 'ivy@lantern.example', 'to': ['me@example.org'],
+           'subject': 'Pilot terms', 'date': (now - timedelta(days=1)).isoformat()}
+    documents = [{'id': 'part-1', 'filename': 'terms.pdf', 'mime_type': 'application/pdf', 'size': 2048},
+                 {'id': 'part-2', 'filename': 'identity.docx', 'mime_type':
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'size': 4096}]
+    listed = []
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return [row] if start <= row['date'] < end else []
+        def get_email_body(self, key): return 'Please read the attached terms.'
+        def list_attachments(self, key):
+            listed.append(key)
+            return documents
+        def download_attachments(self, *args, **kwargs):
+            pytest.fail('Gather must list metadata before selecting downloads')
+
+    if archived:
+        retain_message(tmp_path, kind, row, 'Please read the attached terms.', fetched_at=now.isoformat())
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': [kind], 'owner_addresses': ['me@example.org'],
+            'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    store = tmp_path / '.state/attachments'
+    items, coverage = inv.gather('Ivy', ['ivy@lantern.example'], days=5, clients={kind: Mail()},
+                                subscriptions={}, archive_root=tmp_path if archived else None,
+                                record='people/ivy.md', attachments_dir=store)
+    indexes = [item for item in items if item['role'] == 'attachments-index']
+    assert len(indexes) == 1
+    index = indexes[0]
+    assert index['attachments'] == documents
+    assert index['reference'] == f'{kind}:{row["id"]}'
+    for value in ('terms.pdf', 'identity.docx', 'application/pdf', '2048', '4096', row['id']):
+        assert value in index['text']
+    assert listed == [row['id']]
+    assert not store.exists()
+    assert any('2 attachments indexed' in line for line in coverage)
+
+
+def test_archived_attachment_indexes_are_listed_concurrently_in_mail_order(tmp_path):
+    import threading
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+
+    now = datetime.now(timezone.utc)
+    rows = [{'id': f'mail-{n}', 'from': 'ivy@lantern.example', 'to': ['me@example.org'],
+             'subject': 'Pilot terms', 'date': (now - timedelta(days=1, minutes=3-n)).isoformat()}
+            for n in range(3)]
+    for row in rows:
+        retain_message(tmp_path, 'gmail', row, 'See attached terms.', fetched_at=now.isoformat())
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
+        'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    barrier = threading.Barrier(3)
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit): return []
+        def list_attachments(self, key):
+            barrier.wait(timeout=2)
+            return [{'id': key, 'filename': f'{key}.pdf', 'mime_type': 'application/pdf', 'size': 200}]
+
+    items, _ = inv.gather('Ivy', ['ivy@lantern.example'], days=5, clients={'gmail': Mail()},
+                         subscriptions={}, archive_root=tmp_path, record='people/ivy.md',
+                         attachments_dir=tmp_path / '.state/attachments')
+    assert [item['reference'] for item in items if item['role'] == 'attachments-index'] == [
+        f'gmail:{row["id"]}' for row in rows]
+
+
+def test_backfill_counts_indexed_attachments_for_the_second_pass(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import people_pages
+    monkeypatch.setattr(people_pages, 'handles', lambda *args: ('Ivy', ['ivy@lantern.example']))
+    monkeypatch.setattr(inv, 'gather', lambda *args, **kwargs: ([{
+        'role': 'attachments-index', 'timestamp': datetime.now(timezone.utc).isoformat(),
+        'attachments': [{'filename': 'terms.pdf'}, {'filename': 'identity.docx'}]}], []))
+    assert people_pages.backfill_person(tmp_path, {'record': 'people/ivy.md'}, clients={}, subscriptions={}) == 2
+
+
+@pytest.mark.parametrize('archived', [False, True])
+def test_domain_billing_notice_is_not_marked_as_outside_the_org(tmp_path, archived):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    now = datetime.now(timezone.utc)
+    row = {'id': 'billing-notice', 'from': 'billing@lantern.example', 'to': ['me@example.org'],
+           'subject': 'Tax invoice', 'date': (now - timedelta(days=1)).isoformat()}
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'addresses': ['me@example.org']},
+        'automated_correspondents': [{'address': row['from']}]})
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return [row] if start <= row['date'] < end else []
+        def get_email_body(self, key): return 'Supplier Lantern Labs, ABN 98 765 432 109.'
+
+    if archived:
+        retain_message(tmp_path, 'gmail', row, Mail().get_email_body(row['id']), fetched_at=now.isoformat())
+        write_json(state_path(tmp_path, 'mail/archive.json'), {
+            'phase': 'complete', 'providers': ['gmail'], 'owner_addresses': ['me@example.org'],
+            'range_start': (now - timedelta(days=10)).isoformat(), 'range_end': now.isoformat()})
+    items, _ = inv.gather('Lantern', ['lantern.example'], days=5, clients={'gmail': Mail()},
+                         subscriptions={}, archive_root=tmp_path, record='orgs/lantern.md')
+    assert len(items) == 1
+    assert not items[0].get('relationship_scope')

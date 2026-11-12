@@ -15,6 +15,9 @@ from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import RemError, read_json, state_path, write_json
 
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 @pytest.fixture
 def notebook(tmp_path, monkeypatch):
     root = tmp_path / "rem"
@@ -184,16 +187,16 @@ def test_http_failure_continues_to_other_source_and_status_reports_it(mixed_sour
     assert gathered == [item]
     assert result["outcome"] == "completed"
     assert result["failed_source"] == "gmail"
-    assert result["source_failures"] == [{"source": "gmail", "error": "Gmail read failed: HttpError 503 Backend Error"}]
+    assert result["source_failures"] == [{"source": "gmail", "error": "Gmail read failed: HttpError"}]
     assert "gmail" in result["warning"]
-    assert result["error"] == "Gmail read failed: HttpError 503 Backend Error"
+    assert result["error"] == "Gmail read failed: HttpError"
     after = read_json(state_path(root, "progress.json"), {})
     assert after["gmail"] == before["gmail"]
     assert after["codex"] == {"offset": 20}
     assert list(service._rotated(sources, after["rem_last_source"])) == ["gmail", "codex"]
     assert service.run_logs(root)[0]["source_failures"] == result["source_failures"]
     state = service.status(root)["mailboxes"]["gmail"]
-    assert "last read failed 2026-10-15" in state and "HttpError 503 Backend Error" in state
+    assert "last read failed 2026-10-15" in state and "HttpError" in state
     rendered = Text.from_markup("\n".join(_mailboxes(root))).plain
     assert "✗ Gmail" in rendered and "last read failed" in rendered
     assert "✓ Gmail" not in rendered
@@ -209,7 +212,7 @@ def test_failed_source_advances_rotation_even_when_all_reads_fail(mixed_sources,
     after = read_json(state_path(root, "progress.json"), {})
     assert after["gmail"] == before["gmail"]
     assert after["rem_last_source"] == "gmail"
-    assert result["error"] == "Gmail read failed: HttpError 503 Backend Error"
+    assert result["error"] == "Gmail read failed: HttpError"
 
 
 def test_multiple_failures_keep_each_reason_and_read_the_next_source(mixed_sources, monkeypatch):
@@ -223,8 +226,8 @@ def test_multiple_failures_keep_each_reason_and_read_the_next_source(mixed_sourc
     assert [row["source"] for row in result["source_failures"]] == ["gmail", "outlook"]
     assert all(name in result["warning"] for name in ("gmail", "outlook"))
     rendered = Text.from_markup(sync_summary(result)).plain
-    assert "Gmail read failed: HttpError 503 Backend Error" in rendered
-    assert "Outlook read failed: HttpError 503 Backend Error" in rendered
+    assert "Gmail read failed: HttpError" in rendered
+    assert "Outlook read failed: HttpError" in rendered
 
 
 def test_successful_empty_read_completes_with_warning_and_clears_old_failure(mixed_sources, monkeypatch):
@@ -427,3 +430,71 @@ def test_legacy_scheduled_failure_is_safe_in_status(mixed_sources, secret):
     value = service.status(root)
     assert secret not in json.dumps(value)
     assert "Gmail read failed: RemError; run `co rem logs`" in value["state"]
+
+
+@pytest.mark.parametrize("code,fix", [
+    ("reauth_required", "co auth google"), ("broker_auth_failed", "co auth"),
+    ("record_changed", "co status"), ("invalid_response", "co status"),
+])
+@pytest.mark.parametrize("kind", ["gmail", "outlook"])
+@pytest.mark.parametrize("scoped", [False, True])
+def test_credential_message_never_reaches_notebook_or_reader(notebook, monkeypatch, caplog, capsys, code, fix, kind, scoped):
+    import json
+    import shlex
+    from connectonion import environment
+    from connectonion.rem.reader import snapshot, write_reader
+    root, _ = notebook
+    if kind == "outlook" and code == "reauth_required":
+        fix = "co auth microsoft"
+    if scoped:
+        selected = root.parent / "fictional account with spaces.env"
+        monkeypatch.setattr(environment, "_selected", selected)
+        fix = f"co --env-file {shlex.quote(str(selected))} {fix[3:]}"
+    secret = "Authorization Bearer eyJ.fixture-token client_secret=GOCSPX-fixture-token key sk-live-fixture-token"
+    sources = {kind: {"kind": kind, "enabled": True, "consented": True}}
+    write_json(state_path(root, "subscriptions.json"), sources)
+    monkeypatch.setattr(service, "_selected_sources", lambda *a: sources)
+    monkeypatch.setattr(service, "mail_available", lambda *a: True)
+    def client(*a):
+        raise ProviderCredentialError(code, secret, "co auth google " + secret)
+    monkeypatch.setattr(service, "mail_client", client)
+    result = service.run_sync(root, scheduled=True)
+    failure = result["source_failures"][0]
+    assert failure["code"] == code and failure["next_command"] == fix
+    assert code in result["error"] and fix in result["error"]
+    assert read_json(state_path(root, "source_reads.json"), {})[kind]["code"] == code
+    # Reading later must retain the originally selected account, even if this
+    # invocation has returned to the default credential file.
+    monkeypatch.setattr(environment, "_selected", None)
+    outputs = [json.dumps(result), json.dumps(service.status(root)), json.dumps(service.run_logs(root)),
+               json.dumps(snapshot(root, local=True)), write_reader(root).read_text(), caplog.text]
+    captured = capsys.readouterr()
+    outputs.extend([captured.out, captured.err])
+    assert all("fixture-token" not in text for text in outputs)
+    assert all(b"fixture-token" not in path.read_bytes() for path in root.rglob("*") if path.is_file())
+    for value in (service.status(root), service.run_logs(root), snapshot(root, local=True)):
+        assert fix in json.dumps(value)
+    status = service.status(root)
+    assert fix in status["state"] and fix in status["worker"]["last_scheduled_reason"]
+    assert fix in status["mailboxes"][kind]
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_recognized_legacy_code_is_not_a_safe_message_prefix(mixed_sources, structured):
+    import json
+    from connectonion.rem.reader import snapshot
+    root, _, _, _ = mixed_sources
+    error = "Gmail read failed: [reauth_required] Authorization Bearer eyJ.fixture-token Next: co auth google"
+    failure = {"source": "gmail", "error": error}
+    if structured:
+        failure.update(code="reauth_required", next_command="co auth google Authorization Bearer eyJ.fixture-token")
+    write_json(state_path(root, "runs/run_fixture.json"), {
+        "id": "run_fixture", "started_at": service.now().isoformat(), "outcome": "failed",
+        "failed_source": "gmail", "error": error,
+        "source_failures": [failure]})
+    write_json(state_path(root, "source_reads.json"), {"gmail": {"at": service.now().isoformat(), "error": error}})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "last_scheduled_outcome": "failed",
+                                               "last_scheduled_reason": error, "last_scheduled_failure": failure})
+    for value in (service.status(root), service.run_logs(root), snapshot(root, local=True)):
+        assert "fixture-token" not in json.dumps(value)
+        assert "co auth google" in json.dumps(value)
