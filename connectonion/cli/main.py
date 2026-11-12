@@ -1596,7 +1596,7 @@ def trust_unblock(
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help="Trust directory read by the Host"),
     global_: bool = typer.Option(False, "--global", "-g", help="The global identity in ~/.co, which co ai and co handoff use"),
 ):
-    """Remove an address from the blocklist; other memberships and Host policy decide access."""
+    """Accept calls from a blocked address again. Removes it from the blocklist; its other trust lists and the Host's policy still decide access."""
     from .commands.trust_commands import handle_trust_unblock, trust_target
     handle_trust_unblock(address, co_dir=trust_target(co_dir, global_))
 

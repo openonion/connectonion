@@ -26,14 +26,13 @@ Usage:
     co trust admin remove <address>  # Remove admin (super admin only)
 """
 
-from pathlib import Path
 import re
 import shlex
+from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from ...project import project_co_dir
 from ...network.trust.tools import (
     add_admin,
     block,
@@ -48,6 +47,7 @@ from ...network.trust.tools import (
     remove_admin,
     unblock,
 )
+from ...project import project_co_dir
 
 console = Console()
 

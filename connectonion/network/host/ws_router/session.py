@@ -16,7 +16,13 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
-from .connect import current_trust_level, establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
+from .connect import (
+    current_trust_level,
+    establish_connection,
+    handle_authenticated_reconnect,
+    handle_connect,
+    replay_check_for,
+)
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop

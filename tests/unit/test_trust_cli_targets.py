@@ -1,6 +1,7 @@
 """Trust commands must target the lists the running Host actually reads."""
 import shlex
 
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -168,6 +169,8 @@ def test_conflicting_targets_fail_without_writing(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["trust", "block", CALLER,
                                      "--co-dir", str(tmp_path / "host"), "--global"])
     assert result.exit_code == 2
-    assert "Use either --co-dir or --global" in result.output
+    # Rich colours option names when the terminal (or CI) asks for colour, so
+    # "--co-dir" arrives wrapped in escape codes: read the text, not the styling.
+    assert "Use either --co-dir or --global" in click.unstyle(result.output)
     assert not (tmp_path / "host").exists()
     assert not (tmp_path / ".co").exists()

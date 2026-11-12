@@ -280,6 +280,7 @@ async def test_revocation_stops_all_requester_turns_but_leaves_other_callers_alo
 @pytest.mark.asyncio
 async def test_relay_revocation_discards_the_authenticated_logical_session(host):
     from functools import partial
+
     from connectonion.network.relay import _run_session
 
     client, trust, storage = host

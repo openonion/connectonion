@@ -28,7 +28,6 @@ from connectonion.cli.commands import command_tips
 from connectonion.cli.commands.command_tips import HANDLER, NEXT, next_step_for
 from connectonion.cli.discovery import check, command_tree, commands_in
 
-
 runner = CliRunner()
 LEAVES = [e.path for e in command_tree(cli_main.app) if not e.is_group]
 

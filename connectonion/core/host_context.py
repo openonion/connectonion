@@ -1,6 +1,6 @@
 """Requester notices and operator context for hosted work without prompts."""
-from pathlib import Path
 import shlex
+from pathlib import Path
 
 from .. import approvals
 from .interrupt import InterruptibleIO
