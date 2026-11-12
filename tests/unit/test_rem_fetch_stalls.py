@@ -325,3 +325,30 @@ def test_a_stopped_mailbox_holds_only_pages_that_read_mail_and_they_return_next_
     directory.mkdir(parents=True)
     native_round.prepare_task(notebook, cursor, read_config(notebook), directory)
     assert asked == people
+
+
+def test_the_readers_night_line_never_writes_the_ledger(notebook, monkeypatch):
+    """The reader holds no maintenance lock: writing would race park() and wipe the scheduled turn's stop."""
+    round_of(notebook, monkeypatch, ["people/ivy.md", "people/wren.md"])
+    native.next_task(notebook)
+    Notebook(notebook).path("people/ivy.md").unlink()
+    path = state_path(notebook, fetch_stalls.LEDGER)
+    before = path.read_bytes()
+    monkeypatch.setenv("CO_REM_TURN_ID", "")  # the reader process is no scheduled turn
+    night = fetch_stalls.last_night(notebook)
+    assert path.read_bytes() == before
+    assert [row["record"] for row in night["parked"]] == ["people/wren.md"]
+
+
+def test_a_held_page_that_fails_after_it_returns_keeps_its_back_off(notebook, monkeypatch):
+    job = {"record": "people/ivy.md", "kind": "person"}
+    Notebook(notebook).stub_person("people/ivy.md", "Ivy")
+    late = TimeoutError()
+    late.rem_provider = "outlook"
+    fetch_stalls.park(notebook, job, late)
+    fetch_stalls.hold(notebook, job, {"outlook": "timeout"})
+    monkeypatch.setenv("CO_REM_TURN_ID", "fixture-turn-2")
+    assert fetch_stalls.readmit(notebook, set()) == [job]
+    fetch_stalls.park(notebook, job, late)
+    entry = read_json(state_path(notebook, fetch_stalls.LEDGER), {})["items"]["people/ivy.md"]
+    assert entry["attempts"] == 2 and entry["retry_at"] == (service.now() + timedelta(hours=6)).isoformat()

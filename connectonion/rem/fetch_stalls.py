@@ -195,7 +195,10 @@ def readmit(root, queued: set) -> list:
     earlier = [record for record, entry in ledger["items"].items() if entry.get("held") not in (None, _turn())]
     if not earlier:
         return []
-    jobs = [ledger["items"].pop(record)["job"] for record in earlier]
+    # The entry stays, unheld, so a page that fails again keeps its place in the back-off.
+    for record in earlier:
+        ledger["items"][record].pop("held")
+    jobs = [ledger["items"][record]["job"] for record in earlier]
     write_json(state_path(root, LEDGER), ledger)
     return [job for job in jobs if job["record"] not in queued]
 
@@ -249,8 +252,14 @@ def stopped(root) -> dict:
 
 
 def last_night(root) -> dict | None:
-    """For the reader's night line: what failed in the last day, and every page still set aside."""
-    ledger, moment = _live(root), service.now()
+    """For the reader's night line: what failed in the last day, and every page still set aside.
+
+    Read-only: the reader holds no maintenance lock, so a write here could race
+    park() and reset the scheduled turn's stop. Pages that no longer exist are
+    left out in memory; `next` prunes the file under its lock."""
+    from .files import Notebook
+    ledger, moment, book = _ledger(root), service.now(), Notebook(root)
+    ledger["items"] = {record: entry for record, entry in ledger["items"].items() if book.exists(record)}
     since = (moment - timedelta(days=1)).isoformat()
     events = [event for event in ledger["events"] if event["at"] >= since]
     parked = sorted(({"record": record, **{key: entry[key] for key in ("provider", "reason", "retry_at")}}
