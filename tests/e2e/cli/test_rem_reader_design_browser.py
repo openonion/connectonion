@@ -1752,7 +1752,7 @@ def test_skill_roster_links_are_touch_sized_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#c=skills')
-    links = page.locator('.skills-view :is(a.skill-card, a.skill-item):visible')
+    links = page.locator('.skills-view :is(a.skill-card, a.skill-item, .skill-shape button):visible')
     assert links.count() > 0
     for link in links.all():
         box = link.bounding_box()
@@ -6217,10 +6217,12 @@ def test_skills_rank_what_you_use_and_fill_the_width(reader, width):
     top = page.locator('.skills-top .skill-card .skill-name').all_inner_texts()
     assert top[:4] == ['lark-mail', 'deck-maker', 'weekly-brief', 'lark-calendar']  # by uses: 40, 25, 14, 9
     assert 'lark-sheets' not in top and 'tool-1' not in top  # never used: not in the top group
-    assert page.locator('.skills-top .skill-card').first.inner_text().count('40')
+    assert '40 matches in 180 days' in page.locator('.skills-top .skill-card').first.inner_text()  # name matches, not "calls"
     families = page.locator('.skill-families')
     # Family names read as names ("Tool", not "tool"); a family left with fewer than three goes under Other.
-    assert [h.split('\n')[0].rstrip('0123456789') for h in families.locator('h3').all_inner_texts()] == ['Tool', 'Other']
+    # A family's size counts the members shown in Most used too, so Lark keeps its group and its button.
+    assert [h.split('\n')[0].rstrip('0123456789') for h in families.locator('h3').all_inner_texts()] == ['Tool', 'Lark', 'Other']
+    assert page.locator('.skill-shape button').filter(has_text='Lark').count() == 1
     assert families.locator('.skill-name').filter(has_text='lark-mail').count() == 0  # shown once, in the top group
     boxes = [b for b in (families.locator('li').nth(i).bounding_box() for i in range(families.locator('li').count()))]
     main = page.locator('#main').bounding_box()
@@ -6284,3 +6286,41 @@ def test_skill_page_says_where_it_lives_in_words(reader):
     assert 'claude-user' not in source.inner_text()
     assert source.locator('a').inner_text() == 'Open SKILL.md'
     assert page.locator('.pill.status').count() == 0  # no research-state chip the owner cannot act on
+
+
+def test_skill_family_buttons_move_focus_to_their_group(reader):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    page.locator('.skill-shape button').filter(has_text='Tool').click()
+    assert page.evaluate("document.activeElement.matches('.skill-family h3') && document.activeElement.textContent.startsWith('Tool')")
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_skill_rows_keep_last_night_and_installed_copies_and_say_matches(reader, language):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    page.evaluate(r'''language => {
+      for (const run of REM.logs) (run.changed ||= []).push('skills/catalog/lark-sheets.md');  // last night's pass rewrote it
+      byPath('skills/catalog/lark-sheets.md').installations = [{path: 'a'}, {path: 'b'}];
+      setInterfaceLanguage(language);
+    }''', language, isolated_context=False)
+    item = page.locator('.skill-item').filter(has=page.locator('.skill-name', has_text='lark-sheets'))
+    assert item.locator('.fresh-label').inner_text() == ('昨夜' if language == 'zh' else 'last night')
+    assert ('2 份安装副本' if language == 'zh' else '2 installed copies') in item.inner_text()
+    card = page.locator('.skill-card').filter(has=page.locator('.skill-name', has_text='lark-mail'))
+    assert ('近 180 天用到 40 次' if language == 'zh' else '40 matches in 180 days') in card.inner_text()
+
+
+def test_skill_line_reads_regional_chinese_and_windows_paths(reader):
+    page, uri = reader
+    page.goto(uri + '#c=skills')
+    _add_skills(page)
+    page.evaluate(r'''() => {
+      byPath('skills/catalog/lark-sheets.md').translations = {'zh-CN': '# lark-sheets\n\n## What it does\n从表格填写飞书电子表格。\n'};
+      setInterfaceLanguage('zh');
+    }''', isolated_context=False)
+    item = page.locator('.skill-item').filter(has=page.locator('.skill-name', has_text='lark-sheets'))
+    assert item.locator('.skill-line').inner_text() == '从表格填写飞书电子表格'
+    assert page.evaluate(r"skillHome('C:\\Users\\u\\.codex\\skills\\x\\SKILL.md')", isolated_context=False) == 'Codex'

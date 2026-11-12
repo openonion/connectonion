@@ -976,6 +976,8 @@ def test_reader_skill_line_is_the_first_plain_clause():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['skillClause', 'plainLine'])
     result = _run_reader_js(page[page.index('const UNKNOWN_LINE ='):page.index('const UNKNOWN_LINE =') + 400].split('\n')[0] + '\n'
+                            + ''.join(page[page.index('const ' + name + ' ='):].split('\n')[0] + '\n'
+                                      for name in ['UNFILLED_LINE', 'SKILL_NO_DESCRIPTION', 'SKILL_ABBREVIATION'])
                             + 'const youify = text => text;\n' + functions + r'''
       console.log(JSON.stringify([
         'Drive one browser from the shell to open pages, with the outcome checked against browser state.[1]',
@@ -985,11 +987,25 @@ def test_reader_skill_line_is_the_first_plain_clause():
         '用故事化漫画讲客户案例——从大纲到成品。',
         'AI语言特征修复 (user)',
         'Unknown — description not provided',
+        'Unknown — not investigated yet',
+        'Run a prompt on a recurring interval (e.g. /loop 5m /foo). Omit it to self-pace.',
+        "Write to Mr. Smith's team about the launch.",
+        'An A.I. helper for the inbox. It also files.',
+        'Send mail (see docs; it works) to people',
+        'Compare plans vs. budgets and flag drift.',
+        '飞书视频会议：查询会议记录与会议产物，妙记搜索与上传下载编辑，机器人参与会议，查询进行中的会议与实时会议内容。',
+        '...',
+        '。',
+        'Unknown — the source gives no summary',
       ].map(skillClause)));
     ''')
     assert result == ['Drive one browser from the shell to open pages', 'Install the framework',
                       'Guides an agent through a short group reply', '飞书日记流程提供记录规则',
-                      '用故事化漫画讲客户案例', 'AI语言特征修复', '']
+                      '用故事化漫画讲客户案例', 'AI语言特征修复', '', '',
+                      'Run a prompt on a recurring interval (e.g. /loop 5m /foo)', "Write to Mr. Smith's team about the launch",
+                      'An A.I. helper for the inbox', 'Send mail (see docs; it works) to people',
+                      'Compare plans vs. budgets and flag drift', '飞书视频会议：查询会议记录与会议产物',
+                      '...', '。', 'Unknown — the source gives no summary']
 
 
 def test_reader_translated_relationship_takes_precedence_over_index_prose():
