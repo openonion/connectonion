@@ -240,7 +240,7 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     assert len(cards) >= 3 and max(len(card["rows"]) for card in cards) > 1
     for card in cards:
         assert [row["ticks"] for row in card["rows"]] == [0] * len(card["rows"]), card
-        assert all(row["own"] == ["btn-quiet"] for row in card["rows"]), card     # the strip's, on every row
+        assert all(row["own"] == ["btn-quiet strip-done"] for row in card["rows"]), card     # the strip's, on every row
         assert card["step"] == 0 or len(card["rows"]) > 1, card                  # a green Mark done only closes several
         assert card["head"] == (1 if len(card["rows"]) > 1 else 0), card           # the tick only where it closes several
     mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
@@ -248,8 +248,8 @@ def test_a_today_row_has_one_mark_done_and_the_strips_button_closes_just_that_ro
     page.locator('.deal[data-path="people/mara-ostrowski.md"]').click()
     row = mara.locator(".qitem").filter(has_text="budget forecast")
     done = row.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True)
-    assert not done.is_visible()                       # the strip is the row's second level: quiet until the row is hovered
-    row.hover()
+    page.mouse.move(0, 0)
+    assert done.is_visible()                           # sprint 13: the strip's words show without a hover (owner, 2026-11-12)
     done.click()
     row.wait_for(state="detached")
     assert mara.locator(".qitem").count() == 1 and mara.locator(".qhead").get_by_role("button", name="Mark done · E").count() == 0
@@ -285,7 +285,7 @@ def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
     assert card.get_by_text("No reply needed: She confirmed she has the receipts.").is_visible()
     page.set_viewport_size({"width": 390, "height": 900})
     assert card.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).is_visible()
-    # A card whose rows are all handled leads with its one green Mark done; its rows' strips wait for a hover.
+    # A card whose rows are all handled leads with its one green Mark done; each row still shows its own (sprint 13).
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate("() => { REM.live = true; window.looksDone = entry => entry.r.path === 'people/mara-ostrowski.md'; render();"
                   " dealCard('people/mara-ostrowski.md'); }", isolated_context=False)
@@ -293,7 +293,7 @@ def test_a_handled_rows_mark_done_and_reason_show_without_a_hover(today):
     mara = page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"]')
     assert mara.locator(".qitem").count() == 2 and mara.get_attribute("data-step") == "done"
     assert mara.locator(".card-acts").get_by_role("button", name="Mark done", exact=True).is_visible()
-    assert not mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
+    assert mara.locator(".handoff-line").get_by_role("button", name="Mark done", exact=True).first.is_visible()
 
 
 def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_errors(today):

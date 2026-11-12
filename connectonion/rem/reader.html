@@ -2120,7 +2120,7 @@
     .qcard.focal[data-step="send"]:not(.full) .qitem .qdone { display: none; }
     /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
        lines wait behind More, which stays in place of the first item. */
-    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull)) { display: none; }
+    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
     /* On a phone Send stays where the draft ends, right under REM's question, and comes into view with the draft.
        It was pinned above the tab bar, and on real data it sat over the draft's first lines while the owner was
        still reading the message above it (sprint 13); a bar that covers what it asks you to approve is worse
@@ -2882,6 +2882,7 @@
   .night-card:hover .legend, .night-card:focus-within .legend { opacity: 1; }
   .nb { display: flex; align-items: center; gap: 28px; }
   /* A sparse three nights (nightSparse): one grey line under the title, and the people waiting take the row. */
+  .nh .nt { flex: none; white-space: nowrap; }
   .nh .night-sum { margin-left: 8px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .night-card.sparse .faces { flex-direction: row; align-items: center; gap: 24px; padding: 6px 0 4px; }
   .night-card.sparse .frow { flex: 1; min-width: 0; }
@@ -2952,6 +2953,11 @@
   .qcard .qdone:hover { background: var(--raised); }
   .qcard .qmore, .qcard.open .qmore { display: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .qcard .qitem:is(:hover, :focus-within, .show, .handled) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
+  /* The strip itself (kind · Codex · Claude · 聊一聊 · 标为完成 · 忽略) is always shown on an open card, so Mark done and
+     Ignore are words you can see and tap once; the notes under it (also on, the draft's reason, a task's result)
+     keep the hover or tap reveal. Hover-only, an untouched card had no visible way to close a row (owner, 2026-11-12). */
+  .qcard.open .qitem .qmore:has(.handoff) { display: block; }
+  .qcard.open .qitem:not(:hover, :focus-within, .show, .handled):not(:has(.talk, .handed, .task-result)) .qmore > :not(.qkind) { display: none; }
   .qcard .qkind { gap: var(--u1) var(--u3); }
   .qcard .handoff-line .btn-quiet, .qcard .talk-menu summary { min-height: 30px; color: var(--ink); }
   .task-result { margin: 8px 0 0; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); color: var(--ink); }
@@ -3469,9 +3475,10 @@ const UI = {
     "Draft discarded": "草稿已丢弃",
     "No reply needed: ": "不用回：",
     "Marked done": "已完成",
-    "Done or skipped ({n})": "已完成或跳过（{n}）",
+    "Done or set aside ({n})": "已完成或暂不处理（{n}）",
     "Saved in your notebook. Undo here or on the record page at any time.": "已保存到笔记本，可随时在这里或记录页撤销。",
-    "Skipped — returns with new mail": "已跳过，收到新邮件时回来",
+    "Not now": "暂不处理", "Not now · returns with new mail": "暂不处理 · 有新邮件会回来", "Ignore": "忽略",
+    "Ignored · this one will not come back": "已忽略 · 这一条不会再回来", "Next card": "下一张",
     "Saved in notebook": "已保存到笔记本",
     "Saved on this device — sync pending": "已保存在此设备，等待同步",
     "Saving…": "保存中…",
@@ -4301,7 +4308,10 @@ const UI = {
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
     "Prepared a task for {name}": "为 {name} 备好一件任务", "Drafted a reply to {name}": "起草了给 {name} 的回信",
     "REM's work: {runs} runs, {n} replies and tasks prepared": "REM 的工作：{runs} 次运行，备好 {n} 件回信和任务",
-    "Last {d} days: {runs} runs of reading or rewriting, {n} replies and tasks prepared": "近 {d} 天：读信或整理页面 {runs} 次，备好 {n} 件回信和任务",
+    "Last {d} days: 1 run of reading or rewriting; REM handled {n} things in Today": "近 {d} 天：读信或整理页面 1 次；今天的事 REM 处理了 {n} 件",
+    "Last {d} days: 1 run of reading or rewriting": "近 {d} 天：读信或整理页面 1 次",
+    "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today": "近 {d} 天没有读信、也没有整理页面；今天的事 REM 处理了 {n} 件",
+    "Last {d} days: no mail read and no page rewritten": "近 {d} 天没有读信、也没有整理页面",
     "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
@@ -5299,7 +5309,8 @@ function markDrafts(related, value, done, state) {
     } else if (value.draft_statuses[draft.id]?.version === draft.version) draft.status = value.draft_statuses[draft.id].status;
   }
 }
-function setDone(entry, done, state = "done", entries = [entry]) {
+// said: the notice's words when they are not the state's own (Ignore is stored as done; see stripDone).
+function setDone(entry, done, state = "done", entries = [entry], said = "") {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5314,11 +5325,11 @@ function setDone(entry, done, state = "done", entries = [entry]) {
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  const notice = done ? doneNotice(entry, state, entries) : null;
+  const notice = done ? doneNotice(entry, state, entries, said) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       related.forEach((draft, i) => { draft.status = statuses[i]; });
-      notSavedNotice(() => setDone(entry, done, state, entries), notice);
+      notSavedNotice(() => setDone(entry, done, state, entries, said), notice);
     }
     if (synced) render();
     // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
@@ -5347,11 +5358,11 @@ function focusRaisedCard() {
 }
 // The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
 // notice goes, the focus returns to the raised card, so the keys go on working.
-function doneNotice(entry, state, entries) {
+function doneNotice(entry, state, entries, said) {
   const undo = el("button", { type: "button", text: t("Undo") });
   undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Skipped — returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [said || t(state === "skipped" ? "Not now · returns with new mail" : "Marked done"), " · ", undo, " · ", status]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
   noticeLeaves(notice);
@@ -5473,7 +5484,7 @@ function threadActions(entry, onPage = false, strip = false) {
   }
   const primary = undo || draft?.status === "no_reply" ? null : primaryAction(entry, !strip);
   return el("div", { class: "thread-actions" }, [
-    undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Skipped" : "Marked done")
+    undo ? el("span", { class: "done-tag", text: t(threadStates[doneKey(entry)]?.state === "skipped" ? "Not now" : "Marked done")
       + " · " + fmtDate(calendarDay(threadStates[doneKey(entry)]?.at || REM.as_of)) }) : onPage ? quietOnly(primary) : primary,
     ...(entry.t.returnedAt ? [el("span", { class: "done-tag", text: t("New mail · {date}", { date: fmtDate(calendarDay(entry.t.returnedAt)) }) })] : []), strip && !undo ? null : done]);
 }
@@ -5550,7 +5561,7 @@ function draftNote(draft, entry) {
     return el("p", {class: "quiet-line draft-reason", text});
   }
   if (!draft) return null;
-  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Skipped"
+  return el("p", { class: "quiet-line", text: t(draft.status === "sent" ? "Sent" : draft.status === "discarded" ? "Draft discarded" : draft.status === "skipped" ? "Not now"
     : REM.status?.worker?.enabled ? "Reply draft queued for tonight" : "Reply draft pending — background updates off") });
 }
 // A reply is shown as the mail it will become: who it goes to, the subject, the
@@ -5720,20 +5731,20 @@ function threadDecisionHistory(r) {
   const current = new Set(threads(r).items.map(t => doneKey({ r, t })));
   const saved = Object.entries(threadStates).filter(([key]) => key.startsWith(r.path + "\n") && !current.has(key));
   if (!saved.length) return null;
-  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: t("Done or skipped ({n})", { n: saved.length }) }),
+  return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: t("Done or set aside ({n})", { n: saved.length }) }),
     el("ul", { class: "threads" }, saved.map(([key, value]) => {
       const entry = { r, t: { text: key.slice(r.path.length + 1) } };
       const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
       undo.onclick = () => setDone(entry, false);
       return el("li", {}, [privateFallback(el("span", { text: entry.t.text })), " · ",
-        el("span", { class: "done-tag", text: t(value.state === "skipped" ? "Skipped" : "Marked done")
+        el("span", { class: "done-tag", text: t(value.state === "skipped" ? "Not now" : "Marked done")
           + " · " + fmtDate(calendarDay(value.at || REM.as_of)) }), undo]);
     }))]);
 }
 function markedDone(entries) {
   const done = entries.filter(isDone);
   if (!done.length) return null;
-  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: t("Done or skipped ({n})", { n: done.length }) }),
+  return el("details", { id: "done-today", class: "done-details" }, [el("summary", { text: t("Done or set aside ({n})", { n: done.length }) }),
     el("p", { class: "quiet-line", text: t(Object.keys(pendingThreads).length
       ? "Saved on this device — sync pending" : "Saved in your notebook. Undo here or on the record page at any time.") }),
     el("ul", { class: "threads" }, done.map(({ r, t, also }) => threadRow(r, t, true, also, true)))]);
@@ -6950,7 +6961,7 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1 || !st
   const done = tick
     ? el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
-  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Skip") + " · S", title: t("Skip") + " · S" }, [icon("skip")]) : null;
+  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip")]) : null;
   if (skip) skip.onclick = () => dealNext(1);
   return el("div", { class: "qhead" }, [
     el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
@@ -7079,11 +7090,21 @@ function stripMarksDone(entry) {
   // A snapshot keeps Mark done where it always was, on the row itself; the strip there is disabled work.
   return !entry.ask && !!entry.r && !!entry.t && liveHere();
 }
+// Closing an item is Today's core verb (owner, 2026-11-12: «忽略和标记完成很重要，有的任务就是线下说了，或者现在不需要
+// 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
+// 标为完成 — handled, settled offline included (state done);
+// 暂不处理 — not needed now: the notebook's "skipped", which leaves Today and returns when new mail arrives on the thread;
+// 忽略 — an ad or a notification: stored as done, since the Host knows no other state, so this item never returns. It
+// does not stop the sender: a later mail from them is a new item (sender-level ignore needs Host and today.py work).
 function stripDone(entry, mark) {
   if (!stripMarksDone(entry)) return [];
-  const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
+  const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
   done.onclick = mark || (() => setDone(entry, true));
-  return [done];
+  const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
+  later.onclick = () => setDone(entry, true, "skipped");
+  const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
+  ignore.onclick = () => setDone(entry, true, "done", [entry], t("Ignored · this one will not come back"));
+  return [done, later, ignore];
 }
 // One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成
 function dotted(nodes) {
@@ -7719,7 +7740,7 @@ function nightChart(current, narrow = window.innerWidth <= 640) {
   const runs = nightRuns(), rises = nightRises();
   const times = [...runs.map(run => run.from), ...rises.map(rise => rise.at)];
   if (!times.length) return null;
-  const sparse = nightSparse(runs, rises, nightWindow(times, false));
+  const sparse = nightSparse(runs, nightWindow(times, false));
   if (sparse) return { sparse };
   const { start, end } = nightWindow(times, narrow), x = at => NIGHT_X + (Math.min(end, Math.max(start, at)) - start) / (end - start) * width;
   const shown = runs.filter(run => run.to >= start && run.from <= end).sort((a, b) => a.from - b.from);
@@ -7742,11 +7763,13 @@ function nightChart(current, narrow = window.innerWidth <= 640) {
 // a sentence. Then it is that sentence, and the people waiting take the row. Decided on the desktop's three
 // nights at every width, so a phone's shorter window never folds a chart the desk would draw.
 const NIGHT_MIN_RUNS = 2;
-function nightSparse(runs, rises, { start, end }) {
+function nightSparse(runs, { start, end }) {
   const shown = runs.filter(run => run.to >= start && run.from <= end).length;
   if (shown >= NIGHT_MIN_RUNS) return null;
-  return t("Last {d} days: {runs} runs of reading or rewriting, {n} replies and tasks prepared", {
-    d: Math.max(1, Math.round((end - start) / DAY_MS)), runs: shown, n: rises.filter(rise => rise.at >= start && rise.at <= end).length });
+  // Its count of what REM handled is the side line's (nightTally), so the two never read as a contradiction.
+  const n = nightTally().n, values = { d: Math.max(1, Math.round((end - start) / DAY_MS)), n };
+  return t(shown ? (n ? "Last {d} days: 1 run of reading or rewriting; REM handled {n} things in Today" : "Last {d} days: 1 run of reading or rewriting")
+    : n ? "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today" : "Last {d} days: no mail read and no page rewritten", values);
 }
 // One stepped line: runs closer than a few pixels are one stretch at the deepest of their depths.
 function nightPath(spans, width) {

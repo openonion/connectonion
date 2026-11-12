@@ -168,6 +168,40 @@ def test_a_sparse_three_nights_give_the_row_back_and_a_busy_one_keeps_the_chart(
                   isolated_context=False)
     card = page.locator(".night-card")
     assert "sparse" in card.get_attribute("class") and card.locator(".hyp-wrap").count() == 0
-    assert card.locator(".night-sum").inner_text().startswith("Last 3 days: 0 runs of reading or rewriting")
+    # Its count is the side line's, so the two read as one story.
+    side = page.locator(".side .closed").inner_text()
+    n = side.split("handled ")[1].split()[0] if "handled " in side else ""
+    assert card.locator(".night-sum").inner_text() == ("Last 3 days: no mail read and no page rewritten"
+                                                         + (f"; REM handled {n} things in Today" if n else ""))
     assert card.bounding_box()["height"] < tall - 30
     assert page.locator(".deal").count() == int(card.locator(".count").inner_text())
+
+
+@pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
+def test_every_row_says_its_three_ways_to_close_in_words_without_a_hover(today, size):
+    """Owner, 2026-11-12: «为什么没有标记为做完的按钮呢？», «你要有个文字按钮», «忽略和标记完成很重要，有的任务就是线下说了，
+    或者现在不需要处理，或者广告要忽略». Each row of the open card says 标为完成 · 暂不处理 · 忽略 on screen, read as text
+    on the untouched page; one tap acts, and the notice says the new state in words with Undo."""
+    page, calls, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-08T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    page.evaluate(OVERDUE, isolated_context=False)
+    page.evaluate("() => { REM.live = true; render(); dealCard('people/mara-ostrowski.md'); scrollTo(0, 0); }", isolated_context=False)
+    page.mouse.move(0, 0)
+    rows = page.locator(".today-brief .qcard.open .qitem:visible")
+    assert rows.count() >= 1
+    for i in range(rows.count()):
+        buttons = [rows.nth(i).locator(cls) for cls in (".strip-done", ".strip-later", ".strip-ignore")]
+        assert all(b.count() == 1 and b.is_visible() for b in buttons)
+        assert [b.inner_text() for b in buttons] == ["Mark done", "Not now", "Ignore"]
+    page.evaluate("() => { setInterfaceLanguage('zh'); }", isolated_context=False)
+    page.mouse.move(0, 0)
+    row = page.locator(".today-brief .qcard.open .qitem:visible").first
+    assert [row.locator(c).inner_text() for c in (".strip-done", ".strip-later", ".strip-ignore")] == ["标为完成", "暂不处理", "忽略"]
+    states = lambda: [body["state"] for path, body in calls if path == "/rem/thread" and body]
+    row.locator(".strip-ignore").click()
+    assert page.locator("#done-notice").inner_text().startswith("已忽略 · 这一条不会再回来 · 撤销") and states()[-1] == "done"
+    page.locator("#done-notice").get_by_role("button", name="撤销").click()
+    row = page.locator(".today-brief .qcard.open .qitem:visible").first
+    row.locator(".strip-later").click()
+    assert page.locator("#done-notice").inner_text().startswith("暂不处理 · 有新邮件会回来 · 撤销") and states()[-1] == "skipped"

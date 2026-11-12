@@ -79,7 +79,7 @@ def test_done_skip_undo_and_offline_reconciliation(tmp_path, monkeypatch, width)
         # The other device reads the decision from Today: a person's page keeps no ledger (D-30).
         second.goto(url + '#view=open')
         second.locator('.done-details summary').click()
-        assert 'Skipped' in second.locator('.done-details').inner_text()
+        assert 'Not now' in second.locator('.done-details').inner_text()
         page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
         page.locator('.qcard.focal .more-menu > summary').wait_for()
         page.goto(url + '#view=open')
@@ -158,7 +158,7 @@ HOLD_SYNC = """(() => { const real = window.fetch; let release;
 def test_a_section_opened_before_the_sync_lands_stays_open(tmp_path, monkeypatch, width):
     """The redraw after reconcileThreads keeps what the reader opened (1.9.3 blocker):
     a done saved offline shows at once after reload; a slow GET /rem/thread then
-    redrew the page and closed 'Done or skipped', hiding its Undo. The section keeps
+    redrew the page and closed 'Done or set aside', hiding its Undo. The section keeps
     its place when the sync also changes its count (another device marked one done)."""
     from patchright.sync_api import sync_playwright
     from connectonion.rem.files import Notebook

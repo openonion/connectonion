@@ -839,9 +839,9 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   are, what was agreed, what you owe and since when). **Send** replies in the thread
   from your mailbox; **Write full screen** opens the letter to edit by hand, with
   that background and the thread beside it, and sends your edited text; **Edit in
-  Gmail/Outlook drafts** creates an unsent provider draft; **Skip** keeps it
-  skipped until new mail arrives, when it returns with the new message date.
-  Done and Skip offer **Undo** for five seconds; the record page keeps Undo
+  Gmail/Outlook drafts** creates an unsent provider draft; **Not now** keeps it
+  out of Today until new mail arrives, when it returns with the new message date.
+  Done and Not now offer **Undo** for five seconds; the record page keeps Undo
   available later, including a collapsed history if the original thread text
   has changed. Skipping preserves the draft body. The live reader shares these
   decisions through `.state/threads.json`. A mark tells the notebook only which
@@ -924,8 +924,8 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   live late promise in red and mentions stale ones in grey.
   **The night chart gives its row back** when the last three nights hold fewer
   than two runs of reading or rewriting: it becomes one grey line under its
-  title (*Last 3 days: 0 runs of reading or rewriting, 3 replies and tasks
-  prepared*) and the people waiting take the row.
+  title (*Last 3 days: no mail read and no page rewritten; REM handled 6 things
+  in Today*, the same count as the side line) and the people waiting take the row.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
   quiet text buttons on every unfinished row: Today, and all three bands of
   **Waiting on you** (yours, on others, other open context), whether or not the
@@ -939,8 +939,13 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   deliverable, else its last message, `{"action": "result", "id"}`) under the
   row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
   brings the two buttons back; it never reads **Undo**, which undoes the item.
-  The strip ends with the row's one **Mark done** (标为完成), before and after
-  a hand-off: it is the row's own done decision (`/rem/thread`, state `done`),
+  The strip ends with the row's three ways to close it, as words on screen, never an icon, before and after a
+  hand-off: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
+  (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
+  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: stored as `done`, the only
+  other state the Host keeps, so this item never returns and its history line reads *Marked done*; the notice
+  says *Ignored · this one will not come back*). Ignore does not stop the sender: a later mail from them is a new
+  item. Each notice keeps **Undo**. Mark done
   and the row's other actions on **Waiting on you** no longer repeat it, in
   green or quietly, whatever the row's reply state. On **Today** it is the
   same button: the row has no tick of its own, the strip's **Mark done** closes
@@ -952,9 +957,10 @@ bottom tab bar because Today's Send bar already holds the bottom edge.
   row, the head's tick is left out, since it would close the same); for one row it would repeat
   that row's strip button, so the card shows no green button and the row's
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
-  a phone too. Every handled row shows its strip that way unless the card's
-  green **Mark done** closes it: when every row of a card is handled, that green
-  button is its one visible lead and the strips wait for a hover or tap. A snapshot keeps Mark
+  a phone too. Since 1.9.6 every row of the open card shows its strip line (and so Mark done, Not now and Ignore)
+  without a hover or a tap, on a desktop and a phone alike; the notes under it (also on, the draft's reason,
+  a task's result) still open on hover or tap. The card head's **S** button is **Next card** (下一张): it only
+  deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
