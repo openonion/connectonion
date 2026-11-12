@@ -48,9 +48,8 @@ def _names(pages):
 def generic_name(name):
     """A word that names a kind of thing, not one thing: "The draft" matched seven unrelated drafts."""
     words = re.findall(r'\w+', name)
+    # Only the article goes: "The wedding" and "My thesis" are one thing each.
     if words and words[0].casefold() in ('the', 'a', 'an', 'this', 'that', 'my', 'our', 'your'):
-        if len(words) == 2 and words[1].islower():
-            return True
         words = words[1:]
     return not words or ' '.join(words).casefold() in GENERIC
 

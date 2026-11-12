@@ -43,9 +43,14 @@ def _title(record: str, text: str) -> str:
     return next((name for name in names if not generic_name(PRIVATE.sub("", name))), heading or stem)
 
 
-def _org_name(domain: str, text: str) -> str:
+def _org_name(domain: str, text: str, people: frozenset[str] = frozenset()) -> str:
     """Find the organisation's name in the page itself: a capitalised spelling of the first
     domain label ("Stone Field"), else a name the label shortens ("University of Brightlane").
+
+    A shortened name is a guess, so it must look like an institution's name and be repeated:
+    two capitalised words joined by of/for/de/the, each giving two letters or more, said at
+    least twice. "Microsoft" for micro.example or "Team Coordination" for teamco.example was
+    unrelated prose. A person's name (`people`, folded) is never an organisation's.
     """
     body = re.sub(r"^## Sources[ \t]*\n.*?(?=^## |\Z)", "", text, flags=re.I | re.M | re.S)
     body = re.sub(r"^#[ \t]+.*$", "", body, flags=re.M)
@@ -69,10 +74,11 @@ def _org_name(domain: str, text: str) -> str:
                 continue
             if len(capitals) == len(words) and "".join(capitals) == label:
                 spelled[" ".join(words)] += 1
-            elif len(label) >= 4 and _shortens(label, capitals):
+            elif 1 < len(capitals) < len(words) and _shortens(label, capitals):
                 shortened[" ".join(words)] += 1
-    names = spelled or shortened
-    return names.most_common(1)[0][0] if names else ""
+    names = [name for name, _ in spelled.most_common() if name.casefold() not in people]
+    names += [name for name, seen in shortened.most_common() if seen > 1 and name.casefold() not in people]
+    return names[0] if names else ""
 
 
 # Lowercase words a long name keeps between its capitals; "and" joins two names, not one.
@@ -80,11 +86,11 @@ ORG_JOINERS = ("of", "the", "for", "de")
 
 
 def _shortens(label: str, words: list[str]) -> bool:
-    """`label` is a non-empty prefix of every word, in order: unibright <- University of Brightlane."""
+    """`label` is a prefix of two letters or more of every word, in order: unibright <- University of Brightlane."""
     if not words:
         return not label
     return any(label.startswith(words[0][:n]) and _shortens(label[n:], words[1:])
-               for n in range(1, min(len(words[0]), len(label)) + 1))
+               for n in range(2, min(len(words[0]), len(label)) + 1))
 
 
 def _org_company_name(path: str, records: list[dict]) -> str:
@@ -205,18 +211,21 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     found = pages(root, records=records)
     mail, index = mail_facts(root), {} if today else index_rows(root)
     record_paths = {record['path'] for record in records}
+    person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
         record.update(organisation_fields(record, record_paths))
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
             domain = record["title"]
-            name = _org_name(domain, record["text"]) or _org_company_name(record["path"], records)
+            name = _org_name(domain, record["text"], person_names) or _org_company_name(record["path"], records)
             if name:
                 record.update(title=name, domain=domain)
         if record["path"] in mail:
             record["mail"] = mail[record["path"]]
         if record["path"] in index:
             record["index"] = index[record["path"]]
-        record["needs_review"] = record["path"] in held or record["path"] in unnamed
+        record["needs_review"] = record["path"] in held
+        if record["path"] in unnamed:
+            record["unnamed"] = True
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])

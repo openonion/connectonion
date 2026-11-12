@@ -70,7 +70,7 @@ def test_a_common_noun_behind_an_article_is_not_a_topic_name(tmp_path):
     notebook = Notebook(tmp_path)
     for name in ('The draft', 'the Draft', 'Draft', 'Notes', 'a summary', '-', ''):
         assert generic_name(name), name
-    for name in ('Thermal storage', 'The Harbour lease', 'Brightlane pilot', 'the draft lease'):
+    for name in ('Thermal storage', 'The Harbour lease', 'Brightlane pilot', 'the draft lease', 'The wedding', 'The merger', 'My thesis'):
         assert not generic_name(name), name
     path = topic(notebook, name='The draft', aliases='')
     assert scan_topics(notebook) == []
