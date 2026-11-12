@@ -232,6 +232,28 @@ class TestServerLs:
         assert "prod owes $222.40: it stops on 2026-12-15 and is deleted on 2027-01-11" in out
         assert "lab owes $30.00 and is stopped; it is deleted 30 days after" in out
 
+    def test_unpaid_since_from_the_backend_sets_the_dates(self, servers_file, capsys):
+        owing = {**RUNNING, "unpaid_usd": 444.8, "unpaid_since": "2026-11-12T09:00:00+00:00",
+                 "period_start": "2026-12-12T09:00:00+00:00"}
+        stopped = {**RUNNING, "name": "lab", "status": "suspended", "unpaid_usd": 30.0,
+                   "unpaid_since": "2026-11-01T00:00:00+00:00", "period_start": None}
+        with patch.object(sc, "_fetch_pricing", return_value={
+                **MONTHLY, "unpaid": {"warn_days_before": 3, "stop_after_days": 3,
+                                      "delete_after_days": 30}}):
+            self._ls([owing, stopped], 500.0)
+        out = _out(capsys)
+
+        assert "prod owes $444.80: it stops on 2026-11-15 and is deleted on 2026-12-12" in out
+        assert "lab owes $30.00 and is stopped; it is deleted on 2026-12-01" in out
+
+    def test_a_server_being_deleted_says_so(self):
+        going = {**RUNNING, "status": "deleting", "unpaid_usd": 30.0,
+                 "unpaid_since": "2026-11-01T00:00:00+00:00"}
+
+        line = sc._grace_line(going, {"stop_after_days": 3, "delete_after_days": 30})
+
+        assert line == "prod owes $30.00 and is being deleted."
+
     def test_the_old_backend_shows_the_expiry_and_no_balance_claim(self, servers_file, capsys):
         with patch.object(sc, "_fetch_balance") as balance:
             with patch.object(sc, "_fetch_billed_servers", return_value=[

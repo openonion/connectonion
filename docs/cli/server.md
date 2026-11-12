@@ -126,7 +126,7 @@ ghost    co@9.9.9.9       not registered here   $30.00/mo · next charge 2026-12
   co server add <name> --ssh <target>   to use one from here
   co server destroy <name>              to stop paying for one
 
-lab owes $30.00 and is stopped; it is deleted 30 days after its month went unpaid unless you top up.
+lab owes $30.00 and is stopped; it is deleted on 2026-12-01 unless you top up.
 
 Balance $100.00 does not cover the next month of these servers ($282.40).
 A month left unpaid stops the server, then deletes it. Top up before 2026-12-01.
@@ -142,7 +142,8 @@ needs is this server's month on top of a month of every server you already have.
 
 A month your balance cannot pay suspends the server (stopped, disk kept) and, if
 it stays unpaid, deletes it. For a server that owes, `ls` prints the date it stops
-and the date it is deleted, from the backend's `pricing.unpaid` timeline. A resumed server comes back on a new IP; `ls` notices
+and the date it is deleted: the backend's `unpaid_since` (the end of the oldest unpaid
+month) plus the days in its `pricing.unpaid` timeline. A resumed server comes back on a new IP; `ls` notices
 the address no longer matches your local entry and prints the `co server add`
 line that updates it.
 

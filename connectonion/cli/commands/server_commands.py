@@ -386,15 +386,25 @@ def _print_grace(billed: list) -> None:
 
 
 def _grace_line(record: dict, timeline: dict) -> str:
+    """Stop and delete dates from `unpaid_since`, the end of the oldest unpaid month.
+
+    A backend that does not send it leaves an estimate: a running server that
+    owes is in its first unpaid month, which ended where its open month began.
+    """
     from datetime import datetime, timedelta
 
     owes = f"{record['name']} owes ${record['unpaid_usd']:.2f}"
-    if not record.get("period_start"):
+    if record.get("status") == "deleting":
+        return f"{owes} and is being deleted."
+    since = record.get("unpaid_since") or record.get("period_start")
+    if not since:
         return (f"{owes} and is stopped; it is deleted {timeline['delete_after_days']} days "
                 f"after its month went unpaid unless you top up.")
-    unpaid_since = datetime.fromisoformat(record["period_start"])
-    stop = (unpaid_since + timedelta(days=timeline["stop_after_days"])).date()
-    delete = (unpaid_since + timedelta(days=timeline["delete_after_days"])).date()
+    since = datetime.fromisoformat(since)
+    stop = (since + timedelta(days=timeline["stop_after_days"])).date()
+    delete = (since + timedelta(days=timeline["delete_after_days"])).date()
+    if record.get("status") in ("suspending", "suspended"):
+        return f"{owes} and is stopped; it is deleted on {delete} unless you top up."
     return f"{owes}: it stops on {stop} and is deleted on {delete} unless you top up."
 
 
