@@ -248,7 +248,7 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
         'ask': 0, 'bare': 0, 'file': 0, 'snapshot': 0}
 
 
-TODAY_CARD = ['personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+TODAY_CARD = ['personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
 
 
 def _today_card_js(body):
@@ -379,7 +379,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};

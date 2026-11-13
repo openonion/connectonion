@@ -153,9 +153,9 @@ def _decision(row, zh):
 
 
 def _zh(root, config):
-    """The owner's main detected language decides; config.language is only the fallback."""
-    from .languages import owner_languages
-    return (owner_languages(root)['languages'] or [config['language']])[0].lower().startswith('zh')
+    """The owner's language (the drafts' and the reader's) decides; config.language is only the fallback."""
+    from .languages import owner_language
+    return (owner_language(root) or config['language']).lower().startswith('zh')
 
 
 def compose(root, config, local, saved, link):
