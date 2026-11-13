@@ -1065,6 +1065,27 @@ pinned to that edge: it comes into view with the draft.
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
+- **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
+  **Today** returns) and a Monday-first **Month**, with no heading above them. It
+  shows your calendar events beside the notebook's own dates: promises with a
+  due date (**Due**, or **Late** in red once past) and agenda pages on the date
+  they state (**Noted**). An event links to the calendar it came from and to the
+  people pages of its guests (matched on a page's Email and Handles lines); a
+  promise or page links to its page. Open notebook items
+  dated before today sit in one line under it, whichever week or month is shown.
+  On a phone it is a day-by-day list of the next three weeks. Events come from
+  `.state/calendar.json`, which each night's round writes, outside the writer
+  lock, from every account co can already read (Google after `co auth google`
+  with a calendar scope: the calendars ticked in Google Calendar; Outlook after
+  `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
+  notebook's zone): three weeks from yesterday in the notebook's zone, every
+  page followed, cancelled events left out. The reader never calls a calendar.
+  No calendar failure stops the night: a calendar that fails keeps the events it
+  saved before, and the page says when it failed, why, and when its events are
+  from; anything that is not the provider's failure is a fault in REM, named
+  with its exception in the page and in the round's result. Before any night
+  the page says no calendar has been read; when none is connected, it says that.
+  Only the owner's own reader carries the events; a shared page has none.
 - **Questions & connections** decides each pending review in place in the live
   reader: **Yes** / **No** / **Not sure** on a link, an answer box with **Save
   answer** / **Not sure** on a question. A click posts

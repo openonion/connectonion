@@ -357,6 +357,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
     from .threads import ignored_senders
     data['ignored_senders'] = ignored_senders(root) if local else {}
+    # The owner's calendars as the night saved them; a shared page carries none of his meetings.
+    from .calendar import upcoming
+    data['calendar'] = upcoming(root, records, owner) if local else None
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     from .fetch_stalls import last_night
