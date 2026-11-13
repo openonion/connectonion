@@ -194,5 +194,5 @@ def test_feishu_has_the_same_verbs(monkeypatch):
 
 def test_lark_send_help_says_pictures_are_refused():
     result = runner.invoke(app, ["lark", "send", "--help"], env={"COLUMNS": "200"})
-    assert "Not on Lark yet" in result.output
+    assert "Not supported on Lark yet" in result.output
     assert "alex@example.com" in result.output

@@ -2112,7 +2112,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     `media`: the provider sends pictures and files. Elsewhere --image and
     --file stay, and their help says they are refused."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
-    not_here = "" if media else f" Not on {name.capitalize()} yet: refused, nothing is sent."
+    not_here = "" if media else f" Not supported on {name.capitalize()} yet; commands using this option fail and nothing is sent."
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
