@@ -108,3 +108,29 @@ def test_with_motion_on_the_send_bar_follows_the_question_inside_the_draft(today
     bar, choices = card.locator(".mail-actions").bounding_box(), card.locator(".mail-choices").bounding_box()
     draft = card.locator(".mailcard").bounding_box()
     assert choices["y"] + choices["height"] - 0.5 <= bar["y"] and bar["y"] + bar["height"] <= draft["y"] + draft["height"] + 0.5, (bar, choices, draft)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_the_more_sheet_covers_send_and_the_next_label_is_clear_of_it(today, theme):
+    """#2935, seen while Send was docked over the tab bar: a sliver of it showed beside the More sheet, and the next
+    section's label sat on its top edge. Since sprint 13 Send ends the draft in flow; this keeps both edges clean."""
+    page, _, _ = today
+    page.evaluate(f"setTheme('{theme}')", isolated_context=False)
+    card = _open(page, "en", "two", shot=False)
+    bar = card.locator(".mail-actions")
+    assert bar.evaluate("n => getComputedStyle(n).position") == "static"
+    bar.scroll_into_view_if_needed()
+    under = page.evaluate("""() => { const bar = document.querySelector('.qcard.open .mail-actions').getBoundingClientRect();
+      const next = [...document.querySelectorAll('main .wt, main h2')]
+        .map(h => h.getBoundingClientRect()).find(h => h.top >= bar.bottom - 1);
+      return next ? next.top - bar.bottom : null; }""", isolated_context=False)
+    assert under is None or under >= 12, under  # the next label is not on the bar's edge
+    page.locator(".nav-toggle").click()
+    if os.environ.get("CO_REM_SHOTS"):
+        page.screenshot(path=str(Path(os.environ["CO_REM_SHOTS"]) / f"today-phone-more-{theme}-390.png"))
+    sheet = page.locator("#rail-menu").bounding_box()
+    box = bar.bounding_box()
+    top, bottom = max(box["y"], sheet["y"]), min(box["y"] + box["height"], sheet["y"] + sheet["height"])
+    if bottom > top:  # wherever the bar and the sheet overlap, the sheet is what shows
+        points = [(x, (top + bottom) / 2) for x in range(int(box["x"]) + 2, int(box["x"] + box["width"]) - 2, 20)]
+        assert page.evaluate("pts => pts.every(([x, y]) => document.elementFromPoint(x, y)?.closest('#rail-menu, .tabbar, .mail-actions')?.matches('#rail-menu, .tabbar') ?? true)", points, isolated_context=False)
