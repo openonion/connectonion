@@ -3496,7 +3496,7 @@ def _rail(language):
       const child = (entry, cls) => entry.children.find(c => (c.class || '').split(' ').includes(cls));
       const picture = entry => Object.keys(ICONS).find(name => entry.children.some(c => c.html && c.html.includes('>' + ICONS[name] + '<'))) || null;
       const cell = entry => ({name: entry['aria-label'], word: child(entry, 'w')?.text ?? null, wordHidden: child(entry, 'w')?.['aria-hidden'] ?? null,
-        tip: !!child(entry, 'tip'), title: entry.title ?? null, picture: picture(entry), href: entry.href ?? null, active: entry.class.includes('active'),
+        tip: !!child(entry, 'tip'), title: entry.title ?? null, label: child(entry, 'you-name')?.text ?? null, picture: picture(entry), href: entry.href ?? null, active: entry.class.includes('active'),
         badge: child(entry, 'n')?.text ?? null});
       const cells = [...nodes.nav.children, ...nodes['rail-end'].children].filter(n => n.class.split(' ').includes('nav'));
       const menu = nodes.nav.children.find(n => n.id === 'rail-more');
@@ -3512,13 +3512,17 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
     """Owner, #2953: the rail's shapes could not be told apart. Each entry now says its word without a hover."""
     rail, expected = _rail(language), RAIL[language]
     cells, you = rail['cells'][:-1], rail['cells'][-1]
-    assert [cell['name'] for cell in cells] == expected['names']  # the accessible name stays the full name
+    # The accessible name is the full name, starting with the word you see (#2961, WCAG 2.5.3 label in name).
+    assert [cell['name'] for cell in cells] == [name if name.startswith(word) else word + ' · ' + name
+                                                for name, word in zip(expected['names'], expected['words'])]
+    assert all(cell['name'].startswith(cell['word']) for cell in cells)
     assert [cell['word'] for cell in cells] == expected['words']  # and the word is in the markup, always visible
     assert all(cell['wordHidden'] == 'true' for cell in cells)  # read once: aria-label names the entry, not the word too
     assert not any(cell['tip'] for cell in rail['cells'])  # no name lives only in a hover tip
     # A word shorter than the name keeps the name one hover away; a word that is the name needs no second copy.
     assert [cell['title'] for cell in cells] == [name if name != word else None for name, word in zip(expected['names'], expected['words'])]
-    assert you['name'] == you['title'] == expected['you'] and you['word'] is None  # your face is the picture; it has no word
+    assert you['name'] == you['label'] == expected['you'] and you['word'] is None  # your face is the picture; it has no word
+    assert you['title'] is None  # its name shows beside it on hover and keyboard focus (#2961), not in a title
     assert [cell['picture'] for cell in cells] == RAIL_PICTURES
     assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
     assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 7

@@ -2132,7 +2132,8 @@ def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(r
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
-    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records']  # D-01: the catch-all last
+    # D-01: the catch-all last; #2961: each name starts with the word you see (Orgs · Organisations)
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'All records']
     assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
