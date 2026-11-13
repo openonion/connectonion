@@ -195,6 +195,12 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         refresh(root)
         from .topic_map import backfill_topics
         maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
+    # Agenda's week (#2998): the reader shows the calendars as the night last read them, never live.
+    # Outside the writer lock: these are network calls, and the file is the night's alone.
+    from .calendar import save_upcoming
+    from .service import notebook_zone
+    maintenance["calendar"] = save_upcoming(root, now(), notebook_zone(config))
+    _log_calendar_faults(root, maintenance["calendar"])
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
@@ -239,6 +245,16 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
+
+
+def _log_calendar_faults(root, calendar):
+    """A fault in REM while reading a calendar is a failed run with its traceback: a broken refactor is
+    found in `co rem logs`, not as one word on Agenda. The traceback leaves the round's result here."""
+    for kind, error in calendar['errors'].items():
+        if 'traceback' in error:
+            record, path = _reserve(root, 'calendar', 0, {})
+            record.update(outcome='failed', error=f"{kind} calendar: {error.pop('traceback')}", finished_at=now().isoformat())
+            write_json(path, record)
 
 
 def _draft_replies(root, config, maintenance):
@@ -320,8 +336,12 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
     from .runner import ready
-    from .translate import backlog, cached, shown_today, translate
+    from .translate import backlog, cached, claimed, shown_today, translate
     from .translate import languages
+    # The owner's one-click job (co rem translate / 全部翻译成中文) is translating the same pages.
+    if claimed(root):
+        say("Translations skipped: REM is already translating every page.")
+        return
     # Once per round and before the lock: Today's queue reads the whole notebook.
     shown = shown_today(root)
     language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)

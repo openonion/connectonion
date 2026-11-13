@@ -936,6 +936,12 @@
   .contact-line.leadrow { margin: 0; color: var(--grey); }
   /* A translation on its way: one quiet worded line under a record's header (D-103, sprint 15). */
   .translation-line { margin: 10px 0 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .translate-all { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px var(--u3); margin-left: 8px; }
+  .translate-all .ta-go, .translate-all .ta-stop { min-height: 32px; padding: 0 12px; border: var(--hair) solid var(--grey); border-radius: var(--radius); background: none; color: var(--ink); font: var(--w-bold) var(--s-meta) var(--font); cursor: pointer; }
+  .translate-all .ta-stop { font-weight: var(--w-regular); }
+  .translate-all .ta-state { color: var(--grey); font-variant-numeric: tabular-nums; }
+  .set-row .translate-all { margin-left: 0; justify-content: flex-end; }
+  @media (max-width: 820px), (pointer: coarse) { .translate-all .ta-go, .translate-all .ta-stop { min-height: 44px; } }
   .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
   .lang-status.lead { margin: 0 6px 0 0; }
@@ -2147,6 +2153,66 @@
     .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
     .today-brief .qcard, .qitem { transition: none; }
   }
+  /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
+  .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
+  .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
+  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+  .agenda-bar button { font: var(--s-ui) var(--font); color: var(--ink); background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--radius); min-height: 32px; padding: 4px 12px; cursor: pointer; }
+  .agenda-bar .ag-step { min-width: 32px; padding: 4px 8px; }
+  .agenda-bar .ag-views button[aria-pressed="true"] { box-shadow: var(--e-ink); }
+  .agenda-bar .ag-views { margin-left: auto; }
+  .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
+  .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
+  .agenda-note { margin: -4px 0 14px; font-size: var(--s-meta); color: var(--grey); }
+  .agenda-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .ag-col { min-height: 300px; padding: 10px 8px 14px; border-left: var(--hair) solid var(--rule); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ag-col:first-child { border-left: 0; }
+  .ag-col.today { background: var(--well); }
+  .ag-colhead { display: flex; flex-direction: column; padding: 0 4px 6px; }
+  .ag-colhead .ag-date { font: var(--w-bold) var(--s-ui)/18px var(--font); }
+  .ag-now { font-size: var(--s-meta); color: var(--grey); }
+  .ag-col.past .ag-colhead { color: var(--grey); }
+  .ag-empty { color: var(--grey); padding: 0 4px; }
+  .ag-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e-ring); min-width: 0; }
+  .ag-item.ag-event { box-shadow: var(--e1); }
+  .ag-main { display: flex; flex-direction: column; min-width: 0; }
+  .ag-main:hover .ag-title { text-decoration: underline; text-underline-offset: 3px; }
+  .ag-time { font-size: var(--s-meta); color: var(--grey); }
+  .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
+  .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
+  .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ag-who { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-who a:hover { text-decoration: underline; }
+  .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
+  .ag-cell { background: var(--paper); min-height: 112px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ag-cell.out { color: var(--grey); }
+  .ag-cell.today { background: var(--well); }
+  .ag-cell > .ag-date { font: var(--w-bold) var(--s-meta)/16px var(--font); }
+  .ag-cell .ag-item { padding: 3px 6px; }
+  .ag-cell .ag-main { flex-direction: row; gap: 6px; }
+  .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
+  .ag-cell .ag-time { flex: none; }
+  .ag-cell .ag-note, .ag-cell .ag-who { display: none; }
+  .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
+  .agenda-days { display: none; }
+  .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
+  .agenda-earlier a { color: var(--ink); }
+  .agenda-earlier a:hover { text-decoration: underline; }
+  .agenda-earlier .k { color: var(--grey); }
+  @media (max-width: 640px) {
+    .agenda-bar, .agenda-week, .agenda-month { display: none; }
+    .agenda-days { display: flex; flex-direction: column; gap: 18px; }
+    .ag-day { display: flex; flex-direction: column; gap: 8px; }
+    .ag-dayhead { margin: 0; font: var(--w-bold) var(--s-ui)/18px var(--font); }
+    .ag-day.today .ag-dayhead { color: var(--ink); }
+    .ag-day .ag-item { padding: 0 12px 8px; }
+    .ag-day .ag-main { min-height: 44px; justify-content: center; padding-top: 8px; }
+    .ag-day .ag-title { font-size: var(--s-body); line-height: 22px; }
+    .ag-day .ag-who a { display: inline-block; min-height: 32px; line-height: 32px; }
+    .ag-day .ag-empty { margin: 0; padding: 0; }
+    .agenda-earlier { line-height: 32px; }
+  }
 </style>
 <style id="org-style">
   /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
@@ -3299,6 +3365,14 @@ const UI = {
     "{n} more items": "其余 {n} 件",
     "Show all {n} entries": "显示全部 {n} 条",
     "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
+    "Translate every page into Chinese": "全部翻译成中文", "Translated {n} / {m}": "已翻译 {n} / {m}",
+    "Getting the pages ready…": "正在整理页面…", "Stopping after the pages already begun…": "正在停止，已开始的页面会翻完…",
+    "Stopped.": "已停止。", "Every page reads in Chinese.": "所有页面都已是中文。", "Translate pages": "翻译页面",
+    "Translation could not start: {why}.": "翻译没能开始：{why}。", "Stop translating": "停止翻译",
+    "Translate every page into Chinese ({n} pages)": "全部翻译成中文（{n} 页）",
+    "Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.": "额度只剩留给你自己用的部分，已停在 {n} / {m}。",
+    "The translation was refused; try again in a moment.": "翻译请求没被接受，请稍后再试。",
+    "Lost touch with REM; trying again…": "暂时连不上 REM，正在重试…",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
@@ -6546,11 +6620,13 @@ function renderSettings() {
   motion.onclick = toggleCalm;
   const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
   const words = remStateWords(s);
+  const translating = translateAll();
   const row = (title, control, note) => el("div", { class: "set-row" }, [el("div", {}, [el("div", { class: "set-k", text: t(title) }), note ? el("div", { class: "set-note", text: note }) : null]), control]);
   foot.replaceChildren(
     row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
     row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
-    notebookLanguages(), ignoredSendersList(),
+    // replaceChildren writes a null as the word "null": the rows only the live page has are left out instead.
+    notebookLanguages(), ...[translating && row("Translate pages", translating), ignoredSendersList()].filter(Boolean),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
     el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
       el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
@@ -6698,8 +6774,9 @@ function translationLine(r) {
   // Only when one can arrive: queued from this live page, or a nightly target with background updates on.
   const queued = translationQueued(r), nightly = REM.status?.worker?.enabled && REM.status?.translation_coverage?.[uiLanguage]?.requested;
   if (!queued && !nightly) return null;
+  const go = translateAll();
   return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
-    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
+    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") }, go ? [go] : undefined);
 }
 // A current Chinese version of the page in any region: a zh-TW or zh-CN cache is read as 中文 too.
 function hasChinese(r) {
@@ -7782,7 +7859,76 @@ function translationNotice() {
   const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
   const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
   const failure = failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) + " " : "";
-  return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") });
+  const go = translateAll();
+  return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") }, go ? [go] : undefined);
+}
+// «全部翻译成中文» (#2999). The owner, 2026-11-13: «有的页面是中文，有的是英文，有的是中英文混合，一键让 Codex 全部都
+// 翻译». One worded button starts the job `co rem translate` runs, on the Host (POST /rem/translate-all, the same
+// loopback, cookie and JSON-only rules as every other write); it then says how far it is, «已翻译 120 / 639», and
+// offers Stop. Every copy of the control on the page shows the same job; no command to copy anywhere (D-60).
+let translateAllJob = null, translateAllPoll = null, translateAllAsked = false, translateAllWait = 1500;
+function translateAllLanguage() {
+  return /^zh(?:-|$)/i.test(REM.owner_language || "") ? REM.owner_language : "zh";
+}
+function translateAll() {
+  if (!liveHere() || !(uiLanguage === "zh" || /^zh(?:-|$)/i.test(REM.owner_language || ""))) return null;
+  const box = el("span", { class: "translate-all", role: "status", "aria-live": "polite" });
+  drawTranslateAll(box);
+  if (!translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
+  return box;
+}
+function drawTranslateAll(box) {
+  const job = translateAllJob || { state: "idle" }, busy = ["starting", "running", "stopping"].includes(job.state);
+  const count = job.total != null ? t("Translated {n} / {m}", { n: job.done, m: job.total }) : "";
+  const words = job.offline ? t("Lost touch with REM; trying again…")
+    : job.state === "starting" ? t("Getting the pages ready…")
+    : job.state === "stopping" ? count + " · " + t("Stopping after the pages already begun…")
+    : job.state === "refused" ? t("The translation was refused; try again in a moment.")
+    : job.state === "failed" && job.error ? t("Translation could not start: {why}.", { why: job.error })
+    : job.halted ? t("Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.", { n: job.done, m: job.total })
+    : job.total != null && job.done >= job.total ? t("Every page reads in Chinese.")
+    : job.state === "stopped" ? t("Stopped.") + " " + count
+    : count;
+  const failed = !busy && job.failed ? t(job.failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: job.failed }) : "";
+  const parts = [words || failed ? el("span", { class: "ta-state", text: [words, failed].filter(Boolean).join(" ") }) : null];
+  if (busy) {
+    const stop = el("button", { type: "button", class: "ta-stop", text: t("Stop translating") });
+    stop.disabled = job.state === "stopping";
+    stop.onclick = () => translateAllSend("stop");
+    parts.push(stop);
+  } else if (!(job.total != null && job.done >= job.total)) {
+    // The cost in words, on the button itself: no confirmation for a one-click he asked for.
+    const left = job.total != null ? job.total - job.done : 0;
+    const go = el("button", { type: "button", class: "ta-go",
+      text: left ? t("Translate every page into Chinese ({n} pages)", { n: left }) : t("Translate every page into Chinese") });
+    go.onclick = () => translateAllSend("start");
+    parts.push(go);
+  }
+  box.replaceChildren(...parts.filter(Boolean));
+}
+// A refused request (409, a RemError) says so in words and offers the button again; a request that never
+// arrived keeps asking, waiting longer each time, so the line is never left saying it is running.
+async function translateAllSend(action) {
+  clearTimeout(translateAllPoll);
+  let response = null;
+  try {
+    response = await fetch("/rem/translate-all", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, language: translateAllLanguage() }) });
+  } catch {
+    translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: true };
+  }
+  // A refused start or stop says so. A refused status read is a busy moment: the line keeps what it said (a
+  // running job stays running) and asks again, waiting longer each time, like a request that never arrived.
+  if (response && !response.ok && action === "status") translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: false, retry: true };
+  else if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false, retry: false };
+  else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
+  for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
+  if (translateAllJob.offline || translateAllJob.retry) {
+    translateAllWait = Math.min(translateAllWait * 2, 30000);
+    translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
+  } else if (["starting", "running", "stopping"].includes(translateAllJob.state)) {
+    translateAllPoll = setTimeout(() => translateAllSend("status"), 1500);
+  }
 }
 
 // ---------- Today as a card desk (N3, D-123) ----------
@@ -8889,6 +9035,7 @@ function category(c) {
   if (c === "projects" && inCategory("projects").length) { projectsView(); return; }
   if (c === "orgs") { orgsView(); return; }
   if (c === "knowledge") { topicList(); return; }
+  if (c === "agenda") { agendaView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
@@ -8923,6 +9070,179 @@ function category(c) {
   if (c === "skills" && items.length) main.appendChild(skillsView(items));
   else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- agenda: a calendar of the owner's next days (#2998, asked in #2841) ----------
+// Owner, 2026-11-13: «我需要快速看到我最近日历上有什么事件». The week opens on today, not on Monday: on a Friday a
+// Monday-first week is mostly finished days. Month is the usual Monday-first grid. Events are what the night
+// saved from his connected calendars (calendar.py; the page never calls a calendar), beside the notebook's
+// own dates: promises with a due date and agenda pages. Every item is a link: an event to the calendar it
+// came from, a notebook item to its page. Open notebook items dated before the range stay in one line under
+// it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
+const AG_ZH = {
+  "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
+  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题",
+  "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
+  "Still open from earlier": "更早、仍开着",
+  "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
+  "authorization expired": "授权已过期",
+  "{name} · read {when}": "{name} · {when}读取",
+  "No calendar is connected, so this shows only the notebook's own dates.": "还没有连接日历，这里只显示笔记里的日期。",
+  "{name} could not be read on {when} ({reason}).": "{when}没能读取 {name}（{reason}）。", "Its events are from {when}.": "显示的是 {when}读到的日程。",
+  "timed out": "超时", "network error": "网络出错", "server error": "服务器出错", "throttled": "被限流", "request refused": "请求被拒",
+  "permission denied": "没有权限", "provider unavailable": "暂时不可用", "not found on the server (deleted or moved)": "服务器上找不到",
+  "a fault in REM": "REM 自身出错",
+  "{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.": "{name} 这几周的日程超过 {n} 条；REM 只保存了前 {n} 条，其余跳过了。",
+};
+function agT(key, values = {}) {
+  const words = uiLanguage === "zh" ? AG_ZH[key] : null;
+  return (words || t(key)).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+}
+const agendaState = { view: "week", offset: 0 };
+function agDay(day, n) {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function agToday() { return calendarDay(REM.as_of || new Date().toISOString()); }
+function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
+function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
+// 24-hour in the notebook's zone, the zone calendarDay files the event under.
+function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
+function agendaItems() {
+  const today = agToday(), items = [];
+  for (const e of REM.calendar?.events || []) {
+    const first = calendarDay(e.start);
+    if (!first) continue;
+    // Both calendars end an all-day event on the day after its last; a timed one is filed under its start.
+    const last = e.all_day ? agDay(calendarDay(e.end) || agDay(first, 1), -1) : first;
+    for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
+      items.push({ day, time: e.all_day ? "" : agTime(e.start), title: e.title || agT("No title"), href: e.link, external: true,
+        people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
+  }
+  const placed = new Set();
+  for (const row of REM.today_queue || []) {
+    if (!row.due || row.closed || row.quiet) continue;
+    const page = byPath(row.record);
+    placed.add(row.record + "@" + row.due);
+    // A promise on the owner's own page is named by what it is, not by his name.
+    const mine = row.record === REM.owner, note = stripCites(row.text);
+    items.push({ day: row.due, time: "", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record),
+      note: mine ? "" : note, late: row.due < today, kind: "due" });
+  }
+  for (const r of inCategory("agenda")) {
+    const due = (r.text || "").match(/\b(?:due|deadline|by)(?:\s+(?:on|is))?\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
+    // Otherwise the first date the page states (its status line, in whatever language its headings are), never its Sources.
+    const noted = (r.text || "").split("\n").filter(line => !/^\s*Sources?:/i.test(line)).join("\n").match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
+    const day = due || noted || calendarDay(r.last_activity || r.updated);
+    if (!day || placed.has(r.path + "@" + day)) continue;
+    items.push({ day, time: "", title: r.title, href: href(r), late: !!due && due < today, kind: due ? "due" : "page" });
+  }
+  // All-day and dated items lead a day, then events by time.
+  return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
+}
+function agItem(item) {
+  const when = item.kind === "event" ? (item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
+  const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
+    el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
+    item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
+  if (item.external && !item.href) main.removeAttribute("href");
+  const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
+    : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
+  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, who]);
+}
+function agColumnHead(day, today) {
+  return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
+    el("span", { class: "ag-date", text: agFormat(day, { weekday: "short" }) + " " + Number(day.slice(8)) })]);
+}
+function agendaWeek(items, start) {
+  const today = agToday();
+  return el("div", { class: "agenda-week" }, Array.from({ length: 7 }, (_, i) => {
+    const day = agDay(start, i), mine = items.filter(item => item.day === day);
+    return el("section", { class: "ag-col" + (day === today ? " today" : day < today ? " past" : "") }, [agColumnHead(day, today),
+      ...(mine.length ? mine.map(agItem) : [el("span", { class: "ag-empty", "aria-hidden": "true", text: "—" })])]);
+  }));
+}
+function agMonthStart(offset) {
+  const d = new Date(agToday().slice(0, 7) + "-01T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + offset);
+  return d.toISOString().slice(0, 10);
+}
+function agendaMonth(items, first) {
+  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7;
+  const next = agMonthStart(agendaState.offset + 1), length = Math.round((new Date(next) - new Date(first)) / 86400000);
+  const start = agDay(first, -lead), cells = Math.ceil((lead + length) / 7) * 7;
+  const names = Array.from({ length: 7 }, (_, i) => el("span", { class: "ag-wd", text: agFormat(agDay(start, i), { weekday: "short" }) }));
+  return el("div", { class: "agenda-month" }, [...names, ...Array.from({ length: cells }, (_, i) => {
+    const day = agDay(start, i), mine = items.filter(item => item.day === day);
+    return el("div", { class: "ag-cell" + (day.slice(0, 7) !== first.slice(0, 7) ? " out" : "") + (day === today ? " today" : "") }, [
+      el("span", { class: "ag-date", text: String(Number(day.slice(8))) }), ...mine.slice(0, 3).map(agItem),
+      mine.length > 3 ? el("span", { class: "ag-more", text: agT("{n} more", { n: mine.length - 3 }) }) : null]);
+  })]);
+}
+function agendaDays(items) {
+  const today = agToday(), end = agDay(today, 20), list = el("div", { class: "agenda-days" });
+  for (let day = today; day <= end; day = agDay(day, 1)) {
+    const mine = items.filter(item => item.day === day);
+    if (!mine.length && day !== today) continue;
+    const name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
+    const date = agFormat(day, { weekday: "short", day: "numeric", month: "short" });
+    list.appendChild(el("section", { class: "ag-day" + (day === today ? " today" : "") }, [
+      el("h2", { class: "ag-dayhead", text: name ? name + " · " + date : date }),
+      ...(mine.length ? mine.map(agItem) : [el("p", { class: "ag-empty", text: agT("Nothing in these days.") })])]));
+  }
+  return list;
+}
+// Earlier than today, whatever range is on screen: still open is about now, not about the week shown.
+function agendaEarlier(items) {
+  const open = items.filter(item => item.kind !== "event" && item.day < agToday());
+  if (!open.length) return null;
+  const seen = new Set(), unique = open.reverse().filter(item => !seen.has(item.href) && seen.add(item.href));
+  return el("p", { class: "agenda-earlier" }, [el("span", { class: "k", text: agT("Still open from earlier") + " " }),
+    ...unique.flatMap((item, i) => [i ? " · " : null, el("a", { href: item.href, class: item.late ? "late" : "", text: item.title }),
+      el("span", { class: "mono", text: " " + calendarDate(item.day) })])]);
+}
+function agendaNote() {
+  if (REM.shared) return null;
+  if (!REM.calendar) return el("p", { class: "agenda-note", text: agT("No calendar read yet: REM reads your connected Google and Outlook calendars each night.") });
+  const { read = [], errors = [] } = REM.calendar;
+  // A night ran and no calendar is connected: say so, or the empty week reads as "nothing on".
+  if (!read.length && !errors.length) return el("p", { class: "agenda-note", text: agT("No calendar is connected, so this shows only the notebook's own dates.") });
+  // When, from each calendar's own times: a failure is not always last night's, nor its events tonight's.
+  const lines = [...errors.map(e => agT("{name} could not be read on {when} ({reason}).", {
+    name: e.name, when: fmtTime(e.at), reason: agT(e.reason) + (e.error ? " · " + e.error : "") })
+    + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")),
+    // The night stops at a cap so a runaway series cannot fill the file; what it skipped is said, not hidden.
+    ...read.filter(c => c.capped).map(c => agT("{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.", { name: c.name, n: c.capped }))];
+  return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
+}
+function agendaBar(range) {
+  const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
+  const button = (text, attrs, act) => { const b = el("button", { type: "button", ...attrs }, [text]); b.onclick = act; return b; };
+  const views = el("div", { class: "seg ag-views", role: "group" }, [["week", "Week"], ["month", "Month"]].map(([view, name]) =>
+    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { agendaState.view = view; agendaState.offset = 0; agendaView(); })));
+  const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: REM.calendar.read.map(c =>
+    agT("{name} · read {when}", { name: c.name, when: fmtTime(c.at) })).join(" · ") }) : null;
+  return el("div", { class: "agenda-bar" }, [
+    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, step(-1)),
+    button(agT("Today"), { class: "ag-today" }, () => { agendaState.offset = 0; agendaView(); }),
+    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, step(1)),
+    el("span", { class: "ag-range", text: range }), read, views]);
+}
+function agendaView() {
+  const main = document.getElementById("main"), items = agendaItems();
+  let body, range;
+  if (agendaState.view === "month") {
+    const first = agMonthStart(agendaState.offset);
+    range = agFormat(first, { month: "long", year: "numeric" });
+    body = agendaMonth(items, first);
+  } else {
+    const start = agDay(agToday(), 7 * agendaState.offset);
+    const end = agDay(start, 6);
+    range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
+    body = agendaWeek(items, start);
+  }
+  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items)]));
 }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
@@ -12830,7 +13150,7 @@ function render() {
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
   // The sheet views use the full width; reading views keep a measure.
-  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
+  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && (COLUMNS[c] && inCategory(c).length || c === "agenda")));
   if (reviews) reviewPage();
   else if (query) search(query, related);
   else if (r) record(r, heading);

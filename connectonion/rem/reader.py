@@ -300,12 +300,17 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
-    from .translate import cached_languages
+    from .translate import cached_languages, foreign_lines
     from .languages import language_of, owner_language, owner_languages, spoken
+    mine = owner_language(root)
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
         # For the "Read in" menu: what the page is written in, and what this person speaks.
         record["written_in"] = language_of(record["text"])
+        # Mostly the owner's language but with prose in another: "mixed", so the reader offers and awaits
+        # its translation like an English page's, by the rule co rem translate uses (translate.foreign_lines).
+        if mine and record["written_in"] == mine.split("-")[0].lower() and foreign_lines(record["text"], mine):
+            record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
@@ -352,6 +357,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
     from .threads import ignored_senders
     data['ignored_senders'] = ignored_senders(root) if local else {}
+    # The owner's calendars as the night saved them; a shared page carries none of his meetings.
+    from .calendar import upcoming
+    data['calendar'] = upcoming(root, records, owner) if local else None
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     from .fetch_stalls import last_night

@@ -2250,6 +2250,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const byActivity = () => 0, sourceName = value => value, calendarDay = value => value.slice(0, 10);
+      const translateAll = () => null;  // the live page's button (#2999)
       const translationPending = () => false; const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
@@ -2414,6 +2415,7 @@ def test_translation_notice_is_one_quiet_line_for_missing_written_pages():
         {path: 'people/avery-lin.md', category: 'people', written: true, translations: {zh: '译文'}},
         ...Array.from({length: 20}, (_, n) => ({path: 'projects/mapped-' + n + '.md', category: 'projects', written: false}))]};
       const listedRecords = () => REM.records, remCommand = args => 'co rem ' + args;
+      const translateAll = () => null;  // the live page's button (#2999)
       const commandChip = command => ({command}), el = (tag, attrs, children) => ({...attrs, children});
       uiLanguage = 'zh';
       const mapped = translationNotice();
@@ -2890,6 +2892,7 @@ def test_today_keeps_safe_failure_recovery_without_runner_payload():
     result = _run_reader_js(functions + '\nconst REM = ' + json.dumps(shell) + ';\n' + r'''
       REM.owner = 'people/owner.md';
       const known = () => ({status: 'Investigated'}), listedRecords = () => [{written: true, category: 'people'}];
+      const translateAll = () => null;  // the live page's button (#2999)
       const el = (tag, attrs) => attrs;
       const failure = failureSummary({failed: REM.brief_logs.slice(0, 2), changed: []});
       uiLanguage = 'zh'; UI.zh = {};
@@ -4558,6 +4561,7 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
                           for name in ['translationLine', 'hasChinese'])
     result = _run_reader_js(functions + r'''
       UI.zh = {'Not translated yet — showing the original': '中文版还没好，先看原文'};
+      const translateAll = () => null;  // the live page's button (#2999)
       const el = (tag, attrs) => ({tag, ...attrs});
       let queued = false, REM = {status: {worker: {enabled: true}}};
       const translationQueued = () => queued, page = {path: 'people/mara-ostrowski.md'};

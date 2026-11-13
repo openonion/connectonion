@@ -1065,6 +1065,27 @@ pinned to that edge: it comes into view with the draft.
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
+- **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
+  **Today** returns) and a Monday-first **Month**, with no heading above them. It
+  shows your calendar events beside the notebook's own dates: promises with a
+  due date (**Due**, or **Late** in red once past) and agenda pages on the date
+  they state (**Noted**). An event links to the calendar it came from and to the
+  people pages of its guests (matched on a page's Email and Handles lines); a
+  promise or page links to its page. Open notebook items
+  dated before today sit in one line under it, whichever week or month is shown.
+  On a phone it is a day-by-day list of the next three weeks. Events come from
+  `.state/calendar.json`, which each night's round writes, outside the writer
+  lock, from every account co can already read (Google after `co auth google`
+  with a calendar scope: the calendars ticked in Google Calendar; Outlook after
+  `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
+  notebook's zone): three weeks from yesterday in the notebook's zone, every
+  page followed, cancelled events left out. The reader never calls a calendar.
+  No calendar failure stops the night: a calendar that fails keeps the events it
+  saved before, and the page says when it failed, why, and when its events are
+  from; anything that is not the provider's failure is a fault in REM, named
+  with its exception in the page and in the round's result. Before any night
+  the page says no calendar has been read; when none is connected, it says that.
+  Only the owner's own reader carries the events; a shared page has none.
 - **Questions & connections** decides each pending review in place in the live
   reader: **Yes** / **No** / **Not sure** on a link, an answer box with **Save
   answer** / **Not sure** on a question. A click posts
@@ -2523,25 +2544,56 @@ privacy labels, quoted passages and reader markers. When a check fails, the
 model gets one repair turn with the exact difference ("missing [12] (1 time)");
 a second failure is reported and nothing is cached.
 
-To backfill existing pages once (the English pages remain the audited source):
+To translate every page at once (the pages themselves remain the audited source):
 
 ```bash
-co rem translate --all --to zh
-co rem --root /path/to/rem translate --all --category people
-co rem translate people/avery-lin.md --to zh
+co rem translate --all
+co rem translate --all --category people
+co rem translate "Avery Lin"
+co rem translate people/avery-lin.md --to ja
 ```
 
-Omit `--to` to use the owner's first configured or detected non-English language.
-`--all` translates people, orgs, projects, decisions, principles and skills,
-using up to `limits.workers` concurrent pages. It skips current caches, logs/activity, catalog indexes, duplicate
-installations and unlisted records. `--category` selects one of those six types.
-Each page prints `translated`, `cached`, or `failed: reason`, followed by counts.
-A page's reported translation failure does not stop the next page; any failures
-make the command exit 1. `--json` returns the outcomes and counts instead.
-Open or refresh the reader afterward: 中文 mode shows current cached prose, with
-quotes in their original language. An untranslated record still says
-**中文版还没好，先看原文** under its header.
+With no page named, `co rem translate` translates every readable page (not
+logs, the skills catalog index, or pages held for review or
+duplicated; `co rem status` coverage counts the same pages) that is not yet read
+in your language, Today's pages first (the night's
+own queue), using up to `limits.workers` concurrent pages. It first says how
+many are already read in that language and how many it will translate, prints
+`[n/N] PAGE: translated` or `failed: reason` for each, then the counts and how
+many pages are now read in the language. Run again, it does nothing. A page's
+failure does not stop the next page; any failures make the command exit 1.
+`--json` returns the outcomes and counts. `--category` limits it to one
+category. It costs one model turn per page, and the first line says how many:
+without a terminal (an agent exploring help, a script) it starts only with
+`--all`. Before each page it reads the Codex week and stops at
+`limits.quota_floor_percent`, the floor kept for your own work, saying where it
+stopped. One job runs at a time: it holds an OS lock on
+`.state/translate-all.lock` for its whole life, which the system lets go when
+the process ends, even after a crash or a reboot (`.state/translate-all.json`
+only says since when, for display). A second run says one is already running,
+and a night round that comes while it runs skips its translation pass. Omit `--to` to use the
+language you read REM in (the one owner-language rule, `languages.owner_language`).
 
+Chinese, English and mixed pages: a page counts as already in your language when
+every line of its own prose is, and at least one line is. Quotes, names, link
+texts, code, source ids, privacy labels, Facts labels and the reader's English
+markers are not counted, since they stay as written in any translation. For
+Chinese a line with two Han characters in a row is Chinese, so names and English
+terms inside a Chinese sentence do not make it mixed; any other line of three
+words or more is another language. A page written in Chinese costs no model
+turn; a page that mixes Chinese and English prose is translated (its Chinese
+lines come back as they were). The reader marks a mixed page `written_in:
+"mixed"`, so it waits for and offers the translation like an English page.
+
+The live reader runs the same job from a worded button, **全部翻译成中文**, in
+Settings, beside **中文版还没好，先看原文** on a page, and in the home translation
+notice. It posts to the Host's `/rem/translate-all` (`start`, `status`, `stop`)
+under the same loopback, cookie and JSON-only rules as every other write. The
+button names its cost, **全部翻译成中文（606 页）**; while it runs the reader shows
+**已翻译 N / M** with **停止翻译**: pages already begun finish, the rest are left as they are. At the quota floor it stops with
+**额度只剩留给你自己用的部分，已停在 N / M**. A refused request says so in words; a
+dropped connection is retried with a growing wait. When it ends the reader rebuilds and the
+open page reloads with the translations. No command to copy (D-60).
 
 Each model translation records a `translate` run with its language, page,
 duration, harness/model and usage, including failed attempts with reported
@@ -2553,7 +2605,8 @@ Reader settings shows **Notebook languages: 中文 · English — detected** (or
 command to copy (D-60); `co rem config set languages` in a terminal still
 overrides detection. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
-pages could not be translated and offers a copyable `translate --all` command.
+pages could not be translated and offers the **全部翻译成中文** button, never a
+command to copy (D-60).
 
 ### Codex history during maintenance
 

@@ -21,6 +21,7 @@ Read
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
+  translate     Translate every page not yet in your language, or one page.
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
@@ -55,7 +56,7 @@ Use co rem init to rebuild; a terminal prints its summary, undo block and estima
 Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
@@ -433,27 +434,40 @@ Back:     co rem --help
 ## co rem translate
 
 ```
-Translate one page, or backfill reader records with co ai on the notebook's runner.
+Translate every page not yet in your language, Chinese, English or mixed, or one page.
 
-Usage:    co rem translate [PAGE | --all] [--to LANGUAGE] [--category CATEGORY]
-Example:  co rem translate people/alice-chen.md --to zh
-          co rem translate "Alice Chen" --to ja
-          co rem translate --all --to zh
+Usage:    co rem translate [PAGE] [--all] [--to LANGUAGE] [--category CATEGORY]
+Example:  co rem translate --all
           co rem translate --all --category people
-Options:  --to defaults to your first configured or detected non-English language.
-          Put --root PATH before translate to select another notebook.
-          --all processes people, orgs, projects, decisions, principles and skills,
-          one at a time. --category limits it to one of those categories.
-          Current caches are skipped; logs, activity, catalog indexes, duplicate
-          installations and unlisted pages are excluded. Prints translated /
-          cached / failed: reason for each page, then counts; failures continue
-          and give exit 1. --json returns the page outcomes and counts.
+          co rem translate "Alice Chen"
+          co rem translate people/alice-chen.md --to ja
+Cost:     It takes one model turn per page on the notebook's runner. The first line
+          says how many pages that is. Before each page the Codex week is read;
+          at the quota floor kept for your own work (limits.quota_floor_percent)
+          it stops and says where.
+Options:  With no PAGE, translates every page not yet read in your language,
+          Today's first, printing [n/N] PAGE: translated or failed: reason,
+          then the counts. A page already in your language costs nothing; a
+          page that mixes languages is translated. Run again, it does nothing.
+          Without a terminal (an agent, a script) it starts only with --all.
+          Logs, the skills catalog index and pages held for review or
+          duplicated are left out. The open reader's 全部翻译成中文 button runs
+          the same job; only one runs at a time, and the night skips its
+          translation pass that round. --to defaults to your reading language.
+          --category limits it to one category. Put --root PATH before
+          translate to select another notebook. A failed page does not stop
+          the rest; any failure gives exit 1. --json returns outcomes and counts.
+Mixed:    A page is in your language when every line of its own prose is.
+          Quotes, names, link texts, code, ids, source ids, privacy labels and
+          Facts labels are not counted: they stay as written in any
+          translation. In Chinese a line with two Han characters in a row is
+          Chinese, so English names and terms inside it do not make it mixed.
 Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
           the page it was made from. The page itself never changes. Asked
           again, a current translation is printed with no model call; once the
           page changes, the translation is made again. Headings, Facts labels,
-          source ids and names stay as they are; quotes keep their language.
-          The live reader (co rem open) offers the same in its language menu.
+          source ids, privacy labels and names stay as they are; quotes keep
+          their language.
 Next:     co rem open
 Back:     co rem --help
 ```
@@ -861,7 +875,6 @@ Build by hand
   stub          Create one empty page by hand, with every section marked Unknown.
 Manage pages
   merge         Fold one page into another; archive the old page and keep its name as an alias.
-  translate     Read a page in another language (cached; the page itself never changes).
 Experimental: corrections and questions (#1611, #1609)
   reflect       Record a correction, a change, or a reflection about a page.
   reflections   Read the records for a page, or write a compact copy of them.
