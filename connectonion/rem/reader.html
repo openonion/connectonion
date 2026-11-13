@@ -2756,7 +2756,7 @@
   /* 更多 opens beside its button (placeBeside sets bottom when it opens) and is never taller than the window.
      Fixed: a rail that scrolls would clip a menu positioned inside it. */
   .rail-more { position: fixed; left: 70px; max-height: calc(100vh - 16px); overflow-y: auto; }
-  .nav.you .you-name { position: fixed; left: 70px; top: var(--you-y, 50%); transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
+  .nav.you .you-name { position: fixed; left: 70px; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
     background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
     transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
   .nav.you:hover .you-name, .nav.you:focus-visible .you-name { opacity: 1; transform: translate(0, -50%); }
@@ -6584,7 +6584,8 @@ function renderRailEnd(active) {
   const you = owner && t("You") + " · " + owner.title;
   const link = owner && el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, "data-name": you },
     [face(owner.title, "s"), el("span", { class: "you-name", "aria-hidden": "true", text: you })]);
-  if (link) link.onfocus = link.onmouseenter = () => { const box = link.getBoundingClientRect(); link.style.setProperty("--you-y", box.top + box.height / 2 + "px"); };
+  // Placed from the face when it shows, as 更多 is from its button (placeBeside).
+  if (link) link.onfocus = link.onmouseenter = () => { const box = link.getBoundingClientRect(); link.lastChild.style.top = box.top + box.height / 2 + "px"; };
   end.replaceChildren(settings, link);
 }
 // Phone (D-123): the rail and the ⌘K bar give way to a floating tab bar: 今天 · 等你 · 人物 · 搜索 · 更多.
