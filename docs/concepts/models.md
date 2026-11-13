@@ -56,9 +56,12 @@ exactly the models in `connectonion/core/usage.py`: free on every account,
 `co/gemini-2.5-pro` and `co/gemini-2.5-flash`; paid, once the account has credits, `co/gpt-5`,
 `co/o4-mini` and `co/claude-sonnet-4`. Those are marked `# Managed` below.
 
-`co/gemini-4-argon` is Gemini 4's only model — there is no Gemini 4 Flash. It is
-a reasoning model at a Pro-tier price, 2.7x the default today and 5.3x from
-2026-12-01, so you reach it by naming it and the default stays on 3.8 Flash.
+Gemini 4 has three models and no Flash. `co/gemini-4-carbon` is the most
+capable and `co/gemini-4-argon` spends fewer thinking tokens per turn; both are a
+Pro-tier price, 2.7x the default today and 5.3x from 2026-12-01.
+`co/gemini-4-hydrogen` is the everyday one at $1.50 / $7.50, 2x the default
+until 3.8 Flash's own price rises on 2027-01-01. You reach each by naming it; the
+default stays on 3.8 Flash.
 
 ### OpenAI Models
 
@@ -190,7 +193,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-4-argon | Google | Newest reasoning model; Pro-tier price, not the default | ✅ |
+| gemini-4-carbon | Google | Most capable Gemini 4; Pro-tier price, not the default | ✅ |
+| gemini-4-argon | Google | Gemini 4 reasoning with fewer thinking tokens; Pro-tier price, not the default | ✅ |
+| gemini-4-hydrogen | Google | Everyday Gemini 4 for coding and agents; not the default | ✅ |
 | gemini-3.8-flash | Google | Default model, newest fast Gemini | ✅ |
 | co/gemma | ConnectOnion GPU | Free text and tool calling; the zero-balance tip | No |
 | co/llama | ConnectOnion GPU | Free text and tool calling | No |
@@ -214,7 +219,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | gpt-4o | 128K tokens |
 | o4-mini | 128K tokens |
 | **Google** | |
+| gemini-4-carbon | 1,048,576 input tokens; 32,768 output tokens |
 | gemini-4-argon | 1,048,576 input tokens; 32,768 output tokens |
+| gemini-4-hydrogen | 1,048,576 input tokens; 65,536 output tokens |
 | gemini-3.8-flash | 1,048,576 input tokens; 65,536 output tokens |
 | gemini-3.7-flash | 1M tokens |
 | gemini-3.6-flash | 1M tokens |
@@ -250,7 +257,9 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-4-argon | $2.00 | $10.00 | Newest reasoning model. Doubles to $4.00 / $20.00 on 2026-12-01 |
+| gemini-4-carbon | $2.00 | $10.00 | Most capable Gemini 4. Doubles to $4.00 / $20.00 on 2026-12-01 |
+| gemini-4-argon | $2.00 | $10.00 | Gemini 4 reasoning. Doubles to $4.00 / $20.00 on 2026-12-01 |
+| gemini-4-hydrogen | $1.50 | $7.50 | Everyday Gemini 4. No announced change |
 | gemini-3.8-flash | $0.75 | $3.75 | **Default model** - promotional pricing through 2026-12-31 |
 | gemini-3.7-flash | $0.75 | $3.75 | Selectable rollback model with the same promotional rates |
 | gemini-3.6-flash | $1.50 | $7.50 | Legacy fast Gemini |

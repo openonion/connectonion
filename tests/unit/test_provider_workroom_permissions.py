@@ -321,7 +321,7 @@ def test_websocket_outer_auto_ack_streams_the_same_transaction_provider_downgrad
     assert sent[0]["mode"] == "auto"
     narrowed = sent[1]
     assert narrowed["stateRevision"] > committed["stateRevision"]
-    assert narrowed["providerPermission"]["activeOptionId"] == "codex:workspace-ask"
+    assert narrowed["providerPermission"]["activeOptionId"] == "codex:workspace-auto"
     full_access = next(
         option for option in narrowed["providerPermission"]["options"]
         if option["id"] == "codex:full-access"
@@ -345,7 +345,7 @@ def test_websocket_outer_auto_ack_streams_the_same_transaction_provider_downgrad
 @pytest.mark.parametrize(
     ("target_mode", "expected_option"),
     [
-        ("auto", "codex:workspace-ask"),
+        ("auto", "codex:workspace-auto"),
         ("read-only", "codex:read-only"),
     ],
 )

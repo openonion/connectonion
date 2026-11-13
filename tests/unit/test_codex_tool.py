@@ -31,6 +31,7 @@ def _reap_open_only_clients():
 class FakeServer:
     """Stand-in CodexAppServer that simulates one turn via callbacks."""
     last = None
+    requests_approval = False
 
     def __init__(
         self, command, cwd=None, on_event=None, on_approval=None, cancelled=None
@@ -91,10 +92,13 @@ class FakeServer:
         self.calls.append(("run_turn", thread_id, prompt))
         self.on_event({"kind": "agent_message", "text": "Running the tests first."})
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
-        self.approval_decision = self.on_approval(
-            "item/commandExecution/requestApproval",
-            {"command": "pytest -q", "cwd": self.cwd},
-        )
+        if self.requests_approval:
+            self.approval_decision = self.on_approval(
+                "item/commandExecution/requestApproval",
+                {"command": "pytest -q", "cwd": self.cwd},
+            )
+            if not self.approval_decision:
+                self.on_event({"kind": "approval_denied", "reason": "operator_declined"})
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
         self.on_event({"kind": "agent_message", "text": "Hello world"})
         return {"status": "completed", "usage": {"input_tokens": 5}}
@@ -648,6 +652,10 @@ class TestFrontendEventVocabulary:
 
 
 class TestApproval:
+    @pytest.fixture(autouse=True)
+    def request_native_approval(self, monkeypatch):
+        monkeypatch.setattr(FakeServer, "requests_approval", True)
+
     def test_native_approval_has_a_safe_verified_workroom_presentation(self):
         agent = _Agent(
             _IO(approve=True),
@@ -1361,11 +1369,13 @@ def test_a_turn_that_runs_out_of_time_says_timeout(tmp_path, monkeypatch):
     assert result["status"] == "timeout" and result["exit_code"] != 0 and "timed out" in result["error"]
 
 
-def test_refused_approvals_are_counted_not_hidden():
+def test_refused_approvals_are_counted_not_hidden(monkeypatch):
     # Real run 2026-11-09: the default policy refused the README edit and the
     # envelope still said exit_code 0 with no error.
+    monkeypatch.setattr(FakeServer, "requests_approval", True)
     result = _run(prompt="inspect", approval="deny")
     assert result["approvals_denied"] == 1
+    assert result["status"] == "blocked" and result["exit_code"] == 1
     assert _run(prompt="inspect", approval="manual", agent=_Agent(_IO(approve=True)))["approvals_denied"] == 0
 
 

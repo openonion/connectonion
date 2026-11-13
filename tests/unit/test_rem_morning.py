@@ -357,6 +357,9 @@ def test_existing_transport_seams(channel, monkeypatch):
     email = Mock(return_value={'success': True})
     chat = Mock()
     chat.send.return_value = "fictional-receipt"
+    # send asks a provider that can to resolve a name to an id (#3000); a bare
+    # Mock would answer with a Mock, which sent.jsonl cannot record.
+    chat.resolve.side_effect = lambda to: to
     monkeypatch.setattr('connectonion.cli.commands.telegram_commands.send_telegram', telegram)
     import importlib
     monkeypatch.setattr(importlib.import_module('connectonion.useful_tools.send_email'), 'send_email', email)

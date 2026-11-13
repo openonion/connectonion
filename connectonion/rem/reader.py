@@ -300,12 +300,17 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
-    from .translate import cached_languages
-    from .languages import language_of, owner_languages, spoken
+    from .translate import cached_languages, foreign_lines
+    from .languages import language_of, owner_language, owner_languages, spoken
+    mine = owner_language(root)
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
         # For the "Read in" menu: what the page is written in, and what this person speaks.
         record["written_in"] = language_of(record["text"])
+        # Mostly the owner's language but with prose in another: "mixed", so the reader offers and awaits
+        # its translation like an English page's, by the rule co rem translate uses (translate.foreign_lines).
+        if mine and record["written_in"] == mine.split("-")[0].lower() and foreign_lines(record["text"], mine):
+            record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
@@ -322,6 +327,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                if absolute.is_relative_to(home) else str(absolute))
     data = {"language": read_config(root, validated=False).get("language") or "en",
             "your_languages": languages["languages"],
+            # The interface's language, the same rule drafts and the night's translation use.
+            "owner_language": owner_language(root),
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
@@ -350,8 +357,14 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
     from .threads import ignored_senders
     data['ignored_senders'] = ignored_senders(root) if local else {}
+    # The owner's calendars as the night saved them; a shared page carries none of his meetings.
+    from .calendar import upcoming
+    data['calendar'] = upcoming(root, records, owner) if local else None
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
+    from .fetch_stalls import last_night
+    # Why nights read nothing: the mailbox, the reason and the pages set aside. Only on the owner's own reader.
+    data['night_stall'] = last_night(root) if local else None
     outcomes = {row['key']: row for row in data['night_outcomes']}
     for row in data['today_queue']:
         if row['key'] in outcomes:
@@ -567,7 +580,7 @@ PROGRESS_SECONDS = 3.0
 # language, chosen as the page chooses it (uiLanguage in reader.html).
 UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
             'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
-            '<script>(() => { const zh = (window.REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))'
+            '<script>(() => { const zh = /^zh(?:-|$)/i.test(window.REM?.owner_language || "")'
             ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
             ' = zh ? "正在更新…" : "Updating…"; })();</script>')
 

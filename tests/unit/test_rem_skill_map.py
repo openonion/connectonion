@@ -282,3 +282,46 @@ def test_skill_alias_dates_use_the_notebook_day(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
     _alias(Notebook(tmp_path), "skills/catalog/old.md", "skills/catalog/tide.md")
     assert aliases(tmp_path)["skills/catalog/old.md"]["date"] == "2040-11-05"
+
+
+def test_the_night_round_recounts_skill_calls_made_after_init(tmp_path, monkeypatch):
+    """#2950: Mia's /weekly-report count and its last day stayed on the day of init;
+    the night round recounts them from the sessions, with no model."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import native_round, service
+    from connectonion.rem.config import read_config
+    skill(Path.home() / ".claude/skills", "weekly", name="weekly-report")
+    projects = tmp_path / "claude"
+    sessions = {"claude-code": {"kind": "claude-code", "root": str(projects)}}
+
+    def called(name, day):
+        stamp = f"{day.isoformat()}T10:00:00Z"
+        row = {"type": "assistant", "uuid": name, "timestamp": stamp, "cwd": "/w",
+               "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "weekly-report"}}]}}
+        path = projects / "p" / f"{name}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row) + "\n")
+
+    today = datetime.now(timezone.utc).date()
+    called("init-day", today - timedelta(days=20))
+    root = tmp_path / "rem"
+    nb = Notebook(root)
+    map_skills(nb, subscriptions=sessions)
+    assert "Invoked once" in nb.read("skills/catalog/weekly-report.md")
+    called("later", today - timedelta(days=1))
+    service.approve_sources(root)
+    monkeypatch.setattr(service, "subscriptions", lambda *args: sessions)
+    monkeypatch.setattr(service, "_selected_sources", lambda *args: {})
+    monkeypatch.setattr("connectonion.rem.sessions.import_sessions", lambda *args, **kwargs: {})
+    monkeypatch.setattr("connectonion.rem.project_material.extract", lambda *args, **kwargs: {})
+    monkeypatch.setattr(native_round, "_jobs", lambda *args: [])
+    native_round.prepare(root, read_config(root), scheduled=False)
+    page = nb.read("skills/catalog/weekly-report.md")
+    assert "Invoked 2 times" in page and f"last on {today - timedelta(days=1)}" in page
+    # A night with sessions but no new call leaves the page, and its translations, alone.
+    other = projects / "p" / "unrelated.jsonl"
+    other.write_text(json.dumps({"type": "user", "uuid": "u9", "timestamp": f"{today}T09:00:00Z", "cwd": "/w",
+                                 "message": {"content": "plan the week"}}) + "\n")
+    native_round.prepare(root, read_config(root), scheduled=False)
+    assert nb.read("skills/catalog/weekly-report.md") == page

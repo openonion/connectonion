@@ -2,6 +2,24 @@
 
 Trust is a **host layer** concern that controls who can access your agent. It manages onboarding, access control, and client state (stranger → contact → trusted).
 
+Hosted Auto and Full access use **context over control**. Contacts and whitelisted requesters
+can run automatically permitted work; they receive a one-time session notice
+that they are not admins, the work is recorded, and access can be revoked.
+Once per requester turn, the first qualifying action appears in
+[`co approvals`](../cli/approvals.md), and the Host console tells the operator
+afterwards. Individual tool entries retain the outcomes of later actions. This applies across providers and
+ordinary Auto-approved writes/commands. Existing manual permission boundaries
+still apply.
+
+Revoke access on the Host with `co trust block <address>`. Use
+`co trust remove <address>` to remove contact/whitelist membership; an open
+policy may still allow strangers, so removal alone is not a guaranteed denial.
+Codex's existing **Ask for approval** or **Read Only** Work Room permission
+can also tighten the provider's authority for subsequent work.
+Blocking prevents new admissions; already-authenticated WebSocket sessions
+can still submit work, and in-flight work is not cancelled. Active-connection
+revocation remains an existing gap.
+
 ## Quick Start
 
 ```python

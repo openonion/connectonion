@@ -426,14 +426,19 @@ def test_cli_backfill_skips_current_cache_and_nonrecords_and_continues(notebook,
         return 'translated prose'
 
     monkeypatch.setattr(tr, 'translate', translate)
+    from connectonion.rem.files import write_json, state_path
+    (notebook / 'people' / 'held.md').write_text('# held\n\nA source finding.\n\nInvestigation: not investigated yet\n')
+    write_json(state_path(notebook, 'map.json'), {'people': [{'record': 'people/held.md', 'needs_review': True}]})
+    # Logs, the catalog index and held or duplicate pages are not pages to read (#2999 review).
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', '--all', '--to', 'zh'])
     assert result.exit_code == 1, result.output
-    assert 'people/avery-lin.md: cached' in result.output
+    assert 'translating 9…' in result.output and 'people/avery-lin.md' not in result.output
     assert 'people/mara-ostrowski.md: failed: fixture translation refused' in result.output
     assert 'people/theo-park.md: translated' in result.output
-    assert '6 translated, 1 cached, 1 failed' in result.output
+    assert '8 translated, 0 cached, 1 failed.' in result.output
     assert sorted(calls) == sorted(['people/mara-ostrowski.md', 'people/theo-park.md', 'orgs/company.md', 'projects/launch.md',
-                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md'])
+                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md',
+                                    'knowledge/topic.md', 'notes/activity.md'])
     assert (notebook / 'people/avery-lin.md').read_text() == PAGE
 
 
@@ -453,8 +458,8 @@ def test_cli_backfill_category_and_owner_language_default(notebook, monkeypatch)
     assert calls[-1] == (notebook, 'people/avery-lin.md', 'zh-TW')
 
 
-@pytest.mark.parametrize('args', [[], ['--all', 'Avery Lin'], ['Avery Lin', '--category', 'people'],
-                                  ['--all', '--category', 'logs']])
+@pytest.mark.parametrize('args', [['--all', 'Avery Lin'], ['Avery Lin', '--category', 'people'],
+                                  ['--category', 'drafts']])
 def test_cli_backfill_rejects_invalid_selection_before_translating(notebook, monkeypatch, args):
     monkeypatch.setattr(tr, 'translate', lambda *a: pytest.fail('translator called'))
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', *args, '--to', 'zh'])

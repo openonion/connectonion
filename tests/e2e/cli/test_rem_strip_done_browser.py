@@ -91,10 +91,10 @@ def test_after_a_hand_off_the_strip_still_marks_done_and_take_back_is_not_undo(l
     row.get_by_role("button", name="Hand to Codex").click()
     line = row.locator(".handoff-line")
     line.get_by_text("Codex is working").wait_for(timeout=10000)
-    assert line.get_by_role("button").all_inner_texts() == ["Stop", "Take back from Codex", "Mark done", "Not now", "Ignore"]
+    assert line.get_by_role("button").all_inner_texts() == ["Mark done", "Not now", "Ignore", "Stop", "Take back from Codex"]  # closes first (#2990)
     line.get_by_text("Codex finished").wait_for(timeout=30000)
     labels = line.get_by_role("button").all_inner_texts()
-    assert labels == ["See result", "Take back from Codex", "Mark done", "Not now", "Ignore"] and "Undo" not in labels
+    assert labels == ["Mark done", "Not now", "Ignore", "See result", "Take back from Codex"] and "Undo" not in labels
     line.get_by_role("button", name="Mark done", exact=True).click()
     page.get_by_text("Saved in notebook", exact=True).wait_for()
     assert [post["state"] for post in posts] == ["done"]

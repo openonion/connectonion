@@ -40,6 +40,8 @@ SERVER_OWNED_SESSION_KEYS = (
     "permissions",
     "approval",
     "requester",
+    "_host_auto_notice_sent",
+    "_host_auto_run_turn",
 )
 
 

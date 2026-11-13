@@ -26,11 +26,17 @@ from ....core.provider_events import (
     provider_session_event,
 )
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
+from ....useful_plugins.system_reminder import reminder_message
 
 
 def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     """Map a single trace entry to a ChatItem. Returns None if the entry has no UI."""
     entry_type = entry.get('type')
+
+    if entry_type == 'host_notice' and entry.get('code') == 'non_admin_auto':
+        from ....core.host_context import AUTO_NOTICE
+        return {'id': entry.get('id') or f'notice-{idx}', 'type': 'host_notice',
+                'code': 'non_admin_auto', 'message': AUTO_NOTICE}
 
     if entry_type == 'files_received':
         return {
@@ -239,6 +245,20 @@ def _watch_event_to_item(event: dict, fallback_id: str) -> dict:
     }
 
 
+def _internal_message_opens_turn(message: dict, marker: dict) -> bool:
+    """Only a matching internal input marker can open a reminder's turn."""
+    if 'content' not in marker:
+        # Legacy traces stored bare boundaries, so retain positional matching.
+        return True
+    if not marker.get('internal'):
+        return False
+    content = marker['content']
+    return message.get('content') == content or (
+        isinstance(content, str)
+        and message.get('content') == reminder_message(content)['content']
+    )
+
+
 def session_to_chat_items(session: dict) -> list[dict]:
     """Convert session → ChatItem[] for UI rendering, interleaved chronologically by turn.
 
@@ -252,9 +272,11 @@ def session_to_chat_items(session: dict) -> list[dict]:
     # Group trace entries by turn boundary (user_input markers).
     # turn_entries[k] = list of (idx, entry) tuples for trace entries belonging to turn k.
     turn_entries: list[list[tuple[int, dict]]] = []
+    turn_markers: list[dict] = []
     current_msgs: list[tuple[int, dict]] = []
     for idx, entry in enumerate(trace):
         if entry.get('type') == 'user_input':
+            turn_markers.append(entry)
             turn_entries.append(current_msgs)
             current_msgs = []
         else:
@@ -287,10 +309,14 @@ def session_to_chat_items(session: dict) -> list[dict]:
             elif not msg.get('internal'):
                 items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
 
-            # Counted either way. The bubble is suppressed; the TURN is not — an
-            # internal message still opened one, and skipping the increment drops
-            # every tool call that turn made from the transcript. That is the
-            # regression #144's first cut shipped.
+            # Most reminders are injected within a turn without a trace boundary.
+            # Watch observations do open internal turns: consume their matching
+            # marker, preserving the trace without shifting the next user's work.
+            if msg.get('internal') and (
+                user_count >= len(turn_markers)
+                or not _internal_message_opens_turn(msg, turn_markers[user_count])
+            ):
+                continue
             user_count += 1
             if user_count < len(turn_entries):
                 for trace_idx, entry in turn_entries[user_count]:
