@@ -407,6 +407,7 @@ synology = [
 ]
 whatsapp = [
     { name = "neonize" },
+    { name = "phonenumberslite" },
 ]
 wiki = [
     { name = "openpyxl" },
@@ -440,6 +441,7 @@ requires-dist = [
     { name = "packaging", specifier = ">=23.0" },
     { name = "paramiko", marker = "extra == 'synology'", specifier = ">=5.1.0" },
     { name = "patchright", specifier = "==1.61.2" },
+    { name = "phonenumberslite", marker = "extra == 'whatsapp'", specifier = ">=8.13,<10" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "protobuf", specifier = ">=6.33.5" },
     { name = "psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
@@ -1345,6 +1347,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/41/d9/f73babd005dd7569a81789f4db9cc82efaf001af018d5752bf6d7ea14e19/phonenumbers-9.0.39.tar.gz", hash = "sha256:41a7ff0257d5a7a096a8e263da7efc0a96a6162c84ba64af2ebf8972d09e70e1", size = 2310991, upload-time = "2026-09-10T11:26:52.485Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/53/238c99f028b9c638ceae8218a33904e4b84d60e1c3bd707c0ff231b388cf/phonenumbers-9.0.39-py2.py3-none-any.whl", hash = "sha256:d83b878d0188c81a5f5e8572cedcc7262bd0ea3806eb7c8e35d8666d262a8af0", size = 2594744, upload-time = "2026-09-10T11:26:49.561Z" },
+]
+
+[[package]]
+name = "phonenumberslite"
+version = "9.0.43"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/7f/286d961f333ee8e7bd06b5150e01e90f32b2bf0ff46787239fcf7bc2fb59/phonenumberslite-9.0.43.tar.gz", hash = "sha256:829811eedb170ff8ecc7aefed2d91366e840daeb2811748adbdd15918916e2b1", size = 294673, upload-time = "2026-11-06T11:43:11.137Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/1b/2c7f383af6afe7b9581445e43a545cae738c405d04241e5e485f7d9833c0/phonenumberslite-9.0.43-py2.py3-none-any.whl", hash = "sha256:986de6a460e9f67215b00d5ec68e7b909eb7f7830581e54269d413756033913e", size = 473659, upload-time = "2026-11-06T11:43:09.584Z" },
 ]
 
 [[package]]
