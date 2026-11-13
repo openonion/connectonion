@@ -41,11 +41,11 @@ The session watch service runs in the `co ai` process and stores its state in
 `~/.co/session-watches.sqlite3`. It requires a running process to check sources
 or wake a session. Pending events and recurring schedules survive a restart;
 if an old background process ended without a recorded exit status, its result
-is reported as unknown. An unattended watch turn starts in Read only mode.
+is reported as unknown. An unattended watch turn starts in Ask first mode.
 The conversation shows a **Watch observation** separately from the Agent's
 answer. During an active turn, the Agent checks for new observations at each
 iteration boundary. A Full Access user turn defers watch data to a separate
-Read only turn.
+Ask first turn.
 
 On its first web-server start, `co ai` creates a private owner invite in
 `~/.co/keys.env`. When you run `co ai` in your own terminal, it shows the
@@ -258,13 +258,14 @@ review the diff yourself. Continue the same Codex session for any fixes.
 
 The Codex CLI must be installed and authenticated. `co ai` passes an explicit
 working directory and returns a structured result containing the resumable
-session ID. Read only starts Codex read-only and asks when it requests more
-permission. Auto permits workspace changes but still asks about untrusted
-commands, while Full access runs without prompts using Codex's
-`danger-full-access` sandbox. The policy is reapplied when a Codex session is
-resumed. Every authenticated participant receives the same selected session
-mode. Control-plane administrator authority remains separate from provider
-policy.
+session ID. Ask first (protocol ID `read-only`) starts Codex in its
+read-only sandbox and asks the operator when it requests more permission.
+A non-admin requester or no approval UI gets declined. Hosted Auto uses the
+`workspace-write` sandbox with no approval prompts. Full access uses the
+`danger-full-access` sandbox without routine prompts. The policy is reapplied
+when a Codex session is resumed. A `blocked` result or declined actions must
+be reported with the actions and reasons; it does not prove work completed.
+Control-plane administrator authority remains separate from provider policy.
 
 An explicit request such as “run Codex”, “open Codex”, or `/codex …` always
 uses the native `codex()` adapter. Raw launches through `bash`, `shell`,
@@ -325,13 +326,15 @@ Ask Claude Code to implement the parser in /path/to/repo and run the focused
 tests. Review its diff, then continue the same session for any fixes.
 ```
 
-The Claude Code CLI must be installed and authenticated. `co ai` still makes
+The Claude Code CLI must be installed and authenticated. Discovery checks
+`$CLAUDE_CODE_CMD`, then `PATH`, then the official installer location
+`~/.local/bin/claude`; a missing-CLI result names the searched locations. `co ai` still makes
 one ordinary `claude_code` tool call, but the web UI now shows inner activity
 such as `Claude Code › Read`, `Claude Code › Edit`, and `Claude Code › Bash` as
 it happens. The enclosing ConnectOnion agent keeps ownership of the final
 answer and reviews Claude's result.
 
-Read only maps to Claude's manual permission mode; Auto and Full access map to
+Ask first maps to Claude's manual permission mode; Auto and Full access map to
 Claude Auto mode unless the Work Room picks a narrower Claude option such as
 Accept edits. Bypass permissions needs the separately confirmed Full access
 ceiling, and the selected mode is supplied again when a session resumes.
@@ -348,7 +351,7 @@ of being reloaded as provider-side filesystem configuration.
 
 Claude Code runs in headless `stream-json` mode. Its inner tool activity is
 visible, but it still cannot display an unmatched Claude permission prompt in
-the `co ai` UI: Read only can run actions allowed by its bound provider mode,
+the `co ai` UI: Ask first can run actions allowed by its bound provider mode,
 while other protected actions fail closed. In Auto, Claude's own Auto-mode
 reviewer decides which in-scope edits and shell commands run; anything it still
 routes to a prompt fails closed. A denied action can be described in a successful provider
@@ -464,3 +467,19 @@ co ai --port 9000
 | Best for | Extended coding sessions | Quick tasks, scripting |
 | Output | Web UI | Printed to stdout |
 | Server | Runs on localhost | Not started |
+
+
+Each turn includes an internal reminder of its current permission mode. Intent
+cards use a neutral task label rather than promising an outcome. The
+ConnectOnion agent-building workflow is loaded only for requests to build or
+modify a ConnectOnion agent, not for general coding tasks.
+
+A user Stop returns “Stopped by you after step 3 of 6.” when the tool batch
+provides a total, or “Stopped by you after step 3.” when no total is known. The terminal `turn_result` has reason
+`interrupted` and an `interruption` object: `stopped_by`, `stopped_at` (including
+step and the recorded interrupted tool/model), `completed` (IDs and names of
+successful tools), and `not_run` (IDs and names of requested calls that never
+executed). Unrequested
+future work is not invented. An interrupted tool can have partial side effects;
+Stop does not claim rollback. Host replay retains the same structured data for
+the frontend to render.

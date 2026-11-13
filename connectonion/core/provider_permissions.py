@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .mode import AUTO, FULL_ACCESS, READ_ONLY
+from .mode import AUTO, FULL_ACCESS, READ_ONLY, MODE_NAMES
 
 _OPTION_DEFINITIONS = {
     "codex": (
@@ -26,7 +26,7 @@ _DEFAULT_OPTIONS = {
     "claude_code": {READ_ONLY: "claude:plan", AUTO: "claude:auto", FULL_ACCESS: "claude:auto"},
 }
 _CEILING = {READ_ONLY: 0, AUTO: 1, FULL_ACCESS: 2}
-_CEILING_LABEL = {READ_ONLY: "Read Only", AUTO: "Auto", FULL_ACCESS: "Full Access"}
+_CEILING_LABEL = {READ_ONLY: MODE_NAMES[READ_ONLY], AUTO: "Auto", FULL_ACCESS: MODE_NAMES[FULL_ACCESS]}
 
 
 def default_provider_permission_option(provider: str, host_mode: str) -> str:

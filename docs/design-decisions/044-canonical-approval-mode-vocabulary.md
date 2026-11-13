@@ -26,9 +26,14 @@ ConnectOnion 1.7 has exactly three public permission modes:
 
 | Canonical ID | Display name | Meaning |
 |---|---|---|
-| `read-only` | Read only | Reads may run; every effectful operation asks. |
+| `read-only` | Ask first | Asks you before every change. |
 | `auto` | Auto | The default. Deterministic policy allows safe reversible workspace work and asks or denies higher-risk work. |
 | `full-access` | Full access | Routine approvals are skipped for a positive, bounded number of user-driven turns. |
+
+The display name is **Ask first**: this mode can perform changes after
+approval, so “Read only” misrepresented its authority. The `read-only` protocol
+ID remains stable. Provider adapters may deny requests that cannot reach an
+authorized operator or approval UI.
 
 Core owns the authoritative state:
 

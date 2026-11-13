@@ -1156,7 +1156,7 @@ class TestGracefulInterrupt:
 
         result = agent.input("do work")
 
-        assert result == "What would you like me to do?"  # existing stop_signal message
+        assert result == "Stopped by you after step 1."
         assert mock_llm.call_count == 0
 
     def test_interrupt_abandons_in_flight_llm_and_next_turn_is_valid(self):
@@ -1227,7 +1227,7 @@ class TestGracefulInterrupt:
         before = time.monotonic()
         result = agent.input("first")
 
-        assert result == "What would you like me to do?"
+        assert result == "Stopped by you after step 1."
         assert time.monotonic() - before < 0.5
         assert iterations == [1]
         assert [t['status'] for t in agent.current_session['trace'] if t['type'] == 'llm_result'] == ['interrupted']
@@ -1317,7 +1317,7 @@ class TestGracefulInterrupt:
         result = agent.input("run both")
         release.set()
 
-        assert result == "What would you like me to do?"
+        assert result == "Stopped by you after step 1 of 2."
         assert second_ran is False
         assert after_tools_ran is False
         assistant_call = [
@@ -1505,7 +1505,7 @@ class TestGracefulInterrupt:
         )
         agent.io = io
 
-        assert agent.input("start") == "What would you like me to do?"
+        assert agent.input("start") == "Stopped by you after step 1."
         assert llm.calls == 1
         assert io.receive_all('INTERRUPT') == []
         assert 'stop_signal' not in agent.current_session

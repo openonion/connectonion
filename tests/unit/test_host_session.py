@@ -1393,3 +1393,25 @@ class TestCheckpointApprovalFlow:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_host_replays_user_stop_details_as_terminal_data():
+    event = {
+        "type": "turn_result", "id": "terminal", "reason": "interrupted",
+        "interruption": {"stopped_by": "user", "stopped_at": {"name": "write", "step": 2},
+                         "completed": [{"name": "read", "result": "contents"}],
+                         "not_run": [{"id": "next"}]},
+    }
+    items = session_to_chat_items({"messages": [{"role": "user", "content": "work"}],
+                                   "trace": [{"type": "user_input"}, event]})
+    assert items[-1] == event
+
+
+def test_host_replays_connectonion_build_intent_flag():
+    items = session_to_chat_items({
+        "messages": [{"role": "user", "content": "build an agent"}],
+        "trace": [{"type": "user_input"}, {"type": "intent", "id": "intent",
+                  "ack": "ConnectOnion agent creation", "is_build": True}],
+    })
+    assert items[-1]["is_build"] is True
+    assert "is_connectonion_agent_build" not in items[-1]
