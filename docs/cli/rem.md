@@ -1627,6 +1627,29 @@ below is good to about one point.
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
+- **A round the floor stops is a pause, and REM says so.** A notebook at the
+  floor did nothing for two nights (71 scheduled turns, each ending with no
+  task) while status, the night stats and the morning note all read as a
+  quiet night. Now the first turn the floor stops records the pause in
+  `.state/quota-paused.json` (when it began, the week's percent, the floor and
+  the reset), and later turns keep that start time. `co rem status` leads with
+  it:
+
+  ```
+  Codex week      Paused since Mon 09 Nov 17:00
+                  This week's Codex allowance is 90% used, at the 90% floor kept for your own work.
+                  No investigation runs until the week resets Wed 11 Nov 17:46; mail is still read.
+                  → To let REM work before then, raise the floor: co rem config set limits.quota_floor_percent PERCENT
+  ```
+
+  The morning note's first line is `REM paused: this week's Codex allowance is
+  90% used. It resumes Wed 17:46.` (Chinese: `REM 暂停中：本周 Codex 额度已用
+  90%，周三 17:46 恢复。`), sent every morning the floor holds, with
+  `"paused": "quota"` in that date's `morning.json` entry; a night the floor
+  held at any time carries `"paused": "quota"` in `night-stats.jsonl`. The pause
+  ends at the first turn the floor no longer stops, or when the week resets.
+  Waiting and raising the floor are both the owner's choice; REM changes
+  neither, and does not move the work to another runner.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
   (`limits.runner_calls_per_day`) is the only bound, as before.
