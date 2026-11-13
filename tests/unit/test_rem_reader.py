@@ -24,6 +24,12 @@ def _run_reader_js(script):
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
     privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
+    # A snapshot keeps no mark and says why on each close (#2990): snapshotWhy and markThread ask liveHere. A test
+    # that does not set the page up as one or the other gets the live reader; snapshots are browser-tested.
+    if "function snapshotWhy" not in script:
+        script = re.search(r"function snapshotWhy\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
+    if "liveHere =" not in script and "function liveHere" not in script:
+        script = "function liveHere() { return true; }\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
@@ -448,6 +454,12 @@ def test_copy_path_keeps_the_notebook_root(tmp_path, protocol):
                         for name in ["privatePassages", "unlabelled", "hasPrivacy"])
     privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
+    # A snapshot keeps no mark and says why on each close (#2990): snapshotWhy and markThread ask liveHere. A test
+    # that does not set the page up as one or the other gets the live reader; snapshots are browser-tested.
+    if "function snapshotWhy" not in script:
+        script = re.search(r"function snapshotWhy\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
+    if "liveHere =" not in script and "function liveHere" not in script:
+        script = "function liveHere() { return true; }\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
     script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)

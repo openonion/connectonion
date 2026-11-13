@@ -314,7 +314,7 @@
   .quiet-list li > div { flex: 1; min-width: 0; }
   /* The strip under a folded row (#2990): its closes are words the owner reads, so ink, not the fold's grey. */
   :is(.quiet-list, .stale) .handoff { margin: 6px 0 0; }
-  :is(.quiet-list, .stale) .handoff-line .btn-quiet { color: var(--ink); }
+  :is(.quiet-list, .stale) .handoff-line .btn-quiet:not(:disabled) { color: var(--ink); }
   /* Morning recall: the foreground is what the notebook retained, not its run log. */
   .morning { margin: 24px 0 0; padding: 24px 0; border-top: 1px solid var(--rule); color: var(--ink); }
 
@@ -3222,6 +3222,9 @@
   @keyframes n3-rise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
   @keyframes n3-fade { from { opacity: 0; } }
   @keyframes n3-pop { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+  /* A snapshot's disabled words read as unavailable: the second ink, never the first (#2990 review). --grey holds
+     at least 4.5:1 on --paper in both themes; the id outranks every strip's own ink rule. */
+  #main :is(.btn-quiet, .ibtn):disabled { color: var(--grey); }
 </style>
 </head>
 <body>
@@ -5399,7 +5402,10 @@ function markDrafts(related, value, done, state) {
 // extra: one more choice the notice offers after Undo (忽略's "stop showing this sender"; see stripDone).
 // One mark, without drawing: the thread's state here and on its way to the notebook. restore() gives the drafts it
 // set aside their statuses back when the notebook refuses it.
+// A snapshot keeps no mark: a file:// page's storage is not the live reader's and nothing carries a mark from one
+// to the other, so a "saved on this device" there was a promise nobody kept (#2990 review). null: nothing marked.
 function markThread(entry, done, state = "done", entries = [entry]) {
+  if (!liveHere()) return null;
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5413,7 +5419,9 @@ function markThread(entry, done, state = "done", entries = [entry]) {
   return { saved, restore: () => related.forEach((draft, i) => { draft.status = statuses[i]; }) };
 }
 function setDone(entry, done, state = "done", entries = [entry], extra = null) {
-  const { saved, restore } = markThread(entry, done, state, entries);
+  const mark = markThread(entry, done, state, entries);
+  if (!mark) return Promise.resolve(false);
+  const { saved, restore } = mark;
   const scroll = window.scrollY;
   render();
   window.scrollTo(0, scroll);
@@ -5536,7 +5544,7 @@ function primaryAction(entry, completion = true) {
   const { r } = entry, kind = threadKind(entry);
   const reply = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
   if (completion && reply?.state === "replied") {
-    const done = el("button", {type: "button", class: "btn-act", text: t("Mark done")});
+    const done = el("button", {type: "button", class: "btn-act", text: t("Mark done"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.")});
     done.onclick = () => setDone(entry, true);
     return done;
   }
@@ -5568,7 +5576,7 @@ function quietOnly(node) {
 // nothing here marks it done: not the quiet button, and not the green one a replied row would lead with.
 function threadActions(entry, onPage = false, strip = false) {
   const undo = isDone(entry);
-  const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done") });
+  const done = el("button", { type: "button", class: "btn-quiet", text: t(undo ? "Undo" : "Mark done"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
   done.onclick = () => setDone(entry, !undo);
   const draft = threadDraft(entry);
   const replied = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply?.state === "replied";
@@ -5727,7 +5735,7 @@ function replyDraftCard(draft, onSent) {
   const status = el("p", { class: "quiet-line mail-status", role: "status" });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
-  const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip") });
+  const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
   const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
   const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
@@ -5828,7 +5836,7 @@ function threadDecisionHistory(r) {
   return el("details", { id: "done-history", class: "done-details thread-history" }, [el("summary", { text: closedSummary(saved.map(([, value]) => value)) }),
     el("ul", { class: "threads" }, saved.map(([key, value]) => {
       const entry = { r, t: { text: key.slice(r.path.length + 1) } };
-      const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo") });
+      const undo = el("button", { type: "button", class: "btn-quiet", text: t("Undo"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
       undo.onclick = () => setDone(entry, false);
       return el("li", {}, [privateFallback(el("span", { text: entry.t.text })), " · ",
         el("span", { class: "done-tag", text: stateWord(value.state)
@@ -7094,7 +7102,8 @@ function keepOpen(entry) {
 }
 function notDoneAction({ entry, step }) {
   if (step !== "done" || !looksDone(entry)) return null;
-  const button = el("button", { type: "button", class: "btn-quiet", text: t("Not done yet") });
+  // Kept on this device only, as in the live reader, but it answers REM's guess, so a snapshot says the same as its closes.
+  const button = el("button", { type: "button", class: "btn-quiet", text: t("Not done yet"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
   button.onclick = () => keepOpen(entry);
   return button;
 }
@@ -7556,15 +7565,15 @@ function stripRow(entry, grouped = false) {
 // closes in words, with the hand-offs after them (#2990, D-100); on Today the strip sits under the row's preview.
 // On Today a long-quiet promise is already a row of its own fold above (staleWidget), so it is left out here: one
 // item, one row on the page (#2990 review). Waiting has no such fold and keeps it.
-function quietThreads(entries, count, home = false) {
-  if (!count) return null;
+// The count is the rows' own (items), so the summary never disagrees with what opens under it.
+function quietThreads(entries, home = false) {
   const items = entries.filter(entry => home ? entry.t.quiet && !staleEntry(entry) : entry.t.quiet || staleEntry(entry));
   if (!items.length) return null;
   const rows = () => home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(entry => el("li", {}, [
     el("div", {}, [el("a", { href: href(entry.r), text: threadWho(entry.r) }), el("p", { text: threadPreview(entry.t.text) }), alsoOn(entry.also),
       handOff(entry, null, null)]), el("span", { class: "quiet-age", text: age(entry.t.since) })])))
     : el("ul", { class: "threads" }, items.map(entry => stripRow(entry)));
-  const fold = el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + (home ? items.length : count) + ")" }),
+  const fold = el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + items.length + ")" }),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
   return lazyFold(fold, node => node.querySelector(":scope > summary").after(snapshotCloseLine() || "", rows()));
 }
@@ -7619,7 +7628,7 @@ function taskView(kind) {
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)), snapshotCloseLine(),
       el("ul", { class: "threads" }, items.map(entry => stripRow(entry, true)))]));
   }
-  const quiet = quietThreads(entries, counts.quiet);
+  const quiet = quietThreads(entries);
   if (quiet) main.appendChild(quiet);
   const done = markedDone(all);
   if (done) main.appendChild(done);
@@ -8118,7 +8127,7 @@ function staleWidget(entries) {
   all.onclick = () => closeAllStale(entries);
   const rows = () => entries.slice(0, 3).map(entry => {
     const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
-    const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open") });
+    const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
     keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
     return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [keep]),
@@ -8136,6 +8145,7 @@ function staleWidget(entries) {
 // notebook, so a later Undo of any one would reopen every one. The page is drawn once and says it once: one notice,
 // one Undo that reopens only the marks the notebook kept, and for any it refused one Try again for just those.
 async function closeAllStale(entries) {
+  if (!liveHere()) return;  // a snapshot keeps no mark (markThread)
   const marks = entries.map(entry => ({ entry, ...markThread(entry, true) }));
   redrawKeepingScroll();
   document.getElementById("done-notice")?.remove();
@@ -8222,7 +8232,7 @@ function todayFolds(entries, counts) {
   const recentFold = recent.length && !week.length ? el("details", { class: "week-details recent-details fold" }, [
     el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]) : null;
   const processing = el("details", { id: "processing", class: "night-details fold" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
-  return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, counts.quiet, true), weekPages, translationNotice(), recentFold, processing,
+  return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, true), weekPages, translationNotice(), recentFold, processing,
     maintenance(REM.status || {})].filter(Boolean));
 }
 

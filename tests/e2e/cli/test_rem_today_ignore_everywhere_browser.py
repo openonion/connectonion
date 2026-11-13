@@ -132,7 +132,8 @@ HAND_WHY = "Handing work to an agent happens in the live reader."
 STRIP = ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "More"]
 WRITTEN = """() => ({states: Object.keys(threadStates).length, stored: localStorage.getItem(threadStorageKey())})"""
 # A thread on Today that has gone quiet but is not a long-past promise, so it belongs to Today's Gone quiet fold.
-QUIET = """() => { REM.today_queue.find(row => row.section === 'today').quiet = true; threadEntries.cached = null; render(); }"""
+QUIET = """() => { REM.today_queue.find(row => row.section === 'today' && !/loan agreement|banner files/.test(JSON.stringify(row))).quiet = true;
+  threadEntries.cached = null; render(); }"""
 
 
 def _why(page, button):
@@ -235,3 +236,47 @@ def test_a_folds_rows_are_drawn_when_it_first_opens(today):
     fold.locator(":scope > summary").click()
     fold.locator(":scope > summary").click()
     assert fold.locator("ul.threads > li").count() == rows
+
+
+GREY = """button => { const css = getComputedStyle(button), root = getComputedStyle(document.documentElement);
+  const probe = document.createElement('i'); probe.style.color = root.getPropertyValue('--grey'); document.body.append(probe);
+  const grey = getComputedStyle(probe).color; probe.remove();
+  const lum = rgb => { const [r, g, b] = rgb.match(/[\\d.]+/g).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const bg = getComputedStyle(document.body).backgroundColor, [a, b] = [lum(css.color), lum(bg)].sort((x, y) => y - x);
+  return {grey: css.color === grey, contrast: (a + 0.05) / (b + 0.05)}; }"""
+
+
+def test_a_file_snapshots_folds_say_why_and_their_words_are_grey(reader):
+    """Review of #2990: the long-quiet fold and Gone quiet in a file:// snapshot show the closes disabled, Still open
+    too, each fold says why once, and a disabled word is the second ink at 4.5:1 or more."""
+    page, _ = reader
+    page.evaluate(ANCIENT, isolated_context=False)
+    page.evaluate(QUIET, isolated_context=False)
+    page.mouse.move(0, 0)
+    for fold in ("#today-stale", "#gone-quiet"):
+        page.locator(f"{fold} > summary").click()
+        assert page.locator(fold).inner_text().count(CLOSE_WHY) == 1, fold
+        row = page.locator(f"{fold} li").first
+        _disabled_with_reason(page, row, CLOSES, CLOSE_WHY)
+        shade = row.get_by_role("button", name="Ignore", exact=True).evaluate(GREY)
+        assert shade["grey"] and shade["contrast"] >= 4.5, (fold, shade)
+    _disabled_with_reason(page, page.locator("#today-stale li").first, ["Still open"], CLOSE_WHY)
+    assert page.locator("#gone-quiet > summary").inner_text() == f"Gone quiet ({page.locator('#gone-quiet li').count()})"
+
+
+def test_a_file_snapshots_record_page_keeps_no_mark(reader):
+    """Review of #2990: a record page's Mark done in a snapshot said "Saved on this device — sync pending" and wrote
+    file:// storage nothing ever read. Its buttons are disabled with the reason, and the mark itself is refused."""
+    page, uri = reader
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    page.locator("#main h1").first.wait_for()
+    stored = page.evaluate(WRITTEN, isolated_context=False)
+    done = page.locator("#main").get_by_role("button", name="Mark done", exact=True)
+    assert done.count() >= 1
+    for button in done.all():
+        assert button.is_disabled() and button.get_attribute("title") == CLOSE_WHY
+    page.evaluate("(() => { const r = byPath('projects/harbour.md'); return setDone({r, t: threads(r).items[0]}, true); })()", isolated_context=False)
+    assert page.evaluate(WRITTEN, isolated_context=False) == stored
+    assert page.locator("#done-notice").count() == 0
+    assert "sync pending" not in page.locator("body").inner_text()

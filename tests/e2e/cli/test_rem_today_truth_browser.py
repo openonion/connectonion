@@ -44,6 +44,7 @@ def _faces(page):
 
 def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today):
     page, _, _ = today
+    page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)  # a snapshot disables Still open too
     before = int(page.locator(".night-card .count").inner_text())
     page.evaluate(ANCIENT, isolated_context=False)
     # Not one more person waiting, and no red 170 days anywhere on the first screen.
@@ -301,6 +302,7 @@ def test_a_promise_with_no_dated_message_stays_live(today):
 
 def test_still_open_holds_for_sixty_days_then_today_asks_again(today):
     page, _, _ = today
+    page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)  # a snapshot disables Still open too
     page.evaluate(ANCIENT, isolated_context=False)
     _open_stale(page)
     page.locator(f'#today-stale li[data-path="{TOMAS}"]').get_by_role("button", name="Still open", exact=True).click()

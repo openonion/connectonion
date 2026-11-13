@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_rem_today_fuse_browser import BASE, today  # noqa: E402,F401
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CO_REM_BROWSER_TEST") != "1",
@@ -1340,7 +1342,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
         assert page.locator('#main .lede').count() == 0
         assert page.locator('#main .empty .lead').inner_text() == 'Nothing open'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
-    assert page.evaluate('quietThreads([{t: {quiet: true}}], 0) === null', isolated_context=False)
+    assert page.evaluate('quietThreads([]) === null', isolated_context=False)  # nothing quiet: no fold, never (0)
 
 
 @pytest.mark.parametrize("count", [0, 1])
@@ -5163,10 +5165,12 @@ def test_person_open_topics_are_facts_without_actions(reader, language):
     assert page.evaluate(GREEN, isolated_context=False) == 0
 
 
-def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(reader):
-    page, uri = reader
-    page.goto(uri + "#")
+def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(today):
+    # The live reader: a snapshot shows Not done yet disabled, as it does its closes (#2990 review).
+    page, _, _ = today
+    uri = BASE
     page.evaluate("""() => {
+      REM.live = true;
       // Your later mail looks like it settled her ask: REM would call it handled.
       const row = REM.today_queue.find(row => row.record === 'people/mara-ostrowski.md' && row.dir === 'mine');
       row.reply = {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'};
