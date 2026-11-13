@@ -56,6 +56,9 @@ def live(tmp_path, monkeypatch, request):
         path = req.url[len(BASE):].split("#")[0].split("?")[0]
         if not path.startswith("/rem"):
             return route.abort()
+        # A rebuild the language switch started would reload the page mid-test and close Settings.
+        if path == "/rem/version":
+            return route.fulfill(status=404, body="")
         if path == "/rem/translate-all":
             posts.append((req.method, req.headers.get("content-type")))
             fault = faults.pop(0) if faults else "pass"
@@ -149,7 +152,23 @@ def test_a_refused_start_says_so_in_words_and_a_dropped_poll_is_retried(live):
     expect(control.locator(".ta-state")).to_have_text("翻译请求没被接受，请稍后再试。")
     assert not calls
     # Started for real, its next status poll is lost on the way: the line says so and asks again.
-    page.faults.extend(["pass", "abort"])
+    # Then a status poll is refused (409): the job keeps its running line and the poll goes on.
+    page.faults.extend(["pass", "abort", 409])
     control.get_by_role("button", name="全部翻译成中文").click()
     expect(control.locator(".ta-state")).to_have_text("所有页面都已是中文。", timeout=30000)
     assert sorted(calls) == ["# Avery Lin", "# Fernhill pilot"]
+
+
+@pytest.mark.parametrize("live", [True], indirect=True)
+def test_a_refused_status_poll_keeps_the_running_line_and_polling(live):
+    from patchright.sync_api import expect
+    page, root, calls, gate, _ = live
+    control = _settings(page)
+    control.get_by_role("button", name="全部翻译成中文（2 页）").click()
+    expect(control.get_by_role("button", name="停止翻译")).to_be_visible(timeout=10000)
+    page.faults.extend([409, 409])
+    page.wait_for_timeout(3500)                                       # two refused polls
+    assert control.locator(".ta-state").inner_text() != "翻译请求没被接受，请稍后再试。"
+    expect(control.get_by_role("button", name="停止翻译")).to_be_visible()
+    gate.set()
+    expect(control.locator(".ta-state")).to_have_text("所有页面都已是中文。", timeout=20000)

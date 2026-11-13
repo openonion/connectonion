@@ -7890,10 +7890,13 @@ async function translateAllSend(action) {
   } catch {
     translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: true };
   }
-  if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false };
+  // A refused start or stop says so. A refused status read is a busy moment: the line keeps what it said (a
+  // running job stays running) and asks again, waiting longer each time, like a request that never arrived.
+  if (response && !response.ok && action === "status") translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: false, retry: true };
+  else if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false, retry: false };
   else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
   for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
-  if (translateAllJob.offline) {
+  if (translateAllJob.offline || translateAllJob.retry) {
     translateAllWait = Math.min(translateAllWait * 2, 30000);
     translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
   } else if (["starting", "running", "stopping"].includes(translateAllJob.state)) {

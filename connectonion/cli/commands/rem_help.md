@@ -452,8 +452,8 @@ Options:  With no PAGE, translates every page not yet read in your language,
           Without a terminal (an agent, a script) it starts only with --all.
           Logs, the skills catalog index and pages held for review or
           duplicated are left out. The open reader's 全部翻译成中文 button runs
-          the same job; only one runs at a time, and the night's translation
-          pass waits for it. --to defaults to the language you read REM in.
+          the same job; only one runs at a time, and the night skips its
+          translation pass that round. --to defaults to your reading language.
           --category limits it to one category. Put --root PATH before
           translate to select another notebook. A failed page does not stop
           the rest; any failure gives exit 1. --json returns outcomes and counts.

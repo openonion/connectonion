@@ -200,37 +200,68 @@ def test_the_quota_floor_stops_the_host_job_in_words(notebook, tmp_path_factory,
     assert len(calls) == 1 and stopped["halted"].startswith("the Codex week is at 95%")
 
 
-def _dead_pid():
+# A holder in another process: it takes the job's lock the way claim() does, says so, and waits.
+HOLDER = """
+import sys, time
+from pathlib import Path
+from connectonion.rem import translate
+translate.claim(Path(sys.argv[1]))
+print("held", flush=True)
+time.sleep(60)
+"""
+
+
+def _holder(root):
+    import os
     import subprocess
     import sys
-    child = subprocess.Popen([sys.executable, "-c", "pass"])
-    child.wait()
-    return child.pid
+    child = subprocess.Popen([sys.executable, "-c", HOLDER, str(root)], stdout=subprocess.PIPE, text=True,
+                             env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+    assert child.stdout.readline().strip() == "held"
+    return child
 
 
-def test_a_running_job_holds_a_claim_the_night_and_a_second_cli_respect(notebook, monkeypatch):
-    import os
-    from connectonion.rem import native_round
+def _night_translates(notebook, calls):
+    from connectonion.rem import native_round, service
     from connectonion.rem.config import read_config
     from connectonion.rem.daily import _translate_changed
-    from connectonion.rem.files import state_path, write_json
-    calls = []
-    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
-    write_json(state_path(notebook, "translate-all.json"), {"pid": os.getpid(), "started_at": "2026-11-13T10:00:00+00:00"})
-    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
-    assert result.exit_code != 0 and "already translating every page" in result.output and not calls
-    maintenance = {}
-    _translate_changed(notebook, read_config(notebook), maintenance, [], None, lambda text: None)
-    assert "translations" not in maintenance and not calls
-    from connectonion.rem import service
+    from connectonion.rem.files import state_path
     cursor = {"changed": [], "shown_today": [], "translation_attempts": [], "phase": "daily-translation",
               "task_day": service.notebook_today(notebook).isoformat()}
     directory = state_path(notebook, "tasks/claim-test")
-    directory.mkdir(parents=True)
-    assert native_round.prepare_translation(notebook, cursor, read_config(notebook), directory) is None
-    # A claim whose process is gone is ignored: the night goes on, and the CLI runs.
-    write_json(state_path(notebook, "translate-all.json"), {"pid": _dead_pid(), "started_at": "2026-11-13T10:00:00+00:00"})
-    assert native_round.prepare_translation(notebook, cursor, read_config(notebook), directory) is not None
+    directory.mkdir(parents=True, exist_ok=True)
+    native = native_round.prepare_translation(notebook, cursor, read_config(notebook), directory) is not None
+    maintenance, before = {}, len(calls)
+    _translate_changed(notebook, read_config(notebook), maintenance, [], None, lambda text: None)
+    return native, "translations" in maintenance and len(calls) > before
+
+
+def test_a_running_job_holds_a_lock_the_night_and_a_second_cli_respect(notebook, monkeypatch):
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    holder = _holder(notebook)
+    try:
+        result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
+        assert result.exit_code != 0 and "already translating every page" in result.output and not calls
+        assert _night_translates(notebook, calls) == (False, False)        # the night skips that round
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+def test_a_crashed_holder_or_a_reused_pid_never_blocks_the_night_or_a_new_run(notebook, monkeypatch):
+    import os
+    from connectonion.rem.files import state_path, write_json
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    holder = _holder(notebook)
+    holder.kill()                                                         # kill -9: the OS lets the lock go
+    holder.wait()
+    # Its status file is left behind naming a live process (here: this one, as after a pid is reused).
+    write_json(state_path(notebook, "translate-all.json"), {"pid": os.getpid(), "started_at": "2026-11-13T10:00:00+00:00"})
+    assert _night_translates(notebook, calls) == (True, True)
+    calls.clear()
+    (notebook / "people/avery-lin.md").write_text(ENGLISH.replace("Fridays", "Mondays"))
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
     assert result.exit_code == 0, result.output
-    assert not state_path(notebook, "translate-all.json").exists()              # released when done
+    assert calls == ["# Avery Lin"] and not state_path(notebook, "translate-all.json").exists()

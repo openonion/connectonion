@@ -2453,9 +2453,11 @@ category. It costs one model turn per page, and the first line says how many:
 without a terminal (an agent exploring help, a script) it starts only with
 `--all`. Before each page it reads the Codex week and stops at
 `limits.quota_floor_percent`, the floor kept for your own work, saying where it
-stopped. One job runs at a time (`.state/translate-all.json` holds its process
-id; a claim whose process is gone is ignored): a second run says one is already
-running, and the night's translation pass skips itself while it runs. Omit `--to` to use the
+stopped. One job runs at a time: it holds an OS lock on
+`.state/translate-all.lock` for its whole life, which the system lets go when
+the process ends, even after a crash or a reboot (`.state/translate-all.json`
+only says since when, for display). A second run says one is already running,
+and a night round that comes while it runs skips its translation pass. Omit `--to` to use the
 language you read REM in (the one owner-language rule, `languages.owner_language`).
 
 Chinese, English and mixed pages: a page counts as already in your language when

@@ -334,39 +334,54 @@ def quota_floor(root: Path, config: dict):
     return lambda: quota.floor_block(quota.meter(root, config), config["limits"])
 
 
-# Claimed while a translate-every-page job runs (the CLI or the Host's), so a second one and the
-# night's translation pass leave it alone. A claim whose process is gone is ignored.
-CLAIM = "translate-all.json"
+# Held while a translate-every-page job runs (the CLI or the Host's), so a second one and the night's
+# translation pass leave it alone. An OS lock (flock), not a pid in a file: the OS lets it go when the
+# process dies, so a kill -9 or a reboot never leaves it stuck, and taking it is one atomic step. The
+# status file beside it only says since when, for the words shown; it never decides anything.
+LOCK, STATUS = "translate-all.lock", "translate-all.json"
+HELD: dict[str, int] = {}
+
+
+def _lock_fd(root: Path) -> int:
+    path = state_path(root, LOCK)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
 
 
 def claimed(root: Path) -> dict | None:
-    from .files import read_json
-    holder = read_json(state_path(root, CLAIM), None)
-    if not isinstance(holder, dict) or not isinstance(holder.get("pid"), int):
-        return None
+    """What the running job's status file says ({} when unreadable), or None when no job holds the lock."""
+    from .files import _try_lock, read_json
+    if str(Path(root).resolve()) in HELD:
+        return read_json(state_path(root, STATUS), {})
+    fd = _lock_fd(root)
     try:
-        os.kill(holder["pid"], 0)
-    except ProcessLookupError:
-        return None
-    except PermissionError:
-        pass  # alive, another user's
-    return holder
+        _try_lock(fd)
+    except BlockingIOError:
+        return read_json(state_path(root, STATUS), {})
+    finally:
+        os.close(fd)  # closing lets go of a lock just taken to look
+    return None
 
 
 def claim(root: Path) -> None:
+    from .files import _try_lock, read_json
     from .service import now
-    holder = claimed(root)
-    if holder:
-        raise RemError(f"REM is already translating every page (since {holder.get('started_at', 'earlier')}); "
-                       "it stops by itself when done")
-    write_json(state_path(root, CLAIM), {"pid": os.getpid(), "started_at": now().isoformat(timespec="seconds")})
+    fd = _lock_fd(root)
+    try:
+        _try_lock(fd)
+    except BlockingIOError:
+        os.close(fd)
+        since = read_json(state_path(root, STATUS), {}).get("started_at", "earlier")
+        raise RemError(f"REM is already translating every page (since {since}); it stops by itself when done") from None
+    HELD[str(Path(root).resolve())] = fd
+    write_json(state_path(root, STATUS), {"pid": os.getpid(), "started_at": now().isoformat(timespec="seconds")})
 
 
 def release(root: Path) -> None:
-    path = state_path(root, CLAIM)
-    from .files import read_json
-    if path.is_file() and read_json(path, {}).get("pid") == os.getpid():
-        path.unlink()
+    fd = HELD.pop(str(Path(root).resolve()), None)
+    if fd is not None:
+        state_path(root, STATUS).unlink(missing_ok=True)
+        os.close(fd)
 
 
 # The owner (2026-11-13): «有的页面是中文，有的是英文，有的是中英文混合，一键让 Codex 全部都翻译。»
