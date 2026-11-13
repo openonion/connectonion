@@ -2110,6 +2110,13 @@ Mailboxes
   meter, `✓`, every progress bar), yellow for what needs a fix.
 - Progress: one live line per stage (spinner, what it is doing, a 24-cell bar,
   `i/N` bold, elapsed dim); a finished stage leaves `✓ what it found`.
+- A file error says what failed. A file that could not be opened or written
+  is `Cannot read or write the selected co rem files: <the system's error, with
+  the path>`. A file that was read but is not text names the file when REM
+  knows it: `…/web/chart.png is not UTF-8 text (invalid start byte at position
+  0); it was read, so this is not a permission problem`. On 2026-11-12 a PNG
+  saved as a research capture was reported as a read or write failure, and the
+  owner went looking for a permission problem.
 
 ## What `sync` prints, and where the tokens went (#2043, #2044)
 
