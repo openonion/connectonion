@@ -243,7 +243,7 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-5")
 response = llm_do("Hello", model="co/claude-sonnet-4")
-response = llm_do("Hello", model="co/gemini-3.8-flash")
+response = llm_do("Hello", model="co/gemini-4-hydrogen")
 ```
 
 **Available models:**

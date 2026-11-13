@@ -194,10 +194,14 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # "what is the default model" was previously answered by separate literals
 # that drifted apart. The previous default stays on FREE_MANAGED_MODELS
 # below as the rollback.
-# Gemini 3.8, by the owner's decision (#1869). 1.8.9b10 made the free co/llama
-# (Llama 3.1 8B) the default; free models are what `co status` suggests when
-# the balance reaches 0, not what every new Agent silently gets.
-DEFAULT_MODEL = "co/gemini-3.8-flash"
+# Gemini 4 Hydrogen, by the owner's decision (2026-11-13): the cheapest
+# Gemini 4 model, $1.50/$7.50 against 3.8 Flash's $0.75/$3.75 until that
+# promotion ends on 2027-01-01. Carbon and Argon stay one name away for hard
+# reasoning. Verified from a fresh free identity: a tool-calling Agent and an
+# audio transcription both completed. Earlier (#1869): 1.8.9b10 made the free
+# co/llama the default; free models are what `co status` suggests when the
+# balance reaches 0, not what every new Agent silently gets.
+DEFAULT_MODEL = "co/gemini-4-hydrogen"
 DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 
 # Which managed models a free account can call. The backend refuses the rest
@@ -211,6 +215,7 @@ DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-4-hydrogen",
     "co/gemini-3.8-flash",
     "co/llama",
     "co/gemma",

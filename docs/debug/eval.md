@@ -132,7 +132,7 @@ from connectonion import Agent
 agent = Agent(
     name="my_agent",
     tools=[...],
-    model="co/gemini-3.8-flash"
+    model="co/gemini-4-hydrogen"
 )
 
 if __name__ == "__main__":

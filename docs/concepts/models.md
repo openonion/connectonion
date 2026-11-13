@@ -38,12 +38,12 @@ response = agent.input("Hello!")
 
 ## The default model
 
-The default is `co/gemini-3.8-flash`, routed through the managed gateway
+The default is `co/gemini-4-hydrogen`, routed through the managed gateway
 without exposing Google's key to the client. Out of credits? `co status` says
 how to keep going for free: `co/gemma`, Google's Gemma on ConnectOnion's GPU
 (4,096-token context, one shared inference slot), or a local model as
 `ollama/<model>`. The free `co/llama` works the same way. Select
-`gemini-3.8-flash` to use your own `GEMINI_API_KEY`, or explicitly choose an
+`gemini-4-hydrogen` to use your own `GEMINI_API_KEY`, or explicitly choose an
 OpenAI, Anthropic, or older Gemini model. Provider failures do not silently
 move a request to another model.
 
@@ -51,17 +51,17 @@ move a request to another model.
 
 Every model below works with your own API key. Managed keys (`co/` prefix) route
 exactly the models in `connectonion/core/usage.py`: free on every account,
-`co/gemini-3.8-flash` (default), `co/llama`, `co/gemma`,
-`co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`,
+`co/gemini-4-hydrogen` (default), `co/gemini-3.8-flash` (rollback), `co/llama`,
+`co/gemma`, `co/gemini-3.7-flash`, `co/gemini-3.6-flash`, `co/gemini-3.5-flash`,
 `co/gemini-2.5-pro` and `co/gemini-2.5-flash`; paid, once the account has credits, `co/gpt-5`,
 `co/o4-mini` and `co/claude-sonnet-4`. Those are marked `# Managed` below.
 
-Gemini 4 has three models and no Flash. `co/gemini-4-carbon` is the most
-capable and `co/gemini-4-argon` spends fewer thinking tokens per turn; both are a
-Pro-tier price, 2.7x the default today and 5.3x from 2026-12-01.
-`co/gemini-4-hydrogen` is the everyday one at $1.50 / $7.50, 2x the default
-until 3.8 Flash's own price rises on 2027-01-01. You reach each by naming it; the
-default stays on 3.8 Flash.
+Gemini 4 has three models and no Flash. `co/gemini-4-hydrogen`, the default, is
+the everyday one at $1.50 / $7.50. `co/gemini-4-carbon` is the most capable and
+`co/gemini-4-argon` spends fewer thinking tokens per turn; both cost $2.00 /
+$10.00 until they double on 2026-12-01, so you reach them by naming them. The
+rollback is `co/gemini-3.8-flash`, the previous default ($0.75 / $3.75 until
+2027-01-01).
 
 ### OpenAI Models
 
@@ -99,8 +99,8 @@ agent = Agent("assistant", model="o4-mini")         # Your key
 #### Gemini 3 (Newest - State-of-the-Art Reasoning)
 ```python
 # Newest Flash workhorse - frontier intelligence built for speed (the default)
-agent = Agent("assistant", model="co/gemini-3.8-flash")  # Managed
-agent = Agent("assistant", model="gemini-3.8-flash")     # Your key
+agent = Agent("assistant", model="co/gemini-4-hydrogen")  # Managed
+agent = Agent("assistant", model="gemini-4-hydrogen")     # Your key
 
 # Image generation model with grounded generation
 agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
@@ -195,11 +195,11 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
 | gemini-4-carbon | Google | Most capable Gemini 4; Pro-tier price, not the default | ✅ |
 | gemini-4-argon | Google | Gemini 4 reasoning with fewer thinking tokens; Pro-tier price, not the default | ✅ |
-| gemini-4-hydrogen | Google | Everyday Gemini 4 for coding and agents; not the default | ✅ |
-| gemini-3.8-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-4-hydrogen | Google | Default model; everyday Gemini 4 for coding and agents | ✅ |
+| gemini-3.8-flash | Google | Selectable rollback model (the default until 2026-11-13) | ✅ |
 | co/gemma | ConnectOnion GPU | Free text and tool calling; the zero-balance tip | No |
 | co/llama | ConnectOnion GPU | Free text and tool calling | No |
-| gemini-3.7-flash | Google | Selectable rollback model | ✅ |
+| gemini-3.7-flash | Google | Older fast Gemini | ✅ |
 | gemini-3.6-flash | Google | Legacy fast Gemini | ✅ |
 | gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
@@ -259,9 +259,9 @@ All prices are **per 1M tokens** and match official provider pricing:
 |-------|-------|--------|-------|
 | gemini-4-carbon | $2.00 | $10.00 | Most capable Gemini 4. Doubles to $4.00 / $20.00 on 2026-12-01 |
 | gemini-4-argon | $2.00 | $10.00 | Gemini 4 reasoning. Doubles to $4.00 / $20.00 on 2026-12-01 |
-| gemini-4-hydrogen | $1.50 | $7.50 | Everyday Gemini 4. No announced change |
-| gemini-3.8-flash | $0.75 | $3.75 | **Default model** - promotional pricing through 2026-12-31 |
-| gemini-3.7-flash | $0.75 | $3.75 | Selectable rollback model with the same promotional rates |
+| gemini-4-hydrogen | $1.50 | $7.50 | **Default model** - everyday Gemini 4, no announced change |
+| gemini-3.8-flash | $0.75 | $3.75 | Selectable rollback model - promotional pricing through 2026-12-31 |
+| gemini-3.7-flash | $0.75 | $3.75 | Older fast Gemini with the same promotional rates |
 | gemini-3.6-flash | $1.50 | $7.50 | Legacy fast Gemini |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
@@ -320,7 +320,7 @@ class Result(BaseModel):
 
 # Works with all OpenAI and Gemini models
 result = llm_do("What is 2+2?", output=Result, model="co/o4-mini")
-result = llm_do("What is 2+2?", output=Result, model="co/gemini-3.8-flash")
+result = llm_do("What is 2+2?", output=Result, model="co/gemini-4-hydrogen")
 
 # Works with Claude 4.5/4.1 models only
 result = llm_do("What is 2+2?", output=Result, model="claude-sonnet-4-5")  # ✅ your own key
@@ -345,7 +345,7 @@ def calculate(expression: str) -> float:
 tools = [search, calculate]
 
 agent_openai = Agent("assistant", model="gpt-5", tools=tools)
-agent_google = Agent("assistant", model="gemini-3.8-flash", tools=tools)
+agent_google = Agent("assistant", model="gemini-4-hydrogen", tools=tools)
 agent_claude = Agent("assistant", model="claude-sonnet-4-5", tools=tools)
 ```
 
@@ -365,7 +365,7 @@ from connectonion import Agent
 
 # Use any model with co/ prefix
 agent = Agent("assistant", model="co/gpt-5")
-agent = Agent("assistant", model="co/gemini-3.8-flash")
+agent = Agent("assistant", model="co/gemini-4-hydrogen")
 agent = Agent("assistant", model="co/claude-sonnet-4")
 ```
 
@@ -421,7 +421,7 @@ from connectonion import Agent
 
 # Use models without co/ prefix
 agent = Agent("assistant", model="gpt-5")
-agent = Agent("assistant", model="gemini-3.8-flash")
+agent = Agent("assistant", model="gemini-4-hydrogen")
 agent = Agent("assistant", model="claude-opus-4.1")
 agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
 agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
@@ -463,7 +463,7 @@ agent = Agent("assistant", model="mistral/mistral-large-latest")
 ```python
 # Top tier models from each provider
 agent = Agent("assistant", model="gpt-5")             # OpenAI flagship
-agent = Agent("assistant", model="gemini-3.8-flash")  # Google flagship
+agent = Agent("assistant", model="gemini-4-hydrogen")  # Google flagship
 agent = Agent("assistant", model="claude-sonnet-4-5") # Anthropic flagship
 ```
 
@@ -480,7 +480,7 @@ agent = Agent("coder", model="claude-sonnet-4-5")
 ```python
 # Fastest options from each provider
 agent = Agent("quick", model="gpt-5-nano")       # OpenAI fastest
-agent = Agent("quick", model="gemini-3.8-flash") # Google fast
+agent = Agent("quick", model="gemini-4-hydrogen") # Google fast
 agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```
 
@@ -494,13 +494,13 @@ agent = Agent("budget", model="gemini-2.5-flash-lite") # Google cheapest
 **Long Context (>200K tokens)**
 ```python
 # Models with longest context windows
-agent = Agent("reader", model="gemini-3.8-flash")      # 1M tokens
+agent = Agent("reader", model="gemini-4-hydrogen")      # 1M tokens
 ```
 
 **Multimodal (Images, Audio, Video)**
 ```python
 # Gemini Flash models are fully multimodal
-agent = Agent("multimodal", model="gemini-3.8-flash")  # Audio, video, images, PDF
+agent = Agent("multimodal", model="gemini-4-hydrogen")  # Audio, video, images, PDF
 
 # Alternatives
 agent = Agent("multimodal", model="gpt-5")           # Images, text
@@ -516,12 +516,12 @@ from connectonion import Agent
 
 # With managed keys (easiest)
 agent_openai = Agent("assistant", model="co/gpt-5")
-agent_google = Agent("assistant", model="co/gemini-3.8-flash")
+agent_google = Agent("assistant", model="co/gemini-4-hydrogen")
 agent_claude = Agent("assistant", model="co/claude-sonnet-4")
 
 # OR with your own API keys
 agent_openai = Agent("assistant", model="gpt-5")
-agent_google = Agent("assistant", model="gemini-3.8-flash")
+agent_google = Agent("assistant", model="gemini-4-hydrogen")
 agent_claude = Agent("assistant", model="claude-opus-4.1")
 
 # Same interface for all
@@ -706,7 +706,7 @@ agent = Agent("assistant", model="gpt-4o-mini")
 ```python
 # Any provider, any model
 agent = Agent("assistant", model="gpt-5")
-agent = Agent("assistant", model="gemini-3.8-flash")
+agent = Agent("assistant", model="gemini-4-hydrogen")
 agent = Agent("assistant", model="claude-sonnet-4-5")
 ```
 

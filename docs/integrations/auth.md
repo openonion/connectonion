@@ -135,7 +135,7 @@ llm_do("Hello", model="co/claude-sonnet-4")
 
 ### Google Models
 ```python
-llm_do("Hello", model="co/gemini-3.8-flash")
+llm_do("Hello", model="co/gemini-4-hydrogen")
 ```
 
 ## Real-World Examples

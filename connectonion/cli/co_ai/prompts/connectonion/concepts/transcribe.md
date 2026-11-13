@@ -12,7 +12,7 @@ text = transcribe("meeting.mp3")
 print(text)
 
 # With your own Gemini API key
-text = transcribe("meeting.mp3", model="gemini-3.8-flash")
+text = transcribe("meeting.mp3", model="gemini-4-hydrogen")
 ```
 
 That's it! One function for audio-to-text.
@@ -110,11 +110,11 @@ result = agent.input("Transcribe the file meeting.mp3 and summarize it")
 
 ```python
 # OpenOnion managed keys (default - no API key needed)
-transcribe("audio.mp3", model="co/gemini-3.8-flash")
-transcribe("audio.mp3", model="co/gemini-3.8-flash")
+transcribe("audio.mp3", model="co/gemini-4-hydrogen")
+transcribe("audio.mp3", model="co/gemini-4-hydrogen")
 
 # Your own Gemini API key (set GEMINI_API_KEY)
-transcribe("audio.mp3", model="gemini-3.8-flash")
+transcribe("audio.mp3", model="gemini-4-hydrogen")
 ```
 
 ## Error Handling
