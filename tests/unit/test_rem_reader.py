@@ -2041,7 +2041,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const age = () => '', blockerTag = () => null, threadDraft = () => null, draftNote = () => null;
       const english = facts(r);
       uiLanguage = 'zh';
-      const f = facts(r), role = PEOPLE_COLUMNS.find(c => c.key === 'role').cell(r, f);
+      const f = facts(r), role = PEOPLE_COLUMNS.find(c => c.key === 'role').cell({r, f});
       const relation = relationCard(localizedRelation({path: r.path, via: r.path, kind: 'linked',
         basis: 'Role: Head of Partnerships', sources: []}, 'orgs/fernhill-labs.md'), 'orgs/fernhill-labs.md');
       console.log(JSON.stringify({english: english.role, role: f.role, location: f.location,
@@ -2711,7 +2711,7 @@ def test_session_preview_preserves_web_links_while_hiding_local_paths():
 
 
 def test_person_and_today_use_the_same_merged_obligation_and_source_record():
-    function = re.search(r'function personEntries\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in ('entriesFor', 'personEntries'))
     result = _run_reader_js(function + r"""
       const r = {path: 'people/mara.md'}, origin = {path: 'people/avery.md'};
       const current = {dir: 'mine', text: 'You owe Mara the signed plan [2].', since: '2026-10-23'};

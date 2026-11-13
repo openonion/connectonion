@@ -1360,7 +1360,9 @@
   /* People (#2991): the page's name on one line with Columns, then the table; a phone gets the rows as cards. */
   .people-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
   .people-head h1 { margin: 0; }
-  .people-chooser { position: relative; margin-left: auto; }
+  .people-find { margin-left: auto; width: 220px; min-width: 0; height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius); background: var(--paper); outline: var(--hair) solid var(--rule); color: var(--ink); font: var(--s-meta) var(--font); }
+  .people-find::placeholder { color: var(--grey); }
+  .people-chooser { position: relative; }
   .people-columns { position: absolute; right: 0; top: calc(100% + 4px); z-index: 6; display: grid; gap: 2px; min-width: 200px; padding: 8px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); font: var(--s-meta) var(--font); }
   .people-columns[hidden] { display: none; }
   .people-columns label { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; cursor: pointer; white-space: nowrap; }
@@ -1380,7 +1382,7 @@
     /* .sheet.people-table: the shared narrow .sheet rules (.name and .c-open widths, nowrap numbers) must not size the cards. */
     .people-head { flex-wrap: wrap; align-items: center; }
     .people-sort { display: block; min-height: 44px; max-width: 100%; padding: 6px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
-    .people-chooser { margin-left: 0; }
+    .people-find { order: 5; flex-basis: 100%; width: auto; height: 44px; margin-left: 0; }
     .people-chooser .r4-btn { min-height: 44px; }
     .people-scroll { max-height: none; overflow: visible; border: 0; }
     .sheet.people-table thead { display: none; }
@@ -3282,7 +3284,7 @@ const UI = {
     "{name} is waiting on you": "{name} 在等你",
     "Recently in touch": "最近联系",
     "Messages · 90 days": "近 90 天消息", "Who wrote last": "最后谁写", "Open items": "未结事项", "Page depth": "页面深度",
-    "Columns": "列", "Recent two-way contact": "最近双向往来",
+    "Columns": "列", "Filter name, company, role": "筛选姓名、公司、角色",
     "{n} more items": "其余 {n} 件",
     "Show all {n} entries": "显示全部 {n} 条",
     "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
@@ -5578,6 +5580,8 @@ function openWriter(draft, who, onSend) {
   body.focus();
 }
 function threadDraft(entry) {
+  // No drafts, no answer: skip working out the evidence (People asks this for every person's items).
+  if (!REM.drafts?.length) return undefined;
   const ids = obligationEvidence(entry).ids;
   const drafts = (REM.drafts || []).filter(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return drafts.find(d => d.status === "prepared" || d.status === "no_reply") || drafts[0];
@@ -8281,10 +8285,27 @@ function looksDone(entry) {
   return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
 }
 // The merged queue first; a thread on the page that the queue has not projected yet still shows.
-function personEntries(r) {
-  const entries = threadEntries().filter(entry => (entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) && entry.t.dir !== "third");
+// Today's entries by the person they name, rebuilt only when Today's list is: People asks for every person at once.
+function entriesFor(path) {
+  const list = threadEntries();
+  if (entriesFor.source !== list) {
+    entriesFor.source = list;
+    entriesFor.index = new Map();
+    for (const entry of list) {
+      if (entry.t.dir === "third") continue;
+      for (const at of new Set([entry.r.path, ...(entry.also || []).map(other => other.path)])) {
+        if (!entriesFor.index.has(at)) entriesFor.index.set(at, []);
+        entriesFor.index.get(at).push(entry);
+      }
+    }
+  }
+  return entriesFor.index.get(path) || [];
+}
+// The page's own threads can be passed in when they are already parsed (facts(r).open is threads(r).items).
+function personEntries(r, items = threads(r).items) {
+  const entries = entriesFor(r.path);
   const listed = new Set(entries.flatMap(entry => (entry.members || [entry]).map(doneKey)));
-  const own = threads(r).items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
+  const own = items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
   return [...entries, ...own];
 }
 function byUrgency(a, b) {
@@ -8642,48 +8663,73 @@ function listTodayLink(text) {
   return text ? el("a", { class: "list-today", href: "#", text }) : null;
 }
 // ---------- People: the page's name, then the table (owner, 2026-11-13, #2991, #2841) ----------
-// «上来直接就是表格»: People is what has settled, so no count of who is waiting, no Today link, no
-// filters and no lede above it. The columns compare people; the phone shows the same rows as cards.
+// «上来直接就是表格»: People is what has settled, so no count of who is waiting and no Today link.
+// The title row holds the page's name, a filter and Columns; one grey line under the table says who
+// is left out of it. The columns compare people; the phone shows the same rows as cards.
 function relation(r) { return r.index?.relationship || null; }
-// The last time both sides had written (relationship_stats.py), then any mail, then the page's own date.
+// Ties fall to the last time both sides had written (relationship_stats.py), then any mail, then the page's own date.
 function byTwoWay(a, b) {
   const x = relation(a), y = relation(b);
   return (y?.last_two_way || "").localeCompare(x?.last_two_way || "") || (y?.last_mail || "").localeCompare(x?.last_mail || "") || byActivity(a, b);
 }
-function openItems(r) { return personEntries(r).filter(entry => !isDone(entry) && !looksDone(entry)).length; }
-function depthCell(r) {
-  const mark = moon(known(r).status);
+// The same liveness as Today's rows (todayGroups): not done, not quiet, not stale, not already answered.
+function openItems(r, f = facts(r)) {
+  return personEntries(r, f.open).filter(entry => !isDone(entry) && !looksDone(entry) && !entry.t.quiet
+    && (entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry))).length;
+}
+// One row's values, worked out once per draw: sorting and cells read these, never recompute them.
+function peopleRow(r) {
+  const f = facts(r);
+  return { r, f, open: openItems(r, f), org: personOrg(r), rel: relation(r), status: known(r).status };
+}
+function depthCell(status) {
+  const mark = moon(status);
   mark.setAttribute("aria-hidden", "true");
-  return el("span", { class: "depth" }, [mark, t(known(r).status)]);
+  return el("span", { class: "depth" }, [mark, t(status)]);
 }
 const DEPTH_RANK = { "Investigated": 0, "Partly investigated": 1, "Mapped": 2 };
+const blank = value => value === "" || value == null ? null : value;
+// A sort key of null is a blank: it goes last whichever way the column is sorted.
 const PEOPLE_COLUMNS = [
-  { key: "name", label: "Name", sort: r => r.title.toLowerCase(), cell: r => el("span", { class: "nm" }, [el("a", { href: href(r), text: r.title }), updatedMarker(r)]) },
-  { key: "org", label: "Organisation", sort: r => (personOrg(r)?.name || "￿").toLowerCase(), cell: r => personOrg(r) ? el("span", { class: "clamp", title: personOrg(r).full || "", text: personOrg(r).name }) : textCell("") },
-  { key: "last", label: "Last contact", num: true, desc: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)) },
-  { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: r => relation(r)?.messages_90d ?? -1,
-    cell: r => relation(r)?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(relation(r).messages_90d) }) },
-  { key: "lastby", label: "Who wrote last", sort: r => ({ false: 0, true: 1 })[relation(r)?.last_from_you] ?? 2,
-    cell: r => relation(r)?.last_from_you == null ? textCell("") : el("span", { text: t(relation(r).last_from_you ? "You" : "Them") }) },
-  { key: "open", label: "Open items", num: true, desc: true, sort: r => openItems(r), cell: r => el("span", { class: openItems(r) ? "mono" : "mono unk", text: String(openItems(r)) }) },
-  { key: "depth", label: "Page depth", sort: r => DEPTH_RANK[known(r).status] ?? 2, cell: r => depthCell(r) },
+  { key: "name", label: "Name", sort: d => d.r.title, cell: d => el("span", { class: "nm" }, [el("a", { href: href(d.r), text: d.r.title }), updatedMarker(d.r)]) },
+  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? el("span", { class: "clamp", title: d.org.full || "", text: d.org.name }) : textCell("") },
+  { key: "last", label: "Last contact", num: true, desc: true, sort: d => blank(d.f.last), cell: d => dateCell(d.f.last, mappedContact(d.r)) },
+  { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: d => blank(d.rel?.messages_90d),
+    cell: d => d.rel?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(d.rel.messages_90d) }) },
+  { key: "lastby", label: "Who wrote last", sort: d => d.rel?.last_from_you == null ? null : d.rel.last_from_you ? 1 : 0,
+    cell: d => d.rel?.last_from_you == null ? textCell("") : el("span", { text: t(d.rel.last_from_you ? "You" : "Them") }) },
+  { key: "open", label: "Open items", num: true, desc: true, sort: d => d.open, cell: d => el("span", { class: d.open ? "mono" : "mono unk", text: String(d.open) }) },
+  { key: "depth", label: "Page depth", sort: d => DEPTH_RANK[d.status] ?? 2, cell: d => depthCell(d.status) },
   // Chosen from Columns; off by default.
-  { key: "role", label: "Role", extra: true, sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
-  { key: "email", label: "Email", extra: true, sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? peopleEmails(f.email) : textCell("") },
-  { key: "phone", label: "Phone", extra: true, sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? peoplePhones(f.phone) : textCell("") },
+  { key: "role", label: "Role", extra: true, sort: d => blank(plainValue(d.f.role)), cell: d => textCell(d.f.role) },
+  { key: "email", label: "Email", extra: true, sort: d => blank(d.f.email), cell: d => d.f.email ? peopleEmails(d.f.email) : textCell("") },
+  { key: "phone", label: "Phone", extra: true, sort: d => blank(d.f.phone), cell: d => d.f.phone ? peoplePhones(d.f.phone) : textCell("") },
   ...[["contact", "Contact · 52 weeks"], ["trend", "Warming / cooling"], ["starts", "Who writes first"], ["replies", "Reply times"]].map(([key, label]) => ({
-    key, label, extra: true, desc: key !== "replies", cell: r => relationshipCell(r, key), sort: r => {
-      const x = relation(r);
-      return key === "contact" ? x?.weekly_messages.reduce((a, b) => a + b, 0) ?? -1 : key === "trend" ? x?.change_percent ?? -Infinity : key === "starts" ? x?.started_by_them_percent ?? -1 : x?.reply_seconds_them ?? Infinity;
+    key, label, extra: true, desc: key !== "replies", cell: d => relationshipCell(d.r, key), sort: d => {
+      const x = d.rel;
+      return blank(key === "contact" ? x?.weekly_messages.reduce((a, b) => a + b, 0) : key === "trend" ? x?.change_percent : key === "starts" ? x?.started_by_them_percent : x?.reply_seconds_them);
     } })),
-  { key: "mails", label: "Mails", extra: true, num: true, desc: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? t("{n} from them, {m} from you", { n: f.received, m: f.sent }) : "", text: String(f.mails) }) }];
+  { key: "mails", label: "Mails", extra: true, num: true, desc: true, sort: d => blank(d.f.mails),
+    cell: d => d.f.mails == null ? textCell("") : el("span", { class: "mono", title: d.f.sent != null ? t("{n} from them, {m} from you", { n: d.f.received, m: d.f.sent }) : "", text: String(d.f.mails) }) }];
 // co-rem-people-columns holds the chosen keys; its older "more" / "less" read as all columns / the default ones.
 function peopleColumnKeys(saved) {
   if (saved === "more") return PEOPLE_COLUMNS.map(col => col.key);
   const keys = (saved && saved !== "less" ? saved.split(",") : []).filter(key => PEOPLE_COLUMNS.some(col => col.key === key));
   return keys.length ? ["name", ...keys.filter(key => key !== "name")] : PEOPLE_COLUMNS.filter(col => !col.extra).map(col => col.key);
 }
-const PEOPLE_SORT = { sort: null, desc: false };
+// The default is the visible Last contact column, newest first (review of #2991).
+const PEOPLE_SORT = { sort: "last", desc: true };
+// Names sort as the reader reads them: pinyin order in Chinese, numbers by value.
+function peopleOrder(col, desc) {
+  const collator = new Intl.Collator(uiLanguage === "zh" ? "zh-u-co-pinyin" : "en", { numeric: true, sensitivity: "base" });
+  const sign = desc ? -1 : 1;
+  return (a, b) => {
+    const x = a.keys[col.key], y = b.keys[col.key];
+    if (x === null || y === null) return x === y ? byTwoWay(a.r, b.r) : x === null ? 1 : -1;
+    const order = typeof x === "string" ? collator.compare(x, y) : x - y;
+    return order ? order * sign : byTwoWay(a.r, b.r);
+  };
+}
 function peopleChooser(draw) {
   const button = el("button", { type: "button", class: "r4-btn sm ghost people-columns-open", "aria-expanded": "false", text: t("Columns") });
   const panel = el("div", { class: "people-columns", hidden: "" }, PEOPLE_COLUMNS.filter(col => col.key !== "name").map(col => {
@@ -8699,37 +8745,57 @@ function peopleChooser(draw) {
   button.onclick = () => { panel.hidden = !panel.hidden; button.setAttribute("aria-expanded", String(!panel.hidden)); };
   return el("div", { class: "people-chooser" }, [button, panel]);
 }
+// Who is not in the table, in one grey line under it: never a count of who is waiting.
+function peopleFoot() {
+  const { held, service } = peopleExclusions(), missing = REM.people_coverage?.missing;
+  const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
+    held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
+    service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory()]);
+}
 function peopleView(items) {
   const main = document.getElementById("main");
   const thead = el("thead"), tbody = el("tbody");
   const scroller = el("div", { class: "sheet-scroll people-scroll", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("people") }) }, [el("table", { class: "sheet people-table" }, [thead, tbody])]);
   const sortSelect = el("select", { class: "people-sort", "aria-label": t("Sort by") });
+  const find = el("input", { type: "search", class: "people-find", placeholder: t("Filter name, company, role"), "aria-label": t("Filter {category}", { category: label("people").toLowerCase() }) });
+  const empty = el("div", { class: "people-empty" });
+  const rows = items.map(peopleRow);
+  for (const d of rows) d.text = [d.r.title, d.org?.name || "", plainValue(d.f.company), plainValue(d.f.role), d.f.email].join(" ").toLowerCase();
   const draw = () => {
     const cols = PEOPLE_COLUMNS.filter(col => peopleColumns.includes(col.key));
     const col = cols.find(x => x.key === PEOPLE_SORT.sort);
-    const sign = PEOPLE_SORT.desc ? -1 : 1;
-    const rows = [...items].sort(col ? (a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byTwoWay(a, b)) * sign; } : byTwoWay);
+    const needle = find.value.trim().toLowerCase();
+    const shown = rows.filter(d => !needle || d.text.includes(needle));
+    if (col) for (const d of shown) (d.keys = d.keys || {})[col.key] ??= col.sort(d);
+    shown.sort(col ? peopleOrder(col, PEOPLE_SORT.desc) : (a, b) => byTwoWay(a.r, b.r));
     thead.replaceChildren(el("tr", {}, cols.map(c => {
       const sorted = col === c;
-      const button = el("button", { type: "button" }, [t(c.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (PEOPLE_SORT.desc ? "↓" : "↑") : "" })]);
+      const button = el("button", { type: "button" }, [t(c.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (PEOPLE_SORT.desc ? "↓" : "↑") : "↕" })]);
       button.onclick = () => { PEOPLE_SORT.desc = sorted ? !PEOPLE_SORT.desc : !!c.desc; PEOPLE_SORT.sort = c.key; draw(); };
       return el("th", { scope: "col", class: "c-" + c.key + (c.key === "name" ? " name" : "") + (c.num ? " num" : ""), "aria-sort": sorted ? (PEOPLE_SORT.desc ? "descending" : "ascending") : "none" }, [button]);
     })));
-    tbody.replaceChildren(...rows.map(r => el("tr", { "data-href": href(r) }, cols.map(c => {
-      const cell = c.cell(r, facts(r));
+    tbody.replaceChildren(...shown.map(d => el("tr", { "data-href": href(d.r) }, cols.map(c => {
+      const cell = c.cell(d);
       return el("td", { class: "c-" + c.key + (c.key === "name" ? " name" : "") + (c.num ? " num" : ""), "data-label": t(c.label), "data-empty": String(!!cell.classList?.contains("unk") && c.key !== "open") }, [cell]);
     }))));
-    sortSelect.replaceChildren(el("option", { value: "", text: t("Recent two-way contact") }), ...cols.map(c => el("option", { value: c.key, text: t(c.label) })));
+    scroller.hidden = !shown.length;
+    empty.replaceChildren(...(shown.length ? [] : rows.length ? [emptyState("No matching pages", "Clear filters →", "#c=people", () => { find.value = ""; draw(); find.focus(); })]
+      : [emptyState("No contacts yet")]));
+    sortSelect.replaceChildren(...cols.map(c => el("option", { value: c.key, text: t(c.label) })));
     sortSelect.value = col ? col.key : "";
   };
-  sortSelect.onchange = () => { PEOPLE_SORT.sort = sortSelect.value || null; PEOPLE_SORT.desc = !!PEOPLE_COLUMNS.find(c => c.key === PEOPLE_SORT.sort)?.desc; draw(); };
+  sortSelect.onchange = () => { PEOPLE_SORT.sort = sortSelect.value; PEOPLE_SORT.desc = !!PEOPLE_COLUMNS.find(c => c.key === PEOPLE_SORT.sort)?.desc; draw(); };
+  find.oninput = draw;
+  // Enter opens the first match: type a name, press Enter, you are on the page.
+  find.onkeydown = event => { const first = tbody.querySelector("tr[data-href]"); if (event.key === "Enter" && first) location.hash = first.dataset.href; };
   tbody.addEventListener("click", event => {
     const row = event.target.closest("tr[data-href]");
     if (row && !event.target.closest("a") && !String(window.getSelection())) location.hash = row.dataset.href;
   });
   draw();
   main.appendChild(el("div", { class: "r4 r4-people wide" }, [
-    el("div", { class: "people-head" }, [el("h1", { text: label("people") }), sortSelect, peopleChooser(draw)]), scroller, contactDirectory()]));
+    el("div", { class: "people-head" }, [el("h1", { text: label("people") }), find, sortSelect, peopleChooser(draw)]), scroller, empty, peopleFoot()]));
 }
 
 function ledeSeparator(text) {
@@ -8753,7 +8819,7 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
-  if (c === "people" && (items.length || (REM.contact_candidates || []).length)) { peopleView(items); return; }
+  if (c === "people") { peopleView(items); return; }
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
   main.appendChild(el("h1", { text: c === "all" ? t("All records") : label(c) }));

@@ -87,6 +87,10 @@ def _open(browser, uri, width, locale="en-US"):
     return page, errors
 
 
+def _headers(page):
+    return [text.replace("↕", "").replace("↑", "").replace("↓", "").strip() for text in page.locator(".people-table thead th").all_inner_texts()]
+
+
 def _names(page):
     return page.locator(".people-table tbody td.c-name a").all_inner_texts()
 
@@ -94,16 +98,19 @@ def _names(page):
 def test_people_opens_on_the_table_with_only_the_title_above_it(tmp_path, monkeypatch, browser):
     page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
     table = page.locator(".people-table")
-    assert page.locator(".people-table thead th").all_inner_texts() == COLUMNS
+    assert _headers(page) == COLUMNS
+    # The default sort is the visible Last contact column, newest first, and says so with its arrow.
+    assert page.locator(".people-table th.c-last").get_attribute("aria-sort") == "descending"
+    assert page.locator(".people-table th.c-last").inner_text().endswith("↓")
+    assert page.locator(".people-table th.c-name").inner_text().endswith("↕")
     # Nothing between the page's name and the table: no count, no Today link, no filters, no lede.
     main = page.locator("#main").inner_text()
     assert main.split(COLUMNS[0])[0].split() == ["People", "Columns"]
-    for word in ("waiting", "Waiting", "in Today", "owe", "Show all"):
+    for word in ("waiting on you", "Waiting", "in Today", "owe", "Show all"):
         assert word not in main, word
     head = table.locator("thead").bounding_box()
     assert head["y"] < 160 and table.locator("tbody tr").nth(4).bounding_box()["y"] < 1000
-    # Default order: the last time both sides wrote; someone who only writes in comes after.
-    assert _names(page) == ["Inès Halvorsen", "Tomás Reyes", "Mara Ostrowski", "Quinn Alder", "Noor Bakhtiar"]
+    assert _names(page) == ["Mara Ostrowski", "Noor Bakhtiar", "Inès Halvorsen", "Tomás Reyes", "Quinn Alder"]
     mara = table.locator("tbody tr").filter(has_text="Mara Ostrowski")
     assert mara.locator("td.c-org").inner_text() == "Fernhill Labs"
     assert mara.locator("td.c-m90").inner_text() == "31"
@@ -128,36 +135,123 @@ def test_no_waiting_words_on_people_in_chinese(tmp_path, monkeypatch, browser):
     assert not errors, errors
 
 
-def test_every_column_sorts_both_ways_and_the_choice_of_columns_is_kept(tmp_path, monkeypatch, browser):
+MONOTONIC = r"""key => {
+  const col = PEOPLE_COLUMNS.find(c => c.key === key);
+  const desc = document.querySelector('.people-table th.c-' + key).getAttribute('aria-sort') === 'descending';
+  const collator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
+  const keys = [...document.querySelectorAll('.people-table tbody tr')].map(tr =>
+    col.sort(peopleRow(byPath(decodeURIComponent(tr.dataset.href.slice(3))))));
+  const firstBlank = keys.indexOf(null);
+  if (firstBlank >= 0 && keys.slice(firstBlank).some(k => k !== null)) return 'blank before a value';
+  const values = keys.filter(k => k !== null);
+  for (let i = 1; i < values.length; i++) {
+    const order = typeof values[i] === 'string' ? collator.compare(values[i - 1], values[i]) : values[i - 1] - values[i];
+    if (desc ? order < 0 : order > 0) return 'out of order at ' + i;
+  }
+  return 'ok';
+}"""
+
+
+def test_every_column_sorts_both_ways_with_blanks_last(tmp_path, monkeypatch, browser):
     page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
-    keys = ["name", "org", "last", "m90", "lastby", "open", "depth"]
+    page.evaluate("() => { peopleColumns = peopleColumnKeys('more'); render(); }", isolated_context=False)
+    keys = page.evaluate("PEOPLE_COLUMNS.map(c => c.key)", isolated_context=False)
+    assert len(keys) == 15
     for key in keys:
         header = page.locator(f".people-table th.c-{key}")
-        header.locator("button").click()
-        first = header.get_attribute("aria-sort")
-        assert first in ("ascending", "descending"), key
-        order = _names(page)
-        header.locator("button").click()
-        assert header.get_attribute("aria-sort") != first, key
-        assert _names(page) == list(reversed(order)) or key in ("org", "lastby", "open", "depth"), key
+        for _ in range(2):
+            header.locator("button").click()
+            assert page.evaluate(MONOTONIC, key, isolated_context=False) == "ok", (key, header.get_attribute("aria-sort"))
+        assert header.get_attribute("aria-sort") in ("ascending", "descending")
     page.locator(".people-table th.c-name button").click()
     if page.locator(".people-table th.c-name").get_attribute("aria-sort") != "ascending":
         page.locator(".people-table th.c-name button").click()
     assert _names(page) == sorted(_names(page), key=str.lower)
-    page.locator(".people-table th.c-m90 button").click()
-    counts = [int(text) for text in page.locator(".people-table tbody td.c-m90").all_inner_texts()]
-    assert counts == sorted(counts, reverse=True)
-    # The column choice lives in the existing co-rem-people-columns setting and survives a reload.
+    assert not errors, errors
+
+
+def test_chinese_names_sort_in_pinyin_order(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    page.evaluate("""() => {
+      const titles = {'people/mara-ostrowski.md': '张伟', 'people/tomas-reyes.md': '李娜', 'people/ines-halvorsen.md': '王芳'};
+      for (const [path, title] of Object.entries(titles)) byPath(path).title = title;
+      setInterfaceLanguage('zh');
+    }""", isolated_context=False)
+    page.locator(".people-table th.c-name button").click()
+    if page.locator(".people-table th.c-name").get_attribute("aria-sort") != "ascending":
+        page.locator(".people-table th.c-name button").click()
+    chinese = [name for name in _names(page) if not name.isascii()]
+    assert chinese == ["李娜", "王芳", "张伟"]  # li, wang, zhang
+    assert not errors, errors
+
+
+def test_the_choice_of_columns_is_kept_and_reads_the_older_setting(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
     page.get_by_role("button", name="Columns").click()
     page.get_by_role("checkbox", name="Messages · 90 days").uncheck()
     page.get_by_role("checkbox", name="Email").check()
-    headers = page.locator(".people-table thead th").all_inner_texts()
+    headers = _headers(page)
     assert "Messages · 90 days" not in headers and "Email" in headers
     assert "m90" not in page.evaluate("localStorage.getItem('co-rem-people-columns')")
     page.reload()
     page.locator(".people-table tbody tr").first.wait_for()
-    headers = page.locator(".people-table thead th").all_inner_texts()
+    headers = _headers(page)
     assert "Messages · 90 days" not in headers and "Email" in headers
+    # The setting's older values: "more" was every column, "less" the default ones.
+    for saved, count in (("more", 15), ("less", 7)):
+        page.evaluate("saved => localStorage.setItem('co-rem-people-columns', saved)", saved)
+        page.reload()
+        page.locator(".people-table tbody tr").first.wait_for()
+        assert len(_headers(page)) == count, saved
+    assert not errors, errors
+
+
+def test_the_filter_beside_the_title_narrows_and_enter_opens_the_first_match(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    find = page.locator(".people-head .people-find")
+    assert abs(find.bounding_box()["y"] - page.locator(".people-head h1").bounding_box()["y"]) < 40
+    find.fill("ledgerline")
+    assert _names(page) == ["Inès Halvorsen"]
+    find.fill("no-such-invented-person")
+    assert page.locator(".empty .lead").inner_text() == "No matching pages"
+    page.locator(".empty a").click()
+    assert len(_names(page)) == 5
+    find.fill("mara")
+    find.press("Enter")
+    page.get_by_role("heading", name="Mara Ostrowski", exact=True).wait_for()
+    assert not errors, errors
+
+
+def test_open_items_follow_today_and_the_footer_counts_who_is_left_out(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    mara = lambda: int(page.locator(".people-table tbody tr").filter(has_text="Mara Ostrowski").locator("td.c-open").inner_text())
+    before = mara()
+    assert before >= 1
+    # An item marked done in Today leaves this count too.
+    page.evaluate("""() => {
+      const live = personEntries(byPath('people/mara-ostrowski.md')).find(e => !isDone(e) && !looksDone(e) && !e.t.quiet
+        && (e.t.dir === 'mine' ? waitingOnYou(e) : !answered(e) && !staleEntry(e)));
+      threadStates[doneKey(live)] = {state: 'done'}; render();
+    }""", isolated_context=False)
+    assert mara() == before - 1
+    # A thread gone quiet (over 60 days, no due date) is not in Today, so it is not counted here.
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      for (const key of ['text', 'original']) if (r[key]) r[key] = r[key].replace('## Open threads\n', '## Open threads\n- You owe Mara the archived budget file, requested 2026-05-01.\n');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    assert mara() == before - 1
+    foot = page.locator(".r4-people .r4-foot .held-note")
+    assert foot.count() <= 1
+    assert page.locator(".r4-people .r4-foot").bounding_box()["y"] > page.locator(".people-scroll").bounding_box()["y"]
+    assert not errors, errors
+
+
+def test_people_without_pages_say_so(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    page.evaluate("() => { REM.records = REM.records.filter(r => r.category !== 'people' || r.path === REM.owner); REM.contact_candidates = []; render(); }", isolated_context=False)
+    assert page.locator(".r4-people .empty .lead").inner_text() == "No contacts yet"
+    assert page.locator(".people-table tbody tr").count() == 0
     assert not errors, errors
 
 
@@ -173,23 +267,26 @@ def test_phone_shows_the_people_as_cards(tmp_path, monkeypatch, browser):
     main = page.locator("#main").inner_text()
     assert "waiting" not in main.lower() and "in Today" not in main
     # Sorting on the phone: the same columns, from one control beside the title.
+    assert page.get_by_role("combobox", name="Sort by").input_value() == "last"
     page.get_by_role("combobox", name="Sort by").select_option("name")
     assert _names(page) == sorted(_names(page), key=str.lower)
     assert not errors, errors
 
 
-def test_a_real_size_roster_renders_in_under_a_second(tmp_path, monkeypatch, browser):
-    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch, extra=150), 1440)
+def test_a_thousand_people_sorted_by_open_items_render_in_under_a_second(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch, extra=1000), 1440)
+    page.evaluate("() => { PEOPLE_SORT.sort = 'open'; PEOPLE_SORT.desc = true; }", isolated_context=False)
     timings = []
     for _ in range(3):
-        timings.append(page.evaluate(r'''() => new Promise(done => {
+        timings.append(page.evaluate(r"""() => new Promise(done => {
           location.hash = ''; setTimeout(() => {
             const start = performance.now(); location.hash = 'c=people';
-            const tick = () => document.querySelectorAll('.people-table tbody tr').length > 150
+            const tick = () => document.querySelectorAll('.people-table tbody tr').length > 1000
               ? done(performance.now() - start) : requestAnimationFrame(tick);
             tick();
           }, 200);
-        })''', isolated_context=False))
-    assert page.locator(".people-table tbody tr").count() == 155
+        })""", isolated_context=False))
+    assert page.locator(".people-table tbody tr").count() == 1005
+    assert page.locator(".people-table th.c-open").get_attribute("aria-sort") == "descending"
     assert min(timings) < 1000, timings
     assert not errors, errors

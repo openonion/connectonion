@@ -1088,17 +1088,25 @@ pinned to that edge: it comes into view with the draft.
   October 2026" or "Sep 3" count as dates. A page's undirected line can join
   a directed copy of the same request; two different requests in one email
   stay separate.
-- **People** opens straight on its table (#2991): the page's name, then one
-  row per person with name, organisation, last contact, messages in the last
-  90 days, who wrote last, open items and page depth. Nothing else sits above
-  it: no count of who is waiting and no link to Today, because People is the
-  record and what you owe lives in Today. Rows start with the people you most
-  recently had a two-way exchange with (the older of your last message to
-  them and their last message to you); any column header sorts, and **Columns** adds
-  role, email, phone, the 52-week contact chart, warming or cooling, who writes
-  first, reply times and mail count, remembered in this browser. A row opens
-  the page; on a phone each row is a card and a **Sort by** menu replaces the
-  headers. Other contacts found in mail stay folded below the table.
+- **People** opens straight on its table (#2991): the page's name with a
+  filter and **Columns** beside it, then one row per person with name,
+  organisation, last contact, messages in the last 90 days, who wrote last,
+  open items and page depth. There is no count of who is waiting and no link
+  to Today: People is the record, and what you owe lives in Today. Rows start
+  with the most recent last contact; people with the same date go in order of
+  their latest two-way exchange (the older of your last message to them and
+  theirs to you). Any column header sorts both ways, with blanks last either
+  way and names in pinyin order in Chinese. **Open items** counts what Today
+  would show for that person: not done, not quiet, not stale, not already
+  answered. **Who wrote last** reads the last indexed mail between you; a group
+  mail you sent to several people counts as *You* for each of them. Typing in
+  the filter narrows the rows by name, organisation or role, and Enter opens
+  the first match. **Columns** adds role, email, phone, the 52-week contact
+  chart, warming or cooling, who writes first, reply times and mail count,
+  remembered in this browser. One grey line under the table counts who is not
+  in it (people you write to with no page yet, possible contacts held for
+  review, service senders), and other contacts found in mail stay folded below.
+  On a phone each row is a card and a **Sort by** menu replaces the headers.
 - **Organisations and Projects** open as a sheet: one row per page, the facts
   in columns, a sticky header, sort on any shown column, filters (*Something
   open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row

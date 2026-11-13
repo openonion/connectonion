@@ -529,6 +529,9 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     page.goto(path.as_uri() + "#c=people")
     # Every person is a card in the one table (#2991); no rows list cut at 14.
     assert page.locator(".people-table tbody tr").count() >= 575
+    page.locator(".people-find").fill("Correspondent 569")
+    assert page.locator(".people-table tbody tr").count() == 1
+    page.locator(".people-find").fill("")
     directory = page.locator(".contact-directory summary")
     directory.focus()
     directory.press("Enter")
@@ -581,8 +584,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert "Nightly updates are off." in page.locator(".reader-settings").inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.keyboard.press("Escape")  # closes the settings sheet and the 更多 sheet under it
     page.locator(".first-map-actions a").click()
-    # People is the table alone (#2991); the held contact is not a row, and no note explains it there.
-    assert page.locator(".people-table tbody tr").count() == visible_people
+    assert "1 possible contact" in page.locator(".held-note").inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -4601,9 +4603,9 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
     from patchright.sync_api import expect
     page, uri = reader
-    for category in ('orgs', 'skills'):  # Projects is a board and People a plain table (#2991), neither with a filter field
+    for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
-        page.locator('.sheet-find, .r4-find, .ov-find, .skills-find').first.fill('no-such-invented-page-zzzz')
+        page.locator('.people-find, .sheet-find, .r4-find, .ov-find, .skills-find').first.fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'
         assert page.locator('.empty a').count() == 1
         page.locator('.empty a').click()
@@ -5196,6 +5198,8 @@ def test_people_are_a_record_table_with_no_today_count_above_it(reader, width, t
     assert _green_primaries(page) == []
     assert page.locator("table.people-table tbody tr").count() == 5
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.locator(".people-find").fill("mara")
+    assert page.locator(".people-table tbody td.c-name a").all_inner_texts() == ["Mara Ostrowski"]
 
 
 def _visible_green_buttons(page):
