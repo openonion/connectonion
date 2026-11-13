@@ -79,10 +79,13 @@ def test_among_ready_drafts_the_one_with_no_owner_slot_leads():
     assert deck([first, group('people/rue.md', 'done')]) == ['people/tomas.md', 'people/rue.md']
 
 
-def test_the_page_header_mark_counts_a_regional_chinese_cache():
-    result = _run_reader_js(functions('translationMark', 'originalMark', 'hasChinese') + r'''
-      UI.zh = {Original: '原文'}; uiLanguage = 'zh';
-      const el = (tag, attrs) => ({tag, ...attrs}), REM = {status: {worker: {enabled: true}}}, translationQueued = () => false;
-      console.log(JSON.stringify([translationMark({translations: {'zh-TW': '# 李'}}), translationMark({translations: {}})?.text]));
+def test_the_page_header_line_counts_a_regional_chinese_cache():
+    result = _run_reader_js(functions('translationLine', 'hasChinese') + r'''
+      UI.zh = {}; uiLanguage = 'zh';
+      const el = (tag, attrs) => ({tag, ...attrs}), translationQueued = () => false;
+      const REM = {status: {worker: {enabled: true}, translation_coverage: {zh: {requested: true}}}};
+      console.log(JSON.stringify([translationLine({translations: {'zh-TW': '# 李'}, written_in: 'en'}),
+                                  !!translationLine({translations: {}, written_in: 'en'})]));
     ''')
-    assert result == [None, '原文']
+    # A zh-TW cache is the page's Chinese version: no "not translated yet" line over it.
+    assert result == [None, True]

@@ -31,6 +31,13 @@ ANCIENT = r'''async () => {
 }'''
 
 
+def _open_stale(page):
+    """Sprint 14: the stale promises are one folded line under the desk; it opens in place."""
+    summary = page.locator("#today-stale > summary")
+    if page.locator("#today-stale").get_attribute("open") is None:
+        summary.click()
+
+
 def _faces(page):
     return page.locator(".deal .dd").all_inner_texts()
 
@@ -43,7 +50,8 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
     assert int(page.locator(".night-card .count").inner_text()) == before
     assert "170 d" not in _faces(page)
     asked = page.locator(f'#today-stale li[data-path="{TOMAS}"]')
-    assert page.locator("#today-stale .wt").inner_text() == "Maybe over · still open?"
+    assert page.locator("#today-stale > summary").inner_text() == "1 has gone quiet for a long time · Look"
+    _open_stale(page)
     assert asked.locator(".stale-when").inner_text() == "Due Apr 14; no new message for 174 days"
     assert asked.get_by_role("button").all_inner_texts() == ["Mark done", "Still open"]
     assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(192, 42, 23)"
@@ -57,6 +65,7 @@ def test_mark_done_on_a_stale_promise_closes_it_through_the_usual_path(today):
     page, _, _ = today
     page.evaluate(ANCIENT, isolated_context=False)
     before = int(page.locator(".night-card .count").inner_text())
+    _open_stale(page)
     page.locator(f'#today-stale li[data-path="{TOMAS}"]').get_by_role("button", name="Mark done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
     assert int(page.locator(".night-card .count").inner_text()) == before
@@ -237,6 +246,7 @@ def test_the_stale_widgets_more_link_opens_gone_quiet_and_shows_it(today):
       r.text = r.text.replace(/(^## Open threads[^\n]*\n)/mi, '$1' + lines + '\n');
       KNOWN.clear(); FACTS.clear(); await refreshTodayQueue(); render();
     }""", isolated_context=False)
+    _open_stale(page)
     more = page.get_by_role("link", name="2 more in Gone quiet →")
     more.click()
     quiet = page.locator("#gone-quiet")
@@ -290,6 +300,7 @@ def test_a_promise_with_no_dated_message_stays_live(today):
 def test_still_open_holds_for_sixty_days_then_today_asks_again(today):
     page, _, _ = today
     page.evaluate(ANCIENT, isolated_context=False)
+    _open_stale(page)
     page.locator(f'#today-stale li[data-path="{TOMAS}"]').get_by_role("button", name="Still open", exact=True).click()
     assert page.locator("#today-stale").count() == 0
     kept = page.evaluate("JSON.parse(localStorage.getItem(keptOpenStorageKey()))", isolated_context=False)

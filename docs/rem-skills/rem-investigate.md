@@ -21,7 +21,9 @@ result snippet may be saved and cited as that search. Queries expose only the
 subject's name, company, domain, project/repo name or public handle.
 
 The task saves raw captures under `web/` and registers URL/native ID, filename
-and read date in `web/sources.json`. Validation reads those files without
+and read date in `web/sources.json`. Captures are text; a file that is not UTF-8
+(a screenshot, image or PDF) is refused by name so the task can save the page's
+text instead. Validation reads those files without
 network calls, checks quotes against their text, and gives the claim audit the
 same originals. Newly cited web URLs need a capture. Accepted cited captures
 are retained by source, date and content hash under `.state/research`, so task

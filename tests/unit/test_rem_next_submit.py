@@ -2040,6 +2040,21 @@ def test_one_native_claim_audit_finding_returns_to_writer_and_can_be_repaired(tr
     assert 'The owner recorded' in Notebook(trial).read(record)
 
 
+def test_native_capture_that_is_not_text_is_refused_then_parked_not_crashed(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    web = Path(task['material']) / 'web'
+    web.mkdir()
+    (web / 'team.png').write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/team', 'file': 'team.png', 'date': '2026-11-06'}]))
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused' and 'team.png is not saved text' in refused['reason']
+    # The same capture again sets the task aside, so the next round moves on.
+    assert native.submit(trial, task['id'])['outcome'] == 'parked'
+
+
 def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
     record, source = _feedback(trial)
     task = native.next_task(trial)
