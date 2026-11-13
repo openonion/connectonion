@@ -1873,9 +1873,11 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses in the retained archive,
-  in the notebook's time zone. They are recomputed after promotion and on sync;
-  they describe the archive's bounds, which may not span the whole relationship.
+  messages to or from the person's own addresses (a third party's mail to more
+  than five recipients, such as a notice to a list, does not count) in the
+  retained archive, in the notebook's time zone. They are recomputed after
+  promotion and on sync; they describe the archive's bounds, which may not span
+  the whole relationship.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
