@@ -341,19 +341,19 @@ class TestRestart:
         """
         with patch.object(dts, "_ssh",
                           side_effect=[_ok(), _ok("verdict=never-started state=failed"), _ok("traceback…")]):
-            assert dts._restart("user@host", "myagent") is False
+            assert dts._restart("user@host", "myagent", 8000) is False
 
     def test_an_active_unit_passes(self):
         with patch.object(dts, "_ssh",
                           side_effect=[_ok(), _ok("verdict=up")]):
-            assert dts._restart("user@host", "myagent") is True
+            assert dts._restart("user@host", "myagent", 8000) is True
 
     def test_journal_is_shown_when_the_unit_does_not_come_up(self, capsys):
         """The traceback is what the operator needs, not an exit code."""
         with patch.object(dts, "_ssh",
                           side_effect=[_ok(), _ok("verdict=never-started state=failed"),
                                        _ok("ModuleNotFoundError: no foo")]):
-            dts._restart("user@host", "myagent")
+            dts._restart("user@host", "myagent", 8000)
 
         assert "ModuleNotFoundError" in capsys.readouterr().out
 
@@ -582,7 +582,7 @@ class TestACrashLoopIsNotASuccessfulDeploy:
             return self._ssh("")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            return dts._restart("co@host", "my-agent")
+            return dts._restart("co@host", "my-agent", 8000)
 
     def test_an_agent_that_keeps_dying_fails_the_deploy(self, capsys):
         assert self._run("verdict=crashed restarts=3 state=activating") is False
@@ -607,7 +607,7 @@ class TestACrashLoopIsNotASuccessfulDeploy:
             return self._ssh("verdict=up")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            dts._restart("co@host", "my-agent")
+            dts._restart("co@host", "my-agent", 8000)
 
         watch = next(c for c in sent if "verdict" in c)
         assert "NRestarts" in watch

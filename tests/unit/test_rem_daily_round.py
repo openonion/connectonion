@@ -179,7 +179,9 @@ def translation_root(tmp_path, monkeypatch):
     # D-104 retired the daily translation count; two pages waiting keep each run to two translations.
     from connectonion.rem import translate
     waiting = translate.backlog
-    monkeypatch.setattr(translate, 'backlog', lambda root, language, changed=(): waiting(root, language, changed=changed)[:2])
+    # These tests are about edits and failures; Today's own rows going first has its own test (test_rem_owner_language).
+    monkeypatch.setattr(translate, 'shown_today', lambda root: [])
+    monkeypatch.setattr(translate, 'backlog', lambda root, language, changed=(), shown=(): waiting(root, language, changed=changed, shown=shown)[:2])
     monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('', ''))
     monkeypatch.setattr('connectonion.rem.sessions.summarise_sessions', lambda *a, **kw: {})
     monkeypatch.setattr('connectonion.rem.sessions.summarise_line', lambda result: '')
@@ -443,7 +445,7 @@ def test_translation_usage_excludes_overlapping_manual_run(translation_root, mon
     page = "projects/harbour.md"
     calls = []
     # One page waiting: the run translates it once, beside the standalone translation.
-    monkeypatch.setattr("connectonion.rem.translate.backlog", lambda root, language, changed=(): [page])
+    monkeypatch.setattr("connectonion.rem.translate.backlog", lambda root, language, changed=(), shown=(): [page])
 
     def run(workspace, prompt, config, stage):
         calls.append(workspace)

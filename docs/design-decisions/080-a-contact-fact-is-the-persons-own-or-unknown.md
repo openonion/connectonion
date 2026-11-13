@@ -39,7 +39,10 @@ Otherwise the field says `Unknown`.
   never a mailbox provider, a relay, an agent address or a student address
   (`student.` / `ad.` subdomains, an ID as the local part).
 - **Last contact** is the last human mail between the user and them: not a
-  notice, and not a mail to more than five recipients.
+  notice, and not a mail to more than five recipients. The archive's First and
+  Last contact (`people_basics.fill`, every sync) follow the same line: a third
+  party's mail to more than five recipients that includes them is not contact
+  (#2951).
 - The same check runs on a sync's one-page turn as on an investigation, and
   `review.json` lists what went under `contacts_unverified` and what filled
   Company under `company_from_domain`.

@@ -1553,6 +1553,39 @@ def test_permission_error_never_unlinks_a_live_socket(short_sock, monkeypatch):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")
+def test_a_client_never_reads_a_half_written_pid_file(short_sock):
+    """The pid file is absent or whole, never empty, while a daemon binds.
+
+    A client that read it empty took the live daemon for a dead one and unlinked
+    its socket (the test above failed main that way, run 43215710328). Two
+    hundred binds against a reader that never stops looking: before the pid was
+    published by rename, a few of them were caught empty on every run.
+    """
+    pid_file = tp.pid_path(short_sock)
+    seen, binding = set(), threading.Event()
+    binding.set()
+
+    def read_while_binding():
+        while binding.is_set():
+            with contextlib.suppress(FileNotFoundError):
+                seen.add(Path(pid_file).read_text(encoding="utf-8"))
+
+    reader = threading.Thread(target=read_while_binding, daemon=True)
+    reader.start()
+    try:
+        for _ in range(200):
+            daemon = d.BrowserDaemon(short_sock, headless=True)
+            daemon._bind_posix()
+            daemon._srv.close()
+            os.unlink(short_sock)
+            os.unlink(pid_file)
+    finally:
+        binding.clear()
+        reader.join(timeout=5)
+    assert seen <= {str(os.getpid())}, f"a client read the pid file as {sorted(seen - {str(os.getpid())})!r}"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")
 def test_permission_error_still_clears_a_dead_owners_socket(short_sock, monkeypatch):
     """The cleanup this guard replaced must still happen when nobody is home."""
     monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)

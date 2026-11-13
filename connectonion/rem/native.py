@@ -333,6 +333,7 @@ def _next_round(root, cursor, *, scheduled, notices):
         return {"outcome": "done", "reason": "not due", "notices": notices}
     reason, meter = _stop(root, config)
     _held(root, reason)
+    quota.record_pause(root, meter, config["limits"])
     if scheduled and reason and reason != "daily cap reached":  # the call cap bounds mail too
         cursor, mail = _mail_while_held(root, cursor, config, meter, notices)
         if mail:
@@ -414,6 +415,8 @@ def _new_task(root, cursor, config, meter, notices, *, translation_only=False, m
     prepared = (native_round.prepare_batch(root, cursor, config, directory) if mail_only
                 else native_round.prepare_translation(root, cursor, config, directory) if translation_only
                 else native_round.prepare_task(root, cursor, config, directory))
+    # Pages set aside on a mailbox failure are said once, in this call's output.
+    notices = notices + cursor.pop("set_aside", [])
     if prepared is None or prepared.get("stop"):
         if prepared is None and translation_only and cursor["phase"] == "daily-translation":
             native_round.finish(root, cursor)

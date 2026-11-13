@@ -55,6 +55,16 @@ def _topic_proposal_is_offline(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _calendars_are_never_read(request, monkeypatch):
+    """The nightly round reads the owner's calendars for Agenda (#2998); no unit test may reach one,
+    even on a machine whose co login can. test_rem_calendar brings a fake calendar of its own."""
+    if request.module.__name__.endswith("test_rem_calendar"):
+        return
+    from connectonion.rem import calendar
+    monkeypatch.setattr(calendar, "available", lambda kind: False)
+
+
+@pytest.fixture(autouse=True)
 def _task_workers_never_start(request, monkeypatch):
     """No unit test starts a detached Codex worker; only test_rem_tasks, which brings a
     fake Codex, does. REM's task runner is POSIX-only (fcntl), so Windows has nothing to stub."""
