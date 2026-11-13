@@ -2083,6 +2083,10 @@ _INBOX_IDS = {
 }
 
 
+# Where `send` can go besides a chat id (#2964).
+_SEND_TO = {"whatsapp": "Chat id, a saved contact name, or a phone number with its country code"}
+
+
 # Inbox providers: feishu, lark, whatsapp, telegram, discord, slack. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
@@ -2124,7 +2128,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     def _send(
-        chat: str = typer.Argument(..., help="Chat id"),
+        chat: str = typer.Argument(..., help=_SEND_TO.get(name, "Chat id")),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
@@ -2138,9 +2142,10 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_send(name, chat, text, reply_to=reply_to, plain=plain, image=image, file=file)
 
     if with_send:
+        to_contact = f'  |  {co} send "Alex Example" "Hello"' if name in _SEND_TO else ""
         group.command("send", cls=NegativeIds,
                       epilog=f'Example:  {co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
-                             f'{co} send {chat} "Thanks" --reply-to {msg}')(_send)
+                             f'{co} send {chat} "Thanks" --reply-to {msg}{to_contact}')(_send)
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
@@ -2342,6 +2347,58 @@ def _whatsapp_group_add(
 
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
+_WA_COUNTRY = typer.Option(None, "--country", metavar="AU",
+                           help="Read local numbers (0412 345 678) as dialled in this country, by its two-letter code")
+
+
+@_whatsapp_app.command(
+    "lookup", epilog="Example:  co whatsapp lookup +61412345678  |  co whatsapp lookup 0412345678 0498765432 --country AU")
+def _whatsapp_lookup(
+    phones: List[str] = typer.Argument(..., help="Phone numbers, with the country code (+61412345678) or local with --country"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Check whether each number is on WhatsApp, and who it is: one JSON line per number with on_whatsapp, jid, name, business, about, has_photo. Exits 4 if any number is not on WhatsApp. Read-only: sends nothing to the person; runs through the listener, starting one if needed."""
+    from .commands.whatsapp_commands import handle_lookup
+    handle_lookup(phones, country)
+
+
+_whatsapp_contacts = _typer_app(
+    help="Names for WhatsApp numbers, shown in chats, log and ls and usable with send. Local only: nothing is sent to anyone.",
+    epilog='Example:  co whatsapp contacts add +61412345678 --name "Alex Example"  |  co whatsapp contacts ls  |  '
+           'co whatsapp contacts rm "Alex Example"')
+
+
+@_whatsapp_contacts.command(
+    "add", epilog='Example:  co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"  |  '
+                  'co whatsapp contacts add 0412345678 --country AU --name "Alex Example"')
+def _whatsapp_contacts_add(
+    who: str = typer.Argument(..., help="The jid `lookup` printed, or a phone number"),
+    name: str = typer.Option(..., "--name", help="What to call them in chats, log and ls; send accepts it too"),
+    note: str = typer.Option("", "--note", help="Anything to remember about them; shown by contacts ls"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Save a name for a number. Prints the jid and the name. Writes contacts.json in the WhatsApp inbox; sends nothing."""
+    from .commands.whatsapp_commands import handle_contacts_add
+    handle_contacts_add(who, name, note, country)
+
+
+@_whatsapp_contacts.command("ls", epilog="Example:  co whatsapp contacts ls")
+def _whatsapp_contacts_ls():
+    """List saved contacts, one per line: jid, name, note. Read-only."""
+    from .commands.whatsapp_commands import handle_contacts_ls
+    handle_contacts_ls()
+
+
+@_whatsapp_contacts.command("rm", epilog='Example:  co whatsapp contacts rm "Alex Example"  |  co whatsapp contacts rm +61412345678')
+def _whatsapp_contacts_rm(
+    who: str = typer.Argument(..., help="The contact's name or phone number"),
+):
+    """Forget a saved contact. Prints what was removed. Changes contacts.json only; the chat and its history stay."""
+    from .commands.whatsapp_commands import handle_contacts_rm
+    handle_contacts_rm(who)
+
+
+_whatsapp_app.add_typer(_whatsapp_contacts, name="contacts")
 app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.

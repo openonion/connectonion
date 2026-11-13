@@ -179,6 +179,10 @@ NEXT = {
     "co whatsapp react": "co whatsapp log",
     "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
     "co whatsapp group add": HANDLER,
+    "co whatsapp lookup": HANDLER,  # names the jid to save
+    "co whatsapp contacts add": HANDLER,  # names the contact to send to
+    "co whatsapp contacts ls": 'co whatsapp send "<name>" "<text>"',
+    "co whatsapp contacts rm": "co whatsapp contacts ls",
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,

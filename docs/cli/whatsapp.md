@@ -92,6 +92,7 @@ bundled protocol implementation old enough to start failing.
 ├── outbox/             replies waiting for the listener (see below)
 ├── media/              photos, documents and voice notes, as they arrived
 ├── session.db          the linked device
+├── contacts.json       names you saved with `contacts add`
 └── log
 ```
 
@@ -216,6 +217,57 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
 ```bash
 co whatsapp listen --restart     # stop the running listener, start a background one
 ```
+
+## A new person: check the number, save a name, then send
+
+Given a new client's mobile, an agent can find out whether it has WhatsApp and
+who it belongs to, and save it under a name, before anything reaches them
+(#2964).
+
+```bash
+co whatsapp lookup +61412345678                     # or: 0412345678 --country AU
+{"phone": "+61412345678", "on_whatsapp": true, "jid": "61412345678@s.whatsapp.net",
+ "name": "Alex E.", "business": "", "about": "Building things", "has_photo": true, "saved_as": ""}
+
+co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"
+co whatsapp send "Alex Example" "Hi Alex, it's the Acme team"
+```
+
+**`lookup PHONE...`** prints one JSON line per number. It asks WhatsApp's
+servers, the same queries a phone's contact sync makes, and sends nothing to
+the person, so it is safe to run unattended. Like `send`, it goes through the
+listener and starts one if none is running.
+
+- `on_whatsapp: false` is an answer, not an error: the line says so, and the
+  command exits **4** when any number has no account. Exit 2 is a number that
+  is not a number, 1 a listener that did not answer.
+- `name` comes from this device's synced contacts: empty for someone who has
+  never written to this number. `business` is a verified business name,
+  `about` the profile's About text, `has_photo` whether a profile photo is
+  visible to this account (a photo hidden by privacy settings reads as false).
+- Numbers carry their country code (`+61412345678`, `0061…`). A number with a
+  leading 0 is refused unless `--country AU` says how to read it, because
+  `0412345678` sent as it is names another account or none, and that would
+  look exactly like "not on WhatsApp". `--country` follows that country's own
+  dialling rules (Italy keeps its 0).
+
+**`contacts add WHO --name NAME [--note TEXT]`** saves a name, locally, in
+`~/.co/inbox/whatsapp/contacts.json`. WHO is the `jid` that `lookup` printed,
+or a phone number. `contacts ls` lists them (jid, name, note), and
+`contacts rm NAME|JID|NUMBER` forgets one. One name means one person, so a
+name already in use is refused.
+
+The saved name is what `chats`, `ls` and `log` show for that person, and what
+the listener writes as `sender_name` on new messages. It also applies when they
+write from a group that addresses them by LID, which shares no digits with
+their number: the session's LID map joins the two. `log --sender "Alex Example"`
+finds them by it.
+
+**`send` takes a saved name or a phone number** as well as a chat id. A phone
+number, or a contact saved by number rather than by jid, is checked first: the
+listener asks WhatsApp for the account and sends to the jid WhatsApp gives, or
+refuses with `+61498765432 is not on WhatsApp, so nothing was sent` and exits 1.
+`sent.jsonl` records the jid.
 
 ## Sending photos and files
 
