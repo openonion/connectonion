@@ -206,27 +206,25 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
       .every(n => n.getBoundingClientRect().right <= innerWidth + 0.5)""", isolated_context=False)
 
 
-@pytest.mark.parametrize("path, crumb", [("people/mara-ostrowski.md", ".hero-marks"), ("projects/harbour.md", ".eyebrow")])
-def test_the_translation_mark_is_small_and_sits_in_the_crumb(reader, path, crumb):
+@pytest.mark.parametrize("path, head", [("people/mara-ostrowski.md", ".person-head"), ("projects/harbour.md", ".page-head")])
+def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, path, head):
     page, calls, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');
       location.hash = 'r=' + encodeURIComponent(path); render(); }""", path, isolated_context=False)
     h1 = page.locator("#main h1").first
     h1.wait_for()
     # Opening a page only moves it up the nightly queue: nothing is translating it now, so the
-    # mark says the page is in its original language, never a "translating" that never ends.
+    # line says the page is in its original language, never a "translating" that never ends.
     assert page.locator("#main").get_by_text(re.compile("^(翻译中|翻译待处理)$")).count() == 0
-    marks = page.locator(f"#main {crumb} .lang-status")
-    assert marks.count() == 1
-    mark = marks.first
-    assert mark.inner_text() == "原文"
-    assert mark.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
+    # The owner read the old 原文 chip above the name as jargon (sprint 15): it is gone from the header.
+    assert page.locator(f"#main {head} .lang-status, #main .hero-marks .lang-status, #main .eyebrow .lang-status").count() == 0
+    line = page.locator("#main .translation-line")
+    assert line.count() == 1 and line.inner_text() == "中文版还没好，先看原文"
+    assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
-    assert mark.get_attribute("role") is None                       # not announced again on every render
-    assert mark.evaluate("(n, crumb) => !!n.closest(crumb)", crumb)
+    assert line.get_attribute("role") is None                       # not announced again on every render
     meta = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
-    assert mark.evaluate("n => getComputedStyle(n).fontSize") == meta
-    box, title, row = mark.bounding_box(), h1.bounding_box(), page.locator(f"#main {crumb}").first.bounding_box()
-    assert box["y"] + box["height"] <= title["y"]                   # not a line of its own between crumb and name
-    assert row["y"] <= box["y"] + box["height"] / 2 <= row["y"] + row["height"]
+    assert line.evaluate("n => getComputedStyle(n).fontSize") == meta
+    box, header = line.bounding_box(), page.locator(f"#main {head}").first.bounding_box()
+    assert box["y"] >= header["y"] + header["height"] - 1             # under the header, by the body
     assert page.locator("#main > p[role=status]").filter(has_text="翻译中").count() == 0
