@@ -8718,7 +8718,8 @@ function peopleColumnKeys(saved) {
   return keys.length ? ["name", ...keys.filter(key => key !== "name")] : PEOPLE_COLUMNS.filter(col => !col.extra).map(col => col.key);
 }
 // The default is the visible Last contact column, newest first (review of #2991).
-const PEOPLE_SORT = { sort: "last", desc: true };
+// The filter's words live here too, so a render (marking done, switching language) keeps them.
+const PEOPLE_SORT = { sort: "last", desc: true, text: "" };
 // Names sort as the reader reads them: pinyin order in Chinese, numbers by value.
 function peopleOrder(col, desc) {
   const collator = new Intl.Collator(uiLanguage === "zh" ? "zh-u-co-pinyin" : "en", { numeric: true, sensitivity: "base" });
@@ -8764,8 +8765,10 @@ function peopleView(items) {
   for (const d of rows) d.text = [d.r.title, d.org?.name || "", plainValue(d.f.company), plainValue(d.f.role), d.f.email].join(" ").toLowerCase();
   const draw = () => {
     const cols = PEOPLE_COLUMNS.filter(col => peopleColumns.includes(col.key));
+    // A sorted column hidden from Columns hands the sort to the first column shown, arrow and phone menu alike.
+    if (!cols.some(x => x.key === PEOPLE_SORT.sort)) Object.assign(PEOPLE_SORT, { sort: cols[0].key, desc: !!cols[0].desc });
     const col = cols.find(x => x.key === PEOPLE_SORT.sort);
-    const needle = find.value.trim().toLowerCase();
+    const needle = PEOPLE_SORT.text.trim().toLowerCase();
     const shown = rows.filter(d => !needle || d.text.includes(needle));
     if (col) for (const d of shown) (d.keys = d.keys || {})[col.key] ??= col.sort(d);
     shown.sort(col ? peopleOrder(col, PEOPLE_SORT.desc) : (a, b) => byTwoWay(a.r, b.r));
@@ -8780,13 +8783,14 @@ function peopleView(items) {
       return el("td", { class: "c-" + c.key + (c.key === "name" ? " name" : "") + (c.num ? " num" : ""), "data-label": t(c.label), "data-empty": String(!!cell.classList?.contains("unk") && c.key !== "open") }, [cell]);
     }))));
     scroller.hidden = !shown.length;
-    empty.replaceChildren(...(shown.length ? [] : rows.length ? [emptyState("No matching pages", "Clear filters →", "#c=people", () => { find.value = ""; draw(); find.focus(); })]
+    empty.replaceChildren(...(shown.length ? [] : rows.length ? [emptyState("No matching pages", "Clear filters →", "#c=people", () => { find.value = PEOPLE_SORT.text = ""; draw(); find.focus(); })]
       : [emptyState("No contacts yet")]));
     sortSelect.replaceChildren(...cols.map(c => el("option", { value: c.key, text: t(c.label) })));
     sortSelect.value = col ? col.key : "";
   };
   sortSelect.onchange = () => { PEOPLE_SORT.sort = sortSelect.value; PEOPLE_SORT.desc = !!PEOPLE_COLUMNS.find(c => c.key === PEOPLE_SORT.sort)?.desc; draw(); };
-  find.oninput = draw;
+  find.value = PEOPLE_SORT.text;
+  find.oninput = () => { PEOPLE_SORT.text = find.value; draw(); };
   // Enter opens the first match: type a name, press Enter, you are on the page.
   find.onkeydown = event => { const first = tbody.querySelector("tr[data-href]"); if (event.key === "Enter" && first) location.hash = first.dataset.href; };
   tbody.addEventListener("click", event => {
@@ -10454,7 +10458,8 @@ function skillsView(items) {
       t(nameOnly.length === 1 ? "{n} skill has only a name: " : "{n} skills have only a name: ", { n: nameOnly.length }),
       ...nameOnly.flatMap((r, i) => [i ? ", " : "", el("a", { href: href(r), text: r.title })])]));
   };
-  find.oninput = draw;
+  find.value = PEOPLE_SORT.text;
+  find.oninput = () => { PEOPLE_SORT.text = find.value; draw(); };
   box.append(find, content); draw();
   return box;
 }

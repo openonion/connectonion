@@ -222,6 +222,28 @@ def test_the_filter_beside_the_title_narrows_and_enter_opens_the_first_match(tmp
     assert not errors, errors
 
 
+def test_hiding_the_sorted_column_hands_the_sort_to_the_first_shown(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    page.get_by_role("button", name="Columns").click()
+    page.get_by_role("checkbox", name="Last contact").uncheck()
+    assert page.locator(".people-table th.c-name").get_attribute("aria-sort") == "ascending"
+    assert page.locator(".people-table th.c-name").inner_text().strip().endswith("↑")
+    assert _names(page) == sorted(_names(page), key=str.lower)
+    assert page.evaluate("document.querySelector('.people-sort').value") == "name"
+    assert not errors, errors
+
+
+def test_the_filter_survives_marking_done_and_a_language_switch(tmp_path, monkeypatch, browser):
+    page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
+    page.locator(".people-find").fill("ledgerline")
+    assert _names(page) == ["Inès Halvorsen"]
+    page.evaluate("() => render()", isolated_context=False)
+    assert page.locator(".people-find").input_value() == "ledgerline" and _names(page) == ["Inès Halvorsen"]
+    page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
+    assert page.locator(".people-find").input_value() == "ledgerline" and _names(page) == ["Inès Halvorsen"]
+    assert not errors, errors
+
+
 def test_open_items_follow_today_and_the_footer_counts_who_is_left_out(tmp_path, monkeypatch, browser):
     page, errors = _open(browser, _reader_html(tmp_path, monkeypatch), 1440)
     mara = lambda: int(page.locator(".people-table tbody tr").filter(has_text="Mara Ostrowski").locator("td.c-open").inner_text())
