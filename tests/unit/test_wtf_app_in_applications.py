@@ -131,16 +131,28 @@ def test_a_newer_app_on_the_same_channel_is_never_replaced_by_an_older_build(mac
     assert said == f"{mac.applications} has {newer}, newer than the {NEW} co runs, so co left it"
 
 
+def untouched(path: Path) -> tuple:
+    """What a write, a replace or a copy changes, and a read does not.
+
+    Not the whole stat: reading the file is the point of this check, and a read
+    moves its access time on Linux (relatime does whenever atime is not after
+    mtime, which is so for a file just written). Comparing atime failed main
+    whenever bundle() wrote the plist across a second boundary (run 43215710328).
+    """
+    info = path.stat()
+    return info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
 def test_an_identical_copy_is_left_untouched_and_costs_two_small_reads(mac):
     bundle(mac.applications, NEW)
-    before = (mac.app / "Contents" / "Info.plist").stat()
+    before = untouched(mac.app / "Contents" / "Info.plist")
 
     said = refresh(mac)
 
     assert said is None
     assert mac.copies == []                 # no 350 MB copy
     assert mac.process_list_reads == []     # not even a look at the process list
-    assert (mac.app / "Contents" / "Info.plist").stat() == before
+    assert untouched(mac.app / "Contents" / "Info.plist") == before
     assert not mac.trash.exists()
 
 

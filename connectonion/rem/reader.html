@@ -2813,9 +2813,13 @@
     width: 100%; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: none !important; }
   .mi:hover, .mi.active { background: var(--well); }
   .mi .ic { width: 16px; height: 16px; color: var(--grey); }
-  /* 更多 opens beside its button, whose foot is 530 down the rail, and grows upward so a low window keeps all of it.
+  /* 更多 opens beside its button (placeBeside sets bottom when it opens) and is never taller than the window.
      Fixed: a rail that scrolls would clip a menu positioned inside it. */
-  .rail-more { position: fixed; left: 70px; bottom: max(8px, calc(100vh - 530px)); }
+  .rail-more { position: fixed; left: 70px; max-height: calc(100vh - 16px); overflow-y: auto; }
+  .nav.you .you-name { position: fixed; left: 70px; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
+    background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
+    transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
+  .nav.you:hover .you-name, .nav.you:focus-visible .you-name { opacity: 1; transform: translate(0, -50%); }
   @media (max-height: 655px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
@@ -2898,11 +2902,13 @@
     .rail[data-open="true"] .nav .ic { width: 18px; height: 18px; }
     /* a row has room for the whole name, so it reads the name the link already carries, not the rail's short word */
     .rail[data-open="true"] .nav .w { display: none; }
-    .rail[data-open="true"] .nav::after { content: attr(aria-label); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .nav::after { content: attr(data-name); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
     .rail[data-open="true"] .nav .n { position: static; order: 1; }
     .rail[data-open="true"] .nav.more { display: none; }
     .rail[data-open="true"] .rail-more { display: block; position: static; box-shadow: none; padding: 0; animation: none; min-width: 0; }
-    .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; gap: 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .rail-more .mi .ic { width: 18px; height: 18px; }
+    .rail[data-open="true"] .nav.you .you-name { display: none; }
     .top { height: 48px; padding: 0 18px; gap: 10px; }
     .crumb { width: auto; flex: 1; color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
     .crumb a { color: var(--ink); }
@@ -3179,7 +3185,9 @@
 
   /* ---- a person: a hero card and a bento of widgets (records, never to-dos: D-30) ---- */
   .n3-person .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
-    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important; }
+    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important;
+    /* #2942: a long role or unit wraps inside its chip instead of pushing the page sideways (.r4 .chip is one line). */
+    white-space: normal; flex: 0 1 auto; height: auto; max-width: 100%; overflow-wrap: anywhere; }
   .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
   .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
   .n3-person .chip .ic { width: 14px; height: 14px; }
@@ -6572,8 +6580,8 @@ const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "book
   opportunities: "activity", works: "doc" };
 // The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
 // and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
-// name is wider than the cell; then the name stays in aria-label and one hover away, so a screen reader and a
-// search read the same words.
+// name is wider than the cell; then the name is one hover away and in the accessible name, which starts with the
+// word you see (WCAG 2.5.3: saying "Orgs" finds Orgs · Organisations). The phone sheet reads data-name.
 function railPlaces() {
   return [["today", "sun", t("Today"), "#"],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail")],
@@ -6584,7 +6592,8 @@ function railPlaces() {
     ["all", "archive", t("All records"), "#c=all", t("All records, in the rail")]];
 }
 function railCell(tag, attrs, picture, name, word = name, badge = null) {
-  return el(tag, { ...attrs, "aria-label": name, ...(word === name ? {} : { title: name }) },
+  const spoken = name.startsWith(word) ? name : word + " · " + name;
+  return el(tag, { ...attrs, "aria-label": spoken, "data-name": name, ...(word === name ? {} : { title: name }) },
     [icon(picture), el("span", { class: "w", "aria-hidden": "true", text: word }), badge]);
 }
 function railMore(active) {
@@ -6598,8 +6607,19 @@ function railMore(active) {
   const on = rest.some(([key]) => key === active);
   const button = railCell("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more" },
     "ellipsis", t("More"));
-  button.onclick = event => { event.stopPropagation(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); };
+  button.onclick = event => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+    button.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) placeBeside(menu, button);
+  };
   return [button, menu];
+}
+// 更多 opens from where its button is now (the rail scrolls in a low window): its foot level with the button's,
+// growing upward, and never above the window's top edge; its height is capped by the window in CSS.
+function placeBeside(menu, button) {
+  const foot = innerHeight - button.getBoundingClientRect().bottom;
+  menu.style.bottom = Math.max(8, Math.min(foot, innerHeight - 8 - menu.offsetHeight)) + "px";
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -6619,10 +6639,14 @@ function renderRailEnd(active) {
   const end = document.getElementById("rail-end"), owner = REM.owner && byPath(REM.owner);
   const settings = railCell("button", { type: "button", class: "nav settings-open", "aria-controls": "settings" }, "settings", t("Settings"));
   settings.onclick = openSettings;
-  // Your face is its own picture and has no word under it, so its name is one hover away.
+  // Your face is its own picture and has no word under it, so its name shows beside it on hover and on keyboard
+  // focus; fixed, so a rail that scrolls does not clip it.
   const you = owner && t("You") + " · " + owner.title;
-  end.replaceChildren(settings, owner ? el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, title: you },
-    [face(owner.title, "s")]) : null);
+  const link = owner && el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, "data-name": you },
+    [face(owner.title, "s"), el("span", { class: "you-name", "aria-hidden": "true", text: you })]);
+  // Placed from the face when it shows, as 更多 is from its button (placeBeside).
+  if (link) link.onfocus = link.onmouseenter = () => { const box = link.getBoundingClientRect(); link.lastChild.style.top = box.top + box.height / 2 + "px"; };
+  end.replaceChildren(settings, link);
 }
 // Phone (D-123): the rail and the ⌘K bar give way to a floating tab bar: 今天 · 等你 · 人物 · 搜索 · 更多.
 function renderTabbar(active) {
@@ -11380,7 +11404,9 @@ function factValue(item, from) {
   let last;
   while (walker.nextNode()) if (walker.currentNode.data.trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) last = walker.currentNode;
   if (!last) { value.appendChild(cites); return value; }
-  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S+\s*$/.exec(last.data);
+  // The marks stay with the end of the last word; a long word keeps only its last 12 characters with them, so the
+  // rest can wrap (#2942: a whole long word held on one line ran past the screen).
+  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S{1,12}\s*$/.exec(last.data);
   const range = document.createRange();
   range.setStart(last, tail.index);
   range.setEnd(value, value.childNodes.length);

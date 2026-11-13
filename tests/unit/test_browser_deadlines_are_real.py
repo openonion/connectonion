@@ -89,15 +89,28 @@ def quick(monkeypatch):
     monkeypatch.setattr(daemon_module, "DISCONNECT_POLL", 0.02, raising=False)
 
 
+def wait_until_serving(server, seconds=5.0):
+    """Until the daemon takes commands, which is later than its socket file.
+
+    _bind_posix creates the path at bind(), then writes the pid file, then
+    listens; a read verb sent in between is answered "the browser is not open"
+    by the client itself, which reads the pid file before it connects. That was
+    the first of forty commands on a loaded CI runner (run 43309838543). The
+    asyncio server serving is after all three.
+    """
+    deadline = time.monotonic() + seconds
+    while not getattr(server._srv, "is_serving", lambda: False)():
+        assert time.monotonic() < deadline, "the browser daemon never started serving"
+        time.sleep(0.02)
+
+
 def serve(sock: str, monkeypatch) -> tuple:
     monkeypatch.setenv("CO_BROWSER_SOCK", sock)
     server = BrowserDaemon(sock, headless=True)
     server.browser = stalled_core()
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
-    deadline = time.monotonic() + 5
-    while not os.path.exists(sock) and time.monotonic() < deadline:
-        time.sleep(0.02)
+    wait_until_serving(server)
     return server, thread
 
 
