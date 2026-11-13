@@ -68,6 +68,7 @@ def handle_contacts_ls(name: str) -> None:
         return
     for contact, target in sorted(contacts.items(), key=lambda item: item[0].casefold()):
         print(f"{contact}\t{target}")
+    print_tip(f'Next: co {name} send "<name>" "Hello"')
 
 
 def handle_contacts_rm(name: str, contact: str) -> None:
