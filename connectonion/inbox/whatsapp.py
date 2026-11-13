@@ -29,6 +29,7 @@ from typing import Optional
 from . import ANSWERING, SEEN, ListenerStopped, reactions_enabled
 from .formatting import to_whatsapp
 from .store import Inbox, Message, default_home, iso_utc
+from .whatsapp_contacts import resolve_chat, saved_name
 
 SDK_MISSING = (
     "The WhatsApp library is not installed. Run: pip install 'connectonion[whatsapp]'"
@@ -54,8 +55,7 @@ MEDIA_KINDS = {"image", "video", "audio", "document", "sticker"}
 # What each kind is usually saved as. The extension is a convenience for the
 # person who opens the folder; the mime recorded on the message is what a
 # caller should branch on.
-MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg",
-                "document": ".bin", "sticker": ".webp"}
+MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg", "sticker": ".webp"}
 # WhatsApp's own ceiling for media is 2 GB, but an inbox that fills a disk
 # stops answering anybody. Past this, the record says the file was too large
 # and where it would have gone, which is recoverable; a full disk is not.
@@ -286,6 +286,25 @@ def _mime_of(message, kind: str) -> str:
     except Exception:  # noqa: BLE001 - a mime we cannot read costs the caller nothing
         pass
     return ""
+
+
+def _file_name_of(message) -> str:
+    """The file name a document was sent with: `itinerary.pdf`, or ""."""
+    for descriptor, variant in message.ListFields():
+        if getattr(descriptor, "name", "") == "documentMessage":
+            return str(getattr(variant, "fileName", "") or "")
+    return ""
+
+
+def _media_suffix(kind: str, file_name: str, mime: str) -> str:
+    """What a saved file ends in. A document keeps its own extension (#2853):
+    saved as `.bin`, a PDF was a file nobody, and no `read_file`, could place."""
+    if kind != "document":
+        return MEDIA_SUFFIX.get(kind, ".bin")
+    import mimetypes
+
+    own = re.sub(r"[^A-Za-z0-9.]", "", Path(file_name).suffix)[:12]
+    return own or mimetypes.guess_extension(mime) or ".bin"
 
 
 def _quoted_reference(context, own_ids) -> Optional[dict]:
@@ -748,28 +767,49 @@ class WhatsApp:
         lookups at this size are not worth a staleness bug.
         """
         user = _user_of(jid)
-        if not user or not self.session_path.exists():
+        if not user:
             return ""
+        users = [user, *self._aliases(user)]
+        saved = saved_name(users)
+        if saved or not self.session_path.exists():
+            return saved
         import sqlite3
 
         try:
             with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
-                name = self._name_row(db, user)
-                if name:
-                    return name
-                # A LID with no contact row of its own: the phone number it
-                # belongs to may have one.
-                for (other,) in db.execute(
-                        "select pn from whatsmeow_lid_map where lid = ? limit 1", (user,)):
-                    return self._name_row(db, str(other))
-                for (other,) in db.execute(
-                        "select lid from whatsmeow_lid_map where pn = ? limit 1", (user,)):
-                    return self._name_row(db, str(other))
+                for candidate in users:
+                    name = self._name_row(db, candidate)
+                    if name:
+                        return name
         except sqlite3.Error:
             # Not whatsmeow's database, or mid-write. A missing name is a
             # missing name; it must never cost the message.
             return ""
         return ""
+
+    def contact_name(self, jid: str) -> str:
+        """The name the owner saved for this id with `contacts add`, or "" (#2964).
+
+        A sender in a migrated group arrives as a LID, which shares no digits
+        with the number the contact was saved under; the session's LID map
+        joins the two."""
+        user = _user_of(jid)
+        return saved_name([user, *self._aliases(user)]) if user else ""
+
+    def _aliases(self, user: str) -> list:
+        """The other id this account goes by: the number for a LID, the LID for a number."""
+        if not self.session_path.exists():
+            return []
+        import sqlite3
+
+        try:
+            with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
+                rows = db.execute("select pn from whatsmeow_lid_map where lid = ? "
+                                  "union select lid from whatsmeow_lid_map where pn = ?",
+                                  (user, user)).fetchall()
+        except sqlite3.Error:
+            return []
+        return [str(other) for (other,) in rows]
 
     @staticmethod
     def _name_row(db, user: str) -> str:
@@ -918,7 +958,9 @@ class WhatsApp:
             return
         directory = inbox.root / "media"
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", message.id) or "message"
-        target = directory / f"{safe}{MEDIA_SUFFIX.get(message.kind, '.bin')}"
+        mime = _mime_of(event.Message, message.kind)
+        file_name = _file_name_of(event.Message) if message.kind == "document" else ""
+        target = directory / f"{safe}{_media_suffix(message.kind, file_name, mime)}"
         try:
             directory.mkdir(parents=True, exist_ok=True)
             client.download_any(event.Message, str(target))
@@ -933,7 +975,9 @@ class WhatsApp:
             message.media = {"error": f"{type(exc).__name__}: {exc}"}
             inbox.log(f"media of {message.id} not fetched: {exc}")
             return
-        message.media = {"path": str(target), "mime": _mime_of(event.Message, message.kind), "size": size}
+        message.media = {"path": str(target), "mime": mime, "size": size}
+        if file_name:
+            message.media["name"] = file_name
         inbox.log(f"media of {message.id} saved to {target} ({size} bytes)")
 
     def keep_own(self, inbox: Inbox, event, client) -> None:
@@ -1047,8 +1091,17 @@ class WhatsApp:
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return {"kind": "document", "path": str(path), "size": size, "mime": mime, "name": path.name}
 
+    def resolve_chat(self, target: str) -> tuple:
+        """(chat id, phone to check first) for a JID, a saved contact name or a phone number."""
+        return resolve_chat(target)
+
+    def lookup(self, phones: list) -> list:
+        """Whether each number is on WhatsApp, and who it is. Sends nothing to them (#2964)."""
+        return self._request({"kind": "lookup", "phones": list(phones)})["results"]
+
     def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
-             plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> str:
+             plain: bool = False, image: Optional[str] = None, file: Optional[str] = None,
+             phone: str = "") -> str:
         """Send text to a chat. Returns the new message id.
 
         The listener owns the connection, so this hands the request over and
@@ -1067,8 +1120,8 @@ class WhatsApp:
             # The listener reads the file from this absolute path (#1856).
             return self._queue({"kind": media["kind"], "chat": chat, "path": media["path"],
                                 "name": media["name"], "mime": media["mime"], "caption": caption,
-                                "reply_to": reply_to})
-        return self._queue({"chat": chat, "text": caption, "reply_to": reply_to})
+                                "reply_to": reply_to, "phone": phone})
+        return self._queue({"chat": chat, "text": caption, "reply_to": reply_to, "phone": phone})
 
     def render(self, text: str) -> str:
         """The exact characters WhatsApp will receive, given Markdown.
@@ -1205,6 +1258,12 @@ class WhatsApp:
         yet may still be draining one."""
         try:
             kind = payload.get("kind")
+            if kind == "lookup":
+                return {"results": [self._lookup_now(phone) for phone in payload["phones"]]}
+            if payload.get("phone"):
+                # Given a number, not a WhatsApp id: only an account WhatsApp
+                # confirms gets the message, at the id WhatsApp gives for it.
+                payload = {**payload, "chat": self._account_of(payload["phone"])}
             if kind == "reaction":
                 return self._react_now(payload["chat"], payload["message_id"],
                                        payload["emoji"], payload.get("sender", ""),
@@ -1281,6 +1340,38 @@ class WhatsApp:
         if needs_invite:
             result["invite_link"] = self._client.get_group_invite_link(group)
         return result
+
+    def _account_of(self, phone: str) -> str:
+        """The JID WhatsApp gives this number; refuses one with no account."""
+        if self._client is None:
+            raise RuntimeError("not connected")
+        hit = self._client.is_on_whatsapp(f"+{phone}")[0]
+        if not hit.IsIn:
+            raise RuntimeError(f"+{phone} is not on WhatsApp, so nothing was sent. "
+                               f"Next: co whatsapp lookup +{phone}")
+        return _jid_str(hit.JID)
+
+    def _lookup_now(self, phone: str) -> dict:
+        """One number: on WhatsApp or not, its JID, the names WhatsApp will tell us, and its photo.
+
+        Two queries to WhatsApp's servers, none to the person: `is_on_whatsapp`
+        and `get_user_info` are the lookups the phone's own contact sync makes.
+        `name` comes from this device's synced contacts and is empty for
+        someone who has never written to this number; `business` is the
+        verified business name, which WhatsApp shows to anyone."""
+        if self._client is None:
+            raise RuntimeError("not connected")
+        hit = self._client.is_on_whatsapp(f"+{phone}")[0]
+        if not hit.IsIn:
+            return {"phone": f"+{phone}", "on_whatsapp": False}
+        jid = _jid_str(hit.JID)
+        info = self._client.get_user_info(hit.JID)[0].UserInfo
+        contact = self._client.contact.get_contact(hit.JID)
+        name = next((n for n in (contact.FullName, contact.FirstName, contact.PushName) if n), "")
+        return {"phone": f"+{phone}", "on_whatsapp": True, "jid": jid, "name": name,
+                "business": hit.VerifiedName.Details.verifiedName or contact.BusinessName,
+                "about": info.Status, "has_photo": bool(info.PictureID),
+                "saved_as": saved_name([_user_of(jid)])}
 
     def _send_now(self, chat: str, text: str, reply_to: Optional[str] = None) -> str:
         """The actual send, on the listener's own connection."""
