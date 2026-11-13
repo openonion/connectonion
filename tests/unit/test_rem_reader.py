@@ -844,7 +844,7 @@ def test_reader_browser_evaluate_strings_compile():
 ])
 def test_reader_interface_language_default(languages, owner, browser, expected):
     page = TEMPLATE.read_text()
-    default = page[page.index('let uiLanguage ='):page.index('let morePeopleColumns =')]
+    default = page[page.index('let uiLanguage ='):page.index('let peopleColumns =')]
     result = _run_reader_js('\n'.join([
         '(() => { const REM = ' + json.dumps({'your_languages': languages, 'owner_language': owner}) + ';',
         'const navigator = {language: ' + json.dumps(browser) + '};', default,
@@ -2027,10 +2027,10 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'personProject',
-        'factList', 'peopleCardMeta', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
+        'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
         'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
-    columns = re.search(r'const COLUMNS = (\{.*?\n\});', page, re.S).group(0)
+    columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
@@ -2053,12 +2053,12 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const age = () => '', blockerTag = () => null, threadDraft = () => null, draftNote = () => null;
       const english = facts(r);
       uiLanguage = 'zh';
-      const f = facts(r), role = COLUMNS.people.find(c => c.key === 'role').cell(r, f);
+      const f = facts(r), role = PEOPLE_COLUMNS.find(c => c.key === 'role').cell({r, f});
       const relation = relationCard(localizedRelation({path: r.path, via: r.path, kind: 'linked',
         basis: 'Role: Head of Partnerships', sources: []}, 'orgs/fernhill-labs.md'), 'orgs/fernhill-labs.md');
       console.log(JSON.stringify({english: english.role, role: f.role, location: f.location,
         paths: {facts: factList(r), subtitle: personSub(r), contact: contactStrip(r), table: role,
-          phone: peopleCardMeta(r, f), home: cardHead({r, entries: [{t: {text: '', since: ''}}]}, 0), relation}}));
+          home: cardHead({r, entries: [{t: {text: '', since: ''}}]}, 0), relation}}));
     ''')
     assert result['english'] == 'Head of Partnerships'
     assert result['role'] == '合作负责人'
@@ -2725,7 +2725,7 @@ def test_session_preview_preserves_web_links_while_hiding_local_paths():
 
 
 def test_person_and_today_use_the_same_merged_obligation_and_source_record():
-    function = re.search(r'function personEntries\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in ('entriesFor', 'personEntries'))
     result = _run_reader_js(function + r"""
       const r = {path: 'people/mara.md'}, origin = {path: 'people/avery.md'};
       const current = {dir: 'mine', text: 'You owe Mara the signed plan [2].', since: '2026-10-23'};

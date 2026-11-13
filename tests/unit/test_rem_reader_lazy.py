@@ -59,14 +59,15 @@ def test_offline_startup_finishes_details_without_navigation():
     startup = template[template.index('Promise.all([readerStorage('):].split('</script>')[0]
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
-      let detailLoad = null, detailReady = false, morePeopleColumns,
-        pendingThreads, threadStates, notebookThreads, peopleMode, notDoneKeys;
+      let detailLoad = null, detailReady = false, peopleColumns,
+        pendingThreads, threadStates, notebookThreads, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       let PEOPLE_BY_ADDRESS = new Map();
       const location = {protocol: 'file:'};
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
+      const peopleColumnKeys = () => [];
       const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();
       const frames = [];

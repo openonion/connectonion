@@ -1131,18 +1131,34 @@ pinned to that edge: it comes into view with the draft.
   October 2026" or "Sep 3" count as dates. A page's undirected line can join
   a directed copy of the same request; two different requests in one email
   stay separate.
-- **People, Organisations and Projects** open as a sheet: one row per page,
-  the facts in columns (People starts with name and summary, what's open,
-  company and last contact, each one line with the full text on hover; **More columns** reveals role, email, phone and
-  mails, remembering your choice in this browser; status is the moon beside
-  the name), a sticky header, sort on any shown column, filters (*Something open*,
-  *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
-  the page. It fits 1440 px; narrower, it scrolls inside itself with the cut
-  edge shaded and the name column held. On phones, People become cards with
-  contact details and open work; empty columns are omitted on desktop. The columns come from the notebook's
-  index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
-  the snapshot; before it does, from each page's Facts and the map's mail
-  counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
+- **People** opens straight on its table (#2991): the page's name with a
+  filter and **Columns** beside it, then one row per person with name,
+  organisation, last contact, messages in the last 90 days, who wrote last,
+  open items and page depth. There is no count of who is waiting and no link
+  to Today: People is the record, and what you owe lives in Today. Rows start
+  with the most recent last contact; people with the same date go in order of
+  their latest two-way exchange (the older of your last message to them and
+  theirs to you). Any column header sorts both ways, with blanks last either
+  way and names in pinyin order in Chinese. **Open items** counts what Today
+  would show for that person: not done, not quiet, not stale, not already
+  answered. **Who wrote last** reads the last indexed mail between you; a group
+  mail you sent to several people counts as *You* for each of them. Typing in
+  the filter narrows the rows by name, organisation or role, and Enter opens
+  the first match. **Columns** adds role, email, phone, the 52-week contact
+  chart, warming or cooling, who writes first, reply times and mail count,
+  remembered in this browser. One grey line under the table counts who is not
+  in it (people you write to with no page yet, possible contacts held for
+  review, service senders), and other contacts found in mail stay folded below.
+  On a phone each row is a card and a **Sort by** menu replaces the headers.
+- **Organisations and Projects** open as a sheet: one row per page, the facts
+  in columns, a sticky header, sort on any shown column, filters (*Something
+  open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
+  opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
+  cut edge shaded and the name column held. The columns come from the
+  notebook's index (`store.people_table`, #2067) when `.state/rem.db` exists,
+  embedded in the snapshot; before it does, from each page's Facts and the
+  map's mail counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in
+  the page); mail statistics come from `relationship_stats.py`.
   People excludes your own page, which remains under **You** in the navigation.
 - **Agent sessions** keeps topic tags and the outcome separate on each list
   card. A session page shows its summary, then the visible transcript, followed
