@@ -42,7 +42,7 @@ def prepare(root, config, *, scheduled):
     set_aside = []
     batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
-    basics_changed = refresh_basics(root)
+    basics_changed = refresh_basics(root) + project_pages.refresh_last_activity(root)
     # Skill call counts are a script over the session files, like the basics above:
     # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
     from .skill_map import map_skills

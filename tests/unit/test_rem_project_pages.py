@@ -1095,3 +1095,52 @@ def test_a_project_under_a_diary_named_parent_is_private_until_investigated_on_p
 
     world.notebook.stub_project('projects/atlas.md', 'atlas', ['/private/tmp/work/atlas'])
     assert not project_pages.private('projects/atlas.md', world.notebook.read('projects/atlas.md'))
+
+
+def _harbour_page(tmp_path):
+    """A fictional project page whose model-written Last activity cites the commit history
+    of 1 October while a coding session of 20 October is listed (#2952)."""
+    from connectonion.rem.files import state_path, write_json
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.stub_project("projects/harbour.md", "Harbour", ["/work/harbour"])
+    commits, snapshot = "project-source:" + "a" * 64, "project-source:" + "b" * 64
+    write_json(state_path(tmp_path, "project-sources/" + "a" * 64 + ".json"),
+               {"id": commits, "origin": "git:/work/harbour:ef56ab78:recent-commits", "text": "ef56ab78 2026-10-01 notes"})
+    write_json(state_path(tmp_path, "project-sources/" + "b" * 64 + ".json"),
+               {"id": snapshot, "origin": "git:/work/harbour:checkout-state", "text": "clean"})
+    page = book.read("projects/harbour.md")
+    page = page.replace("- Last activity: Unknown", "- Last activity: 2026-10-01 — deployment notes (commit ef56ab78) [4]")
+    page = page.replace("- Status: Unknown", "- Status: quiet since 2026-10-01 [4]")
+    page = page.replace("- (none yet)", f"- [3] codex:session:harbour-plan — 2026-10-20\n- [4] {commits} — 2026-10-01\n"
+                                        f"- [5] {snapshot} — 2026-11-02\n- [6] web:https://example.test/harbour — 2026-11-03")
+    book.write("projects/harbour.md", page)
+    return book
+
+
+def test_last_activity_is_the_newest_dated_activity_on_the_page(tmp_path, monkeypatch):
+    """The night round lifts it to the session of 20 October; a snapshot's read day
+    and a web page's date are not activity."""
+    from connectonion.rem import facts, native_round, service
+    from connectonion.rem.config import read_config
+    book = _harbour_page(tmp_path)
+    service.approve_sources(tmp_path)
+    monkeypatch.setattr(service, "_selected_sources", lambda *args: {})
+    monkeypatch.setattr("connectonion.rem.sessions.import_sessions", lambda *args, **kwargs: {})
+    monkeypatch.setattr("connectonion.rem.project_material.extract", lambda *args, **kwargs: {})
+    monkeypatch.setattr(native_round, "_jobs", lambda *args: [])
+    native_round.prepare(tmp_path, read_config(tmp_path), scheduled=False)
+    fact = facts.parse(book.read("projects/harbour.md"), "projects/harbour.md")["Last activity"][0]
+    assert fact["value"] == "2026-10-20" and fact["citations"] == ["3"]
+
+
+def test_a_promoted_project_page_cannot_date_its_activity_before_its_own_sources(tmp_path):
+    from connectonion.rem import facts, runner
+    book = _harbour_page(tmp_path)
+    runner._write_page(book, "projects/harbour.md", book.read("projects/harbour.md"), [])
+    page = book.read("projects/harbour.md")
+    assert facts.parse(page, "projects/harbour.md")["Last activity"][0]["value"] == "2026-10-20"
+    later = page.replace(re.search(r"(?m)^- Last activity:.*$", page)[0],
+                         "- Last activity: 2026-10-25 — release planned in a session [3]")
+    runner._write_page(book, "projects/harbour.md", later, [])
+    assert "- Last activity: 2026-10-25 — release planned in a session [3]" in book.read("projects/harbour.md")

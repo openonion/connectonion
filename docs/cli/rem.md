@@ -1881,6 +1881,12 @@ the block as a card.
   retained archive, in the notebook's time zone. They are recomputed after
   promotion and on sync; they describe the archive's bounds, which may not span
   the whole relationship.
+- On project pages, a dated `Last activity` is never older than the newest
+  dated session message, mail, chat or commit history listed in the page's own
+  `## Sources`; code lifts it to that day after promotion and at the start of
+  every night round (an `Unknown` stays, and the reader dates the project by its
+  newest source). A snapshot's read day, a file's saved day and a web page's
+  date are not activity.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it

@@ -242,6 +242,57 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     return count
 
 
+# Sources whose date is something someone did on the project: a session message,
+# a mail, a chat, the commit history. A snapshot's date is when it was read and a
+# file's is when it was saved, so neither is activity (their items say so).
+ACTIVITY_SOURCES = ("codex:", "claude-code:", "gmail:", "outlook:", "email:", "whatsapp:")
+DATED_SOURCE = re.compile(r"^[ \t]*- \[(\d+)\][ \t]+([a-z][\w-]*:\S+) — (\d{4}-\d{2}-\d{2})", re.M)
+LAST_ACTIVITY = re.compile(r"^- Last activity:[ \t]*(.*)$", re.M)
+
+
+def _activity(root: Path, source: str, given: dict) -> bool:
+    if source.startswith(ACTIVITY_SOURCES):
+        return True
+    if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+        return False
+    kept = given.get(source) or read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
+    return str(kept.get("origin", "")).endswith(":recent-commits")
+
+
+def settle_last_activity(root: Path, text: str, items=()) -> str:
+    """Last activity is at least the newest dated activity in the page's own Sources (#2952).
+
+    The model cited one source of its choosing, so a page said "quiet since
+    1 October" above a session of 20 October. A later model-chosen day stays, and
+    an `Unknown` stays for the reader, which then dates the project by its newest source."""
+    from .facts import _bounds
+    span = _bounds(text, "Facts")
+    line = LAST_ACTIVITY.search(text, *span) if span else None
+    if not line:
+        return text
+    given = {item["source"]: item for item in items if item.get("source")}
+    sources = text.partition("\n## Sources\n")[2]
+    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if _activity(root, source, given)]
+    if not dated:
+        return text
+    day, number = max(dated)
+    written = re.match(r"\d{4}-\d{2}-\d{2}", line[1])
+    if not written or written[0] >= day:
+        return text
+    return text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+
+
+def refresh_last_activity(root: Path) -> list[str]:
+    """Every round, so pages written before #2952 and pages whose sources grew agree."""
+    book, changed = Notebook(root), []
+    for record in book.list("projects"):
+        before = book.read(record)
+        after = settle_last_activity(root, before)
+        if after != before and book.write(record, after):
+            changed.append(record)
+    return changed
+
+
 def repository_context(root: Path, source: str, private: bool = False) -> dict | None:
     """Use the retained packet only; never reread a mutable Git ref or working file.
 
