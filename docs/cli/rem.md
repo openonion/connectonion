@@ -950,12 +950,14 @@ pinned to that edge: it comes into view with the draft.
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
   and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
-  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
-  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all N done**
+  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with the strip every Today row carries (**Mark done** · **Not now** · **Ignore**,
+  then the hand-offs) and, beside the name, **Still open**, which brings it back to the count, and **Mark all N done**
   (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
   (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
   any it refused get one *Not saved · Try again* for just those;
-  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view.
+  Today's own **Gone quiet** fold leaves these promises out, so an item is one row on the page; Waiting's section
+  lists them. A fold draws its rows when it is first opened. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -965,9 +967,9 @@ pinned to that edge: it comes into view with the draft.
   title (*Last 3 days: no mail read and no page rewritten; REM handled 6 things
   in Today*, the same count as the side line) and the people waiting take the row.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
-  quiet text buttons on every unfinished row: Today, and all three bands of
-  **Waiting on you** (yours, on others, other open context), whether or not the
-  night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  quiet text buttons on every unfinished row: Today's cards, its long-quiet and **Gone quiet** folds, all three
+  bands of **Waiting on you** (yours, on others, other open context) and its **Gone quiet** section, whether or
+  not the night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
   receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
@@ -977,8 +979,13 @@ pinned to that edge: it comes into view with the draft.
   deliverable, else its last message, `{"action": "result", "id"}`) under the
   row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
   brings the two buttons back; it never reads **Undo**, which undoes the item.
-  The strip ends with the row's three ways to close it, as words on screen, never an icon, before and after a
-  hand-off: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
+  The strip carries the row's three ways to close it, as words on screen, never an icon, before and after a
+  hand-off, in one order everywhere (Today, its folds, Waiting on you): **Mark done** · **Not now** · **Ignore** ·
+  **Hand to Codex** · **Hand to Claude** · **More**. In a saved snapshot (no Host, or a `file://` page) the
+  closes and hand-offs are still shown but disabled, since nothing would carry a snapshot's mark to the notebook:
+  each button says why when pointed at, and each card, band and fold says once, in words, *This is an offline
+  snapshot; open REM to mark it.* (这是离线快照，打开 REM 后才能标记), with **Open the live reader** when this
+  computer has one; E does nothing there either, nor do Still open, Not done yet, a record page's Mark done and Undo, or a draft's Skip, all drawn in the second ink with the same reason. A snapshot never writes a mark to the device. **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
   (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
   *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come

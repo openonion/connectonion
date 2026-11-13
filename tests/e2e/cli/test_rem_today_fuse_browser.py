@@ -222,8 +222,9 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Hand to Codex", "Hand to Claude", "Mark done", "Not now", "Ignore"]
-        assert " ".join(mine.nth(i).locator(".talk-menu > summary").inner_text().split()) == "Talk it over ▾"
+        # One order on every strip (#2990 review, D-100): Waiting's too, the talk behind its worded More.
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
+        assert " ".join(mine.nth(i).locator(".strip-more > summary").inner_text().split()) == "More ▾"
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -353,7 +354,11 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     page.locator(".settings-open").click()
     assert page.evaluate(NO_COMMAND, isolated_context=False) == {"cmd": 0, "words": []}
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
+    # Every strip button is disabled work in a snapshot, the three closes included (#2990 review: nothing carries a
+    # snapshot's mark to the notebook); the card says why in words, never a command.
     assert page.locator(".handoff button:not(:disabled)").count() == 0
+    assert page.locator(".handoff .strip-done:disabled").count() > 0
+    assert "This is an offline snapshot; open REM to mark it." in page.locator("#main").inner_text()
     assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
     if not route:
         send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
