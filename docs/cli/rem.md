@@ -1393,6 +1393,19 @@ an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
+Codex compresses older sessions in place: `rollout-X.jsonl` becomes
+`rollout-X.jsonl.zst`. On one machine about 22,000 of 22,800 Codex session
+files were compressed, and REM read none of them: a first map saw only the
+newest few weeks, and the next map would have cut skill counts to what the
+plain files held (#2943). Every reader of coding sessions (sync, the shared
+map pass, session pages, project filing and discovery, skill counts and
+samples, the claim check of a cited line) now reads a `.zst` session as the
+plain bytes it holds, streamed rather than unpacked to disk. Read progress is
+the plain file's offset and hash and is kept under the plain name, so a session
+read before Codex compressed it is not read again; a fully read compressed file
+also keeps its own size and is not reopened until it changes. A session present
+in both forms while Codex compresses it is read once, as the plain file.
+
 A prompt a program sent is not the user's: a Claude Code row with an `sdk`
 entrypoint or an `sdk`/`system` prompt source is skipped. A launchd job's
 scheduling prompt had become the user's request on projects/layeredvisions; on
