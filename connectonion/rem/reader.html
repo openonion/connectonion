@@ -359,7 +359,10 @@
   .week .meta { font-size: var(--s-meta); color: var(--grey); }
   .week .s { flex-basis: 100%; font: var(--s-body)/1.45 var(--font); color: var(--grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* skills: the most-used as cards, everything else as an index that fills the width (sprint 13) */
-  .skills-find { display: block; width: min(100%, 420px); min-height: 44px; margin: 4px 0 28px; padding: 0 14px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink); font: var(--s-body) var(--font); }
+  .category-head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 24px; }
+  .category-head h1 { margin: 0; }
+  .category-head .mono { color: var(--grey); font-size: var(--s-meta); }
+  .skills-find { display: block; flex: 1 1 260px; max-width: 420px; min-height: 44px; margin: 0; padding: 0 14px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink); font: var(--s-body) var(--font); }
   .skills-find::placeholder { color: var(--grey); }
   .skills-view a { color: inherit; text-decoration: none; }
   .skills-view .skill-name { color: var(--ink); font: var(--w-bold) var(--s-body)/1.35 var(--font); overflow-wrap: anywhere; }
@@ -1418,8 +1421,6 @@
   .relationship-label { color: var(--grey); }
   .rem-activity { display: inline-block; margin-top: 28px; font: var(--s-meta) var(--font); color: var(--grey); }
   .rem-activity:hover { color: var(--ink); }
-  .all-switch { margin: 0 0 22px; }
-  .all-switch .theme-btn { min-height: 32px; padding-inline: 12px; }
 
   .schedule-failure { padding-left: 12px; border-left: 2px solid var(--ink); color: var(--ink); font: var(--s-body)/1.6 var(--font); overflow-wrap: anywhere; }
   .pass-summary { color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
@@ -2594,11 +2595,6 @@
   .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   .gx-head { position: absolute; z-index: 2; left: 40px; top: 32px; right: 436px; pointer-events: none; }
   .gx-head > * { pointer-events: auto; }
-  .gx-title { font: var(--w-bold) var(--s-head)/60px var(--font); letter-spacing: -.035em; width: fit-content; }
-  .gx-head .all-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; width: fit-content; }
-  .gx-head .all-head h1 { margin: 0; font: var(--w-bold) var(--s-body)/24px var(--font); letter-spacing: 0; color: var(--grey); }
-  .gx-head .all-switch { margin: 0; }
-  .gx-soft { display: block; font: var(--w-regular) var(--s-body)/27px var(--font); letter-spacing: 0; color: var(--grey); margin-top: 2px; }
   .gx-bar { display: flex; align-items: flex-end; gap: 32px; margin-top: 18px; flex-wrap: wrap; width: fit-content; }
   .gx-find { position: relative; width: 320px; }
   .gx-search { width: 100%; height: 36px; border: 0; border-bottom: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: var(--w-regular) var(--s-body) var(--font); padding: 0 28px 0 0; border-radius: var(--radius); }
@@ -2650,9 +2646,19 @@
   /* ---- topics: the list and the record ---- */
   .gx-topics, .gx-topic { max-width: 1040px; margin: 0 auto; }
   .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
-  .gx-rows { margin-top: 36px; border-top: 1.5px solid var(--ink); }
-  .gx-rows li a { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
-  .gx-rows li a:hover b { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-rows { border-top: 1.5px solid var(--ink); }
+  .gx-rows li { display: flex; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .gx-rows .gx-entry { flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 16px; }
+  .gx-rows .gx-entry:hover b { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-entry-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .gx-entry-links a { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: var(--r-pill); background: var(--well); font-size: var(--s-meta); }
+  .gx-entry-links a:hover { color: var(--ink); text-decoration: underline; }
+  .knowledge-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; width: fit-content; }
+  .knowledge-head h1 { margin: 0; }
+  .knowledge-switch .theme-btn { display: inline-flex; align-items: center; min-height: 32px; text-decoration: none; }
+  .gx-head .knowledge-head h1 { font: var(--w-bold) var(--s-body)/24px var(--font); letter-spacing: 0; color: var(--grey); }
+  .gx-panel-guide { padding-top: 10px; }
+  .gx-rule { border: 0; border-top: 1px solid var(--rule); margin: 10px; }
   .gx-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .gx-row-body b { font-weight: var(--w-bold); }
   .gx-row-body small, .gx-row-meta { color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
@@ -2716,10 +2722,9 @@
 
   @media (prefers-reduced-motion: reduce) { .gx * { transition: none !important; } }
   @media (max-width: 720px) {
-    .gx-statement, .gx-title { font-size: var(--s-head); line-height: 40px; }
+    .gx-statement { font-size: var(--s-head); line-height: 40px; }
     .gx-map { height: auto; overflow: visible; padding: 20px 16px 24px; }
     .gx-head { position: static; right: auto; }
-    .gx-soft { font-size: var(--s-body); line-height: 22px; }
     .gx-bar { width: auto; gap: 12px; margin-top: 12px; }
     .gx-find { width: 100%; }
     .gx-tabs { overflow-x: auto; scrollbar-width: none; gap: 18px; width: 100%; }
@@ -2970,7 +2975,6 @@
   .count-line { display: flex; align-items: baseline; gap: 10px; margin: 0; color: var(--grey); font: var(--w-regular) var(--s-body)/1.3 var(--font); letter-spacing: 0; }
   .count-line .count { color: var(--ink); font: var(--w-bold) var(--s-display)/1 var(--font); letter-spacing: var(--track-display); }
   .count-line { flex-wrap: wrap; row-gap: 2px; }
-  .count-line .count-of { flex-basis: 100%; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
   .frow { display: flex; gap: 6px; overflow-x: auto; padding: 6px 4px 4px; margin: -6px -4px -4px; }
   .deal { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 8px 6px; border: 0; border-radius: var(--r-inner); background: none; cursor: pointer;
     transition: background var(--t-state) var(--ease-out), box-shadow var(--t-state) var(--ease-out); }
@@ -3118,7 +3122,6 @@
     .nh .legend { display: none; }
     .nb { flex-direction: column; align-items: stretch; gap: 6px; }
     .faces { flex-direction: row; align-items: center; gap: 8px; padding: 4px 0 2px; border-left: 0; border-top: var(--hair) solid var(--rule); max-width: none; }
-    .count-line .count-of { display: none; }
     .count-line .count-words { font-size: var(--s-ui); white-space: nowrap; }
     .frow { flex: 1; justify-content: flex-start; }
     .tgrid { display: block; margin-top: 10px; }
@@ -3318,7 +3321,7 @@ let peopleColumns = [];
 const UI = {
   // One English word, two meanings: each has a key of its own. And the rail's cell is 56 wide: three English
   // names do not fit under a picture at 11px, so the rail has a short word for each (the names stay in aria-label).
-  en: { "More of this card": "More", "Waiting on you, in the rail": "Waiting", "Organisations, in the rail": "Orgs", "All records, in the rail": "All" },
+  en: { "More of this card": "More", "Waiting on you, in the rail": "Waiting", "Organisations, in the rail": "Orgs" },
   zh: {
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
@@ -3704,9 +3707,7 @@ const UI = {
     "Pages written in the first build ({n})": "首次建立时写出的页面（{n}）",
 
     "More columns": "更多列",
-    "What your agents can do, the ones you use most first.": "你的 agent 会做的事，最常用的在前",
     "{n} skill": "{n} 个技能", "{n} skills": "{n} 个技能", "Find among {n} skills…": "在 {n} 个技能里找…",
-    "Most used": "最常用",
     "{n} matches in {days} days · last {last}": "近 {days} 天用到 {n} 次 · 最近 {last}", "{n} matches": "{n} 次",
     "{n} installed copies": "{n} 份安装副本", "Everything they can do": "全部能力", "Lives in": "所在位置", "Open SKILL.md": "打开 SKILL.md",
     "Claude Code plugin": "Claude Code 插件", "Shared agent skills": "共用 agent 技能",
@@ -3730,11 +3731,7 @@ const UI = {
     "Waiting on others": "等对方回复",
     "Memory changes": "记忆变化",
     "Explore memory": "探索记忆",
-    "All records": "全部记录",
     "REM activity →": "REM 的运行记录 →",
-    "Graph": "图谱",
-    "List": "列表",
-    "Show all records as": "全部记录显示为",
     "People": "人物",
     "Organisations": "组织",
     "Projects": "项目",
@@ -4138,7 +4135,6 @@ const UI = {
     "Worth exploring, not yet committed": "值得探索，尚未决定投入",
     "Outputs that can be reused or shown": "可复用或展示的成果",
     "Promises, waiting on others, dates that matter": "承诺、等待对方的事项与重要日期",
-    "People, projects, skills and ideas in one place": "人物、项目、技能与想法，汇于一处",
     "{n} of {m} qualifying correspondents have a page": "{m} 位符合建页条件的通信对象中，{n} 位已有页面",
     "{n} people you write to have no page yet": "你写信的对象中，{n} 位尚无页面",
     "The pass may have refreshed pages; that alone is not a new memory.": "本次可能更新了页面措辞，这不代表新增了记忆。",
@@ -4402,7 +4398,7 @@ const UI = {
     // N3 "Desk" (D-123): the shell, Today and a person
     "Settings": "设置", "Reduce motion": "减少动态效果", "REM status": "REM 状态", "Waiting": "等你",
     "Night chart": "夜图", "{n} d": "{n} 天",
-    "thing waiting on you": "件在等你", "things waiting on you": "件在等你", "Start with this 1 person": "先看这 1 个人", "Start with these {n} people": "先看这 {n} 个人",
+    "thing waiting on you": "件在等你", "things waiting on you": "件在等你",
     "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
     "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
     "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
@@ -4426,7 +4422,7 @@ const UI = {
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
-    "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
+    "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织",
     "Still open": "还开着",
     "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Gone quiet →": "「久未推进」里还有 {n} 件 →",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
@@ -4506,19 +4502,6 @@ const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
   agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
-};
-const CATEGORY_ASK = {
-  people: "who is this, and where did we leave off?",
-  orgs: "companies, teams, and groups we correspond with",
-  projects: "why, where are we, how to continue?",
-  skills: "what your agents can do, the ones you use most first.",
-  knowledge: "what is it, how does it work, when does it apply?",
-  opportunities: "worth exploring, not yet committed",
-  decisions: "what we chose and why",
-  principles: "standing rules we adopted",
-  works: "outputs that can be reused or shown",
-  agenda: "promises, waiting on others, dates that matter",
-  sessions: "what you worked on with your coding agents"
 };
 // notes/ and logs/ are what co rem wrote about its own work: read under Activity, not counted as memory.
 const ACTIVITY = new Set(["notes", "logs"]);
@@ -6441,7 +6424,7 @@ function route() {
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
   const kind = r && r.split("/")[0];
-  return reviews ? "reviews" : view === "graph" ? "all" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
+  return reviews ? "reviews" : view === "graph" || c === "all" ? "knowledge" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
 }
 function scheduleState(s) {
   const state = s.state || "";
@@ -6512,7 +6495,9 @@ function railPlaces() {
     ["orgs", "building-2", label("orgs"), "#c=orgs", t("Organisations, in the rail")],
     ["projects", "folder", label("projects"), "#c=projects"],
     ["skills", "zap", label("skills"), "#c=skills"],
-    ["all", "archive", t("All records"), "#c=all", t("All records, in the rail")]];
+    // One Knowledge place, not Knowledge plus All records (#2996): the owner could not tell them apart. It holds
+    // the wiki's entries and the graph All records drew; every record that list held is in its own category.
+    ["knowledge", "book", label("knowledge"), "#c=knowledge"]];
 }
 function railCell(tag, attrs, picture, name, word = name, badge = null) {
   const spoken = name.startsWith(word) ? name : word + " · " + name;
@@ -6714,7 +6699,7 @@ function emptyLine(thread) {
   const calm = thread.calm ? withoutDateClutter(thread.calm) : "";
   return el("p", { class: "empty-line", text: !calm || /^Nothing\.?$/i.test(calm) ? t("Nothing open.") : calm });
 }
-function emptyState(lead, action = "Explore memory →", href = "#c=all", clear = null) {
+function emptyState(lead, action = "Explore memory →", href = "#view=graph", clear = null) {
   const link = el("a", { href, text: t(action) });
   if (clear) link.onclick = event => { event.preventDefault(); clear(link); };
   return el("div", { class: "empty" }, [el("span", { class: "lead", text: t(lead) }), link]);
@@ -8023,15 +8008,14 @@ function faceStrip(groups, current) {
     return button;
   }));
 }
-// The one "waiting on you" number is the rail badge's: the items in Waiting on you that need the owner. The faces
-// beside it are a subset, and say so in words, so the header, the badge and the list never disagree (sprint 14 #4).
-function countLine(groups, ticked) {
-  // Both numbers read waitingOnYou: never "0 waiting on you · start with these 2 people".
-  const mine = threadCounts().mine, people = groups.filter(group => group.entries.some(waitingOnYou)).length;
+// The one "waiting on you" number is the rail badge's: the items in Waiting on you that need the owner, so the
+// header, the badge and the list never disagree (sprint 14 #4). The faces beside it are the people to start with;
+// their place and size say so, and the line "start with these N people" went (owner, 2026-11-13, #2994).
+function countLine(ticked) {
+  const mine = threadCounts().mine;
   if (!mine) return el("h1", { class: "count-line" }, [el("b", { class: "count", text: "0" }), el("span", { class: "count-words", text: t("Nobody is waiting on you today.") })]);
   return el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(mine) }),
-    el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") }),
-    people ? el("span", { class: "count-of", text: t(people === 1 ? "Start with this 1 person" : "Start with these {n} people", { n: people }) }) : null]);
+    el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") })]);
 }
 // On a phone the chart folds under its title; the title opens it.
 function chartToggle() {
@@ -8040,7 +8024,7 @@ function chartToggle() {
   return button;
 }
 function nightCard(groups, current, ticked) {
-  const n = groups.length, count = countLine(groups, ticked);
+  const n = groups.length, count = countLine(ticked);
   const chart = nightChart(current), full = !!chart?.svg;
   return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
@@ -9017,9 +9001,6 @@ function peopleView(items) {
     el("div", { class: "people-head" }, [el("h1", { text: label("people") }), find, sortSelect, peopleChooser(draw)]), scroller, empty, peopleFoot()]));
 }
 
-function ledeSeparator(text) {
-  return /[？。！?.!]$/.test(text.trim()) ? " " : uiLanguage === "zh" ? " · " : ". ";
-}
 function categoryCount(c, counts, total) {
   if (c === "people" && REM.people_coverage) {
     const { covered, total } = REM.people_coverage;
@@ -9038,18 +9019,17 @@ function category(c) {
   if (c === "agenda") { agendaView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
-  const items = c === "all" ? listedRecords() : inCategory(c);
+  const items = inCategory(c);
   if (c === "people") { peopleView(items); return; }
+  // The page names itself and nothing more (#2994): the order and the cards say what a sentence used to. The
+  // count stays as a number beside the name; Skills puts it in its finder instead.
   const counts = (REM.counts || {})[c];
-  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
-  main.appendChild(el("h1", { text: c === "all" ? t("All records") : label(c) }));
-  const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   const other = c === "people" ? (REM.contact_candidates || []).length : 0;
   const hasCoverage = c === "people" && REM.people_coverage?.total;
-  main.appendChild(el("p", { class: "lede" }, [t(lede) + (items.length || other || hasCoverage ? ledeSeparator(t(lede)) : ""),
-    items.length || other || hasCoverage ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
-      + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]));
-  if (c === "all" && graphModel().linked.length) main.appendChild(allRecordsSwitch("list"));
+  const head = el("div", { class: "category-head" }, [el("h1", { text: label(c) }),
+    c !== "skills" && (items.length || other || hasCoverage) ? el("span", { class: "mono", text: categoryCount(c, counts, items.length)
+      + (other ? " · " + t("{n} other contacts", { n: other }) : "") }) : null]);
+  main.appendChild(head);
   if (c === "people" && REM.people_coverage?.missing) main.appendChild(el("p", { class: "directory-note",
     text: t("{n} people you write to have no page yet", { n: REM.people_coverage.missing }) }));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
@@ -9067,7 +9047,7 @@ function category(c) {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
-  if (c === "skills" && items.length) main.appendChild(skillsView(items));
+  if (c === "skills" && items.length) main.appendChild(skillsView(items, head));
   else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
@@ -10806,7 +10786,8 @@ function skillFamilies(rows, all) {
   }
   return [...families].sort(([a, x], [b, y]) => (a === t("Other")) - (b === t("Other")) || y.length - x.length || a.localeCompare(b));
 }
-function skillsView(items) {
+// The finder sits beside the page's name, so the most-used cards start on the first screen's top half.
+function skillsView(items, head) {
   const box = el("div", { class: "skills-view" });
   const find = el("input", { type: "search", class: "skills-find", placeholder: t("Find among {n} skills…", { n: items.length }),
     "aria-label": t("Filter {category}", { category: label("skills").toLowerCase() }) });
@@ -10823,12 +10804,10 @@ function skillsView(items) {
     const top = items.filter(skillUses).sort(bySkillUse).slice(0, SKILL_TOP), shown = new Set(top.map(r => r.path));
     const nameOnly = items.filter(r => !shown.has(r.path) && !skillLine(r)).sort((a, b) => a.title.localeCompare(b.title));
     const families = skillFamilies(items.filter(r => !shown.has(r.path) && skillLine(r)), items);
-    if (top.length) content.appendChild(el("section", { class: "skills-top" }, [
-      sectionHead("Most used"),
-      el("ul", { class: "skill-cards" }, top.map(skillCard))]));
+    // Most used needs no heading (#2994): it is first, and its skills are cards where the rest are lines.
+    if (top.length) content.appendChild(el("section", { class: "skills-top" }, [el("ul", { class: "skill-cards" }, top.map(skillCard))]));
     const anchors = families.map(([name], i) => "skill-family-" + i);
     if (families.length) content.appendChild(el("nav", { class: "skill-shape", "aria-label": t("Everything they can do") }, [
-      el("span", { class: "k", text: t("Everything they can do") }),
       ...families.map(([name, rows], i) => {
         const jump = el("button", { type: "button" }, [name, el("span", { class: "n", text: String(rows.length) })]);
         jump.onclick = () => {
@@ -10847,7 +10826,8 @@ function skillsView(items) {
   };
   find.value = PEOPLE_SORT.text;
   find.oninput = () => { PEOPLE_SORT.text = find.value; draw(); };
-  box.append(find, content); draw();
+  head.appendChild(find);
+  box.append(content); draw();
   return box;
 }
 
@@ -12468,13 +12448,12 @@ function loadDetails() {
 const GRAPH_UI_ZH = {
   "Graph": "图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
-  "{n} records linked together": "{n} 条记录连在一起", "{n} not linked yet": "{n} 条还没连上",
+
   "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
   "Shape = kind": "形状 = 类型", "size = links": "大小 = 连接数", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
-  "{n} records link to nothing yet": "另有 {n} 条还没连上任何记录", "Whole map": "整张图",
-  "Click a point to see what it connects": "点一个点，看它连着谁",
-  "Knowledge is the thread between people, organisations and projects. Start with one entry.": "知识是把人、组织和项目串起来的那根线。从一条知识开始最快。",
-  "Most connected": "连接最多", "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
+  "{n} records link to nothing yet": "{n} 条还没连上任何记录",
+
+  "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
   "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
   "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
   "{n} more": "其余 {n} 个", "Personal": "个人事项", "Knowledge entry": "知识", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
@@ -12490,11 +12469,9 @@ const GRAPH_UI_ZH = {
   "REM has not written this page yet · named in {n} records since {date}": "REM 还没写这一页 · 从 {date} 起在 {n} 条记录里出现",
   "REM has not written this page yet": "REM 还没写这一页",
   "{n} mentions, from {first} to {last}": "{n} 次提到，从 {first} 到 {last}",
-  "{n} knowledge entries": "{n} 条知识", "1 knowledge entry": "1 条知识", "Subjects that tie your records together: a market, a course, a way of working.": "把记录串起来的知识：一门生意、一门课、一种做法。",
-  "{n} records": "{n} 条记录", "No knowledge yet": "还没有知识条目",
-  "A knowledge entry is filed when a subject recurs across your notes; none has yet.": "一个话题在笔记里反复出现后才会建成知识页；现在还没有。",
+  "{n} records": "{n} 条记录",
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
-  "See them in the graph →": "在图谱里看 →", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
+  "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
 };
 function graphT(key, values = {}) {
@@ -12598,28 +12575,17 @@ function graphAlpha(n) {
   if (!focus || n.id === focus || near1.has(n.id)) return 1;
   return near2.has(n.id) ? .5 : .07;
 }
-// All records is the overall two-way graph by default; a viewer can switch it to the list (owner, 2026-11-08).
-let allRecordsChoice = "";
-function allRecordsMode(choice) {
-  if (choice) allRecordsChoice = choice;
-  try {
-    if (choice) localStorage.setItem("rem.allRecords", choice);
-    else allRecordsChoice ||= localStorage.getItem("rem.allRecords") || "";
-  } catch { /* storage blocked: the choice holds for this visit */ }
-  return allRecordsChoice === "list" ? "list" : "graph";
+// Knowledge holds two ways to look (#2996): its entries, one per topic, and the graph of how every record links.
+// With nothing linked yet the graph would be an empty canvas, so the entries show instead.
+function knowledgeGraph() {
+  if (graphModel().linked.length) graphView();
+  else topicList();
 }
-function allRecords(graphAsked) {
-  if ((graphAsked || allRecordsMode() === "graph") && graphModel().linked.length) graphView();
-  else category("all");
-}
-function allRecordsSwitch(mode) {
-  const group = el("div", { class: "all-switch theme-switch", role: "group", "aria-label": t("Show all records as") });
-  for (const [key, name] of [["graph", "Graph"], ["list", "List"]]) {
-    const button = el("button", { type: "button", class: "theme-btn" + (mode === key ? " active" : ""), "aria-pressed": String(mode === key), text: t(name) });
-    button.onclick = () => { allRecordsMode(key); if (location.hash === "#c=all") render(); else location.hash = "#c=all"; };
-    group.appendChild(button);
-  }
-  return group;
+function knowledgeHead(mode) {
+  const ways = [["entries", "Entries", "#c=knowledge"], ["graph", "Graph", "#view=graph"]];
+  return el("div", { class: "knowledge-head" }, [el("h1", { text: label("knowledge") }),
+    el("nav", { class: "knowledge-switch theme-switch", "aria-label": label("knowledge") }, ways.map(([key, name, link]) =>
+      el("a", { href: link, class: "theme-btn" + (mode === key ? " active" : ""), ...(mode === key ? { "aria-current": "page" } : {}), text: graphT(name) })))]);
 }
 function graphView() {
   const main = document.getElementById("main");
@@ -12649,10 +12615,8 @@ function graphHead(model) {
   const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, knowledge"), "aria-label": graphT("Search people, organisations, knowledge"), autocomplete: "off" });
   const tabs = el("div", { class: "gx-tabs", role: "tablist" }, GRAPH_TABS.map(([key, name]) =>
     el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
-  return el("header", { class: "gx-head" }, [
-    el("div", { class: "all-head" }, [el("h1", { text: t("All records") }), allRecordsSwitch("graph")]),
-    el("p", { class: "gx-title" }, [graphT("{n} records linked together", { n: model.linked.length }),
-      el("span", { class: "gx-soft", text: graphT("{n} not linked yet", { n: model.isolated.length }) })]),
+  // The counts live in the legend under the map; the heading only names the place (#2994).
+  return el("header", { class: "gx-head" }, [knowledgeHead("graph"),
     el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
       el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]);
 }
@@ -12895,11 +12859,12 @@ function graphPanelGuide() {
   // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
   const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && !(REM.owner && n.id === REM.owner)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
   const count = n => graphT("{n} links", { n: graphDegree(n) });
-  return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
-      topics.length ? el("p", { text: graphT("Knowledge is the thread between people, organisations and projects. Start with one entry.") }) : null]),
-    el("div", { class: "gx-panel-body" }, [
-      ...(topics.length ? [el("h3", { text: graphT("Knowledge") }), ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : "")))] : []),
-      el("h3", { text: graphT("Most connected") }), ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
+  // No instructions over the lists (#2994): the entries come first, then the busiest pages, each with its count,
+  // and the order says which is which; a rule divides the two.
+  return [el("div", { class: "gx-panel-body gx-panel-guide" }, [
+      ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : ""))),
+      topics.length && hubs.length ? el("hr", { class: "gx-rule" }) : null,
+      ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
 }
 function graphGroups(ids) {
   const groups = new Map(GRAPH_ORDER.map(k => [k, []]));
@@ -12948,18 +12913,24 @@ function topicLinked(r) {
   const model = graphModel();
   return [...(model.adj.get(r.path) || [])].map(id => model.byId.get(id)).filter(n => n.r);
 }
+// Knowledge is the notebook's wiki (#2996): one entry per topic, the most linked first, each row showing the
+// people, organisations and projects it ties together, so the list itself says what an entry is.
 function topicList() {
   const main = document.getElementById("main"), items = topicRecords();
   main.textContent = "";
-  const rows = items.map(r => ({ r, n: topicLinked(r).length, last: r.topic?.last || "" })).sort((a, b) => b.n - a.n || b.last.localeCompare(a.last));
-  main.appendChild(el("div", { class: "gx gx-topics" }, [
-    el("h1", { class: "gx-statement", text: items.length ? graphT(items.length === 1 ? "1 knowledge entry" : "{n} knowledge entries", { n: items.length }) : graphT("No knowledge yet") }),
-    el("p", { class: "gx-lede", text: graphT(items.length ? "Subjects that tie your records together: a market, a course, a way of working." : "A knowledge entry is filed when a subject recurs across your notes; none has yet.") }),
-    items.length ? el("a", { class: "gx-link", href: "#view=graph", text: graphT("See them in the graph →") })
-      : el("p", { class: "gx-quiet-line gx-filed", text: graphT("REM files knowledge from your records on its night run.") }),
-    items.length ? el("ul", { class: "gx-rows" }, rows.map(({ r, n, last }) => el("li", {}, [el("a", { href: href(r) }, [graphGlyph("knowledge", 16, r.private),
-      el("span", { class: "gx-row-body" }, [el("b", { text: topicName(r.title) }), el("small", { text: topicAliases(r).slice(1, 5).join(" · ") })]),
-      el("span", { class: "gx-row-meta", text: graphT("{n} records", { n }) + (last ? " · " + fmtDate(last) : "") })])]))) : null]));
+  const rows = items.map(r => ({ r, linked: topicRows(r).map(row => row.n), last: r.topic?.last || "" }))
+    .sort((a, b) => b.linked.length - a.linked.length || b.last.localeCompare(a.last));
+  main.appendChild(el("div", { class: "gx gx-topics" }, [knowledgeHead("entries"),
+    items.length ? el("ul", { class: "gx-rows" }, rows.map(topicEntry))
+      : el("p", { class: "gx-quiet-line gx-filed", text: graphT("REM files knowledge from your records on its night run.") })]));
+}
+function topicEntry({ r, linked, last }) {
+  const shown = linked.slice(0, 4);
+  return el("li", {}, [el("a", { class: "gx-entry", href: href(r) }, [graphGlyph("knowledge", 16, r.private),
+      el("span", { class: "gx-row-body" }, [el("b", { text: topicName(r.title) }), el("small", { text: topicAliases(r).slice(1, 5).join(" · ") })])]),
+    el("span", { class: "gx-entry-links" }, [...shown.map(n => el("a", { href: href(n.r), title: graphT(GRAPH_ONE[n.k]) }, [graphGlyph(n.k, 12, n.private), graphShort(graphTitle(n), 18)])),
+      linked.length > shown.length ? el("span", { class: "gx-row-meta", text: "+" + (linked.length - shown.length) }) : null]),
+    last ? el("time", { class: "gx-row-meta", datetime: last, text: fmtDate(last) }) : null]);
 }
 function topicAliases(r) { return r.topic?.aliases?.length ? r.topic.aliases : [r.title]; }
 function topicKnown(r, name) {
@@ -13156,11 +13127,12 @@ function render() {
   else if (r) record(r, heading);
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
-  else if (view === "graph" || c === "all") allRecords(view === "graph");
+  // #c=all was All records' address (#2996); a kept bookmark opens the graph it drew, now under Knowledge.
+  else if (view === "graph" || c === "all") knowledgeGraph();
   else if (c) category(c);
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
-    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? t("All records") : c ? label(c) : t("Today")) + " · co rem";
+    view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
   const viewKey = r || c || view || (reviews ? "reviews" : query ? "search" : "today");
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
@@ -13173,7 +13145,7 @@ function render() {
 function renderCrumb({ record: r, category: c, query, view, reviews }) {
   const page = r && byPath(r);
   const name = query ? t("Search") : reviews ? t("Questions & connections") : view === "open" ? t("Waiting on you") : view === "changes" ? t("Memory changes")
-    : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? t("All records") : c ? label(c) : todayCrumb();
+    : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : todayCrumb();
   document.getElementById("crumb").replaceChildren(page ? el("a", { href: categoryHref(page.category), text: categoryName(page.category) }) : name);
 }
 function sourceFind(excerpt, quote) {
@@ -13601,8 +13573,8 @@ function todayActions() {
 }
 function paletteItems() {
   const go = link => () => { location.hash = link; };
-  const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"], ["All records", "#c=all"]]
-    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]))
+  const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"]]
+    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Graph"), "#view=graph"]])
     .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
   const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
     .map(r => ({ id: "r:" + r.path, label: r.title, hint: singular(r.category), run: go(href(r)) }));

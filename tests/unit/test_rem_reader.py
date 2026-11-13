@@ -1640,13 +1640,14 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
         zh: zh.children[0].children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[0].children[1].children[0].children[1].text,
         date, find: t('Find')}));
     })();''')
-    # The number is the badge's (items waiting on you); the people are a subset, said in words (sprint 14 #4).
-    assert result['count'] == ['5', 'things waiting on you', 'Start with these 3 people']
+    # The number is the badge's (items waiting on you, sprint 14 #4); the faces beside it are the people to start
+    # with, and no sentence says so (owner, 2026-11-13, #2994).
+    assert result['count'] == ['5', 'things waiting on you']
     # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
     assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
     assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
     assert result['solo'] == 'nb solo'  # no logs and no drafts: no chart is drawn, the faces take the card
-    assert result['zh'] == ['5', '件在等你', '先看这 3 个人'] and result['zhLate'] == '2 天'
+    assert result['zh'] == ['5', '件在等你'] and result['zhLate'] == '2 天'
     assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
@@ -1683,7 +1684,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
         headline: nightCard(personGroups(today), null).children[0].children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '7things waiting on youStart with this 1 person'
+    assert _words(result.pop('headline')) == '7things waiting on you'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
@@ -3462,25 +3463,28 @@ def test_the_knowledge_category_is_called_knowledge_not_topics(language, expecte
     assert _run_reader_js(script) == {'rail': expected, 'legend': expected}
 
 
-def test_the_old_graph_address_lands_on_all_records():
+def test_the_graph_and_the_old_all_records_address_land_on_knowledge():
+    # #2996: one Knowledge place holds the graph; #c=all was All records' address and stays a working bookmark.
     result = _run_reader_js(_reader_function('route') + '\n' + _reader_function('railActive') + r'''
       const ACTIVITY = new Set(['notes', 'logs']), location = {hash: '#view=graph&focus=knowledge%2Fheat.md'};
       const graph = railActive();
+      location.hash = '#c=all';
+      const all = railActive();
       location.hash = '#view=activity';
-      console.log(JSON.stringify({graph, activity: railActive()}));
+      console.log(JSON.stringify({graph, all, activity: railActive()}));
     ''')
-    assert result == {'graph': 'all', 'activity': 'activity'}
+    assert result == {'graph': 'knowledge', 'all': 'knowledge', 'activity': 'activity'}
 
 
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'archive', 'ellipsis', 'settings']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'book', 'ellipsis', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records', 'More', 'Settings'],
-           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings'],
+    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
+           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
-           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
+           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
@@ -3550,9 +3554,9 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
 def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
     rail = _rail(language)
     links = [cell['href'] for cell in rail['cells'][:7]]
-    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=all']
+    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=knowledge']
     assert [cell['active'] for cell in rail['cells'][:7]] == [link == '#c=skills' for link in links]
-    assert rail['menu'] == ['#view=changes', '#c=knowledge']
+    assert rail['menu'] == ['#view=changes']  # Knowledge has its own place now (#2996)
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])

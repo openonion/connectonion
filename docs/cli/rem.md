@@ -1047,12 +1047,12 @@ pinned to that edge: it comes into view with the draft.
   Opening it again returns the same conversation.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
   word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
-  **Organisations** (*Orgs*), **Projects**, **Skills**, **All records** (*All*),
+  **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
   then **More**, and at the foot **Settings** and your face. A short word is
   the start of the place's accessible name (*Orgs* is named "Orgs ·
   Organisations"), so saying the word you see finds it. **More** opens beside
   its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Knowledge, Decisions, Principles, Agenda,
+  window: **Memory changes**, then Decisions, Principles, Agenda,
   Agent sessions, Opportunities and Works when they hold pages. Your face opens
   your own page and shows **You · name** beside it on hover and on keyboard
   focus. Only **Waiting on you** carries a number; a category's size is not
@@ -1060,11 +1060,27 @@ pinned to that edge: it comes into view with the draft.
   window lower than the rail (656px) the rail itself scrolls, so every place
   stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
   People, Search, More); **More** opens a sheet with every place by its full
-  name, Skills and All records among them, the More list under them with its
+  name, Skills and Knowledge among them, the More list under them with its
   labels in the same column, and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
+- **Knowledge** (#2996) is the notebook's wiki and its one place for how
+  records link: there is no **All records** any more. **Entries** lists one row
+  per topic, the most linked first, each row showing the people, organisations
+  and projects it ties together as links; **Graph** is the two-way map of every
+  linked record that All records used to draw (`#view=graph`; the old `#c=all`
+  address opens it too). Every record the All records list held is still in its
+  own category (a rail place or **More**) and in search; **Graph** is also in
+  the ⌘K palette. With nothing linked yet, **Graph** shows the entries instead.
+- **Headings name a page, they do not explain it** (#2994): a category page
+  shows its name and its count, not a sentence about its order. Skills opens
+  with its name and its finder (*Find among N skills…*) on one line, the most
+  used as cards with no **Most used** heading, then the families' buttons with
+  no caption. Today's number stands beside the faces it starts with, without
+  *Start with these N people*. The graph's heading is **Knowledge** and its
+  switch; its counts are in the legend under the map, and the panel lists the
+  entries, then the busiest pages, divided by a rule.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a
@@ -1118,7 +1134,7 @@ pinned to that edge: it comes into view with the draft.
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
   Graph labels are cut by width, so a Chinese title stays inside its card.
-  **All records**' **Most connected** leaves your own page out: you are every
+  The graph's list of the busiest pages leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
 - **An organisation's link to Today**, **N things in Today involve X**, counts
   what Today counts: the items waiting on you (not done, not quiet, not a

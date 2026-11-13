@@ -301,13 +301,13 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # Sprint 14: the display number is the sidebar's (items waiting on you); the people are a subset, in words.
+    # Sprint 14: the display number is the sidebar's (items waiting on you); #2994: the faces say where to start.
     total = page.locator('#nav .n.waiting').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
     assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
-    assert page.locator('.night-card .count-of').text_content() == f'Start with these {len(whos)} people'
+    assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -1295,7 +1295,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
     heading = page.locator('.night-card .count-line').inner_text()
-    assert heading.split('\n') == ([str(mine), 'thing waiting on you', 'Start with this 1 person'] if mine else ['0', 'Nobody is waiting on you today.'])
+    assert heading.split('\n') == ([str(mine), 'thing waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
@@ -2099,18 +2099,18 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
 # Owner, 2026-11-09: «我们的版本号是不是可以在侧边栏显示一下？顺便把侧边栏优化一下，现在看起来不是很好。»
 # The sidebar keeps one number, the one that asks for action, and names the release in its footer.
 SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organisations', 'Projects', 'Skills',
-                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions', 'All records']
+                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions']
 
 
 def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(reader):
-    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, all records),
-    the rest one 更多 away."""
+    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, knowledge),
+    the rest one 更多 away. #2996: Knowledge replaced All records; the owner could not tell the two apart."""
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
-    # D-01: the catch-all last; #2961: each name starts with the word you see (Orgs · Organisations)
-    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'All records']
-    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
+    # #2961: each name starts with the word you see (Orgs · Organisations)
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'Knowledge']
+    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
     assert 'Skills' not in more and 'Decisions' in more  # Skills has its own place now; the rest stay behind 更多
@@ -2176,13 +2176,13 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    # Owner, 2026-11-08: the catch-all goes last (N3: last of the rail's places). 2026-11-09: Activity is REM's run log, at the foot.
-    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'All records' and 'Activity' not in labels and 'Graph' not in labels
+    # #2996: Knowledge ends the rail's places, with no All records beside it. 2026-11-09: Activity is REM's run log, at the foot.
+    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'Knowledge' and 'Activity' not in labels and 'Graph' not in labels
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
-    # Owner, 2026-11-09 (sidebar in Fuse): All records keeps no count in the rail; only Waiting on you does.
-    assert page.locator('#nav a[href="#c=all"] .n').count() == 0
+    # Owner, 2026-11-09 (sidebar in Fuse): only Waiting on you keeps a count in the rail.
+    assert page.locator('#nav a:not([href="#view=open"]) .n').count() == 0
     assert page.locator('.category-cards').count() == 0
     assert page.locator('.task-links').count() == 0  # the Find section is gone; the rail is the only navigation
     page.goto(path.as_uri() + '#q=coverage')
@@ -3647,9 +3647,9 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
       setInterfaceLanguage(language);
       return byPath('skills/catalog/weekly-brief.md').text;
     }''', language, isolated_context=False)
-    assert page.locator('.lede').inner_text().startswith(
-        '你的 agent 会做的事，最常用的在前 · ' if language == 'zh' else 'What your agents can do, the ones you use most first. ')
-    assert page.locator('.lede .mono').inner_text() == ('3 个技能' if language == 'zh' else '3 skills')
+    # #2994: no sentence explains the order; the count lives in the finder beside the page's name.
+    assert page.locator('#main .lede').count() == 0
+    assert page.locator('.category-head .skills-find').get_attribute('placeholder') == ('在 3 个技能里找…' if language == 'zh' else 'Find among 3 skills…')
     assert page.locator('.skills-view .bar').count() == 0
     assert page.locator('.skill-card .skill-uses').first.inner_text().endswith(
         '最近 昨天' if language == 'zh' else 'last Yesterday')
@@ -4048,7 +4048,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
     assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
-    assert page.locator('.night-card .count-of').text_content() == 'Start with this 1 person'
+    assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4605,7 +4605,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     assert page.locator('.empty .lead').inner_text() == 'No match'
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
-    expect(page.locator('#main h1')).to_have_text('All records')
+    expect(page.locator('#main h1')).to_have_text('Knowledge')  # the graph, under Knowledge (#2996)
     page.goto(uri + '#view=open')
     page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
     assert page.locator('.empty .lead').inner_text() == 'Nothing open'
@@ -6227,8 +6227,7 @@ def test_skills_say_what_each_does_in_one_plain_line(reader, language):
     for jargon in ['recorded not installed', 'Source reviewed', 'Getting to know them', 'More to learn', 'written of',
                    '仅记录，未安装', '已核对来源', '待了解', '有内容', 'version unverified', '版本未验证']:
         assert jargon not in text
-    assert page.locator('.lede').inner_text() == ('你的 agent 会做的事，最常用的在前 · 21 个技能' if language == 'zh'
-                                                  else 'What your agents can do, the ones you use most first. 21 skills')
+    assert page.locator('.skills-find').get_attribute('placeholder') == ('在 21 个技能里找…' if language == 'zh' else 'Find among 21 skills…')
 
 
 def test_skills_have_one_search_that_is_big_enough_to_use(reader):

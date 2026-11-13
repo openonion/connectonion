@@ -129,12 +129,12 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
 # 2. The owner is everyone's hub by definition; ranking him among "most connected" says nothing.
 def test_most_connected_leaves_the_owner_out(reader):
     open_page, _ = reader
-    page = open_page("c=all", language="en")
+    page = open_page("view=graph", language="en")
     page.locator(".gx-panel").wait_for()
     owner = page.evaluate("byPath(REM.owner).title", isolated_context=False)
     degree = page.evaluate("graphDegree(GRAPH.byId.get(GRAPH.nodes.find(n => n.r?.path === REM.owner).id))", isolated_context=False)
     assert degree >= 7  # he would lead the list
-    hubs = page.locator(".gx-panel-body h3", has_text="Most connected").locator("xpath=following-sibling::*").all_inner_texts()
+    hubs = page.locator(".gx-panel-guide .gx-item").all_inner_texts()
     assert hubs and not any(owner in hub for hub in hubs), hubs
 
 
