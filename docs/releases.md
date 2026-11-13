@@ -33,7 +33,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc10**: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
+Release candidate **1.9.6rc11**: in the REM reader, People opens on a sortable table, Ignore is a word on
+every open row, Agenda is a calendar of your saved events, and one button translates every page. See
+[1.9.6rc11 notes](releases/1.9.6rc11.md).
+
+Before it, release candidate **1.9.6rc10**: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
 model. Name `co/gemini-3.8-flash` to roll back. See [1.9.6rc10 notes](releases/1.9.6rc10.md).
 
 Before it, release candidate **1.9.6rc9**: REM's night goes on when one mailbox fails and says why on Today; Today
@@ -76,7 +80,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc10'
+python -m pip install --upgrade 'connectonion==1.9.6rc11'
 ```
 
 ## Previous stable

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc10
+## Current Version: 1.9.6rc11
+
+Release candidate 1.9.6rc11 for 1.9.6: the REM reader's People page opens on a sortable table (#3017);
+with rc10's unannounced REM changes now described — Ignore as a word on every open row and honest
+offline snapshots (#3018, #3023), Agenda as a calendar of saved calendar events (#3015), and one-click
+translation of every page (#3014). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc11.md).
+
+- 1.9.6rc11 (People table; Ignore everywhere; Agenda calendar; translate every page).
+
+### Previous candidate: 1.9.6rc10
 
 Release candidate 1.9.6rc10 for 1.9.6: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
 model ($1.50/$7.50 per 1M tokens), in Agent, llm_do, transcribe, `co ai` and the built-in subagents.
