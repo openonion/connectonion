@@ -4535,7 +4535,7 @@ def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
 
 def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_nothing():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['translationLine'])
+                          for name in ['translationLine', 'hasChinese'])
     result = _run_reader_js(functions + r'''
       UI.zh = {'Not translated yet — showing the original': '中文版还没好，先看原文'};
       const el = (tag, attrs) => ({tag, ...attrs});
