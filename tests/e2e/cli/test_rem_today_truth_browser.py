@@ -62,7 +62,9 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
 
 
 def test_mark_done_on_a_stale_promise_closes_it_through_the_usual_path(today):
-    page, _, _ = today
+    page, _, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "keys": body["keys"]})  # the notebook keeps it
+    page.evaluate("() => { REM.live = true; }", isolated_context=False)  # a snapshot keeps no mark (#2990 review)
     page.evaluate(ANCIENT, isolated_context=False)
     before = int(page.locator(".night-card .count").inner_text())
     _open_stale(page)
@@ -306,6 +308,7 @@ def test_still_open_holds_for_sixty_days_then_today_asks_again(today):
     kept = page.evaluate("JSON.parse(localStorage.getItem(keptOpenStorageKey()))", isolated_context=False)
     assert list(kept.values()) == ["2026-10-01"]
     page.evaluate("() => { REM.as_of = '2026-12-05T12:00:00Z'; threadEntries.cached = null; render(); }", isolated_context=False)
+    _open_stale(page)  # its rows are drawn when it opens
     assert page.locator(f'#today-stale li[data-path="{TOMAS}"]').count() == 1
 
 

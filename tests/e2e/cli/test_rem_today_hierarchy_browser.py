@@ -149,7 +149,9 @@ ANCIENT_TOO = r'''async () => {
 
 
 def test_long_quiet_promises_are_one_folded_line_below_the_desk_with_close_all_and_undo(today):
-    page, _, _ = today
+    page, _, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "keys": body["keys"]})  # the notebook keeps it
+    page.evaluate(LIVE, isolated_context=False)  # a snapshot keeps no mark (#2990 review)
     page.evaluate(ANCIENT, isolated_context=False)
     page.evaluate(ANCIENT_TOO, isolated_context=False)
     stale = page.locator("#today-stale")

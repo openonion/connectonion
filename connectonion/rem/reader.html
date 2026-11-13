@@ -1995,10 +1995,6 @@
   .qcard:not(.open) .qitem .words sup, .qcard:not(.open) .qitem .words .cite { display: none; }
   .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 27px; }
   .qitem .words .cite { font-size: var(--s-meta); }
-  .qdone { grid-column: 2; grid-row: 1; align-self: start; width: 32px; height: 32px; margin-top: 0; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: var(--round); background: none; color: var(--grey); cursor: pointer; opacity: 0; transition: opacity var(--t-press); }
-  .qdone svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
-  .qdone:hover { color: var(--ink); background: var(--rule); }
-  .qcard:hover .qdone, .qcard:focus-within .qdone, .qcard:focus .qdone, .qcard.open .qdone { opacity: 1; }
   .qmore { grid-column: 1; display: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
   .qcard.open .qmore { display: block; }
   .qmore > * { margin: 4px 0 0; font: inherit; color: inherit; }
@@ -2065,7 +2061,8 @@
   .qcard .qfull { display: none; }
   .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
-  .snapshot-line, .lead-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
+  .snapshot-line, .lead-why, .close-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
   .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
   .qsent .meta { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
@@ -2135,7 +2132,6 @@
     .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
     .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
     .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
-    .qcard.focal[data-step="send"]:not(.full) .qitem .qdone { display: none; }
     /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
        lines wait behind More, which stays in place of the first item. */
     .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
@@ -2157,7 +2153,6 @@
   @keyframes today-slide { from { opacity: 0; transform: translateX(12px); } }
   @media (max-width: 720px) {
     .qhead .meta { display: none; }
-    .qdone { opacity: 1; width: 44px; height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .qcard:hover:not(.open) .card-acts { display: none; }
     .card-acts .btn-act, .card-acts .btn-line { min-height: 46px; flex: 1 1 100%; justify-content: center; }
@@ -2985,9 +2980,6 @@
   .qcard .qitem .words, .qcard.open .qitem .words { margin: 0; white-space: normal; color: var(--ink); font: var(--w-regular) var(--s-body)/1.5 var(--font); }
   .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 1.5; }
   .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: block; -webkit-line-clamp: unset; overflow: visible; }
-  .qcard .qdone, .qcard.open .qdone { width: 30px; height: 30px; opacity: 0; border-radius: var(--radius); }
-  .qcard .qitem:is(:hover, :focus-within, .show) .qdone { opacity: 1; }
-  .qcard .qdone:hover { background: var(--raised); }
   .qcard .qmore, .qcard.open .qmore { display: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .qcard .qitem:is(:hover, :focus-within, .show, .handled) .qmore, .qcard .qitem:has(.talk, .handed, .task-result) .qmore { display: block; }
   /* The strip itself (kind · Codex · Claude · 聊一聊 · 标为完成 · 忽略) is always shown on an open card, so Mark done and
@@ -3098,16 +3090,15 @@
     .qhead .org-chip { display: none; }
     .qhead-acts { opacity: 1; }
     .qitem { margin: 0 -6px; }
-    .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
     /* Words without dots on a phone: the three closes are the first line, the hand-offs and More the second. */
     /* The folded rows (long quiet, Gone quiet) break the same way as a card's: the closes, then the hand-offs. */
     :is(.qcard, .stale, .quiet-list) .handoff-line { gap: 0; margin-left: -8px; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep { display: none; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep:has(+ :is([data-agent="codex"], .handed)) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
     :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary, .handed) { padding: 0 8px; white-space: nowrap; }
-    /* The closes replaced the snapshot's 44px tick (#2990), so on a phone they keep a full touch target; .qkind outranks
-       the card's compact 28px strip above. */
-    :is(.qcard .qkind, .stale, .quiet-list) .handoff-line :is(.strip-done, .strip-later, .strip-ignore) { min-height: 44px; }
+    /* The closes and the hand-offs are full touch targets on a phone, disabled in a snapshot or not (#2990); .qkind
+       outranks the card's compact 28px strip above. */
+    :is(.qcard .qkind, .stale, .quiet-list, .threads) .handoff-line :is(.strip-done, .strip-later, .strip-ignore, [data-agent]) { min-height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
@@ -3485,6 +3476,8 @@ const UI = {
     "Continue with {agent}": "和 {agent} 继续这个会话",
     "Continuing this session with its agent happens in the live reader.": "和 agent 继续这个会话要在实时阅读器里进行。",
     "Open the live reader": "打开实时阅读器",
+    "This is an offline snapshot; open REM to mark it.": "这是离线快照，打开 REM 后才能标记",
+    "Handing work to an agent happens in the live reader.": "交给智能体要在实时阅读器里进行。",
     "REM did not recognise this item. Reload the page and try again.": "REM 认不出这件事。请刷新页面再试。",
     "Questions & connections →": "问题与关联 →",
     "Reply to {name} first: the reply is ready": "先回 {name}：回信已写好",
@@ -7110,24 +7103,25 @@ function motionStilled() {
   return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("calm");
 }
 // A handled card slides right and fades, then the page re-renders with an Undo.
+// A snapshot keeps no mark (stripDone says why), so E and the palette's Mark done do nothing there either.
 function closeEntries(node, entries, state = "done", extra = null) {
-  if (!entries.length) return;
+  if (!entries.length || !liveHere()) return;
   node?.classList.add("leaving");
   setTimeout(() => setDone(entries[0], true, state, entries, extra), motionStilled() ? 0 : 240);
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
 // or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
-// does the tick that marks all of them done at once (E). A card of one row has no tick in the live reader:
-// it would only repeat that row's own Mark done (one control per row, owner 2026-11-11); E still closes it.
+// does the tick that marks all of them done at once (E). A card of one row has no tick: it would only repeat that
+// row's own Mark done (one control per row, owner 2026-11-11); E still closes it. In a snapshot it is disabled.
 // tick: false where another control on the card already closes every row (personCard says when).
-function cardHead(group, late, skippable, tick = group.entries.length > 1 || !stripMarksDone(group.entries[0])) {
+function cardHead(group, late, skippable, tick = group.entries.length > 1) {
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
   // Each glyph carries its word: a bare » beside the name read as nothing on a phone (sprint 14 #5).
   const doneWord = t(entries.length > 1 ? "Mark all done" : "Mark done");
   const done = tick
-    ? el("button", { type: "button", class: "ibtn", "aria-label": doneWord + " · E", title: doneWord + " · E" }, [icon("check"), el("span", { text: doneWord })]) : null;
+    ? el("button", { type: "button", class: "ibtn", "aria-label": doneWord + " · E", title: doneWord + " · E", ...snapshotWhy("This is an offline snapshot; open REM to mark it.") }, [icon("check"), el("span", { text: doneWord })]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
   const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip"), el("span", { text: t("Next card") })]) : null;
   if (skip) skip.onclick = () => dealNext(1);
@@ -7151,19 +7145,15 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false, l
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
   if (own) seen.add(draft.id);
-  // One Mark done per row (owner, 2026-11-11). In the live reader it is the strip's, and it closes the row the
-  // way the tick did: the row, or the card when it is the only one, slides out. A snapshot has no strip action
-  // and keeps the tick.
+  // One Mark done per row (owner, 2026-11-11): the strip's, which closes the row, or the card when it is the only
+  // one, by sliding it out.
   // E closes the whole card, so a row that is one of several does not claim the key.
   // Mark done, Not now and Ignore all leave this way (state), so the three closes look alike.
   const close = (event, state = "done", extra = null) => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry], state, extra);
-  const done = stripMarksDone(entry) ? null
-    : el("button", { type: "button", class: "qdone", title: t("Mark done") + (many ? "" : " · E"), "aria-label": t("Mark done"), html: CHECK_ICON });
-  if (done) done.onclick = close;
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
-      : wordsLine("words", words, entry.r, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+      : wordsLine("words", words, entry.r, [context ? el("span", { html: inline(context, entry.r.path) }) : null]),
     el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close, lead), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
@@ -7247,7 +7237,7 @@ function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
 // lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
 function handOff(entry, mark, lead) {
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark, lead) : handButtons(entry, show, panel, mark, lead);
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
   return el("div", { class: "handoff" }, [line, panel]);
@@ -7256,11 +7246,6 @@ function handOff(entry, mark, lead) {
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
 // same as everywhere else. The strip is only drawn on unfinished rows (Waiting on you and Today both leave a
 // done row out, and its Undo is the page's done notice), so there is no done state to show here.
-// A snapshot closes rows too: the mark is kept on this device and the live reader syncs it (saveThreadState), so
-// its rows carry the same three worded closes and no icon-only tick (#2990: «为什么没有"忽略"这个功能呢？»).
-function stripMarksDone(entry) {
-  return !entry.ask && !!entry.r && !!entry.t;
-}
 // Closing an item is Today's core verb (owner, 2026-11-12: «忽略和标记完成很重要，有的任务就是线下说了，或者现在不需要
 // 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
 // 标为完成 — handled, settled offline included (state done);
@@ -7268,19 +7253,38 @@ function stripMarksDone(entry) {
 // 忽略 — an ad or a notification: the state "ignored", which closes like done and never returns, and reads 已忽略. Its
 // notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
 // itself: a relay address carries many different people, so the owner taps it.
+// An ask (让 Codex 查), or a row with no record, is not an item and has nothing to close.
+// A snapshot shows the three words but cannot keep them: a file:// page's storage is not the live reader's, and
+// nothing carries a mark from one to the other, so a close there would vanish (#2990 review). They are drawn
+// disabled, each saying why, and the card or fold says it once in words (snapshotCloseLine).
 function stripDone(entry, mark, lead = false) {
-  if (!stripMarksDone(entry)) return [];
+  if (entry.ask || !entry.r || !entry.t) return [];
   // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.
   const close = (state, extra = null) => event => mark ? mark(event, state, extra) : setDone(entry, true, state, [entry], extra);
-  const done = el("button", { type: "button", class: "btn-quiet strip-done" + (lead ? " strip-lead" : ""), text: t("Mark done") });
+  const why = snapshotWhy("This is an offline snapshot; open REM to mark it.");
+  const done = el("button", { type: "button", class: "btn-quiet strip-done" + (lead ? " strip-lead" : ""), text: t("Mark done"), ...why });
   done.onclick = close("done");
-  const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
+  const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now"), ...why });
   later.onclick = close("skipped");
-  const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
-  // Stopping a sender is a Host rule, so a snapshot's Ignore closes only the row.
-  const sender = liveHere() && todayRow(entry)?.sender;
+  const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore"), ...why });
+  const sender = todayRow(entry)?.sender;
   ignore.onclick = close("ignored", sender ? () => stopSenderButton(entry, sender) : null);
   return [done, later, ignore];
+}
+// Why a snapshot's button does nothing, said on the button (its title, and for a screen reader aria-describedby,
+// pointing at the page's hidden sentence for that reason, whyNotes) and, for the closes, once in words on the card,
+// band or fold. why: a close's reason, else a hand-off's.
+function snapshotWhy(why) {
+  return liveHere() ? {} : { disabled: "disabled", title: t(why), "aria-describedby": why.includes("offline") ? "why-close" : "why-hand" };
+}
+function whyNotes() {
+  return liveHere() ? [] : [el("span", { id: "why-close", class: "visually-hidden", text: t("This is an offline snapshot; open REM to mark it.") }),
+    el("span", { id: "why-hand", class: "visually-hidden", text: t("Handing work to an agent happens in the live reader.") })];
+}
+// The open-REM link is the live reader's, when this computer has one.
+function snapshotCloseLine() {
+  return liveHere() ? null : el("p", { class: "close-why" }, [t("This is an offline snapshot; open REM to mark it."), REM.live_link ? " " : null,
+    REM.live_link ? el("a", { href: REM.live_link, text: t("Open the live reader") }) : null]);
 }
 // The notice's "stop showing mail from x": once saved, the notice says what was ignored and its one Undo
 // reopens the item and lets the sender back. A save the Host refused says so, with Try again, and changes nothing.
@@ -7327,7 +7331,7 @@ async function saveIgnoredSender(address, ignored) {
   if (document.getElementById("settings")?.open) renderSettings();
   return true;
 }
-// One line of actions, a quiet dot between each: 交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成
+// One line of actions, a quiet dot between each: 标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 ▾
 function dotted(nodes) {
   return nodes.filter(Boolean).flatMap((node, i) => i ? [el("span", { class: "sep", "aria-hidden": "true", text: "·" }), node] : [node]);
 }
@@ -7335,8 +7339,7 @@ function handButtons(entry, show, panel, mark, lead) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet" + (lead === "task" && agent === "codex" ? " strip-lead" : ""), "data-agent": agent,
-      text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }) });
-    button.disabled = !liveHere();
+      text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }), ...snapshotWhy("Handing work to an agent happens in the live reader.") });
     button.onclick = async () => {
       buttons.forEach(other => { other.disabled = true; });
       status.textContent = t("Handing to {agent}…", { agent: name });
@@ -7356,12 +7359,12 @@ function handButtons(entry, show, panel, mark, lead) {
     return button;
   });
   const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
-  if (lead === undefined) return [...dotted([...buttons, talk, ...closes]), status];
   return [...dotted(todayStrip(buttons, talk, closes)), status];
 }
 // A Today row had eight equal links (sprint 14 #5). Now its three ways to close come first, as words (principle
 // 10), then 交给 Codex · 交给 Claude, which stay visible quiet words on every unfinished row (D-100, the owner's
-// «权限问题都给了»); only the talk folds under a worded 更多. One of them is the row's lead, in bold, chosen by
+// «权限问题都给了»); only the talk folds under a worded 更多. Every strip has this one order, Waiting's and the
+// folds' included: 标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 (#2990 review). One of them is the row's lead, in bold, chosen by
 // what the item is (lead, set where the buttons are made): 交给 Codex for a debt REM prepared as a task
 // (principle 8), else 标为完成; lead null: the card's green step or the draft's Send is the primary.
 function todayStrip(agents, talk, closes) {
@@ -7376,8 +7379,8 @@ function todayStrip(agents, talk, closes) {
   return [...closes, ...agents, more];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
-// lead: as in handOff; on Today (not undefined) the three closes stay first, as before the hand-off (D-100's order).
-function handState(entry, show, panel, mark, lead) {
+// The three closes stay first, as before the hand-off (D-100's order).
+function handState(entry, show, panel, mark) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
   const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
@@ -7399,7 +7402,7 @@ function handState(entry, show, panel, mark, lead) {
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
   const actions = liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
   const work = [status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel)], closes = stripDone(entry, mark);
-  return [...dotted(lead === undefined ? [...work, ...closes] : [...closes, ...work]), output].filter(Boolean);
+  return [...dotted([...closes, ...work]), output].filter(Boolean);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
@@ -7507,7 +7510,7 @@ function personCard(group, focal, total = 1) {
   // approves; a debt REM prepared as a task goes to Codex (principle 8); anything else is closed. "Open {name}" is
   // not a step: the name above already opens the page, and opening it does nothing about the item.
   const task = rowTask(next.entry), byAgent = liveHere() && !!task && !handed(task) && !["send", "draft", "approve"].includes(next.step);
-  const closesHere = closing.length === 1 && stripMarksDone(closing[0]);
+  const closesHere = closing.length === 1;
   const step = byAgent || closesHere ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
   // The bold lead sits on the row it is about: the task's own row, else the row that closes.
   const leadEntry = step || draft ? null : byAgent ? next.entry : closing[0] || next.entry, leadKind = byAgent ? "task" : "done";
@@ -7516,9 +7519,9 @@ function personCard(group, focal, total = 1) {
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
-      cardStep(entry) === "done" && stripMarksDone(entry) && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
+      cardStep(entry) === "done" && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
     draft ? cardDraft(draft, group) : null,
-    el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
+    el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)]), snapshotCloseLine()]);
   card.markDone = () => closeEntries(card, entries);
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
@@ -7551,16 +7554,29 @@ function stripRow(entry, grouped = false) {
 }
 // Gone quiet: on Today five rows in a fold, on Waiting all of them. Each row is still open, so each says the three
 // closes in words, with the hand-offs after them (#2990, D-100); on Today the strip sits under the row's preview.
+// On Today a long-quiet promise is already a row of its own fold above (staleWidget), so it is left out here: one
+// item, one row on the page (#2990 review). Waiting has no such fold and keeps it.
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
-  const items = entries.filter(entry => entry.t.quiet || staleEntry(entry));
+  const items = entries.filter(entry => home ? entry.t.quiet && !staleEntry(entry) : entry.t.quiet || staleEntry(entry));
   if (!items.length) return null;
-  return el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
-    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(entry => el("li", {}, [
-      el("div", {}, [el("a", { href: href(entry.r), text: threadWho(entry.r) }), el("p", { text: threadPreview(entry.t.text) }), alsoOn(entry.also),
-        handOff(entry, null, null)]), el("span", { class: "quiet-age", text: age(entry.t.since) })])))
-      : el("ul", { class: "threads" }, items.map(entry => stripRow(entry))),
+  const rows = () => home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(entry => el("li", {}, [
+    el("div", {}, [el("a", { href: href(entry.r), text: threadWho(entry.r) }), el("p", { text: threadPreview(entry.t.text) }), alsoOn(entry.also),
+      handOff(entry, null, null)]), el("span", { class: "quiet-age", text: age(entry.t.since) })])))
+    : el("ul", { class: "threads" }, items.map(entry => stripRow(entry)));
+  const fold = el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + (home ? items.length : count) + ")" }),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
+  return lazyFold(fold, node => node.querySelector(":scope > summary").after(snapshotCloseLine() || "", rows()));
+}
+// A fold's rows are drawn when it first opens (#2990 review): Waiting's Gone quiet can hold sixty rows, each with
+// its strip, and none is seen until the owner opens it. The summary's click fills it before the browser opens it,
+// so the rows are there as it opens; an open set by code (a redraw keeping the fold open) calls fill itself.
+function lazyFold(details, fill) {
+  let filled = false;
+  details.fill = () => { if (!filled) { filled = true; fill(details); } };
+  details.querySelector(":scope > summary").addEventListener("click", details.fill);
+  details.addEventListener("toggle", () => { if (details.open) details.fill(); });
+  return details;
 }
 
 function taskView(kind) {
@@ -7586,6 +7602,7 @@ function taskView(kind) {
   approvalUndoBar(false);
   const snapshot = snapshotLine();
   if (snapshot) main.appendChild(snapshot);
+  main.append(...whyNotes());
   const all = threadEntries(), entries = all.filter(entry => !isDone(entry)), counts = threadCounts();
   if (!entries.length) {
     main.appendChild(emptyState("Nothing open"));
@@ -7599,7 +7616,7 @@ function taskView(kind) {
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
     const items = entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
-    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
+    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)), snapshotCloseLine(),
       el("ul", { class: "threads" }, items.map(entry => stripRow(entry, true)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
@@ -7892,7 +7909,7 @@ function overview() {
   const cards = deckOrder(groups);
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
-  main.append(...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
+  main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
     staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
@@ -8097,9 +8114,9 @@ function todaySide(counts) {
 function staleWidget(entries) {
   if (!entries.length) return null;
   // The count is in the words: the fold shows three, and this closes every one of them.
-  const all = el("button", { type: "button", class: "btn-quiet stale-all", text: t("Mark all {n} done", { n: entries.length }) });
+  const all = el("button", { type: "button", class: "btn-quiet stale-all", text: t("Mark all {n} done", { n: entries.length }), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
   all.onclick = () => closeAllStale(entries);
-  const rows = entries.slice(0, 3).map(entry => {
+  const rows = () => entries.slice(0, 3).map(entry => {
     const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
     const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open") });
     keep.onclick = () => keepStale(entry);
@@ -8110,9 +8127,10 @@ function staleWidget(entries) {
       handOff(entry, null, null)]);
   });
   const n = entries.length;
-  return el("details", { id: "today-stale", class: "stale fold" }, [
+  const fold = el("details", { id: "today-stale", class: "stale fold" }, [
     el("summary", { text: t(n === 1 ? "1 has gone quiet for a long time · Look" : "{n} have gone quiet for a long time · Look", { n }) }),
-    el("ul", {}, rows), el("div", { class: "stale-foot" }, [all, n > 3 ? staleMore(n - 3) : null])]);
+    el("div", { class: "stale-foot" }, [all, n > 3 ? staleMore(n - 3) : null])]);
+  return lazyFold(fold, node => node.querySelector(":scope > summary").after(snapshotCloseLine() || "", el("ul", {}, rows())));
 }
 // Each promise is its own mark: one setDone over all of them would link unrelated rows as one thread in the
 // notebook, so a later Undo of any one would reopen every one. The page is drawn once and says it once: one notice,
@@ -8152,6 +8170,7 @@ function staleMore(n) {
     const quiet = document.getElementById("gone-quiet");
     if (!quiet) return;
     quiet.open = true;
+    quiet.fill?.();
     quiet.scrollIntoView({ block: "start" });
   }), { once: true });
   return link;
@@ -8363,7 +8382,6 @@ function contactDirectory() {
 // The person page leads with what is owed and the one thing to do next; the
 // People list groups who is waiting on you above who you spoke to recently.
 const PEN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
-const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
 let notDoneKeys = new Set(), peopleTable = false;
 function face(name, size = "") {
   const words = name.replace(/\(.*?\)/g, "").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).filter(Boolean);
@@ -13545,7 +13563,7 @@ let pendingRestore = (() => {
 function restoreView(state) {
   if (!state || state.hash !== location.hash) return false;
   const open = new Set(state.open || []);
-  document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) node.open = true; });
+  document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) { node.open = true; node.fill?.(); } });
   restoreFields(state.fields);
   scrollTo(0, state.y || 0);
   return true;

@@ -4109,8 +4109,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     # A static, undrafted mail card opens its recorded provider thread; it
     # cannot promise a live Draft now action. Local completion stays available.
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
-    # A snapshot's rows close with the strip's words, kept on this device (#2990), never an icon-only tick.
-    assert page.locator('.qcard .qitem .strip-ignore').count() == page.locator('.qcard .qitem').count()
+    # A snapshot's rows show the strip's closes as words, disabled since it keeps no mark (#2990), never an icon-only tick.
+    assert page.locator('.qcard .qitem .strip-ignore:disabled').count() == page.locator('.qcard .qitem').count()
     assert page.locator('.qcard .qdone').count() == 0
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
     assert page.locator('#nav .n.waiting').inner_text() == '7'  # items, not people (TOP10 #9), said once: in the sidebar
@@ -4133,40 +4133,28 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert 'pilot renewal' in page.locator('h1').inner_text()
 
 
-def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
+def test_round7_a_snapshot_row_keeps_its_mailbox_link_and_says_why_it_cannot_be_marked(reader):
+    """Round 7 marked a snapshot's row done on this device, "sync pending". Nothing ever synced it: a file:// page's
+    storage is not the live reader's (#2990 review). The row keeps its way to the mailbox and no Copy prompt; its
+    Mark done is shown, disabled, and the band says in words where marking happens. The live mark, its Undo and
+    the record following it are tested on the live reader (test_rem_strip_done_browser.py)."""
     page, uri = reader
     page.goto(uri + '#view=open')
     target = page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').first
     before = int(page.locator('#nav a[href="#view=open"] .n').inner_text())
-    assert target.get_by_role('button', name='Mark done', exact=True).count() == 1
+    done = target.get_by_role('button', name='Mark done', exact=True)
+    assert done.count() == 1 and done.is_disabled()
     assert target.get_by_role('link', name='Open the Gmail thread', exact=True).count() == 1
     assert target.get_by_role('button', name='Copy prompt').count() == 0
-    target.get_by_role('button', name='Mark done', exact=True).click()
-    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 0
-    assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before - 1
-    page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
-    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 1
-    page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').get_by_role('button', name='Mark done').click()
-    page.reload()
-    page.locator('.done-details summary').wait_for()
-    assert page.locator('.done-details').get_attribute('open') is None
-    page.locator('.done-details summary').click()
-    assert 'sync pending' in page.locator('.done-details').inner_text()
-    assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
-    # Her record follows the decision without a ledger of its own (D-30): nothing of hers is left in Today.
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    assert page.locator('.owe').count() == 0 and page.locator('.r4-today').count() == 0
-    page.goto(uri + '#view=open')
-    page.locator('.done-details summary').click()
-    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    assert page.locator('.r4-today').inner_text() == '1 item in Today'
-    page.goto(uri)
-    assert 'Data-sharing addendum' in page.locator('.today-brief').text_content()  # every card, raised or waiting behind its face
+    band = page.locator('.task-band').filter(has=page.locator('.thread', has_text='Data-sharing addendum'))
+    assert 'This is an offline snapshot; open REM to mark it.' in band.inner_text()
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before
+    assert page.locator('.done-details').count() == 0
 
 
-def test_round7_done_remains_usable_when_storage_is_blocked(reader):
+def test_round7_a_snapshot_with_storage_blocked_still_draws_its_rows(reader):
+    """Blocked storage never breaks the page: the probe reads nothing back and the rows still draw, their closes
+    disabled with the reason (#2990 review), so nothing is lost by the block."""
     page, uri = reader
     page.add_init_script(r'''Object.defineProperty(window, 'localStorage', {
       get() { throw new Error('Storage blocked by this fixture'); }
@@ -4177,14 +4165,9 @@ def test_round7_done_remains_usable_when_storage_is_blocked(reader):
       await readerStorage('fixture-probe', 'value');
       return readerStorage('fixture-probe');
     }''', isolated_context=False) is None
-    page.locator('.task-band .thread').first.get_by_role('button', name='Mark done', exact=True).click()
-    assert page.locator('.done-details summary').is_visible()
-    page.goto(uri + '#')
-    page.goto(uri + '#view=open')
-    assert page.locator('.done-details summary').is_visible()
-    page.locator('.done-details summary').click()
-    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
-    assert page.locator('.done-details').count() == 0
+    row = page.locator('.task-band .thread').first
+    assert row.get_by_role('button', name='Mark done', exact=True).is_disabled()
+    assert row.get_by_role('button', name='Ignore', exact=True).get_attribute('title') == 'This is an offline snapshot; open REM to mark it.'
 
 
 def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(reader):
@@ -4201,8 +4184,11 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .strip-done)').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
-    action.focus()
-    assert action.evaluate(r'''node => node === document.activeElement''')
+    if action.is_disabled():  # a file:// snapshot keeps no mark (#2990 review): the button says why instead
+        assert action.get_attribute('title') == 'This is an offline snapshot; open REM to mark it.'
+    else:
+        action.focus()
+        assert action.evaluate(r'''node => node === document.activeElement''')
 
 
 @pytest.mark.parametrize('width', [390, 800, 1099, 1440])

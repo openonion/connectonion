@@ -950,7 +950,9 @@ pinned to that edge: it comes into view with the draft.
   (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
   (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
   any it refused get one *Not saved · Try again* for just those;
-  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view.
+  Today's own **Gone quiet** fold leaves these promises out, so an item is one row on the page; Waiting's section
+  lists them. A fold draws its rows when it is first opened. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -973,8 +975,12 @@ pinned to that edge: it comes into view with the draft.
   row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
   brings the two buttons back; it never reads **Undo**, which undoes the item.
   The strip carries the row's three ways to close it, as words on screen, never an icon, before and after a
-  hand-off (first on Today, last on Waiting on you), in a saved snapshot too, where a close is kept on this
-  device until the live reader syncs it and Ignore never offers to stop a sender: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
+  hand-off, in one order everywhere (Today, its folds, Waiting on you): **Mark done** · **Not now** · **Ignore** ·
+  **Hand to Codex** · **Hand to Claude** · **More**. In a saved snapshot (no Host, or a `file://` page) the
+  closes and hand-offs are still shown but disabled, since nothing would carry a snapshot's mark to the notebook:
+  each button says why when pointed at, and each card, band and fold says once, in words, *This is an offline
+  snapshot; open REM to mark it.* (这是离线快照，打开 REM 后才能标记), with **Open the live reader** when this
+  computer has one; E does nothing there either. **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
   (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
   *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
