@@ -33,6 +33,11 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     """Map a single trace entry to a ChatItem. Returns None if the entry has no UI."""
     entry_type = entry.get('type')
 
+    if entry_type == 'host_notice' and entry.get('code') == 'non_admin_auto':
+        from ....core.host_context import AUTO_NOTICE
+        return {'id': entry.get('id') or f'notice-{idx}', 'type': 'host_notice',
+                'code': 'non_admin_auto', 'message': AUTO_NOTICE}
+
     if entry_type == 'files_received':
         return {
             'id': f"files-{idx}",
