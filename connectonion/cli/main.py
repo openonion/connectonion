@@ -2489,6 +2489,17 @@ def _whatsapp_contacts_rm(
 
 
 _whatsapp_app.add_typer(_whatsapp_contacts, name="contacts")
+
+
+@_whatsapp_app.command(
+    "download", epilog="Example:  co whatsapp download 3EB0C127D8F1A2B4E5F6  |  co whatsapp download 3EB0C127D8F1A2B4E5F6 --to ./files")
+def _whatsapp_download(
+    message_id: str = typer.Argument(..., help="Id of a received message with a photo, video, voice note or document, from `co whatsapp log`"),
+    to: Optional[str] = typer.Option(None, "--to", metavar="DIR", help="Folder to save into (default: the inbox's media folder)"),
+):
+    """Fetch a received message's photo, video, voice note or document again, including ones shared as group history. Prints the saved path. Exits 4 when WhatsApp no longer has the file. Writes one file; sends nothing."""
+    from .commands.whatsapp_commands import handle_download
+    handle_download(message_id, to)
 app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.

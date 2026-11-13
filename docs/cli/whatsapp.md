@@ -122,11 +122,23 @@ images can at least say which file it is declining to read.
 A document keeps its own extension (`3EB0….pdf`, not `.bin`) and the record
 carries the name it was sent with as `media.name` (#2853).
 
-**Why at arrival and not on demand.** The media keys live in the protobuf
-envelope, and the queue record does not keep it, so a later `download <id>`
-would have nothing to download from. WhatsApp also drops media from its own
-servers after a while. The moment the message arrives is the only moment the
-file is reliably reachable.
+**At arrival, and again later.** The file is fetched as the message arrives,
+because WhatsApp drops media from its own servers after a while. The record
+also keeps what a later fetch needs (`attachments`: the file's path on
+WhatsApp's servers, its key and hashes), so one the listener missed can be
+fetched afterwards:
+
+```bash
+co whatsapp download 3EB0C127D8F1A2B4E5F6             # → ~/.co/inbox/whatsapp/media/3EB0….pdf
+co whatsapp download 3EB0C127D8F1A2B4E5F6 --to ./files
+```
+
+It needs no listener: it is one HTTPS request to WhatsApp's media server and a
+local decrypt, every hash checked. It exits 4 when WhatsApp no longer has the
+file, and 1 with a different sentence for a message that has no media, or one
+received before co kept the keys (#2853). The key is in `received.jsonl`,
+which is mode 0700 with the rest of the inbox; anyone who can read it can open
+that file.
 
 **When it fails, it says so.** An expired or unreachable file leaves
 `{"media":{"error":"…"}}` on the record and a line in `log`, and writes no
@@ -144,6 +156,24 @@ answered only `text` skipped them. A frame that carries nothing but that
 metadata is not a message and is not recorded. Before #1837 it was recorded,
 and because the sender's real first message shares its id, the real message
 was then dropped as a duplicate.
+
+## Joining a group: its earlier messages
+
+When someone adds this number to a group with WhatsApp's "share recent
+messages" switch on, their phone sends one encrypted bundle of those messages
+about a second later. The listener downloads it, opens it, and writes each
+message into `received.jsonl` with its own sender, time and kind and
+`"history": true`. None is queued, so nothing answers a question asked before
+the account was there; `co whatsapp log --chat <id>` shows them. Photos and
+documents in them keep what `download` needs. The bundle itself is recorded
+too (`kind: "history"`), saying how many messages it held or why they could
+not be read. Only entries for that group are accepted (#2853).
+
+neonize (and whatsmeow) cannot open these bundles, so co does it itself. The
+key derivation ("Group History") and the zlib-compressed payload come from an
+open-source client that implements the sending side; they have not yet been
+checked against a bundle from a real phone. If the key is wrong the MAC check
+fails, and the bundle's record says so: nothing is guessed.
 
 ## Groups: when the bot answers
 
@@ -341,6 +371,15 @@ The flip side is that the snapshot goes stale, and WhatsApp changing something
 under an old one fails in ways that do not name themselves. `check` reads the
 snapshot's date out of the shared library and says so once it is more than six
 months old.
+
+It can also go stale faster than that. In November 2026 WhatsApp started
+refusing neonize 0.4.3 at connect, `Client outdated (405)`, so the pin is now
+0.10.0. A listener refused this way stops with `WhatsApp rejected this client
+as outdated (405)` and the upgrade command, exit 3, instead of retrying a
+connection that cannot succeed. `check` names an installed neonize older than
+the pin, which is what a listener in its own venv keeps after co upgrades. The
+session file carries over: a listener on 0.10.0 opens a session linked under
+0.4.3 without a new QR scan.
 
 ## Environment
 
