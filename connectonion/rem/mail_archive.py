@@ -439,6 +439,29 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
     return _material(manifest, snapshots)
 
 
+def topic_material(root: Path, aliases: list[str]):
+    """Search saved mail bodies by topic alias, including separately observed mail."""
+    from .topic_map import _pattern
+    pattern = _pattern(aliases)
+    manifest = read_json(state_path(root, 'mail/archive.json'), {})
+    own = set(manifest.get('owner_addresses', []))
+    found, seen = {}, set()
+    for folder in ('mail/messages', 'mail/observed'):
+        for path in sorted(state_path(root, folder).glob('*/*.json')):
+            snapshot = read_json(path, {})
+            key = (snapshot.get('provider'), snapshot.get('id'))
+            if key in seen or not isinstance(snapshot.get('body'), str):
+                continue
+            if pattern.search(snapshot['body'] + ' ' + str(snapshot.get('subject', ''))):
+                found.setdefault(snapshot['provider'], []).append(_material_item(snapshot, own))
+                seen.add(key)
+    if not found:
+        return None
+    start = datetime.fromisoformat(manifest['range_start']) if manifest.get('range_start') else None
+    end = datetime.fromisoformat(manifest['range_end']) if manifest.get('range_end') else None
+    return found, start, end
+
+
 # No checkpoint for this long means no process is saving: init stamps `updated`
 # every 25 messages, seconds apart.
 STALL_SECONDS = 600

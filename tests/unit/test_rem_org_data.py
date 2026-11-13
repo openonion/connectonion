@@ -49,10 +49,10 @@ def test_snapshot_exposes_cited_org_team_and_project_data(tmp_path, link):
     assert any(rel['path'] == ORG and rel['kind'] == 'linked' for rel in rows[PROJECT]['relations'])
 
 
-@pytest.mark.parametrize('marker', ['[sensitive]', '[personal]', '- Kind: personal [1]'])
-def test_private_org_and_unknown_fields_are_explicit(tmp_path, marker):
+@pytest.mark.parametrize('title, marker', [(' [sensitive]', ''), (' [personal]', ''), ('', '- Kind: personal [1]')])
+def test_private_org_and_unknown_fields_are_explicit(tmp_path, title, marker):
     book = notebook(tmp_path)
-    book.write(ORG, f'# Fernhill Labs\n\n## Facts\n{marker}\n')
+    book.write(ORG, f'# Fernhill Labs{title}\n\n## Facts\n{marker}\n')
     book.write(PERSON, '# Avery\n\n## Facts\n- Email: avery@fernhill.example\n')
     rows = {row['path']: row for row in snapshot(tmp_path)['records']}
     assert rows[ORG]['private'] is True
@@ -60,6 +60,25 @@ def test_private_org_and_unknown_fields_are_explicit(tmp_path, marker):
     assert rows[ORG]['people'] == []
     assert rows[PERSON]['team'] == ''
     assert rows[PERSON]['organisations'] == []
+
+
+def test_a_labelled_passage_hides_itself_not_the_whole_organisation(tmp_path):
+    # One [personal] sentence in a busy org's relationship once curtained the whole page:
+    # its people, threads and graph went behind one bar. The label covers its passage only.
+    book = notebook(tmp_path)
+    book.write(ORG, '# Fernhill Labs\n\n## Facts\n- Kind: client_partner [1]\n'
+               '- Your contacts: [Mara](../people/mara.md) [1]\n\n'
+               '## Our relationship\nThe pilot runs to March. [1] Mara mentioned a family matter. [personal] [2]\n\n'
+               '## People here\n- [Avery](../people/avery.md) — met at a dinner party [personal]\n')
+    book.write(PERSON, '# Mara\n\n## Facts\n- Email: mara@fernhill.example\n')
+    book.write('people/avery.md', '# Avery\n\n## Facts\n- Email: avery@elsewhere.example\n')
+    rows = {row['path']: row for row in snapshot(tmp_path)['records']}
+    assert rows[ORG]['private'] is False
+    assert rows[ORG]['kind'] == 'client_partner'
+    # A person listed only inside a labelled line does not join the roster the page draws.
+    assert rows[ORG]['people'] == [PERSON]
+    graph = {node['id']: node for node in snapshot(tmp_path)['graph']['nodes']}
+    assert graph[ORG]['title'] == 'Fernhill Labs' and graph[ORG]['private'] is False
 
 
 def test_unknown_kind_does_not_become_a_filter_and_source_markers_do_not_hide_org(tmp_path):

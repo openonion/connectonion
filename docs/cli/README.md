@@ -379,6 +379,8 @@ pip install 'connectonion[whatsapp]'
 brew install libmagic                  # also needed; apt install libmagic1 on Debian/Ubuntu
 co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
 echo "on it" | co whatsapp reply 3EB0A1
+co whatsapp lookup +61412345678       # on WhatsApp? who? sends nothing
+co whatsapp contacts add +61412345678 --name "Alex Example"   # then: co whatsapp send "Alex Example" "Hi"
 ```
 
 The same nine verbs, against a linked companion device — which is the only way
@@ -1427,14 +1429,16 @@ A server a deploy goes *onto*, so the agent keeps its address, its logs and any 
 made by hand — and answers on its own https hostname.
 
 ```bash
-co server new prod                       # have one created ($30/month, charged yearly)
+co server new prod                       # have one created (from $30/month; shows how it is charged, then asks)
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # reconciled against what you are billed for
+co server invoice prod                   # its invoices, where the backend bills monthly
 co deploy --to prod
 ```
 
 `co server forget` drops the local entry and the machine keeps billing;
-`co server destroy` tears it down and refunds the unused term. Two commands on purpose.
+`co server destroy` tears it down and settles the bill (the used part of the month, or a refund of an
+old 12-month term). Two commands on purpose.
 
 See [server.md](server.md).
 

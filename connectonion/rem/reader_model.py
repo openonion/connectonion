@@ -34,7 +34,8 @@ def notebook_links(origin: str, text: str) -> list[str]:
 def organisation_links(record: str, text: str) -> list[str]:
     from .facts import parse
     label = 'Company' if record.startswith('people/') else 'Organisation'
-    return list(dict.fromkeys(path for fact in parse(text, record).get(label, [])
+    # A labelled Company line is the person's private business: it does not place them in the org.
+    return list(dict.fromkeys(path for fact in parse(text, record).get(label, []) if not PRIVATE.search(fact['value'])
                              for path in notebook_links(record, fact['value']) if path.startswith('orgs/')))
 
 
@@ -49,8 +50,11 @@ def organisation_fields(record: dict, paths: set[str]) -> dict:
     result = {'facts': facts}
     if category == 'orgs':
         kind = value('Kind')
+        # A label on the title (or Kind: personal) makes the organisation private; a labelled
+        # passage in its body hides that passage only, as on a person's page. Reading the whole
+        # body put a busy organisation's people, threads and graph behind one curtain.
         result.update(kind=kind if kind in ORG_KINDS else '', to_you=value('To you'),
-                      private=bool(PRIVATE.search(_not_sources(text))) or kind == 'personal')
+                      private=bool(PRIVATE.search(text.split('\n', 1)[0])) or kind == 'personal')
     else:
         result['organisations'] = [org for org in organisation_links(path, text) if org in paths]
         if category == 'people':
@@ -62,7 +66,9 @@ def _org_roster(org: dict) -> set[str]:
     """The org's own contact roster establishes affiliation, not employment."""
     contacts = [fact['value'] for fact in org['facts']['Your contacts']]
     roster = re.search(r'^## People here\s*\n(.*?)(?=^## |\Z)', org['text'], re.M | re.S)
-    return set(notebook_links(org['path'], '\n'.join(contacts) + '\n' + (roster[1] if roster else '')))
+    # A labelled line stays behind its curtain: its person is not drawn into the org's structure.
+    lines = [line for line in [*contacts, *(roster[1] if roster else '').splitlines()] if not PRIVATE.search(line)]
+    return set(notebook_links(org['path'], '\n'.join(lines)))
 
 
 def organisation_members(records: list[dict], owner: str) -> None:
@@ -219,6 +225,11 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
+    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
+                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    for origin, rows in forward.items():
+        for target, relation in rows.items():
+            relation['private'] |= origin in private_topics or target in private_topics
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.
@@ -229,6 +240,81 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
     return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))
             for path, rows in found.items()}
+
+
+TOPIC_LINKED = ('people/', 'orgs/', 'projects/', 'decisions/', 'principles/', 'agenda/')
+
+
+def topic_mentions(row: dict, paths: set[str], owner: str) -> list[dict]:
+    """The newest cited sentence per record naming a topic, newest first.
+
+    Sessions and skills are counted, not linked; the owner's own page is not a
+    backlink, and a sentence labelled private never leaves its page.
+    """
+    found = {}
+    for e in sorted(row['evidence'], key=lambda e: e['date']):
+        path = e['record']
+        if path in paths and path != owner and path.startswith(TOPIC_LINKED) and not e.get('private'):
+            found[path] = {'path': path, 'sentence': _around(e['sentence'], row.get('aliases', [])), 'date': e['date'], 'source': e['source']}
+    return sorted(found.values(), key=lambda m: m['date'], reverse=True)
+
+
+def _around(text: str, aliases: list[str], limit: int = 220) -> str:
+    """A long sentence keeps the words naming the topic, starting on a whole word."""
+    lowered = text.casefold()
+    at = min((lowered.find(a.casefold()) for a in aliases if a.casefold() in lowered), default=0)
+    if len(text) <= limit or at < limit - 60:
+        return _clip(text, limit)
+    start = text.find(' ', max(0, at - 80)) + 1
+    return '…' + _clip(text[start:], limit - 1)
+
+
+def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None) -> dict:
+    """Explicit undirected links only; sessions fold into their linked project.
+
+    `topics` maps a topic page to the records whose cited sentences name it
+    (`topic_mentions`); those become topic edges too. All other records remain
+    in nodes, including isolates. Private nodes have no title; callers exporting
+    off-device must remove private records beforehand.
+    """
+    from collections import Counter
+    paths = {r['path']: r for r in records if r['path'] != 'skills/catalog/index.md'
+             and r['category'] not in ('logs', 'notes')}
+    links = relationships(records) if links is None else links
+    folded = {}
+    for path, row in paths.items():
+        if row['category'] == 'sessions':
+            projects = sorted(r['path'] for r in links.get(path, [])
+                              if r['kind'] in ('linked', 'linked from') and r['path'].startswith('projects/'))
+            if projects:
+                folded[path] = projects[0]
+    edges = {}
+    for origin in paths:
+        for rel in links.get(origin, []):
+            # A link made only on a labelled line is private: it draws no edge.
+            if rel['kind'] not in ('linked', 'linked from') or rel['path'] not in paths or rel.get('private'):
+                continue
+            a, b = sorted((folded.get(origin, origin), folded.get(rel['path'], rel['path'])))
+            if a != b:
+                kind = 'topic' if a.startswith('knowledge/') or b.startswith('knowledge/') else 'linked'
+                edges[a, b] = {'source': a, 'target': b, 'kind': kind}
+    for topic, targets in (topics or {}).items():
+        for target in targets:
+            if topic in paths and target in paths:
+                edges.setdefault(tuple(sorted((topic, target))), {'source': min(topic, target), 'target': max(topic, target), 'kind': 'topic'})
+    degree = Counter(node for pair in edges for node in pair)
+    nodes = []
+    for path, row in paths.items():
+        if path in folded:
+            continue
+        private = bool(row.get('private') or PRIVATE.search(row['text'].split('\n', 1)[0]))
+        open_threads = re.search(r'^## Open threads\s*\n(.*?)(?=^## |\Z)', row['text'], re.M | re.S)
+        has_owed = bool(open_threads and re.search(r'\b(?:the user|user|you)\s+owes?\b|你欠|用户欠', open_threads[1], re.I))
+        nodes.append({'id': path, 'kind': row['category'], 'title': '' if private else row['title'],
+                      'degree': degree[path], 'has_owed': has_owed, 'private': private})
+    isolated = Counter(n['kind'] for n in nodes if not n['degree'])
+    return {'nodes': nodes, 'edges': list(edges.values()), 'folded_sessions': len(folded),
+            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)}}
 
 
 def _source_ids(records: list[dict]) -> set[str]:

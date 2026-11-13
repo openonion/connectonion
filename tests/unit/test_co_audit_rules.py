@@ -93,6 +93,21 @@ def test_a_word_whose_page_is_its_parents_page_is_not_a_command():
     assert set(found) == {"tool", "tool cp"}
 
 
+def test_the_walk_does_not_follow_a_page_that_repeats_its_parent():
+    # `co rem investigate people` prints its parent's page, which lists people
+    # again: following it ran ~780 extra processes, a third of a CI audit.
+    printed = {"tool": "Usage: tool\n\nCommands:\n  cp   Copy\n",
+               "tool cp": "Usage: tool cp\n\nModes:\n  sum   Checksum\n  md5   Digest\n"}
+    ran = []
+
+    def runner(argv):
+        ran.append(" ".join(argv))
+        return Page(0, printed.get(" ".join(argv), printed["tool cp"]))
+
+    assert set(audit.pages(["tool"], runner)) == {"tool", "tool cp"}
+    assert sorted(ran) == ["tool", "tool cp", "tool cp md5", "tool cp sum"]
+
+
 def test_an_example_that_spells_the_command_by_an_alias_is_this_command():
     here = "gh extension search"
     found = {"gh": Page(0, ""), "gh extension": Page(0, ""), here: Page(0, ""), "gh search": Page(0, "")}

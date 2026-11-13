@@ -111,7 +111,9 @@ def test_native_waiting_rules(native, tmp_path, source):
              "continuation": SCHEDULED_CONTINUATION}
     text = " ".join(texts[source].split())
     if source != "continuation":
-        for rule in ("several minutes", "same command until it exits", "poll its output",
+        for rule in ("several minutes", "progress line at least every minute",
+                     "same command up to its 10-minute deadline", "passed its deadline", "moves on to the next work",
+                     "Submit at most twice", "parks", "poll its output",
                      "do not start a second", "10 minutes total", "MAINTENANCE_BUSY",
                      "report its busy message verbatim and end the turn without retrying",
                      "daily cap", "weekly floor", "nothing to do"):
@@ -150,7 +152,7 @@ def test_start_refreshes_old_prompt_without_consent(native, tmp_path, monkeypatc
     result = service.start(root, scheduler=native,
                            confirm=lambda summary: pytest.fail("prompt refresh must not ask for consent"))
     assert result["started"]
-    assert "same command until it exits" in native.definition(root)["prompt"]
+    assert "same command up to its 10-minute deadline" in native.definition(root)["prompt"]
     assert "Do the printed task (its Now step when shown)" in native.definition(root)["prompt"]
     assert native.definition(root)["updated_at"] > old["updated_at"]
     assert native.describe(root)["active"]
@@ -1032,7 +1034,7 @@ def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, m
     root = tmp_path / 'notes'
     prepare(root)
     config = default_config()
-    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '19:00']
+    config['schedule']['times'] = ['03:00', '04:00', '06:00', '17:00', '18:00', '20:00']  # chosen, not the old default
     atomic_write(root / 'config.yaml', yaml.safe_dump(config))
     monkeypatch.setattr(service, 'mail_available', lambda kind: False)
     before = service.summary_fingerprint(root)

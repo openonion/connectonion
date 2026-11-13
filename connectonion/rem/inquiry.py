@@ -5,9 +5,11 @@ import json
 import time
 from pathlib import Path
 
+from .config import STAGE_LEVELS, level_model
 from .files import RemError, maintenance_lock, read_json, state_path, write_json
 
 STAGES = ("plan", "extract", "synthesize", "render")
+ROUTABLE = tuple(STAGE_LEVELS)
 
 
 def routing(root: Path) -> dict:
@@ -16,7 +18,7 @@ def routing(root: Path) -> dict:
     if not isinstance(routes, dict):
         raise RemError("Invalid stage routing file")
     for stage, route in routes.items():
-        if (stage not in STAGES or not isinstance(route, dict) or set(route) != {"runner", "model"}
+        if (stage not in ROUTABLE or not isinstance(route, dict) or set(route) != {"runner", "model"}
                 or route['runner'] not in RUNNERS or not isinstance(route['model'], str) or not route['model'].strip()):
             raise RemError("Invalid stage route; preserve routing.json for diagnosis")
     return routes
@@ -24,8 +26,8 @@ def routing(root: Path) -> dict:
 
 def set_route(root: Path, stage: str, runner: str, model: str) -> dict:
     from .config import RUNNERS
-    if stage not in STAGES or runner not in RUNNERS or not model.strip():
-        raise RemError("Route requires plan/extract/synthesize/render, a supported runner and a model")
+    if stage not in ROUTABLE or runner not in RUNNERS or not model.strip():
+        raise RemError(f"Route requires a stage ({', '.join(ROUTABLE)}), a supported runner and a model")
     with maintenance_lock(root):
         routes = routing(root)
         routes[stage] = {"runner": runner, "model": model}
@@ -33,8 +35,16 @@ def set_route(root: Path, stage: str, runner: str, model: str) -> dict:
     return routes
 
 
+def inquiry_routed(root: Path) -> bool:
+    """A route on plan, extract, synthesize or render turns on the three-call inquiry."""
+    return bool(set(routing(root)) & set(STAGES))
+
+
 def stage_config(root: Path, config: dict, stage: str) -> dict:
+    """The config one model call runs with: its level's model, unless route.<stage> pins it."""
     value = copy.deepcopy(config)
+    if "models" in config:  # A config built without levels keeps the one model it names.
+        value["model"] = level_model(config, stage)
     value.update(routing(root).get(stage, {}))
     return value
 
@@ -147,8 +157,8 @@ def check(task, output):
 
 def clear_route(root: Path, stage: str = "") -> dict:
     """Clear one override, or all overrides to return to single-pass investigation."""
-    if stage and stage not in STAGES:
-        raise RemError('Unknown investigation stage')
+    if stage and stage not in ROUTABLE:
+        raise RemError('Unknown stage')
     with maintenance_lock(root):
         routes = routing(root)
         if stage:

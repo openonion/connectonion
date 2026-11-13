@@ -108,6 +108,31 @@ def atomic_write(path: Path, text: str) -> None:
     finally:
         if os.path.exists(name):
             os.unlink(name)
+    _changed(path)
+
+
+# The reader's cache key reads this one file instead of listing the notebook
+# (31,136 files took 17 s of stat calls per open). atomic_write and
+# Notebook.delete touch it; the lock's own files, rewritten or created by every
+# Host minute tick, are bookkeeping and do not (nor does the reader's full walk).
+CHANGED = "reader-changed"
+QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED}
+
+
+def _changed(path: Path) -> None:
+    """Mark the notebook a written file belongs to: the folder holding `.state`."""
+    if path.name in QUIET_STATE:
+        return
+    # Under `.state` the notebook is the folder above it, even for a candidate
+    # notebook a task keeps there: a marker inside the task would be new input.
+    inside = [parent for parent in path.parents if parent.name == ".state"]
+    for parent in inside[-1:] or list(path.parents)[:5]:
+        state = parent if parent.name == ".state" else parent / ".state"
+        if state.is_dir() and not state.is_symlink():
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+            with os.fdopen(os.open(state / CHANGED, flags, 0o600), "w") as output:
+                output.write(str(time.time_ns()))
+            return
 
 
 def state_path(root: Path, name: str) -> Path:
@@ -503,6 +528,20 @@ class Notebook:
                   f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
+    TOPIC_SECTIONS = ('What it is', 'Where you stand', 'People', 'Orgs', 'Projects',
+                      'Timeline', 'Open threads', 'Uncertainties', 'Sources')
+
+    def stub_topic(self, record: str, name: str, aliases=(), *, private=False) -> bool:
+        """A candidate's identity only; investigation owns its claims and links."""
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}" + (' [personal]' if private else ''), '',
+                 '- Also known as: ' + '; '.join(aliases), '']
+        for section in self.TOPIC_SECTIONS:
+            lines += [f'## {section}', '- Unknown — not investigated yet', '']
+        lines += [f'Investigation: mapped {_today(self.root)} · not investigated yet', '']
+        return self.write(record, '\n'.join(lines))
+
     # The first screen answers what, why, where it stands and what is next;
     # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
     PROJECT_SECTIONS = (
@@ -678,6 +717,7 @@ class Notebook:
         if not path.exists():
             return False
         path.unlink()
+        _changed(path)
         return True
 
     def search(self, query: str, category: str = "") -> list[dict]:

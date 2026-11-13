@@ -160,6 +160,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
     `say` gets one line per step. Run off a terminal, a sync printed nothing
     for 25 minutes and everything at the end (#2033)."""
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     if scheduled and maintain is None:
         from .service import run_scheduled
         return run_scheduled(root, lambda: run_daily(
@@ -190,6 +193,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+        from .topic_map import backfill_topics
+        maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
@@ -262,8 +267,9 @@ def _prepare_reply(root, row, config, maintenance):
     state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
     try:
         with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+            from .inquiry import stage_config
             task = drafts.prepare(root, row, config, directory=Path(directory))
-            result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
+            result = runner.run_task(Path(directory), task['prompt'], stage_config(root, config, 'reply-draft'), 'reply-draft')
             plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
             drafts.promote(root, plan)
         record.update(outcome='completed', usage=result.get('usage'))
@@ -313,23 +319,23 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
-    from .languages import owner_languages
     from .runner import ready
-    from .translate import attempts_today, backlog, cached, translate
+    from .translate import backlog, cached, shown_today, translate
     from .translate import languages
-    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    # Once per round and before the lock: Today's queue reads the whole notebook.
+    shown = shown_today(root)
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)
     if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        remaining = config['limits']['translations_per_day'] - attempts_today(root)
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in backlog(root, language, changed=changed):
+        for page in backlog(root, language, changed=changed, shown=shown):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining or attempts_today(root) >= config['limits']['translations_per_day'] or quota.floor_block(quota.read(config), config['limits']):
+            if quota.floor_block(quota.meter(root, config), config['limits']):
                 continue
             attempts += 1
             write_json(path, record)
@@ -361,8 +367,8 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     """The first run of the day: unfinished pages, most recent activity first."""
     resting = _found_nothing_lately(root)
     pages = [page for page in unfinished_by_recency(root) if page['path'] not in resting]
-    from .inquiry import routing
-    required = 3 if routing(root) else 1
+    from .inquiry import inquiry_routed
+    required = 3 if inquiry_routed(root) else 1
     # Even a run that starts nothing is the day's first: it is recorded, so the
     # later runs know to follow new material instead.
     why = 'nothing_unfinished' if not pages else 'budget_exhausted' if remaining < required else stop
@@ -605,7 +611,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if stop:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': stop, 'quota': meter, 'left': len(rows)}
-    chosen = rows[:max(0, min(config['limits']['jobs_per_round'], remaining))]
+    chosen = rows[:max(0, remaining)]
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}

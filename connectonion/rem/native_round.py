@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import daily, extract, investigate, project_pages, runner, service, sessions, translate
+from . import daily, extract, fetch_stalls, investigate, project_pages, runner, service, sessions, translate
 from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
 
@@ -33,11 +33,23 @@ def prepare(root, config, *, scheduled):
     tidy(root, lock_held=True)
     sources = service.subscriptions(root)
     collect_projects(root, sources, lock_held=True)
+    project_pages.sync_project_repositories(root, now=moment)
     refresh(root)
+    from .topic_map import backfill_topics
+    # co rem next never calls a model: the native round reuses this week's proposal only.
+    topics = backfill_topics(Notebook(root), lock_held=True)
     progress = read_json(state_path(root, "progress.json"), {})
-    batch = service.prepare_sync(root, service._selected_sources(root, ""), progress, config)
+    set_aside = []
+    batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
-    basics_changed = refresh_basics(root)
+    basics_changed = refresh_basics(root) + project_pages.refresh_last_activity(root)
+    # Skill call counts are a script over the session files, like the basics above:
+    # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
+    from .skill_map import map_skills
+    if Notebook(root).exists("skills/catalog/index.md"):  # refresh a mapped catalog; init makes one
+        map_skills(Notebook(root), lock_held=True, subscriptions=sources)
+    from .direct_send import refresh as set_direct_send
+    basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
     today, recent = service.runs_today(logs, service.notebook_zone(config))
@@ -45,8 +57,9 @@ def prepare(root, config, *, scheduled):
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
-              "jobs": _jobs(root, first, logs, sources), "job_index": 0, "current": None,
-              "changed": basics_changed, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported}
+              "jobs": _with_parked(root, _jobs(root, first, logs, sources, set_aside)), "job_index": 0, "current": None,
+              "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
+              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside}
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -55,6 +68,59 @@ def prepare(root, config, *, scheduled):
     cursor["run"] = record
     write_json(state_path(root, "round.json"), cursor)
     return cursor
+
+
+def read_new_mail(root, cursor, config, slot):
+    """A round can run all day; each scheduled slot reads the next mailbox into it.
+
+    Mail used to be read only when a round began, so a 14-hour round left every
+    mailbox unread since morning. The batch runs before the round's remaining jobs.
+    """
+    # A slot's read is one source batch; the coding sessions are read when a round begins.
+    stopped = fetch_stalls.stopped(root)
+    selected = service._selected_sources(root, "")
+    mailboxes = {name: source for name, source in selected.items() if source.get("kind") in service.MAIL_KINDS}
+    usable = {name: source for name, source in mailboxes.items() if source["kind"] not in stopped}
+    if mailboxes and not usable:
+        # Every mailbox is stopped this turn: the slot reads nothing, not the sessions mid-round.
+        cursor["mail_slot"] = slot.isoformat()
+        return
+    batch = _read_sources(root, usable or selected, read_json(state_path(root, "progress.json"), {}), config,
+                          cursor.setdefault("set_aside", []))
+    batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
+    cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
+    if not batch["done"] and batch["digested"] is not None:
+        _digest(cursor, batch["digested"])
+
+
+def _read_sources(root, selected, progress, config, set_aside):
+    """One source batch; a mailbox whose read failed is recorded and not asked again this turn.
+
+    prepare_sync already keeps one source's failure from ending the batch; without
+    this the same failing mailbox was read again at every slot and every turn."""
+    batch = service.prepare_sync(root, selected, progress, config)
+    for row in batch["record"].get("source_failures", []):
+        kind = selected.get(row["source"], {}).get("kind")
+        if kind in service.MAIL_KINDS:
+            reason = fetch_stalls.failure_in_words(row.get("error", ""), row.get("code", ""))
+            set_aside.append(fetch_stalls.mailbox_down(root, kind, reason, "reading new mail"))
+    return batch
+
+
+def _admit_correspondents(root, sources, since, set_aside):
+    """List who wrote since the last round; a mailbox that fails is stopped for the turn and the rest are listed."""
+    from .people_pages import correspondents_since
+    clients = {kind: client for kind, client in daily._clients(sources).items()
+               if kind not in fetch_stalls.stopped(root)}
+    while True:
+        try:
+            return correspondents_since(root, fetch_stalls.labelled(clients), since=since, lock_held=True)
+        except Exception as error:  # noqa: BLE001 -- anything not a known mailbox's failure is re-raised
+            reason, kind = fetch_stalls.failure(error), getattr(error, "rem_provider", None)
+            if reason is None or kind not in clients:
+                raise
+            set_aside.append(fetch_stalls.mailbox_down(root, kind, reason, "listing new correspondents"))
+            clients.pop(kind)
 
 
 def prepare_translation_round(root, config, *, scheduled):
@@ -70,17 +136,16 @@ def prepare_translation_round(root, config, *, scheduled):
             "same_new_left": 0, "translations": [], "translated": 0, "run": record}
 
 
-def _jobs(root, first, logs, sources):
-    limit = read_config(root)["limits"]["jobs_per_round"]
+def _jobs(root, first, logs, sources, set_aside=None):
     from datetime import datetime, timedelta
-    from .people_pages import correspondents_since, queue as people_queue
+    from .people_pages import queue as people_queue
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
-    correspondents_since(root, daily._clients(sources), since=datetime.fromisoformat(previous), lock_held=True)
+    _admit_correspondents(root, sources, datetime.fromisoformat(previous), [] if set_aside is None else set_aside)
     if first:
         resting = daily._found_nothing_lately(root)
         return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])[:limit]
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])
     rows = [{**row, "kind": "person"} for row in people_queue(root)
             if row["mode"] == "full" or row["last_activity"] > previous]
     rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
@@ -89,12 +154,20 @@ def _jobs(root, first, logs, sources):
     rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
              for row in daily.unfinished_by_recency(root)
              if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
-    from .refusals import due_for_retry
-    retries = due_for_retry(root)
-    rows = [row for row in rows if row["record"] not in retries]
+    from .refusals import due_for_retry, parked_waiting
+    retries, parked = due_for_retry(root), parked_waiting(root)
+    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
-    return (daily._owner_due(root) + rows)[:limit]
+    return daily._owner_due(root) + rows
+
+
+def _with_parked(root, jobs):
+    """Pages set aside on a mailbox failure wait for their retry time, then come back (fetch_stalls)."""
+    waiting, due = fetch_stalls.waiting(root), fetch_stalls.due(root)
+    jobs = [job for job in jobs if job["record"] not in waiting]
+    queued = {job["record"] for job in jobs}
+    return jobs + [job for record, job in due.items() if record not in queued]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -104,37 +177,46 @@ def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
 
 
+def prepare_batch(root, cursor, config, directory):
+    """The round's next source-batch task, or None once the batch is done and its progress saved."""
+    batch = cursor["batch"]
+    if batch["done"]:
+        return None
+    if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
+        raise RemError("Source progress changed between tasks; run co rem next --discard")
+    if batch["record"]["extracted"] and batch["digested"] is None:
+        task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
+        return _task("extract", task, cursor, stage="extract", operation="batch")
+    leads = batch["leads"] or [None]
+    if cursor["batch_index"] < len(leads) and batch["items"]:
+        record = leads[cursor["batch_index"]]
+        items = batch["items"]
+        if record:
+            page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
+                    "timestamp": service.now().isoformat(), "text": Notebook(root).read(record)}
+            items = [page, *(i for i in items if not i.get("feedback_revision")
+                            or record in i["feedback_pending_targets"])]
+        task = runner.prepare(Notebook(root), items, config, batch["kind"], directory=directory, native=True)
+        return _task("runner", task, cursor, stage="maintain", record=record, operation="batch")
+    batch["done"] = True
+    if not batch.get("abandoned"):
+        if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
+            raise RemError("Source progress changed between tasks; run co rem next --discard")
+        write_json(state_path(root, "progress.json"), batch["updated"])
+    extract.forget_digest(root)
+    return None
+
+
 def prepare_task(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    task = prepare_batch(root, cursor, config, directory)
+    if task:
+        return task
     if cursor["phase"] == "daily-translation":
         task = prepare_translation(root, cursor, config, directory)
         if not task:
             finish(root, cursor)
         return task
-    batch = cursor["batch"]
-    if not batch["done"]:
-        if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
-            raise RemError("Source progress changed between tasks; run co rem next --discard")
-        if batch["record"]["extracted"] and batch["digested"] is None:
-            task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
-            return _task("extract", task, cursor, stage="extract", operation="batch")
-        leads = batch["leads"] or [None]
-        if cursor["batch_index"] < len(leads) and batch["items"]:
-            record = leads[cursor["batch_index"]]
-            items = batch["items"]
-            if record:
-                page = {"role": "page", "record": record, "source": "investigation:page", "one_page": True,
-                        "timestamp": service.now().isoformat(), "text": Notebook(root).read(record)}
-                items = [page, *(i for i in items if not i.get("feedback_revision")
-                                or record in i["feedback_pending_targets"])]
-            task = runner.prepare(Notebook(root), items, config, batch["kind"], directory=directory, native=True)
-            return _task("runner", task, cursor, stage="maintain", record=record, operation="batch")
-        batch["done"] = True
-        if not batch.get("abandoned"):
-            if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
-                raise RemError("Source progress changed between tasks; run co rem next --discard")
-            write_json(state_path(root, "progress.json"), batch["updated"])
-        extract.forget_digest(root)
     if cursor["current"] and cursor["current"].get("finalized"):
         _finish_investigation(root, cursor)
     from . import same_person
@@ -152,16 +234,16 @@ def prepare_task(root, cursor, config, directory):
         return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
     from .tasks import auto_dispatch
     auto_dispatch(root, config)
+    cursor["jobs"] += fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
-            remaining = service.daily_cap(root)["remaining"]
-            cursor["investigation_left"] = min(remaining, max(1, min(remaining - 2, daily.INVESTIGATION_CALLS)))
+            cursor["investigation_left"] = PORTION
         if cursor["investigation_left"] <= 0:
-            if cursor["current"] or cursor.get("project_quote"):
-                return {"stop": "investigation portion cap reached; the next scheduled slot can resume this round"}
-            cursor["job_index"] = len(cursor["jobs"])
-            break
-        task = _prepare_job(root, cursor, config, directory)
+            task = _translation_turn(root, cursor, config, directory)
+            if task:
+                return task
+            cursor["investigation_left"] = PORTION
+        task = _guarded_job(root, cursor, config, directory)
         if task:
             return task
     if cursor["summaries"]:
@@ -188,17 +270,44 @@ def _reset_attempts(root, cursor):
     day = service.notebook_today(root).isoformat()
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
+        # A round that crosses midnight reads Today again: yesterday's rows are not today's.
+        cursor.pop("shown_today", None)
+
+
+# D-104: a portion interleaves the night's work and never stops it. After PORTION
+# investigation turns, translation gets a share sized from its backlog (D-71: "翻译…
+# 应该安排的轮次不够多"), then investigation resumes in the same turn.
+PORTION = 8
+
+
+def translation_share(root):
+    """Translation turns per portion: a fiftieth of the pages waiting, at least 4, never more than wait."""
+    # Only the count matters here, so Today's order is not asked for.
+    waiting = sum(len(translate.backlog(root, tag)) for tag in translate.languages(root)
+                  if tag.split("-")[0].lower() != "en")
+    return min(waiting, max(4, -(-waiting // 50)))
+
+
+def _translation_turn(root, cursor, config, directory):
+    cursor.setdefault("translation_left", translation_share(root))
+    task = prepare_translation(root, cursor, config, directory) if cursor["translation_left"] > 0 else None
+    if task:
+        cursor["translation_left"] -= 1
+        return task
+    cursor.pop("translation_left")
+    return None
 
 
 def prepare_translation(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    # Today's pages lead; its queue reads the whole notebook, so it is computed once per round, not per turn.
+    if "shown_today" not in cursor:
+        cursor["shown_today"] = translate.shown_today(root)
     for language in translate.languages(root):
         if language.split("-")[0].lower() == "en":
             continue
-        if translate.attempts_today(root) >= config["limits"]["translations_per_day"]:
-            return None
         attempted = cursor.get("translation_attempts", [])
-        for record in translate.backlog(root, language, changed=cursor["changed"]):
+        for record in translate.backlog(root, language, changed=cursor["changed"], shown=cursor["shown_today"]):
             if [language, record] in attempted:
                 continue
             task = translate.prepare(root, record, language, directory=directory, native=True)
@@ -207,8 +316,10 @@ def prepare_translation(root, cursor, config, directory):
 
 
 def finish(root, cursor):
+    from .night_stats import recent
     cursor.update(done=True, pending=None)
-    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"])
+    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"],
+                         night=recent(root, nights=1)[0])
     write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if cursor["slot"]:
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
@@ -216,9 +327,47 @@ def finish(root, cursor):
     write_json(state_path(root, "round.json"), cursor)
 
 
+def _guarded_job(root, cursor, config, directory):
+    """A mailbox failing while one page is prepared sets that page aside; the round goes on.
+
+    2026-11-12: a Graph 404 and then a ReadTimeout on one person's page left
+    co rem next before the cursor was saved, so 30 turns in a row tried the
+    same page and ended with no task."""
+    index = cursor["job_index"]
+    job = cursor["jobs"][index]
+    held = _stopped_mailboxes(root, job) if cursor["current"] is None else {}
+    if held:
+        # Not asked again this turn; the page comes back next round with no back-off.
+        fetch_stalls.hold(root, job, held)
+        cursor["job_index"] = index + 1
+        return None
+    try:
+        task = _prepare_job(root, cursor, config, directory)
+    except Exception as error:  # noqa: BLE001 -- park() returns None for anything not a mailbox's: re-raised
+        notice = fetch_stalls.park(root, job, error)
+        if notice is None:
+            raise
+        cursor.setdefault("set_aside", []).append(notice)
+        cursor.update(job_index=index + 1, current=None, project_quote=None)
+        return None
+    fetch_stalls.clear(root, job["record"])
+    return task
+
+
+def _stopped_mailboxes(root, job):
+    """The mailboxes stopped for this turn that this page's investigation would ask."""
+    # A retry with held material reads that material, not a mailbox; every page that is
+    # investigated reads each connected mailbox (by address, or by name when it has none).
+    reads_mail = job["kind"] not in ("project", "skill") and not (job["kind"] == "retry" and job["entry"].get("material"))
+    stopped = fetch_stalls.stopped(root) if reads_mail else {}
+    return {kind: why for kind, why in stopped.items() if kind in daily._clients(service.subscriptions(root))}
+
+
 def _prepare_job(root, cursor, config, directory):
     job = cursor["jobs"][cursor["job_index"]]
     record, book = job["record"], Notebook(root)
+    from .native import progress_step
+    progress_step(f"preparing {record}", round=cursor["started_at"], job_index=cursor["job_index"], record=record)
     if job["kind"] == "retry":
         from .refusals import mark_retried
         mark_retried(root, record)
@@ -227,6 +376,10 @@ def _prepare_job(root, cursor, config, directory):
         job.update(kind=daily._route(root, record), days=daily.RETRY_DAYS, retry_refused=True)
     if job["kind"] == "project":
         return _project_task(root, cursor, config, directory, record)
+    if cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record):
+        # The page changed under its open investigation (mail read while the floor held
+        # the round, or the owner): investigate it again from the page as it is now.
+        cursor["current"] = None
     if cursor["current"] is None:
         cursor["current"] = _prepare_investigation(root, cursor, job, directory)
         if cursor["current"] is None:
@@ -234,8 +387,6 @@ def _prepare_job(root, cursor, config, directory):
             return None
     state = cursor["current"]
     state.setdefault("before", book.read(record))
-    if book.read(record) != state["before"]:
-        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
     page = {**state["page"], "text": state.get("draft", state["before"])}
     items = investigate.prepare_round(book, state, page=page) if not state.get("tail") else None
     if items is None:
@@ -249,7 +400,7 @@ def _prepare_job(root, cursor, config, directory):
     task_inputs = state.get("input_paths", [])
     from . import inquiry
     inquiry_phase = state.get("inquiry", "plan")
-    if inquiry.routing(root) and inquiry_phase != "render":
+    if inquiry.inquiry_routed(root) and inquiry_phase != "render":
         task = inquiry.prepare(root, directory, items, config, inquiry_phase, plan_path=state.get("plan_path"), native=True)
         task["before"] = {record: book.read(record)}
         return _task("inquiry", task, cursor, stage=inquiry_phase, record=record,
@@ -296,7 +447,8 @@ def _prepare_investigation(root, cursor, job, directory):
         title, handles = investigate.page_handles(Notebook(root), record)
         return investigate.investigate(
             root, record, title, job.get("addresses") or handles, days=job.get("days", 30),
-            clients=daily._clients(service.subscriptions(root)), subscriptions=service.subscriptions(root),
+            clients=fetch_stalls.labelled(daily._clients(service.subscriptions(root))),
+            subscriptions=service.subscriptions(root),
             sent_only=job["kind"] == "owner", rounds=job.get("rounds"), retry_refused=job.get("retry_refused", False),
             prepare_only=True, lock_held=True, directory=directory)
     except investigate.NothingFound as error:
@@ -356,7 +508,8 @@ def _project_task(root, cursor, config, directory, record):
             _finish_project(root, cursor, record, previous["through"])
             return None
     if Notebook(root).read(record) != previous["before"][record]:
-        raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+        cursor["project_quote"] = None  # the page changed under it: write it again from the page as it is now
+        return _project_task(root, cursor, config, directory, record)
     items = previous["items"]
     counts = project_pages.project_falls_short(previous["draft"], sum(i.get("role") == "user" for i in items))
     if counts is None or previous.get("quotes_done"):
@@ -660,6 +813,9 @@ def advance(root, cursor, task, result):
     elif operation == "draft":
         row = task["task"]["row"]
         cursor.setdefault("draft_attempts", []).append([row["id"], row["version"]])
+        if not result.get("discarded"):
+            from .approvals import send_direct
+            send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
     elif operation == "translate":
         cursor["translations"].append(task["record"])
         cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])

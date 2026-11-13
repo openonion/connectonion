@@ -587,11 +587,24 @@ def claude_run(
     cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
     session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
     model: str = typer.Option("", "--model", help="Claude model override"),
-    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+    timeout: int = typer.Option(600, "--timeout", min=1, max=3600, help="Maximum run time in seconds"),
+    # acceptEdits by default (#2904): the person who typed the command is the
+    # only one who could approve, and nobody is asked mid-run, so "default"
+    # (ask, then refuse) changed nothing while reporting success. acceptEdits
+    # lets Claude change files inside --cwd and still refuses other commands,
+    # which are listed in permission_denials; bypassPermissions stays opt-in.
+    permission_mode: str = typer.Option(
+        "acceptEdits", "--permission-mode", metavar="acceptEdits|default|plan|...",
+        help="acceptEdits (the default) lets Claude change files in --cwd but not run other commands; "
+             "default asks before each edit or command and, with nobody to ask, refuses them; "
+             "plan only reads; bypassPermissions runs anything, so opt in only when you mean it. "
+             "Refused tools are listed in permission_denials."),
 ):
     """Experimental: send one prompt to Claude Code and print the result as JSON (reply, status, cost, session ID). Runs Claude Code in --cwd; --session resumes an earlier session."""
-    from ..useful_tools.claude_code import run_co_claude
+    from ..useful_tools.claude_code import PERMISSION_MODES, run_co_claude
 
+    if permission_mode not in PERMISSION_MODES:
+        raise typer.BadParameter(f"use one of {', '.join(PERMISSION_MODES)}", param_hint="--permission-mode")
     result = run_co_claude(
         prompt=prompt,
         cwd=str(cwd),
@@ -599,6 +612,7 @@ def claude_run(
         model=model,
         timeout=timeout,
         workspace=cwd,
+        permission_mode=permission_mode,
     )
     print(result)
     import json
@@ -1243,7 +1257,7 @@ def server_add(
 
 @server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to. Read-only."""
+    """Show what you can deploy to, and what each server costs as the backend reports it. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
@@ -1264,11 +1278,14 @@ def server_new(
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
     region: Optional[str] = typer.Option(None, "--region",
                                          help="Where to provision (default: australia-southeast1)"),
+    disk: Optional[int] = typer.Option(None, "--disk", metavar="GB",
+                                       help="Disk size in GB, one of the sizes co server new lists "
+                                            "(default 20; larger ones add to the monthly price)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
-    """Have a server created for you. Charges 12 months of credit up front."""
+    """Have a server created for you. Creates the machine and charges your credits for it; shows the price and how it is charged, then asks."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes, disk_gb=disk):
         raise typer.Exit(1)
 
 
@@ -1305,12 +1322,34 @@ def server_forget(
 
 @server_app.command("destroy", epilog="Example:  co server destroy prod")
 def server_destroy(
-    name: str = typer.Argument(..., help="Server to tear down"),
+    name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; the unused term is refunded."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; refunds the unused part of this month, or of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
+        raise typer.Exit(1)
+
+
+@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod 1  |  co server invoice prod SRV-2026-12-000123 --pdf SRV-2026-12-000123.pdf  |  co server invoice --all --month 2026-12")
+def server_invoice(
+    name: Optional[str] = typer.Argument(None, help="Server name, as co server ls lists it (leave out with --all)"),
+    number: Optional[str] = typer.Argument(None, help="One invoice: its row (#) in the list, e.g. 1, or its number from the invoice email"),
+    month: Optional[str] = typer.Option(None, "--month", metavar="YYYY-MM",
+                                        help="The invoices issued in this UTC month, in full"),
+    every: bool = typer.Option(False, "--all", help="Every server's invoices for --month (default: this month)"),
+    pdf: Optional[Path] = typer.Option(None, "--pdf", metavar="FILE",
+                                       help="Write the chosen invoices to this PDF instead of printing them"),
+    as_json: bool = typer.Option(False, "--json", help="Print the backend's invoice JSON instead"),
+):
+    """Show the invoices for a server's monthly charges. With a name only, lists them; with a number or --month, prints them in full. Read-only, except that --pdf writes FILE."""
+    from .commands.server_commands import handle_server_invoice, invoice_usage_error
+    problem = invoice_usage_error(name, number, month, every, pdf, as_json)
+    if problem:
+        console.print(problem, style="red", markup=False)
+        raise typer.Exit(2)
+    if not handle_server_invoice(name=name, number=number, month=month, every=every,
+                                 pdf=str(pdf) if pdf else None, as_json=as_json):
         raise typer.Exit(1)
 
 
@@ -1919,34 +1958,36 @@ def email_domains():
     handle_email_domains()
 
 
-@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy  |  co email setup iron.share --domain steadmail.com --buy --default")
 def email_setup(
     alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
     domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
     buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the new address the default sender; without it the default stays as it is"),
 ):
     """Set up another mailbox on this account. Shows price; --buy Charges credits."""
     from .commands.email_commands import handle_email_setup
-    handle_email_setup(alias, domain=domain, buy=buy)
+    handle_email_setup(alias, domain=domain, buy=buy, make_default=make_default)
 
 
-@email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
+@email_app.command("default", epilog="Examples:  co email default 1  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. ellis@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="Row number N = the Nth address co email addresses lists right now (its # column; same order in script output), or an address as it prints it, including the 0x… one derived from your key"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy  |  co email name ellis --buy --default")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the name the default sender; without it the default stays as it is"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
     from .commands.email_commands import handle_email_name
-    handle_email_name(name, buy=buy)
+    handle_email_name(name, buy=buy, make_default=make_default)
 
 
 @email_app.command("share", epilog="Examples:  co email share you@mail.openonion.ai --with teammate@example.com --can send,read  |  co email share --list")
@@ -2045,16 +2086,36 @@ _INBOX_IDS = {
 # Inbox providers: feishu, lark, whatsapp, telegram, discord, slack. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
+# What `send` takes as its first argument where it is more than a chat id.
+_SEND_TO = {
+    "feishu": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "lark": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "whatsapp": "Chat id, a saved contact name, or a phone number with its country code",
+}
+_SEND_EXAMPLES = {
+    "feishu": 'co feishu send alex@example.com "Hello"  |  co feishu send "Ops Room" "Deploy done"  |  '
+              'co feishu send Alex "On my way"  |  echo "Hello" | co feishu send oc_5ce6d572455d361153b7cb51da133945',
+    "lark": 'co lark send alex@example.com "Hello"  |  co lark send "Ops Room" "Deploy done"  |  '
+            'co lark send Alex "On my way"  |  echo "Hello" | co lark send oc_5ce6d572455d361153b7cb51da133945',
+    "whatsapp": 'co whatsapp send 61412345678@s.whatsapp.net "Hello"  |  co whatsapp send "Alex Example" "Hello"  |  '
+                'co whatsapp send +61412345678 "Hello"  |  echo "Hello" | co whatsapp send 61412345678@s.whatsapp.net',
+}
+
+
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes: bool = False, media: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
 
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
-    says they refuse, instead of promising an id they never print."""
+    says they refuse, instead of promising an id they never print.
+
+    `media`: the provider sends pictures and files. Elsewhere --image and
+    --file stay, and their help says they are refused."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
+    not_here = "" if media else f" Not supported on {name.capitalize()} yet; commands using this option fail and nothing is sent."
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
@@ -2083,14 +2144,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     def _send(
-        chat: str = typer.Argument(..., help="Chat id"),
+        chat: str = typer.Argument(..., help=_SEND_TO.get(name, "Chat id")),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Send text, or a picture or file, to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
@@ -2098,8 +2159,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     if with_send:
         group.command("send", cls=NegativeIds,
-                      epilog=f'Example:  {co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
-                             f'{co} send {chat} "Thanks" --reply-to {msg}')(_send)
+                      epilog="Example:  " + _SEND_EXAMPLES.get(
+                          name, f'{co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
+                                f'{co} send {chat} "Thanks" --reply-to {msg}'))(_send)
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
@@ -2111,9 +2173,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
@@ -2206,8 +2268,57 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     return group
 
 
-app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="feishu")
-app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="lark")
+def _people_verbs(group: typer.Typer, name: str) -> typer.Typer:
+    """Find who to send to on Feishu or Lark: a person by email or phone, the
+    groups the bot is in, and names saved for either (#3000)."""
+    co, brand = f"co {name}", name.capitalize()
+
+    @group.command("lookup", epilog=f"Example:  {co} lookup alex@example.com  |  {co} lookup +61412345678")
+    def _lookup(who: str = typer.Argument(..., help="An email, or a phone number with its +country code")):
+        """Find a person by email or phone: prints their user id (on_…), which send takes. Read-only. Needs the scope contact:user.id:readonly; without it, prints the link that grants it."""
+        from .commands.lark_commands import handle_lookup
+        handle_lookup(name, who)
+
+    @group.command("groups", epilog=f"Example:  {co} groups  |  {co} groups | grep -i ops",
+                   help=f"List the groups the bot is in, from {brand} itself: chat id and name. Read-only. "
+                        "Unlike `chats`, which lists only where messages arrived. Needs the scope "
+                        "im:chat:readonly; without it, prints the link that grants it.")
+    def _groups():
+        from .commands.lark_commands import handle_groups
+        handle_groups(name)
+
+    contacts = _typer_app(
+        help=f"Names for people and chats, so `{co} send Alex` works. Kept in this inbox's contacts.json; nothing changes on {brand}.",
+        epilog=f'Example:  {co} contacts add Alex alex@example.com  |  {co} contacts ls  |  {co} contacts rm Alex')
+
+    @contacts.command("add", epilog=f'Example:  {co} contacts add Alex alex@example.com  |  '
+                                    f'{co} contacts add "Sam Lee" +61412345678  |  {co} contacts add Ops oc_5ce6d572455d361153b7cb51da133945')
+    def _contacts_add(
+        contact: str = typer.Argument(..., help="The name you will send to"),
+        who: str = typer.Argument(..., help="An email, a +phone (looked up once, needs contact:user.id:readonly), or an id: oc_, ou_, on_"),
+    ):
+        """Save a name for a person or chat; replaces a name already saved. Prints the name and the id it stands for. Writes contacts.json only."""
+        from .commands.lark_commands import handle_contacts_add
+        handle_contacts_add(name, contact, who)
+
+    @contacts.command("ls", epilog=f"Example:  {co} contacts ls")
+    def _contacts_ls():
+        """List saved contacts, one name and id per line. Read-only."""
+        from .commands.lark_commands import handle_contacts_ls
+        handle_contacts_ls(name)
+
+    @contacts.command("rm", epilog=f"Example:  {co} contacts rm Alex")
+    def _contacts_rm(contact: str = typer.Argument(..., help="A saved name, from `contacts ls`")):
+        """Forget a saved name. Writes contacts.json only; nothing changes on the platform."""
+        from .commands.lark_commands import handle_contacts_rm
+        handle_contacts_rm(name, contact)
+
+    group.add_typer(contacts, name="contacts")
+    return group
+
+
+app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "feishu"), name="feishu")
+app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
 app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
@@ -2272,7 +2383,7 @@ def _slack_search(
 app.add_typer(_slack_app, name="slack",
               short_help="Experimental: Slack bot as an inbox, and a reader for its channels.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
-                             writes=True)
+                             writes=True, media=True)
 _whatsapp_groups = _typer_app(
     help="Start a group, or add people to one. One line per person. Creates or changes WhatsApp groups.",
     epilog='Example:  co whatsapp group create "Acme onboarding" 61412345678 61498765432  |  '
@@ -2301,6 +2412,58 @@ def _whatsapp_group_add(
 
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
+_WA_COUNTRY = typer.Option(None, "--country", metavar="AU",
+                           help="Read local numbers (0412 345 678) as dialled in this country, by its two-letter code")
+
+
+@_whatsapp_app.command(
+    "lookup", epilog="Example:  co whatsapp lookup +61412345678  |  co whatsapp lookup 0412345678 0498765432 --country AU")
+def _whatsapp_lookup(
+    phones: List[str] = typer.Argument(..., help="Phone numbers, with the country code (+61412345678) or local with --country"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Check whether each number is on WhatsApp, and who it is: one JSON line per number with on_whatsapp, jid, name, business, about, has_photo. Exits 4 if any number is not on WhatsApp. Read-only: sends nothing to the person; runs through the listener, starting one if needed."""
+    from .commands.whatsapp_commands import handle_lookup
+    handle_lookup(phones, country)
+
+
+_whatsapp_contacts = _typer_app(
+    help="Names for WhatsApp numbers, shown in chats, log and ls and usable with send. Local only: nothing is sent to anyone.",
+    epilog='Example:  co whatsapp contacts add +61412345678 --name "Alex Example"  |  co whatsapp contacts ls  |  '
+           'co whatsapp contacts rm "Alex Example"')
+
+
+@_whatsapp_contacts.command(
+    "add", epilog='Example:  co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"  |  '
+                  'co whatsapp contacts add 0412345678 --country AU --name "Alex Example"')
+def _whatsapp_contacts_add(
+    who: str = typer.Argument(..., help="The jid `lookup` printed, or a phone number"),
+    name: str = typer.Option(..., "--name", help="What to call them in chats, log and ls; send accepts it too"),
+    note: str = typer.Option("", "--note", help="Anything to remember about them; shown by contacts ls"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Save a name for a number. Prints the jid and the name. Writes contacts.json in the WhatsApp inbox; sends nothing."""
+    from .commands.whatsapp_commands import handle_contacts_add
+    handle_contacts_add(who, name, note, country)
+
+
+@_whatsapp_contacts.command("ls", epilog="Example:  co whatsapp contacts ls")
+def _whatsapp_contacts_ls():
+    """List saved contacts, one per line: jid, name, note. Read-only."""
+    from .commands.whatsapp_commands import handle_contacts_ls
+    handle_contacts_ls()
+
+
+@_whatsapp_contacts.command("rm", epilog='Example:  co whatsapp contacts rm "Alex Example"  |  co whatsapp contacts rm +61412345678')
+def _whatsapp_contacts_rm(
+    who: str = typer.Argument(..., help="The contact's name or phone number"),
+):
+    """Forget a saved contact. Prints what was removed. Changes contacts.json only; the chat and its history stay."""
+    from .commands.whatsapp_commands import handle_contacts_rm
+    handle_contacts_rm(who)
+
+
+_whatsapp_app.add_typer(_whatsapp_contacts, name="contacts")
 app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.

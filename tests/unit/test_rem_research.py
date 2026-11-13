@@ -109,6 +109,13 @@ def test_captures_refuse_linkedin_pages(tmp_path, source):
         evidence.research_items(tmp_path)
 
 
+def test_capture_that_is_not_text_is_refused_by_name(tmp_path):
+    capture(tmp_path)
+    (tmp_path / 'web' / 'team.md').write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+    with pytest.raises(RemError, match=r'team\.md is not saved text'):
+        evidence.research_items(tmp_path)
+
+
 def test_search_capture_can_include_linkedin_snippet(tmp_path):
     source = capture(tmp_path, 'https://www.google.com/search?q=Mira+Vale',
                      'LinkedIn result snippet: Mira Vale — Atlas lead.')

@@ -19,7 +19,37 @@ permissions:
   contents: read
 
 jobs:
+  # The tag points at a merge commit whose main-push Tests run already ran the
+  # whole matrix. Re-running it here, queued behind the org's concurrent-job
+  # limit, was 16 of a release's 20 minutes (v1.9.3rc63). The gate accepts that
+  # run only when it and every one of its jobs succeeded on this exact SHA,
+  # waits for it if it is still going, blocks publication if it is red, and
+  # runs the full matrix below only when this commit was never tested.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tested: ${{ steps.gate.outputs.tested }}
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout the exact release commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Find a green Tests run for this exact commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/release_test_gate.py \
+            --repo "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA" \
+            --wait-minutes 25 --poll-seconds 20
+
   tests:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
     uses: ./.github/workflows/tests.yml
     permissions:
       contents: read
@@ -135,6 +165,33 @@ jobs:
       - name: Exercise the built wheel like an installed package
         run: pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow -v --tb=short
 
+      # The gate proves the code; this proves the artifact. It installs the exact
+      # wheel that will be uploaded (not a rebuild) into a clean venv and runs it
+      # from outside the checkout, offline: rc55 and rc56 were tagged and never
+      # published because `co init` waited on the network.
+      - name: Smoke-test the exact wheel offline in a clean venv
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          wheel="$PWD/dist/connectonion-${VERSION}-py3-none-any.whl"
+          smoke="$RUNNER_TEMP/smoke"
+          python -m venv "$smoke/venv"
+          "$smoke/venv/bin/python" -m pip install --quiet "$wheel"
+          mkdir -p "$smoke/home" "$smoke/cwd"
+          cd "$smoke/cwd"
+          offline=(env -u PYTHONPATH HOME="$smoke/home" USERPROFILE="$smoke/home"
+            HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9
+            ALL_PROXY=http://127.0.0.1:9 NO_PROXY= CONNECTONION_BACKEND_URL=http://127.0.0.1:9)
+          "${offline[@]}" "$smoke/venv/bin/python" -I -c \
+            "import connectonion, sys; assert connectonion.__version__ == sys.argv[1], connectonion.__version__" "$VERSION"
+          reported="$("${offline[@]}" "$smoke/venv/bin/co" --version)"
+          echo "$reported"
+          [[ "$reported" == *"$VERSION"* ]]
+          "${offline[@]}" "$smoke/venv/bin/co" --help >/dev/null
+          "${offline[@]}" timeout 120 "$smoke/venv/bin/co" init --yes
+          test -f "$smoke/home/.co/keys.env"
+          test -f "$smoke/home/.co/keys/agent.key"
+
       - name: Preserve the reviewed artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -145,8 +202,15 @@ jobs:
           if-no-files-found: error
 
   publish:
-    # Build and the test matrix can run together; publication still requires both.
-    needs: [tests, build]
+    # Build runs beside the gate. Publication needs a green build and either
+    # the gate's green run for this SHA or the full matrix it fell back to; a
+    # skipped tests job counts only when the gate itself said "tested".
+    needs: [gate, tests, build]
+    if: >-
+      ${{ !cancelled()
+      && needs.gate.result == 'success'
+      && needs.build.result == 'success'
+      && (needs.gate.outputs.tested == 'true' || needs.tests.result == 'success') }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -170,6 +234,10 @@ jobs:
 
   finalize:
     needs: [build, publish]
+    # Without its own condition this job inherits success(), which is false when an
+    # ancestor was skipped: the gate skips the tests job for a tested tag, so the
+    # GitHub Release was never made for v1.9.3rc64 and v1.9.3 although PyPI had them.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

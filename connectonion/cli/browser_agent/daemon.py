@@ -1,7 +1,7 @@
 """
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
-  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
+  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source; browser_tools.engine supplies the status line about the app in /Applications | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
   Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check (exempting the verbs that touch no page — close/closetab/status/engine_status/help/`tab ls`/`tab close` — so a mismatched pin is always escapable) → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_tools.browser_tools import engine as browser_engine
 from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
 from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status,
@@ -1136,6 +1137,13 @@ class BrowserDaemon:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
+        # The runtime above is the copy co launches. The one a person double-clicks
+        # is a second copy in /Applications, and until #2932 nothing kept it current.
+        app_line = browser_engine.applications_app_line(
+            engine.get("executable"), browser_engine.APPLICATIONS
+        )
+        if app_line:
+            lines.append(app_line)
         # "Last command" alone cannot say whether that command is still running,
         # which is the question a caller choosing between waiting and restarting has.
         running = [f'"{_short_line(request["line"])}" on tab {_tab_label(key)}, '
@@ -2140,7 +2148,7 @@ class BrowserDaemon:
                     sys.exit(0)  # another daemon already serving
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
-        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
+        _publish_pid(transport.pid_path(self.sock_path))
         self._srv.listen(MAX_IN_FLIGHT)
 
     def _bind_windows(self):
@@ -2236,6 +2244,21 @@ class BrowserDaemon:
                     os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
             with contextlib.suppress(FileNotFoundError):
                 pid_file.unlink()
+
+
+def _publish_pid(pid_file: str) -> None:
+    """Write this daemon's pid so that no reader ever sees the file empty.
+
+    The pid file is how every client tells a live daemon from a stale socket
+    (client._owner_pid). write_text creates the file empty and fills it a moment
+    later; a client that read it in between found no owner and unlinked the live
+    daemon's socket, after which the daemon accepted on a name nobody could reach
+    (test_permission_error_never_unlinks_a_live_socket, run 43215710328). A
+    rename is atomic on POSIX: the file is absent, then whole.
+    """
+    partial = f"{pid_file}.{os.getpid()}.tmp"
+    Path(partial).write_text(str(os.getpid()), encoding="utf-8")
+    os.replace(partial, pid_file)
 
 
 def _ago(seconds: float) -> str:

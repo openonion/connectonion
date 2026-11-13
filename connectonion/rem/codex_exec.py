@@ -1,6 +1,5 @@
 """One launchd fire, one locked Codex work session, with durable turn receipts."""
 import argparse
-import fcntl
 import os
 import re
 import shlex
@@ -23,8 +22,10 @@ TURN_SECONDS = 3 * 3600
 
 def read_config(root):
     # Import configuration only after the turn has a receipt and a deadline.
+    # One session does every task of the round, so it runs the native level.
     from .config import read_config as read
-    return read(root)
+    from .inquiry import stage_config
+    return stage_config(root, read(root), "native")
 
 
 def _codex_command() -> list[str]:
@@ -44,19 +45,20 @@ def _codex_command() -> list[str]:
     return [os.path.abspath(binary), *command[1:]]
 
 
-def exec_command(root: Path, config: dict, *, last_message: Path, prompt=None, add_dirs=()) -> list[str]:
+def exec_command(root: Path, config: dict, *, last_message: Path) -> list[str]:
+    """The scheduled maintenance turn. Owed-work tasks run through co's own Codex
+    integration instead (tasks.py)."""
     from ..environment import selected_env_file
     from .codex_schedule import automation_prompt
     # Mailbox refresh locks and atomically replaces keys.env beside the file.
-    command = [*_codex_command(), 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
+    codex = _codex_command()
+    command = [*codex, 'exec', '-c', f'model_reasoning_effort={config["effort"]}',
                '-C', str(root), '-s', 'workspace-write', '-c', 'sandbox_workspace_write.network_access=true',
                '--add-dir', str(selected_env_file().parent), '--skip-git-repo-check',
                '--color', 'never', '--json', '--ephemeral', '-o', str(last_message)]
     if config['model'] != 'default':
         command += ['-m', config['model']]
-    for directory in add_dirs:
-        command += ['--add-dir', str(directory)]
-    return [*command, automation_prompt(root) if prompt is None else prompt]
+    return [*command, automation_prompt(root)]
 
 
 def _startup_timeout(signum, frame):
@@ -124,6 +126,7 @@ def run_turn(root: Path, *, run=_execute) -> str:
     root = Path(root).resolve()
     lock = state_path(root, 'exec-turn.lock')
     lock.parent.mkdir(parents=True, exist_ok=True)
+    import fcntl  # POSIX-only; rem.tasks imports this module and the reader imports rem.tasks
     with lock.open('a') as held:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -141,6 +144,7 @@ def _reap_orphan_maintenance(root):
     turn = read_json(state_path(root, f'turns/{turn_id}.json'), {})
     if not turn.get('finished_at') or turn.get('result') not in ('completed', 'failed', 'timed-out'):
         return []
+    import fcntl
     with state_path(root, 'maintenance.lock').open('a') as held:
         locked = True
         with suppress(BlockingIOError):

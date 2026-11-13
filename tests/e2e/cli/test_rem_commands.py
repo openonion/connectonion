@@ -289,7 +289,7 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
     says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -298,10 +298,17 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
     assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
     assert opened == [] and asked == []
-    # Rendered on every run, so the page opened is never older than the notebook.
+    # A changed notebook opens the saved page at once, marked while it is rebuilt behind it.
+    from connectonion.rem import reader
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     Notebook(tmp_path / ".co/rem").write("people/bob.md", "# Bob\nJoined yesterday.")
     assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
+    assert "Joined yesterday" not in snapshot.read_text(encoding="utf-8")
+    assert 'id="rem-updating"' in snapshot.read_text(encoding="utf-8")
+    reader.refresh(tmp_path / ".co/rem")                     # what the detached build runs
+    assert runner.invoke(app, ["rem", "open", "--no-launch"]).exit_code == 0
     assert "Joined yesterday" in snapshot.read_text(encoding="utf-8")
+    assert "rem-updating" not in snapshot.read_text(encoding="utf-8")
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
@@ -309,7 +316,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
-                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
+                        lambda address, **k: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -319,7 +326,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address, **k: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
     assert result.exit_code == 1, result.output
     output = _plain(result.output)
@@ -919,8 +926,10 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota',
-                                 'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight'}
+                                 'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
+                                 'round', 'nights', 'paused'}
     assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['paused'] is None  # always present: null until the Codex floor stops a round (#2938)
     assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
     assert data['data']['last_turn'] is None
 
@@ -1096,7 +1105,7 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
-    assert ('No page matches "missing" in people, projects, orgs or skills. '
+    assert ('No page matches "missing" in people, projects, orgs, skills or topics. '
             'Search names and paths with `co rem investigate`.') == failed['data']
     assert failed['next'].endswith(' investigate')
 

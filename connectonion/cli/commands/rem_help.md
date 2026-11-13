@@ -34,6 +34,7 @@ Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
   logs          What each run did, and what it cost.
+  morning       Preview or send one quiet morning note.
   doctor        Check that everything the notebook needs is installed.
   history       Check or archive old background investigation chats for this notebook.
 
@@ -54,7 +55,7 @@ Use co rem init to rebuild; a terminal prints its summary, undo block and estima
 Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, import, stub, merge, translate, reflect,
+Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, translate, reflect,
               reflections, propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
@@ -418,8 +419,13 @@ Example:  co rem open
 Effects:  Reads pages and changes none. May start a background server using your
           co ai identity. Its log (rem-live-host.log) and access token
           (rem-reader-token) are in the selected .co identity folder.
-          Its link includes that token. Only the default notebook has a live
-          reader. Message listeners stay off; no extra chat tab opens.
+          Its link includes that token. After an upgrade, replaces the server
+          it started before with the installed version, on the same port,
+          once no task is running in it. A co ai you started yourself, or one
+          another install started, is never stopped; when it runs another
+          version the saved copy opens and one line names its port and
+          version. Only the default notebook has a live reader. Message
+          listeners stay off; no extra chat tab opens.
 Next:     co rem show PAGE   (to read one page in the terminal)
 Back:     co rem --help
 ```
@@ -586,10 +592,13 @@ Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
-          translation coverage and tonight's queue within the daily limit, or
-          "not requested" with co rem config set languages zh;
-          each mailbox with the command that fixes it; the week's budget; the
-          last run that finished, and one running now.
+          translation coverage and what is queued;
+          each mailbox with the command that fixes it, and how long ago it was
+          last read once that is over a day; a round no later slot has moved,
+          as stuck with its reason; each night measured (turns, tasks accepted,
+          parked and failed, drafts, mail read, minutes busy, minutes idle
+          22:00-07:00), also kept in .state/night-stats.jsonl; the week's
+          budget; the last run that finished, and one running now.
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
@@ -717,9 +726,15 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     model                          gpt-6.1-sol (default): investigation, writing, audit and judgement
-          models.summary                 gpt-6-luna (Codex default): standalone coding-session summaries
-                                         existing other runners keep their working model until you choose one
+Keys:     models.level1                  gpt-6-luna (Codex default): sessions-summary, topic
+          models.level2                  gpt-6.1-terra: translate, extract, same-person, plan
+          models.level3                  gpt-6.1-sol: maintain, investigate, render, projects,
+                                         reply-draft, native (the scheduled session), init, abstract
+          models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
+                                         synthesize, task (owed work)
+                                         co rem status lists the stages on each level. A notebook on
+                                         another runner keeps its one model on every level;
+                                         the old names model (level3) and models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
@@ -727,24 +742,29 @@ Keys:     model                          gpt-6.1-sol (default): investigation, w
           languages                      zh,en: the languages you read, first in the reader's
                                          "Read in" menu; unset, the ones detected from your own
                                          sent mail and typed sessions (shown under "your languages")
-          schedule.times                 "03:00,17:00"
+          schedule.times                 "03:00,17:00": set here, these win over any profile
+          schedule.profile               default | dense (a slot every 30 minutes, 22:00-07:00);
+                                         compare nights with co rem status
           schedule.timezone              Australia/Sydney
+          notify.channel                 none (default) | telegram | lark | whatsapp | email
+          notify.target                  your own chat ID or personal email address
           limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
           limits.<name>                  the other limits co rem config shows
-          route.<stage>                  a model for one stage of planned investigation:
-                                         plan, extract, synthesize or render ("default" clears it)
-Example:  co rem config set model gpt-6.1-sol schedule.times "06:00,18:00"
+          route.<stage>                  pins one stage above to a model ("default" clears it);
+                                         a route on plan, extract, synthesize or render also
+                                         turns on three-call planned investigation
+Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
-          Measured when model or runner changes, never read off the name. Unchecked runs
+          Measured when level3's model or the runner changes, never read off the name. Unchecked runs
           as agent, and co rem config names the command that checks it.
 Subcommand: co rem config set --help
 Next:     co rem status
 Back:     co rem --help
-Tasks:    tasks.auto is false by default: morning approval starts work.
-          co rem config set tasks.auto true opts into dispatch after nightly drafts.
+Tasks:    tasks.auto is true by default: the night starts owed work after its drafts.
+          co rem config set tasks.auto false leaves it for morning approval.
 ```
 
 ## co rem logs
@@ -781,7 +801,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set model gpt-6.1-sol limits.runner_calls_per_day 4
+Example:  co rem config set models.level3 gpt-6.1-sol limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.
@@ -835,6 +855,7 @@ Everyday use needs none of them.
 
 Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
+  backfill      File topics REM already holds evidence about; subjects named by the summary model.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
   import        Write one page per Codex / Claude Code session you typed in. No model.
   stub          Create one empty page by hand, with every section marked Unknown.
@@ -875,19 +896,19 @@ The import is deterministic and uses no model.
 Includes your typed messages and the final agent reply, with secret-shaped text removed.
 Automation, subagents and REM's own sessions stay out. Repeating the import updates
 changed sessions in place and skips unchanged files.
-With --summarise, models.summary adds a title, summary, tags, outcome,
+With --summarise, models.level1 adds a title, summary, tags, outcome,
 verified owner decisions and open follow-ups in batches. Init and daily rounds
 summarise up to 40 sessions when the runner is ready.
 
 Usage:    co rem import sessions [--days N] [--summarise] [--limit N] [--json]
 Example:  co rem import sessions --days 30 --summarise --json
           --days       read sessions active in the last N days (default 180)
-          --summarise  summarise new or changed sessions with models.summary
+          --summarise  summarise new or changed sessions with models.level1
           --limit      maximum sessions to summarise (default 40), newest first
           --json       print one {"ok", "data", "next"} result
 Effects:  Reads enabled local coding sources and writes sessions/ pages and private
           progress. This explicit command authorizes the import; automatic runs
-          read only sources you have approved. Standalone summaries use models.summary
+          read only sources you have approved. Standalone summaries use models.level1
           with the configured runner; failed batches are left for next time. Usage is in rem logs.
 Output:   Imported, updated and unchanged pages; skipped files by reason; seconds.
           With --summarise, a summary report (under "summary" in JSON).
@@ -899,15 +920,37 @@ Back:     co rem import --help
 
 ```
 List what a map would find, without writing pages. Useful to check a threshold
-before init. Reads mail headers and session metadata. No model.
+before init. Reads mail headers and session metadata; topics read existing
+extraction notes and cited pages. No model.
 
-Usage:    co rem scan [people|orgs|projects] [--days N] [--min-mails N]
+Usage:    co rem scan [people|orgs|projects|topics] [--days N] [--min-mails N]
                        [--min-people N] [--mine ADDRESS]...
 Example:  co rem scan people --days 30 --min-mails 5
           --min-mails   people: fewer messages than this is not listed (default 3)
           --min-people  orgs: a domain fewer people write from is not listed (default 2)
           --mine        an address that is yours, so it is not listed as someone else
 Next:     co rem init
+Back:     co rem advanced --help
+```
+
+## co rem backfill
+
+```
+File topics for subjects REM already holds evidence about. The summary model
+names subjects from page summaries at most once a week; code files a subject
+only when 3 independent sources over 14 days touch 2 records. Personal topics
+are marked before filing. Repeated runs reuse pages.
+
+Usage:    co rem backfill topics [--dry-run] [--propose]
+Example:  co rem backfill topics --propose --dry-run
+          --propose  ask the summary model for subject names (one call; reused for 7 days)
+          --dry-run  report candidates, counts, qualification and privacy; no notebook writes
+Effects:  Without --dry-run, files qualifying topic pages under the maintenance
+          lock and keeps this week's proposal. A name with no evidence is never
+          filed. The nightly round files from the saved proposal and never asks
+          the model itself. Reads at most
+          2,000 pages, 1,000 extracts and 5,000 archived messages.
+Next:     co rem investigate topics --list
 Back:     co rem advanced --help
 ```
 
@@ -1117,7 +1160,7 @@ Back:     co rem projects --help
 ## co rem task
 
 ```
-Run work owed by the owner in one background Codex session. Nothing is sent.
+Run work owed by the owner in one background Codex or Claude Code session. Nothing is sent.
 
 Usage: co rem [--root DIR] [--json] task COMMAND
 
@@ -1126,13 +1169,18 @@ Commands:
   status        Read a receipt by ID, or list ready tasks and IDs. No model calls.
   stop          Stop a task by ID and its children; keep all files.
 
-Uses the configured work model, workspace-write and network access, with the
-same credential-directory access as REM upkeep. Work uses the project page's
-repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
-done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+Codex runs on models.level4, Claude Code on its own model; both with full
+access, as co ai --harness runs them: the web and your accounts. The prompt keeps pushing, merging,
+sending and posting for your click. It works in .state/tasks/do-ID/: a git
+worktree of the project page's repository on branch rem/task-ID when there is
+one, otherwise do-ID/work.
+The prompt defines done and names do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Night tasks wait for morning approval unless tasks.auto is true (default false).
+Morning approval starts tasks, and so does the night after its drafts
+(tasks.auto, default true; set it false to wait for approval). Tasks run side
+by side with no nightly count; only the week's quota floor holds one back. The reader's Undo removes a task's work and the
+night never starts it again.
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem task status
@@ -1146,20 +1194,24 @@ Back: co rem --help
 ## co rem task run
 
 ```
-Start one prepared obligation in background Codex; return its receipt immediately.
+Start one prepared obligation in background Codex or Claude Code; return its receipt.
 
-Usage: co rem [--root DIR] [--json] task run ID
+Usage: co rem [--root DIR] [--json] task run ID [--agent codex|claude]
 
 Arguments:
   ID            Task ID printed by co rem task status.
+Options:
+  --agent       codex or claude: who runs a task that has not started.
 
-Uses the configured work model, workspace-write and network access, with the
-same credential-directory access as REM upkeep. Work uses the project page's
-repository when present, otherwise .state/tasks/do-ID/work. The prompt defines
-done and names .state/tasks/do-ID/result.md as the reviewable deliverable.
+Codex uses models.level4 and the configured effort. Claude Code keeps its own
+model and loads your own Claude setup (user CLAUDE.md, skills, settings).
+Both run with full access. Work happens in
+a git worktree of the project page's repository on branch rem/task-ID when there
+is one, otherwise .state/tasks/do-ID/work. The prompt defines done and names
+.state/tasks/do-ID/result.md as the reviewable deliverable.
 A zero exit without a nonempty result is failed, never completed work.
 One session per ID: failed and stopped receipts stay; run does not retry them.
-Night tasks wait for morning approval unless tasks.auto is true (default false).
+The night starts tasks itself unless tasks.auto is false (default true).
 Do not send anything to anyone; write the result and stop.
 
 Example: co rem --root /tmp/mara-rem task run ID
@@ -1200,4 +1252,62 @@ Arguments:
 
 Example: co rem --root /tmp/mara-rem task stop ID
 Back: co rem task --help
+```
+
+
+## co rem morning
+
+```
+Preview or send the owner's one morning report. Model-free: read overnight
+receipts and current one-click actions; never ask a model to compose it. It is
+written in the owner's main language, detected from the mail and sessions they
+wrote (co rem config set languages zh,en overrides; the first one wins).
+
+Usage: co rem [--root DIR] [--json] morning [--dry-run]
+
+Options:
+  --dry-run     Print what a real run would do now, then the exact message;
+                no send and no date marker. The first line is one of:
+                would send now via CHANNEL | already sent HH:MM |
+                not due until 06:00 | outside the morning window (06:00–11:00) |
+                channel none: nothing will be sent | quiet: nothing to send
+                With notify.channel outlook, the designed mail is written to a
+                file and its path printed last: Mail preview: PATH
+  --help        Show this skill text and exit.
+
+No flag sends once, on the first check between 06:00 and 11:00 in
+schedule.timezone. A check after 11:00 records the date as missed and sends
+nothing: an evening note saying "overnight" is wrong. Every scheduled run of
+co rem next checks for the morning report before it prepares the morning round.
+The note covers everything
+since the last note (or 22:00 the evening before), so work done after 06:00 is
+reported the next morning, once. Quiet mornings send nothing and record the
+check, and so does a morning with nothing new and the same open decisions as
+last time. Default notify.channel is none.
+A date claimed before delivery is never resent, even after a failure or crash.
+co rem doctor shows the latest delivery failure; there is no automatic retry.
+If the note cannot be prepared, nothing is claimed and the next check retries.
+
+Setup: co rem config set notify.channel outlook
+Choices, in order: outlook, telegram, lark, whatsapp, email. co rem doctor
+lists which existing senders are configured and their next command.
+outlook sends a designed HTML mail (replies drafted apart from replies sent,
+work finished, then up to 3 decisions, one per person with a count, each with
+one button into the live reader) from your linked Outlook mailbox to that
+same mailbox; leave notify.target empty, any other address is refused. Link
+your personal Outlook, not a company one. Chat channels get the short note:
+  co rem config set notify.target YOUR_OWN_CHAT notify.channel telegram
+Sender setup:
+  outlook:  co auth microsoft
+  telegram: co telegram check
+  lark:     co lark check
+  whatsapp: co whatsapp check
+  email:    co auth login
+Email is the last choice. A company mailbox is wrong for personal content.
+Choose a personal destination explicitly; REM never guesses from recent chats.
+
+Example: co rem morning --dry-run
+         co rem --root /tmp/fern-rem morning
+Next: co rem open
+Back: co rem --help
 ```

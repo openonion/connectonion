@@ -156,6 +156,11 @@ NEXT = {
     "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
     "co feishu consume": "co feishu ls",
+    "co feishu lookup": HANDLER,  # names the id it found
+    "co feishu groups": HANDLER,
+    "co feishu contacts add": HANDLER,
+    "co feishu contacts ls": HANDLER,
+    "co feishu contacts rm": "co feishu contacts ls",
     "co lark listen": "co lark receive --timeout 0",
     "co lark receive": "co lark reply <message-id>",
     "co lark send": "co lark receive --timeout 0",
@@ -169,6 +174,11 @@ NEXT = {
     "co lark chats": HANDLER,
     "co lark log": "co lark ls",
     "co lark consume": "co lark ls",
+    "co lark lookup": HANDLER,  # names the id it found
+    "co lark groups": HANDLER,
+    "co lark contacts add": HANDLER,
+    "co lark contacts ls": HANDLER,
+    "co lark contacts rm": "co lark contacts ls",
     "co whatsapp listen": "co whatsapp receive --timeout 0",
     "co whatsapp receive": "co whatsapp reply <message-id>",
     "co whatsapp send": "co whatsapp receive --timeout 0",
@@ -179,6 +189,10 @@ NEXT = {
     "co whatsapp react": "co whatsapp log",
     "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
     "co whatsapp group add": HANDLER,
+    "co whatsapp lookup": HANDLER,  # names the jid to save
+    "co whatsapp contacts add": HANDLER,  # names the contact to send to
+    "co whatsapp contacts ls": 'co whatsapp send "<name>" "<text>"',
+    "co whatsapp contacts rm": "co whatsapp contacts ls",
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,
@@ -313,6 +327,7 @@ NEXT = {
     "co server fix-key": HANDLER,
     "co server forget": HANDLER,
     "co server destroy": "What you still have:  co server ls",
+    "co server invoice": HANDLER,
     "co skills discover": "Copy one into ~/.co/skills:  co skills copy <name from this index>",
     "co skills copy": "What is installed now:  co skills list",
     "co skills manifest": "Preview what would be published:  co announce --dry-run",

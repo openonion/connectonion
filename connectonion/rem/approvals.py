@@ -95,33 +95,74 @@ def _task(root, item, body, release_at):
     return {**item, 'status': 'queued', 'receipt_id': receipt['id']}
 
 
+def started(root, item, receipt):
+    """A task REM started itself, recorded like an approval so Today names who started it.
+    The night caller already holds the notebook lock."""
+    queue = read_json(state_path(root, 'approvals.json'), {})
+    key = _id('task', item['key'])
+    if key in queue:
+        return queue[key]
+    return _save(root, queue, {'id': key, 'kind': 'task', 'keys': item['keys'], 'title': item['title'],
+                               'text': item['text'], 'status': 'dispatched', 'by': 'rem',
+                               'receipt_id': receipt['id'], 'dispatched_at': service.now().isoformat(),
+                               'result': {'id': receipt['id'], 'receipt': receipt['receipt']}})
+
+
+def withdrawn(root, key):
+    return read_json(state_path(root, 'approvals.json'), {}).get(_id('task', key), {}).get('status') == 'cancelled'
+
+
+def withdraw(root, receipt):
+    """The owner undid a task: the night never starts it again; morning approval still can."""
+    with maintenance_lock(root):
+        queue = read_json(state_path(root, 'approvals.json'), {})
+        key = _id('task', receipt['key'])
+        record = queue.get(key) or {'id': key, 'kind': 'task', 'keys': receipt['keys'],
+                                    'title': receipt['title'], 'text': receipt['text']}
+        return _save(root, queue, {**record, 'status': 'cancelled', 'cancelled_at': service.now().isoformat()})
+
+
 # A new prepared outcome kind adds one handler here; the reader renders the common fields.
 ACTIONS = {'reply': _reply, 'handled': _handled, 'task': _task}
 
 
 def approve(root, ids, *, bodies=None):
-    release_at = (service.now() + timedelta(minutes=10)).isoformat()
     with maintenance_lock(root):
-        available = {item['id']: item for item in outcomes(root)}
-        queue = read_json(state_path(root, 'approvals.json'), {})
-        results = []
-        for key in dict.fromkeys(ids):
-            previous = queue.get(key)
-            if previous and previous['status'] != 'cancelled':
-                results.append(previous)
-                continue
-            item = available.get(key)
-            # Invalid selections and provider rejections are expected per-item failures.
-            try:
-                if item is None:
-                    raise RemError('This outcome is no longer current; reload Today')
-                value = ACTIONS[item['kind']](root, item, (bodies or {}).get(key), release_at)
-                results.append(_save(root, queue, value))
-            except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
-                claim = read_json(state_path(root, 'approvals.json'), {}).get(key)
-                failure = {'id': key, 'status': 'error', 'error': str(error)}
-                results.append(_save(root, queue, {**claim, **failure}) if claim else failure)
-        return {'release_at': release_at, 'results': results}
+        return _approve(root, ids, bodies=bodies)
+
+
+def send_direct(root, draft_id):
+    """A reply the writer marked send=now, for someone the owner trusts REM with,
+    goes out through the same 10-minute hold and Undo, recorded as REM's decision."""
+    saved = read_json(drafts.path(root, draft_id), {})
+    if saved.get('send') != 'now' or saved.get('status') != 'prepared' or drafts.has_slots(saved.get('body', '')):
+        return None
+    item = next((item for item in outcomes(root) if item.get('draft_id') == draft_id and item['kind'] == 'reply'), None)
+    return _approve(root, [item['id']], by='rem') if item else None
+
+
+def _approve(root, ids, *, bodies=None, by='owner'):
+    release_at = (service.now() + timedelta(minutes=10)).isoformat()
+    available = {item['id']: item for item in outcomes(root)}
+    queue = read_json(state_path(root, 'approvals.json'), {})
+    results = []
+    for key in dict.fromkeys(ids):
+        previous = queue.get(key)
+        if previous and previous['status'] != 'cancelled':
+            results.append(previous)
+            continue
+        item = available.get(key)
+        # Invalid selections and provider rejections are expected per-item failures.
+        try:
+            if item is None:
+                raise RemError('This outcome is no longer current; reload Today')
+            value = ACTIONS[item['kind']](root, item, (bodies or {}).get(key), release_at)
+            results.append(_save(root, queue, {**value, 'by': by}))
+        except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
+            claim = read_json(state_path(root, 'approvals.json'), {}).get(key)
+            failure = {'id': key, 'status': 'error', 'error': str(error)}
+            results.append(_save(root, queue, {**claim, **failure}) if claim else failure)
+    return {'release_at': release_at, 'results': results}
 
 
 def undo(root, ids):
@@ -157,7 +198,19 @@ def release(root, *, at=None, dispatch=None):
     return [value for item in ready if (value := _release_one(root, item['id'], at, dispatch))]
 
 
+def _waits(root, key):
+    """An approved task passes the same gate as REM's own: one at a time, the nightly cap, the floor."""
+    from . import tasks
+    from .config import read_config
+    item = read_json(state_path(root, 'approvals.json'), {})[key]
+    if item['kind'] != 'task' or item['status'] != 'queued':
+        return None
+    return tasks.gate(root, read_config(root), item['key'])
+
+
 def _release_one(root, key, at, dispatch):
+    if dispatch is not None and _waits(root, key):
+        return None
     with maintenance_lock(root):
         queue = read_json(state_path(root, 'approvals.json'), {})
         item = queue[key]
@@ -173,7 +226,8 @@ def _release_one(root, key, at, dispatch):
         else:
             with maintenance_lock(root):
                 receipt = _deliver(root, item, at)
-        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt}
+        value = {**item, 'status': 'dispatched' if task else 'sent', 'result': receipt,
+                 **({'dispatched_at': service.now().isoformat()} if task else {})}
     except (RemError, ValueError, RequestException, HTTPError, HttpError) as error:
         value = {**item, 'status': 'error', 'error': str(error)}
     with maintenance_lock(root):

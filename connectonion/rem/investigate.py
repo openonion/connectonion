@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 
+from . import fetch_stalls
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
 from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
@@ -39,6 +40,7 @@ MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threadin
 def _fetch_slot(kind: str):
     return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
 DOMAIN_RESULTS = 10_000
+TOPIC_RESULTS = 500
 
 
 class NothingFound(RemError):
@@ -343,6 +345,10 @@ def page_handles(notebook: Notebook, record: str, handle=()) -> tuple[str, list[
 
     text = notebook.read(record)
     title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_aliases
+        aliases = topic_aliases(text)
+        return aliases[0], list(dict.fromkeys([*handle, *aliases]))
     if record.startswith("projects/"):
         # A project is read from where it lives. Only explicitly named handles
         # select its mail; its title alone matches unrelated notifications.
@@ -752,6 +758,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
                                    include_observed=True, left_out=archived_left_out)
+    elif archive_root is not None and record.startswith('knowledge/'):
+        from .mail_archive import topic_material
+        archived = topic_material(archive_root, handles)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # Count exclusions through the same date and subscription checks as kept mail.
     for (kind, native), when in archived_left_out.items() if archived else []:
@@ -807,11 +816,37 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
         items.extend(local)
-        attached = 0
+        attached, unlisted, gone = 0, [], []
 
         def attachment_metadata(message_id: str) -> list[dict]:
+            # Attachments are enrichment, not a gate: one listing that timed out
+            # (after _patient's retries) ended the owner's turns from 2026-11-12.
             with _fetch_slot(kind):
-                return _patient(client.list_attachments, message_id)
+                try:
+                    return _patient(client.list_attachments, message_id)
+                except Exception as error:  # noqa: BLE001 -- only a mailbox's failure is kept; a bug re-raises
+                    reason = fetch_stalls.failure(error)
+                    if reason is None:
+                        raise
+                    unlisted.append(reason)
+                    return []
+
+        def fetch_body(message_id: str) -> str | None:
+            # A mail deleted or moved since it was listed is that mail's gap:
+            # one Graph 404 ended 16 turns in a row on 2026-11-12.
+            try:
+                return _mail_body(client, message_id, kind=kind, root=archive_root)
+            except Exception as error:  # noqa: BLE001 -- only "not found" is skipped; anything else re-raises
+                if fetch_stalls.failure(error) != "not_found":
+                    raise
+                gone.append(message_id)
+                return None
+
+        def note_gaps() -> None:
+            if unlisted:
+                why = ", ".join(fetch_stalls.PHRASES[reason] for reason in sorted(set(unlisted)))
+                coverage.append(f"{kind}: attachments for {len(unlisted)} message(s) not listed: {why}")
+                unlisted.clear()
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
                             metadata=None) -> None:
@@ -854,13 +889,19 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 for item, listed in zip(local, metadata):
                     add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
                                     item.get("relationship_scope", ""), listed)
+            note_gaps()
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         unavailable = None
         for begin, finish in intervals:
-            if domains and hasattr(client, "list_with"):
+            if record.startswith('knowledge/') and hasattr(client, 'list_search'):
+                terms = ['"' + handle.replace('"', '') + '"' for handle in handles]
+                rows = [row for term in terms for row in (_patient(client.list_search, term, TOPIC_RESULTS) or [])
+                        if start <= timestamp(str(row['date'])) < end]
+                searched += f"; searched mail text for {', '.join(terms)}; bounded to {TOPIC_RESULTS} results per alias"
+            elif domains and hasattr(client, "list_with"):
                 # One server query per domain rather than every header in the
                 # window. The server may match loosely; the handles still decide
                 # what is kept. A university's mail runs past list_with's
@@ -913,9 +954,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
         with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
-            bodies = pool.map(partial(_mail_body, client, kind=kind, root=archive_root),
-                              (row["id"] for row in mail_to_read))
+            bodies = pool.map(fetch_body, (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
+                if body is None:
+                    continue
                 provenance = {}
                 if archive_root is not None:
                     from .mail_archive import retain_message
@@ -929,6 +971,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 for key in ("date", "from", "to", "cc", "subject")}}
                 head, _, rest = body.partition("--- Email Body ---")
                 body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                if record.startswith('knowledge/') and not any(h in (body + ' ' + r.get('subject', '')).lower() for h in handles):
+                    continue
                 # Filter before creating evidence or reading attachments: unrelated owner mail stays private.
                 if mail_filter and not mail_filter(r, body):
                     continue
@@ -947,8 +991,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
                 if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                     stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
+        note_gaps()
+        if gone:
+            coverage.append(f"{kind}: {len(gone)} message(s) skipped: {fetch_stalls.PHRASES['not_found']}")
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
-                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
+                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read) - len(gone)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments indexed")
     for kind in ("outlook", "gmail"):
@@ -2263,6 +2310,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     mail_handles = own_domains if company else search_handles
     items, coverage = gather(subject, mail_handles, days=days, clients=clients, subscriptions=mail_subs,
                              sent_only=sent_only, record=record, **gather_options)
+    if record.startswith('knowledge/'):
+        from .topic_map import topic_material
+        items.extend(topic_material(notebook, record))
+        coverage.append('Topic aliases searched across authorized sources; candidate notes and pages are context, not primary proof')
     if company:
         projects = company_projects(notebook, record, subject, own_domains)
         own_items, own_coverage = company_material(notebook, company, projects, record=record, days=days, clients=clients,
@@ -2400,9 +2451,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    from .inquiry import routing
+    from .inquiry import inquiry_routed
     original_material = None
-    if routing(root):
+    if inquiry_routed(root):
         import uuid
 
         original_material = directory / "originals.json" if directory else state_path(root, f"evidence/{uuid.uuid4().hex}.json")
@@ -2461,7 +2512,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     items = with_local_times(items, notebook_zone(read_config(root, validated=False)))
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
-    synthesis_calls = 3 if routing(root) else 1
+    synthesis_calls = 3 if inquiry_routed(root) else 1
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()

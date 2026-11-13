@@ -12,6 +12,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from .files import read_json, state_path, write_json
+
 # Runs whose points count against the investigation budget. Maintenance is the
 # incremental daily pass and is bounded by the call cap instead.
 INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write",
@@ -60,6 +62,24 @@ def read(config: dict, request=None) -> dict:
                 "plan": limits.get("planType") or "unknown"}
     except Exception as error:  # an older Codex, a changed payload, a timeout: all "unknown", with the reason
         return {"unknown": f"Codex did not report its quota ({type(error).__name__}: {error})"}
+
+
+def meter(root, config: dict, request=None) -> dict:
+    """The live reading, else the last one a run recorded in this week's window.
+
+    104 of 166 scheduled runs could not read the meter (sandboxed app-server), and an
+    unknown reading let every guard through. The week only moves up inside its
+    window, so the last recorded value is a floor on where it is now.
+    """
+    live = read(config) if request is None else read(config, request)
+    if "unknown" not in live:
+        return live
+    from . import service
+    moment = service.now().timestamp()
+    last = next((reading for run in service.run_logs(root) for key in ("after", "before")
+                 if "used_percent" in (reading := (run.get("quota") or {}).get(key) or {})
+                 and reading.get("resets_at", 0) > moment), None)
+    return {**last, "last_recorded": live["unknown"]} if last else live
 
 
 # Seven Codex pro batches (gpt-6-luna, 2026-10-08..11) measured 11.6M–13.6M
@@ -165,6 +185,54 @@ def floor_block(reading: dict, limits: dict) -> str:
         return ""
     floor = limits["quota_floor_percent"]
     if reading["used_percent"] >= floor:
+        resets = datetime.fromtimestamp(reading["resets_at"]).astimezone() if reading.get("resets_at") else None
         return (f"the Codex week is at {reading['used_percent']}%, at or past the {floor}% "
-                "floor kept for your own work")
+                "floor kept for your own work" + (f"; investigation resumes when it resets {resets:%a %d %b %H:%M}"
+                                                  if resets else ""))
     return ""
+
+
+PAUSE = "quota-paused.json"
+
+
+def record_pause(root, reading: dict, limits: dict) -> None:
+    """Since when the floor has held REM's work, kept across turns until it lifts (#2938).
+
+    Two nights of turns stopped at the floor and every place the owner looks read
+    "quiet". The first stop is the date status and the morning note give.
+    """
+    from . import service
+    path, moment = state_path(root, PAUSE), service.now().isoformat()
+    saved = read_json(path, {})
+    open_since = saved.get("since") if saved and not saved.get("ended_at") else None
+    if floor_block(reading, limits):
+        write_json(path, {"since": open_since or moment, "used_percent": reading["used_percent"],
+                          "floor": limits["quota_floor_percent"], "resets_at": reading.get("resets_at")})
+    elif open_since:
+        write_json(path, {**saved, "ended_at": moment})
+
+
+def paused(root) -> dict | None:
+    """The pause holding REM now, or None: ended, or its week has reset since."""
+    from . import service
+    saved = read_json(state_path(root, PAUSE), {})
+    if not saved or saved.get("ended_at"):
+        return None
+    if saved.get("resets_at") and saved["resets_at"] <= service.now().timestamp():
+        return None
+    return {"reason": "quota", **saved}
+
+
+def paused_between(root, start, end) -> bool:
+    """Whether the floor held REM at any time in [start, end), for the night's record."""
+    from . import service
+    saved = read_json(state_path(root, PAUSE), {})
+    if not saved:
+        return False
+    began = datetime.fromisoformat(saved["since"])
+    stops = [service.now()]
+    if saved.get("ended_at"):
+        stops.append(datetime.fromisoformat(saved["ended_at"]))
+    if saved.get("resets_at"):
+        stops.append(datetime.fromtimestamp(saved["resets_at"]).astimezone())
+    return began < end and min(stops) > start

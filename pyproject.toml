@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.3rc60"
+version = "1.9.6rc9"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -62,11 +62,13 @@ dependencies = [
     "ifaddr>=0.2.0",
     "beautifulsoup4>=4.12.0",
     "pyyaml>=6.0.0",
-    "typer>=0.20.0",
+    "typer>=0.20.0,<0.29",  # 0.29.0 (2026-11-09) breaks every co command: TyperOption rejects `type=`
     "bashlex>=0.18",
     "uvicorn>=0.20.0",
     "textual>=0.86.0",
     "textual-autocomplete>=3.0.0",
+    # co rem reads Codex sessions Codex has compressed in place (rollout-*.jsonl.zst, #2943).
+    "zstandard>=0.23.0",
     # Pinned exact: Patchright ships its stealth patches inside a separately-downloaded
     # driver, and that driver has silently regressed to the unpatched vanilla Playwright
     # build across releases (1.57.x, 1.61.1 → navigator.webdriver leaks / automation infobar).
@@ -94,7 +96,9 @@ dependencies = [
     "protobuf>=6.33.5",
     "pyasn1>=0.6.5",
     "Pygments>=2.20.0",
-    "soupsieve>=2.8.4",
+    # CVE-2026-126192 is fixed in 2.10; CVE-2026-126190 in 4.0, which needs Python 3.11.5,
+    # so uv.lock resolves 4.x there and 2.10 only on 3.11.0-3.11.4.
+    "soupsieve>=2.10",
     "urllib3>=2.8.0",
 ]
 
@@ -105,7 +109,7 @@ dependencies = [
 # demand too, so this is for anyone who would rather pin it in their own
 # requirements than have a command reach for pip.
 wtf = [
-    "onionwright>=0.0.14",
+    "onionwright>=0.0.15",
 ]
 synology = [
     "keyring>=25,<26",
@@ -120,6 +124,9 @@ synology = [
 # version bump is a protocol change and deserves to be a deliberate one.
 whatsapp = [
     "neonize==0.4.3.post0",
+    # `lookup --country AU` reads 0412 345 678 the way that country dials it
+    # (#2964). The lite build: the same parser without geocoding data.
+    "phonenumberslite>=8.13,<10",
 ]
 # Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few

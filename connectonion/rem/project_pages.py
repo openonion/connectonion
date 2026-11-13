@@ -9,18 +9,23 @@ before it replaces the old one, with one optional quote edit after acceptance.
 
 from __future__ import annotations
 
+import copy
 import json
 import hashlib
 import re
 import subprocess
 import tempfile
 import time
+import tomllib
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
 from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
+from .project_tree import identity
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
 # Characters of messages one write carries. The owner's busiest folder held
@@ -235,6 +240,57 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
                              "input_scope": item.get("input_scope") or ""})
         count += 1
     return count
+
+
+# Sources whose date is something someone did on the project: a session message,
+# a mail, a chat, the commit history. A snapshot's date is when it was read and a
+# file's is when it was saved, so neither is activity (their items say so).
+ACTIVITY_SOURCES = ("codex:", "claude-code:", "gmail:", "outlook:", "email:", "whatsapp:")
+DATED_SOURCE = re.compile(r"^[ \t]*- \[(\d+)\][ \t]+([a-z][\w-]*:\S+) — (\d{4}-\d{2}-\d{2})", re.M)
+LAST_ACTIVITY = re.compile(r"^- Last activity:[ \t]*(.*)$", re.M)
+
+
+def _activity(root: Path, source: str, given: dict) -> bool:
+    if source.startswith(ACTIVITY_SOURCES):
+        return True
+    if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+        return False
+    kept = given.get(source) or read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
+    return str(kept.get("origin", "")).endswith(":recent-commits")
+
+
+def settle_last_activity(root: Path, text: str, items=()) -> str:
+    """Last activity is at least the newest dated activity in the page's own Sources (#2952).
+
+    The model cited one source of its choosing, so a page said "quiet since
+    1 October" above a session of 20 October. A later model-chosen day stays, and
+    an `Unknown` stays for the reader, which then dates the project by its newest source."""
+    from .facts import _bounds
+    span = _bounds(text, "Facts")
+    line = LAST_ACTIVITY.search(text, *span) if span else None
+    if not line:
+        return text
+    given = {item["source"]: item for item in items if item.get("source")}
+    sources = text.partition("\n## Sources\n")[2]
+    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if _activity(root, source, given)]
+    if not dated:
+        return text
+    day, number = max(dated)
+    written = re.match(r"\d{4}-\d{2}-\d{2}", line[1])
+    if not written or written[0] >= day:
+        return text
+    return text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+
+
+def refresh_last_activity(root: Path) -> list[str]:
+    """Every round, so pages written before #2952 and pages whose sources grew agree."""
+    book, changed = Notebook(root), []
+    for record in book.list("projects"):
+        before = book.read(record)
+        after = settle_last_activity(root, before)
+        if after != before and book.write(record, after):
+            changed.append(record)
+    return changed
 
 
 def repository_context(root: Path, source: str, private: bool = False) -> dict | None:
@@ -782,7 +838,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """Write pending messages, then optionally edit quotes; save only pages that pass review."""
     from .runner import RunFailed, _one_more_turn, promote_with_repairs, run_task
-    config = config or read_config(root)
+    from .inquiry import stage_config
+    config = stage_config(root, config or read_config(root), "projects")
     run = run or run_task
     workdir = root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -862,3 +919,351 @@ def write_pages(root: Path, *, limit: int = 5, recent_days: int = RECENT_DAYS, w
                          "outcome": "refused" if refused else "failed", "why": str(error)[:300]})
     return {"pages": done, "left": len(rows) - sum(1 for d in done if d["outcome"] == "accepted"),
             **({"stopped": stopped} if stopped else {})}
+
+
+# One sync is bounded even on a repository with years of history.
+BACKFILL_CODE_REPOS = 3
+BACKFILL_CODE_ISSUES = 200
+BACKFILL_CODE_PRS = 100
+BACKFILL_CODE_RUNS = 200
+BACKFILL_CODE_COMMITS = 1000
+CODE_SYNC_MINUTES = 30
+CODE_ROUND_SECONDS = 90
+CODE_CHURN_DAYS = 14
+CODE_PR_QUERY = '''query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
+defaultBranchRef{name}
+pullRequests(first:100,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{
+number title state headRefName headRefOid additions deletions mergedAt createdAt updatedAt
+reviewDecision authorAssociation author{login}
+closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}}
+commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{
+... on CheckRun{name conclusion startedAt completedAt}
+... on StatusContext{context state createdAt}}}}}}}
+}}}}'''
+
+
+def code_utc(value) -> str:
+    """Persist an aware instant in UTC, never a machine-local wall clock."""
+    at = datetime.fromisoformat(value.replace('Z', '+00:00')) if isinstance(value, str) else value
+    if at.tzinfo is None:
+        raise ValueError('Repository evidence requires a timezone')
+    return at.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+CODE_REPO_INVALID = 'not a canonical GitHub owner/repository'
+
+
+def code_repo_valid(repo):
+    """GitHub owners have no dots; a Facts line like `docs.site/guide` is not a repository."""
+    return bool(re.fullmatch(r'[\w-]+/[\w.-]+', repo)) and repo.split('/')[1] not in ('.', '..')
+
+
+def code_cache_path(root, repo):
+    if not code_repo_valid(repo):
+        raise ValueError('Expected a canonical owner/repository')
+    return state_path(root, 'code/' + repo.casefold().replace('/', '__') + '/repository.json')
+
+
+class GitHubReadRefused(RuntimeError):
+    """Our own argv broke the read-only allowlist: a bug, never a cache error.
+
+    Deliberately not a ValueError, which sync_repository records as a failed
+    read and retries in 30 minutes, forever.
+    """
+
+
+def github_read(args):
+    """Closed allowlist: only this ingest's GET endpoints and fixed GraphQL query.
+
+    No shell, arbitrary query, input file, hostname, pagination, or write method.
+    Validate the entire argv before gh can see credentials or make a request.
+    """
+    valid = False
+    if len(args) >= 2 and args[:2] == ['api', 'graphql']:
+        valid = (len(args) == 8 and args[2:4] == ['-f', 'query=' + CODE_PR_QUERY]
+                 and args[4] == args[6] == '-f'
+                 and re.fullmatch(r'owner=[\w-]+', args[5])
+                 and re.fullmatch(r'name=[\w.-]+', args[7]))
+    elif len(args) >= 5 and args[0] == 'api':
+        valid = (re.fullmatch(r'repos/[\w-]+/[\w.-]+/(?:issues|actions/runs|tags|releases)'
+                             r'\?per_page=100&page=[12](?:&state=all&sort=updated&direction=desc)?', args[1])
+                 and args[2:5] == ['--method', 'GET', '--include']
+                 and (len(args) == 5 or (len(args) == 7 and args[5] == '-H'
+                      and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
+    if not valid:
+        raise GitHubReadRefused('REM GitHub ingest is read-only; refused gh arguments')
+    run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
+    # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
+    # Treating that as failure kept the old ETag, so every later sync failed too.
+    if run.returncode and not ('--include' in args and re.match(r'HTTP/\S+ 304\b', run.stdout)):
+        raise subprocess.CalledProcessError(run.returncode, ['gh', *args], run.stdout, run.stderr)
+    return run.stdout
+
+
+def _code_rest(repo, resource, cap, resources, evidence, now):
+    rows = []
+    for page in range(1, cap // 100 + 1):
+        endpoint = f'repos/{repo}/{resource}?per_page=100&page={page}'
+        if resource == 'issues':
+            endpoint += '&state=all&sort=updated&direction=desc'
+        previous = resources.get(endpoint, {})
+        args = ['api', endpoint, '--method', 'GET', '--include']
+        if previous.get('etag'):
+            args += ['-H', 'If-None-Match: ' + previous['etag']]
+        output = github_read(args).replace('\r\n', '\n')
+        headers, _, body = output.partition('\n\n')
+        status = re.match(r'HTTP/\S+ (\d+)', headers)
+        if not status or status[1] not in ('200', '304'):
+            raise ValueError('GitHub returned no successful HTTP status')
+        if status[1] == '304':
+            if 'data' not in previous:
+                raise ValueError('GitHub returned 304 without cached data')
+            packet = previous['data']
+        else:
+            packet = json.loads(body)
+        etag = re.search(r'^etag:\s*(.+)$', headers, re.M | re.I)
+        resources[endpoint] = {'etag': etag[1] if etag else previous.get('etag'), 'data': packet}
+        evidence.append({'command': ['gh', *args], 'ran_at': code_utc(datetime.now(timezone.utc)),
+                         'resource': resource, 'status': int(status[1])})
+        batch = packet['workflow_runs'] if resource == 'actions/runs' else packet
+        if not isinstance(batch, list):
+            raise ValueError('GitHub returned an invalid list')
+        rows += batch[:100]
+        if len(batch) < 100:
+            break
+    return rows[:cap]
+
+
+def _code_prs(repo, evidence):
+    owner, name = repo.split('/')
+    args = ['api', 'graphql', '-f', 'query=' + CODE_PR_QUERY, '-f', 'owner=' + owner, '-f', 'name=' + name]
+    packet = json.loads(github_read(args))
+    if packet.get('errors'):
+        raise ValueError('GitHub PR query failed: ' + json.dumps(packet['errors']))
+    evidence.append({'command': ['gh', *args], 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': 'prs'})
+    repository = packet['data']['repository']
+    rows = repository['pullRequests']['nodes'][:BACKFILL_CODE_PRS]
+    for row in rows:
+        # GitHub's own closing references, same repository only: a `(#N)` in a
+        # forward-ported title names an issue of the repository it came from.
+        closing = row.pop('closingIssuesReferences', None) or {}
+        row['closingIssues'] = [ref['number'] for ref in closing.get('nodes', [])
+                                if ref['repository']['nameWithOwner'].casefold() == repo.casefold()]
+        commits = row.pop('commits', {}).get('nodes', [])
+        if commits:
+            rollup = commits[-1]['commit'].get('statusCheckRollup') or {}
+            row['checksTruncated'] = rollup.get('contexts', {}).get('pageInfo', {}).get('hasNextPage', False)
+            row['checkRollupState'] = rollup.get('state')
+            row['statusCheckRollup'] = rollup.get('contexts', {}).get('nodes', [])
+        row.setdefault('statusCheckRollup', [])
+    return rows, (repository.get('defaultBranchRef') or {}).get('name')
+
+
+def _code_issue(row):
+    return {'number': row['number'], 'title': row['title'], 'state': row['state'].upper(),
+            'labels': [label['name'] for label in row.get('labels', [])],
+            'author': (row.get('user') or {}).get('login'), 'commentCount': row.get('comments', 0),
+            'updatedAt': code_utc(row['updated_at']),
+            'closedAt': code_utc(row['closed_at']) if row.get('closed_at') else None,
+            'url': row.get('html_url'),
+            'milestone': {'dueOn': (row.get('milestone') or {}).get('due_on')}}
+
+
+def _code_run(row):
+    return {'id': row['id'], 'workflowName': row['name'], 'event': row['event'],
+            'branch': row['head_branch'], 'conclusion': row['conclusion'],
+            'createdAt': code_utc(row['created_at']), 'headSha': row['head_sha'],
+            'prs': [pr['number'] for pr in row.get('pull_requests', [])],
+            'completedAt': code_utc(row['updated_at']) if row.get('updated_at') and row.get('conclusion') else None}
+
+
+def _code_command(args, evidence, resource):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=True).stdout
+    evidence.append({'command': args, 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': resource})
+    return result
+
+
+
+def _code_matches(repo_path, repo, evidence):
+    folder = str(Path(repo_path).resolve())
+    if not (Path(folder) / '.git').exists():
+        return False
+    root = _code_command(['git', '-C', folder, 'rev-parse', '--show-toplevel'], evidence, 'local_identity').strip()
+    if str(Path(root).resolve()) != folder:
+        return False
+    remotes = _code_command(['git', '-C', folder, 'remote', '-v'], evidence, 'local_identity')
+    for line in remotes.splitlines():
+        if not line.startswith('origin\t'):
+            continue
+        match = re.fullmatch(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([\w-]+/[\w.-]+)', line.split()[1])
+        if match and match[1].removesuffix('.git').casefold() == repo.casefold():
+            return True
+    return False
+
+
+def _code_local(repo_path, now, days, sessions, evidence):
+    """Fixed commit window; numstat includes binary files as zero line changes."""
+    folder = str(Path(repo_path).resolve())
+    since = code_utc(now - timedelta(days=days))
+    until = code_utc(now)
+    args = ['git', '-C', folder, 'log', '--all', '--no-renames', '--numstat',
+            '--format=REM-COMMIT %H %cI', '--since=' + since, '--until=' + until,
+            '--max-count=' + str(BACKFILL_CODE_COMMITS)]
+    output = _code_command(args, evidence, 'churn')
+    commits, areas = [], {}
+    for line in output.splitlines():
+        if line.startswith('REM-COMMIT '):
+            _, sha, at = line.split()
+            commits.append({'sha': sha, 'time': code_utc(at)})
+        elif re.match(r'^(\d+|-)\t(\d+|-)\t', line):
+            additions, deletions, file = line.split('\t', 2)
+            prefix = file.split('/')[0] if '/' in file else '(root)'
+            area = areas.setdefault(prefix, {'additions': 0, 'deletions': 0, 'files': 0, 'commits': set()})
+            area['additions'] += int(additions) if additions.isdigit() else 0
+            area['deletions'] += int(deletions) if deletions.isdigit() else 0
+            area['files'] += 1
+            if commits:
+                area['commits'].add(commits[-1]['sha'])
+    worktrees = _code_command(['git', '-C', folder, 'worktree', 'list', '--porcelain'], evidence, 'session_links')
+    paths = [line.removeprefix('worktree ') for line in worktrees.splitlines() if line.startswith('worktree ')]
+    return {'since': since, 'until': until, 'commit_cap': BACKFILL_CODE_COMMITS,
+            'possibly_truncated': len(commits) == BACKFILL_CODE_COMMITS, 'commits': commits,
+            'areas': {key: {**value, 'commits': len(value['commits'])} for key, value in areas.items()},
+            'session_links': session_commit_links(sessions, commits, paths)}
+
+
+def session_commit_links(sessions, commits, repo_paths):
+    """A session links to a commit only when it printed that commit's SHA.
+
+    A time window alone linked a worktree session to whatever the main checkout
+    committed meanwhile. The printed `[branch sha]` record is the evidence; the
+    cwd must still be the repository or one of its worktrees, and the commit may
+    not predate the session. No end bound: the SHA already proves the session saw
+    its creation, and `ended` is the last reply, not the last tool output.
+    """
+    paths = {str(Path(path).resolve()) for path in repo_paths}
+    links = []
+    for session in sessions:
+        cwd = session.get('cwd')
+        if not cwd or not Path(cwd).is_absolute() or str(Path(cwd).resolve()) not in paths:
+            continue
+        if not session.get('started'):
+            continue
+        start = timestamp(code_utc(session['started']))
+        printed = [row for row in session.get('printed_commits', []) if re.fullmatch(r'[0-9a-f]{7,40}', row['sha'])]
+        for commit in commits:
+            match = next((row for row in printed if commit['sha'].startswith(row['sha'])), None)
+            if match and timestamp(commit['time']) >= start:
+                links.append({'session': session['id'], 'sha': commit['sha'], 'branch': match['branch'], 'cwd': cwd,
+                              'started': code_utc(start),
+                              'ended': code_utc(session['ended']) if session.get('ended') else None})
+    return links
+
+
+def _code_pypi(package, evidence):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', package):
+        raise ValueError('Invalid PyPI package name')
+    url = 'https://pypi.org/pypi/' + package + '/json'
+    request = urllib.request.Request(url, headers={'Accept': 'application/json'})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            packet = json.loads(response.read(4_000_001))
+        result = {'package': package, 'versions': sorted(packet['releases']), 'found': True}
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        result = {'package': package, 'versions': [], 'found': False}
+    evidence.append({'command': ['HTTPS', 'GET', url], 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': 'pypi'})
+    return result
+
+
+def _code_due(cache, now):
+    """Every repository waits CODE_SYNC_MINUTES after its last attempt, failed or not."""
+    last = cache.get('attempted_at') or cache.get('synced_at')
+    return not last or now - timestamp(last) >= timedelta(minutes=CODE_SYNC_MINUTES)
+
+
+def sync_repository(root, repo, *, now=None, repo_path=None, package=None, sessions=(), days=CODE_CHURN_DAYS):
+    """Read one repo under the caller's maintenance lock; retain stale data on failure."""
+    now = now or datetime.now(timezone.utc)
+    now = timestamp(code_utc(now))
+    path = code_cache_path(root, repo)
+    previous = read_json(path, {})
+    if not _code_due(previous, now):
+        return previous
+    cache = copy.deepcopy(previous)
+    cache.update(repo=repo, attempted_at=code_utc(now), schema_version=1)
+    resources, evidence = cache.setdefault('resources', {}), []
+    try:
+        issues = _code_rest(repo, 'issues', BACKFILL_CODE_ISSUES, resources, evidence, now)
+        cache['issues'] = [_code_issue(row) for row in issues if 'pull_request' not in row]
+        cache['prs'], cache['default_branch'] = _code_prs(repo, evidence)
+        cache['runs'] = [_code_run(row) for row in _code_rest(repo, 'actions/runs', BACKFILL_CODE_RUNS, resources, evidence, now)]
+        cache['releases'] = _code_rest(repo, 'releases', 100, resources, evidence, now)
+        cache['tags'] = _code_rest(repo, 'tags', 100, resources, evidence, now)
+        matched = repo_path and _code_matches(repo_path, repo, evidence)
+        package = package or (_code_package('', repo_path) if matched else None)
+        cache['pypi'] = _code_pypi(package, evidence) if package else None
+        cache['local_status'] = 'matched' if matched else ('repository_mismatch' if repo_path else 'not_configured')
+        cache['churn'] = _code_local(repo_path, now, days, sessions, evidence) if matched else None
+        cache.update(synced_at=code_utc(now), verification=evidence, error=None,
+                     coverage={'issues': BACKFILL_CODE_ISSUES, 'prs': BACKFILL_CODE_PRS, 'runs': BACKFILL_CODE_RUNS,
+                               'releases': 100, 'tags': 100, 'bounded': True})
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as error:
+        cache = {**previous, 'repo': repo, 'attempted_at': code_utc(now), 'error': str(error),
+                 'failed_verification': evidence}
+    write_json(path, cache)
+    return cache
+
+
+
+def _code_package(page, folder):
+    """An explicit PyPI fact wins; otherwise use declared Python package metadata."""
+    explicit = re.search(r'^\s*-?\s*PyPI:\s*`?(?:https://pypi.org/project/)?([\w.-]+)', page, re.M)
+    if explicit:
+        return explicit[1]
+    if folder and (Path(folder) / 'pyproject.toml').is_file():
+        metadata = tomllib.loads((Path(folder) / 'pyproject.toml').read_text(encoding='utf-8'))
+        return metadata.get('project', {}).get('name') or metadata.get('tool', {}).get('poetry', {}).get('name')
+    return None
+
+
+def sync_project_repositories(root, *, now=None, clock=time.monotonic):
+    """At most three due named repositories per round, oldest attempts first; no model.
+
+    The round holds the maintenance lock, and one repository is ~7 gh calls of up
+    to 20 s each. No new repository starts once CODE_ROUND_SECONDS have passed;
+    the rest stay due and go first next round (oldest attempt first).
+    """
+    from .investigate import project_paths  # investigate imports this module
+    started = clock()
+    notebook, repos = Notebook(root), {}
+    for record in notebook.list('projects')[:2000]:
+        text = notebook.read(record)
+        if private(record, text):
+            continue
+        repo = identity({'text': text, 'title': record})['repo']
+        if repo and repo not in repos:
+            repos[repo] = text
+    results = {repo: {'repo': repo, 'status': 'skipped', 'reason': CODE_REPO_INVALID}
+               for repo in repos if not code_repo_valid(repo)}
+    repos = {repo: text for repo, text in repos.items() if repo not in results}
+    ordered = sorted(repos, key=lambda repo: read_json(code_cache_path(root, repo), {}).get('attempted_at', ''))
+    sessions = [row['code_evidence'] for row in read_json(state_path(root, 'sessions.json'), {}).get('files', {}).values()
+                if row.get('code_evidence')]
+    moment = now or datetime.now(timezone.utc)
+    synced = 0
+    for repo in ordered:
+        if not _code_due(read_json(code_cache_path(root, repo), {}), moment):
+            continue
+        if clock() - started >= CODE_ROUND_SECONDS:
+            break
+        text = repos[repo]
+        paths = project_paths(text)
+        folder = next((p for p in paths if Path(p).is_dir()), None)
+        results[repo] = sync_repository(root, repo, now=moment, repo_path=folder,
+                                       package=_code_package(text, None), sessions=sessions)
+        synced += 1
+        if synced >= BACKFILL_CODE_REPOS:
+            break
+    return results

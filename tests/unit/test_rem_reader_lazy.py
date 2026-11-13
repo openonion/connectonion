@@ -1,6 +1,7 @@
 """Today works without loading the notebook's full records or conversations."""
 
 import json
+from datetime import date, timedelta
 import re
 import shutil
 import subprocess
@@ -59,17 +60,18 @@ def test_offline_startup_finishes_details_without_navigation():
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
       let detailLoad = null, detailReady = false, morePeopleColumns,
-        pendingThreads, threadStates, peopleMode, notDoneKeys;
+        pendingThreads, threadStates, notebookThreads, peopleMode, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       let PEOPLE_BY_ADDRESS = new Map();
       const location = {protocol: 'file:'};
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
-      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done';
+      const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();
       const frames = [];
       function render() {frames.push({ready: detailReady, logs: Array.isArray(REM.logs)});}
+      function redraw() {render();}   // the reader's redraw keeps open sections; here a frame is a frame
     ''' + 'const startup = ' + startup + r'''
       startup.then(() => console.log(JSON.stringify(frames)));
     ''')
@@ -80,11 +82,13 @@ def test_offline_startup_finishes_details_without_navigation():
 def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monkeypatch):
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
     prepare(tmp_path)
-    Notebook(tmp_path).write('people/alice.md', '''# Alice
+    # Ten days late: overdue and red, not yet the stale promise Today only asks about (STALE_DAYS).
+    late = (date.today() - timedelta(days=10)).isoformat()
+    Notebook(tmp_path).write('people/alice.md', f'''# Alice
 ## Facts
 - Email: alice@example.test
 ## Open threads
-- You owe Alice feedback by 2000-01-01 [1].
+- You owe Alice feedback by {late} [1].
 ## Sources
 - [1] gmail:fixture — feedback request
 ''')
@@ -125,12 +129,18 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
             for child in node.get('children', []):
                 yield from nodes(child)
     rendered = list(nodes(tree))
-    assert any(n['tag'] == 'h1' and 'overdue' in n.get('text', '') for n in rendered)
+    def words(node):
+        return node if isinstance(node, str) else node.get('text', '') + ''.join(words(child) for child in node.get('children', []))
+    # N3 (D-123): the count is the night card's display element; the overdue face says its days late.
+    assert any('count-line' in n.get('class', '') and words(n) == '1thing waiting on youStart with this 1 person' for n in rendered)
+    assert any('dd late' == n.get('class') for n in rendered)
+    assert any('overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
     assert any(n.get('class') == 'words' and 'feedback' in n.get('text', '').lower() for n in nodes(card))
-    # An uncached cited message opens its recorded source, rather than inventing a reply.
-    assert any(n.get('text') == 'Open the recorded source' and '&h=src-1' in n.get('href', '') for n in nodes(card))
-    assert any(n.get('class') == 'fold' for n in nodes(card))
+    # REM cannot draft from an unarchived message yet, and a mail-app compose would start a new thread.
+    assert not any(n.get('href', '').startswith('mailto:') for n in nodes(card))
+    assert not any(n.get('text') == 'Open Alice' for n in nodes(card))  # the name opens the page; not a step (sprint 14)
+    assert any(n.get('class') == 'qdone' for n in nodes(card))          # a snapshot closes the row with its own tick
 
 
 def test_reader_shell_defers_full_prose_translations_and_conversations(tmp_path, monkeypatch):

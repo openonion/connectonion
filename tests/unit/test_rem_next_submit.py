@@ -534,7 +534,10 @@ def test_refusal_inlines_bounded_audit_findings_and_short_errors(trial, refused_
         assert f'Claim: Fictional claim {i}.' in corrections and f'Required correction: Correction {i}.' in corrections
     assert 'Fictional claim 5.' not in corrections and 'Correction 5.' not in corrections
     assert 'c' * 501 not in corrections and 'x' * 501 not in corrections
-    assert 'claim-review.json' in corrections and len(corrections) < 7000
+    # The bound is on REM's words, not on where pytest put the notebook: a long TMPDIR
+    # (CI, sandboxes) lengthened every path in the text past 7000.
+    words = corrections.replace(str(trial.resolve()), '<notebook>').replace(str(trial), '<notebook>')
+    assert 'claim-review.json' in corrections and len(words) < 7000
 
 
 @pytest.mark.parametrize('failure', ['candidate', 'claim-audit'])
@@ -657,9 +660,9 @@ def test_submit_accepts_relative_notebook_root(trial, monkeypatch):
 @pytest.mark.parametrize("key,value", [
     ("language", "zh"), ("languages", "zh,en"),
     ("model", "gpt-6-astra"), ("speed", "standard"), ("effort", "high"),
-    ("models.summary", "gpt-6.1-sol"),
+    ("models.summary", "gpt-6.1-sol"), ("models.level2", "gpt-6.1-sol"), ("models.level4", "gpt-6.1-sol"),
     ("schedule.times", "09:00,21:00"), ("schedule.timezone", "Pacific/Honolulu"),
-    ("limits.runner_calls_per_day", "100"), ("limits.translations_per_day", "20"),
+    ("limits.runner_calls_per_day", "100"),
     ("limits.timeout_seconds", "1800"), ("limits.workers", "8"),
     ("limits.investigation_quota_points", "40"), ("limits.quota_floor_percent", "95"),
     ("limits.depth_quota_points", "40"), ("limits.depth_workers", "4"),
@@ -1262,24 +1265,6 @@ def test_cli_json_and_logs_expose_the_native_work(trial):
     assert task["id"] in logs.stdout
 
 
-def test_translation_limit_uses_prior_rounds_from_today(trial):
-    from connectonion.rem import native_round
-    from connectonion.rem.config import set_config
-    set_config(trial, ["languages", "zh", "limits.translations_per_day", "1"])
-    book = Notebook(trial)
-    book.write("notes/pilot.md", "# Pilot\n\nRead the pilot notes.\n")
-    with maintenance_lock(trial):
-        cursor = native_round.prepare(trial, read_config(trial), scheduled=False)
-        cursor.update(changed=["notes/pilot.md"], jobs=[], summaries=[], same_left=0)
-        write_json(state_path(trial, "round.json"), cursor)
-        run, path = daily._reserve(trial, "daily-translation", 1, {})
-        run.update(outcome="completed")
-        write_json(path, run)
-    result = native.next_task(trial)
-    assert result["outcome"] == "done", result
-    assert not any(task.get("stage") == "translate" for task in native.pending(trial))
-
-
 def test_later_round_retries_held_refused_material(trial):
     from connectonion.rem.refusals import REFUSED, remember_refusal, refused_pages
     record = "people/avery-lin.md"
@@ -1837,11 +1822,12 @@ def test_later_slot_recovers_accepted_translation_and_continues_backlog(trial, m
     assert recovered['translations'] == [task['record']]
 
 
-def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, translation_round):
+def test_a_spent_portion_resumes_investigation_after_translation_in_the_same_slot(trial, monkeypatch, translation_round):
+    # D-104: rc62 waited for the next scheduled slot to refill the portion; now the round goes on.
     from connectonion.rem import native_round
     cursor = translation_round
     cursor.update(jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], current={'record': 'notes/pilot.md'},
-                  investigation_left=0)
+                  investigation_left=0, translation_left=1)
     write_json(state_path(trial, 'round.json'), cursor)
     translation = native.next_task(trial, scheduled=True)
     assert translation['stage'] == 'translate'
@@ -1853,13 +1839,11 @@ def test_later_scheduled_slot_resumes_capped_investigation(trial, monkeypatch, t
         return native_round._task('runner', prepared, state, stage='investigate', record='notes/pilot.md',
                                   operation='investigation')
     monkeypatch.setattr(native_round, '_prepare_job', resume_job)
-    moment = service.now() + timedelta(hours=1)
-    monkeypatch.setattr(service, 'now', lambda: moment)
     result = native.next_task(trial, scheduled=True)
     assert result['outcome'] == 'task' and result['stage'] == 'investigate', result
     current = read_json(state_path(trial, 'round.json'), {})
     assert current['run']['id'] == cursor['run']['id']
-    assert current['portion_slot'] == moment.isoformat() and current['investigation_left'] > 0
+    assert current['investigation_left'] == native_round.PORTION - 1
 
 
 def _extraction_task(root):
@@ -2054,6 +2038,21 @@ def test_one_native_claim_audit_finding_returns_to_writer_and_can_be_repaired(tr
     Path(audit['candidate']).write_text('{"verdict":"PASS","findings":[]}')
     assert native.submit(trial, task['id'])['outcome'] == 'accepted'
     assert 'The owner recorded' in Notebook(trial).read(record)
+
+
+def test_native_capture_that_is_not_text_is_refused_then_parked_not_crashed(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    web = Path(task['material']) / 'web'
+    web.mkdir()
+    (web / 'team.png').write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/team', 'file': 'team.png', 'date': '2026-11-06'}]))
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused' and 'team.png is not saved text' in refused['reason']
+    # The same capture again sets the task aside, so the next round moves on.
+    assert native.submit(trial, task['id'])['outcome'] == 'parked'
 
 
 def test_native_web_capture_changes_require_a_fresh_claim_audit(trial):
@@ -2414,7 +2413,8 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
     saved = native.pending(trial)[0]
     # Reproduce the on-disk rc59 digest, which included both language settings.
     previous = saved['task']['config']
-    controls = {'runner_calls_per_day', 'jobs_per_round', 'translations_per_day', 'drafts_per_night',
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {'runner_calls_per_day', 'jobs_per_round', 'translations_per_day', 'drafts_per_night', 'tasks_per_night',
                 'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
                 'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes'}
     material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
@@ -2429,6 +2429,20 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
     else:
         with pytest.raises(RemError, match='input changed'):
             native.submit(trial, task['id'])
+
+
+def test_a_page_task_saved_before_the_count_caps_were_retired_still_submits(trial):
+    # rc62 hashed config.yaml with the count caps D-104 retired. They governed future
+    # work, never page material, so a task saved then still submits.
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    config = read_config(trial)
+    config['limits'].update(tasks_per_night=3, drafts_per_night=30, jobs_per_round=8, translations_per_day=100)
+    saved['inputs'][str(trial / 'config.yaml')] = native._config_hash(config)
+    write_json(Path(task['material']) / 'task.json', saved)
+    assert _submit(trial, task)['outcome'] == 'accepted'
 
 
 def test_rc59_translation_without_config_snapshot_submits_when_config_is_unchanged(trial, translation_round):
@@ -2452,7 +2466,8 @@ def test_pre_model_split_digest_accepts_model_controls(trial, languages, change)
     previous = saved["task"]["config"]
     previous["model"] = "gpt-6-luna"
     previous.pop("models", None)
-    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night",
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
@@ -2476,7 +2491,8 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
     task = native.next_task(trial)
     saved = native.pending(trial)[0]
     assert "config" not in saved["task"]
-    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night",
+    # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
+    controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night",
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
@@ -2495,3 +2511,32 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
 
 def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_path):
     assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False
+
+
+def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeypatch, translation_round):
+    """A round that runs all day must not stop reading mail: mail was read only when a round began,
+    so a 14-hour round left the mailboxes unread since morning."""
+    from connectonion.rem import native_round
+    cursor = translation_round
+    cursor.update(phase='daily-update', jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], job_index=0,
+                  current=None, investigation_left=3)
+    cursor['batch']['done'] = True
+    write_json(state_path(trial, 'round.json'), cursor)
+    reads = []
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(service.now())
+        return {'done': True, 'items': [], 'updated': progress, 'record': {'extracted': False}, 'kind': 'gmail',
+                'leads': [], 'digested': None}
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    def investigate(root, state, config, directory):
+        return {'stop': 'fixture: one investigation per call'}
+    monkeypatch.setattr(native_round, '_prepare_job', investigate)
+    native.next_task(trial, scheduled=True)
+    assert reads == [], 'the slot that started the round already read mail'
+    moment = service.now() + timedelta(hours=1)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'a new slot reads new mail into the running round'
+    assert read_json(state_path(trial, 'round.json'), {})['mail_slot'] == moment.isoformat()
+    native.next_task(trial, scheduled=True)
+    assert reads == [moment], 'the same slot does not read again'

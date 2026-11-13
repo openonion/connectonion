@@ -1,10 +1,9 @@
 # Nightly outcomes for the morning confirmation
 
 The daily and native rounds cover every open, owner-owed item in the shared
-Today order, including items outside the first visible cards. The default
-`limits.drafts_per_night` is **30** model attempts per notebook day. Explicit
-configured caps remain in force across rounds. Owner verdicts and task prompts
-need no model calls. Every item left by a draft cap, daily cap, quota stop,
+Today order, including items outside the first visible cards. There is no
+nightly draft count (D-104, 2026-11-09). Owner verdicts and task prompts
+need no model calls. Every item left by a daily cap, quota stop,
 missing consent, provider failure or rejected draft has a named reason.
 
 REM retrieves missing cited originals through the existing Outlook/Gmail
@@ -18,9 +17,21 @@ Fetching retains a local copy; it does not move mail in the provider mailbox.
 An owner answer records an `already_handled` verdict with quoted owner words.
 Future promises, clarification questions and explicit noncompletion become
 `task` outcomes. Tasks contain a ready-to-dispatch prompt, **not a claim that the work is done**.
-Morning approval reserves a receipt and the Host starts `co rem task run ID`.
-The night may dispatch after drafting only when `tasks.auto: true`; its default
-is false. `co rem status` names this choice.
+By default (`tasks.auto: true`, owner decision D-100, 2026-11-09) the night
+starts owed tasks after drafting and records each in `.state/approvals.json`
+with `by: rem`, so Today says "REM started this" and offers Stop and Undo. Undo
+stops the task, removes its folder, worktree and branch, and records
+`cancelled`: the night never starts it again, while morning approval still can.
+With `tasks.auto: false` only morning approval starts them (the Host runs
+`co rem task run ID`). A task runs with full access, as the owner's own Codex
+runs do: it can read the web and use his accounts to do the job, and its prompt
+leaves pushing, merging, sending and posting to him. Tasks run side by side
+with no nightly count (D-104); the one gate is the Codex week: none starts once
+it reaches `limits.quota_floor_percent`, read live or, when the meter cannot be
+read, from the last reading a run recorded this week. A task that has to wait
+is written to `.state/tasks/waiting.json` and its Today card says "Queued:
+budget used up" with the reason.
+`co rem status` names the choice.
 That prompt includes the obligation, source, page and full cleaned owner message.
 Non-mail tasks never attribute notebook prose to the owner as a quotation.
 Nothing here sends messages or marks an obligation done; the morning UI still
@@ -86,12 +97,27 @@ text that might contain credentials or private URLs.
 
 ## Obligation work
 
-Use `co rem task status` to find IDs, `co rem task run ID` to start one, and
-`co rem task stop ID` to stop it. Each ID gets one Codex session, using the
-configured work model and the same sandbox/network/credential-directory flags
-as upkeep. An unambiguous existing repository from the obligation's project
-page (or an explicit project link on its page) is the working directory;
-otherwise the working directory is `.state/tasks/do-ID/work`.
+Use `co rem task status` to find IDs, `co rem task run ID [--agent codex|claude]`
+to start one, and `co rem task stop ID` to stop it. The Host's
+`POST /rem/task {"action": "run", "key", "agent"}` does the same from the reader's
+交给 Codex / 交给 Claude, for any unfinished row it shows (`tasks.unfinished`): the
+night's outcome when it prepared one, otherwise a task reserved from the row itself.
+A key no unfinished row has is a 400 in plain words. Each ID gets one session, run through co's own
+integrations as `co ai --harness` runs them (`useful_tools/codex.py`,
+`useful_tools/claude_code.py`), with full access (owner decision D-100,
+2026-11-09): Codex with `danger-full-access`, Claude Code with
+`bypassPermissions`. Codex runs on the `task` stage's level, `models.level4`,
+with the configured effort. Claude Code keeps its own model and loads the
+owner's own Claude setup, as `co claude run` does: his user CLAUDE.md, skills
+and settings, with `--setting-sources user` instead of `--safe-mode`
+(context over control). Earlier 1.9.3 previews ran Codex sealed in a
+permission profile; that is gone. The prompt keeps pushing, merging, sending
+and posting for the owner's click. When the
+obligation's project page (or an explicit project link on its page) names one
+existing directory inside a git repository, REM creates a worktree of it at
+`.state/tasks/do-ID/work` on branch `rem/task-ID` and Codex edits there,
+uncommitted; the owner's checkout is untouched. Otherwise `do-ID/work` is an
+empty folder and the project is named in the prompt to read.
 
 The prepared prompt is extended with the completion criteria, the absolute
 `.state/tasks/do-ID/result.md` deliverable path, and “do not send anything to
@@ -99,8 +125,9 @@ anyone; write the result and stop”. Reviewable work can include repository edi
 the deliverable names changed files, evidence, checks and missing inputs.
 
 `do-ID/receipt.json` records `queued_at`, `started_at`, `finished_at`, `exit_code`,
-`result`, worker/Codex process identities, `cwd`, `log`, `last_message` and
-`deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
+`result`, `by` (`rem` or `owner`), worker/Codex process identities, `cwd`,
+`project`, `repository` and `branch` when a worktree was made, `log`,
+`last_message` and `deliverable`. Terminal results are `completed`, `failed`, `timed-out` or
 `stopped`. A zero exit without a nonempty deliverable is failed. Repeated `run`
 returns the same receipt, including failures; automatic retries are deliberately
 absent. `status` reconciles dead workers into a durable failure and stops verified
@@ -109,7 +136,8 @@ Native maintenance cleanup preserves every `do-*` directory.
 
 Local Today snapshots attach receipt fields to `outcome.task`; shared snapshots
 still expose no private outcomes. The Today card shows receipt progress and,
-after completion, the deliverable path plus a copyable prepared reply:
+who started it, Stop while it runs, Undo, a failure's reason, and after
+completion a link to the deliverable plus a copyable prepared reply:
 `REM 已经做完：<one line> · 附：<path>`. The owner sends it. Existing receipts
 are not offered for another batch approval. Live cards provide a refresh action;
 offline snapshots need a new `co rem open` to obtain later receipts.
@@ -117,3 +145,66 @@ offline snapshots need a new `co rem open` to obtain later receipts.
 This is execution evidence, not an independent judgement of work quality: the
 owner reviews the deliverable before sending or marking the obligation done.
 Tasks do not send messages, mark threads done, or make external commitments.
+
+## Morning message (sprint 11)
+
+The model-free morning note covers one window: from the previous note's
+`checked_at` (the latest earlier `morning.json` entry that is not `missed`), or
+22:00 the evening before when there is none, through the moment of this check.
+Work after 06:00 is therefore reported once, the next morning. The note is due
+06:00–11:00 in `schedule.timezone`; before that a check returns `not_due` and
+records nothing; after 11:00 it records `missed` and sends nothing. A missed
+date does not move the window, so its work appears in the next note.
+
+Sources and the exact fields read (start exclusive, end inclusive):
+
+| Count | Source | Fields |
+| --- | --- | --- |
+| sent for you | `approvals.json` values | `kind: reply`, `by: rem`, `status: sent`, `release_at` |
+| drafted, waiting | `night.json` `items.*.outcome` and `.state/drafts/*.json` | `kind: prepared`, `draft_id`/`id`, `prepared_at`; waiting only while the draft receipt's `status` is still `prepared` |
+| tasks finished | `tasks.py` `.state/tasks/do-*/receipt.json` | `result: completed`, `finished_at` |
+| problems explained | `.state/investigations/index.json` | see below |
+
+A reply REM sent is counted as sent, never also as drafted. Owner-approved sends
+are the owner's own act and are not reported back to him.
+
+Investigation contract, as `connectonion/rem/problems.py` writes it
+(night-investigations head `35b0a770b`): the index is one JSON object keyed by
+problem key, each value the full receipt — the detector's problem fields
+(`key`, `detector`, `repo`, `project`, `symptom`, `facts`, `evidence_revision`,
+`priority`, `oldest_at`, …) plus `id`, `state`, `result`, `attempts`, `reason`,
+`opened_at`, `updated_at`, `last_checked`, `resolved_by`, `receipt`, and once
+run `started_at`/`finished_at`. `update()` stores the receipt under its key and
+every `save()` sets `state` and bumps `updated_at`. There is no `items` list and
+no `explained_at`. The morning note counts a receipt whose `state` is
+`explained`, `needs_owner` or `fix_proposed` and whose `updated_at` falls in the
+window. `investigating`, `inconclusive`, `could_not_investigate`, `violation`,
+`resolved` and `stale` never count. Known edge: a later state change re-bumps
+`updated_at` (a closed draft PR turns `fix_proposed` into `needs_owner`), and
+that counts again on the morning after it. Missing file means zero.
+
+Decisions are the current unblocked `approvals.outcomes` rows, at most two
+lines, each one clause built from the row's `kind` and words: a reply names the
+page `title` and hands back the draft's `gist` (else its `subject`); a task
+names its page `title`. A title or phrase containing `@`, a path, a `.md`
+record or a long hex ID is dropped, never shown — a reply whose only title is
+the draft's `to` address is shown by its words alone. More than two ends with
+"N more in Today". Zero counts and an empty decision list are left out.
+
+The only new store is `.state/morning.json`, keyed by notebook-local ISO date
+and pruned to the last 14 days on every write. Each entry has `checked_at`,
+`channel`, `status` (`quiet`, `disabled`, `sending`, `sent`, `failed`, `missed`)
+and, except for `missed`, `pending`: the sorted outcome IDs offered that
+morning, used to stay quiet when nothing is new and the decisions are the same.
+Failures include only the exception class in `error`, never provider payloads.
+The maintenance lock serializes the claim before external IO; the Today link's
+host check runs before the lock is taken. A crash leaves `sending`; doctor
+reports the latest entry only when it is `failed` or `sending`, and nothing is
+ever resent. A disabled, quiet or missed date is also final. An error while
+preparing the note claims nothing and the next scheduled check retries it.
+Dry-run reads state without claiming a date and states what a real run would do.
+
+Notification settings are round controls, not task evidence. Native-task input
+checks accept legacy config digests with or without `notify`, including old
+model/language digest variants, while still rejecting changes to task content.
+Doctor reports incomplete setup when the selected sender or target is absent.

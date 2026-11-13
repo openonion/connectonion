@@ -156,6 +156,35 @@ def _interrupted(ctx, resume, data=None):
     raise typer.Exit(130)
 
 
+def _file_error(error) -> str:
+    """What failed, and on which file when it is known (2026-11-12).
+
+    A PNG read as a research capture raised UnicodeDecodeError and was reported
+    as "Cannot read or write", which sent the owner hunting a permission problem.
+    """
+    from ...rem.files import RemError
+    if isinstance(error, RemError):
+        return str(error)
+    if isinstance(error, OSError):
+        return f"Cannot read or write the selected co rem files: {error}"
+    if isinstance(error, UnicodeDecodeError):
+        where = _decoding(error.__traceback__)
+        return (f"{where or 'A co rem file'} is not UTF-8 text ({error.reason} at position {error.start}); "
+                "it was read, so this is not a permission problem")
+    return f"Cannot write co rem text: {error}"
+
+
+def _decoding(trace):
+    """The path a failed Path.read_text was reading, from its own frame; None when not a read_text."""
+    from pathlib import PurePath
+    while trace:
+        frame = trace.tb_frame
+        if frame.f_code.co_name == "read_text" and isinstance(frame.f_locals.get("self"), PurePath):
+            return frame.f_locals["self"]
+        trace = trace.tb_next
+    return None
+
+
 def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     """Run a command's operation and print its result; `resume` is the Next line after Ctrl-C."""
     from ...rem.files import RemError
@@ -168,9 +197,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     except KeyboardInterrupt:
         _interrupted(ctx, resume or retry or recovery)
     except (RemError, OSError, UnicodeError) as error:
-        message = str(error) if isinstance(error, RemError) else "Cannot read or write the selected co rem files"
-        if isinstance(error, OSError):
-            message += f": {error}"
+        message = _file_error(error)
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co rem start" and then printed "Next: co rem logs".
         named = re.search(r"`co rem ([^`<>]+)`", message)
@@ -329,7 +356,7 @@ def _logged(root, record, phase, call, quiet=False):
 
 def _investigation_pages(notebook):
     return [path for path in notebook.list()
-            if path.startswith(("people/", "projects/", "orgs/", "skills/catalog/"))
+            if path.startswith(("people/", "projects/", "orgs/", "skills/catalog/", "knowledge/"))
             and path != "skills/catalog/index.md"]
 
 
@@ -357,6 +384,9 @@ def _resolve_page(notebook, selector, *, next_args=("list",)):
                       if line.startswith("# ")), "")
         person = people.get(path, {})
         names = [title, Path(path).stem, *person.get("emails", []), *person.get("aliases", [])]
+        if path.startswith('knowledge/'):
+            from ...rem.topic_map import topic_aliases
+            names += topic_aliases(text)
         if path.startswith("projects/"):
             from ...rem.investigate import project_paths
             names += [Path(folder).name for folder in project_paths(text)]
@@ -367,7 +397,7 @@ def _resolve_page(notebook, selector, *, next_args=("list",)):
     if matches:
         rows = [path + "  " + ", ".join(people.get(path, {}).get("emails", [])) for path in matches]
         raise RemError(f'More than one page matches "{selector}". Use an exact path:\n' + "\n".join(rows))
-    raise RemError(f'No page matches "{selector}" in people, projects, orgs or skills. '
+    raise RemError(f'No page matches "{selector}" in people, projects, orgs, skills or topics. '
                    f'Search names and paths with `co rem {shlex.join(next_args)}`.')
 
 
@@ -1564,7 +1594,8 @@ def make_rem_app(factory):
                 # People: the same queue `investigate people --list` prints and runs (#1974).
                 queue = ([row["record"] for row in people_queue(root)] if category == "people" else
                          [row["path"] for row in order(root, category) if not row["recent"]])
-                rows[category] = {"written": tally[category]["written"], "mapped": tally[category]["mapped"],
+                counted = tally[CATEGORIES[category].split('/')[0]]
+                rows[category] = {"written": counted["written"], "mapped": counted["mapped"],
                                   "to_refresh": sum(bool(found.get(record, {}).get("written")) for record in queue),
                                   "next": queue[:3]}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
@@ -1744,12 +1775,13 @@ def make_rem_app(factory):
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
             owner = identity and identity["address"]
+            # A first render, with no saved page to show, says how it is going (stderr).
             if local:
-                result = reader.open_snapshot(root, launch=launch)
+                result = reader.open_snapshot(root, launch=launch, say=rem_look.step)
             elif live:
-                result = reader.live_or_snapshot(root, owner, live=True, launch=launch)
+                result = reader.live_or_snapshot(root, owner, live=True, launch=launch, say=rem_look.step)
             else:
-                result = reader.local_or_snapshot(root, owner, launch=launch)
+                result = reader.local_or_snapshot(root, owner, launch=launch, say=rem_look.step)
             return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
         _handle(ctx, operation, ["doctor"])
 
@@ -2108,9 +2140,10 @@ def make_rem_app(factory):
     rem.add_typer(task_app, name="task")
 
     @task_app.command("run", cls=V("co rem task run"))
-    def task_run(ctx: typer.Context, task_id: str = typer.Argument(...)):
+    def task_run(ctx: typer.Context, task_id: str = typer.Argument(...),
+                 agent: Optional[str] = typer.Option(None, "--agent", help="codex or claude; default: the receipt's")):
         from ...rem.tasks import start
-        _handle(ctx, lambda root: (start(root, task_id), ["task", "status", task_id]), ["task", "status"])
+        _handle(ctx, lambda root: (start(root, task_id, agent), ["task", "status", task_id]), ["task", "status"])
 
     @task_app.command("status", cls=V("co rem task status"))
     def task_status(ctx: typer.Context, task_id: Optional[str] = typer.Argument(None)):
@@ -2181,7 +2214,7 @@ def make_rem_app(factory):
 
     @config_app.callback(invoke_without_command=True)
     def inspect_config(ctx: typer.Context):
-        from ...rem.config import read_config
+        from ...rem.config import describe_levels, read_config
         from ...rem.inquiry import routing
         from ...rem.tier import describe
 
@@ -2197,7 +2230,7 @@ def make_rem_app(factory):
                                  + " (one or two model calls)")
             from ...rem.languages import owner_languages
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
-                     "models": f"work {config['model']} · summaries {config['models']['summary']}",
+                     "models": describe_levels(config),
                      "config": config, "tier": tier, "routes": routing(root),
                      "your languages": owner_languages(root)}, ["status"])
         if ctx.invoked_subcommand is None:
@@ -2208,7 +2241,7 @@ def make_rem_app(factory):
                       no_check: bool = typer.Option(False, "--no-check")):
         from ...rem.config import read_config, set_config
         from ...rem.files import RemError
-        from ...rem.inquiry import STAGES, clear_route, routing, set_route
+        from ...rem.inquiry import ROUTABLE, clear_route, routing, set_route
         from ...rem.tier import check_and_record
 
         def operation(root):
@@ -2218,8 +2251,8 @@ def make_rem_app(factory):
             routes = [(key.split(".", 1)[1], value) for key, value in pairs if key.startswith("route.")]
             rest = [part for key, value in pairs if not key.startswith("route.") for part in (key, value)]
             for stage, _ in routes:
-                if stage not in STAGES:
-                    raise RemError(f"route.{stage}: the stages are {', '.join(STAGES)}")
+                if stage not in ROUTABLE:
+                    raise RemError(f"route.{stage}: the stages are {', '.join(ROUTABLE)}")
             config = set_config(root, rest) if rest else read_config(root)
             for stage, model in routes:
                 if model == "default":
@@ -2228,7 +2261,7 @@ def make_rem_app(factory):
                     set_route(root, stage, config["runner"], model)
             value = {"config": config, "routes": routing(root)}
             # The tier is measured when the model changes, never read off its name (#1847).
-            if {"model", "runner"} & set(values[::2]) and not no_check:
+            if {"model", "models.level3", "runner"} & set(values[::2]) and not no_check:
                 if not ctx.obj["json"]:
                     rem_look.line(f"Checking {config['model']} on a fixture page (one or two model calls)...",
                                err=True)
@@ -2255,6 +2288,24 @@ def make_rem_app(factory):
             return records, (["logs", records[0]["id"]] if records and not chosen else ["status"])
         _handle(ctx, operation, ["logs"])
 
+    @rem.command("morning", cls=V("co rem morning"))
+    def morning(ctx: typer.Context, dry_run: bool = typer.Option(False, "--dry-run")):
+        from ...rem.morning import run
+        from ...rem.files import RemError
+        try:
+            value = run(ctx.obj["root"], dry_run=dry_run)
+        except (RemError, OSError) as error:
+            _emit(ctx, str(error), ["doctor"], failed=True)
+            return
+        if dry_run and not ctx.obj.get("json"):
+            typer.echo(value["plan"])
+            if value["message"]:
+                typer.echo(value["message"])
+            if value["file"]:
+                typer.echo("Mail preview: " + value["file"])
+        else:
+            _emit(ctx, value, ["open"])
+
     @rem.command("doctor", cls=V("co rem doctor"))
     def doctor(ctx: typer.Context):
         import shutil
@@ -2270,6 +2321,8 @@ def make_rem_app(factory):
             checks, rem_fixes = [], []
             from ...rem.tidy import notebook_checks
             checks.extend(notebook_checks(root))
+            from ...rem.morning import doctor as morning_checks
+            checks.extend(morning_checks(root))
 
             def check(name, ok, detail, fix="", rem_fix=None):
                 """`rem_fix` is a co rem command, spelled for this root; `fix` is anything else."""
@@ -2359,12 +2412,16 @@ def make_rem_app(factory):
         from ...rem.service import mail_client, subscriptions
 
         def run(root):
+            if what == 'topics':
+                from ...rem.topic_map import scan_topics
+                from ...rem.files import Notebook
+                return scan_topics(Notebook(root), backfill=True), ['investigate', 'topics', '--list']
             if what == "projects":
                 rows = scan_projects(subscriptions(root), days, root)
                 return rows, (["stub", "project", rows[0]["name"], "--path", rows[0]["path"]]
                               if rows else ["sources"])
             if what not in ("people", "orgs"):
-                raise RemError("scan takes people, orgs or projects")
+                raise RemError("scan takes people, orgs, projects or topics")
             clients = {k: mail_client(k) for k in ("outlook", "gmail")}
             rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
             if what == "orgs":
@@ -2375,6 +2432,20 @@ def make_rem_app(factory):
             return rows, (["stub", "person", rows[0]["name"] or rows[0]["address"],
                            "--email", rows[0]["address"], "--handle", rows[0]["address"]]
                           if rows else ["sources"])
+        _handle(ctx, run, ["status"])
+
+    @rem.command("backfill", cls=V("co rem backfill"))
+    def backfill(ctx: typer.Context,
+                 what: str = typer.Argument(...),
+                 dry_run: bool = typer.Option(False, "--dry-run"),
+                 propose: bool = typer.Option(False, "--propose")):
+        from ...rem.files import Notebook, RemError
+        from ...rem.topic_map import backfill_topics
+
+        def run(root):
+            if what != "topics":
+                raise RemError("backfill takes topics")
+            return backfill_topics(Notebook(root), dry_run=dry_run, propose=propose), ["investigate", "topics", "--list"]
         _handle(ctx, run, ["status"])
 
     @rem.command("map-skills", cls=V("co rem map-skills"))
@@ -2551,8 +2622,8 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs doctor history "
-             "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs morning doctor history "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

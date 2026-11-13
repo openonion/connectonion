@@ -119,8 +119,14 @@ co rem review ID --verdict no --author user --response 'Different constraints'
 For a `question`, pass one subject and later `--verdict answer --response TEXT`.
 Decisions are retained in `.state/reviews.json`; exact rejected candidates do not
 reappear. Maintenance receives answered/accepted/rejected records as evidence.
-Models can propose at most two candidates per pass. The reader's **Questions &
-connections** section displays them and terminal commands; it is a read-only snapshot.
+Models can propose at most two candidates per pass. In the live reader
+(`co rem open`), **Questions & connections** (`#reviews=1`) decides them in place:
+a link has **Yes** / **No** / **Not sure**, a question a box for your answer with
+**Save answer** / **Not sure**. Each posts `{"id", "verdict", "response"?}` to
+`POST /rem/review`, which calls the same `decide` with author `owner`; **Not sure**
+posts nothing and leaves the review pending. A recorded verdict is final, as it is
+here. A snapshot shows the reviews with one line, *This is a snapshot; decide these
+on the live page*, and no command to copy.
 
 Optional local voice input requires **whisper.cpp's `whisper-cli`** and an already
 downloaded local model. Nothing is downloaded or sent to a cloud transcriber:

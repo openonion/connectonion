@@ -146,8 +146,13 @@ def _entries(root, records, today, contexts, states, db):
     title = next((record['text'].splitlines()[0].lstrip('# ') for record in records if record['path'] == owner), '')
     first, addresses = (title.split() or [''])[0], owner_addresses(root)
     found = census.pages(root, records=records)
+    ignored, notices = threads.ignored_senders(root), _notices(mapped)
     rows = []
     for record, text, sources in _items(records, found, first):
+        senders = _senders(sources, text, addresses, db)
+        # Only when every cited sender is ignored: a newsletter cited beside a person keeps her item.
+        if senders and senders <= set(ignored):
+            continue
         key = threads.done_key(record['path'], text)
         since, due = _dates(text, today)
         times = [_source_day(sources.get(n, ''), db, contexts) for n in census.CITATION.findall(text)]
@@ -159,8 +164,43 @@ def _entries(root, records, today, contexts, states, db):
         rows.append({'key': key, 'keys': [key], 'record': record['path'], 'text': text, 'title': record['title'],
                      'dir': direction, 'since': since, 'due': due, 'quiet': quiet,
                      'closed': threads.blocked(root, key, states=states),
-                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources})
+                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources,
+                     'sender': _offered(senders, addresses, notices)})
     return _grouped(rows)
+
+
+def _notices(mapped):
+    """Senders the map set apart as notices, not the service desks a person may answer."""
+    return {row['address'].casefold() for row in mapped.get('automated_correspondents', [])
+            if row.get('address') and row.get('classification') != 'service desk'}
+
+
+def _senders(sources, text, owner, db):
+    """Every address that wrote a cited mail, other than the owner's own."""
+    from .reader_model import _cited_row
+    if db is None:
+        return set()
+    rows = [_cited_row(db, sources.get(number, '')) for number in census.CITATION.findall(text)
+            if sources.get(number, '').partition(':')[0] in ('gmail', 'outlook')]
+    return {address for row in rows if row is not None for address in [(row['sender'] or '').casefold()]
+            if address and address not in owner}
+
+
+def _offered(senders, owner, notices):
+    """The one address 忽略 may offer to stop, or ''.
+
+    Only a sole sender, so stopping it never hides a person cited beside it; only when the owner's addresses are
+    known, so his own is never offered; and only one that looks like a machine or bulk mail (a no-reply or
+    sending-subdomain shape, or a notice sender the map already set apart), never a relay that carries many
+    different people (map.RELAY) and never a person-looking address."""
+    from .files import EMAIL
+    from .mail import AUTOMATED_SENDER
+    from .map import BULK, MACHINE, RELAY
+    if not owner or len(senders) != 1:
+        return ''
+    address = next(iter(senders))
+    machine = AUTOMATED_SENDER.search(address) or MACHINE.search(address) or BULK.search(address) or address in notices
+    return address if EMAIL.fullmatch(address) and not RELAY.search(address) and machine else ''
 
 
 def _grouped(rows):
