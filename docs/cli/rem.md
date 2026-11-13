@@ -1088,18 +1088,26 @@ pinned to that edge: it comes into view with the draft.
   October 2026" or "Sep 3" count as dates. A page's undirected line can join
   a directed copy of the same request; two different requests in one email
   stay separate.
-- **People, Organisations and Projects** open as a sheet: one row per page,
-  the facts in columns (People starts with name and summary, what's open,
-  company and last contact, each one line with the full text on hover; **More columns** reveals role, email, phone and
-  mails, remembering your choice in this browser; status is the moon beside
-  the name), a sticky header, sort on any shown column, filters (*Something open*,
-  *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
-  the page. It fits 1440 px; narrower, it scrolls inside itself with the cut
-  edge shaded and the name column held. On phones, People become cards with
-  contact details and open work; empty columns are omitted on desktop. The columns come from the notebook's
-  index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
-  the snapshot; before it does, from each page's Facts and the map's mail
-  counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
+- **People** opens straight on its table (#2991): the page's name, then one
+  row per person with name, organisation, last contact, messages in the last
+  90 days, who wrote last, open items and page depth. Nothing else sits above
+  it: no count of who is waiting and no link to Today, because People is the
+  record and what you owe lives in Today. Rows start with the people you most
+  recently had a two-way exchange with (the older of your last message to
+  them and their last message to you); any column header sorts, and **Columns** adds
+  role, email, phone, the 52-week contact chart, warming or cooling, who writes
+  first, reply times and mail count, remembered in this browser. A row opens
+  the page; on a phone each row is a card and a **Sort by** menu replaces the
+  headers. Other contacts found in mail stay folded below the table.
+- **Organisations and Projects** open as a sheet: one row per page, the facts
+  in columns, a sticky header, sort on any shown column, filters (*Something
+  open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
+  opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
+  cut edge shaded and the name column held. The columns come from the
+  notebook's index (`store.people_table`, #2067) when `.state/rem.db` exists,
+  embedded in the snapshot; before it does, from each page's Facts and the
+  map's mail counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in
+  the page); mail statistics come from `relationship_stats.py`.
   People excludes your own page, which remains under **You** in the navigation.
 - **Agent sessions** keeps topic tags and the outcome separate on each list
   card. A session page shows its summary, then the visible transcript, followed
