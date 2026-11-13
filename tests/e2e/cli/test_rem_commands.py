@@ -927,8 +927,9 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota',
                                  'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
-                                 'round', 'nights'}
+                                 'round', 'nights', 'paused'}
     assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['paused'] is None  # always present: null until the Codex floor stops a round (#2938)
     assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
     assert data['data']['last_turn'] is None
 

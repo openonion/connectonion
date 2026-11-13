@@ -148,7 +148,7 @@ def research_items(directory: Path) -> list[dict]:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"]):
             raise RemError("Research capture date must be YYYY-MM-DD")
         date.fromisoformat(row["date"])
-        body = safe_path(web, row["file"]).read_text(encoding="utf-8")
+        body = _capture_text(web, row["file"])
         if not body.strip():
             raise RemError(f"Research capture has no saved text: {source}")
         item = items.setdefault(source, {"texts": [], "timestamp": row["date"]})
@@ -157,6 +157,15 @@ def research_items(directory: Path) -> list[dict]:
         item["timestamp"] = max(item["timestamp"], row["date"])
     return [{"role": "research", "source": source, "text": "\n\n".join(item["texts"]),
              "timestamp": item["timestamp"]} for source, item in items.items()]
+
+
+def _capture_text(web: Path, name: str) -> str:
+    """A PNG listed as a capture stopped every upkeep round with a decode error (2026-11-12)."""
+    try:
+        return safe_path(web, name).read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise RemError(f"Research capture web/{name} is not saved text; save the page's text "
+                       "(co fetch <url> > web/<slug>.md), not a screenshot, image or PDF") from error
 
 
 def _research_source(source: str) -> None:

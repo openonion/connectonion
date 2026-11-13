@@ -30,6 +30,7 @@ not a regex.
 """
 
 import re
+from functools import lru_cache
 from urllib.parse import unquote
 
 from connectonion.rem.reader import TEMPLATE
@@ -74,6 +75,7 @@ LAYOUT_VALUE = re.compile(r'-?[\d.]*(?:px|%|em|rem|vw|vh|ch)?')
 # (--d, multiplied by --t-stagger), never a colour, size, weight, radius, shadow or duration.
 LAYOUT_VARS = {'--cols', '--name', '--note', '--d', '--depth', '--from', '--sheet-top',
                '--evidence-top-height', '--evidence-find-height'}
+LAYOUT = '|'.join(re.escape(v) for v in sorted(LAYOUT_VARS))
 DESIGN_CAMEL = r'fontSize|fontWeight|font|borderRadius|boxShadow|textShadow|fontVariationSettings|filter'
 COLOUR_CAMEL = r'color|background|backgroundColor|borderColor|outlineColor|fill|stroke'
 # Namespaces earlier rounds added; each must stay gone, not come back beside the sheet.
@@ -85,31 +87,42 @@ def _html():
     return TEMPLATE.read_text(encoding='utf-8')
 
 
+@lru_cache(maxsize=None)
 def _strip_css_comments(css):
     return re.sub(r'/\*.*?\*/', '', css, flags=re.S)
 
 
+@lru_cache(maxsize=None)
 def _strip_js_comments(js):
     js = re.sub(r'/\*.*?\*/', '', js, flags=re.S)
     # A line comment starts at // not preceded by ':' (so "https://" survives) or a quote or escape.
     return re.sub(r'(?<![:\\"\'`])//[^\n]*', '', js)
 
 
-def _parts(html=None):
-    """(sheet, css, js, markup, inline): every place a style can be written, comments removed."""
+def _pieces(html=None):
+    """(sheet, styles, scripts, markup, inline): each <style> and <script> body on its own, comments removed.
+
+    A comment cannot run from one element into the next, so each body is stripped alone.
+    """
     html = _html() if html is None else html
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
     # Tags in any case, closers with anything before '>' (as browsers accept): the lint must not be bypassed by <STYLE>.
     styles = re.findall(r'<style[^>]*>(.*?)</style\b[^>]*>', html, re.S | re.I)
     first = styles[0] if styles else ''
     sheet = first.split(START, 1)[1].split(END, 1)[0] if START in first and END in first else ''
-    css = _strip_css_comments('\n'.join([first.replace(sheet, '')] + styles[1:]))
+    styles = tuple(_strip_css_comments(css) for css in [first.replace(sheet, '')] + styles[1:])
     scripts = re.findall(r'<script(?![^>]*application/json)[^>]*>(.*?)</script\b[^>]*>', html, re.S | re.I)
-    js = _strip_js_comments('\n'.join(s for s in scripts if s.strip() != '/*__D3__*/'))
+    scripts = tuple(_strip_js_comments(js) for js in scripts if js.strip() != '/*__D3__*/')
     markup = re.sub(r'<(style|script)[^>]*>.*?</\1\b[^>]*>', '', html, flags=re.S | re.I)
     inline = ' ; '.join(a or b or c for a, b, c in re.findall(
         r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>"\']+))', markup, re.I))
-    return sheet, css, js, markup, inline
+    return sheet, styles, scripts, markup, inline
+
+
+def _parts(html=None):
+    """(sheet, css, js, markup, inline): every place a style can be written, comments removed."""
+    sheet, styles, scripts, markup, inline = _pieces(html)
+    return sheet, '\n'.join(styles), '\n'.join(scripts), markup, inline
 
 
 def _blocks(sheet):
@@ -182,59 +195,116 @@ def _tab_icon_violations(markup, sheet):
 
 
 def _violations(html=None):
-    sheet, css, js, markup, inline = _parts(html)
-    css, inline = css.lower(), inline.lower()  # CSS is case-insensitive: FONT-SIZE is font-size
-    tokens = _tokens(html)
+    """Every literal outside the sheet. Each <style>, <script> and the markup is read on its own and the
+    reading is cached by its text, so a planted document re-reads only the piece the plant changed."""
+    sheet, styles, scripts, markup, inline = _pieces(html)
     found = _tab_icon_violations(markup, sheet)
-    declared = css + ' ; ' + inline + ' ; ' + js
-    layout = '|'.join(re.escape(v) for v in sorted(LAYOUT_VARS))
-    for where, text in (('css', css + ' ; ' + inline), ('js', js)):
-        for prop, value in PROPS.findall(text):
-            if where == 'js' and ((prop == 'font' and not re.search(r'[\d#(]', value)) or value.startswith('$')):
-                continue  # a JS key that shares a CSS name ("font: font"), or a size interpolated below
-            if _bad_value(prop, value):
-                found.append(f'{prop}: {value.strip()[:60]}')
-    # Axes such as "wght" are quoted, which the declaration pattern stops at; any setting but normal is a weight.
-    for value in re.findall(r'font-variation-settings\s*:\s*([^;{}]+)', declared):
-        if value.strip() != 'normal':
-            found.append(f'font-variation-settings: {value[:40]}')
-    for where, text in (('css', css), ('inline', inline), ('js', js), ('markup', TAB_ICON.sub('', markup))):
-        for hit in COLOUR.finditer(text):
-            found.append(f'{where}: colour {text[hit.start():hit.start() + 24]!r}')
-        for args in re.findall(r'color-mix\(([^;{}]*?)\)\s*[;}"\'`]', text):
-            if re.sub(r'var\(--[\w-]+\)|\bin\s+(?:srgb|oklab)\b|[\d.]+%|transparent|currentcolor|[\s,]', '', args, flags=re.I):
-                found.append(f'{where}: color-mix({args[:40]})')
-    for prop, value in re.findall(rf'(?<![\w-])({COLOUR_PROPS})\s*:\s*([^;{{}}"\'`]+)', js):
-        if _named(value):
-            found.append(f'named colour {prop}: {value.strip()[:40]}')
+    for css in styles:
+        for chunk in _rule_chunks(css.lower()):  # CSS is case-insensitive: FONT-SIZE is font-size
+            found += _style_findings(chunk, 'css')
+    found += _style_findings(inline.lower(), 'inline')
+    for js in scripts:
+        found += _script_findings(js)
+    found += _markup_findings(markup)
+    # A size the JS interpolates is still a size. The one allowed is the org chart's SVG labels,
+    # which are in user units and derived from --s-meta (orgLabelPlan); any other is a new size.
+    interpolated = [name for js in scripts for name in re.findall(r'font-size:\s*\$\{(\w+)\}', js)]
+    if interpolated != ['fs'] or not any('fs = v.phone ? meta * 21 / 12 : meta' in js for js in scripts):
+        found.append(f'js: interpolated font-size {interpolated}')
+    return found
+
+
+def _rule_chunks(css, rules=50):
+    """A style body cut after a closing brace, every fifty rules or so. In valid CSS no declaration,
+    rule body or colour runs across a '}', so the cuts change no finding; a plant re-reads only its chunk."""
+    pieces = re.split(r'(?<=\}\n)', css)
+    return [''.join(pieces[i:i + rules]) for i in range(0, len(pieces), rules)]
+
+
+@lru_cache(maxsize=None)
+def _style_findings(css, where):
+    """One lower-cased <style> body ('css') or every style attribute joined ('inline')."""
+    found = [f'{prop}: {value.strip()[:60]}' for prop, value in PROPS.findall(css) if _bad_value(prop, value)]
+    found += _variation_settings(css) + _colour_literals(where, css)
     # In CSS every declaration is checked (gradients, @property initial-value, -webkit-text-*, scrollbar-color).
-    bodies = ' ; '.join(re.findall(r'\{([^{}]*)\}', css)) + ' ; ' + inline
+    bodies = css if where == 'inline' else ' ; '.join(re.findall(r'\{([^{}]*)\}', css))
     for prop, value in re.findall(r'(?<![\w-])(-?[a-z][\w-]*)\s*:\s*([^;{}"\'`]+)', bodies):
         if prop not in NOT_PAINT and _named(value):
             found.append(f'named colour {prop}: {value.strip()[:40]}')
-        if (re.fullmatch(COLOUR_PROPS, prop) or 'shadow' in prop) and re.search(rf'var\(\s*(?:{layout})\b', value):
+        if (re.fullmatch(COLOUR_PROPS, prop) or 'shadow' in prop) and re.search(rf'var\(\s*(?:{LAYOUT})\b', value):
             found.append(f'layout var painting {prop}: {value.strip()[:40]}')
-    # Paint inside url(): a data: SVG cannot read var(), so only none/currentColor may appear there.
-    for body in re.findall(r'url\(([^)]*)\)', (css + ' ; ' + inline + ' ; ' + js).lower()):
-        for value in re.findall(r'(?:fill|stroke|stop-color|flood-color|color)\s*=\s*\\?[\'"]?([^\'"\s/>\\]+)', body):
-            if value not in ('none', 'currentcolor', 'transparent'):
-                found.append(f'url() paint {value[:20]}')
-    # Legacy HTML and SVG presentation attributes size, round and shade without CSS.
-    attributes = (markup + ' ; ' + js).lower()
-    for hit in re.findall(r'<link\b[^>]*stylesheet|<font\b|\bbgcolor\s*=|fedropshadow|\b(?:font-size|font-weight|rx|ry)\s*=\s*\\?["\']?(?!0\b)[\w.$]', attributes):
-        found.append(f'attribute {hit[:30]}')
+    return tuple(found + _url_paint(css) + _motion(css) + _custom_properties(css))
+
+
+@lru_cache(maxsize=None)
+def _markup_findings(markup):
+    """The document outside <style> and <script>: colours, legacy attributes and SVG paint."""
+    return tuple(_colour_literals('markup', TAB_ICON.sub('', markup)) + _attributes(markup.lower()) + _svg_paint(markup))
+
+
+@lru_cache(maxsize=None)
+def _script_findings(js):
+    """One <script> body, comments removed."""
+    found = []
+    for prop, value in PROPS.findall(js):
+        if (prop == 'font' and not re.search(r'[\d#(]', value)) or value.startswith('$'):
+            continue  # a JS key that shares a CSS name ("font: font"), or a size interpolated (see _violations)
+        if _bad_value(prop, value):
+            found.append(f'{prop}: {value.strip()[:60]}')
+    found += _variation_settings(js) + _colour_literals('js', js)
+    for prop, value in re.findall(rf'(?<![\w-])({COLOUR_PROPS})\s*:\s*([^;{{}}"\'`]+)', js):
+        if _named(value):
+            found.append(f'named colour {prop}: {value.strip()[:40]}')
+    found += _url_paint(js.lower()) + _attributes(js.lower())
     for prop, value in re.findall(r'["\']?\b(font-size|font-weight|rx|ry)["\']?\s*:\s*([^,}\n;]+)', js):
         value = value.strip().strip('"\'')
         if value != '0' and not value.startswith(('var(', '$')) and re.search(r'\d', value):
             found.append(f'js svg {prop}: {value[:30]}')
-    # SVG paint written as an attribute, in markup or in a string the script builds.
-    for prop, value in re.findall(r'\b(fill|stroke|stop-color|color)\s*=\s*\\?["\']([^"\'\\]*)', markup + js):
-        if not re.fullmatch(r'var\(--[\w-]+\)|none|currentColor|transparent|url\(#[\w-]+\)|\$\{[^}]*\}|', value):
-            found.append(f'attribute {prop}="{value[:30]}"')
+    found += _svg_paint(js)
     for prop, value in re.findall(r'\b(fill|stroke)\s*:\s*(["\'][^"\']*["\'])', js):
         if _literal(value):
             found.append(f'js {prop}: {value[:30]}')
-    # Script APIs that paint without CSS.
+    found += _script_api_paint(js)
+    return tuple(found + _motion(js) + _custom_properties(_resolve_interpolation(js)))
+
+
+def _variation_settings(text):
+    # Axes such as "wght" are quoted, which the declaration pattern stops at; any setting but normal is a weight.
+    return [f'font-variation-settings: {value[:40]}'
+            for value in re.findall(r'font-variation-settings\s*:\s*([^;{}]+)', text) if value.strip() != 'normal']
+
+
+def _colour_literals(where, text):
+    found = [f'{where}: colour {text[hit.start():hit.start() + 24]!r}' for hit in COLOUR.finditer(text)]
+    for args in re.findall(r'color-mix\(([^;{}]*?)\)\s*[;}"\'`]', text):
+        if re.sub(r'var\(--[\w-]+\)|\bin\s+(?:srgb|oklab)\b|[\d.]+%|transparent|currentcolor|[\s,]', '', args, flags=re.I):
+            found.append(f'{where}: color-mix({args[:40]})')
+    return found
+
+
+def _url_paint(text):
+    """Paint inside url() in lower-cased text: a data: SVG cannot read var(), so only none/currentColor may appear."""
+    return [f'url() paint {value[:20]}' for body in re.findall(r'url\(([^)]*)\)', text)
+            for value in re.findall(r'(?:fill|stroke|stop-color|flood-color|color)\s*=\s*\\?[\'"]?([^\'"\s/>\\]+)', body)
+            if value not in ('none', 'currentcolor', 'transparent')]
+
+
+def _attributes(text):
+    """Legacy HTML and SVG presentation attributes, in lower-cased text, size, round and shade without CSS."""
+    return [f'attribute {hit[:30]}' for hit in re.findall(
+        r'<link\b[^>]*stylesheet|<font\b|\bbgcolor\s*=|fedropshadow|\b(?:font-size|font-weight|rx|ry)\s*=\s*\\?["\']?(?!0\b)[\w.$]', text)]
+
+
+def _svg_paint(text):
+    """SVG paint written as an attribute, in markup or in a string the script builds."""
+    return [f'attribute {prop}="{value[:30]}"'
+            for prop, value in re.findall(r'\b(fill|stroke|stop-color|color)\s*=\s*\\?["\']([^"\'\\]*)', text)
+            if not re.fullmatch(r'var\(--[\w-]+\)|none|currentColor|transparent|url\(#[\w-]+\)|\$\{[^}]*\}|', value)]
+
+
+def _script_api_paint(js):
+    """Script APIs that paint without CSS."""
+    found = []
     for prop, value in re.findall(rf'\.style\.({DESIGN_CAMEL}|{COLOUR_CAMEL})\s*=\s*([^;\n]+)', js):
         if re.fullmatch(DESIGN_CAMEL, prop) or _literal(value):
             found.append(f'js: style.{prop} = {value[:50]}')
@@ -271,22 +341,27 @@ def _violations(html=None):
     # A style string that stops at the colon and concatenates the value: 'font-size:' + n + 'px'.
     for prop in re.findall(r'(font-size|font-weight|border-radius|box-shadow)\s*:\s*["\'`]\s*\+', js):
         found.append(f'js: concatenated {prop}')
-    # A size the JS interpolates is still a size. The one allowed is the org chart's SVG labels,
-    # which are in user units and derived from --s-meta (orgLabelPlan); any other is a new size.
-    interpolated = re.findall(r'font-size:\s*\$\{(\w+)\}', js)
-    if interpolated != ['fs'] or 'fs = v.phone ? meta * 21 / 12 : meta' not in js:
-        found.append(f'js: interpolated font-size {interpolated}')
-    # Motion: a written duration or easing ignores reduced motion; the sheet's --t-* do not.
-    for prop, value in MOTION.findall(declared):
+    return found
+
+
+def _motion(text):
+    """A written duration or easing ignores reduced motion; the sheet's --t-* do not."""
+    found = []
+    for prop, value in MOTION.findall(text):
         # A layout var times a --t-* token stays zero under reduced motion; a layout var alone is a duration.
-        value = re.sub(rf'calc\(\s*var\(\s*(?:{layout})\s*(?:,\s*[\d.]+\s*)?\)\s*\*\s*var\(--t-[\w-]+\)\s*\)', '', value)
-        if re.search(rf'var\(\s*(?:{layout})\b', value):
+        value = re.sub(rf'calc\(\s*var\(\s*(?:{LAYOUT})\s*(?:,\s*[\d.]+\s*)?\)\s*\*\s*var\(--t-[\w-]+\)\s*\)', '', value)
+        if re.search(rf'var\(\s*(?:{LAYOUT})\b', value):
             found.append(f'motion {prop} from a layout var: {value.strip()[:50]}')
         rest = re.sub(r'var\([^()]*(?:\([^()]*\)[^()]*)?\)', '', value)
         if re.search(r'(?<![\w.-])(?!0m?s\b)[\d.]+m?s\b|\bease(?:-in|-out|-in-out)?\b|\blinear\b|cubic-bezier|steps\(', rest):
             found.append(f'motion {prop}: {value.strip()[:50]}')
-    # Custom properties: only the sheet defines design values; layout measures are listed by name.
-    for name, value in re.findall(r'(?<![\w-])(--[\w-]+)\s*:\s*([^;}"\'`]*)', css + ' ; ' + inline + ' ; ' + _resolve_interpolation(js)):
+    return found
+
+
+def _custom_properties(text):
+    """Only the sheet defines design values; layout measures are listed by name."""
+    found = []
+    for name, value in re.findall(r'(?<![\w-])(--[\w-]+)\s*:\s*([^;}"\'`]*)', text):
         if name not in LAYOUT_VARS:
             found.append(f'{name} defined outside the sheet')
         elif not LAYOUT_VALUE.fullmatch(value.strip()):
@@ -405,7 +480,11 @@ PLANTS = {
     'tab icon colour that is not ink or paper': ('%23121512', '%23ff0000'),
     'tab icon named colour': ('fill%3A%23121512', 'fill%3Atomato'),
     'tab icon rgb()': ('stroke%3A%23ffffff', 'stroke%3Argb(255%2C0%2C0)'),
-    'hex in markup beside the tab icon': ('<main id="main"', '<link rel="prefetch" href="data:image/svg+xml,%23ff0000"><main id="main"'),
+    # The plants above land at the end of the first style, in the small first script or in the markup; these
+    # two land at the head of the first style and inside the main script, away from the last chunk.
+    'size at the head of the first style': ('/* /fuse:tokens */', '/* /fuse:tokens */ .zz{font-size:13px}'),
+    'colour in the main script': ('"use strict";', "\"use strict\"; el.style.color='crimson';"),
+    'hex in markup beside the tab icon':('<main id="main"', '<link rel="prefetch" href="data:image/svg+xml,%23ff0000"><main id="main"'),
 }
 
 

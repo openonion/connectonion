@@ -93,6 +93,13 @@ _CREDENTIAL_WORDS = re.compile(r"credential|unauthori[sz]ed|\b401\b|\b403\b|toke
 def _refused(name: str, exc: Exception) -> None:
     """Print a platform's refusal with the command to run next, and exit 1."""
     text = str(exc)
+    scope = _missing_scope(text) if name in ("feishu", "lark") else None
+    if scope:
+        from .feishu_auth import scan_to_enable_url
+
+        link = scan_to_enable_url(name, provider(name).app_id, tenant=[scope])
+        text = (f"{text.rstrip('. ')}. The bot does not have the scope {scope}. Open this link, approve it, "
+                f"and run the same command again: {link}")
     if "Next:" not in text:
         verb = "check" if _CREDENTIAL_WORDS.search(text) else "log"
         text = f"{text.rstrip('. ')}. Next: co {name} {verb}"
@@ -438,6 +445,9 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     inbox = Inbox(name)
     body, media, extra = _body_and_media(p, name, "send", text, plain, image, file)
     try:
+        # Lark and Feishu also take an email, a phone number, a saved contact
+        # or a group name; what is recorded is the id it resolved to.
+        chat = getattr(p, "resolve", str)(chat)
         sent = p.send(chat, body, reply_to=reply_to, plain=True, **extra)
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send", media=media)
