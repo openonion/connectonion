@@ -376,6 +376,9 @@ the index under "Only in temporary or package locations", without a page.
 
 `Usage history` opens with what your own coding sessions say, counted by a
 script with no model: how many times the skill was invoked and when last.
+`init`, `co rem skills map` and the start of every night round recount it, so
+the count and the last day follow the sessions instead of stopping on the day
+of init.
 
 ```text
 - Invoked 14 times in your coding sessions in the last 180 days, last on 2026-09-28 (Claude Code 9, Codex 5). ...
@@ -1875,9 +1878,17 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses in the retained archive,
-  in the notebook's time zone. They are recomputed after promotion and on sync;
-  they describe the archive's bounds, which may not span the whole relationship.
+  messages to or from the person's own addresses (a third party's mail to more
+  than five recipients, such as a notice to a list, does not count) in the
+  retained archive, in the notebook's time zone. They are recomputed after
+  promotion and on sync; they describe the archive's bounds, which may not span
+  the whole relationship.
+- On project pages, a dated `Last activity` is never older than the newest
+  dated session message, mail, chat or commit history listed in the page's own
+  `## Sources`; code lifts it to that day after promotion and at the start of
+  every night round (an `Unknown` stays, and the reader dates the project by its
+  newest source). A snapshot's read day, a file's saved day and a web page's
+  date are not activity.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
