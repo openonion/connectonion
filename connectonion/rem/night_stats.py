@@ -12,6 +12,7 @@ from datetime import datetime, time, timedelta
 
 from . import service
 from .files import read_json, state_path
+from .quota import paused_between
 
 CORE = (time(22, 0), time(7, 0))
 ACCEPTED, PARKED = ("completed",), ("parked",)
@@ -62,7 +63,9 @@ def measure(root, night, zone) -> dict:
             "drafts": sum(run.get("phase") == "reply-draft" and run.get("outcome") in ACCEPTED for run in runs),
             "mail_read": sum(run.get("items", 0) for run in runs if run.get("phase") == "sync" and run.get("stage") == "maintain"),
             "minutes_busy": _minutes(turns, start, end),
-            "minutes_idle": core - _minutes(turns, core_start, core_end)}
+            "minutes_idle": core - _minutes(turns, core_start, core_end),
+            # A night the Codex floor held is not a quiet one (#2938).
+            **({"paused": "quota"} if paused_between(root, start, end) else {})}
 
 
 def _profile(root):

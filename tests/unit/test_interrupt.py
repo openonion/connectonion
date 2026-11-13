@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 
+import psutil
 import pytest
 
 from connectonion import Agent, CodexPlugin, before_each_tool
@@ -306,24 +307,32 @@ def test_interrupted_coding_provider_cannot_commit_late_state_or_io(
 def test_interrupt_stops_provider_process_before_late_write(
     monkeypatch, tmp_path, provider, library_module
 ):
-    """Cooperative adapters stop their launch group after the lease is revoked."""
+    """Cooperative adapters stop their launch group after the lease is revoked.
+
+    The provider writes its late file only when the test releases it, and the
+    test releases it only once the provider has ended or ten seconds have
+    passed. Order decides the outcome, not how fast the runner is (#2867): it
+    used to write on its own 0.6 s after starting, and a slow runner let it.
+    """
     script = tmp_path / "slow_provider.py"
     started = tmp_path / f"{provider}.started"
+    release = tmp_path / f"{provider}.release"
     late = tmp_path / f"{provider}.late"
     script.write_text(
         "from pathlib import Path\n"
-        "import signal, sys, time\n"
+        "import os, signal, sys, time\n"
         "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
-        "Path(sys.argv[1]).write_text('started')\n"
-        "time.sleep(0.6)\n"
-        "Path(sys.argv[2]).write_text('late')\n",
+        "Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+        "while not Path(sys.argv[2]).exists():\n"
+        "    time.sleep(0.01)\n"
+        "Path(sys.argv[3]).write_text('late')\n",
         encoding="utf-8",
     )
     library = importlib.import_module(library_module)
     monkeypatch.setattr(
         library,
         "_base_command",
-        lambda: [sys.executable, str(script), str(started), str(late)],
+        lambda: [sys.executable, str(script), str(started), str(release), str(late)],
     )
     tool = (
         CodexPlugin(
@@ -368,9 +377,24 @@ def test_interrupt_stops_provider_process_before_late_write(
 
     assert trace["status"] == "interrupted"
     assert trace["result"] == "Interrupted by user"
-    assert started.exists()
-    time.sleep(0.7)
+    pid = int(started.read_text())
+    deadline = time.monotonic() + 10
+    try:
+        while _running(pid) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not _running(pid), "the provider was still running ten seconds after the interrupt"
+    finally:
+        release.write_text("go")  # a provider that was not stopped exits instead of outliving the test
+    time.sleep(0.2)  # a live provider, polling every 10 ms, would have written by now
     assert not late.exists()
+
+
+def _running(pid):
+    """Alive and not yet a zombie: a killed child its adapter has not reaped yet counts as ended."""
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
 
 
 def test_cancelled_receive_all_cannot_drain_the_next_turn_mailbox():

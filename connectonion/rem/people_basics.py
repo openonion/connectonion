@@ -81,7 +81,11 @@ def _fill_domains(book, text, addresses, rows, zone):
 
 
 def fill(book: Notebook, record: str, text: str, *, addresses=None) -> str:
-    """After promotion, fill four Facts using indexed mail. Populated company/zone wins."""
+    """After promotion, fill four Facts using indexed mail. Populated company/zone wins.
+
+    First and Last contact count mail the person or the owner sent, and someone
+    else's mail to at most BROADCAST recipients; the company and time zone still
+    read any mail that carries the address."""
     if not record.startswith("people/"):
         return text
     addresses = own_addresses(book, record, text).get(record, set()) if addresses is None else addresses
@@ -95,7 +99,13 @@ def fill(book: Notebook, record: str, text: str, *, addresses=None) -> str:
     from .config import read_config
     from .service import notebook_zone
     zone = notebook_zone(read_config(book.root, validated=False))
-    for label, message in zip(("First contact", "Last contact"), (rows[0], rows[-1]) if rows else ()):
+    # A third party's notice to forty addresses moved every recipient's Last contact
+    # past their own timeline (#2951): someone else's broadcast is not contact.
+    from .fact_extract import BROADCAST
+    from .store_messages import owner_addresses
+    writers = addresses | owner_addresses(book.root)
+    contact = [row for row in rows if row["sender"].casefold() in writers or len(row["recipients"]) <= BROADCAST]
+    for label, message in zip(("First contact", "Last contact"), (contact[0], contact[-1]) if contact else ()):
         day = datetime.fromisoformat(message["time"]).astimezone(zone).date().isoformat()
         text = _set(text, label, day, message, zone)
     text = timezone_from_location(record, text)

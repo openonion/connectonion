@@ -333,6 +333,7 @@ def _next_round(root, cursor, *, scheduled, notices):
         return {"outcome": "done", "reason": "not due", "notices": notices}
     reason, meter = _stop(root, config)
     _held(root, reason)
+    quota.record_pause(root, meter, config["limits"])
     if scheduled and reason and reason != "daily cap reached":  # the call cap bounds mail too
         cursor, mail = _mail_while_held(root, cursor, config, meter, notices)
         if mail:

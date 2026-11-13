@@ -376,6 +376,9 @@ the index under "Only in temporary or package locations", without a page.
 
 `Usage history` opens with what your own coding sessions say, counted by a
 script with no model: how many times the skill was invoked and when last.
+`init`, `co rem skills map` and the start of every night round recount it, so
+the count and the last day follow the sessions instead of stopping on the day
+of init.
 
 ```text
 - Invoked 14 times in your coding sessions in the last 180 days, last on 2026-09-28 (Claude Code 9, Codex 5). ...
@@ -1411,6 +1414,19 @@ an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
+Codex compresses older sessions in place: `rollout-X.jsonl` becomes
+`rollout-X.jsonl.zst`. On one machine about 22,000 of 22,800 Codex session
+files were compressed, and REM read none of them: a first map saw only the
+newest few weeks, and the next map would have cut skill counts to what the
+plain files held (#2943). Every reader of coding sessions (sync, the shared
+map pass, session pages, project filing and discovery, skill counts and
+samples, the claim check of a cited line) now reads a `.zst` session as the
+plain bytes it holds, streamed rather than unpacked to disk. Read progress is
+the plain file's offset and hash and is kept under the plain name, so a session
+read before Codex compressed it is not read again; a fully read compressed file
+also keeps its own size and is not reopened until it changes. A session present
+in both forms while Codex compresses it is read once, as the plain file.
+
 A prompt a program sent is not the user's: a Claude Code row with an `sdk`
 entrypoint or an `sdk`/`system` prompt source is skipped. A launchd job's
 scheduling prompt had become the user's request on projects/layeredvisions; on
@@ -1650,6 +1666,33 @@ below is good to about one point.
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
+- **A round the floor stops is a pause, and REM says so.** A notebook at the
+  floor did nothing for two nights (71 scheduled turns, each ending with no
+  task) while status, the night stats and the morning note all read as a
+  quiet night. Now the first turn the floor stops records the pause in
+  `.state/quota-paused.json` (when it began, the week's percent, the floor and
+  the reset), and later turns keep that start time. `co rem status` leads with
+  it:
+
+  ```
+  Codex week      Paused since Mon 09 Nov 17:00
+                  This week's Codex allowance is 90% used, at the 90% floor kept for your own work.
+                  No investigation runs until the week resets Wed 11 Nov 17:46; mail is still read.
+                  → To let REM work before then, raise the floor: co rem config set limits.quota_floor_percent PERCENT
+  ```
+
+  The morning note's first line is `REM paused: this week's Codex allowance is
+  90% used. It resumes Wed 17:46.` (Chinese: `REM 暂停中：本周 Codex 额度已用
+  90%，周三 17:46 恢复。`), sent every morning the floor holds, with
+  `"paused": "quota"` in that date's `morning.json` entry; a night the floor
+  held at any time carries `"paused": "quota"` in `night-stats.jsonl`. The pause
+  ends at the first turn the floor no longer stops, or when the week resets.
+  `co rem status --json` always has a `paused` key: `null` when REM is not
+  paused, otherwise `{"reason": "quota", "since", "used_percent", "floor",
+  "resets_at"}` (`resets_at` in Unix seconds), so a script reads one field
+  instead of testing whether it exists.
+  Waiting and raising the floor are both the owner's choice; REM changes
+  neither, and does not move the work to another runner.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
   (`limits.runner_calls_per_day`) is the only bound, as before.
@@ -1896,9 +1939,17 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses in the retained archive,
-  in the notebook's time zone. They are recomputed after promotion and on sync;
-  they describe the archive's bounds, which may not span the whole relationship.
+  messages to or from the person's own addresses (a third party's mail to more
+  than five recipients, such as a notice to a list, does not count) in the
+  retained archive, in the notebook's time zone. They are recomputed after
+  promotion and on sync; they describe the archive's bounds, which may not span
+  the whole relationship.
+- On project pages, a dated `Last activity` is never older than the newest
+  dated session message, mail, chat or commit history listed in the page's own
+  `## Sources`; code lifts it to that day after promotion and at the start of
+  every night round (an `Unknown` stays, and the reader dates the project by its
+  newest source). A snapshot's read day, a file's saved day and a web page's
+  date are not activity.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
@@ -2133,6 +2184,13 @@ Mailboxes
   meter, `✓`, every progress bar), yellow for what needs a fix.
 - Progress: one live line per stage (spinner, what it is doing, a 24-cell bar,
   `i/N` bold, elapsed dim); a finished stage leaves `✓ what it found`.
+- A file error says what failed. A file that could not be opened or written
+  is `Cannot read or write the selected co rem files: <the system's error, with
+  the path>`. A file that was read but is not text names the file when REM
+  knows it: `…/web/chart.png is not UTF-8 text (invalid start byte at position
+  0); it was read, so this is not a permission problem`. On 2026-11-12 a PNG
+  saved as a research capture was reported as a read or write failure, and the
+  owner went looking for a permission problem.
 
 ## What `sync` prints, and where the tokens went (#2043, #2044)
 

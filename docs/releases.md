@@ -25,7 +25,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc8**: `co server new` charges the first month of a server now and each next
+Release candidate **1.9.6rc9**: REM's night goes on when one mailbox fails and says why on Today; Today
+has one count and one primary action per card; record pages lead with open threads; drafts, the reader
+and translation agree on your language. See [1.9.6rc9 notes](releases/1.9.6rc9.md).
+
+Before it, release candidate **1.9.6rc8**: `co server new` charges the first month of a server now and each next
 month as it starts, and `co server destroy` refunds the unused part with a credit note. rc7 described
 the other way round and cannot create a server. See [1.9.6rc8 notes](releases/1.9.6rc8.md).
 
@@ -61,7 +65,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc8'
+python -m pip install --upgrade 'connectonion==1.9.6rc9'
 ```
 
 ## Previous stable
