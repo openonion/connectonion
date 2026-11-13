@@ -796,8 +796,7 @@ Limits, one each:
 - A busy Host from before the upgrade keeps serving until its work ends, however
   long that is.
 
-The reader returns the context REM carried forward, then helps you recall an
-older page before showing its answer. It remains a point-in-time snapshot.
+The reader returns the context REM carried forward. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
@@ -884,13 +883,23 @@ pinned to that edge: it comes into view with the draft.
   with no due date has no red and says **No due date**. A row on your own page
   belongs to the person it names (who asked, or who is owed); a row that names
   nobody is your own note and is not counted as a person waiting, in the
-  headline, the lanes or the overnight names. The links beside the date count
-  *items* (**60 on others**, **22 items to approve in one go**), so they never
-  contradict the count of people. Your own items total is the sidebar's
-  **Waiting on you** number and is not said again on the first screen (one
-  number says one thing); with nothing on others the link reads **Everything
-  open**. A count of zero never shows: with nothing to approve there is no
-  approve link. A failed or stopped scheduled round shows one line above the
+  headline, the lanes or the overnight names. Since sprint 14 the large number
+  is the one "waiting on you" count, the same as the sidebar's (and the phone
+  tab's) **Waiting on you** badge: the items in Waiting on you that need you
+  (**21 things waiting on you**, 21 件在等你), and the rows of that band on Waiting on you are exactly
+  those items: a reply sent or held for its 10 minutes leaves all three together (the hold's **Undo** bar shows on
+  Waiting on you too), and with none waiting the header says *Nobody is waiting on you today.*. The faces beside it are a subset
+  and say so in words under it (**Start with these 5 people**, 先看这 5 个人;
+  a phone keeps the words of the count and leaves the faces to speak). The side
+  has no large numbers to stare at: what can be approved at once is a worded
+  button, **Approve all N** (一键批准这 N 件), counting only items that can go
+  now (a reply waiting for you to fill a gap is not among them) and opening the
+  approval sheet, whose title says the same N; what others owe is a worded link to its list, **See the N
+  waiting on others →** (看 N 件在等谁 →); with nothing on others the link
+  reads **Everything open**. With nothing that can go at once there is no
+  button at all, never a greyed one or a zero. Today no longer asks **What
+  should you remember about X?**: it picked a page REM already knew well, gave
+  no reason and took no answer, so the card was removed rather than dressed up. A failed or stopped scheduled round shows one line above the
   date in the reader's language (*One round last night ran too long and was
   stopped; the next round continues.*), never the runner's own English, which
   stays on the line's tooltip. The cards lead with the first
@@ -933,9 +942,13 @@ pinned to that edge: it comes into view with the draft.
   **A promise gone stale stops burning**: one whose date passed more than 60
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
-  and has no red. The side asks **Maybe over · still open?** with **Mark done**
-  (the usual mark) and **Still open**, which brings it back to the count; past three, its link *N more in Gone
-  quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
+  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
+  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all N done**
+  (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
+  (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
+  any it refused get one *Not saved · Try again* for just those;
+  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -990,8 +1003,15 @@ pinned to that edge: it comes into view with the draft.
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
   a phone too. Since 1.9.6 every row of the open card shows its strip line (and so Mark done, Not now and Ignore)
   without a hover or a tap, on a desktop and a phone alike; the notes under it (also on, the draft's reason,
-  a task's result) still open on hover or tap. The card head's **S** button is **Next card** (下一张): it only
-  deals the next card and records nothing. A snapshot keeps Mark
+  a task's result) still open on hover or tap. Since sprint 14 each card has one primary, chosen by what the
+  item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
+  handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
+  **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
+  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾*, the lead among them in bold: the closes
+  and the two hand-offs stay visible words (D-100), and only **Talk it over** folds under the worded **More**
+  (更多). On a phone the three closes are the first line and the hand-offs and More the second. The card
+  head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
+  **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
@@ -1000,7 +1020,7 @@ pinned to that edge: it comes into view with the draft.
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
 - **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
-  Talk it over ▾*, and opens the agent choice (**With Codex**, **With Claude**;
+  Talk it over ▾* (on Today it sits inside **More ▾**, since sprint 14), and opens the agent choice (**With Codex**, **With Claude**;
   和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
@@ -2562,6 +2582,53 @@ after midnight. Manual sync refuses to overlap pending native work.
 `co rem logs` includes native tasks. Supply measured token usage with
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
 when available. Otherwise usage remains unknown.
+
+### When a mailbox fails on one page
+
+A mailbox failing while `next` prepares one page sets that page aside; `next`
+goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
+on a real notebook ended with no task: 16 turns on an Outlook HTTP 404, then 14
+on a ReadTimeout listing one mail's attachments, both while preparing one
+person's page. The error left `next` before the round was saved, so each turn
+tried the same page again, and four nights read no mail.
+
+- **Attachments are enrichment.** A listing that still fails after its retries
+  becomes a coverage line (`outlook: attachments for 1 message(s) not listed:
+  timed out`), and the page is written from the mail bodies. Those attachments
+  are not asked for again in that investigation; the page's next investigation
+  lists them again.
+- **A mail gone from the server is skipped** with a coverage line
+  (`outlook: 1 message(s) skipped: not found on the server (deleted or moved)`),
+  never a hint to open the inbox.
+- **Any other mailbox failure while preparing a page** (a body that times out, a
+  5xx, a network error) parks that page in `.state/fetch-parked.json` with the
+  mailbox, the reason and a retry time: 1 hour, then 6 hours, then once a day.
+  `next` prints `Set people/x.md aside: Outlook timed out; tried again no earlier than …`
+  (the retry time is the earliest; the page waits for the first round after it)
+  and serves the next page. Later rounds leave the page out until its retry time,
+  then bring back the same job; a page prepared again clears its entry. A bug in
+  REM is not a mailbox failure and still stops `next`, so it is seen.
+- **A mailbox failing for three pages in one turn, or whose authorization has
+  expired, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
+  `next` typed by hand is a turn of its own). Pages that would ask it wait for
+  the next turn without back-off, back in the same round, and work that needs no
+  mail (projects, skills, retries from held material, summaries, translations)
+  goes on. A page that was merged while it waited comes back as the page it was
+  merged into; one that no longer exists is dropped from the ledger.
+- **A mailbox failing outside any one page** — listing who wrote since the last
+  round when a round starts, or reading a slot's new mail — is recorded the same
+  way (an event in `.state/fetch-parked.json`, the night card's sentence) and is
+  not asked again in that turn; the other mailboxes are still listed and the
+  sessions are still read. Four nights read no mail while a failing mailbox was
+  read again at every slot.
+
+Today's night card says why in one plain sentence under its title, in the
+reader's language, and folds the pages set aside with when each is tried again:
+«昨夜 1 项因 Outlook 超时跳过，会再试», or when one page failed again and again
+«REM 昨夜在 Outlook 上卡住了：超时 3 次，已跳过这一项，其余照常» (at most three in a day under the back-off), or for a mailbox
+stopped for a turn «昨夜 Outlook 出了问题（授权已过期），REM 那一轮没再问它，其余照常».
+No exception name or command is shown; the reader has no reconnect button yet,
+so expired authorization is said in words only. A shared reader carries none of it.
 
 ### One quiet morning message
 

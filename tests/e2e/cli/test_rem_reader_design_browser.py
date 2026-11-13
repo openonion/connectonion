@@ -299,13 +299,13 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # The statement counts people; the items total is the sidebar's, said once (TOP10 #9, polish).
+    # Sprint 14: the display number is the sidebar's (items waiting on you); the people are a subset, in words.
     total = page.locator('#nav .n.waiting').inner_text()
-    assert int(total) > 0 and f'{total} items waiting on you' not in page.locator('.night-card').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.night-card .count').text_content() == str(len(whos))  # N3: the count is the display element
-    assert page.locator('.night-card .count-line span').text_content() == 'people waiting on you'
+    assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
+    assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
+    assert page.locator('.night-card .count-of').text_content() == f'Start with these {len(whos)} people'
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -314,14 +314,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert changes.get_by_role('link', name='source', exact=True).get_attribute('href').endswith('h=src-2')
     page.locator('.week-details summary').click()
     assert set(page.locator('.week a').all_inner_texts()) >= {'Mara Ostrowski', 'Harbour', 'Fernhill Labs'}
-    recall = page.locator(".recall")
-    assert recall.count() == 1
-    assert not recall.locator(".recall-answer").is_visible()
-    recall.get_by_role("button", name="Reveal the context").focus()
-    page.keyboard.press("Enter")
-    assert recall.locator(".recall-answer").is_visible()
-    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-expanded") == "true"
-    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-controls") == "recall-answer"
+    assert page.locator(".recall").count() == 0  # sprint 14: no "what should you remember" card without a reason
     assert page.locator(".night-details").count() == 1
     page.locator(".night-details summary").click()
     night = page.locator(".night-details .night")
@@ -1325,12 +1318,12 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
     heading = page.locator('.night-card .count-line').inner_text()
-    assert heading.split('\n') == (['1', 'person waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
+    assert heading.split('\n') == ([str(mine), 'thing waiting on you', 'Start with this 1 person'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
-        assert page.locator('.others .waiting-more').inner_text().split('\n') == [str(theirs), 'waiting on others']
+        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} waiting on others →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if theirs or mine:
         page.locator('.others .waiting-more').click()
@@ -4104,7 +4097,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.night-card .count').text_content() == '1'
+    assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
+    assert page.locator('.night-card .count-of').text_content() == 'Start with this 1 person'
     assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4198,7 +4192,8 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    action = page.locator('.qcard.open .card-acts .btn-act').first
+    # The card's first action: its green step, or in a snapshot with no step the row's own tick (sprint 14).
+    action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .qdone)').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()
@@ -4228,23 +4223,13 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert source.count() == 1
     assert source.get_attribute('title') == ('有引用来源支持' if language == 'zh' else 'Supported by the cited source')
     assert source.get_attribute('href').endswith('h=src-2')
-    assert page.locator('.recall-toggle').evaluate(r'''button => {
-      const css = getComputedStyle(button);
-      // N3: the recall card's one control is a quiet icon (flip), named for what it does; no fill at rest.
-      return css.borderTopStyle === 'none' && !!button.getAttribute('aria-label') && !!button.querySelector('svg.ic')
-        && button.getBoundingClientRect().width >= 36;
-    }''')
-    page.locator('.recall-toggle').click()
-    assert page.locator('.recall-answer').is_visible()
-    page.locator('.recall-toggle').click()
-    assert not page.locator('.recall-answer').is_visible()
     if width < 1100:
         assert page.evaluate(r'''() => {
           const bottom = selector => document.querySelector(selector).getBoundingClientRect().bottom;
           const top = selector => document.querySelector(selector).getBoundingClientRect().top;
-          // N3: the desk (the card and, beside it or under it on a phone, the recall card), then the fold below it.
-          return (innerWidth > 640 || bottom('.today-brief') <= top('.recall'))
-            && bottom('.today-brief') <= top('.overnight') && bottom('.recall') <= top('.overnight')
+          // N3: the desk (the card and, beside it or under it on a phone, the side column), then the fold below it.
+          return (innerWidth > 640 || bottom('.today-brief') <= top('.tgrid > .side'))
+            && bottom('.today-brief') <= top('.overnight') && bottom('.tgrid > .side') <= top('.overnight')
             && (!document.querySelector('.gone-quiet') || bottom('.overnight') <= top('.gone-quiet'));
         }''')
     summaries = page.locator(':is(.gone-quiet, .week-details, .night-details, .done-details) > summary')

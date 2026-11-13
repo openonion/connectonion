@@ -1414,11 +1414,12 @@ def test_written_thread_dates_and_evidence_backed_request_groups():
 @pytest.mark.parametrize('blocked', [False, True])
 def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
     page = TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'threadCounts']
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'answered', 'waitingOnYou', 'threadCounts']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
       const obligationEvidence = () => ({ids: new Set()}), staleEntry = () => false;
+      const threadDraft = () => null;  // no reply drafted: counts stay the items'
       let threadStates = {}, pendingThreads = {}, saved = {}, rendered = 0;
       const navigator = {platform: "test"};
       const localStorage = {setItem: (key, value) => { if (blocked) throw new Error('Storage blocked'); saved[key] = value; }};
@@ -1601,16 +1602,21 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['nightCard', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
+                          for name in ['nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null;
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightStall = () => null;
+      let mine = 5;
+      const threadCounts = () => ({mine}), staleEntry = () => false, threadDraft = () => null;
       const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const face = name => ({tag: 'span', text: name.slice(0, 2), children: [], append(node) { this.children.push(node); }});
-      const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {since: '2026-10-20'}}, {t: {due: '2026-10-18'}}]},
-        {r: {path: 'b', title: 'Bea'}, entries: [{t: {due: '2026-10-19'}}, {t: {due: '2026-10-23'}}]},
-        {r: {path: 'c', title: 'Cy'}, entries: [{t: {since: '2026-10-20'}}]}];
-      const card = nightCard(groups, 'b'), quiet = nightCard([], null);
+      const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}, {t: {dir: 'mine', due: '2026-10-18'}}]},
+        {r: {path: 'b', title: 'Bea'}, entries: [{t: {dir: 'mine', due: '2026-10-19'}}, {t: {dir: 'mine', due: '2026-10-23'}}]},
+        {r: {path: 'c', title: 'Cy'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}]}];
+      const card = nightCard(groups, 'b');
+      mine = 0;
+      const quiet = nightCard([], null);
+      mine = 5;
       const faces = card.children[0].children[0].children[1].children, date = todayCrumb();
       uiLanguage = 'zh';
       const zh = nightCard(groups, 'b');
@@ -1620,12 +1626,13 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
         zh: zh.children[0].children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[0].children[1].children[0].children[1].text,
         date, find: t('Find')}));
     })();''')
-    assert result['count'] == ['3', 'people waiting on you']
+    # The number is the badge's (items waiting on you); the people are a subset, said in words (sprint 14 #4).
+    assert result['count'] == ['5', 'things waiting on you', 'Start with these 3 people']
     # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
     assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
     assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
     assert result['solo'] == 'nb solo'  # no logs and no drafts: no chart is drawn, the faces take the card
-    assert result['zh'] == ['3', '人在等你'] and result['zhLate'] == '2 天'
+    assert result['zh'] == ['5', '件在等你', '先看这 3 个人'] and result['zhLate'] == '2 天'
     assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
@@ -1635,7 +1642,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'faceStrip', 'fusedFace', 'groupLate']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1644,8 +1651,8 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       let OWING = null;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
-      const threadWho = r => r.title, RING = 314.16;
-      const icon = () => null, nightChart = () => null, threadAge = () => 'new', overdueDays = () => 0;
+      const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7}), threadDraft = () => null, staleEntry = () => false;
+      const icon = () => null, nightChart = () => null, nightStall = () => null, threadAge = () => 'new', overdueDays = () => 0;
       const face = name => ({tag: 'span', text: name, append() {}});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
@@ -1662,7 +1669,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
         headline: nightCard(personGroups(today), null).children[0].children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '1person waiting on you'
+    assert _words(result.pop('headline')) == '7things waiting on youStart with this 1 person'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
@@ -2223,7 +2230,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
-        'passSummary', 'morningBrief', 'pagesLine', 'recallPrompt', 'translationNotice'])
+        'passSummary', 'morningBrief', 'pagesLine', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
@@ -2234,7 +2241,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const inline = value => value, sectionHead = text => ({text}), commandChip = command => ({command});
       const remCommand = args => 'co rem ' + args, nightTallyLine = () => null, fmtDate = day => day;
       REM.status = {state: 'Stopped — background maintenance is off'};
-      const first = firstBuild(), header = passSummary(), brief = morningBrief(), recall = recallPrompt();
+      const first = firstBuild(), header = passSummary(), brief = morningBrief();
       REM.status.state = 'Running in background (launchd)';
       const scheduled = morningBrief();
       uiLanguage = 'zh';
@@ -2247,7 +2254,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       REM.logs.push({...REM.logs[0], started_at: '2026-10-01T01:00:00Z'});
       const returning = firstBuild();
       REM.logs = [];
-      console.log(JSON.stringify({first, header, brief, recall, scheduled, zhHeader, notice, enough,
+      console.log(JSON.stringify({first, header, brief, scheduled, zhHeader, notice, enough,
         returning, noPass: firstBuild()}));
     ''')
     assert result['first'] is True and result['returning'] is False and result['noPass'] is False
@@ -2255,7 +2262,6 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert result['brief']['children'][1]['text'] == 'Your notebook was just built. Overnight changes appear here after the next update.'
     assert result['brief']['children'][2]['children'] == [{'tag': 'p', 'text': 'Nightly updates are off.', 'children': []}]
     assert len(result['scheduled']['children']) == 2
-    assert result['recall'] is None
     assert result['zhHeader']['children'][0].startswith('今天建立：读取 ')
     assert result['notice']['text'] == '打开页面时会翻译成中文。'
     assert result['enough'] is None
@@ -3114,7 +3120,7 @@ def approval_functions(*names):
 
 
 def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar', 'approveAllWords') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'readyCount', 'openApprovalSheet', 'approvalUndoBar') + r'''
 (async () => {
   openApprovalSheet(REM.approval_outcomes);
   const sheet = document.getElementById('approval-sheet'), checks = sheet.querySelectorAll('input');
@@ -3134,7 +3140,7 @@ def test_approval_sheet_blocks_slots_and_freezes_successful_edits():
 
 
 def test_approval_undo_failure_can_be_retried_before_expiry():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar', 'approveAllWords') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
 (async () => {
   REM.approval_pending = [{...REM.approval_outcomes[0], status: 'held', release_at: new Date(Date.now() + 600000).toISOString()}];
   approvalUndoBar();
@@ -3150,7 +3156,7 @@ def test_approval_undo_failure_can_be_retried_before_expiry():
 
 
 def test_static_approval_cta_and_durable_failure_copy():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approveAllWords', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'readyCount', 'approvalProblems') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', to:'fern@example.test', status:'error', error:'Timed out'}];
       const header = approvalHeader();
@@ -3162,10 +3168,10 @@ def test_static_approval_cta_and_durable_failure_copy():
 
 
 def test_approval_header_reads_restored_outcomes_when_reopened():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'approveAllWords', 'approvalProblems') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalHeader', 'readyCount', 'approvalProblems') + r'''
       let opened;
       const openApprovalSheet = items => {opened = items.map(item => item.id);};
-      const restored = REM.approval_outcomes[0]; REM.approval_outcomes = [];
+      const restored = REM.approval_outcomes[0];
       const header = approvalHeader();
       REM.approval_outcomes = [restored]; header.querySelector('button').onclick();
       console.log(JSON.stringify(opened));
@@ -3174,7 +3180,7 @@ def test_approval_header_reads_restored_outcomes_when_reopened():
 
 
 def test_static_snapshot_never_offers_live_undo():
-    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar', 'approveAllWords') + r'''
+    result = _run_reader_js(APPROVAL_DOM + approval_functions('approvalStatus', 'approvalUndoBar') + r'''
       REM.live = false;
       REM.approval_pending = [{id:'reply:fern', status:'held', release_at:new Date(Date.now() + 600000).toISOString()}];
       approvalUndoBar();
@@ -3185,7 +3191,7 @@ def test_static_snapshot_never_offers_live_undo():
 
 def test_approval_request_freezes_all_controls_until_response():
     dom = APPROVAL_DOM.replace('const approvalRequest = async payload =>', 'let approvalRequest = async payload =>')
-    result = _run_reader_js(dom + approval_functions('approvalStatus', 'openApprovalSheet', 'approvalUndoBar', 'approveAllWords') + r'''
+    result = _run_reader_js(dom + approval_functions('approvalStatus', 'readyCount', 'openApprovalSheet', 'approvalUndoBar') + r'''
 (async () => {
   let settle;
   approvalRequest = payload => new Promise(resolve => {settle = resolve;});
@@ -3294,7 +3300,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'stripMarksDone', 'stripDone']
+        'handButtons', 'todayStrip', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'stripMarksDone', 'stripDone']
 
 
 def _hand_js(body):

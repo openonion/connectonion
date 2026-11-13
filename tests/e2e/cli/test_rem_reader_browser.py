@@ -549,9 +549,10 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert ('已回复' if language == 'zh' else 'replied') in answer_note
         assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
         assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
-        # REM cannot draft from an unarchived message: the next step is writing, never the mailbox.
+        # REM cannot draft from an unarchived message: writing, else only the quiet way to the thread (sprint 14
+        # removed "Open {name}": the name above already opens the page).
         assert missing.locator('.card-acts > :first-child').text_content() in (
-            ['回复 Hazel', '打开 Hazel'] if language == 'zh' else ['Reply to Hazel', 'Open Hazel'])
+            ['回复 Hazel', '打开 Outlook 原会话'] if language == 'zh' else ['Reply to Hazel', 'Open the Outlook thread'])
         if live:  # Draft now drafts now: no "queued for tonight" beside it.
             assert queued.locator('.draft-reason').count() == 0
         else:
