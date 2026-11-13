@@ -1632,6 +1632,33 @@ below is good to about one point.
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
+- **A round the floor stops is a pause, and REM says so.** A notebook at the
+  floor did nothing for two nights (71 scheduled turns, each ending with no
+  task) while status, the night stats and the morning note all read as a
+  quiet night. Now the first turn the floor stops records the pause in
+  `.state/quota-paused.json` (when it began, the week's percent, the floor and
+  the reset), and later turns keep that start time. `co rem status` leads with
+  it:
+
+  ```
+  Codex week      Paused since Mon 09 Nov 17:00
+                  This week's Codex allowance is 90% used, at the 90% floor kept for your own work.
+                  No investigation runs until the week resets Wed 11 Nov 17:46; mail is still read.
+                  → To let REM work before then, raise the floor: co rem config set limits.quota_floor_percent PERCENT
+  ```
+
+  The morning note's first line is `REM paused: this week's Codex allowance is
+  90% used. It resumes Wed 17:46.` (Chinese: `REM 暂停中：本周 Codex 额度已用
+  90%，周三 17:46 恢复。`), sent every morning the floor holds, with
+  `"paused": "quota"` in that date's `morning.json` entry; a night the floor
+  held at any time carries `"paused": "quota"` in `night-stats.jsonl`. The pause
+  ends at the first turn the floor no longer stops, or when the week resets.
+  `co rem status --json` always has a `paused` key: `null` when REM is not
+  paused, otherwise `{"reason": "quota", "since", "used_percent", "floor",
+  "resets_at"}` (`resets_at` in Unix seconds), so a script reads one field
+  instead of testing whether it exists.
+  Waiting and raising the floor are both the owner's choice; REM changes
+  neither, and does not move the work to another runner.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
   (`limits.runner_calls_per_day`) is the only bound, as before.
@@ -2123,6 +2150,13 @@ Mailboxes
   meter, `✓`, every progress bar), yellow for what needs a fix.
 - Progress: one live line per stage (spinner, what it is doing, a 24-cell bar,
   `i/N` bold, elapsed dim); a finished stage leaves `✓ what it found`.
+- A file error says what failed. A file that could not be opened or written
+  is `Cannot read or write the selected co rem files: <the system's error, with
+  the path>`. A file that was read but is not text names the file when REM
+  knows it: `…/web/chart.png is not UTF-8 text (invalid start byte at position
+  0); it was read, so this is not a permission problem`. On 2026-11-12 a PNG
+  saved as a research capture was reported as a read or write failure, and the
+  owner went looking for a permission problem.
 
 ## What `sync` prints, and where the tokens went (#2043, #2044)
 

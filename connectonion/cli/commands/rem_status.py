@@ -10,6 +10,7 @@ what ran last. Everything else is behind --verbose. `--json` is untouched:
 this module only draws the same result.
 """
 
+from datetime import datetime
 from pathlib import Path
 
 from .. import style
@@ -31,7 +32,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     found = pages(Path(root))
     counts = notebook(root, found)
-    lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
+    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
@@ -57,11 +58,37 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     return "\n".join([*lines, ""])
 
 
+def _paused(root, value, spell):
+    """The Codex week's floor holding REM, said first, with when it began and what to do (#2938).
+
+    Two nights of turns stopped at the floor while status, the night stats and
+    the morning note all read as quiet. Whether to raise the floor or to wait is
+    the owner's: both are named, neither is chosen.
+    """
+    from ...rem.config import read_config
+    from ...rem.service import notebook_zone
+    found = value.get('paused')
+    if not found:
+        return []
+    zone = notebook_zone(read_config(Path(root)))
+    since = datetime.fromisoformat(found['since']).astimezone(zone)
+    resets = (f"until the week resets {datetime.fromtimestamp(found['resets_at'], zone):%a %d %b %H:%M}"
+              if found.get('resets_at') else "until the Codex week resets")
+    return [rem_look.section('Codex week', style.warn(f"Paused since {since:%a %d %b %H:%M}")),
+            rem_look.follow(highlight(f"This week's Codex allowance is {found['used_percent']}% used, at the "
+                                      f"{found['floor']}% floor kept for your own work."), glyph=''),
+            rem_look.follow(highlight(f"No investigation runs {resets}; mail is still read."), glyph=''),
+            rem_look.follow(style.muted("To let REM work before then, raise the floor: ")
+                            + style.command(spell(['config', 'set', 'limits.quota_floor_percent', 'PERCENT']))), '']
+
+
 def _round(value):
     """A round no later slot has moved says so, with why (D-104: status tells the truth)."""
     found = value.get('round')
     if not found or found['state'] != 'stuck':
         return []
+    if value.get('paused') and 'floor kept for your own work' in found['reason']:
+        return []  # the Codex week line above already says it, as a pause and not as stuck
     return [rem_look.section('Round', style.warn(f"stuck since {found['since'][:16].replace('T', ' ')}")),
             rem_look.follow(highlight(found['reason']), glyph=''), '']
 
