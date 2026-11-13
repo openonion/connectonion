@@ -2778,15 +2778,23 @@ def gdrive_info(
 
 
 @gdrive_app.command("get", epilog="Example:  co gdrive get <file-id> --to ~/Downloads  |  "
-                                  "co gdrive get 2 --listing <listing-id>")
+                                  "co gdrive get 2 --listing <listing-id>  |  co gdrive get <file-id> --quiet")
 def gdrive_get(
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+    quiet: bool = typer.Option(False, "--quiet", help="No progress lines on stderr"),
 ):
-    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged."""
+    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged.
+
+    A file streams into NAME.part, with a progress line (bytes, rate, time left)
+    on stderr every 5 seconds, and becomes NAME once its size and md5 match
+    Drive's. Interrupted? Run the same command again: it resumes from the
+    .part. After 60 seconds with no data it reconnects, up to 5 times, then
+    stops and says what is on disk.
+    """
     from .commands.gdrive_commands import handle_gdrive_get
-    handle_gdrive_get(file_id, dest=dest, listing=listing)
+    handle_gdrive_get(file_id, dest=dest, listing=listing, quiet=quiet)
 
 
 @gdrive_app.command("put", epilog="Example:  co gdrive put report.pdf --name \"Q3 report.pdf\"")
