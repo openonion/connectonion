@@ -597,7 +597,7 @@ class SubAgentSchema(BaseModel):
 
     name: str = Field(..., description="Unique agent identifier")
     description: str = Field(..., description="One-line description")
-    model: str = Field(default="co/gemini-3.8-flash", description="LLM model")
+    model: str = Field(default="co/gemini-4-hydrogen", description="LLM model")
     max_iterations: int = Field(default=15, ge=1, le=100)
     tools: List[str] = Field(default_factory=list)
     plugins: List[str] = Field(default_factory=list)
