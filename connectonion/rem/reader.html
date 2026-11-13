@@ -3125,7 +3125,9 @@
 
   /* ---- a person: a hero card and a bento of widgets (records, never to-dos: D-30) ---- */
   .n3-person .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
-    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important; }
+    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important;
+    /* #2942: a long role or unit wraps inside its chip instead of pushing the page sideways (.r4 .chip is one line). */
+    white-space: normal; flex: 0 1 auto; height: auto; max-width: 100%; overflow-wrap: anywhere; }
   .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
   .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
   .n3-person .chip .ic { width: 14px; height: 14px; }
@@ -11167,7 +11169,9 @@ function factValue(item, from) {
   let last;
   while (walker.nextNode()) if (walker.currentNode.data.trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) last = walker.currentNode;
   if (!last) { value.appendChild(cites); return value; }
-  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S+\s*$/.exec(last.data);
+  // The marks stay with the end of the last word; a long word keeps only its last 12 characters with them, so the
+  // rest can wrap (#2942: a whole long word held on one line ran past the screen).
+  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S{1,12}\s*$/.exec(last.data);
   const range = document.createRange();
   range.setStart(last, tail.index);
   range.setEnd(value, value.childNodes.length);

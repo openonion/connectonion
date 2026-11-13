@@ -87,3 +87,35 @@ def test_phone_more_sheet_starts_every_label_in_one_column(reader, theme):
     _shot(page, f"phone-more-sheet-{theme}-390.png")
     assert starts["more"] and len(set(starts["places"] + starts["more"])) == 1, starts
 
+
+# #2942: a long last word in a fact (kept with its citation marks) and a long unit-with-role chip.
+LONG_PERSON = r'''() => {
+  const r = byPath('people/mara-ostrowski.md');
+  r.original = undefined;
+  r.text = r.text.replace('- Role: Head of Partnerships [2]',
+      '- Role: Head of Partnerships for the regional-procurement-and-interdisciplinary-infrastructure-coordination-programme [2]')
+    .replace(/(^## History[^\n]*\n)/mi, '$1- 2026-09-01: took over the cross-border-public-sector-procurement-modernisation-workstream [2].\n');
+  r.units = [{path: 'orgs/fernhill-labs.md', role: 'Regional procurement and interdisciplinary infrastructure coordination lead'}];
+  KNOWN.clear(); FACTS.clear(); render();
+}'''
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [390, 1440])
+def test_a_person_page_is_never_wider_than_its_window(reader, width, theme):
+    page, uri = reader
+    page.set_viewport_size({"width": width, "height": 844 if width == 390 else 900})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.evaluate(f"setTheme('{theme}')", isolated_context=False)
+    page.evaluate(LONG_PERSON, isolated_context=False)
+    page.locator("details").evaluate_all("nodes => nodes.forEach(d => d.open = true)")
+    _shot(page, f"person-long-{theme}-{width}.png")
+    wide = page.evaluate("""() => [...document.querySelectorAll('main *')].filter(n => n.getClientRects().length
+      && n.getBoundingClientRect().right > innerWidth + 0.5 && !n.closest('[hidden], .sheet-scroll, .scroll-x'))
+      .map(n => n.className + ' ' + Math.round(n.getBoundingClientRect().right)).slice(0, 6)""")
+    assert page.evaluate("document.documentElement.scrollWidth") == width, wide
+    tails = page.locator(".fact-tail").evaluate_all("""tails => tails.map(t => { const cite = t.querySelector('.cite');
+      if (!cite) return true; const range = document.createRange(); range.selectNodeContents(t.firstChild || t);
+      const words = [...range.getClientRects()].filter(r => r.width > 0), last = words[words.length - 1], c = cite.getBoundingClientRect();
+      return !last || Math.abs(last.top - c.top) < c.height; })""")
+    assert all(tails), tails  # the citation marks stay on the line of the fact's last word
