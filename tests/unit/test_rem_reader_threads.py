@@ -74,8 +74,10 @@ def test_both_night_paths_honour_persisted_state(notebook, monkeypatch, state):
 def test_reader_reconciles_only_pending_offline_changes_and_undo():
     page = reader.TEMPLATE.read_text()
     names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'keyEntry', 'reconcileThreads', 'showNotebookThreads',
-             'notebookTook', 'sendThreadState', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone']
+             'notebookTook', 'sendThreadState', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
+    functions += '\nconst liveHere = () => true;'
     result = _run_reader_js(functions + r'''
       const REM = {root: '/test', live: true, threads: {remote: {state: 'done'}}};
       const byPath = () => undefined, obligationEvidence = () => ({ids: new Set()});
@@ -206,8 +208,10 @@ def test_no_reply_restored_after_thread_undo(notebook, state):
 @pytest.mark.parametrize('state', ['done', 'skipped'])
 def test_reader_no_reply_undo_survives_offline_reload(state):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'setDone']
+    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
+    functions += '\nconst liveHere = () => true;'
     result = _run_reader_js(functions + 'const decision = ' + json.dumps(state) + ';' + r'''
       const REM = {root: '/test', live: false, drafts: [{id: 'draft', provider: 'gmail', thread: 'mail:gmail:pilot', version: 'gmail:one', status: 'no_reply', body: ''}]};
       let threadStates = {}, pendingThreads = {}, threadWrite = Promise.resolve(), stored;
@@ -276,8 +280,10 @@ def test_skip_unobserved_thread_stays_blocked_and_skips_saved_draft(notebook, ve
 def test_reader_skip_reconcile_and_fresh_snapshot_undo_uses_saved_status(new_mail):
     page = reader.TEMPLATE.read_text()
     names = ['doneKey', 'threadStorageKey', 'citedVersions', 'showNotebookThreads', 'notebookTook', 'sendThreadState', 'saveThreadState',
-             'threadMark', 'markDrafts', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
+             'threadMark', 'markDrafts', 'markThread', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
+    functions += '\nconst liveHere = () => true;'
     result = _run_reader_js(functions + 'const newMail = ' + json.dumps(new_mail) + ';' + r'''
       // The mark names both threads it cites, the one no draft answers too, and not the mail of another page (#2936).
       const REM = {root: '/test', live: true, mail_versions: {'mail:gmail:pilot': 'gmail:one', 'mail:gmail:context': 'gmail:old', 'mail:gmail:elsewhere': 'gmail:other'},

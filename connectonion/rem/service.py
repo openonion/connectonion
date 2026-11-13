@@ -729,6 +729,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     from .census import people_coverage
     from .translate import coverage as translation_coverage
     from .night import summary as night_summary
+    from .quota import paused
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -763,6 +764,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                 else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
             "last_turn": read_json(state_path(root, "last-turn.json"), None),
             "round": round_state(root, config),
+            "paused": paused(root),
             "nights": _nights(root),
             **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
             "worker": _status_worker(worker_state(root)),

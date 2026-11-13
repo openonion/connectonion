@@ -49,7 +49,10 @@ def work(params):
     if not found:
         return
     deliverable = pathlib.Path(found.group(1))
-    (deliverable.parent / 'pid.txt').write_text(str(os.getpid()))
+    # Whole or absent: the test polls for this file and reads it at once, and an
+    # empty one read between create and write failed main (run 43245903158).
+    (deliverable.parent / 'pid.txt.partial').write_text(str(os.getpid()))
+    os.replace(deliverable.parent / 'pid.txt.partial', deliverable.parent / 'pid.txt')
     (deliverable.parent / 'env.json').write_text(json.dumps(sorted(os.environ)))
     (deliverable.parent / 'tmpdir.txt').write_text(os.environ.get('TMPDIR', ''))
     if not os.environ.get('FAKE_CODEX_MISSING'):
