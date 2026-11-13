@@ -42,8 +42,9 @@ How a server is charged is the backend's decision, and the prompt states whichev
 one applies. The CLI reads it from `/servers/pricing` and never quotes one way of
 charging while the backend is about to use the other:
 
-- **Monthly, in arrears** (oo-api with monthly billing): nothing is charged when the
-  server is created; each month is charged from your credits when it ends.
+- **Monthly, in advance** (oo-api with monthly billing): the first month is charged
+  when the server is created; each next month is charged from your credits when it
+  starts; a destroy refunds the unused part of the month.
 - **12 months up front** (the backend before it): the year is charged at create,
   and the prompt says `$30 / month — $360.00 for 12 months, charged now`.
 
@@ -56,17 +57,18 @@ $ co server new prod --machine e2-standard-4 --disk 200
   region        australia-southeast1
   machine       e2-standard-4 — 4 vCPU, 16 GB
   disk          200 GB pd-balanced — 20 GB included, $0.18 / GB / month beyond
-  cost          $222.40 / month — charged at the end of each month from credits; nothing is charged now
-  your balance  $500.00 — must cover a month of every server you have, plus anything unpaid
+  cost          $222.40 / month — first month charged now, then at the start of each month from credits; destroy refunds the unused part
+  your balance  $500.00 → $277.60 after the first month
 
 ? Create it? (y/N)
 ```
 
-Nothing is charged when the server is created. Each month is charged from your
-credits when it ends, and the first charge date is printed once the server exists. Your balance has to cover one month to
-create one, on top of a month of each server you already have, and nothing may be
-unpaid; when it is short the command stops (before asking, when it can tell) and
-nothing is created.
+The first month is charged when the server is created, and the date it is paid until
+is printed once the server exists. Each next month is charged from your credits as it
+starts. Your balance has to cover that first month, and nothing may be owed on the
+account; when it is short the command stops (before asking, when it can tell) and
+nothing is created or charged. If the machine cannot be created, the month is
+refunded in full.
 `--yes` skips the prompt; nothing else does.
 
 The machine is created in **Sydney** by default, boots Ubuntu 24.04, and carries the
@@ -118,9 +120,9 @@ What you can deploy to — reconciled against what you are **billed** for.
 
 ```
 NAME     TARGET           LAST CHECK            BILLING
-prod     co@1.2.3.4       ok                    $222.40/mo · next charge 2026-12-12 · $74.13 so far
+prod     co@1.2.3.4       ok                    $222.40/mo · paid until 2026-12-12, renews from credits
 lab      co@5.6.7.8       never checked         suspended for non-payment — $30.00 unpaid, disk kept
-ghost    co@9.9.9.9       not registered here   $30.00/mo · next charge 2026-12-01 · $10.00 so far
+ghost    co@9.9.9.9       not registered here   $30.00/mo · paid until 2026-12-01, renews from credits
 
 1 server(s) you are billed for are not registered on this machine: ghost
   co server add <name> --ssh <target>   to use one from here
@@ -132,8 +134,8 @@ Balance $100.00 does not cover the next month of these servers ($282.40).
 A month left unpaid stops the server, then deletes it. Top up before 2026-12-01.
 ```
 
-For each server: the monthly price, the next charge date, what this month has
-accrued so far (what a destroy now would charge), and anything unpaid. Below the
+For each server: the monthly price, the date it is paid until (when the next month
+is charged), and anything owed. Below the
 table, whether your balance covers the next month of all of them together. A
 server bought on the old 12-month term shows `prepaid until <date>` instead.
 
@@ -183,34 +185,34 @@ Two commands on purpose, because one of them stops the billing and the other doe
 | | what it does | the machine |
 |---|---|---|
 | `co server forget prod` | drops the local entry | keeps running, keeps billing |
-| `co server destroy prod` | tears it down | gone; the used part of this month is charged (old 12-month term: the unused part is refunded) |
+| `co server destroy prod` | tears it down | gone; the unused part of this month is refunded (old 12-month term: the unused part of the year) |
 
 A single "remove" would mean one of two failures depending on which it implemented:
 you believe you stopped paying and are still billed, or you tidy your config and
 delete production.
 
 `destroy` asks you to **type the name back**, not y/N — a reflex "y" is exactly how
-the second one happens. It says what it will charge before you type, and prints the
-amount and the invoice afterwards:
+the second one happens. It says what it will refund before you type, and prints the
+amount and the credit note afterwards:
 
 ```
 $ co server destroy prod
 This destroys the machine 'prod' and everything on it.
 The disk, the agent's identity, its logs — none of it is recoverable.
-The used part of this month (about $111.20) is charged now, and the monthly billing stops.
+The unused part of this month (about $111.20) is refunded to your credits, and the monthly billing stops.
 
 ? Type the server name to confirm (prod): prod
 
 Destroying prod …
 ✓ prod destroyed
-$111.20 charged for the used part of this month — invoice SRV-2026-11-000124.
+$111.20 refunded to your credits for the unused part of this month — credit note SRV-2026-11-000124.
 co server invoice prod SRV-2026-11-000124   to see it
 ```
 
-A server that already owes is not charged at a destroy: the prompt says the used part
-"is added to what you owe ($30.00 unpaid)", and afterwards the command says what was
-recorded and the total you still owe for it, which is charged at your next top-up. A server on the old 12-month term refunds the
-unused part of its year instead, as an amount: `$150.41 of $360.00 refunded`.
+A server whose month in progress was never paid (it is in its grace days) has nothing
+to refund: the days it ran are owed instead, and the command says the total you still
+owe for it, which is charged at your next top-up. A server on the old 12-month term
+refunds the unused part of its year instead, as an amount: `$150.41 of $360.00 refunded`.
 
 ---
 

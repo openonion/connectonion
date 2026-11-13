@@ -1191,6 +1191,9 @@ def _write_page(notebook, record, text, items, *, receipt=None):
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
     saved = collapse_repeated_markers(renumber_sources(settle_sources(text, dates)))
+    if record.startswith("projects/"):
+        from .project_pages import settle_last_activity
+        saved = settle_last_activity(notebook.root, saved, items)
     from .feedback import prepare_promotion
     if receipt:
         from .project_claim_review import retain_cited_originals

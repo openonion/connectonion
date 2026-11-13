@@ -39,6 +39,24 @@ def _info(port):
         return None
 
 
+def _wait_for_replacement(co_dir: Path, seconds: float = 30.0) -> None:
+    """Until no build or open is replacing this home's Host: the lock they hold
+    while they do (co_ai.main._owner_invite_lock), taken and let go."""
+    if os.name == "nt":  # nothing replaces a Host there (live_host._started_here)
+        return
+    import fcntl
+    deadline = time.monotonic() + seconds
+    with open(co_dir / "owner-invite.lock", "a+b") as lock:
+        while True:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                assert time.monotonic() < deadline, f"a Host replacement under {co_dir} did not finish in {seconds:g}s"
+                time.sleep(0.05)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 @pytest.fixture
 def upgraded(tmp_path, tmp_path_factory, monkeypatch):
     """(old Host process, its port, the identity's address, the record): a co ai
@@ -72,6 +90,13 @@ def upgraded(tmp_path, tmp_path_factory, monkeypatch):
                                       "command": " ".join(args[1:])}))
         yield old, port, identity["address"], record
     finally:
+        # The replacement is finished when its lock is free, not when the new Host
+        # answers. The detached build holds the lock from the old Host's stop until
+        # it has seen the new one answer (live_host._renew/_exits). This test can see
+        # the answer first; stopping the Host then made the build read it as "exited
+        # during startup" and start another on a fresh port, recorded after this
+        # stop had run: the Host the leak guard found in five main runs (#2980).
+        _wait_for_replacement(home / ".co")
         # The new Host is the one this home recorded; this test started it, so it stops it.
         host_leak_guard.stop_recorded(tmp_path_factory.getbasetemp(), str(home))
         old.kill()
