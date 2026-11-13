@@ -222,8 +222,9 @@ def _live_here(page):
 
 def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_closing():
     """stripDone with a real entry (a record and a thread): one quiet button that marks the row done, through the
-    page's own way of closing it when one is given; none on an ask, on a row with no record, or on a snapshot."""
-    result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('stripMarksDone', 'stripDone') + r'''
+    page's own way of closing it when one is given; none on an ask or on a row with no record. A snapshot (file: or
+    no Host) shows all three too (#2990), disabled with its reason: nothing carries its mark to the notebook."""
+    result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('snapshotWhy', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
@@ -234,8 +235,9 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
-      location.protocol = 'file:'; shown.file = stripDone(entry).length;
-      location.protocol = 'http:'; REM.live = false; shown.snapshot = stripDone(entry).length;
+      const why = buttons => buttons.map(node => [node.text, node.disabled, node.title, node['aria-describedby']]);
+      location.protocol = 'file:'; shown.file = why(stripDone(entry));
+      location.protocol = 'http:'; REM.live = false; shown.snapshot = why(stripDone(entry));
       console.log(JSON.stringify(shown));
     ''')
     assert result['own'] == [['button', 'btn-quiet strip-done', 'Mark done'], ['button', 'btn-quiet strip-later', 'Not now'],
@@ -244,11 +246,12 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
                                ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
                                ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
-    assert {key: result[key] for key in ('ask', 'bare', 'file', 'snapshot')} == {
-        'ask': 0, 'bare': 0, 'file': 0, 'snapshot': 0}
+    assert {key: result[key] for key in ('ask', 'bare')} == {'ask': 0, 'bare': 0}
+    reason = 'This is an offline snapshot; open REM to mark it.'
+    assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
 
 
-TODAY_CARD = ['personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
 
 
 def _today_card_js(body):
@@ -256,7 +259,7 @@ def _today_card_js(body):
     page = TEMPLATE.read_text()
     steps_order = re.search(r'const STEPS = .*?;', page).group(0)
     return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
-                          + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'stripMarksDone']) + r'''
+                          + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
       const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -339,17 +342,20 @@ def test_a_handled_row_shows_its_strip_without_a_hover():
     # A handled row shows its strip unless the card's green step already closes it (team, re-review of #2955):
     # on a mixed card no green step closes the handled row; on an all-handled card the green step is the lead.
     assert result['mixed'] == ['qitem handled', 'qitem'] and result['both'] == ['qitem', 'qitem']
-    assert result['snapshot'] == ['qitem']                # nothing to show there: its strip cannot act
+    assert result['snapshot'] == result['single']         # a snapshot's strip closes too (#2990), so it shows alike
 
 
-def test_a_snapshot_today_row_keeps_its_tick_because_its_strip_cannot_act():
+def test_a_snapshot_today_row_closes_with_the_strips_words_like_the_live_one():
+    """#2990: a snapshot had only an icon tick, so 忽略 was nowhere. Its close is kept on this device until the live
+    reader syncs it, so its row carries the same worded strip and no tick."""
     result = _today_card_js(r'''
+      const live = seen(marks(personCard({r, entries: [row('feedback')]}, true)));
       REM.live = false;
       const one = marks(personCard({r, entries: [row('feedback')]}, true));
       one.filter(mark => mark.where === 'row').forEach(click);
-      console.log(JSON.stringify({one: seen(one), closed}));
+      console.log(JSON.stringify({live, one: seen(one), closed}));
     ''')
-    assert result['one'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'qdone', 'Mark done']]
+    assert result['one'] == result['live'] and all(mark[1] != 'qdone' for mark in result['one'])
     assert result['closed'] == [['.qcard', ['feedback']]]
 
 
@@ -379,7 +385,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -401,7 +407,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       const card = personCard({r: entry.r, entries: [entry]}, true);
       const item = card.children[1].children[0];
-      console.log(JSON.stringify({draft: card.children[2], note: item.children[2].children[2], acts: card.children[3]}));
+      console.log(JSON.stringify({draft: card.children[2], note: item.children[1].children[2], acts: card.children[3]}));
     ''')
     if status == 'prepared':
         assert result['draft']['children'][1] == {'sendable': True, 'body': 'Here is my feedback on Demo A.'}
@@ -410,8 +416,9 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     else:
         assert result['draft'] is None
         assert result['note']['text'] == 'No reply needed: Fern needs no further reply.'
-        assert result['acts']['children'][0]['text'] == 'Mark done'
-        assert result['acts']['children'][0]['class'] == 'btn-act'
+        # No reply needed and nothing else to do: the row's own strip Mark done is the card's lead, in a snapshot as
+        # live (#2990), so no green Mark done repeats it.
+        assert result['acts']['children'][0] is None
 
 
 def test_today_groups_a_persons_rows_into_their_first_card_without_reranking():

@@ -149,25 +149,27 @@ ANCIENT_TOO = r'''async () => {
 
 
 def test_long_quiet_promises_are_one_folded_line_below_the_desk_with_close_all_and_undo(today):
-    page, _, _ = today
+    page, _, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "keys": body["keys"]})  # the notebook keeps it
+    page.evaluate(LIVE, isolated_context=False)  # a snapshot keeps no mark (#2990 review)
     page.evaluate(ANCIENT, isolated_context=False)
     page.evaluate(ANCIENT_TOO, isolated_context=False)
     stale = page.locator("#today-stale")
     assert stale.evaluate("node => node.tagName") == "DETAILS" and stale.get_attribute("open") is None
-    assert stale.locator("summary").inner_text() == "2 have gone quiet for a long time · Look"
+    assert stale.locator(":scope > summary").inner_text() == "2 have gone quiet for a long time · Look"
     assert page.locator(".tgrid > .side #today-stale").count() == 0          # not in the rail
     desk = page.locator(".tgrid").bounding_box()
     assert stale.bounding_box()["y"] >= desk["y"] + desk["height"]           # under the desk and its rail
-    stale.locator("summary").click()
+    stale.locator(":scope > summary").click()
     for row in stale.locator("li").all():
-        assert row.get_by_role("button").all_inner_texts() == ["Mark done", "Still open"]
+        assert row.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
     assert stale.get_attribute("aria-label") is None                         # its words are on screen
     stale.get_by_role("button", name="Mark all 2 done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
     marks = page.evaluate("() => Object.values(threadStates).map(value => value.keys.length)", isolated_context=False)
     assert marks == [1, 1], marks                                            # two marks, never one linked thread
     page.locator("#done-notice").get_by_role("button", name="Undo", exact=True).click()
-    assert page.locator("#today-stale summary").inner_text() == "2 have gone quiet for a long time · Look"
+    assert page.locator("#today-stale > summary").inner_text() == "2 have gone quiet for a long time · Look"
 
 
 def test_today_no_longer_asks_what_to_remember_without_a_reason(today):

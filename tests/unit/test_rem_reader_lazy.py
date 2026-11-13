@@ -140,7 +140,9 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
     # REM cannot draft from an unarchived message yet, and a mail-app compose would start a new thread.
     assert not any(n.get('href', '').startswith('mailto:') for n in nodes(card))
     assert not any(n.get('text') == 'Open Alice' for n in nodes(card))  # the name opens the page; not a step (sprint 14)
-    assert any(n.get('class') == 'qdone' for n in nodes(card))          # a snapshot closes the row with its own tick
+    # A snapshot closes the row with the strip's words, kept on this device (#2990), never an icon-only tick.
+    assert [n.get('text') for n in nodes(card) if 'strip-' in n.get('class', '')][:3] == ['Mark done', 'Not now', 'Ignore']
+    assert not any(n.get('class') == 'qdone' for n in nodes(card))
 
 
 def test_reader_shell_defers_full_prose_translations_and_conversations(tmp_path, monkeypatch):

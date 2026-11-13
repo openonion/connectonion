@@ -540,7 +540,12 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
         assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
         assert answered.locator('.kind-badge').inner_text() == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
-        assert answered.locator('.card-acts button').first.text_content() == ('标为完成' if language == 'zh' else 'Mark done')
+        # The row REM thinks is answered leads with Mark done, its strip's own button. This page is a file:// snapshot,
+        # which keeps no mark (#2990 review), so it is shown disabled and the card says why in words.
+        lead = answered.locator('.strip-done.strip-lead')
+        assert lead.text_content() == ('标为完成' if language == 'zh' else 'Mark done') and lead.is_disabled()
+        assert ('打开 REM 后才能标记' if language == 'zh' else 'open REM to mark it') in answered.inner_text()
+        assert answered.locator('.card-acts button').first.text_content() == ('还没办完' if language == 'zh' else 'Not done yet')
         assert answered.locator('.card-acts a.btn-quiet').get_attribute('href').endswith('/answered')
         answer_note = answered.locator('.draft-reason').inner_text()
         # The cleaned owner quote selects one sentence (or a future commitment)
