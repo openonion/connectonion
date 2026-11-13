@@ -31,7 +31,7 @@ from pathlib import Path
 
 from .files import RemError, read_json, state_path, write_json
 from .skill_runs import eval_events
-from .source import KINDS, rem_task, source_files
+from .source import KINDS, open_session, progress_name, read_session, rem_task, source_files
 
 CACHE = "skill-usage.json"
 # 3: Recount messages whose optional Codex id was omitted; older caches missed them.
@@ -45,7 +45,7 @@ LABELS = {"claude-code": "Claude Code", "codex": "Codex", "co-ai": "co ai"}
 
 
 def _claude_events(path: Path) -> list[list]:
-    return _claude_events_data(path.read_bytes())
+    return _claude_events_data(read_session(path))
 
 
 def _claude_events_data(data: bytes) -> list[list]:
@@ -78,7 +78,7 @@ def _claude_events_data(data: bytes) -> list[list]:
 
 
 def _codex_events(path: Path) -> list[list]:
-    return _codex_events_data(path.read_bytes())
+    return _codex_events_data(read_session(path))
 
 
 def _codex_events_data(data: bytes) -> list[list]:
@@ -228,7 +228,7 @@ def session_samples(root: Path, name: str, limit: int = 3) -> dict:
         if not text:
             missing.append({"file": file, "timestamp": when})
             continue
-        items.append({"source": f"skill-session:{kind}:{path.stem}:{when}", "timestamp": when,
+        items.append({"source": f"skill-session:{kind}:{Path(progress_name(path.name)).stem}:{when}", "timestamp": when,
                       "project": cwd, "reference": path.as_uri(), "text": text})
     return {"items": items, "matched_invocations": len(set(matches)), "sample_limit": limit,
             "missing": missing, "cache_available": cached.get("version") == VERSION}
@@ -238,7 +238,7 @@ def _invocation_turn(path: Path, kind: str, when: str) -> str:
     """Raw request, invocation, tool results and replies until the next typed request."""
     from .files import SECRET_SHAPES
     selected, request, active = [], None, False
-    with path.open() as handle:
+    with io.TextIOWrapper(open_session(path), encoding="utf-8") as handle:
         first = json.loads(handle.readline())
         meta = KINDS[kind]["meta"](first)
         for row in chain([first], (json.loads(line) for line in handle)):

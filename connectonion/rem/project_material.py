@@ -34,7 +34,7 @@ from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomi
                     write_json)
 from .investigate import project_paths
 from .scan import project_exclusion
-from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, session_source, timestamp
+from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, read_session, session_paths, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
 LOOKBACK_DAYS = 180
@@ -91,7 +91,7 @@ def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | N
         if not root.is_dir() or root.is_symlink():
             continue
         parse, read_meta = KINDS[kind]["message"], KINDS[kind]["meta"]
-        paths = sessions.files[name] if sessions is not None else sorted(root.rglob(KINDS[kind]["glob"]))
+        paths = sessions.files[name] if sessions is not None else session_paths(root, kind)
         for path in paths:
             stat = sessions.stats[str(path)] if sessions is not None else path.stat()
             if path.is_symlink() or datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
@@ -106,7 +106,7 @@ def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | N
 
 
 def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner) -> list[dict]:
-    material = _file_material(path.read_bytes(), path, kind, parse, read_meta, since)
+    material = _file_material(read_session(path), path, kind, parse, read_meta, since)
     return _material_messages(material, rem_root, counts, owner)
 
 
@@ -212,7 +212,7 @@ def _choose(calls: list[tuple[int, set, bool]], turns: list[int]):
 
 
 def _evidence(path: Path, kind: str, container: str, owner) -> list[tuple[int, set, bool]]:
-    return _owned_evidence(_raw_evidence(path.read_bytes(), kind, container), container, owner)
+    return _owned_evidence(_raw_evidence(read_session(path), kind, container), container, owner)
 
 
 def _owned_evidence(calls, container, owner) -> list[tuple[int, set, bool]]:

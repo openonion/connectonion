@@ -67,6 +67,8 @@ dependencies = [
     "uvicorn>=0.20.0",
     "textual>=0.86.0",
     "textual-autocomplete>=3.0.0",
+    # co rem reads Codex sessions Codex has compressed in place (rollout-*.jsonl.zst, #2943).
+    "zstandard>=0.23.0",
     # Pinned exact: Patchright ships its stealth patches inside a separately-downloaded
     # driver, and that driver has silently regressed to the unpatched vanilla Playwright
     # build across releases (1.57.x, 1.61.1 → navigator.webdriver leaks / automation infobar).
