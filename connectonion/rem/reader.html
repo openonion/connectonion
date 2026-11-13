@@ -8962,9 +8962,13 @@ const AG_ZH = {
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
   "Still open from earlier": "更早、仍开着",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
-  "{name} could not be read last night ({reason}).": "昨晚没能读取 {name}（{reason}）。",
-  "authorization expired": "授权已过期", "not allowed": "没有权限", "unavailable": "暂时不可用", "not connected for calendar": "未连接日历",
-  "From {names} · read {when}": "来自 {names} · {when}读取", " and ": " 和 ",
+  "authorization expired": "授权已过期",
+  "{name} · read {when}": "{name} · {when}读取",
+  "No calendar is connected, so this shows only the notebook's own dates.": "还没有连接日历，这里只显示笔记里的日期。",
+  "{name} could not be read on {when} ({reason}).": "{when}没能读取 {name}（{reason}）。", "Its events are from {when}.": "显示的是 {when}读到的日程。",
+  "timed out": "超时", "network error": "网络出错", "server error": "服务器出错", "throttled": "被限流", "request refused": "请求被拒",
+  "permission denied": "没有权限", "provider unavailable": "暂时不可用", "not found on the server (deleted or moved)": "服务器上找不到",
+  "a fault in REM": "REM 自身出错",
 };
 function agT(key, values = {}) {
   const words = uiLanguage === "zh" ? AG_ZH[key] : null;
@@ -9065,8 +9069,9 @@ function agendaDays(items) {
   }
   return list;
 }
-function agendaEarlier(items, start) {
-  const open = items.filter(item => item.kind !== "event" && item.day < start);
+// Earlier than today, whatever range is on screen: still open is about now, not about the week shown.
+function agendaEarlier(items) {
+  const open = items.filter(item => item.kind !== "event" && item.day < agToday());
   if (!open.length) return null;
   const seen = new Set(), unique = open.reverse().filter(item => !seen.has(item.href) && seen.add(item.href));
   return el("p", { class: "agenda-earlier" }, [el("span", { class: "k", text: agT("Still open from earlier") + " " }),
@@ -9076,16 +9081,21 @@ function agendaEarlier(items, start) {
 function agendaNote() {
   if (REM.shared) return null;
   if (!REM.calendar) return el("p", { class: "agenda-note", text: agT("No calendar read yet: REM reads your connected Google and Outlook calendars each night.") });
-  const failed = Object.entries(REM.calendar.errors || {});
-  return failed.length ? el("p", { class: "agenda-note", text: failed.map(([name, reason]) => agT("{name} could not be read last night ({reason}).", { name, reason: agT(reason) })).join(" ") }) : null;
+  const { read = [], errors = [] } = REM.calendar;
+  // A night ran and no calendar is connected: say so, or the empty week reads as "nothing on".
+  if (!read.length && !errors.length) return el("p", { class: "agenda-note", text: agT("No calendar is connected, so this shows only the notebook's own dates.") });
+  // When, from each calendar's own times: a failure is not always last night's, nor its events tonight's.
+  return errors.length ? el("p", { class: "agenda-note", text: errors.map(e => agT("{name} could not be read on {when} ({reason}).", {
+    name: e.name, when: fmtTime(e.at), reason: agT(e.reason) + (e.error ? " · " + e.error : "") })
+    + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")).join(" ") }) : null;
 }
 function agendaBar(range) {
   const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
   const button = (text, attrs, act) => { const b = el("button", { type: "button", ...attrs }, [text]); b.onclick = act; return b; };
   const views = el("div", { class: "seg ag-views", role: "group" }, [["week", "Week"], ["month", "Month"]].map(([view, name]) =>
     button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { agendaState.view = view; agendaState.offset = 0; agendaView(); })));
-  const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: agT("From {names} · read {when}", {
-    names: REM.calendar.read.join(agT(" and ")), when: fmtTime(REM.calendar.saved_at) }) }) : null;
+  const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: REM.calendar.read.map(c =>
+    agT("{name} · read {when}", { name: c.name, when: fmtTime(c.at) })).join(" · ") }) : null;
   return el("div", { class: "agenda-bar" }, [
     button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, step(-1)),
     button(agT("Today"), { class: "ag-today" }, () => { agendaState.offset = 0; agendaView(); }),
@@ -9094,19 +9104,18 @@ function agendaBar(range) {
 }
 function agendaView() {
   const main = document.getElementById("main"), items = agendaItems();
-  let body, start, range;
+  let body, range;
   if (agendaState.view === "month") {
     const first = agMonthStart(agendaState.offset);
     range = agFormat(first, { month: "long", year: "numeric" });
     body = agendaMonth(items, first);
-    start = agDay(first, -((new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7));
   } else {
-    start = agDay(agToday(), 7 * agendaState.offset);
+    const start = agDay(agToday(), 7 * agendaState.offset);
     const end = agDay(start, 6);
     range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
     body = agendaWeek(items, start);
   }
-  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items, start)]));
+  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items)]));
 }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------

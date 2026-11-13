@@ -195,9 +195,11 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         refresh(root)
         from .topic_map import backfill_topics
         maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
-        # Agenda's week (#2998): the reader shows the calendars as the night last read them, never live.
-        from .calendar import save_upcoming
-        maintenance["calendar"] = save_upcoming(root, now())
+    # Agenda's week (#2998): the reader shows the calendars as the night last read them, never live.
+    # Outside the writer lock: these are network calls, and the file is the night's alone.
+    from .calendar import save_upcoming
+    from .service import notebook_zone
+    maintenance["calendar"] = save_upcoming(root, now(), notebook_zone(config))
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)

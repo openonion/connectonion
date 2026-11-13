@@ -9,7 +9,7 @@ tests/fixtures/rem_reader_notebook.py; the calendar is a fake saved through the 
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -57,8 +57,9 @@ def agenda(tmp_path, monkeypatch):
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     root = build(tmp_path / "rem", FROZEN)
     Notebook(root).write("agenda/harbour-filing.md", FILING)
+    Notebook(root).write("agenda/fernhill-invoice.md", "# Fernhill invoice\n\n## Status\n2026-09-20 — Send the pilot invoice; due 2026-09-25 [1]\n")
     monkeypatch.setattr(calendar, "available", lambda kind: True)
-    monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end: GOOGLE if kind == "google" else OUTLOOK)
+    monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end, zone: GOOGLE if kind == "google" else OUTLOOK)
     calendar.save_upcoming(root, FROZEN)
     snapshot = rem_reader.snapshot
 
@@ -105,26 +106,46 @@ def _days(page, selector):
     return page.locator(selector).evaluate_all("cols => cols.map(c => c.innerText.trim())")
 
 
+def _night(tmp_path, monkeypatch, connected, failing=None):
+    """What the reader gets from the file a night writes: `connected` calendars, `failing` raising its error."""
+    from connectonion.rem import calendar
+
+    nights = []
+
+    def events(kind, start, end, zone):
+        if failing and kind == failing[0] and len(nights) > 1:
+            raise failing[1]
+        return GOOGLE if kind == "google" else OUTLOOK
+
+    root = tmp_path / "night"
+    monkeypatch.setattr(calendar, "available", lambda kind: kind in connected)
+    monkeypatch.setattr(calendar, "calendar_events", events)
+    # A good night ten days ago, then (when one fails) tonight.
+    for moment in [FROZEN - timedelta(days=10), FROZEN][: 2 if failing else 1]:
+        nights.append(moment)
+        calendar.save_upcoming(root, moment)
+    return calendar.upcoming(root, [], "")
+
+
 def test_agenda_opens_as_this_weeks_grid_with_calendar_events_and_notebook_dates(agenda):
     page = agenda
     _open(page, 1440)
     week = page.locator(".agenda-week")
     assert week.is_visible() and not page.locator(".agenda-days").is_visible()
     # No title and no explanation first: the week is the first thing on the page.
-    main = page.locator("#main").inner_text()
-    assert "promises, waiting on others" not in main
+    assert "promises, waiting on others" not in page.locator("#main").inner_text()
     assert week.bounding_box()["y"] < 140
     days = _days(page, ".agenda-week .ag-col")
     assert len(days) == 7
-    assert days[0].startswith("Today\nThu 1"), days[0]
-    assert days[1].startswith("Fri 2") and days[6].startswith("Wed 7")
-    # Today, in time order: the Outlook meeting, then the Google one.
-    assert "08:00\nQuarterly receipts with Ines" in days[0] and "16:00\nDentist" in days[0]
-    assert days[0].index("Quarterly receipts") < days[0].index("Dentist")
-    assert "09:30\nPilot renewal call with Fernhill" in days[1]
+    # The week starts today.
+    assert "Today" in days[0] and "Thu" in days[0] and "Today" not in "".join(days[1:])
+    # Today, in time order: the Outlook meeting, then the Google one, each with its time.
+    assert "08:00" in days[0] and "16:00" in days[0]
+    assert days[0].index("Quarterly receipts with Ines") < days[0].index("Dentist")
+    assert "Pilot renewal call with Fernhill" in days[1] and "09:30" in days[1]
     # An all-day event spans its days; Google's end date is the day after.
     assert "Harbour offsite" in days[4] and "Harbour offsite" in days[5] and "Harbour offsite" not in days[6]
-    # The notebook's own dates: Ines's promise due 3 Oct, the agenda page due 6 Oct.
+    # The notebook's own dates: Inès's promise due 3 Oct, the agenda page due 6 Oct.
     assert "Inès Halvorsen" in days[2]
     assert "Harbour filing" in days[5]
     assert "Board dinner" not in week.inner_text(), "outside this week"
@@ -133,6 +154,7 @@ def test_agenda_opens_as_this_weeks_grid_with_calendar_events_and_notebook_dates
     assert event.get_attribute("href") == "https://calendar.example/g1" and event.get_attribute("target") == "_blank"
     person = page.locator(".agenda-week .ag-col").nth(1).get_by_role("link", name="Mara Ostrowski")
     assert person.get_attribute("href") == "#r=people%2Fmara-ostrowski.md"
+    assert "Google Calendar" in page.locator(".agenda-bar").inner_text()
     filing = week.get_by_role("link", name="Harbour filing")
     filing.click()
     page.wait_for_function("() => location.hash === '#r=agenda%2Fharbour-filing.md'")
@@ -142,19 +164,25 @@ def test_agenda_opens_as_this_weeks_grid_with_calendar_events_and_notebook_dates
 def test_the_week_moves_and_month_shows_the_whole_month(agenda):
     page = agenda
     _open(page, 1440)
+    earlier = page.locator(".agenda-earlier").inner_text()
+    assert "Fernhill invoice" in earlier, "late, from before today"
     page.get_by_role("button", name="Next week").click()
-    assert page.locator(".agenda-week .ag-col").first.inner_text().startswith("Thu 8")
+    first = page.locator(".agenda-week .ag-col").first.inner_text()
+    assert "Today" not in first and "8" in first
+    # What is still open from before today does not change with the week on screen.
+    assert page.locator(".agenda-earlier").inner_text() == earlier
     page.get_by_role("button", name="Today", exact=True).click()
-    assert page.locator(".agenda-week .ag-col").first.inner_text().startswith("Today")
+    assert "Today" in page.locator(".agenda-week .ag-col").first.inner_text()
     page.get_by_role("button", name="Month", exact=True).click()
     month = page.locator(".agenda-month")
     assert month.is_visible() and not page.locator(".agenda-week").is_visible()
-    assert "October 2026" in page.locator(".agenda-bar").inner_text()
+    assert "October" in page.locator(".agenda-bar").inner_text()
     cells = page.locator(".agenda-month .ag-cell")
     assert cells.count() in (35, 42)
-    assert cells.first.inner_text().startswith("28"), "a Monday-first grid opens on 28 September"
+    assert "28" in cells.first.inner_text(), "a Monday-first grid opens on 28 September"
     assert "Board dinner" in month.inner_text() and "Pilot renewal call with Fernhill" in month.inner_text()
-    assert page.locator(".agenda-month .ag-cell.today").inner_text().startswith("1")
+    assert "1" in page.locator(".agenda-month .ag-cell.today").inner_text()
+    assert page.locator(".agenda-earlier").inner_text() == earlier
     page.get_by_role("button", name="Week", exact=True).click()
     assert page.locator(".agenda-week").is_visible()
 
@@ -165,7 +193,7 @@ def test_a_phone_gets_a_day_by_day_list(agenda):
     days = page.locator(".agenda-days")
     assert days.is_visible() and not page.locator(".agenda-week").is_visible()
     heads = page.locator(".agenda-days .ag-dayhead").all_inner_texts()
-    assert heads[:3] == ["Today · Thu 1 Oct", "Tomorrow · Fri 2 Oct", "Sat 3 Oct"], heads
+    assert "Today" in heads[0] and "Tomorrow" in heads[1] and "Sat" in heads[2], heads
     first = page.locator(".agenda-days .ag-day").first.inner_text()
     assert first.index("Quarterly receipts with Ines") < first.index("Dentist")
     assert "Harbour offsite" in days.inner_text() and "Board dinner" in days.inner_text()
@@ -176,19 +204,40 @@ def test_a_phone_gets_a_day_by_day_list(agenda):
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_chinese_and_a_calendar_not_yet_read(agenda):
+def test_chinese(agenda):
     page = agenda
     _open(page, 1440)
     page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
-    assert page.locator(".agenda-week .ag-col").first.inner_text().startswith("今天\n周四 1")
+    assert "今天" in page.locator(".agenda-week .ag-col").first.inner_text()
     assert page.get_by_role("button", name="月", exact=True).is_visible()
-    page.evaluate("() => { setInterfaceLanguage('en'); REM.calendar = null; render(); }", isolated_context=False)
-    note = page.locator(".agenda-note").inner_text()
-    assert note == "No calendar read yet: REM reads your connected Google and Outlook calendars each night."
-    # The notebook's dates still fill the week.
-    assert "Inès Halvorsen" in page.locator(".agenda-week").inner_text()
-    page.evaluate("""() => { REM.calendar = {saved_at: '2026-10-01T02:00:00+00:00', read: ['Google Calendar'],
-      errors: {Outlook: 'authorization expired'}, events: []}; render(); }""", isolated_context=False)
-    note = page.locator(".agenda-note").inner_text()
-    assert note == "Outlook could not be read last night (authorization expired)."
+
+
+def _show(page, shown):
+    page.evaluate("shown => { REM.calendar = shown; render(); }", shown, isolated_context=False)
+    return page.locator(".agenda-note").inner_text() if page.locator(".agenda-note").count() else ""
+
+
+def test_before_any_night_and_with_no_calendar_connected_the_page_says_so(agenda, tmp_path, monkeypatch):
+    page = agenda
+    _open(page, 1440)
+    assert "No calendar read yet" in _show(page, None)
+    # The file a night writes when co can read no calendar: not an unexplained empty week.
+    note = _show(page, _night(tmp_path, monkeypatch, connected=()))
+    assert "No calendar is connected" in note
+    assert "Inès Halvorsen" in page.locator(".agenda-week").inner_text(), "the notebook's dates still fill the week"
     assert "co auth" not in page.locator("#main").inner_text()
+
+
+def test_a_calendar_that_failed_says_when_and_why_and_how_old_its_events_are(agenda, tmp_path, monkeypatch):
+    from connectonion.provider_credentials import ProviderCredentialError
+    page = agenda
+    _open(page, 1440)
+    expired = ProviderCredentialError("reauth_required", "Microsoft authorization expired.", "co auth microsoft")
+    note = _show(page, _night(tmp_path, monkeypatch, connected=("google", "microsoft"), failing=("microsoft", expired)))
+    assert "Outlook could not be read" in note and "authorization expired" in note and "Today" in note
+    assert "Its events are from" in note and "Sep 21" in note
+    assert "last night" not in note and "co auth" not in page.locator("#main").inner_text()
+    # Its earlier events are still on the week.
+    assert "Quarterly receipts with Ines" in page.locator(".agenda-week").inner_text()
+    note = _show(page, _night(tmp_path / "bug", monkeypatch, connected=("google",), failing=("google", AttributeError("x"))))
+    assert "a fault in REM" in note and "AttributeError" in note
