@@ -1765,7 +1765,7 @@ def make_rem_app(factory):
                        category: str = typer.Option("", "--category", help="Only this category's pages")):
         from ...rem.files import CATEGORIES, Notebook, RemError
         from ...rem.languages import native_name, owner_language
-        from ...rem.translate import checked_language, plan, translate, translate_pages
+        from ...rem.translate import checked_language, claim, plan, release, translate
 
         def operation(root):
             if page and (all_pages or category):
@@ -1781,21 +1781,41 @@ def make_rem_app(factory):
             if page:
                 record = _resolve_page(Notebook(root), page)
                 return translate(root, record, language), ["show", record]
-            from ...rem.config import read_config
+            import sys
             total, pending = plan(root, language, category)
-            say = None if ctx.obj["json"] else typer.echo
-            if say:
-                say(f"{total - len(pending)} of {total} pages already read in {native_name(language)}; "
-                    f"translating {len(pending)}…" if pending else
-                    f"All {total} pages already read in {native_name(language)}; nothing to translate.")
-            step = iter(range(1, len(pending) + 1))
-            result = translate_pages(root, language, pending, workers=read_config(root)["limits"]["workers"],
-                                     say=say and (lambda line: say(f"[{next(step)}/{len(pending)}] {line}")))
-            result.update(total=total, current=total - len(pending) + result["translated"] + result["cached"])
-            summary = (", ".join(f"{result[outcome]} {outcome}" for outcome in ("translated", "cached", "failed"))
-                       + f". {result['current']} of {total} pages now read in {native_name(language)}.")
-            return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
+            # An agent reading help runs commands to see what they do; this one spends. Without a
+            # terminal it starts only when asked for by name.
+            if pending and not all_pages and not sys.stdin.isatty():
+                raise RemError(f"Translating every page not yet in {native_name(language)} is {len(pending)} pages, "
+                               "one model turn each; add --all to start it")
+            claim(root)
+            try:
+                return _translate_every(ctx, root, language, total, pending)
+            finally:
+                release(root)
         _handle(ctx, operation, ["list"])
+
+    def _translate_every(ctx, root, language, total, pending):
+        """Every page not yet in `language`, one model turn each, stopping at the quota floor."""
+        from ...rem.config import read_config
+        from ...rem.languages import native_name
+        from ...rem.translate import quota_floor, translate_pages
+        config = read_config(root)
+        say = None if ctx.obj["json"] else typer.echo
+        if say:
+            say(f"{total - len(pending)} of {total} pages already read in {native_name(language)}; "
+                f"translating {len(pending)}…" if pending else
+                f"All {total} pages already read in {native_name(language)}; nothing to translate.")
+        step = iter(range(1, len(pending) + 1))
+        result = translate_pages(root, language, pending, workers=config["limits"]["workers"],
+                                 say=say and (lambda line: say(f"[{next(step)}/{len(pending)}] {line}")),
+                                 floor=quota_floor(root, config))
+        result.update(total=total, current=total - len(pending) + result["translated"] + result["cached"])
+        summary = (", ".join(f"{result[outcome]} {outcome}" for outcome in ("translated", "cached", "failed"))
+                   + f". {result['current']} of {total} pages now read in {native_name(language)}.")
+        if result.get("halted"):
+            summary += f"\nStopped at {result['current']} of {total}: {result['halted']}."
+        return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
 
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),

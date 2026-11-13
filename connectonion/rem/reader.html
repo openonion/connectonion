@@ -3339,6 +3339,10 @@ const UI = {
     "Getting the pages ready…": "正在整理页面…", "Stopping after the pages already begun…": "正在停止，已开始的页面会翻完…",
     "Stopped.": "已停止。", "Every page reads in Chinese.": "所有页面都已是中文。", "Translate pages": "翻译页面",
     "Translation could not start: {why}.": "翻译没能开始：{why}。", "Stop translating": "停止翻译",
+    "Translate every page into Chinese ({n} pages)": "全部翻译成中文（{n} 页）",
+    "Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.": "额度只剩留给你自己用的部分，已停在 {n} / {m}。",
+    "The translation was refused; try again in a moment.": "翻译请求没被接受，请稍后再试。",
+    "Lost touch with REM; trying again…": "暂时连不上 REM，正在重试…",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
@@ -7835,7 +7839,7 @@ function translationNotice() {
 // 翻译». One worded button starts the job `co rem translate` runs, on the Host (POST /rem/translate-all, the same
 // loopback, cookie and JSON-only rules as every other write); it then says how far it is, «已翻译 120 / 639», and
 // offers Stop. Every copy of the control on the page shows the same job; no command to copy anywhere (D-60).
-let translateAllJob = null, translateAllPoll = null, translateAllAsked = false;
+let translateAllJob = null, translateAllPoll = null, translateAllAsked = false, translateAllWait = 1500;
 function translateAllLanguage() {
   return /^zh(?:-|$)/i.test(REM.owner_language || "") ? REM.owner_language : "zh";
 }
@@ -7849,9 +7853,12 @@ function translateAll() {
 function drawTranslateAll(box) {
   const job = translateAllJob || { state: "idle" }, busy = ["starting", "running", "stopping"].includes(job.state);
   const count = job.total != null ? t("Translated {n} / {m}", { n: job.done, m: job.total }) : "";
-  const words = job.state === "starting" ? t("Getting the pages ready…")
+  const words = job.offline ? t("Lost touch with REM; trying again…")
+    : job.state === "starting" ? t("Getting the pages ready…")
     : job.state === "stopping" ? count + " · " + t("Stopping after the pages already begun…")
+    : job.state === "refused" ? t("The translation was refused; try again in a moment.")
     : job.state === "failed" && job.error ? t("Translation could not start: {why}.", { why: job.error })
+    : job.halted ? t("Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.", { n: job.done, m: job.total })
     : job.total != null && job.done >= job.total ? t("Every page reads in Chinese.")
     : job.state === "stopped" ? t("Stopped.") + " " + count
     : count;
@@ -7863,20 +7870,35 @@ function drawTranslateAll(box) {
     stop.onclick = () => translateAllSend("stop");
     parts.push(stop);
   } else if (!(job.total != null && job.done >= job.total)) {
-    const go = el("button", { type: "button", class: "ta-go", text: t("Translate every page into Chinese") });
+    // The cost in words, on the button itself: no confirmation for a one-click he asked for.
+    const left = job.total != null ? job.total - job.done : 0;
+    const go = el("button", { type: "button", class: "ta-go",
+      text: left ? t("Translate every page into Chinese ({n} pages)", { n: left }) : t("Translate every page into Chinese") });
     go.onclick = () => translateAllSend("start");
     parts.push(go);
   }
   box.replaceChildren(...parts.filter(Boolean));
 }
+// A refused request (409, a RemError) says so in words and offers the button again; a request that never
+// arrived keeps asking, waiting longer each time, so the line is never left saying it is running.
 async function translateAllSend(action) {
   clearTimeout(translateAllPoll);
-  const response = await fetch("/rem/translate-all", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, language: translateAllLanguage() }) });
-  if (!response.ok) return;
-  translateAllJob = await response.json();
+  let response = null;
+  try {
+    response = await fetch("/rem/translate-all", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, language: translateAllLanguage() }) });
+  } catch {
+    translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: true };
+  }
+  if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false };
+  else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
   for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
-  if (["starting", "running", "stopping"].includes(translateAllJob.state)) translateAllPoll = setTimeout(() => translateAllSend("status"), 1500);
+  if (translateAllJob.offline) {
+    translateAllWait = Math.min(translateAllWait * 2, 30000);
+    translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
+  } else if (["starting", "running", "stopping"].includes(translateAllJob.state)) {
+    translateAllPoll = setTimeout(() => translateAllSend("status"), 1500);
+  }
 }
 
 // ---------- Today as a card desk (N3, D-123) ----------

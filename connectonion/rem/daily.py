@@ -320,8 +320,12 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
     from .runner import ready
-    from .translate import backlog, cached, shown_today, translate
+    from .translate import backlog, cached, claimed, shown_today, translate
     from .translate import languages
+    # The owner's one-click job (co rem translate / 全部翻译成中文) is translating the same pages.
+    if claimed(root):
+        say("Translations skipped: REM is already translating every page.")
+        return
     # Once per round and before the lock: Today's queue reads the whole notebook.
     shown = shown_today(root)
     language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)

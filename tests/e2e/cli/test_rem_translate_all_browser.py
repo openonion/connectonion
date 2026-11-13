@@ -49,7 +49,7 @@ def live(tmp_path, monkeypatch, request):
     identity.mkdir()
     _notebook(root)
     cookie = "co_rem=" + live_host.reader_token(identity)
-    call, errors, posts = _host(root, identity), [], []
+    call, errors, posts, faults = _host(root, identity), [], [], []
 
     def serve(route):
         req = route.request
@@ -58,6 +58,11 @@ def live(tmp_path, monkeypatch, request):
             return route.abort()
         if path == "/rem/translate-all":
             posts.append((req.method, req.headers.get("content-type")))
+            fault = faults.pop(0) if faults else "pass"
+            # A request is refused (a status code), never arrives ("abort"), or goes through ("pass").
+            if fault != "pass":
+                return route.abort() if fault == "abort" else route.fulfill(
+                    status=fault, body='{"error": "REM is busy"}', content_type="application/json")
         status, kind, body = call(req.method, path, (req.post_data or "").encode(), cookie)
         return route.fulfill(status=status, body=body, content_type=kind.split(";")[0])
 
@@ -70,6 +75,7 @@ def live(tmp_path, monkeypatch, request):
         page.goto(BASE + "/rem")
         page.locator("#main").wait_for()
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
+        page.faults = faults
         yield page, root, calls, gate, posts
         gate.set()
         browser.close()
@@ -87,7 +93,8 @@ def test_the_settings_button_translates_every_page_and_says_how_far_it_is(live, 
     page, root, calls, _, posts = live
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     control = _settings(page)
-    go = control.get_by_role("button", name="全部翻译成中文")
+    # The cost in words on the button itself: two pages need a model turn, the Chinese one does not.
+    go = control.get_by_role("button", name="全部翻译成中文（2 页）")
     expect(go).to_be_visible()
     from connectonion.rem.files import Notebook
     total = len(Notebook(root).list())
@@ -114,7 +121,7 @@ def test_progress_shows_while_it_runs_and_stop_leaves_the_pages_not_begun(live):
     line = page.locator("#main .translation-line")
     expect(line).to_contain_text("中文版还没好，先看原文")
     # Beside the line, the same worded button; no command to copy anywhere (D-60).
-    line.get_by_role("button", name="全部翻译成中文").click()
+    line.get_by_role("button", name="全部翻译成中文（2 页）").click()
     stop = line.get_by_role("button", name="停止翻译")
     expect(stop).to_be_visible(timeout=10000)
     from connectonion.rem.files import Notebook
@@ -126,6 +133,23 @@ def test_progress_shows_while_it_runs_and_stop_leaves_the_pages_not_begun(live):
     expect(line.locator(".ta-state")).to_contain_text("正在停止")
     gate.set()
     expect(line.locator(".ta-state")).to_have_text(f"已停止。 已翻译 {total - 1} / {total}", timeout=20000)
-    expect(line.get_by_role("button", name="全部翻译成中文")).to_be_visible()     # it can be started again
+    expect(line.get_by_role("button", name="全部翻译成中文（1 页）")).to_be_visible()     # it can be started again
     assert len(calls) == 1
     assert not re.search(r"co rem [a-z-]+", page.locator("body").inner_text()) and "co rem" not in line.inner_text()
+
+
+def test_a_refused_start_says_so_in_words_and_a_dropped_poll_is_retried(live):
+    from patchright.sync_api import expect
+    page, root, calls, _, _ = live
+    control = _settings(page)
+    go = control.get_by_role("button", name="全部翻译成中文（2 页）")
+    expect(go).to_be_visible()
+    page.faults.append(409)
+    go.click()
+    expect(control.locator(".ta-state")).to_have_text("翻译请求没被接受，请稍后再试。")
+    assert not calls
+    # Started for real, its next status poll is lost on the way: the line says so and asks again.
+    page.faults.extend(["pass", "abort"])
+    control.get_by_role("button", name="全部翻译成中文").click()
+    expect(control.locator(".ta-state")).to_have_text("所有页面都已是中文。", timeout=30000)
+    assert sorted(calls) == ["# Avery Lin", "# Fernhill pilot"]

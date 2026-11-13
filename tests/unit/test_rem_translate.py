@@ -426,17 +426,19 @@ def test_cli_backfill_skips_current_cache_and_nonrecords_and_continues(notebook,
         return 'translated prose'
 
     monkeypatch.setattr(tr, 'translate', translate)
-    # Every page co rem status counts (#2999), logs and catalog indexes too; the current one needs no turn.
+    from connectonion.rem.files import write_json, state_path
+    (notebook / 'people' / 'held.md').write_text('# held\n\nA source finding.\n\nInvestigation: not investigated yet\n')
+    write_json(state_path(notebook, 'map.json'), {'people': [{'record': 'people/held.md', 'needs_review': True}]})
+    # Logs, the catalog index and held or duplicate pages are not pages to read (#2999 review).
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', '--all', '--to', 'zh'])
     assert result.exit_code == 1, result.output
-    assert '1 of 12 pages already read in 中文; translating 11…' in result.output
-    assert 'people/avery-lin.md' not in result.output
+    assert 'translating 9…' in result.output and 'people/avery-lin.md' not in result.output
     assert 'people/mara-ostrowski.md: failed: fixture translation refused' in result.output
     assert 'people/theo-park.md: translated' in result.output
-    assert '10 translated, 0 cached, 1 failed. 11 of 12 pages now read in 中文.' in result.output
+    assert '8 translated, 0 cached, 1 failed.' in result.output
     assert sorted(calls) == sorted(['people/mara-ostrowski.md', 'people/theo-park.md', 'orgs/company.md', 'projects/launch.md',
-                                    'skills/catalog/mail.md', 'skills/catalog/index.md', 'decisions/format.md',
-                                    'principles/simple.md', 'logs/run.md', 'notes/activity.md', 'knowledge/topic.md'])
+                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md',
+                                    'knowledge/topic.md', 'notes/activity.md'])
     assert (notebook / 'people/avery-lin.md').read_text() == PAGE
 
 

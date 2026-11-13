@@ -21,7 +21,7 @@ Read
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
-  translate     Translate every page into your language, Chinese, English or mixed, or one page.
+  translate     Translate every page not yet in your language, or one page.
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
@@ -434,34 +434,40 @@ Back:     co rem --help
 ## co rem translate
 
 ```
-Translate every page into your language, Chinese, English or mixed, or one page.
+Translate every page not yet in your language, Chinese, English or mixed, or one page.
 
-Usage:    co rem translate [PAGE] [--to LANGUAGE] [--category CATEGORY]
-Example:  co rem translate
-          co rem translate --category people
+Usage:    co rem translate [PAGE] [--all] [--to LANGUAGE] [--category CATEGORY]
+Example:  co rem translate --all
+          co rem translate --all --category people
           co rem translate "Alice Chen"
           co rem translate people/alice-chen.md --to ja
+Cost:     It takes one model turn per page on the notebook's runner. The first line
+          says how many pages that is. Before each page the Codex week is read;
+          at the quota floor kept for your own work (limits.quota_floor_percent)
+          it stops and says where.
 Options:  With no PAGE, translates every page not yet read in your language,
-          Today's first, then prints [n/N] PAGE: translated or failed: reason,
-          then the counts. A page already in your language is skipped with no
-          model call; a page that mixes languages is translated. Run it again
-          and it does nothing. The open reader's 全部翻译成中文 button runs the
-          same job. --to defaults to the language you read REM in (Settings, or
-          detected from your own mail and sessions). --category limits it to one
-          category. --all is the old spelling of no PAGE. Put --root PATH before
-          translate to select another notebook. A failed page does not stop the
-          rest; any failure gives exit 1. --json returns outcomes and counts.
-Mixed:    A page counts as in your language when every line of its own prose is.
-          Quotes, names, link texts, code, source ids, privacy labels and Facts
-          labels are not counted: they stay as written in any translation. In
-          Chinese a line with two Han characters in a row is Chinese, so English
-          names and terms inside a Chinese sentence do not make it mixed.
+          Today's first, printing [n/N] PAGE: translated or failed: reason,
+          then the counts. A page already in your language costs nothing; a
+          page that mixes languages is translated. Run again, it does nothing.
+          Without a terminal (an agent, a script) it starts only with --all.
+          Logs, the skills catalog index and pages held for review or
+          duplicated are left out. The open reader's 全部翻译成中文 button runs
+          the same job; only one runs at a time, and the night's translation
+          pass waits for it. --to defaults to the language you read REM in.
+          --category limits it to one category. Put --root PATH before
+          translate to select another notebook. A failed page does not stop
+          the rest; any failure gives exit 1. --json returns outcomes and counts.
+Mixed:    A page is in your language when every line of its own prose is.
+          Quotes, names, link texts, code, ids, source ids, privacy labels and
+          Facts labels are not counted: they stay as written in any
+          translation. In Chinese a line with two Han characters in a row is
+          Chinese, so English names and terms inside it do not make it mixed.
 Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
           the page it was made from. The page itself never changes. Asked
           again, a current translation is printed with no model call; once the
           page changes, the translation is made again. Headings, Facts labels,
           source ids, privacy labels and names stay as they are; quotes keep
-          their language. Uses the notebook's runner (co rem config).
+          their language.
 Next:     co rem open
 Back:     co rem --help
 ```

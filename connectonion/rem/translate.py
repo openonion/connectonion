@@ -11,6 +11,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import re
+import os
 import shutil
 import tempfile
 import sys
@@ -290,14 +291,19 @@ def _read_translation(workspace):
 
 
 def translate_pages(root: Path, language: str, records, say=None, workers=1, *, translate_one=None,
-                    stop=None, on_row=None) -> dict:
+                    stop=None, on_row=None, floor=None) -> dict:
     """Translate independent pages in input order; a failed page does not stop the queue.
-    Once `stop` (a threading.Event) is set, the pages not yet begun are left as they are."""
+    Once `stop` (a threading.Event) is set, the pages not yet begun are left as they are. `floor`
+    is asked before every page; when it names a reason (the quota floor), nothing more begins."""
     checked_language(language)
+    halted = []
 
     def one(record):
         row = {"page": record, "outcome": "cached"}
-        if stop is not None and stop.is_set():
+        if stop is not None and stop.is_set() or halted:
+            return {"page": record, "outcome": "stopped"}
+        if floor and (reason := floor()):
+            halted.append(reason)
             return {"page": record, "outcome": "stopped"}
         try:
             if cached(root, record, language) is None:
@@ -318,7 +324,49 @@ def translate_pages(root: Path, language: str, records, say=None, workers=1, *, 
     counts = Counter(row["outcome"] for row in rows)
     return {"language": language, "pages": rows,
             **{outcome: counts[outcome] for outcome in ("translated", "cached", "failed")},
-            **({"stopped": counts["stopped"]} if stop is not None else {})}
+            **({"stopped": counts["stopped"]} if stop is not None or floor else {}),
+            **({"halted": halted[0]} if halted else {})}
+
+
+def quota_floor(root: Path, config: dict):
+    """The night's own guard for a one-click job: the week's floor kept for the owner's own work."""
+    from . import quota
+    return lambda: quota.floor_block(quota.meter(root, config), config["limits"])
+
+
+# Claimed while a translate-every-page job runs (the CLI or the Host's), so a second one and the
+# night's translation pass leave it alone. A claim whose process is gone is ignored.
+CLAIM = "translate-all.json"
+
+
+def claimed(root: Path) -> dict | None:
+    from .files import read_json
+    holder = read_json(state_path(root, CLAIM), None)
+    if not isinstance(holder, dict) or not isinstance(holder.get("pid"), int):
+        return None
+    try:
+        os.kill(holder["pid"], 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass  # alive, another user's
+    return holder
+
+
+def claim(root: Path) -> None:
+    from .service import now
+    holder = claimed(root)
+    if holder:
+        raise RemError(f"REM is already translating every page (since {holder.get('started_at', 'earlier')}); "
+                       "it stops by itself when done")
+    write_json(state_path(root, CLAIM), {"pid": os.getpid(), "started_at": now().isoformat(timespec="seconds")})
+
+
+def release(root: Path) -> None:
+    path = state_path(root, CLAIM)
+    from .files import read_json
+    if path.is_file() and read_json(path, {}).get("pid") == os.getpid():
+        path.unlink()
 
 
 # The owner (2026-11-13): «有的页面是中文，有的是英文，有的是中英文混合，一键让 Codex 全部都翻译。»
@@ -381,12 +429,23 @@ def current(root: Path, record: str, language: str) -> bool:
     return cached(root, record, language) is not None or in_language(Notebook(root).read(record), language)
 
 
+def readable(root: Path) -> list[str]:
+    """The pages translated at all: not logs (the maps' run records), not the skills catalog's index,
+    not pages held for review, services or duplicate installations (census.listed). Sessions, agenda,
+    knowledge and AI-note pages are read, so they are translated (the night always translated notes)."""
+    from .census import listed, pages
+    found = pages(root)
+    return [record for record in Notebook(root).list()
+            if record.split("/")[0] != "logs" and record != "skills/catalog/index.md"
+            and (record not in found or listed(found[record]))]
+
+
 def plan(root: Path, language: str, category: str = "") -> tuple[int, list[str]]:
-    """Every page the notebook counts (co rem status's coverage), and the ones not yet current
+    """The readable pages (co rem status's coverage counts the same), and the ones not yet current
     in `language`, Today's first: the night's own queue (backlog), so both agree on what is left."""
-    total = len(Notebook(root).list(category))
+    pages = [record for record in readable(root) if not category or record.split("/")[0] == category]
     pending = backlog(root, language, shown=shown_today(root))
-    return total, [record for record in pending if not category or record.split("/")[0] == category]
+    return len(pages), [record for record in pending if record in set(pages)]
 
 
 # One translate-every-page job per notebook in this process (the Host the reader talks to).
@@ -410,17 +469,17 @@ def every_page(root: Path, action: str, language: str = "") -> dict:
         if action == "start" and not busy:
             job = JOBS[key] = {"state": "starting", "language": _job_language(root, language),
                                "done": None, "total": None, "translated": 0, "failed": 0,
-                               "stop": threading.Event()}
+                               "error": None, "stop": threading.Event()}
             threading.Thread(target=_run_job, args=(root, job), daemon=True).start()
             busy = True
         if busy:
             return {name: value for name, value in job.items() if name != "stop"}
     # Idle or finished: the counts as the notebook stands now (the night may have changed pages since).
-    last = {name: value for name, value in (job or {"state": "idle", "translated": 0, "failed": 0}).items()
-            if name in ("state", "translated", "failed", "error")}
+    last = {name: value for name, value in (job or {"state": "idle", "translated": 0, "failed": 0, "error": None}).items()
+            if name in ("state", "translated", "failed", "error", "halted")}
     language = job["language"] if job and not language else _job_language(root, language)
     # Counts only: plan's Today-first order reads the whole queue (~5 s on a real notebook).
-    records = Notebook(root).list()
+    records = readable(root)
     return {**last, "language": language, "done": sum(current(root, record, language) for record in records),
             "total": len(records)}
 
@@ -441,6 +500,7 @@ def _run_job(root, job):
         job["translated"] += row["outcome"] == "translated"
         job["failed"] += row["outcome"] == "failed"
 
+    mine = False
     try:
         config = read_config(root)
         problem, _ = ready(config)
@@ -448,12 +508,20 @@ def _run_job(root, job):
             # The reader shows this; the fix command stays in the terminal's words (D-60).
             job.update(state="failed", error=problem)
             return
+        claim(root)  # refused, in words, while the CLI is already translating every page
+        mine = True
         total, pending = plan(root, job["language"])
         job.update(total=total, done=total - len(pending), state="stopping" if job["stop"].is_set() else "running")
-        translate_pages(root, job["language"], pending, workers=config["limits"]["workers"],
-                        stop=job["stop"], on_row=counted)
-        job["state"] = "stopped" if job["stop"].is_set() else "done"
+        result = translate_pages(root, job["language"], pending, workers=config["limits"]["workers"],
+                                 stop=job["stop"], on_row=counted, floor=quota_floor(root, config))
+        if result.get("halted"):
+            job["halted"] = result["halted"]
+        job["state"] = "stopped" if job["stop"].is_set() or result.get("halted") else "done"
+    except RemError as error:
+        job.update(state="failed", error=str(error))
     finally:
+        if mine:
+            release(root)
         # Anything unexpected still reaches the Host's log; the button must not wait on a dead thread.
         if job["state"] not in ("done", "stopped", "failed"):
             job.update(state="failed", error="The translation stopped unexpectedly")
@@ -512,7 +580,7 @@ def backlog(root, language, *, changed=(), shown=()):
     requested = {record: position for position, record in enumerate(requested)}
     waiting, changed = _waiting_pages(root), set(changed)
     shown = {record: position for position, record in enumerate(shown)}
-    records = sorted(book.list(), key=lambda record: (
+    records = sorted(readable(root), key=lambda record: (
         shown.get(record, len(shown)), record not in waiting, -book.path(record).stat().st_mtime_ns,
         record not in changed, requested.get(record, len(requested)), record))
     return [record for record in records if not current(root, record, language)]
@@ -539,7 +607,7 @@ def languages(root):
 
 def coverage(root, *, next_run=None):
     """Current coverage and what is queued: every missing page of a requested language (D-104)."""
-    records, targets = Notebook(root).list(), languages(root)
+    records, targets = readable(root), languages(root)
     directory = state_path(root, "translations")
     saved = sorted(path.name for path in directory.iterdir()
                    if path.is_dir() and LANGUAGE.fullmatch(path.name)) if directory.is_dir() else []

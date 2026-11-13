@@ -74,7 +74,7 @@ def test_co_rem_translate_with_no_flag_translates_english_and_mixed_pages_and_a_
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
     total = len(tr.Notebook(notebook).list())
-    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate"])
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
     assert result.exit_code == 0, result.output
     assert sorted(calls) == ["# Avery Lin", "# Fernhill pilot"]          # the Chinese page needs no model turn
     assert f"{total - 2} of {total} pages already read in 中文; translating 2…" in result.output
@@ -82,7 +82,7 @@ def test_co_rem_translate_with_no_flag_translates_english_and_mixed_pages_and_a_
     assert f"2 translated, 0 cached, 0 failed. {total} of {total} pages now read in 中文." in result.output
     assert all(tr.current(notebook, record, "zh") for record in PAGES)
     assert tr.coverage(notebook)["zh"]["translated"] == total            # co rem status agrees
-    again = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate"])
+    again = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
     assert again.exit_code == 0, again.output
     assert len(calls) == 2 and f"All {total} pages already read in 中文; nothing to translate." in again.output
 
@@ -131,7 +131,7 @@ def test_the_reader_button_runs_the_same_job_through_the_host_with_its_write_rul
     assert call({"action": "start"}, kind="text/plain")[0] == 415          # a form post cannot start it
     assert call({"action": "go"})[0] == 400 and not calls
     status, body = call({"action": "status", "language": "zh"})
-    assert status == 200 and json.loads(body) == {"state": "idle", "translated": 0, "failed": 0, "language": "zh",
+    assert status == 200 and json.loads(body) == {"state": "idle", "translated": 0, "failed": 0, "error": None, "language": "zh",
                                                   "done": total - 2, "total": total}
     assert json.loads(call({"action": "start", "language": "zh"})[1])["state"] in ("starting", "running", "done")
     done = _until(call, "done")
@@ -158,6 +158,79 @@ def test_stop_lets_the_page_begun_finish_and_leaves_the_rest(notebook, tmp_path_
 
 def test_the_command_is_on_the_root_help_page_not_only_under_advanced():
     root = CliRunner().invoke(app, ["rem", "--help"], terminal_width=200).stdout
-    assert "  translate     Translate every page into your language, Chinese, English or mixed, or one page." in root
+    assert "  translate     Translate every page not yet in your language, or one page." in root
+    page = CliRunner().invoke(app, ["rem", "translate", "--help"], terminal_width=200).stdout
+    assert "one model turn per page" in page and "quota floor" in page
     advanced = CliRunner().invoke(app, ["rem", "advanced", "--help"], terminal_width=200).stdout
     assert "  translate " not in advanced
+
+
+def test_without_a_terminal_bare_translate_asks_for_all_before_spending(notebook, monkeypatch):
+    monkeypatch.setattr("connectonion.rem.runner.run_task", lambda *a: pytest.fail("model called"))
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate"])
+    assert result.exit_code != 0
+    assert "2 pages, one model turn each" in result.output and "--all" in result.output
+
+
+FULL = {"used_percent": 95, "window_minutes": 10080, "resets_at": 0, "plan": "pro"}
+
+
+def _meter_after(calls, pages):
+    """The week crosses the floor once `pages` model turns have run."""
+    return lambda root, config: FULL if len(calls) >= pages else {**FULL, "used_percent": 10}
+
+
+def test_the_quota_floor_stops_the_cli_before_the_next_page(notebook, monkeypatch):
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    monkeypatch.setattr("connectonion.rem.quota.meter", _meter_after(calls, 1))
+    total = len(tr.Notebook(notebook).list())
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
+    assert len(calls) == 1, result.output
+    assert f"Stopped at {total - 1} of {total}: the Codex week is at 95%" in result.output
+
+
+def test_the_quota_floor_stops_the_host_job_in_words(notebook, tmp_path_factory, monkeypatch):
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    monkeypatch.setattr("connectonion.rem.quota.meter", _meter_after(calls, 1))
+    call = _host(notebook, tmp_path_factory.mktemp("co"))
+    call({"action": "start"})
+    stopped = _until(call, "stopped")
+    assert len(calls) == 1 and stopped["halted"].startswith("the Codex week is at 95%")
+
+
+def _dead_pid():
+    import subprocess
+    import sys
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    return child.pid
+
+
+def test_a_running_job_holds_a_claim_the_night_and_a_second_cli_respect(notebook, monkeypatch):
+    import os
+    from connectonion.rem import native_round
+    from connectonion.rem.config import read_config
+    from connectonion.rem.daily import _translate_changed
+    from connectonion.rem.files import state_path, write_json
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    write_json(state_path(notebook, "translate-all.json"), {"pid": os.getpid(), "started_at": "2026-11-13T10:00:00+00:00"})
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
+    assert result.exit_code != 0 and "already translating every page" in result.output and not calls
+    maintenance = {}
+    _translate_changed(notebook, read_config(notebook), maintenance, [], None, lambda text: None)
+    assert "translations" not in maintenance and not calls
+    from connectonion.rem import service
+    cursor = {"changed": [], "shown_today": [], "translation_attempts": [], "phase": "daily-translation",
+              "task_day": service.notebook_today(notebook).isoformat()}
+    directory = state_path(notebook, "tasks/claim-test")
+    directory.mkdir(parents=True)
+    assert native_round.prepare_translation(notebook, cursor, read_config(notebook), directory) is None
+    # A claim whose process is gone is ignored: the night goes on, and the CLI runs.
+    write_json(state_path(notebook, "translate-all.json"), {"pid": _dead_pid(), "started_at": "2026-11-13T10:00:00+00:00"})
+    assert native_round.prepare_translation(notebook, cursor, read_config(notebook), directory) is not None
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
+    assert result.exit_code == 0, result.output
+    assert not state_path(notebook, "translate-all.json").exists()              # released when done

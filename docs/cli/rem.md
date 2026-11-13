@@ -2433,21 +2433,29 @@ a second failure is reported and nothing is cached.
 To translate every page at once (the pages themselves remain the audited source):
 
 ```bash
-co rem translate
-co rem translate --category people
+co rem translate --all
+co rem translate --all --category people
 co rem translate "Avery Lin"
 co rem translate people/avery-lin.md --to ja
 ```
 
-With no page named, `co rem translate` translates every page `co rem status`
-counts that is not yet read in your language, Today's pages first (the night's
+With no page named, `co rem translate` translates every readable page (not
+logs, the skills catalog index, or pages held for review or
+duplicated; `co rem status` coverage counts the same pages) that is not yet read
+in your language, Today's pages first (the night's
 own queue), using up to `limits.workers` concurrent pages. It first says how
 many are already read in that language and how many it will translate, prints
 `[n/N] PAGE: translated` or `failed: reason` for each, then the counts and how
 many pages are now read in the language. Run again, it does nothing. A page's
 failure does not stop the next page; any failures make the command exit 1.
 `--json` returns the outcomes and counts. `--category` limits it to one
-category; `--all` is the old spelling of naming no page. Omit `--to` to use the
+category. It costs one model turn per page, and the first line says how many:
+without a terminal (an agent exploring help, a script) it starts only with
+`--all`. Before each page it reads the Codex week and stops at
+`limits.quota_floor_percent`, the floor kept for your own work, saying where it
+stopped. One job runs at a time (`.state/translate-all.json` holds its process
+id; a claim whose process is gone is ignored): a second run says one is already
+running, and the night's translation pass skips itself while it runs. Omit `--to` to use the
 language you read REM in (the one owner-language rule, `languages.owner_language`).
 
 Chinese, English and mixed pages: a page counts as already in your language when
@@ -2464,9 +2472,11 @@ lines come back as they were). The reader marks a mixed page `written_in:
 The live reader runs the same job from a worded button, **全部翻译成中文**, in
 Settings, beside **中文版还没好，先看原文** on a page, and in the home translation
 notice. It posts to the Host's `/rem/translate-all` (`start`, `status`, `stop`)
-under the same loopback, cookie and JSON-only rules as every other write, then
-shows **已翻译 N / M** until it is done, with **停止翻译**: pages already begun
-finish, the rest are left as they are. When it ends the reader rebuilds and the
+under the same loopback, cookie and JSON-only rules as every other write. The
+button names its cost, **全部翻译成中文（606 页）**; while it runs the reader shows
+**已翻译 N / M** with **停止翻译**: pages already begun finish, the rest are left as they are. At the quota floor it stops with
+**额度只剩留给你自己用的部分，已停在 N / M**. A refused request says so in words; a
+dropped connection is retried with a growing wait. When it ends the reader rebuilds and the
 open page reloads with the translations. No command to copy (D-60).
 
 Each model translation records a `translate` run with its language, page,
