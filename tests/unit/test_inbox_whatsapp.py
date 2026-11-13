@@ -1381,6 +1381,27 @@ def test_a_photo_is_fetched_while_its_keys_are_still_in_hand(tmp_path, sdk):
     assert asked["message"] is event.Message   # the protobuf, not a copy of the record
 
 
+def test_a_document_keeps_its_own_extension_and_name(tmp_path, sdk):
+    """A PDF saved as `<id>.bin` was a file neither `read_file` nor a person
+    browsing media/ could place (#2853). The real name is on documentMessage."""
+    from connectonion.inbox.whatsapp import WhatsApp
+
+    class Client:
+        def download_any(self, message, path=None):
+            Path(path).write_bytes(b"%PDF-1.7 itinerary")
+
+    provider = linked(WhatsApp())
+    event = media_event("documentMessage", message_id="3EB0DOC")
+    variant = event.Message.ListFields()[0][1]
+    variant.mimetype, variant.fileName = "application/pdf", "Acme itinerary.PDF"
+    message = provider.to_message(event)
+    provider.fetch_media(Inbox("whatsapp", tmp_path), message, event, Client())
+
+    assert Path(message.media["path"]).name == "3EB0DOC.PDF"
+    assert message.media["name"] == "Acme itinerary.PDF"
+    assert message.media["mime"] == "application/pdf"
+
+
 def test_a_media_download_that_fails_says_so_on_the_message(tmp_path, sdk):
     """Expired media is the normal failure and a zero-byte file is worse than an
     error: a caller reads an empty document as an empty document."""

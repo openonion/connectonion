@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints every failure by name, and caches the first as `needs <requirement>` (the bare name read as a fact about the server in the LAST CHECK column)
   State/Effects: reads and writes ~/.co/servers.yaml (name → ssh target, last check result) | shells out to the system ssh binary | never stores a credential
   Integration: exposes handle_server_add(), handle_server_list(), handle_server_check(), handle_server_new(), handle_server_destroy(), handle_server_invoice(), load_server() for deploy | requirement list is Ubuntu 24.04, python 3.11+, systemd the user may manage, free disk
-  Billing: oo-api /servers/pricing `billing == "monthly_in_arrears"` selects the monthly wording (nothing charged at create, each month charged when it ends, destroy charges the used part, invoices); without it the backend is the older 12-months-up-front one and the prepaid wording is kept | amounts are always the backend's, never recomputed (the pre-create quote uses the formula the backend publishes) | --pdf is drawn with pypdf, already a dependency
+  Billing: oo-api /servers/pricing `billing == "monthly_prepaid"` selects the monthly wording (first month charged at create, each month charged as it starts, destroy refunds the unused part, invoices and credit notes); without it the backend is the older 12-months-up-front one and the prepaid wording is kept | amounts are always the backend's, never recomputed (the pre-create quote uses the formula the backend publishes) | --pdf is drawn with pypdf, already a dependency
   Performance: one ssh round trip per check; the probe is a single command, not one per requirement
   Errors: an unreachable host fails with ssh's own message and a short timeout, never a hang | a missing requirement is named
 """
@@ -328,17 +328,22 @@ def _fetch_billed_servers():
         return None
 
 
+# What oo-api calls monthly billing in advance (#287): the first month at
+# create, each next one as it starts, the unused part back at a destroy.
+MONTHLY = "monthly_prepaid"
+
+
 def _billing_cell(record: dict) -> str:
-    """One server's money, in the backend's numbers: price, next charge, so far, owed.
+    """One server's money, in the backend's numbers: price, paid until, owed.
 
     Three shapes, because three kinds of server exist at once: monthly in
-    arrears, a year bought on the old term and not yet run out, and any server
+    advance, a year bought on the old term and not yet run out, and any server
     from a backend before monthly billing (no `billing` key at all).
     """
     billing = record.get("billing")
     if billing == "prepaid_12_months":
         return f"[dim]prepaid until {record['prepaid_until'][:10]}[/dim]"
-    if billing != "monthly_in_arrears":
+    if billing != MONTHLY:
         return f"[dim]until {record['expires_at'][:10]}[/dim]"
     if record.get("status") == "suspended":
         return (f"[red]suspended for non-payment — ${record['unpaid_usd']:.2f} unpaid, "
@@ -347,8 +352,11 @@ def _billing_cell(record: dict) -> str:
         return f"[red]stopping for non-payment — ${record['unpaid_usd']:.2f} unpaid[/red]"
     if record.get("status") == "deleting":
         return "[dim]being deleted[/dim]"
-    cell = (f"${record['usd_month']:.2f}/mo · next charge {record['next_charge_at'][:10]} · "
-            f"${record['accrued_usd']:.2f} so far")
+    if record.get("paid_until"):
+        cell = (f"${record['usd_month']:.2f}/mo · paid until {record['paid_until'][:10]}, "
+                f"renews from credits")
+    else:
+        cell = f"${record['usd_month']:.2f}/mo · [red]this month not paid[/red]"
     if record.get("unpaid_usd"):
         cell += f" · [red]${record['unpaid_usd']:.2f} unpaid[/red]"
     return cell
@@ -369,13 +377,12 @@ def _print_moved_addresses(servers: Dict[str, dict], billed: list) -> None:
 def _print_grace(billed: list) -> None:
     """For a server that owes a month: when it stops and when it is deleted.
 
-    The days come from `pricing.unpaid`, counted from the end of the unpaid
-    month. A server that is still running and owes is in its first unpaid
-    month (it stops three days in, by default), whose end is where its open
-    month began.
+    The days come from `pricing.unpaid`, counted from the start of the month
+    that could not be charged. A server that is still running and owes is in
+    that month (it stops three days in, by default).
     """
     owing = [s for s in billed
-             if s.get("billing") == "monthly_in_arrears" and s.get("unpaid_usd")]
+             if s.get("billing") == MONTHLY and s.get("unpaid_usd")]
     if not owing:
         return
     timeline = (_fetch_pricing() or {}).get("unpaid")
@@ -386,10 +393,10 @@ def _print_grace(billed: list) -> None:
 
 
 def _grace_line(record: dict, timeline: dict) -> str:
-    """Stop and delete dates from `unpaid_since`, the end of the oldest unpaid month.
+    """Stop and delete dates from `unpaid_since`, the start of the oldest month owed.
 
     A backend that does not send it leaves an estimate: a running server that
-    owes is in its first unpaid month, which ended where its open month began.
+    owes is in the month that could not be charged, the open one.
     """
     from datetime import datetime, timedelta
 
@@ -409,14 +416,14 @@ def _grace_line(record: dict, timeline: dict) -> str:
 
 
 def _print_balance_cover(billed: list) -> None:
-    """Will the balance pay the next month-end charges? Best effort, like the lookup.
+    """Will the balance pay the next month's charges? Best effort, like the lookup.
 
     The balance is shared by every server, so the comparison is against all of
     them together: each running one's month plus anything already owed.
     """
     from .project_cmd_lib import load_api_key
 
-    monthly = [s for s in billed if s.get("billing") == "monthly_in_arrears"]
+    monthly = [s for s in billed if s.get("billing") == MONTHLY]
     if not monthly:
         return
     balance = _fetch_balance(load_api_key())
@@ -703,8 +710,8 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
 
     console.print(f"[green]✓ {name} destroyed[/green]")
     result = response.json() if response.content else {}
-    if result.get("billing") == "monthly_in_arrears":
-        _print_final_charge(name, result, (record or {}).get("unpaid_usd") or 0)
+    if result.get("billing") == MONTHLY:
+        _print_final_charge(name, result, record)
     else:
         _print_refund(result)
     return True
@@ -713,52 +720,56 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
 def _destroy_terms(record: Optional[dict]) -> str:
     """What destroying this server does to the money, said before it happens.
 
-    Read from the backend's own record of the server: a monthly one is charged
-    for the part of the month it ran, a year bought on the old term refunds
-    what is left of it. When the lookup fails we do not guess which.
+    Read from the backend's own record of the server: a monthly one gets back
+    the unused part of the month it paid for, a year bought on the old term
+    refunds what is left of it. When the lookup fails we do not guess which.
     """
     if record is None:
         return "Whatever it owes or is owed is settled now and shown below."
-    if record.get("billing") == "monthly_in_arrears":
-        return _monthly_destroy_terms(record.get("accrued_usd") or 0, record.get("unpaid_usd") or 0)
+    if record.get("billing") == MONTHLY:
+        return _monthly_destroy_terms(record.get("refund_if_destroyed_usd") or 0,
+                                      record.get("unpaid_usd") or 0)
     if record.get("billing") == "prepaid_12_months":
         return "The unused part of the year it was bought for is refunded to your credit."
     return "The unused part of the term is refunded to your credit."
 
 
-def _monthly_destroy_terms(accrued: float, owed: float) -> str:
-    """A server that already owes is not charged at a destroy: the used part joins the debt."""
-    if owed and accrued:
-        return (f"The used part of this month (about ${accrued:.2f}) is added to what you "
-                f"owe (${owed:.2f} unpaid), and the monthly billing stops.")
+def _monthly_destroy_terms(refund: float, owed: float) -> str:
+    """A paid month gives back its unused part; a month never paid owes the part used."""
     if owed:
-        return f"The monthly billing stops; the ${owed:.2f} unpaid stays owed."
-    if accrued:
-        return (f"The used part of this month (about ${accrued:.2f}) is charged now, and "
-                f"the monthly billing stops.")
+        return (f"The monthly billing stops; what is owed (${owed:.2f}, plus the days used "
+                f"of a month that was never paid) stays owed.")
+    if refund:
+        return (f"The unused part of this month (about ${refund:.2f}) is refunded to your "
+                f"credits, and the monthly billing stops.")
     return "The monthly billing stops."
 
 
-def _print_final_charge(name: str, result: dict, owed_before: float) -> None:
-    """What the backend did with the used part, then everything still owed for this server.
+def _print_final_charge(name: str, result: dict, record: Optional[dict]) -> None:
+    """What the backend gave back for the unused part, then anything still owed.
 
     The response's `unpaid_usd` is only this destroy's part; what the server
     already owed was read before the delete, so the total is said once more.
+    That figure counts an open month that was never paid in full; the destroy
+    replaces it with the days used of it (this response's `unpaid_usd`).
     """
-    if result.get("charged_usd"):
-        console.print(f"[dim]${result['charged_usd']:.2f} charged for the used part of this "
-                      f"month — invoice {result.get('invoice_number')}.[/dim]")
-        console.print(f"[dim]co server invoice {name} {result.get('invoice_number')}   "
-                      f"to see it[/dim]")
-    if result.get("unpaid_usd"):
-        console.print(f"[yellow]${result['unpaid_usd']:.2f} for the used part of this month "
-                      f"was recorded as unpaid.[/yellow]")
-    owed = owed_before + (result.get("unpaid_usd") or 0)
+    if result.get("refunded_usd"):
+        note = result.get("credit_note_number")
+        console.print(f"[dim]${result['refunded_usd']:.2f} refunded to your credits for the "
+                      f"unused part of this month"
+                      + (f" — credit note {note}." if note else ".") + "[/dim]")
+        if note:
+            console.print(f"[dim]co server invoice {name} {note}   to see it[/dim]")
+    record = record or {}
+    owed = record.get("unpaid_usd") or 0
+    if owed and not record.get("paid_until") and record.get("period_start"):
+        owed -= record.get("usd_month") or 0            # the open month, now ended
+    owed = round(max(owed, 0) + (result.get("unpaid_usd") or 0), 2)
     if owed:
         console.print(f"[yellow]You still owe ${owed:.2f} for {name}; it is charged at your "
                       f"next top-up: https://discord.gg/4xfD9k8AUF[/yellow]")
-    if not result.get("charged_usd") and not owed:
-        console.print("[dim]Nothing charged.[/dim]")
+    if not result.get("refunded_usd") and not owed:
+        console.print("[dim]Nothing refunded — the month was already used up.[/dim]")
     console.print()
 
 
@@ -839,14 +850,14 @@ def _fetch_pricing() -> Optional[dict]:
 
 
 def _monthly(pricing: Optional[dict]) -> bool:
-    """Is this backend billing servers monthly in arrears (oo-api #287)?
+    """Is this backend billing servers monthly in advance (oo-api #287)?
 
     The backend before it charged twelve months at create and sends no
     `billing` key. Everything that talks about money asks this first, so the
-    CLI never tells someone "nothing is charged now" against a backend that is
-    about to charge them a year.
+    CLI never quotes "one month now" against a backend that is about to charge
+    them a year.
     """
-    return (pricing or {}).get("billing") == "monthly_in_arrears"
+    return (pricing or {}).get("billing") == MONTHLY
 
 
 def _monthly_price(pricing: dict, machine_type: str, disk_gb: int) -> float:
@@ -903,13 +914,12 @@ def _confirm(name: str, machine_type: str, region: str, pricing: dict,
 
 def _print_monthly_terms(pricing: dict, machine_type: str, disk_gb: Optional[int],
                          balance: Optional[float]) -> str:
-    """Monthly in arrears: nothing now, a month's price at each month end.
+    """Monthly in advance: the first month now, then a month as each one starts.
 
-    The balance line answers the one question that decides the create. The
-    backend counts every live server's month plus anything owed; this server's
-    month alone is a floor of that, so a balance below it returns "" and the
-    prompt is never shown. Anything else short is the backend's to refuse,
-    in its own words.
+    The balance line answers the one question that decides the create: it must
+    cover this first month, which is charged now. A balance below it returns ""
+    and the prompt is never shown. Anything else (an unpaid month elsewhere on
+    the account) is the backend's to refuse, in its own words.
     """
     disk = pricing["disk"]
     disk_gb = disk_gb or disk["default_gb"]
@@ -920,16 +930,16 @@ def _print_monthly_terms(pricing: dict, machine_type: str, disk_gb: Optional[int
                   f"[dim]— {disk['included_gb']} GB included, "
                   f"${disk['usd_per_gb_month']:.2f} / GB / month beyond[/dim]")
     console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.2f} / month[/bold] "
-                  f"[dim]— charged at the end of each month from credits; "
-                  f"nothing is charged now[/dim]")
+                  f"[dim]— first month charged now, then at the start of each month "
+                  f"from credits; destroy refunds the unused part[/dim]")
     if balance is not None and balance >= required:
-        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} [dim]— must cover a month of "
-                      f"every server you have, plus anything unpaid[/dim]")
+        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} [dim]→ "
+                      f"${balance - monthly:.2f} after the first month[/dim]")
     elif balance is not None:
-        console.print(f"  [cyan]your balance[/cyan]  [red]${balance:.2f} — below one month "
-                      f"(${required:.2f}), which the backend requires[/red]")
+        console.print(f"  [cyan]your balance[/cyan]  [red]${balance:.2f} — below the first month "
+                      f"(${required:.2f}), which is charged now[/red]")
         return ""
-    return f"Nothing would be charged now; ${monthly:.2f} at the end of each month."
+    return f"${monthly:.2f} would be charged now, then ${monthly:.2f} at the start of each month."
 
 
 def _print_prepaid_terms(pricing: dict, entry: dict, balance: Optional[float]) -> str:
@@ -1144,10 +1154,11 @@ def _print_created(name: str, server: dict) -> None:
     if server.get("hostname"):
         console.print(f"  [cyan]https://{server['hostname']}[/cyan] "
                       f"[dim]— once you deploy something to it[/dim]")
-    if server.get("billing") == "monthly_in_arrears":
-        console.print(f"  [dim]${server['usd_month']:.2f} / month — first charge "
-                      f"{server['next_charge_at'][:10]}; "
-                      f"${server['charged_usd']:.2f} charged now[/dim]")
+    if server.get("billing") == MONTHLY:
+        console.print(f"  [dim]${server['usd_month']:.2f} / month — "
+                      f"${server['charged_usd']:.2f} charged now, paid until "
+                      f"{(server.get('paid_until') or server['next_charge_at'])[:10]}; "
+                      f"renews from credits[/dim]")
     else:
         console.print(f"  [dim]expires {server['expires_at'][:10]} — "
                       f"${server['charged_usd']:.2f} charged[/dim]")
@@ -1209,8 +1220,8 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         body["disk_gb"] = disk_gb
     if _monthly(pricing):
         # The acknowledgement the monthly backend requires: this client has
-        # shown monthly-in-arrears terms. The older backend gets nothing new.
-        body["billing"] = "monthly_in_arrears"
+        # shown monthly-in-advance terms. The older backend gets nothing new.
+        body["billing"] = MONTHLY
     console.print(f"\n[dim]Creating {name} … this takes about a minute.[/dim]")
     try:
         response = requests.post(

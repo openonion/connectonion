@@ -376,6 +376,9 @@ the index under "Only in temporary or package locations", without a page.
 
 `Usage history` opens with what your own coding sessions say, counted by a
 script with no model: how many times the skill was invoked and when last.
+`init`, `co rem skills map` and the start of every night round recount it, so
+the count and the last day follow the sessions instead of stopping on the day
+of init.
 
 ```text
 - Invoked 14 times in your coding sessions in the last 180 days, last on 2026-09-28 (Claude Code 9, Codex 5). ...
@@ -396,7 +399,8 @@ Neither count proves that this installed version ran or that the task succeeded.
 The Skills page answers two questions at a glance. **Most used** shows up to
 eight skills as cards, ranked by their skill-name match count over the usage
 window (ties by the latest date), each with one line of what it does and "N
-matches in 180 days · last date". Everything else is an index grouped by name
+matches in 180 days · last date"; the cards say what the number is, so
+the section has no caption. Everything else is an index grouped by name
 family (Lark, LinkedIn, co …; a family of fewer than three skills in all goes
 under Other) that fills the width; a strip of family names above it moves to
 each group and focuses its heading. Cards and rows keep the "last night" marker
@@ -795,14 +799,15 @@ Limits, one each:
 - A busy Host from before the upgrade keeps serving until its work ends, however
   long that is.
 
-The reader returns the context REM carried forward, then helps you recall an
-older page before showing its answer. It remains a point-in-time snapshot.
+The reader returns the context REM carried forward. It remains a point-in-time snapshot.
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
-The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
-the installed package and the same in both languages) and the snapshot time,
-then **EN · 中文** and **Auto · Light · Dark**, each a control. The primary
+The foot of the rail holds **Settings** and your own face. **Settings** opens one
+sheet: **EN · 中文**, **Auto · Light · Dark**, Reduce motion, Hide labelled
+passages, the notebook's languages, REM's state in words, the legend, and last
+the release (**co 1.9.3**, read from the installed package and the same in both
+languages) with the snapshot time and **Keyboard shortcuts**. The primary
 language control is the one-click button at the top right of every page (in the
 phone header too): it names the language it switches to (**EN** while in
 Chinese, **中** while in English), saves the same choice as **EN · 中文**, and
@@ -813,8 +818,10 @@ not put back after a redraw (an answer slot of a reply that has no id), the
 click does not draw over them: the button flips, the choice is saved, **有更新**
 shows, and the page changes language once those words are sent or cleared and
 you have left the field, with the sections open then kept open. Status and privacy controls live under it in **Reader settings**. **EN · 中文** switches
-interface labels and dates. Your saved choice comes first; otherwise Chinese is preferred when
-it is among your languages, then a Chinese browser language, then English.
+interface labels and dates. Your saved choice comes first; otherwise Chinese when it is
+your language (the rule drafts and the night's translation use too, under Writing
+languages), or when your language is one the interface lacks and Chinese is among yours,
+then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
@@ -883,13 +890,23 @@ pinned to that edge: it comes into view with the draft.
   with no due date has no red and says **No due date**. A row on your own page
   belongs to the person it names (who asked, or who is owed); a row that names
   nobody is your own note and is not counted as a person waiting, in the
-  headline, the lanes or the overnight names. The links beside the date count
-  *items* (**60 on others**, **22 items to approve in one go**), so they never
-  contradict the count of people. Your own items total is the sidebar's
-  **Waiting on you** number and is not said again on the first screen (one
-  number says one thing); with nothing on others the link reads **Everything
-  open**. A count of zero never shows: with nothing to approve there is no
-  approve link. A failed or stopped scheduled round shows one line above the
+  headline, the lanes or the overnight names. Since sprint 14 the large number
+  is the one "waiting on you" count, the same as the sidebar's (and the phone
+  tab's) **Waiting on you** badge: the items in Waiting on you that need you
+  (**21 things waiting on you**, 21 件在等你), and the rows of that band on Waiting on you are exactly
+  those items: a reply sent or held for its 10 minutes leaves all three together (the hold's **Undo** bar shows on
+  Waiting on you too), and with none waiting the header says *Nobody is waiting on you today.*. The faces beside it are a subset
+  and say so in words under it (**Start with these 5 people**, 先看这 5 个人;
+  a phone keeps the words of the count and leaves the faces to speak). The side
+  has no large numbers to stare at: what can be approved at once is a worded
+  button, **Approve all N** (一键批准这 N 件), counting only items that can go
+  now (a reply waiting for you to fill a gap is not among them) and opening the
+  approval sheet, whose title says the same N; what others owe is a worded link to its list, **See the N
+  waiting on others →** (看 N 件在等谁 →); with nothing on others the link
+  reads **Everything open**. With nothing that can go at once there is no
+  button at all, never a greyed one or a zero. Today no longer asks **What
+  should you remember about X?**: it picked a page REM already knew well, gave
+  no reason and took no answer, so the card was removed rather than dressed up. A failed or stopped scheduled round shows one line above the
   date in the reader's language (*One round last night ran too long and was
   stopped; the next round continues.*), never the runner's own English, which
   stays on the line's tooltip. The cards lead with the first
@@ -932,9 +949,13 @@ pinned to that edge: it comes into view with the draft.
   **A promise gone stale stops burning**: one whose date passed more than 60
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
-  and has no red. The side asks **Maybe over · still open?** with **Mark done**
-  (the usual mark) and **Still open**, which brings it back to the count; past three, its link *N more in Gone
-  quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
+  and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
+  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
+  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all N done**
+  (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
+  (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
+  any it refused get one *Not saved · Try again* for just those;
+  past three, its link *N more in Gone quiet →* opens Waiting on you with the folded **Gone quiet** section open and in view. The Projects headline names
   only a live late promise in red and mentions stale ones in grey; both read the thread's last cited message.
   A promise with no dated message stays live. **Still open** is kept on this
   device with its day and holds for another 60 days, then Today asks again. Stale promises are counted with the
@@ -989,8 +1010,15 @@ pinned to that edge: it comes into view with the draft.
   strip, with its **Mark done** and REM's reason, is shown without a hover, on
   a phone too. Since 1.9.6 every row of the open card shows its strip line (and so Mark done, Not now and Ignore)
   without a hover or a tap, on a desktop and a phone alike; the notes under it (also on, the draft's reason,
-  a task's result) still open on hover or tap. The card head's **S** button is **Next card** (下一张): it only
-  deals the next card and records nothing. A snapshot keeps Mark
+  a task's result) still open on hover or tap. Since sprint 14 each card has one primary, chosen by what the
+  item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
+  handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
+  **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
+  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾*, the lead among them in bold: the closes
+  and the two hand-offs stay visible words (D-100), and only **Talk it over** folds under the worded **More**
+  (更多). On a phone the three closes are the first line and the hand-offs and More the second. The card
+  head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
+  **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
   act. A refused request is said in words on the row,
   never in the Host's own English: an item no longer open (400) asks you to
@@ -999,7 +1027,7 @@ pinned to that edge: it comes into view with the draft.
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
 - **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
-  Talk it over ▾*, and opens the agent choice (**With Codex**, **With Claude**;
+  Talk it over ▾* (on Today it sits inside **More ▾**, since sprint 14), and opens the agent choice (**With Codex**, **With Claude**;
   和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
@@ -1010,13 +1038,23 @@ pinned to that edge: it comes into view with the draft.
   notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
   Opening it again returns the same conversation.
-- **The sidebar** is three groups: **Your day** (Today, Waiting on you,
-  Memory changes), **Explore memory** (People, Organisations, Projects, Skills,
-  Knowledge, Decisions, Principles, Agenda, Agent sessions, and Opportunities
-  or Works when they hold pages; any other empty one is left out, but People,
-  Organisations and Projects always show), and **All records** last. Only **Waiting on you** carries a
-  number; a category's size is not something to do. Rows share one size, grey,
-  with the current page in ink and the fuse mark, and nothing boxed. There is
+- **The rail** (D-132) is a 72px column of places, each a picture with its
+  word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
+  **Organisations** (*Orgs*), **Projects**, **Skills**, **All records** (*All*),
+  then **More**, and at the foot **Settings** and your face. A short word is
+  the start of the place's accessible name (*Orgs* is named "Orgs ·
+  Organisations"), so saying the word you see finds it. **More** opens beside
+  its button, wherever the rail has scrolled to, and is never taller than the
+  window: **Memory changes**, then Knowledge, Decisions, Principles, Agenda,
+  Agent sessions, Opportunities and Works when they hold pages. Your face opens
+  your own page and shows **You · name** beside it on hover and on keyboard
+  focus. Only **Waiting on you** carries a number; a category's size is not
+  something to do. The current place is in ink, in bold, on a raised cell. In a
+  window lower than the rail (656px) the rail itself scrolls, so every place
+  stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
+  People, Search, More); **More** opens a sheet with every place by its full
+  name, Skills and All records among them, the More list under them with its
+  labels in the same column, and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
@@ -1052,6 +1090,12 @@ pinned to that edge: it comes into view with the draft.
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
   Graph labels are cut by width, so a Chinese title stays inside its card.
+  **All records**' **Most connected** leaves your own page out: you are every
+  page's hub by definition (the notebook's owner field, not a name).
+- **An organisation's link to Today**, **N things in Today involve X**, counts
+  what Today counts: the items waiting on you (not done, not quiet, not a
+  stale promise, not a reply already sent or held) whose rows belong to the
+  organisation or its units, so it never exceeds Today's own number.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1096,7 +1140,11 @@ pinned to that edge: it comes into view with the draft.
   A short legend lives in **Reader settings**.
 - **A person's page is their record** (owner, 2026-11-08): no list of what
   you owe and no **Mark done** there; one quiet link, **N items in Today**,
-  when Today holds something of theirs. The name is the page's one large mark;
+  when Today holds something of theirs. Right under the header comes
+  **Open topics** (**还没结的话题**), what is still open with them, because it
+  is what you open a person for: the top three, and **All N entries**
+  (**全部 N 条**) opens the rest in place. On a phone the face stays in the
+  header beside the name and the contact buttons take the row below. The name is the page's one large mark;
   it carries its script as `lang` and hyphenates (where the browser has no
   hyphenation dictionary and a word would overflow, the reader adds soft
   hyphens at likely syllable joins; copying the name drops them). Under it
@@ -1109,9 +1157,9 @@ pinned to that edge: it comes into view with the draft.
   from their last mail, and only once that is past your own median reply time
   in synced mail, and never while Today has her items handled, looking
   handled or needing no reply; without that data it is never red. Then mails,
-  first exchange, your median reply and last contact; **Open topics**
-  (**还没结的话题**), the record's open threads as words and a date with
-  nothing to click (marking them happens in Today); **In their words**,
+  first exchange, your median reply and last contact (Open topics, above
+  them, are the record's open threads as words and a date with nothing to
+  click; marking them happens in Today); **In their words**,
   their own archived mail said to you personally: you on To or Cc (your
   addresses from the map and mail archive; unknown addresses quote nothing),
   at most eight recipients, not an auto-reply, cited by a public passage and
@@ -1141,10 +1189,14 @@ pinned to that edge: it comes into view with the draft.
   when they exist, and otherwise show the original with a 原文 mark.
   Investigated records omit the redundant status pill; mapped and partly
   investigated records keep it, and reviewed skills say **Source reviewed**.
-  A page with no translation yet shows a quiet **Original** (原文) mark, whose
-  tooltip says whether it is queued for the next pass or background updates
-  are off. Opening the page only queues it, so the reader never says
-  "translating": one small grey mark in the crumb above the name, never a line of its own; cached translations preserve the original Sources lines.
+  A person, organisation or project page with no translation yet carries no
+  mark above its name (the old 原文 chip read as jargon). When its translation
+  is on its way (opening it in the live reader queues it, or the reader's
+  language is a nightly translation target) one quiet meta-size line under
+  the header says **中文版还没好，先看原文**; its tooltip says whether it is
+  queued for the next pass or background updates are off. A page simply in
+  English with nothing requested says nothing. Opening the page only queues
+  it, so the reader never says "translating"; cached translations preserve the original Sources lines.
 - **Candidate correction for Related pages (#2624):** repeated snippets may be
   compacted only when their text, origin page, citation IDs, privacy state and
   original/translated state match. A destination page's introduction is never
@@ -1352,6 +1404,19 @@ rather than stopping at 40 messages. It searches aliases and project paths;
 an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
+
+Codex compresses older sessions in place: `rollout-X.jsonl` becomes
+`rollout-X.jsonl.zst`. On one machine about 22,000 of 22,800 Codex session
+files were compressed, and REM read none of them: a first map saw only the
+newest few weeks, and the next map would have cut skill counts to what the
+plain files held (#2943). Every reader of coding sessions (sync, the shared
+map pass, session pages, project filing and discovery, skill counts and
+samples, the claim check of a cited line) now reads a `.zst` session as the
+plain bytes it holds, streamed rather than unpacked to disk. Read progress is
+the plain file's offset and hash and is kept under the plain name, so a session
+read before Codex compressed it is not read again; a fully read compressed file
+also keeps its own size and is not reopened until it changes. A session present
+in both forms while Codex compresses it is read once, as the plain file.
 
 A prompt a program sent is not the user's: a Claude Code row with an `sdk`
 entrypoint or an `sdk`/`system` prompt source is skipped. A launchd job's
@@ -1592,6 +1657,33 @@ below is good to about one point.
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
+- **A round the floor stops is a pause, and REM says so.** A notebook at the
+  floor did nothing for two nights (71 scheduled turns, each ending with no
+  task) while status, the night stats and the morning note all read as a
+  quiet night. Now the first turn the floor stops records the pause in
+  `.state/quota-paused.json` (when it began, the week's percent, the floor and
+  the reset), and later turns keep that start time. `co rem status` leads with
+  it:
+
+  ```
+  Codex week      Paused since Mon 09 Nov 17:00
+                  This week's Codex allowance is 90% used, at the 90% floor kept for your own work.
+                  No investigation runs until the week resets Wed 11 Nov 17:46; mail is still read.
+                  → To let REM work before then, raise the floor: co rem config set limits.quota_floor_percent PERCENT
+  ```
+
+  The morning note's first line is `REM paused: this week's Codex allowance is
+  90% used. It resumes Wed 17:46.` (Chinese: `REM 暂停中：本周 Codex 额度已用
+  90%，周三 17:46 恢复。`), sent every morning the floor holds, with
+  `"paused": "quota"` in that date's `morning.json` entry; a night the floor
+  held at any time carries `"paused": "quota"` in `night-stats.jsonl`. The pause
+  ends at the first turn the floor no longer stops, or when the week resets.
+  `co rem status --json` always has a `paused` key: `null` when REM is not
+  paused, otherwise `{"reason": "quota", "since", "used_percent", "floor",
+  "resets_at"}` (`resets_at` in Unix seconds), so a script reads one field
+  instead of testing whether it exists.
+  Waiting and raising the floor are both the owner's choice; REM changes
+  neither, and does not move the work to another runner.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
   (`limits.runner_calls_per_day`) is the only bound, as before.
@@ -1838,9 +1930,17 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses in the retained archive,
-  in the notebook's time zone. They are recomputed after promotion and on sync;
-  they describe the archive's bounds, which may not span the whole relationship.
+  messages to or from the person's own addresses (a third party's mail to more
+  than five recipients, such as a notice to a list, does not count) in the
+  retained archive, in the notebook's time zone. They are recomputed after
+  promotion and on sync; they describe the archive's bounds, which may not span
+  the whole relationship.
+- On project pages, a dated `Last activity` is never older than the newest
+  dated session message, mail, chat or commit history listed in the page's own
+  `## Sources`; code lifts it to that day after promotion and at the start of
+  every night round (an `Unknown` stays, and the reader dates the project by its
+  newest source). A snapshot's read day, a file's saved day and a web page's
+  date are not activity.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
@@ -2075,6 +2175,13 @@ Mailboxes
   meter, `✓`, every progress bar), yellow for what needs a fix.
 - Progress: one live line per stage (spinner, what it is doing, a 24-cell bar,
   `i/N` bold, elapsed dim); a finished stage leaves `✓ what it found`.
+- A file error says what failed. A file that could not be opened or written
+  is `Cannot read or write the selected co rem files: <the system's error, with
+  the path>`. A file that was read but is not text names the file when REM
+  knows it: `…/web/chart.png is not UTF-8 text (invalid start byte at position
+  0); it was read, so this is not a permission problem`. On 2026-11-12 a PNG
+  saved as a research capture was reported as a read or write failure, and the
+  owner went looking for a permission problem.
 
 ## What `sync` prints, and where the tokens went (#2043, #2044)
 
@@ -2349,23 +2456,35 @@ shows them under Reader settings, and `co rem config` shows any configured list.
 Detection uses your sent mail and typed sessions.
 `co rem config set languages zh,en` overrides detection; an empty list restores
 it. `co rem init --languages zh,en` sets the same validated configuration before
-the map. The first non-English tag supplies automatic translations, including a
-secondary Chinese language. 中文 mode also reads regional Chinese caches such
+the map. Your language is the first non-English tag of a configured list, so `en,zh`
+and `zh,en` both mean Chinese and only an English-only list means English; with no
+list, it is the language you write most (detection orders by share, so 88% English
+with the odd Chinese line means English). That one
+rule decides the reader's interface, the language of a reply draft's gist, why and
+【需要你：…】 slots (the body follows the reply skill's language rule, normally the
+thread's language), and the language translated first each night; languages the
+reader asked for come next, ahead of the rest of the list. The gist column is titled **要点** (Gist), with its
+language added when the writer used another one (**要点 · English**). 中文 mode also reads regional Chinese caches such
 as `zh-TW` and `zh-CN`. English pages remain the canonical audit record.
 
 ### Cached page languages
 
-Every daily run works through all missing or stale translations. Opened pages
-requesting a translation and pages changed this round come first, then your own
-page, people by recent activity, organisations/projects, decisions/agenda, and
-sessions last. Current caches spend no budget. There is no daily translation count (D-104):
+Every daily run works through all missing or stale translations, in this order:
+the pages behind the rows Today shows (at most 8, in Today's order), then the
+other pages with something waiting on you, then the newest page edits; opened
+pages requesting a translation and pages changed this round break ties. Today's
+rows are read once per round, not once per page. Current caches spend no budget. There is no daily translation count (D-104):
 after every 8 investigation turns translation gets a share sized from its
 backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
 
-The reader marks an untranslated page with a quiet **Original** (原文) while
-showing the original. Opening it in a non-English interface queues that language for the
+The reader shows an untranslated page's original with one quiet line under
+its header, **中文版还没好，先看原文**, while its translation is on its way. In the
+中文 interface a Today or Maybe over row starts with a quiet **原文** when its page
+has no current Chinese version (any region) and the row's words are not Chinese
+(names and codes inside Chinese words do not count).
+Opening it in a non-English interface queues that language for the
 next pass, even if it was not detected among the owner's languages. The Read in
 menu still allows an explicit language choice.
 Quoted evidence stays exactly in its original language.
@@ -2397,7 +2516,8 @@ Each page prints `translated`, `cached`, or `failed: reason`, followed by counts
 A page's reported translation failure does not stop the next page; any failures
 make the command exit 1. `--json` returns the outcomes and counts instead.
 Open or refresh the reader afterward: 中文 mode shows current cached prose, with
-quotes in their original language. An untranslated record still shows **原文**.
+quotes in their original language. An untranslated record still says
+**中文版还没好，先看原文** under its header.
 
 
 Each model translation records a `translate` run with its language, page,
@@ -2545,6 +2665,53 @@ after midnight. Manual sync refuses to overlap pending native work.
 `co rem logs` includes native tasks. Supply measured token usage with
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
 when available. Otherwise usage remains unknown.
+
+### When a mailbox fails on one page
+
+A mailbox failing while `next` prepares one page sets that page aside; `next`
+goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
+on a real notebook ended with no task: 16 turns on an Outlook HTTP 404, then 14
+on a ReadTimeout listing one mail's attachments, both while preparing one
+person's page. The error left `next` before the round was saved, so each turn
+tried the same page again, and four nights read no mail.
+
+- **Attachments are enrichment.** A listing that still fails after its retries
+  becomes a coverage line (`outlook: attachments for 1 message(s) not listed:
+  timed out`), and the page is written from the mail bodies. Those attachments
+  are not asked for again in that investigation; the page's next investigation
+  lists them again.
+- **A mail gone from the server is skipped** with a coverage line
+  (`outlook: 1 message(s) skipped: not found on the server (deleted or moved)`),
+  never a hint to open the inbox.
+- **Any other mailbox failure while preparing a page** (a body that times out, a
+  5xx, a network error) parks that page in `.state/fetch-parked.json` with the
+  mailbox, the reason and a retry time: 1 hour, then 6 hours, then once a day.
+  `next` prints `Set people/x.md aside: Outlook timed out; tried again no earlier than …`
+  (the retry time is the earliest; the page waits for the first round after it)
+  and serves the next page. Later rounds leave the page out until its retry time,
+  then bring back the same job; a page prepared again clears its entry. A bug in
+  REM is not a mailbox failure and still stops `next`, so it is seen.
+- **A mailbox failing for three pages in one turn, or whose authorization has
+  expired, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
+  `next` typed by hand is a turn of its own). Pages that would ask it wait for
+  the next turn without back-off, back in the same round, and work that needs no
+  mail (projects, skills, retries from held material, summaries, translations)
+  goes on. A page that was merged while it waited comes back as the page it was
+  merged into; one that no longer exists is dropped from the ledger.
+- **A mailbox failing outside any one page** — listing who wrote since the last
+  round when a round starts, or reading a slot's new mail — is recorded the same
+  way (an event in `.state/fetch-parked.json`, the night card's sentence) and is
+  not asked again in that turn; the other mailboxes are still listed and the
+  sessions are still read. Four nights read no mail while a failing mailbox was
+  read again at every slot.
+
+Today's night card says why in one plain sentence under its title, in the
+reader's language, and folds the pages set aside with when each is tried again:
+«昨夜 1 项因 Outlook 超时跳过，会再试», or when one page failed again and again
+«REM 昨夜在 Outlook 上卡住了：超时 3 次，已跳过这一项，其余照常» (at most three in a day under the back-off), or for a mailbox
+stopped for a turn «昨夜 Outlook 出了问题（授权已过期），REM 那一轮没再问它，其余照常».
+No exception name or command is shown; the reader has no reconnect button yet,
+so expired authorization is said in words only. A shared reader carries none of it.
 
 ### One quiet morning message
 

@@ -248,7 +248,7 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
         'ask': 0, 'bare': 0, 'file': 0, 'snapshot': 0}
 
 
-TODAY_CARD = ['personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+TODAY_CARD = ['personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
 
 
 def _today_card_js(body):
@@ -273,7 +273,7 @@ def _today_card_js(body):
       const marks = (node, place = 'card', found = []) => {
         if (!node || typeof node !== 'object') return found;
         const here = node.class?.startsWith('qitem') ? 'row' : node.class === 'qhead' ? 'head' : node.class === 'card-acts' ? 'step' : place;
-        const label = node.text === 'Mark done' ? node.text : node['aria-label']?.startsWith('Mark done') ? node['aria-label'] : null;
+        const label = node.text === 'Mark done' ? node.text : /^Mark (all )?done/.test(node['aria-label'] || '') ? node['aria-label'] : null;
         if (node.tag === 'button' && label) found.push({where: here, cls: node.class, label, click: node.onclick});
         (node.children || []).forEach(child => marks(child, here, found));
         return found;
@@ -295,9 +295,9 @@ def test_a_live_today_row_has_one_mark_done_and_it_slides_the_row_out():
       two.filter(mark => mark.where === 'row').forEach(click);
       console.log(JSON.stringify({one: seen(one), alone, two: seen(two), several: closed}));
     ''')
-    assert result['one'] == [['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['one'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]  # nothing else to do: the row's Mark done leads, in bold (sprint 14)
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['two'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['two'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     assert result['several'] == [['.qitem', ['feedback']], ['.qitem', ['slides']]]
 
 
@@ -314,9 +314,9 @@ def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row(
       both.filter(mark => mark.where === 'step').forEach(click);
       console.log(JSON.stringify({single: seen(single), alone, mixed: seen(mixed), both: seen(both), together: closed}));
     ''')
-    assert result['single'] == [['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['single'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]
     assert result['alone'] == [['.qcard', ['feedback']]]
-    assert result['mixed'] == [['head', 'ibtn', 'Mark done · E'], ['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['mixed'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
     # Every row handled: the green step closes them all, so the head's tick, which would too, is not drawn (E stays).
     assert result['both'] == [['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done'], ['step', 'btn-act', 'Mark done']]
     assert result['together'] == [['.qcard', ['feedback', 'slides']]]
@@ -379,7 +379,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'stripMarksDone', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -502,7 +502,7 @@ def test_today_card_speaks_chinese_where_rem_already_wrote_it():
 
 def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
     """Build 3b re-review: an owner row that names nobody is dropped before the five places are counted."""
-    result = _run_reader_js(reader_functions('personGroups', 'todayGroups') + r'''
+    result = _run_reader_js(reader_functions('personGroups', 'answered', 'waitingOnYou', 'todayGroups') + r'''
       const REM = {owner: 'people/owner.md'};
       const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
       const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];

@@ -8,7 +8,7 @@
 
   Design. co rem is named for REM sleep: overnight it consolidates the day's
   mail and coding sessions into pages. The home returns the changed context
-  after the obligations waiting on the owner, then offers an older page to recall. Processing details remain
+  after the obligations waiting on the owner. Processing details remain
   available below the memory; a candidate connection stays a question until
   the owner reviews it. Every page opens on what is still open.
   - Palette: paper and ink, dawn indigo for changes, lamp amber for what
@@ -338,16 +338,6 @@
   .memory-connection a { color: var(--grey); }
   .memory-connection .relation { color: var(--grey); }
   .memory-connection .basis { color: var(--grey); }
-  .recall { margin-top: 36px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
-  .recall .label { font: var(--w-bold) var(--s-meta)/1.4 var(--font); letter-spacing: 0; text-transform: none; color: var(--ink); }
-  .recall h2 { grid-column: 1; font: var(--w-regular) var(--s-head)/1.28 var(--font); margin: 6px 0; }
-  .recall .why { grid-column: 1; color: var(--grey); font-size: var(--s-meta); margin: 0; }
-  .recall-toggle { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; border-radius: var(--radius); padding: 10px 14px; font: var(--w-bold) var(--s-meta) var(--font); cursor: pointer; background: var(--paper); border: 1px solid var(--rule); color: var(--grey); }
-  .recall-toggle:hover { border-color: var(--grey); }
-  .recall-answer { grid-column: 1 / -1; border-top: 1px solid var(--rule); margin-top: 16px; padding-top: 15px; }
-  .recall-answer[hidden] { display: none; }
-  .recall-answer p { font: var(--s-body)/1.5 var(--font); margin: 0 0 7px; }
-  .recall-answer a { font-size: var(--s-meta); }
   .connection-review { margin-top: 14px; padding: 20px 27px; border: 1px solid var(--rule); background: var(--paper); border-color: var(--rule); border-radius: var(--radius); }
   .connection-review .label { letter-spacing: 0; text-transform: none; color: var(--ink); font: var(--w-regular) var(--s-meta) var(--font); }
   .connection-review h2 { font: var(--w-regular) var(--s-body)/1.3 var(--font); margin: 7px 0; }
@@ -940,7 +930,11 @@
   .person-head h1 { margin-bottom: 12px; }
   .person-lead { max-width: 72ch; margin: 0 0 12px; font: var(--s-body)/1.5 var(--font); }
   .contact-line.leadrow { margin: 0; color: var(--grey); }
+  /* A translation on its way: one quiet worded line under a record's header (D-103, sprint 15). */
+  .translation-line { margin: 10px 0 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
+  .lang-status.lead { margin: 0 6px 0 0; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
   .person-focus { max-width: 1120px; }
@@ -1132,8 +1126,6 @@
     .memory-grid { grid-template-columns: minmax(0, 1fr); }
     .memory-card { padding: 18px 0; }
     .memory-card + .memory-card { border-left: 0; border-top: 1px solid var(--grey); padding-left: 0; }
-    .recall { grid-template-columns: minmax(0, 1fr); padding: 20px; }
-    .recall-toggle { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 12px; }
     .aside { grid-template-columns: 1fr; }
     .timeline li { grid-template-columns: 84px minmax(0, 1fr); }
     .timeline li::before { left: 77px; }
@@ -1976,7 +1968,6 @@
   /* The one thing a page is about takes the display size: Today's count here, an entity's name on its page. */
   /* Before the first pass the page is about the map ("N records mapped"), not a count: the headline steps down so the next step stays on the first screen. */
   .brief-header .late, .qage.late { color: var(--red); font-weight: var(--w-bold); }
-  #approve-all[hidden] { display: none; }
   .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
   .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; cursor: pointer;
     animation: today-rise var(--t-state) var(--ease-out) backwards; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
@@ -2043,7 +2034,7 @@
   .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
   /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
      screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
-  /* The window is the top margin and three whole lines of the letter, which is four lines of the 中文对照 beside
+  /* The window is the top margin and three whole lines of the letter, which is four lines of the gist beside
      it (16 and 12 at the same 1.6), so neither column shows a half line cut by the slot row under it. */
   .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: calc(var(--u3) + 3 * var(--s-body) * var(--lh-body)); overflow: auto; overscroll-behavior: contain; }
   .qcard.focal[data-step="send"]:not(.full) :is(.mail-text, .mail-gist) { padding-top: var(--u3); line-height: var(--lh-body); }
@@ -2762,9 +2753,13 @@
     width: 100%; text-align: left; background: none; border: 0; cursor: pointer; text-decoration: none !important; }
   .mi:hover, .mi.active { background: var(--well); }
   .mi .ic { width: 16px; height: 16px; color: var(--grey); }
-  /* 更多 opens beside its button, whose foot is 530 down the rail, and grows upward so a low window keeps all of it.
+  /* 更多 opens beside its button (placeBeside sets bottom when it opens) and is never taller than the window.
      Fixed: a rail that scrolls would clip a menu positioned inside it. */
-  .rail-more { position: fixed; left: 70px; bottom: max(8px, calc(100vh - 530px)); }
+  .rail-more { position: fixed; left: 70px; max-height: calc(100vh - 16px); overflow-y: auto; }
+  .nav.you .you-name { position: fixed; left: 70px; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
+    background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
+    transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
+  .nav.you:hover .you-name, .nav.you:focus-visible .you-name { opacity: 1; transform: translate(0, -50%); }
   @media (max-height: 655px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
@@ -2847,11 +2842,13 @@
     .rail[data-open="true"] .nav .ic { width: 18px; height: 18px; }
     /* a row has room for the whole name, so it reads the name the link already carries, not the rail's short word */
     .rail[data-open="true"] .nav .w { display: none; }
-    .rail[data-open="true"] .nav::after { content: attr(aria-label); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .nav::after { content: attr(data-name); font: var(--w-regular) var(--s-body)/1.4 var(--font); }
     .rail[data-open="true"] .nav .n { position: static; order: 1; }
     .rail[data-open="true"] .nav.more { display: none; }
     .rail[data-open="true"] .rail-more { display: block; position: static; box-shadow: none; padding: 0; animation: none; min-width: 0; }
-    .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .rail-more .mi { min-height: 44px; padding: 0 12px; gap: 12px; font: var(--w-regular) var(--s-body)/1.4 var(--font); }
+    .rail[data-open="true"] .rail-more .mi .ic { width: 18px; height: 18px; }
+    .rail[data-open="true"] .nav.you .you-name { display: none; }
     .top { height: 48px; padding: 0 18px; gap: 10px; }
     .crumb { width: auto; flex: 1; color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
     .crumb a { color: var(--ink); }
@@ -2914,6 +2911,15 @@
   .nh .nt { flex: none; white-space: nowrap; }
   .nh .night-sum { margin-left: 8px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .night-card.sparse .faces { flex-direction: row; align-items: center; gap: 24px; padding: 6px 0 4px; }
+  /* Why the nights read nothing: one plain line under the title; the pages set aside fold beneath it. */
+  .night-stall { margin: 4px 0 0 23px; color: var(--ink); font: var(--w-regular) var(--s-meta)/1.5 var(--font); }
+  .night-stall > summary { cursor: pointer; list-style: none; }
+  .night-stall > summary::-webkit-details-marker { display: none; }
+  .night-stall > summary::after { content: " ›"; color: var(--grey); }
+  .night-stall[open] > summary::after { content: " ⌄"; }
+  .night-stall ul { margin: 4px 0 0; padding: 0; list-style: none; }
+  .night-stall li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .night-stall li .meta { color: var(--grey); }
   .night-card.sparse .frow { flex: 1; min-width: 0; }
   .hyp-wrap { flex: 1; min-width: 0; }
   .hyp { display: block; width: 100%; height: auto; overflow: visible; }
@@ -2934,6 +2940,8 @@
   .nb.solo .faces { border-left: 0; padding: 8px 0; max-width: none; flex: 1; }
   .count-line { display: flex; align-items: baseline; gap: 10px; margin: 0; color: var(--grey); font: var(--w-regular) var(--s-body)/1.3 var(--font); letter-spacing: 0; }
   .count-line .count { color: var(--ink); font: var(--w-bold) var(--s-display)/1 var(--font); letter-spacing: var(--track-display); }
+  .count-line { flex-wrap: wrap; row-gap: 2px; }
+  .count-line .count-of { flex-basis: 100%; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
   .frow { display: flex; gap: 6px; overflow-x: auto; padding: 6px 4px 4px; margin: -6px -4px -4px; }
   .deal { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 8px 6px; border: 0; border-radius: var(--r-inner); background: none; cursor: pointer;
     transition: background var(--t-state) var(--ease-out), box-shadow var(--t-state) var(--ease-out); }
@@ -2964,6 +2972,8 @@
   .qhead .org-chip { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 4px 11px; border-radius: var(--r-pill); box-shadow: var(--e-ring);
     color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); white-space: normal; overflow: visible; }
   .qhead-acts { margin-left: auto; display: flex; opacity: 0; transition: opacity var(--t-state) var(--ease-out); }
+  .qhead-acts .ibtn { width: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1 var(--font); white-space: nowrap; }
+  .qhead-acts .ibtn:hover { color: var(--ink); }
   .qcard:hover .qhead-acts, .qcard:focus-within .qhead-acts { opacity: 1; }
   .qhead .qage { color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; }
   .qhead .qage.late { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-pill); color: var(--red); box-shadow: var(--e-fuse); }
@@ -2989,6 +2999,10 @@
   .qcard.open .qitem:not(:hover, :focus-within, .show, .handled):not(:has(.talk, .handed, .task-result)) .qmore > :not(.qkind) { display: none; }
   .qcard .qkind { gap: var(--u1) var(--u3); }
   .qcard .handoff-line .btn-quiet, .qcard .talk-menu summary { min-height: 30px; color: var(--ink); }
+  .qcard .handoff-line .strip-lead { font-weight: var(--w-bold); }
+  .qcard .strip-more > summary { text-decoration: none; color: var(--grey); }
+  .qcard .strip-more > .talk-choices { left: auto; right: 0; }
+  .qcard .strip-more .talk-menu > summary { padding: 0 10px; }
   .task-result { margin: 8px 0 0; padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e1); color: var(--ink); }
   .card-acts { margin: 14px 0 0; gap: 8px 14px; }
   .card-acts .btn-act, .card-acts .btn-line { min-height: 40px; border-radius: var(--radius); }
@@ -3022,17 +3036,15 @@
   .tgrid > .side > * { margin: 0; }
   .tgrid > .side .widget:nth-child(2) { animation-delay: calc(var(--t-stagger) * 2); }
   .tgrid > .side .widget:nth-child(3) { animation-delay: calc(var(--t-stagger) * 3); }
-  .pair { display: flex; gap: 20px; }
+  /* Two things to act on, each in words: the batch button, then the link to what others owe. */
+  .pair { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
   .approval-header { display: contents; }
-  .pair-cell { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
-    color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); text-decoration: none !important; }
-  .pair-cell[hidden] { display: none; }
-  .pair-cell:hover .big { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
-  .recall .rc { display: flex; align-items: center; gap: 14px; }
-  .recall .recall-toggle { grid-column: auto; grid-row: auto; margin: 0; padding: 0; min-height: 0; border: 0; }
-  .recall .rc h2 { flex: 1; min-width: 0; margin: 0; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
-  .recall-answer { margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
-  .recall-answer p { margin: 0 0 6px; }
+  .pair-cell.waiting-more { order: 1; display: flex; align-items: center; min-height: 32px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.4 var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .pair-cell.waiting-more:hover { text-decoration-color: var(--ink); }
+  .approve-all { min-height: 40px; padding: 0 16px; border: 1px solid var(--ink); border-radius: var(--radius); background: none; color: var(--ink);
+    font: var(--w-bold) var(--s-ui)/1.3 var(--font); cursor: pointer; }
+  .approve-all:hover:not(:disabled) { background: var(--well); }
   .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .closed .ic { width: 15px; height: 15px; }
   .closed .link-btn { margin-left: auto; }
@@ -3040,7 +3052,7 @@
   #night-sheet .night-done ul { list-style: none; margin: 0; padding: 0; }
   #night-sheet .night-done li { display: grid; gap: 2px; padding: 12px 0; border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   #night-sheet .night-done li b { color: var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
-  /* "Maybe over · still open?": grey words, no red, two quiet buttons per promise. */
+  /* Long-quiet promises, folded under the desk: grey words, no red, two quiet buttons per promise. */
   .stale ul { list-style: none; margin: 0; padding: 0; }
   .stale li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; padding: 8px 0;
     border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -3051,7 +3063,13 @@
   .stale .stale-when { color: var(--grey); font-size: var(--s-meta); }
   .stale .stale-acts { display: flex; gap: 2px; }
   .stale .stale-acts .btn-quiet { min-height: 32px; padding: 0 8px; }
-  .stale .stale-more { display: inline-block; margin-top: 8px; color: var(--grey); font-size: var(--s-meta); }
+  .stale .stale-more { display: inline-block; color: var(--grey); font-size: var(--s-meta); }
+  #today-stale { max-width: 760px; margin: 28px 0 0; }
+  #today-stale > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
+  #today-stale > summary:hover { color: var(--ink); }
+  #today-stale[open] > ul { padding: 4px 0 0; }
+  .stale .stale-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 10px; }
+  .stale .stale-all { min-height: 32px; padding: 0 10px; border: 1px solid var(--rule); color: var(--ink); }
 
   /* ---- Today: one fold below the desk ---- */
   .desk-more { display: grid; gap: 4px; margin: 44px 0 0; }
@@ -3073,7 +3091,8 @@
     .nh .legend { display: none; }
     .nb { flex-direction: column; align-items: stretch; gap: 6px; }
     .faces { flex-direction: row; align-items: center; gap: 8px; padding: 4px 0 2px; border-left: 0; border-top: var(--hair) solid var(--rule); max-width: none; }
-    .count-line span { display: none; }
+    .count-line .count-of { display: none; }
+    .count-line .count-words { font-size: var(--s-ui); white-space: nowrap; }
     .frow { flex: 1; justify-content: flex-start; }
     .tgrid { display: block; margin-top: 10px; }
     .today-brief .qcard.focal { padding: 18px 16px 16px; }
@@ -3081,6 +3100,11 @@
     .qhead-acts { opacity: 1; }
     .qitem { margin: 0 -6px; }
     .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
+    /* Words without dots on a phone: the three closes are the first line, the hand-offs and More the second. */
+    .qcard .handoff-line { gap: 0; margin-left: -8px; }
+    .qcard .handoff-line > .sep { display: none; }
+    .qcard .handoff-line > .sep:has(+ [data-agent="codex"]) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
+    .qcard .handoff-line :is(.btn-quiet, .talk-menu > summary) { padding: 0 8px; white-space: nowrap; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
@@ -3091,6 +3115,8 @@
     .nh .nt { display: none; }
     .night-card.sparse .nh .nt { display: inline; }
     .night-card.sparse .faces { gap: 8px; }
+    /* The fold under the night line opens with a thumb: a full 44px target (it measured 33). */
+    .night-stall > summary { display: flex; align-items: center; min-height: 44px; }
     .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
     .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
     .qdraft .mail-row .v > .addr { display: none; }
@@ -3099,7 +3125,9 @@
 
   /* ---- a person: a hero card and a bento of widgets (records, never to-dos: D-30) ---- */
   .n3-person .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 11px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
-    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important; }
+    font: var(--w-regular) var(--s-ui)/1.3 var(--font); text-decoration: none !important;
+    /* #2942: a long role or unit wraps inside its chip instead of pushing the page sideways (.r4 .chip is one line). */
+    white-space: normal; flex: 0 1 auto; height: auto; max-width: 100%; overflow-wrap: anywhere; }
   .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
   .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
   .n3-person .chip .ic { width: 14px; height: 14px; }
@@ -3126,8 +3154,8 @@
   .bento > :nth-child(2) { animation-delay: var(--t-stagger); }
   .bento > :nth-child(3) { animation-delay: calc(var(--t-stagger) * 2); }
   .bento > :nth-child(4) { animation-delay: calc(var(--t-stagger) * 3); }
-  .bento .wt h2 { margin: 0; color: inherit; font: inherit; }
-  .bento .wt .end { margin-left: auto; }
+  :is(.bento, .n3-person > .r4-topics) .wt h2 { margin: 0; color: inherit; font: inherit; }
+  :is(.bento, .n3-person > .r4-topics) .wt .end { margin-left: auto; }
   .bento .r4-sec { margin: 0; padding: 18px 20px; border: 0; }
   .rh-row { display: flex; align-items: flex-end; gap: 22px; }
   .rh { flex: 1; min-width: 0; }
@@ -3160,7 +3188,9 @@
   .n3-person .r4-topics li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 6px 0; border: 0; }
   .n3-person .r4-topics li .d { color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
   .rel-slot:empty { display: none; }
-  .bento .r4-topics { grid-column: 1 / -1; }
+  /* Open topics lead the page under the header (sprint 15); the widgets follow. */
+  .n3-person > .r4-topics { margin: 16px 0 0; padding: 18px 20px; border: 0; }
+  .n3-person > .r4-topics[hidden] { display: none; }
   .bento .person-sessions { grid-column: span 2; }
   .person-sessions ul { list-style: none; margin: 0; padding: 0; }
   .person-sessions .wt a { color: var(--grey); }
@@ -3179,10 +3209,11 @@
 
   @media (max-width: 640px) {
     .n3-person .hero { flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 20px 18px; }
-    .n3-person .hero .face.xl { width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
-    .hero-who { flex: 1 1 100%; order: -1; }  /* the name leads with the card's whole width: a long word hyphenates instead of breaking */
-    .hero-acts { width: auto; flex: 1; }
-    .hero-acts { justify-content: flex-start; gap: 6px; }
+    /* The face stays in the header beside the name, as on a contact card; the contact buttons take the row
+       below (sprint 15: it had sat among them). A long name hyphenates instead of breaking. */
+    .n3-person .hero .face.xl { align-self: flex-start; width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+    .hero-who { flex: 1 1 0; }
+    .hero-acts { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
     .n3-person .r4-today { margin-left: auto; padding: 0 12px; }
     .round { width: 40px; height: 40px; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -3245,7 +3276,10 @@ function readerStorage(key, value) {
     return value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value);
   }).then(result => result, () => null);
 }
-let uiLanguage = (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag)) && "zh"
+// The owner's language is one rule (languages.owner_language): drafts and the night's translation use it too.
+// The interface has only 中文 and English, so an owner whose language it lacks (ja) gets 中文 when he reads it.
+let uiLanguage = (/^zh(?:-|$)/i.test(REM?.owner_language || "")
+    || !/^(?:en|zh)(?:-|$)/i.test(REM?.owner_language || "en") && (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))) && "zh"
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
 let morePeopleColumns = false;
 const UI = {
@@ -3302,12 +3336,13 @@ const UI = {
     "{n} more items": "其余 {n} 件",
     "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
+    "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "一键批准这 {n} 件", "{n} items to approve in one go": "{n} 件可一键批准", "1 item to approve in one go": "1 件可一键批准",
+    "Approve all {n}": "一键批准这 {n} 件",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -3459,7 +3494,6 @@ const UI = {
     "Review the reply to {name}": "看给 {name} 的回信",
     "Approve": "批准",
     "Reply to {name}": "回复 {name}",
-    "Open {name}": "打开 {name}",
     "One reply can answer both.": "一封回信可以同时答复这两件。",
     "One reply can answer all {n}.": "一封回信可以答复这 {n} 件。",
     "Draft a reply to {name}": "给 {name} 起草回信",
@@ -3589,7 +3623,7 @@ const UI = {
     "To": "收件人",
     "CC": "抄送",
     "Subject": "主题",
-    "In your words": "中文对照",
+    "Gist": "要点",
     "Why this reply": "为什么这样写",
     "Reply draft": "回信草稿",
     "Sends from {mailbox} via {provider}": "将从 {mailbox} 经 {provider} 发出",
@@ -3634,7 +3668,7 @@ const UI = {
     "More columns": "更多列",
     "What your agents can do, the ones you use most first.": "你的 agent 会做的事，最常用的在前",
     "{n} skill": "{n} 个技能", "{n} skills": "{n} 个技能", "Find among {n} skills…": "在 {n} 个技能里找…",
-    "Most used": "最常用", "counted by skill-name matches": "按技能名称匹配计数",
+    "Most used": "最常用",
     "{n} matches in {days} days · last {last}": "近 {days} 天用到 {n} 次 · 最近 {last}", "{n} matches": "{n} 次",
     "{n} installed copies": "{n} 份安装副本", "Everything they can do": "全部能力", "Lives in": "所在位置", "Open SKILL.md": "打开 SKILL.md",
     "Claude Code plugin": "Claude Code 插件", "Shared agent skills": "共用 agent 技能",
@@ -3729,8 +3763,6 @@ const UI = {
     "One thing is waiting on you": "有 1 件事等你处理",
     "Newest and due first. Quotes keep their words; other lines summarise the obligation.": "优先显示最新和即将到期的事项。引文保留原话，其余文字概述待办。",
     "Nothing is open between you and anyone right now.": "目前没有双方待处理的事项。",
-    "Reveal the context": "查看背景",
-    "Hide the context": "收起背景",
     "Pause before revealing. The answer comes from a page co rem already wrote.": "先回想一下，再查看 co rem 已记录的背景。",
     "Name": "姓名",
     "What's open": "待处理事项",
@@ -3918,8 +3950,6 @@ const UI = {
     "Connected to {name}": "与 {name} 关联",
     "See all {n} waiting on you": "查看全部 {n} 件等你处理的事项",
     "{n} waiting on someone else →": "{n} 件事项等对方回复 →",
-    "How do you know {name}?": "你是怎么认识 {name} 的？",
-    "What should you remember about {name}?": "关于 {name}，有什么值得记住？",
     "{n} matching sessions →": "查看全部 {n} 个匹配的会话 →",
     "{n} pages match — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
     "{n} page matches — literal, case-insensitive": "{n} 个匹配页面 — 按字面搜索，不区分大小写",
@@ -4145,7 +4175,6 @@ const UI = {
     "Run ": "运行 ",
     " to do one pass now.": " 即可立即更新一次。",
     "Each night co rem reads what came in and rewrites the pages it touches. Run ": "co rem 每晚读取新材料并更新相关页面。运行 ",
-    "Recall a memory": "回想一段记忆",
     "Connection awaiting review": "待审核的关联",
     "Source map and next step": "来源映射与下一步",
     "Filter activity": "筛选动态",
@@ -4168,7 +4197,6 @@ const UI = {
     "No memory pages were written in the last pass.": "上次更新未写入记忆页面。",
     "{n} investigation failed. ": "{n} 次调查失败。",
     "{n} investigations failed. ": "{n} 次调查失败。",
-    "Open {name} and its sources →": "打开 {name} 及其来源 →",
     "{n} page rewritten in 7 days": "7 天内改写了 {n} 页",
     "{n} pages rewritten in 7 days": "7 天内改写了 {n} 页",
     "last contact or change first": "最近联系或更新在前",
@@ -4335,7 +4363,10 @@ const UI = {
     "sessions import": "导入会话",
     // N3 "Desk" (D-123): the shell, Today and a person
     "Settings": "设置", "Reduce motion": "减少动态效果", "REM status": "REM 状态", "Waiting": "等你",
-    "Night chart": "夜图", "person waiting on you": "人在等你", "people waiting on you": "人在等你", "{n} d": "{n} 天",
+    "Night chart": "夜图", "{n} d": "{n} 天",
+    "thing waiting on you": "件在等你", "things waiting on you": "件在等你", "Start with this 1 person": "先看这 1 个人", "Start with these {n} people": "先看这 {n} 个人",
+    "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
+    "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
     "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
     "Prepared a task for {name}": "为 {name} 备好一件任务", "Drafted a reply to {name}": "起草了给 {name} 的回信",
@@ -4344,12 +4375,21 @@ const UI = {
     "Last {d} days: 1 run of reading or rewriting": "近 {d} 天：读信或整理页面 1 次",
     "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today": "近 {d} 天没有读信、也没有整理页面；今天的事 REM 处理了 {n} 件",
     "Last {d} days: no mail read and no page rewritten": "近 {d} 天没有读信、也没有整理页面",
-    "Around today": "今天的其他事", "waiting on others": "等对方回", "item to approve in one go": "可一键批准", "items to approve in one go": "可一键批准",
+    "Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest": "昨夜 {provider} 出了问题（{why}），REM 那一轮没再问它，其余照常",
+    "Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest": "REM 昨夜在 {provider} 上卡住了：{why} {times} 次，已跳过这一项，其余照常",
+    "Last night 1 page was set aside because {provider} {why}; REM will try again": "昨夜 1 项因 {provider} {why}跳过，会再试",
+    "Last night {n} pages were set aside because {provider} {why}; REM will try again": "昨夜 {n} 项因 {provider} {why}跳过，会再试",
+    "{n} pages wait for {provider}; REM will try again": "{n} 项在等 {provider}，会再试",
+    "1 page waits for {provider}; REM will try again": "1 项在等 {provider}，会再试",
+    "timed out": "超时", "mail deleted or moved": "信件已删除或移走", "server error": "服务器出错", "network down": "网络不通",
+    "authorization expired": "授权已过期", "permission denied": "没有权限", "throttled": "被限流", "request refused": "请求被拒", "unavailable": "暂时不可用",
+    "tries again from {when}": "{when} 起再试", "tries again next round": "下一轮再试",
+    "Around today": "今天的其他事",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
     "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织", "All records, in the rail": "全部记录",
-    "Maybe over": "可能已过期", "Maybe over · still open?": "可能已过期 · 还开着吗？", "Still open": "还开着",
+    "Still open": "还开着",
     "Due {date}; no new message for {n} days": "{date} 到期，之后 {n} 天没有新消息", "{n} more in Gone quiet →": "「久未推进」里还有 {n} 件 →",
     "More": "更多", "More of this card": "展开", "Tabs": "标签栏", "Mark done (the card in focus)": "标为完成（焦点所在的卡片）"
 }
@@ -4391,6 +4431,7 @@ function renderLangToggle() {
 function togglePrivate() {
   const hidden = document.documentElement.classList.toggle("hide-private");
   document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
+  document.querySelectorAll(".r4-topics").forEach(section => section.refreshTopics?.());
   document.querySelectorAll(".session-find").forEach(bar => bar.refreshSessionFind?.());
   if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
   const button = document.getElementById("privacy-toggle");
@@ -5362,7 +5403,9 @@ function markDrafts(related, value, done, state) {
   }
 }
 // extra: one more choice the notice offers after Undo (忽略's "stop showing this sender"; see stripDone).
-function setDone(entry, done, state = "done", entries = [entry], extra = null) {
+// One mark, without drawing: the thread's state here and on its way to the notebook. restore() gives the drafts it
+// set aside their statuses back when the notebook refuses it.
+function markThread(entry, done, state = "done", entries = [entry]) {
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
   const value = threadMark(key, members, done, state);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
@@ -5373,6 +5416,10 @@ function setDone(entry, done, state = "done", entries = [entry], extra = null) {
     if (done) threadStates[memberKey] = value;
     else delete threadStates[memberKey];
   }
+  return { saved, restore: () => related.forEach((draft, i) => { draft.status = statuses[i]; }) };
+}
+function setDone(entry, done, state = "done", entries = [entry], extra = null) {
+  const { saved, restore } = markThread(entry, done, state, entries);
   const scroll = window.scrollY;
   render();
   window.scrollTo(0, scroll);
@@ -5380,7 +5427,7 @@ function setDone(entry, done, state = "done", entries = [entry], extra = null) {
   const notice = done ? doneNotice(entry, state, entries, extra) : null;
   return saved.then(synced => {
     if (synced === "refused") {
-      related.forEach((draft, i) => { draft.status = statuses[i]; });
+      restore();
       notSavedNotice(() => setDone(entry, done, state, entries, extra), notice);
     }
     if (synced) render();
@@ -5563,7 +5610,7 @@ function openWriter(draft, who, onSend) {
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
       draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
-      draft.gist ? el("section", {}, [el("h4", { text: t("In your words") }), el("p", { text: draft.gist })]) : null,
+      draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null,
       cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
         el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
         el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
@@ -5714,7 +5761,7 @@ function replyDraftCard(draft, onSent) {
         // The choice row is a block of its own, so the blank lines around it would only add height.
         parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
       // Why this reply sits under the owner's-language reading, beside the letter, not under it.
-      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: t("In your words") }), el("p", { text: draft.gist }), why]) : null]),
+      draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: gistTitle(draft.gist) }), el("p", { text: draft.gist }), why]) : null]),
     draft.gist ? null : why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
   if (!REM.live) {
     // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
@@ -5814,12 +5861,20 @@ function threadCounterpart({ r, t }, person) {
   const words = obligationWords(named.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")), title = obligationWords(person.title);
   return !!title && (words === title || words.startsWith(title + " "));
 }
+// A reply sent, or held for its 10 minutes, answers the item until Undo.
+function answered(entry) { return ["held", "sent"].includes(threadDraft(entry)?.status); }
+// The one "waiting on you": an item you owe, not quiet, not a stale promise (asked about apart), not answered.
+// Today's header, the rail badge and the rows of Waiting on you all read it, so they never disagree (sprint 14).
+function waitingOnYou(entry) {
+  return entry.t.dir === "mine" && !entry.t.quiet && !staleEntry(entry) && !answered(entry);
+}
 function threadCounts() {
   const counts = { mine: 0, theirs: 0, other: 0, quiet: 0, open: 0 };
   for (const entry of threadEntries().filter(entry => !isDone(entry))) {
     const t = entry.t;
     // A stale promise is counted with the quiet ones, never as waiting (staleEntry).
     if (t.quiet || staleEntry(entry)) counts.quiet++;
+    else if (t.dir === "mine") { if (waitingOnYou(entry)) { counts.mine++; counts.open++; } }
     else { counts[t.dir === "plain" ? "other" : t.dir]++; counts.open++; }
   }
   return counts;
@@ -6445,7 +6500,6 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
   quote: '<path d="M7 17c-2 0-3-1.6-3-3.5C4 10 6.5 7.5 9 7M17 17c-2 0-3-1.6-3-3.5 0-3.5 2.5-6 5-6.5"/>',
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
-  flip: '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
   right: '<polyline points="9 6 15 12 9 18"/>',
   down: '<polyline points="6 9 12 15 18 9"/>',
   activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
@@ -6466,8 +6520,8 @@ const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "book
   opportunities: "activity", works: "doc" };
 // The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
 // and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
-// name is wider than the cell; then the name stays in aria-label and one hover away, so a screen reader and a
-// search read the same words.
+// name is wider than the cell; then the name is one hover away and in the accessible name, which starts with the
+// word you see (WCAG 2.5.3: saying "Orgs" finds Orgs · Organisations). The phone sheet reads data-name.
 function railPlaces() {
   return [["today", "sun", t("Today"), "#"],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail")],
@@ -6478,7 +6532,8 @@ function railPlaces() {
     ["all", "archive", t("All records"), "#c=all", t("All records, in the rail")]];
 }
 function railCell(tag, attrs, picture, name, word = name, badge = null) {
-  return el(tag, { ...attrs, "aria-label": name, ...(word === name ? {} : { title: name }) },
+  const spoken = name.startsWith(word) ? name : word + " · " + name;
+  return el(tag, { ...attrs, "aria-label": spoken, "data-name": name, ...(word === name ? {} : { title: name }) },
     [icon(picture), el("span", { class: "w", "aria-hidden": "true", text: word }), badge]);
 }
 function railMore(active) {
@@ -6492,8 +6547,19 @@ function railMore(active) {
   const on = rest.some(([key]) => key === active);
   const button = railCell("button", { type: "button", class: "nav more" + (on ? " active" : ""), "aria-expanded": "false", "aria-controls": "rail-more" },
     "ellipsis", t("More"));
-  button.onclick = event => { event.stopPropagation(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); };
+  button.onclick = event => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+    button.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) placeBeside(menu, button);
+  };
   return [button, menu];
+}
+// 更多 opens from where its button is now (the rail scrolls in a low window): its foot level with the button's,
+// growing upward, and never above the window's top edge; its height is capped by the window in CSS.
+function placeBeside(menu, button) {
+  const foot = innerHeight - button.getBoundingClientRect().bottom;
+  menu.style.bottom = Math.max(8, Math.min(foot, innerHeight - 8 - menu.offsetHeight)) + "px";
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -6513,10 +6579,14 @@ function renderRailEnd(active) {
   const end = document.getElementById("rail-end"), owner = REM.owner && byPath(REM.owner);
   const settings = railCell("button", { type: "button", class: "nav settings-open", "aria-controls": "settings" }, "settings", t("Settings"));
   settings.onclick = openSettings;
-  // Your face is its own picture and has no word under it, so its name is one hover away.
+  // Your face is its own picture and has no word under it, so its name shows beside it on hover and on keyboard
+  // focus; fixed, so a rail that scrolls does not clip it.
   const you = owner && t("You") + " · " + owner.title;
-  end.replaceChildren(settings, owner ? el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, title: you },
-    [face(owner.title, "s")]) : null);
+  const link = owner && el("a", { href: href(owner), class: "nav you" + (route().record === owner.path ? " active" : ""), "aria-label": you, "data-name": you },
+    [face(owner.title, "s"), el("span", { class: "you-name", "aria-hidden": "true", text: you })]);
+  // Placed from the face when it shows, as 更多 is from its button (placeBeside).
+  if (link) link.onfocus = link.onmouseenter = () => { const box = link.getBoundingClientRect(); link.lastChild.style.top = box.top + box.height / 2 + "px"; };
+  end.replaceChildren(settings, link);
 }
 // Phone (D-123): the rail and the ⌘K bar give way to a floating tab bar: 今天 · 等你 · 人物 · 搜索 · 更多.
 function renderTabbar(active) {
@@ -6709,19 +6779,53 @@ function memoryConnection(records) {
   }
   return null;
 }
-// The crumb's mark for a page not yet in the reader's language: a quiet 原文 (D-103). Opening the page
-// only moves it up the nightly queue (translate.request); nothing translates it while it is open and the
-// page never reloads its translation, so a 翻译中 here stayed for ever. The title says what happens next.
-// Meta size, grey, beside the crumb; never a line of its own above the name.
-function translationMark(r) {
-  if (uiLanguage === "en" || r.translations?.[uiLanguage]) return null;
-  const mark = originalMark(), queued = translationQueued(r) || REM.status?.translation_coverage?.[uiLanguage]?.requested;
-  if (!REM.status?.worker?.enabled) mark.title = t("Translation pending — background updates off");
-  else if (queued) mark.title = t("Queued for the next translation pass");
-  return mark;
+// A record page not yet in the reader's language shows its original quietly (D-103). The owner read the old
+// 原文 chip above every name as jargon (sprint 15): a page simply in English with no translation on its way says
+// nothing, and one on its way says so in words, one meta-size line under the header, by the body it describes.
+// Opening the page only moves it up the nightly queue (translate.request); nothing translates it while it is
+// open, so the line never says "translating". The title says what happens next.
+function translationLine(r) {
+  if (uiLanguage === "en" || (uiLanguage === "zh" ? hasChinese(r) : r.translations?.[uiLanguage]) || r.written_in?.toLowerCase().split("-")[0] === uiLanguage) return null;
+  // Only when one can arrive: queued from this live page, or a nightly target with background updates on.
+  const queued = translationQueued(r), nightly = REM.status?.worker?.enabled && REM.status?.translation_coverage?.[uiLanguage]?.requested;
+  if (!queued && !nightly) return null;
+  return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
+    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
 }
-function originalMark() {
-  return el("span", { class: "lang-status", text: t("Original"), title: t("No Chinese translation yet; showing original") });
+// A current Chinese version of the page in any region: a zh-TW or zh-CN cache is read as 中文 too.
+function hasChinese(r) {
+  return Object.keys(r?.translations || {}).some(tag => /^zh(?:-|$)/i.test(tag));
+}
+function originalMark(lead = false) {
+  return el("span", { class: "lang-status" + (lead ? " lead" : ""), text: t("Original"), title: t("No Chinese translation yet; showing original") });
+}
+// Today's and Maybe over's rows carry the page header's 原文 when their page has no current Chinese version
+// (what translationLine reads), first, so a closed row's ellipsis never cuts it off. A row of Chinese words
+// keeps no mark even then: names, codes and English terms inside it ("跟进 Jordan Lee 的 Q3 pricing proposal")
+// would outvote the Han characters in a script count, and the row is already in the reader's language.
+function rowMark(words, r) {
+  if (uiLanguage !== "zh" || hasChinese(r) || /[\u4e00-\u9fff]{2}/.test(words)) return null;
+  return originalMark(true);
+}
+function wordsLine(name, words, r, after, attrs = {}) {
+  const mark = rowMark(words, r);
+  return mark ? el("p", { class: name, ...attrs }, [mark, words, ...after]) : el("p", { class: name, text: words, ...attrs }, after);
+}
+// The language a text is written in, by script, as languages.language_of decides it: Han counts per
+// character, other scripts per word, kana outrank shared Han, and under three it is too short to say.
+function textLanguage(text) {
+  const SCRIPT_WORDS = { ja: /[\u3040-\u30ff]/g, ko: /[\uac00-\ud7af]/g, zh: /[\u4e00-\u9fff]/g, ru: /[\u0400-\u04ff]+/g, ar: /[\u0600-\u06ff]+/g, en: /[A-Za-z]+/g };
+  const words = Object.fromEntries(Object.entries(SCRIPT_WORDS).map(([tag, pattern]) => [tag, (String(text || "").match(pattern) || []).length]));
+  if (Object.values(words).reduce((sum, n) => sum + n, 0) < 3) return null;
+  if (words.ja) { words.ja += words.zh; delete words.zh; }
+  return Object.entries(words).reduce((best, entry) => entry[1] > best[1] ? entry : best)[0];
+}
+// The draft's gist is a summary, not a translation, and the writer may miss the owner's language:
+// the title names its language whenever that is not the reader's, so a Chinese-side label never sits over English.
+function gistTitle(gist) {
+  // A run of Han is Chinese however many English names sit in it (rowMark says why).
+  const language = /[\u4e00-\u9fff]{2}/.test(gist) ? "zh" : textLanguage(gist);
+  return t("Gist") + (language && language !== uiLanguage ? " · " + nativeName(language) : "");
 }
 function claimValue(claim, r, after, compact = false) {
   let value = after ? claim.after : claim.before, original = uiLanguage !== "en";
@@ -6937,7 +7041,7 @@ function personGroups(entries) {
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   // A promise gone stale is asked about at the side, not counted as someone waiting.
-  entries = entries.filter(entry => !["held", "sent"].includes(threadDraft(entry)?.status) && !staleEntry(entry));
+  entries = entries.filter(entry => entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry));
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
@@ -6987,7 +7091,7 @@ function stepAction({ entry, step }, group, cls) {
   }
   if (step === "write") return mailtoLink(threadContact(entry), cls, t("Write to {name}", { name }), true);
   if (step === "live") return liveReaderAction(cls);
-  if (step === "open") return el("a", { class: cls, href: href(group.r) + "&h=open-threads", text: t("Open {name}", { name }) });
+  if (step === "open") return null;  // the name above already opens the page; opening it does nothing about the item
   const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
     text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
   button.onclick = event => {
@@ -7035,10 +7139,12 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1 || !st
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
+  // Each glyph carries its word: a bare » beside the name read as nothing on a phone (sprint 14 #5).
+  const doneWord = t(entries.length > 1 ? "Mark all done" : "Mark done");
   const done = tick
-    ? el("button", { type: "button", class: "ibtn", "aria-label": t("Mark done") + " · E", title: t("Mark done") + " · E" }, [icon("check")]) : null;
+    ? el("button", { type: "button", class: "ibtn", "aria-label": doneWord + " · E", title: doneWord + " · E" }, [icon("check"), el("span", { text: doneWord })]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
-  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip")]) : null;
+  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip"), el("span", { text: t("Next card") })]) : null;
   if (skip) skip.onclick = () => dealNext(1);
   return el("div", { class: "qhead" }, [
     el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
@@ -7055,7 +7161,7 @@ function ownerLine(draft) {
 // handled: REM thinks the row is done and no green step on the card closes it, so its strip (Mark done, and the
 // reason) shows without a hover. Where the green step closes it, that step is the card's lead and the strips wait
 // for a hover: three visible Mark done on a phone read as noise (team, re-review of #2955).
-function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
+function cardItem(entry, many, seen = new Set(), more = null, handled = false, lead = null) {
   const { words, context } = morningWords(entry.t.text, entry.r, entry.t);
   // One draft answering several items is said once, on the first of them.
   const draft = threadDraft(entry), own = draft && !seen.has(draft.id) ? ownerLine(draft) : null;
@@ -7072,8 +7178,8 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false) {
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
-      : el("p", { class: "words", text: words }, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
-    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close), more]),
+      : wordsLine("words", words, entry.r, [context ? el("span", { html: inline(context, entry.r.path) }) : null]), done,
+    el("div", { class: "qmore" }, [el("div", { class: "qkind" }, [el("span", {}, [kindBadge(entry), many ? " · " + threadAge(entry.t) : null, blockerTag(entry.t)]), handOff(entry, close, lead), more]),
       alsoOn(entry.also), own ? null : draftNote(draft, entry), taskResult(entry),
       own ? el("p", { class: "qorig", lang: "en", text: words }) : null])]);
   item.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .talk")) item.classList.toggle("show"); };
@@ -7154,8 +7260,9 @@ function hostPost(url, body) {
 }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
-function handOff(entry, mark) {
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark);
+// lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
+function handOff(entry, mark, lead) {
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
   return el("div", { class: "handoff" }, [line, panel]);
@@ -7175,11 +7282,11 @@ function stripMarksDone(entry) {
 // 忽略 — an ad or a notification: the state "ignored", which closes like done and never returns, and reads 已忽略. Its
 // notice then offers, in words, to stop the row's sender (owner, 2026-11-13: «广告要忽略»). It never stops a sender by
 // itself: a relay address carries many different people, so the owner taps it.
-function stripDone(entry, mark) {
+function stripDone(entry, mark, lead = false) {
   if (!stripMarksDone(entry)) return [];
   // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.
   const close = (state, extra = null) => event => mark ? mark(event, state, extra) : setDone(entry, true, state, [entry], extra);
-  const done = el("button", { type: "button", class: "btn-quiet strip-done", text: t("Mark done") });
+  const done = el("button", { type: "button", class: "btn-quiet strip-done" + (lead ? " strip-lead" : ""), text: t("Mark done") });
   done.onclick = close("done");
   const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
   later.onclick = close("skipped");
@@ -7237,10 +7344,11 @@ async function saveIgnoredSender(address, ignored) {
 function dotted(nodes) {
   return nodes.filter(Boolean).flatMap((node, i) => i ? [el("span", { class: "sep", "aria-hidden": "true", text: "·" }), node] : [node]);
 }
-function handButtons(entry, show, panel, mark) {
+function handButtons(entry, show, panel, mark, lead) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
-    const button = el("button", { type: "button", class: "btn-quiet", "data-agent": agent, text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }) });
+    const button = el("button", { type: "button", class: "btn-quiet" + (lead === "task" && agent === "codex" ? " strip-lead" : ""), "data-agent": agent,
+      text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }) });
     button.disabled = !liveHere();
     button.onclick = async () => {
       buttons.forEach(other => { other.disabled = true; });
@@ -7260,7 +7368,25 @@ function handButtons(entry, show, panel, mark) {
     };
     return button;
   });
-  return [...dotted([...buttons, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry, mark)]), status];
+  const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
+  if (lead === undefined) return [...dotted([...buttons, talk, ...closes]), status];
+  return [...dotted(todayStrip(buttons, talk, closes)), status];
+}
+// A Today row had eight equal links (sprint 14 #5). Now its three ways to close come first, as words (principle
+// 10), then 交给 Codex · 交给 Claude, which stay visible quiet words on every unfinished row (D-100, the owner's
+// «权限问题都给了»); only the talk folds under a worded 更多. One of them is the row's lead, in bold, chosen by
+// what the item is (lead, set where the buttons are made): 交给 Codex for a debt REM prepared as a task
+// (principle 8), else 标为完成; lead null: the card's green step or the draft's Send is the primary.
+function todayStrip(agents, talk, closes) {
+  const more = talk ? el("details", { class: "talk-menu strip-more" }, [el("summary", {}, [t("More"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })]),
+    el("div", { class: "talk-choices" }, [talk])]) : null;
+  if (more) more.onkeydown = event => {
+    if (event.key !== "Escape" || !more.open) return;
+    event.stopPropagation();
+    more.open = false;
+    more.querySelector("summary").focus();
+  };
+  return [...closes, ...agents, more];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
 function handState(entry, show, panel, mark) {
@@ -7326,6 +7452,7 @@ function talkMenu(entry, panel) {
     button.disabled = !liveHere();
     button.onclick = () => {
       menu.open = false;
+      menu.closest(".strip-more")?.removeAttribute("open");  // on Today the talk sits inside 更多: both fold
       const talk = talkPanel({ action: "begin", agent, key: obligationKey(entry) });
       OPEN_TALKS.set(obligationKey(entry), talk);
       panel.replaceChildren(talk);
@@ -7387,13 +7514,20 @@ function personCard(group, focal, total = 1) {
   // A green Mark done that would close just one row only repeats that row's strip button, so it is not drawn;
   // closing several handled rows at once, it does what no row's button does and stays.
   const closing = next.step === "done" ? entries.filter(item => cardStep(item) === "done") : [];
-  const step = closing.length === 1 && stripMarksDone(closing[0]) ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
+  // One primary per card (principle 5), by what the item is: the draft's Send, or the green step that answers or
+  // approves; a debt REM prepared as a task goes to Codex (principle 8); anything else is closed. "Open {name}" is
+  // not a step: the name above already opens the page, and opening it does nothing about the item.
+  const task = rowTask(next.entry), byAgent = liveHere() && !!task && !handed(task) && !["send", "draft", "approve"].includes(next.step);
+  const closesHere = closing.length === 1 && stripMarksDone(closing[0]);
+  const step = byAgent || closesHere ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
+  // The bold lead sits on the row it is about: the task's own row, else the row that closes.
+  const leadEntry = step || draft ? null : byAgent ? next.entry : closing[0] || next.entry, leadKind = byAgent ? "task" : "done";
   // When every row is handled, that green step and the head's tick would both close all of them: the green step
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
-      cardStep(entry) === "done" && stripMarksDone(entry) && !(step && closing.includes(entry))))),
+      cardStep(entry) === "done" && stripMarksDone(entry) && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)])]);
   card.markDone = () => closeEntries(card, entries);
@@ -7450,6 +7584,7 @@ function taskView(kind) {
     return;
   }
   main.appendChild(el("h1", { text: t("Open threads") }));
+  approvalUndoBar(false);
   const snapshot = snapshotLine();
   if (snapshot) main.appendChild(snapshot);
   const all = threadEntries(), entries = all.filter(entry => !isDone(entry)), counts = threadCounts();
@@ -7464,7 +7599,7 @@ function taskView(kind) {
   if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
-    const items = entries.filter(row => row.t.dir === dir && !row.t.quiet && !staleEntry(row));
+    const items = entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
     const rowFor = row => {
       const node = threadRow(row.r, row.t, true, row.also, true, true);
       node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
@@ -7477,31 +7612,6 @@ function taskView(kind) {
   if (quiet) main.appendChild(quiet);
   const done = markedDone(all);
   if (done) main.appendChild(done);
-}
-function recallPrompt() {
-  if (firstBuild()) return null;
-  const changed = new Set((lastPass()?.changed || []).map(r => r.path));
-  const candidates = listedRecords().filter(r => r.path !== REM.owner && !changed.has(r.path)
-    && ["people", "projects", "orgs"].includes(r.category) && known(r).status !== "Mapped" && known(r).summary);
-  candidates.sort((a, b) => Number(!!section(b, "our relationship")) - Number(!!section(a, "our relationship")) || byActivity(a, b));
-  const r = candidates[0];
-  if (!r) return null;
-  const relationship = section(r, "our relationship");
-  const answerText = summaryLine(relationship?.text || known(r).summary);
-  const card = el("section", { class: "recall widget", "aria-label": t("Recall a memory") });
-  const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
-    el("p", { text: answerText }), el("a", { href: href(r), text: t("Open {name} and its sources →", { name: r.title }) })]);
-  // Pause before revealing: the answer comes from a page co rem already wrote. The flip is the only control.
-  const button = el("button", { class: "recall-toggle ibtn", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false",
-    "aria-label": t("Reveal the context"), title: t("Reveal the context") }, [icon("flip")]);
-  button.onclick = () => {
-    answer.hidden = !answer.hidden;
-    button.setAttribute("aria-expanded", String(!answer.hidden));
-    button.setAttribute("aria-label", t(answer.hidden ? "Reveal the context" : "Hide the context"));
-  };
-  card.append(el("div", { class: "rc" }, [r.category === "people" ? face(r.title, "l") : el("span", { class: "org-mark l", "aria-hidden": "true", text: r.title.trim()[0]?.toUpperCase() || "" }),
-    el("h2", { text: t(relationship ? "How do you know {name}?" : "What should you remember about {name}?", { name: r.title }) }), button]), answer);
-  return card;
 }
 function connectionReview() {
   const candidate = (REM.reviews || []).find(row => row.status === "pending" && row.kind === "link");
@@ -7547,18 +7657,20 @@ function approvalProblems() {
 function approvalHeader() {
   const items = REM.approval_outcomes || [];
   if (!items.length && !REM.live) return approvalProblems() || el("span", { hidden: "" });  // a snapshot never gains outcomes later
-  const button = el("button", {id: "approve-all", class: "pair-cell", type: "button"}, approveAllWords(items.length));
-  // Nothing to approve shows nothing: "0 items to approve" reads as a task (TOP10 #9). An Undo that brings
-  // items back draws the widget again, button and all.
-  button.disabled = !REM.live || !items.length;
-  button.hidden = !items.length;
-  button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
+  // The batch is a worded button that names what it does (owner: «数字给我能点的»), counting only what can go now:
+  // an item waiting for the owner to fill a gap is not approved by it. With none that can go there is no button,
+  // never a greyed one or a "0" (TOP10 #9); an Undo that brings items back draws the widget again, button and all.
+  const ready = readyCount(items);
+  const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve all {n}", {n: ready})}) : null;
+  if (button) {
+    button.disabled = !REM.live;
+    button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
+  }
   return el("div", {class: "approval-header"}, [button, approvalProblems()]);
 }
-// 一键批准 as a widget cell: the count large, its words under it.
-function approveAllWords(n) {
-  return [el("b", { class: "big", text: String(n) }), el("span", { text: t(n === 1 ? "item to approve in one go" : "items to approve in one go") })];
-}
+// What can go now: an item waiting for the owner to fill a gap is not approved by the batch. The button and the
+// sheet's title both say this number.
+function readyCount(items) { return items.filter(item => !item.blocked).length; }
 function approvalStatus(value) {
   return value.error || t({held: "Held for 10 minutes", done: "Marked done", queued: "Task queued", dispatched: "Task dispatched", sent: "Sent", cancelled: "Cancelled"}[value.status] || value.status);
 }
@@ -7570,7 +7682,7 @@ function openApprovalSheet(items) {
   const notice = el("p", {class: "quiet-line", role: "status"});
   const list = el("div", {class: "approval-list"});
   const dialog = el("dialog", {id: "approval-sheet", "aria-labelledby": "approval-title"}, [
-    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: items.length})}), close]),
+    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: readyCount(items)})}), close]),
     el("p", {class: "quiet-line", text: t("Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.")}),
     list, el("footer", {}, [confirm, notice])]);
   const sync = () => {confirm.disabled = busy || !rows.some(row => row.check.checked && !row.check.disabled);};
@@ -7647,11 +7759,13 @@ function openApprovalSheet(items) {
   document.body.appendChild(dialog); sync(); dialog.showModal();
 }
 let approvalTimer;
-function approvalUndoBar() {
+// onToday: Today's "Sent to …" line carries its own Undo, so the bar leaves that reply out there; on Waiting on you,
+// where a held reply's row has left with the count, the bar is its Undo.
+function approvalUndoBar(onToday = true) {
   clearInterval(approvalTimer);
   document.getElementById("approval-undo")?.remove();
   if (!REM.live) return;
-  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now() && !todaySent?.ids?.includes(item.id));
+  let held = (REM.approval_pending || []).filter(item => item.status === "held" && Date.parse(item.release_at) > Date.now() && !(onToday && todaySent?.ids?.includes(item.id)));
   if (!held.length) return;
   const status = el("span", {role: "status"});
   let undoFailure = "";
@@ -7730,12 +7844,17 @@ function translationNotice() {
 
 // ---------- Today as a card desk (N3, D-123) ----------
 // The night chart and the faces of who waits on top; one raised card (the deck) with the page's one green
-// action; at its side what others owe, a memory to recall, and what REM did overnight. Everything else of
+// action; at its side what others owe and what REM did overnight. Everything else of
 // the old front page is one fold below.
 let todayLead = null;
 function deckOrder(groups) {
   const lead = groups.findIndex(group => group.r.path === todayLead);
-  const ready = groups.findIndex(group => groupStep(group.entries).step === "send");
+  // Among cards ready to send, one whose draft needs nothing from the owner goes on top: a slot makes the top
+  // card a question; with every draft slotted, the first still leads. A slot is what replyDraftCard holds Send
+  // for (its isSlot: any [, ［ or 【 part), so the card on top is one whose Send works at once.
+  const sendable = groups.map((group, i) => [i, groupStep(group.entries)]).filter(([, next]) => next.step === "send");
+  const complete = sendable.find(([, next]) => !/[\[［【]/.test(threadDraft(next.entry)?.body || ""));
+  const ready = (complete || sendable[0] || [-1])[0];
   const first = lead >= 0 ? lead : Math.max(0, ready);
   return [...groups.slice(first), ...groups.slice(0, first)];
 }
@@ -7780,8 +7899,8 @@ function overview() {
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
   main.append(...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts, todayEntries(entries).filter(staleEntry))]),
-    todayFolds(entries, counts)].filter(Boolean));
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
+    staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
 function scheduleFailure() {
@@ -7815,6 +7934,16 @@ function faceStrip(groups, current) {
     return button;
   }));
 }
+// The one "waiting on you" number is the rail badge's: the items in Waiting on you that need the owner. The faces
+// beside it are a subset, and say so in words, so the header, the badge and the list never disagree (sprint 14 #4).
+function countLine(groups, ticked) {
+  // Both numbers read waitingOnYou: never "0 waiting on you · start with these 2 people".
+  const mine = threadCounts().mine, people = groups.filter(group => group.entries.some(waitingOnYou)).length;
+  if (!mine) return el("h1", { class: "count-line" }, [el("b", { class: "count", text: "0" }), el("span", { class: "count-words", text: t("Nobody is waiting on you today.") })]);
+  return el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(mine) }),
+    el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") }),
+    people ? el("span", { class: "count-of", text: t(people === 1 ? "Start with this 1 person" : "Start with these {n} people", { n: people }) }) : null]);
+}
 // On a phone the chart folds under its title; the title opens it.
 function chartToggle() {
   const button = el("button", { type: "button", class: "chart-toggle", "aria-expanded": "false" }, [t("Night chart"), icon("down")]);
@@ -7822,14 +7951,38 @@ function chartToggle() {
   return button;
 }
 function nightCard(groups, current, ticked) {
-  const n = groups.length;
-  const count = el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(n) }),
-    el("span", { text: n ? t(n === 1 ? "person waiting on you" : "people waiting on you") : t("Nobody is waiting on you today.") })]);
+  const n = groups.length, count = countLine(groups, ticked);
   const chart = nightChart(current), full = !!chart?.svg;
   return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
       el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
+    nightStall(),
     el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+}
+// Why the nights read nothing (sprint 14): a mailbox failed while REM prepared a page. One plain sentence, never
+// an exception name; the pages set aside fold under it with when each is tried again (fetch_stalls.last_night).
+const STALL_WHY = { timeout: "timed out", not_found: "mail deleted or moved", server: "server error", network: "network down",
+  auth: "authorization expired", denied: "permission denied", throttled: "throttled", refused: "request refused", unavailable: "unavailable" };
+function stallSentence(s) {
+  const values = { provider: s.provider, why: t(STALL_WHY[s.reason] || "unavailable"), times: s.times, n: s.pages };
+  if (s.stopped) return t("Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest", values);
+  if (s.times >= 3 && s.pages === 1) return t("Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest", values);
+  if (!s.times) return t(s.pages === 1 ? "1 page waits for {provider}; REM will try again" : "{n} pages wait for {provider}; REM will try again", values);
+  return t(s.pages === 1 ? "Last night 1 page was set aside because {provider} {why}; REM will try again"
+    : "Last night {n} pages were set aside because {provider} {why}; REM will try again", values);
+}
+function nightStall() {
+  const s = REM.night_stall;
+  if (!s) return null;
+  const now = Date.parse(REM.as_of || new Date().toISOString());
+  const when = at => new Date(at).toLocaleString(uiLocale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  // A page the reader does not list (private, or gone) is not named: never a raw path.
+  const rows = (s.parked || []).filter(row => byPath(row.record)).map(row => {
+    const r = byPath(row.record), at = Date.parse(row.retry_at);
+    return el("li", {}, [el("a", { href: href(r), text: r.title }),
+      el("span", { class: "meta", text: at > now ? t("tries again from {when}", { when: when(at) }) : t("tries again next round") })]);
+  });
+  return el("details", { class: "night-stall" }, [el("summary", { text: stallSentence(s) }), rows.length ? el("ul", {}, rows) : null]);
 }
 // The night chart: a hypnogram of REM's real work, read from the run logs (reading mail sits at the first
 // depth, rewriting and translating pages at the deepest) and from when each reply or task was prepared (the
@@ -7937,14 +8090,20 @@ function nightDays(start, end, x) {
 function nightSummary(runs, marks) {
   return t("REM's work: {runs} runs, {n} replies and tasks prepared", { runs: runs.length, n: marks.length });
 }
-// The side column: what others owe and what can be approved at once, a memory to recall, what REM did overnight.
-function todaySide(counts, stale) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), staleWidget(stale), recallPrompt(), nightLine()].filter(Boolean));
+// The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
+// 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
+function todaySide(counts) {
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), nightLine()].filter(Boolean));
 }
-// Promises long past their date with no word since (staleEntry): asked about once, quietly, never in red.
-// Mark done closes one the way the card's Mark done does; Still open puts it back among the people waiting.
+// Promises long past their date with no word since (staleEntry): triage of the past, so not in the rail above the
+// fold but one folded line under the desk, opening in place, never in red (sprint 14 #6). Mark done closes one the
+// way the card's Mark done does; Still open puts it back among the people waiting; Mark all done closes every one
+// of them at once, with the page's one Undo.
 function staleWidget(entries) {
   if (!entries.length) return null;
+  // The count is in the words: the fold shows three, and this closes every one of them.
+  const all = el("button", { type: "button", class: "btn-quiet stale-all", text: t("Mark all {n} done", { n: entries.length }) });
+  all.onclick = () => closeAllStale(entries);
   const rows = entries.slice(0, 3).map(entry => {
     const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
     const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
@@ -7953,12 +8112,44 @@ function staleWidget(entries) {
     keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
     return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
-      el("p", { class: "stale-what", text: words, title: words }),
+      wordsLine("stale-what", words, entry.r, [], { title: words }),
       el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
   });
-  return el("section", { id: "today-stale", class: "widget stale", "aria-label": t("Maybe over") }, [
-    el("div", { class: "wt" }, [icon("clock"), el("span", { text: t("Maybe over · still open?") })]), el("ul", {}, rows),
-    entries.length > 3 ? staleMore(entries.length - 3) : null]);
+  const n = entries.length;
+  return el("details", { id: "today-stale", class: "stale fold" }, [
+    el("summary", { text: t(n === 1 ? "1 has gone quiet for a long time · Look" : "{n} have gone quiet for a long time · Look", { n }) }),
+    el("ul", {}, rows), el("div", { class: "stale-foot" }, [all, n > 3 ? staleMore(n - 3) : null])]);
+}
+// Each promise is its own mark: one setDone over all of them would link unrelated rows as one thread in the
+// notebook, so a later Undo of any one would reopen every one. The page is drawn once and says it once: one notice,
+// one Undo that reopens only the marks the notebook kept, and for any it refused one Try again for just those.
+async function closeAllStale(entries) {
+  const marks = entries.map(entry => ({ entry, ...markThread(entry, true) }));
+  redrawKeepingScroll();
+  document.getElementById("done-notice")?.remove();
+  const undo = el("button", { type: "button", text: t("Undo") }), status = el("span", { text: t("Saving…") });
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done"), " · ", undo, " · ", status]);
+  let undone = false;
+  const reopen = list => () => { undone = true; list.forEach(mark => markThread(mark.entry, false)); redrawKeepingScroll(); notice.remove(); focusRaisedCard(); };
+  undo.onclick = reopen(marks);
+  document.body.appendChild(notice);
+  undo.focus({ preventScroll: true });
+  noticeLeaves(notice);
+  const results = await Promise.all(marks.map(mark => mark.saved));
+  const failed = marks.filter((mark, i) => results[i] === "refused");
+  failed.forEach(mark => mark.restore());
+  undo.onclick = reopen(marks.filter(mark => !failed.includes(mark)));
+  // true is the notebook's; false waits on this device; "refused" is not saved, so it never reads as saved.
+  status.textContent = t(results.every(result => result === true) ? "Saved in notebook" : failed.length ? "Not saved" : "Saved on this device — sync pending");
+  // The refusal is added to this notice (own: null), so the Undo for the marks that were saved stays; once Undo ran
+  // there is nothing to try again.
+  if (failed.length && !undone) notSavedNotice(() => closeAllStale(failed.map(mark => mark.entry)), null);
+  redrawKeepingScroll();
+}
+function redrawKeepingScroll() {
+  const scroll = window.scrollY;
+  render();
+  window.scrollTo(0, scroll);
 }
 // The rest are in Waiting's folded Gone quiet section: the link says so, opens it and brings it into view.
 function staleMore(n) {
@@ -7978,10 +8169,13 @@ function othersWidget(counts) {
   const outcomes = (REM.approval_outcomes || []).length, problems = approvalProblems();
   if (!counts.theirs && !counts.mine && !outcomes && !problems)
     return el("p", { id: "today-others", class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
-  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("b", { class: "big", text: String(counts.theirs) }), el("span", { text: t("waiting on others") })])
+  // What others owe is a list to read, so it is a worded link to that list, not a big number to stare at.
+  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open", text: t("See the {n} waiting on others →", { n: counts.theirs }) })
     : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
-  const title = counts.theirs ? "Waiting on others" : counts.mine ? "Open threads" : "Approval status";
-  return el("section", { id: "today-others", class: "widget others" }, [el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]),
+  // A batch that can go names itself; a heading of "Waiting on others" over it read as if the batch were theirs.
+  const ready = outcomes && (REM.approval_outcomes || []).some(item => !item.blocked);
+  const title = ready ? null : counts.theirs ? "Waiting on others" : counts.mine ? "Open threads" : "Approval status";
+  return el("section", { id: "today-others", class: "widget others" }, [title ? el("div", { class: "wt" }, [icon("clock"), el("span", { text: t(title) })]) : null,
     el("div", { class: "pair" }, [cell, outcomes || REM.live ? approvalHeader() : problems])]);
 }
 // What REM did overnight, as one quiet line; 看 opens the list with every name.
@@ -8307,7 +8501,7 @@ function personHead(r) {
   const late = group ? groupLate(group) : 0;
   return el("header", { class: "r4-head person-head hero" }, [fusedFace(r, late, "xl"),
     el("div", { class: "hero-who" }, [
-      el("div", { class: "hero-marks" }, [updatedMarker(r, true), translationMark(r)]),
+      el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
       el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
     el("div", { class: "hero-acts" }, [...personContacts(r), personTodayLink(r, late)])]);
 }
@@ -8388,11 +8582,12 @@ function personStats(r, d = personFuseData(r)) {
     f.last ? [fmtDate(f.last), last, d?.wait ? "late" : ""] : null].filter(Boolean);
   return cells.length ? el("div", { class: "r4-stats" }, cells.map(([value, label, cls]) => el("div", { class: cls || "" }, [el("b", { class: "big", text: value }), el("span", { text: label })]))) : null;
 }
+// What is still open with them leads, right under the header: it is what the owner opens a person for (sprint 15).
 // The rest of the record as widgets; the full note with every source stays below them.
 function personPage(r) {
-  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r),
+  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), translationLine(r), personTopics(r),
     el("div", { class: "bento" }, [personFuse(r), personQuotes(r), personTimeline(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
-      el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r), personTopics(r)].filter(Boolean))]);
+      el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r)].filter(Boolean))].filter(Boolean));
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
 // exchange in the record. Positions are the real dates; nothing is spaced for looks.
@@ -8544,7 +8739,7 @@ function personSessions(r) {
     el("ul", { class: "session-context-rows" }, sessions.slice(0, 3).map(s => sessionContextRow(s, r.title)))]);
 }
 // What is still open between you, as facts of the record (D-30: no to-do UI here; D-36: not folded).
-// The words and the date only; marking, replying and closing happen in Today.
+// The words and the date only; marking, replying and closing happen in Today. The top three show; 全部 N 条 opens the rest.
 function personTopics(r) {
   const items = threads(r).items.filter(item => item.dir !== "third");
   const rows = items.map(item => {
@@ -8552,9 +8747,20 @@ function personTopics(r) {
     return content ? el("li", { class: content.classList.contains("privacy-only") ? "private-entry" : "" }, [
       el("span", { class: "d", text: item.since ? fmtDate(item.since) : "" }), el("span", { class: "x" }, [content])]) : null;
   }).filter(Boolean);
-  rows.slice(2).forEach(row => row.classList.add("later"));
-  const list = el("ul", { class: rows.length > 2 ? "" : "all" }, rows);
-  return rows.length ? el("section", { class: "widget r4-sec r4-topics" }, [widgetHead("activity", t("Open topics"), rows.length > 2 ? expandChip(list, t("Show all {n} entries", { n: rows.length })) : el("span", { text: String(rows.length) })), list]) : null;
+  if (!rows.length) return null;
+  // With labelled passages hidden, the top three and the count are of the rows shown: the card neither leads
+  // the page empty nor tells how many hidden rows there are, and it leaves when none is shown.
+  const section = el("section", { class: "widget r4-sec r4-topics" });
+  section.refreshTopics = () => {
+    const hidden = document.documentElement.classList.contains("hide-private");
+    const shown = rows.filter(row => !hidden || !row.classList.contains("private-entry"));
+    shown.forEach((row, i) => row.classList.toggle("later", i >= 3));
+    const list = el("ul", { class: shown.length > 3 ? "" : "all" }, shown);
+    section.hidden = !shown.length;
+    section.replaceChildren(widgetHead("activity", t("Open topics"), shown.length > 3 ? expandChip(list, t("All {n} entries", { n: shown.length })) : el("span", { text: String(shown.length) })), list);
+  };
+  section.refreshTopics();
+  return section;
 }
 // People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
 function waitingOn(r) {
@@ -9448,7 +9654,7 @@ const ORG_UI_ZH = {
   "{n} days without mail": "{n} 天没有邮件", "{n}% less mail in the last 30 days": "最近 30 天少了 {n}%",
   "REM has {n} questions for you": "REM 还有 {n} 个问题想问你", "Where this sits": "所在位置", "{n} units": "{n} 个单位",
   "In touch since {date}": "{date}起有往来", "Last contact {date}": "最近往来 {date}", "Most recently in touch": "最近联系的人",
-  "{n} things in Today involve {org} →": "今天里有 {n} 件和 {org} 有关的事 →", "How {org} is built": "{org} 的结构",
+  "1 thing in Today involves {org} →": "今天里有 1 件和 {org} 有关的事 →", "{n} things in Today involve {org} →": "今天里有 {n} 件和 {org} 有关的事 →", "How {org} is built": "{org} 的结构",
   "Size = people you know there": "大小 = 你在那里认识的人数", "In touch within 45 days": "45 天内有往来", "When you were in touch": "你们什么时候有往来",
   "First contact": "第一次往来", "Latest contact": "最近一次往来", "{n} people here": "{n} 人", "Units and people": "分支与团队",
   "{n} units · {m} people": "{n} 个单位 · {m} 人", "Projects with {org}": "和 {org} 有关的项目"
@@ -9758,14 +9964,14 @@ function orgCrumb(r) {
   return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
 }
 function orgOver(r) {
-  return el("header", { class: "ov-over" }, [orgCrumb(r), translationMark(r),
+  return el("header", { class: "ov-over" }, [orgCrumb(r),
     !orgHidden(r) && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null]);
 }
 function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }), updatedMarker(r, true),
-      el("p", { class: "ov-sub" }, orgSub(r, v.people)), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
+      el("p", { class: "ov-sub" }, orgSub(r, v.people)), translationLine(r), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
     orgXray(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
@@ -9786,8 +9992,15 @@ function orgKeyPeople(v) {
       el("span", { class: "ov-meta", text: [orgPersonRole(p), fmtDate(orgLast(p))].filter(Boolean).join(" · ") })])))]);
 }
 // What you owe lives in Today: one quiet line, never a ledger or a button here.
+// The link counts what Today counts (sprint 15): Today's own waitingOnYou over Today's entries, kept to this
+// organisation's rows, so the number never exceeds Today's header and badge.
+function orgWaiting(v) {
+  const keys = new Set(v.owed.flatMap(entry => entry.row.keys || [entry.row.key]));
+  return threadEntries().filter(entry => !isDone(entry) && waitingOnYou(entry) && [entry, ...(entry.members || [])].some(member => keys.has(doneKey(member))));
+}
 function orgTodayLink(v) {
-  return v.owed.length ? el("a", { class: "ov-today", href: "#view=open", text: orgT("{n} things in Today involve {org} →", { n: v.owed.length, org: orgName(v.r) }) }) : null;
+  const n = orgWaiting(v).length;
+  return n ? el("a", { class: "ov-today", href: "#view=open", text: orgT(n === 1 ? "1 thing in Today involves {org} →" : "{n} things in Today involve {org} →", { n, org: orgName(v.r) }) }) : null;
 }
 
 // ---------- the X-ray: square = branch, circle = team, dot = person; ring = in touch lately ----------
@@ -10278,7 +10491,7 @@ function skillsView(items) {
     const nameOnly = items.filter(r => !shown.has(r.path) && !skillLine(r)).sort((a, b) => a.title.localeCompare(b.title));
     const families = skillFamilies(items.filter(r => !shown.has(r.path) && skillLine(r)), items);
     if (top.length) content.appendChild(el("section", { class: "skills-top" }, [
-      sectionHead("Most used", "counted by skill-name matches"),
+      sectionHead("Most used"),
       el("ul", { class: "skill-cards" }, top.map(skillCard))]));
     const anchors = families.map(([name], i) => "skill-family-" + i);
     if (families.length) content.appendChild(el("nav", { class: "skill-shape", "aria-label": t("Everything they can do") }, [
@@ -10957,7 +11170,9 @@ function factValue(item, from) {
   let last;
   while (walker.nextNode()) if (walker.currentNode.data.trim() && !walker.currentNode.parentElement.closest(".privacy-tag, .cite")) last = walker.currentNode;
   if (!last) { value.appendChild(cites); return value; }
-  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S+\s*$/.exec(last.data);
+  // The marks stay with the end of the last word; a long word keeps only its last 12 characters with them, so the
+  // rest can wrap (#2942: a whole long word held on one line ran past the screen).
+  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S{1,12}\s*$/.exec(last.data);
   const range = document.createRange();
   range.setStart(last, tail.index);
   range.setEnd(value, value.childNodes.length);
@@ -11482,7 +11697,7 @@ function activityPanel(r, recent = false) {
 
 function recordEyebrow(r, person) {
   const k = known(r), children = [el("a", { href: categoryHref(r.category), text: categoryName(r.category) }),
-    updatedMarker(r, true), translationMark(r)];
+    updatedMarker(r, true)];
   const status = !person && statusPill(r);
   if (status) children.push(el("span", { class: "sep", text: "/" }), status);
   if (!person && !["projects", "orgs"].includes(r.category)) children.push(el("span", { class: "when", text:
@@ -11503,7 +11718,7 @@ function record(path, heading) {
     return;
   }
   if (r.category === "sessions") { sessionRecord(r, heading); return; }
-  translationQueued(r);  // asks for the translation; the crumb's small mark says it is under way
+  translationQueued(r);  // asks for the translation; the line under the header says it is under way
   const parts = splitTrailers(r.text);
   const k = known(r);
   const person = r.category === "people" && r.path !== REM.owner;
@@ -11525,6 +11740,8 @@ function record(path, heading) {
     main.appendChild(recordEyebrow(r, person));
     head.appendChild(leadRow(r));
     main.appendChild(head);
+    const line = translationLine(r);
+    if (line) main.appendChild(line);
     main.appendChild(recordFocus(r));
   }
   const decisions = threadDecisionHistory(r);
@@ -12341,7 +12558,8 @@ function graphPanel() {
 }
 function graphPanelGuide() {
   const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
-  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
+  // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
+  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && !(REM.owner && n.id === REM.owner)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
   const count = n => graphT("{n} links", { n: graphDegree(n) });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker", text: graphT("Whole map") }), el("h2", { text: graphT("Click a point to see what it connects") }),
       topics.length ? el("p", { text: graphT("Knowledge is the thread between people, organisations and projects. Start with one entry.") }) : null]),

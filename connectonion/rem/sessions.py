@@ -226,7 +226,7 @@ def _row_reason(row: dict, kind: str) -> str:
 
 
 def _read_session(path: Path, kind: str, since: datetime) -> tuple[dict, str]:
-    return _read_session_data(path.read_bytes(), path, kind, since)
+    return _read_session_data(source.read_session(path), path, kind, since)
 
 
 def _read_session_data(data: bytes, path: Path, kind: str, since: datetime) -> tuple[dict, str]:
@@ -586,7 +586,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
             directory = Path(sub["root"])
             if directory.is_symlink() or not directory.is_dir():
                 continue
-            paths = sessions.files[name] if sessions is not None else sorted(directory.rglob(source.KINDS[kind]["glob"]))
+            paths = sessions.files[name] if sessions is not None else source.session_paths(directory, kind)
             for path in paths:
                 relative = path.relative_to(directory)
                 if any((directory / parent).is_symlink() for parent in (relative, *relative.parents)) or not path.is_file():

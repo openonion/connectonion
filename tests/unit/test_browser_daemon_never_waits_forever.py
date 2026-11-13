@@ -19,7 +19,6 @@ thing.
 
 import asyncio
 import json
-import os
 import re
 import shutil
 import tempfile
@@ -92,6 +91,21 @@ def open_core() -> AsyncBrowserCore:
     return core
 
 
+def wait_until_serving(server, seconds=5.0):
+    """Until the daemon takes commands, which is later than its socket file.
+
+    _bind_posix creates the path at bind(), then writes the pid file, then
+    listens; a read verb sent in between is answered "the browser is not open"
+    by the client itself, which reads the pid file before it connects. That was
+    the first of forty commands on a loaded CI runner (run 43309838543). The
+    asyncio server serving is after all three.
+    """
+    deadline = time.monotonic() + seconds
+    while not getattr(server._srv, "is_serving", lambda: False)():
+        assert time.monotonic() < deadline, "the browser daemon never started serving"
+        time.sleep(0.02)
+
+
 # ---- 1. a stalled liveness probe never costs a connection -------------------
 
 
@@ -111,9 +125,7 @@ def test_forty_commands_against_a_stalled_cookie_store_all_succeed(short_dir, mo
     server.browser = stalled_core()
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
-    deadline = time.monotonic() + 5
-    while not os.path.exists(sock) and time.monotonic() < deadline:
-        time.sleep(0.02)
+    wait_until_serving(server)
 
     try:
         codes, most_in_flight = [], 0
@@ -124,7 +136,7 @@ def test_forty_commands_against_a_stalled_cookie_store_all_succeed(short_dir, mo
             codes.append((code, payload))
             most_in_flight = max(most_in_flight, len(server._client_tasks))
 
-        assert all(code == 0 for code, _ in codes), codes[-3:]
+        assert all(code == 0 for code, _ in codes), [(i, c) for i, c in enumerate(codes) if c[0] != 0]
         assert codes[-1][1] == "https://example.com/"
         # Before the fix every command left its connection open behind a
         # cookie read that never returned; 32 of them filled the daemon.

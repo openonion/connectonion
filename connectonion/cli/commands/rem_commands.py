@@ -156,6 +156,35 @@ def _interrupted(ctx, resume, data=None):
     raise typer.Exit(130)
 
 
+def _file_error(error) -> str:
+    """What failed, and on which file when it is known (2026-11-12).
+
+    A PNG read as a research capture raised UnicodeDecodeError and was reported
+    as "Cannot read or write", which sent the owner hunting a permission problem.
+    """
+    from ...rem.files import RemError
+    if isinstance(error, RemError):
+        return str(error)
+    if isinstance(error, OSError):
+        return f"Cannot read or write the selected co rem files: {error}"
+    if isinstance(error, UnicodeDecodeError):
+        where = _decoding(error.__traceback__)
+        return (f"{where or 'A co rem file'} is not UTF-8 text ({error.reason} at position {error.start}); "
+                "it was read, so this is not a permission problem")
+    return f"Cannot write co rem text: {error}"
+
+
+def _decoding(trace):
+    """The path a failed Path.read_text was reading, from its own frame; None when not a read_text."""
+    from pathlib import PurePath
+    while trace:
+        frame = trace.tb_frame
+        if frame.f_code.co_name == "read_text" and isinstance(frame.f_locals.get("self"), PurePath):
+            return frame.f_locals["self"]
+        trace = trace.tb_next
+    return None
+
+
 def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     """Run a command's operation and print its result; `resume` is the Next line after Ctrl-C."""
     from ...rem.files import RemError
@@ -168,9 +197,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     except KeyboardInterrupt:
         _interrupted(ctx, resume or retry or recovery)
     except (RemError, OSError, UnicodeError) as error:
-        message = str(error) if isinstance(error, RemError) else "Cannot read or write the selected co rem files"
-        if isinstance(error, OSError):
-            message += f": {error}"
+        message = _file_error(error)
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co rem start" and then printed "Next: co rem logs".
         named = re.search(r"`co rem ([^`<>]+)`", message)
