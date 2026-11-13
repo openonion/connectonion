@@ -936,6 +936,12 @@
   .contact-line.leadrow { margin: 0; color: var(--grey); }
   /* A translation on its way: one quiet worded line under a record's header (D-103, sprint 15). */
   .translation-line { margin: 10px 0 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .translate-all { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px var(--u3); margin-left: 8px; }
+  .translate-all .ta-go, .translate-all .ta-stop { min-height: 32px; padding: 0 12px; border: var(--hair) solid var(--grey); border-radius: var(--radius); background: none; color: var(--ink); font: var(--w-bold) var(--s-meta) var(--font); cursor: pointer; }
+  .translate-all .ta-stop { font-weight: var(--w-regular); }
+  .translate-all .ta-state { color: var(--grey); font-variant-numeric: tabular-nums; }
+  .set-row .translate-all { margin-left: 0; justify-content: flex-end; }
+  @media (max-width: 820px), (pointer: coarse) { .translate-all .ta-go, .translate-all .ta-stop { min-height: 44px; } }
   .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
   .lang-status.lead { margin: 0 6px 0 0; }
@@ -3340,6 +3346,14 @@ const UI = {
     "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
     "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
+    "Translate every page into Chinese": "全部翻译成中文", "Translated {n} / {m}": "已翻译 {n} / {m}",
+    "Getting the pages ready…": "正在整理页面…", "Stopping after the pages already begun…": "正在停止，已开始的页面会翻完…",
+    "Stopped.": "已停止。", "Every page reads in Chinese.": "所有页面都已是中文。", "Translate pages": "翻译页面",
+    "Translation could not start: {why}.": "翻译没能开始：{why}。", "Stop translating": "停止翻译",
+    "Translate every page into Chinese ({n} pages)": "全部翻译成中文（{n} 页）",
+    "Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.": "额度只剩留给你自己用的部分，已停在 {n} / {m}。",
+    "The translation was refused; try again in a moment.": "翻译请求没被接受，请稍后再试。",
+    "Lost touch with REM; trying again…": "暂时连不上 REM，正在重试…",
     "Undo failed. Try again before the hold ends.": "撤销失败，请在等待时间结束前重试。",
     "Approval status": "批准状态",
     "Task dispatch is in progress.": "正在派发任务。",
@@ -6647,11 +6661,13 @@ function renderSettings() {
   motion.onclick = toggleCalm;
   const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
   const words = remStateWords(s);
+  const translating = translateAll();
   const row = (title, control, note) => el("div", { class: "set-row" }, [el("div", {}, [el("div", { class: "set-k", text: t(title) }), note ? el("div", { class: "set-note", text: note }) : null]), control]);
   foot.replaceChildren(
     row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
     row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
-    notebookLanguages(), ignoredSendersList(),
+    // replaceChildren writes a null as the word "null": the rows only the live page has are left out instead.
+    notebookLanguages(), ...[translating && row("Translate pages", translating), ignoredSendersList()].filter(Boolean),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
     el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
       el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
@@ -6799,8 +6815,9 @@ function translationLine(r) {
   // Only when one can arrive: queued from this live page, or a nightly target with background updates on.
   const queued = translationQueued(r), nightly = REM.status?.worker?.enabled && REM.status?.translation_coverage?.[uiLanguage]?.requested;
   if (!queued && !nightly) return null;
+  const go = translateAll();
   return el("p", { class: "translation-line", text: t("Not translated yet — showing the original"),
-    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") });
+    title: t(REM.status?.worker?.enabled ? "Queued for the next translation pass" : "Translation pending — background updates off") }, go ? [go] : undefined);
 }
 // A current Chinese version of the page in any region: a zh-TW or zh-CN cache is read as 中文 too.
 function hasChinese(r) {
@@ -7883,7 +7900,76 @@ function translationNotice() {
   const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
   const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
   const failure = failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) + " " : "";
-  return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") });
+  const go = translateAll();
+  return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") }, go ? [go] : undefined);
+}
+// «全部翻译成中文» (#2999). The owner, 2026-11-13: «有的页面是中文，有的是英文，有的是中英文混合，一键让 Codex 全部都
+// 翻译». One worded button starts the job `co rem translate` runs, on the Host (POST /rem/translate-all, the same
+// loopback, cookie and JSON-only rules as every other write); it then says how far it is, «已翻译 120 / 639», and
+// offers Stop. Every copy of the control on the page shows the same job; no command to copy anywhere (D-60).
+let translateAllJob = null, translateAllPoll = null, translateAllAsked = false, translateAllWait = 1500;
+function translateAllLanguage() {
+  return /^zh(?:-|$)/i.test(REM.owner_language || "") ? REM.owner_language : "zh";
+}
+function translateAll() {
+  if (!liveHere() || !(uiLanguage === "zh" || /^zh(?:-|$)/i.test(REM.owner_language || ""))) return null;
+  const box = el("span", { class: "translate-all", role: "status", "aria-live": "polite" });
+  drawTranslateAll(box);
+  if (!translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
+  return box;
+}
+function drawTranslateAll(box) {
+  const job = translateAllJob || { state: "idle" }, busy = ["starting", "running", "stopping"].includes(job.state);
+  const count = job.total != null ? t("Translated {n} / {m}", { n: job.done, m: job.total }) : "";
+  const words = job.offline ? t("Lost touch with REM; trying again…")
+    : job.state === "starting" ? t("Getting the pages ready…")
+    : job.state === "stopping" ? count + " · " + t("Stopping after the pages already begun…")
+    : job.state === "refused" ? t("The translation was refused; try again in a moment.")
+    : job.state === "failed" && job.error ? t("Translation could not start: {why}.", { why: job.error })
+    : job.halted ? t("Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.", { n: job.done, m: job.total })
+    : job.total != null && job.done >= job.total ? t("Every page reads in Chinese.")
+    : job.state === "stopped" ? t("Stopped.") + " " + count
+    : count;
+  const failed = !busy && job.failed ? t(job.failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: job.failed }) : "";
+  const parts = [words || failed ? el("span", { class: "ta-state", text: [words, failed].filter(Boolean).join(" ") }) : null];
+  if (busy) {
+    const stop = el("button", { type: "button", class: "ta-stop", text: t("Stop translating") });
+    stop.disabled = job.state === "stopping";
+    stop.onclick = () => translateAllSend("stop");
+    parts.push(stop);
+  } else if (!(job.total != null && job.done >= job.total)) {
+    // The cost in words, on the button itself: no confirmation for a one-click he asked for.
+    const left = job.total != null ? job.total - job.done : 0;
+    const go = el("button", { type: "button", class: "ta-go",
+      text: left ? t("Translate every page into Chinese ({n} pages)", { n: left }) : t("Translate every page into Chinese") });
+    go.onclick = () => translateAllSend("start");
+    parts.push(go);
+  }
+  box.replaceChildren(...parts.filter(Boolean));
+}
+// A refused request (409, a RemError) says so in words and offers the button again; a request that never
+// arrived keeps asking, waiting longer each time, so the line is never left saying it is running.
+async function translateAllSend(action) {
+  clearTimeout(translateAllPoll);
+  let response = null;
+  try {
+    response = await fetch("/rem/translate-all", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, language: translateAllLanguage() }) });
+  } catch {
+    translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: true };
+  }
+  // A refused start or stop says so. A refused status read is a busy moment: the line keeps what it said (a
+  // running job stays running) and asks again, waiting longer each time, like a request that never arrived.
+  if (response && !response.ok && action === "status") translateAllJob = { ...(translateAllJob || { state: "idle" }), offline: false, retry: true };
+  else if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false, retry: false };
+  else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
+  for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
+  if (translateAllJob.offline || translateAllJob.retry) {
+    translateAllWait = Math.min(translateAllWait * 2, 30000);
+    translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
+  } else if (["starting", "running", "stopping"].includes(translateAllJob.state)) {
+    translateAllPoll = setTimeout(() => translateAllSend("status"), 1500);
+  }
 }
 
 // ---------- Today as a card desk (N3, D-123) ----------

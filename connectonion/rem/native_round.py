@@ -300,6 +300,9 @@ def _translation_turn(root, cursor, config, directory):
 
 def prepare_translation(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    # The owner's one-click job is translating the same pages: the night's pass stands aside.
+    if translate.claimed(root):
+        return None
     # Today's pages lead; its queue reads the whole notebook, so it is computed once per round, not per turn.
     if "shown_today" not in cursor:
         cursor["shown_today"] = translate.shown_today(root)

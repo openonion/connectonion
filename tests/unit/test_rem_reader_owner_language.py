@@ -82,6 +82,7 @@ def test_among_ready_drafts_the_one_with_no_owner_slot_leads():
 def test_the_page_header_line_counts_a_regional_chinese_cache():
     result = _run_reader_js(functions('translationLine', 'hasChinese') + r'''
       UI.zh = {}; uiLanguage = 'zh';
+      const translateAll = () => null;  // the live page's button (#2999)
       const el = (tag, attrs) => ({tag, ...attrs}), translationQueued = () => false;
       const REM = {status: {worker: {enabled: true}, translation_coverage: {zh: {requested: true}}}};
       console.log(JSON.stringify([translationLine({translations: {'zh-TW': '# 李'}, written_in: 'en'}),

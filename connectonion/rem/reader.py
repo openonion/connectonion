@@ -300,12 +300,17 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
-    from .translate import cached_languages
+    from .translate import cached_languages, foreign_lines
     from .languages import language_of, owner_language, owner_languages, spoken
+    mine = owner_language(root)
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
         # For the "Read in" menu: what the page is written in, and what this person speaks.
         record["written_in"] = language_of(record["text"])
+        # Mostly the owner's language but with prose in another: "mixed", so the reader offers and awaits
+        # its translation like an English page's, by the rule co rem translate uses (translate.foreign_lines).
+        if mine and record["written_in"] == mine.split("-")[0].lower() and foreign_lines(record["text"], mine):
+            record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
