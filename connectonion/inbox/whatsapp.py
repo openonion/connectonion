@@ -55,8 +55,7 @@ MEDIA_KINDS = {"image", "video", "audio", "document", "sticker"}
 # What each kind is usually saved as. The extension is a convenience for the
 # person who opens the folder; the mime recorded on the message is what a
 # caller should branch on.
-MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg",
-                "document": ".bin", "sticker": ".webp"}
+MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg", "sticker": ".webp"}
 # WhatsApp's own ceiling for media is 2 GB, but an inbox that fills a disk
 # stops answering anybody. Past this, the record says the file was too large
 # and where it would have gone, which is recoverable; a full disk is not.
@@ -287,6 +286,25 @@ def _mime_of(message, kind: str) -> str:
     except Exception:  # noqa: BLE001 - a mime we cannot read costs the caller nothing
         pass
     return ""
+
+
+def _file_name_of(message) -> str:
+    """The file name a document was sent with: `itinerary.pdf`, or ""."""
+    for descriptor, variant in message.ListFields():
+        if getattr(descriptor, "name", "") == "documentMessage":
+            return str(getattr(variant, "fileName", "") or "")
+    return ""
+
+
+def _media_suffix(kind: str, file_name: str, mime: str) -> str:
+    """What a saved file ends in. A document keeps its own extension (#2853):
+    saved as `.bin`, a PDF was a file nobody, and no `read_file`, could place."""
+    if kind != "document":
+        return MEDIA_SUFFIX.get(kind, ".bin")
+    import mimetypes
+
+    own = re.sub(r"[^A-Za-z0-9.]", "", Path(file_name).suffix)[:12]
+    return own or mimetypes.guess_extension(mime) or ".bin"
 
 
 def _quoted_reference(context, own_ids) -> Optional[dict]:
@@ -940,7 +958,9 @@ class WhatsApp:
             return
         directory = inbox.root / "media"
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", message.id) or "message"
-        target = directory / f"{safe}{MEDIA_SUFFIX.get(message.kind, '.bin')}"
+        mime = _mime_of(event.Message, message.kind)
+        file_name = _file_name_of(event.Message) if message.kind == "document" else ""
+        target = directory / f"{safe}{_media_suffix(message.kind, file_name, mime)}"
         try:
             directory.mkdir(parents=True, exist_ok=True)
             client.download_any(event.Message, str(target))
@@ -955,7 +975,9 @@ class WhatsApp:
             message.media = {"error": f"{type(exc).__name__}: {exc}"}
             inbox.log(f"media of {message.id} not fetched: {exc}")
             return
-        message.media = {"path": str(target), "mime": _mime_of(event.Message, message.kind), "size": size}
+        message.media = {"path": str(target), "mime": mime, "size": size}
+        if file_name:
+            message.media["name"] = file_name
         inbox.log(f"media of {message.id} saved to {target} ({size} bytes)")
 
     def keep_own(self, inbox: Inbox, event, client) -> None:

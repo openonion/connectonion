@@ -119,6 +119,9 @@ A media message arrives with `kind` set to what it is — `image`, `video`,
 So a consumer that receives this can open the file, and one that cannot read
 images can at least say which file it is declining to read.
 
+A document keeps its own extension (`3EB0….pdf`, not `.bin`) and the record
+carries the name it was sent with as `media.name` (#2853).
+
 **Why at arrival and not on demand.** The media keys live in the protobuf
 envelope, and the queue record does not keep it, so a later `download <id>`
 would have nothing to download from. WhatsApp also drops media from its own
