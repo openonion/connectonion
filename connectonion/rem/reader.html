@@ -10054,13 +10054,11 @@ function orgKeyPeople(v) {
       el("span", { class: "ov-meta", text: [orgPersonRole(p), fmtDate(orgLast(p))].filter(Boolean).join(" · ") })])))]);
 }
 // What you owe lives in Today: one quiet line, never a ledger or a button here.
-// The link counts what Today counts (sprint 15): the items waiting on you, by the rule Today's header and badge use
-// (threadCounts().mine), kept to this organisation's rows. What
-// is done, quiet, stale or answered has left Today, so it leaves here too and the number never exceeds Today's.
+// The link counts what Today counts (sprint 15): Today's own waitingOnYou over Today's entries, kept to this
+// organisation's rows, so the number never exceeds Today's header and badge.
 function orgWaiting(v) {
   const keys = new Set(v.owed.flatMap(entry => entry.row.keys || [entry.row.key]));
-  return threadEntries().filter(entry => !isDone(entry) && entry.t.dir === "mine" && !entry.t.quiet && !staleEntry(entry)
-    && !["held", "sent"].includes(threadDraft(entry)?.status) && [entry, ...(entry.members || [])].some(member => keys.has(doneKey(member))));
+  return threadEntries().filter(entry => !isDone(entry) && waitingOnYou(entry) && [entry, ...(entry.members || [])].some(member => keys.has(doneKey(member))));
 }
 function orgTodayLink(v) {
   const n = orgWaiting(v).length;

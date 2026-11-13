@@ -4519,7 +4519,7 @@ def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
     """Sprint 15: the org page said 16 things while Today's header said less. The org's number is Today's
     waiting-on-you rule kept to its own rows: done, quiet, stale and answered items have left Today."""
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['orgWaiting'])
+                          for name in ['orgWaiting', 'waitingOnYou'])
     result = _run_reader_js(functions + r'''
       const r = {path: 'people/mara-ostrowski.md'}, other = {path: 'people/tomas-reyes.md'};
       const doneKey = entry => entry.r.path + '\n' + entry.t.text;
@@ -4529,6 +4529,7 @@ def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
       entries[7].members = [make('member of org row')];
       const threadEntries = () => entries, isDone = entry => entry.t.text === 'done', staleEntry = entry => entry.t.text === 'stale';
       const threadDraft = entry => entry.t.text === 'held' ? {status: 'held'} : null;
+      const answered = entry => ['held', 'sent'].includes(threadDraft(entry)?.status);
       const row = text => ({row: {key: 'people/mara-ostrowski.md\n' + text}});
       const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'member of org row'].map(row);
       console.log(JSON.stringify(orgWaiting({owed}).map(entry => entry.t.text)));

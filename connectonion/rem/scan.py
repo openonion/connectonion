@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .files import RemError
 from .mail import _address, _addresses, _list_all, correspondent
-from .source import KINDS, source_files
+from .source import KINDS, open_session, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
 # @, because "no-reply.products@" slipped past a pattern anchored to the @.
@@ -443,7 +443,7 @@ def session_turns(path: Path, kind: str, limit: int = SHORT_SESSION_TURNS + 1) -
     `turn_context` records, one per turn, except in program-written sessions.
     """
     try:
-        with path.open("rb") as handle:
+        with open_session(path) as handle:
             return _session_turns(handle, kind, limit)
     except OSError:
         return limit
@@ -520,7 +520,7 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
             if stamp < since:
                 continue
             if sessions is None:
-                with path.open("rb") as handle:
+                with open_session(path) as handle:
                     meta = _project_meta(handle, kind)
             else:
                 meta = sessions.projects[str(path)][0]

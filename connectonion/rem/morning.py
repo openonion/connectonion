@@ -158,6 +158,20 @@ def _zh(root, config):
     return (owner_language(root) or config['language']).lower().startswith('zh')
 
 
+def _pause_line(root, local, zh):
+    """One line while the Codex floor holds REM: a held night is not a quiet one (#2938)."""
+    from .quota import paused
+    found = paused(root)
+    if not found:
+        return ''
+    resets = datetime.fromtimestamp(found['resets_at'], local.tzinfo) if found.get('resets_at') else None
+    if zh:
+        when = f"{WORDS[True]['week'].split()[resets.weekday()]} {resets:%H:%M} 恢复" if resets else '本周额度重置后恢复'
+        return f"REM 暂停中：本周 Codex 额度已用 {found['used_percent']}%，{when}。"
+    when = f"It resumes {resets:%a %H:%M}." if resets else 'It resumes when the Codex week resets.'
+    return f"REM paused: this week's Codex allowance is {found['used_percent']}% used. {when}"
+
+
 def compose(root, config, local, saved, link):
     """Read-only: the exact note for `local`, given earlier markers; '' means stay quiet."""
     zh = _zh(root, config)
@@ -167,7 +181,8 @@ def compose(root, config, local, saved, link):
     pending = sorted(pending, key=lambda row: ('reply', 'task').index(row.get('kind')) if row.get('kind') in ('reply', 'task') else 2)
     totals = {name: len(done[name]) for name in ('sent', 'drafted', 'finished', 'explained')}
     ids = sorted(row.get('id', '') for row in pending)
-    lines = [_summary(totals, zh)] if any(totals.values()) else []
+    pause = _pause_line(root, local, zh)
+    lines = [pause] * bool(pause) + ([_summary(totals, zh)] if any(totals.values()) else [])
     names = list(dict.fromkeys(filter(None, (_plain(row['title'], 60) for row in sent_by_rem(root, _start(local, previous), local)))))
     if names:
         lines.append(('替你回了：' if zh else 'Replied for you: ') + ('、' if zh else ', ').join(names))
@@ -178,14 +193,15 @@ def compose(root, config, local, saved, link):
         if n > 2:
             lines.append(f'还有 {n - 2} 件在 Today' if zh else f'{n - 2} more in Today')
     # Nothing new overnight and the same open decisions as last time: say nothing again.
-    repeat = not any(totals.values()) and previous is not None and previous.get('pending') == ids
+    repeat = not any(totals.values()) and not pause and previous is not None and previous.get('pending') == ids
     if lines and not repeat:
         lines.append(('打开 Today：' if zh else 'Open Today: ') + link)
     message = '' if repeat else '\n'.join(lines)
     names = {row['draft_id']: row.get('title') for row in pending if row.get('draft_id')}
     done['drafted'] = [{'title': names.get(row.get('id')), **{k: v for k, v in row.items() if v}} for row in done['drafted']]
-    mail = _mail(done, pending, local, zh, link) if message else {'subject': '', 'html': ''}
-    return {'channel': config['notify']['channel'], 'message': message, **mail, 'counts': totals, 'pending': ids}
+    mail = _mail(done, pending, local, zh, link, pause) if message else {'subject': '', 'html': ''}
+    return {'channel': config['notify']['channel'], 'message': message, **mail, 'counts': totals, 'pending': ids,
+            **({'paused': 'quota'} if pause else {})}
 
 
 # ---------- the morning mail: one column, table layout, inline styles ----------
@@ -357,15 +373,17 @@ def _lead(done, w, zh):
     return w['did'].format(parts=w['join'].join(parts)) if parts else w['calm']
 
 
-def _mail(done, pending, local, zh, link):
+def _mail(done, pending, local, zh, link, pause=''):
     """The same morning as the note, as a designed mail: what REM did first, then one decision per person for up to three people."""
     w = WORDS[zh]
     groups = _done_rows(done, local, w, link)
     lead = _lead(done, w, zh)
+    # Held by the Codex floor, the lead is the pause, never "A quiet night".
+    lead, pause = (pause, '') if pause and lead == w['calm'] else (lead, pause)
     subject = w['subject'].format(did=lead) + (w['subject_need'].format(n=len(pending)) if pending else '')
     need = (f'<span class="alarm-text" style="color:{ALARM};font-weight:700">{_e(w["need"].format(n=len(pending)))}'
             f'{_e(w["below"])}</span>') if pending and groups else ''
-    sub = need
+    sub = need + (f'<div>{_e(pause)}</div>' if pause else '')
     footer = (f'<a href="{_e(link)}" class="ink" style="color:{INK};font-weight:700;text-decoration:underline">{_e(w["today"])}</a>'
               if link.startswith('http') else _e(w['no_link']))
     html = f'''<!DOCTYPE html>
@@ -491,7 +509,8 @@ def run(root, *, dry_run=False):
             # An error here claims nothing: scheduled_check reports it and the next tick retries.
             value = compose(root, config, local, saved, link)
             entry.update(status='sending' if value['message'] and value['channel'] != 'none'
-                         else 'disabled' if value['message'] else 'quiet', pending=value['pending'])
+                         else 'disabled' if value['message'] else 'quiet', pending=value['pending'],
+                         **({'paused': value['paused']} if value.get('paused') else {}))
         _record(root, day, entry)
     if entry['status'] != 'sending':
         return entry
