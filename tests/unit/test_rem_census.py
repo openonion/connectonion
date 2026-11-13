@@ -264,3 +264,23 @@ def test_direction_only_treats_short_name_phrases_as_debt_prefixes():
     assert direction("liesel owes the bank") == "plain"
     assert direction("Yu at Heidi Health owes Corin the reimbursement") == "third"
     assert direction("Liesel owes you the draft") == "theirs"
+
+
+def test_a_support_desk_that_replies_is_a_service_and_its_engineer_a_person(tmp_path):
+    """#3004: Acmecloud's ticket desk answered the owner's tickets, so its thread was two-way
+    and the page led People. A role or ticket mailbox, or a page titled with a bare domain,
+    is a service; Mia, who works there and writes from her own name, stays a person."""
+    from connectonion.rem.census import listed, pages
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.stub_person("people/acmecloud.md", "acmecloud.com", ["support@acmecloud.com"], email="support@acmecloud.com")
+    book.stub_person("people/acme-help.md", "Acme Cloud", ["help+4417@acmecloud.com"], email="help+4417@acmecloud.com")
+    book.stub_person("people/mia.md", "Mia Tan", ["mia.tan@acmecloud.com"], email="mia.tan@acmecloud.com")
+    two_way = {"sent": 6, "received": 7}
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/acmecloud.md", "address": "support@acmecloud.com", "name": "acmecloud.com", **two_way},
+        {"record": "people/acme-help.md", "address": "help+4417@acmecloud.com", "name": "Acme Cloud", **two_way},
+        {"record": "people/mia.md", "address": "mia.tan@acmecloud.com", "name": "Mia Tan", **two_way}]})
+    found = pages(tmp_path)
+    assert found["people/acmecloud.md"]["service"] and found["people/acme-help.md"]["service"]
+    assert not found["people/mia.md"]["service"] and listed(found["people/mia.md"])

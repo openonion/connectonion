@@ -1840,6 +1840,11 @@ own domain ("Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.c
 answers is a service: listed with the notice senders, no people page, and an
 older map's page for it that holds only map output is archived. Someone writing
 from their own name at a domain named after them (aaron@aaron.dev) stays a person.
+A page the count already holds is left out of People, and counted with the
+service senders, when its title is a bare domain (`acmecloud.com`) or its every
+address is a support, help, billing, ticket or no-reply desk (`support@`,
+`help+4417@`), however often the desk replies; a person writing from their own
+name at the same company stays (#3004).
 Skills and projects are one page per skill name and per repository (below). With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
