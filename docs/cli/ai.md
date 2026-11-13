@@ -425,6 +425,15 @@ This is loaded every session, so the agent always follows your rules.
 - Resumable one-shot sessions saved privately under `~/.co/ai/sessions/`
 - Same address across all `co ai` sessions
 
+Startup checks whether another Host on this machine is serving that address.
+If an older Host answers `/info` on its recorded local port with the same address,
+startup exits with its PID, working folder, name and port. Stop it with the shown
+`kill <pid>` command and start again. The probe uses a one-second timeout for each network
+phase, not a one-second total deadline. Unverified `~/.co/served_by.json` records
+are replaced, even if the PID is alive. If the same address was last served from
+a different working folder, a short notice names the old and current folders
+without blocking startup. Your identity key stays the same.
+
 Task scoring is separate from session recording. It is off by default; pass
 `--eval` when debugging to generate an expected outcome and score completion.
 

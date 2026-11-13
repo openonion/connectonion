@@ -87,6 +87,18 @@ needs none and runs on defaults; the banner then says where the file would go.
 with the port and how to move it: set `port:` in `.co/host.yaml` (creating the
 file if the project has none), or for one run `co host --port 8001`.
 
+**Address already served?** A second Host on this machine using the same
+identity exits with an error naming the existing Host's PID, working folder,
+name and port. Stop that process with the shown `kill <pid>` command, then
+restart. This also applies in the same folder and to `co ai` using `~/.co`.
+The `served_by.json` record beside the identity key tracks the serving process.
+Startup verifies that `http://127.0.0.1:<recorded port>/info` answers with the
+same address, with a one-second timeout for each network phase, not a one-second
+total deadline. Records that cannot be verified are replaced, even if their PID
+is alive. If the same address was last served from a different working folder,
+a short notice names the old and current folders without blocking startup.
+Restarting does not require generating or replacing your identity key.
+
 **`co host` or `python agent.py`?** The same thing. `co host` runs `./agent.py`
 with the Python co itself runs on, so it works however co was installed. After
 the one-line installer, co lives in its own environment, and the system
