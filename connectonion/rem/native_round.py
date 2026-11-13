@@ -43,6 +43,11 @@ def prepare(root, config, *, scheduled):
     batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
     basics_changed = refresh_basics(root)
+    # Skill call counts are a script over the session files, like the basics above:
+    # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
+    from .skill_map import map_skills
+    if Notebook(root).exists("skills/catalog/index.md"):  # refresh a mapped catalog; init makes one
+        map_skills(Notebook(root), lock_held=True, subscriptions=sources)
     from .direct_send import refresh as set_direct_send
     basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})

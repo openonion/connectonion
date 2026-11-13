@@ -196,7 +196,9 @@ def usage_line(row: dict | None, report: dict | None) -> str:
     """The first line of a skill page's Usage history."""
     if not report or not report.get("sources"):
         return "- Invocations not counted: no Claude Code or Codex session source is enabled (co rem sources)."
-    window = f"in the last {report['days']} days ({report['files']} session files: {', '.join(report['sources'])})"
+    # No session-file count: it grows every night, and the nightly recount (#2950)
+    # would rewrite, and so retranslate, every skill page whose calls did not change.
+    window = f"in the last {report['days']} days ({', '.join(report['sources'])})"
     if not row or not row["count"]:
         return f"- No invocation found in your coding sessions {window}."
     tools = ", ".join(f"{LABELS[tool]} {n}" for tool, n in sorted(row["by_tool"].items()))

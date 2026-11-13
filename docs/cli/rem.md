@@ -376,6 +376,9 @@ the index under "Only in temporary or package locations", without a page.
 
 `Usage history` opens with what your own coding sessions say, counted by a
 script with no model: how many times the skill was invoked and when last.
+`init`, `co rem skills map` and the start of every night round recount it, so
+the count and the last day follow the sessions instead of stopping on the day
+of init.
 
 ```text
 - Invoked 14 times in your coding sessions in the last 180 days, last on 2026-09-28 (Claude Code 9, Codex 5). ...
