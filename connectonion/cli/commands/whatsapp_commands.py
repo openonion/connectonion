@@ -109,8 +109,8 @@ def handle_download(message_id: str, to: Optional[str] = None) -> None:
 def _no_reference(message, media_kinds) -> None:
     """Exit 1, saying whether the message has no media or only no stored keys."""
     if message.kind in media_kinds:
-        errors.print(f"{message.id} is a {message.kind} that arrived before co kept what a later "
-                     "download needs, so it cannot be fetched again. Next: co whatsapp log", style="red")
+        errors.print(f"{message.id} is a {message.kind} that arrived before its keys were kept for a later "
+                     "download, so it cannot be fetched again. Next: co whatsapp log", style="red")
     else:
         errors.print(f"{message.id} has no media to download (kind: {message.kind}). "
                      "Next: co whatsapp log", style="red")

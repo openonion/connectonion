@@ -227,7 +227,7 @@ def test_download_says_which_failure_it_is(monkeypatch, capsys):
     assert run_download("3EB0GONE") == whatsapp_commands.EXIT_GONE == 4
     err = " ".join(capsys.readouterr().err.split())
     assert "has no media to download" in err
-    assert "arrived before co kept what a later download needs" in err
+    assert "arrived before its keys were kept for a later download" in err
     assert "no longer has this file" in err
 
 
