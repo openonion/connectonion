@@ -221,6 +221,12 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
 co whatsapp listen --restart     # stop the running listener, start a background one
 ```
 
+The new listener runs on the Python of the `co` you typed, whatever install
+the old one ran from (a separate venv is left as it is and simply no longer
+used). So that `co` needs the whatsapp extra. Without it `--restart` exits 3
+with the install command and leaves the old listener running, rather than
+stopping it and starting nothing (#3001).
+
 ## A new person: check the number, save a name, then send
 
 Given a new client's mobile, an agent can find out whether it has WhatsApp and

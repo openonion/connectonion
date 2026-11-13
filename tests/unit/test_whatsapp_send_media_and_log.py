@@ -123,3 +123,20 @@ def test_log_since_includes_what_we_said_and_nothing_older(capsys):
 
     rows = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
     assert [(r["id"], bool(r.get("from_me"))) for r in rows] == [("3EB0NEW", False), ("3EB0R2", True)]
+
+
+def test_restart_keeps_the_old_listener_when_this_co_cannot_run_a_new_one(monkeypatch, capsys):
+    """`listen --restart` starts the new listener on this co's own Python, not
+    the old listener's venv. A co without the whatsapp extra stopped the only
+    working listener and then could not start one: no listener at all."""
+    running_listener(monkeypatch, None)
+    killed = []
+    monkeypatch.setattr("os.kill", lambda pid, sig: killed.append(pid))
+    monkeypatch.setattr(wa.WhatsApp, "listen_requirements", lambda self: [wa.SDK_MISSING])
+
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_listen("whatsapp", restart=True)
+
+    assert exit_.value.code == listen_commands.EXIT_CONFIG
+    assert killed == []
+    assert "connectonion[whatsapp]" in capsys.readouterr().err
