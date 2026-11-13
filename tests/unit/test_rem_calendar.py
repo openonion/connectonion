@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
+from connectonion.credentials import MissingAmbientAPIKey
 from connectonion.provider_credentials import ProviderCredentialError
 from connectonion.rem import calendar
 from connectonion.rem.files import Notebook
@@ -67,7 +68,7 @@ def _saved(root):
 def test_the_night_saves_both_calendars_next_weeks_in_one_shape(tmp_path, calendars):
     _, asked = calendars
     result = calendar.save_upcoming(tmp_path, NIGHT)
-    assert result == {'events': 4, 'read': ['google', 'microsoft'], 'errors': {}}
+    assert result == {'events': 4, 'read': ['google', 'microsoft'], 'errors': {}, 'capped': []}
     # From the start of yesterday (an event that began last night is still "now") through three weeks.
     assert [(kind, start.isoformat(), (end - start).days) for kind, start, end, _ in asked] == [
         ('google', '2026-09-30T00:00:00+00:00', 22), ('microsoft', '2026-09-30T00:00:00+00:00', 22)]
@@ -113,6 +114,7 @@ def test_an_outlook_all_day_event_in_sydney_keeps_its_day(tmp_path, calendars):
     (OSError('Credential file is busy. Next: co status'), 'unavailable'),
     (httpx.ReadTimeout('read timed out'), 'timeout'),
     (ProviderCredentialError('reauth_required', 'Microsoft authorization expired.', 'co auth microsoft'), 'auth'),
+    (MissingAmbientAPIKey(), 'auth'),
 ])
 def test_a_calendar_that_fails_keeps_what_it_saved_before_and_says_when_and_why(tmp_path, calendars, error, reason):
     answers, _ = calendars
@@ -132,7 +134,9 @@ def test_a_fault_in_rem_is_named_and_the_night_goes_on(tmp_path, calendars):
     answers, _ = calendars
     answers['google'] = AttributeError("'GoogleCalendar' object has no attribute '_get_service'")
     result = calendar.save_upcoming(tmp_path, NIGHT)
-    assert result['errors'] == {'google': {'reason': 'bug', 'at': NIGHT.isoformat(), 'error': 'AttributeError'}}
+    fault = result['errors']['google']
+    assert {key: fault[key] for key in ('reason', 'at', 'error')} == {'reason': 'bug', 'at': NIGHT.isoformat(), 'error': 'AttributeError'}
+    assert 'Traceback' in fault['traceback'] and 'traceback' not in _saved(tmp_path)['errors']['google'], 'the page never gets it'
     shown = calendar.upcoming(tmp_path, [], '')
     assert shown['errors'] == [{'name': 'Google Calendar', 'at': NIGHT.isoformat(), 'read_at': '',
                                 'reason': 'a fault in REM', 'error': 'AttributeError'}]
@@ -142,7 +146,7 @@ def test_a_fault_in_rem_is_named_and_the_night_goes_on(tmp_path, calendars):
 def test_a_calendar_co_cannot_read_is_never_asked_and_the_page_can_say_none_is_connected(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar, 'calendar_events', lambda *args: pytest.fail('asked a calendar that is not connected'))
     # The test HOME has no co keys at all: neither calendar counts as connected, and nothing starts a login.
-    assert calendar.save_upcoming(tmp_path, NIGHT) == {'events': 0, 'read': [], 'errors': {}}
+    assert calendar.save_upcoming(tmp_path, NIGHT) == {'events': 0, 'read': [], 'errors': {}, 'capped': []}
     shown = calendar.upcoming(tmp_path, [], '')
     assert (shown['read'], shown['errors'], shown['events']) == ([], [], [])
 
@@ -268,6 +272,14 @@ def test_no_calendar_failure_stops_the_night(tmp_path, monkeypatch, calendars, e
     result, drafted = _round(tmp_path, monkeypatch)
     assert drafted and result['outcome'] == 'completed', 'drafts and the investigation still ran'
     assert set(_saved(tmp_path)['errors']) == {'google', 'microsoft'}
+    from connectonion.rem.service import run_logs
+    logged = [run for run in run_logs(tmp_path) if run.get('phase') == 'calendar']
+    if isinstance(error, AttributeError):
+        # A fault in REM is a failed run with its traceback, one per calendar, out of the round's result.
+        assert len(logged) == 2 and all(run['outcome'] == 'failed' and 'Traceback' in run['error'] for run in logged)
+        assert 'traceback' not in result['maintenance']['calendar']['errors']['google']
+    else:
+        assert logged == [], "a provider's failure is not a fault to log"
 
 
 def test_the_calendars_are_read_outside_the_writer_lock(tmp_path, monkeypatch, calendars):
@@ -293,3 +305,11 @@ def _locked(path):
             return True
         fcntl.flock(handle, fcntl.LOCK_UN)
         return False
+
+
+def test_a_cap_that_skipped_events_is_said_in_words(tmp_path, calendars, monkeypatch):
+    answers, _ = calendars
+    monkeypatch.setattr(calendar, 'CAP', 3)
+    calendar.save_upcoming(tmp_path, NIGHT)  # Google answers its cap of 3, Outlook 2
+    read = {row['name']: row for row in calendar.upcoming(tmp_path, [], '')['read']}
+    assert read['Google Calendar']['capped'] == 3 and 'capped' not in read['Outlook']

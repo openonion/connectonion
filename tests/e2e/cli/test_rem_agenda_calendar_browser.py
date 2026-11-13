@@ -179,9 +179,9 @@ def test_the_week_moves_and_month_shows_the_whole_month(agenda):
     assert "October" in page.locator(".agenda-bar").inner_text()
     cells = page.locator(".agenda-month .ag-cell")
     assert cells.count() in (35, 42)
-    assert "28" in cells.first.inner_text(), "a Monday-first grid opens on 28 September"
+    assert cells.first.locator(".ag-date").inner_text() == "28", "a Monday-first grid opens on 28 September"
     assert "Board dinner" in month.inner_text() and "Pilot renewal call with Fernhill" in month.inner_text()
-    assert "1" in page.locator(".agenda-month .ag-cell.today").inner_text()
+    assert page.locator(".agenda-month .ag-cell.today .ag-date").inner_text() == "1"
     assert page.locator(".agenda-earlier").inner_text() == earlier
     page.get_by_role("button", name="Week", exact=True).click()
     assert page.locator(".agenda-week").is_visible()
@@ -240,4 +240,8 @@ def test_a_calendar_that_failed_says_when_and_why_and_how_old_its_events_are(age
     # Its earlier events are still on the week.
     assert "Quarterly receipts with Ines" in page.locator(".agenda-week").inner_text()
     note = _show(page, _night(tmp_path / "bug", monkeypatch, connected=("google",), failing=("google", AttributeError("x"))))
-    assert "a fault in REM" in note and "AttributeError" in note
+    assert "a fault in REM" in note and "AttributeError" in note and "Traceback" not in note
+    shown = _night(tmp_path / "cap", monkeypatch, connected=("google",))
+    shown["read"][0]["capped"] = 1000
+    note = _show(page, shown)
+    assert "Google Calendar has more than 1000 events in these weeks; REM kept the first 1000 and skipped the rest." in note

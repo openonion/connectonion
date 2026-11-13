@@ -17,6 +17,7 @@ investigations still run.
 """
 
 import ssl
+import traceback
 from datetime import datetime, timedelta, timezone
 
 from google.auth.exceptions import GoogleAuthError
@@ -68,9 +69,9 @@ def _google_events(start, end, zone) -> list[dict]:
     return events
 
 
-def _graph_pages(client, endpoint, params, headers) -> list[dict]:
+def _graph_pages(client, endpoint, params, headers, limit=CAP) -> list[dict]:
     rows = []
-    while endpoint and len(rows) < CAP:
+    while endpoint and len(rows) < limit:
         page = client._request('GET', endpoint, params=params, headers=headers)
         rows += page.get('value', [])
         # The next page is a whole URL with its query already in it.
@@ -85,9 +86,11 @@ def _microsoft_events(start, end, zone) -> list[dict]:
     headers = {'Prefer': f'outlook.timezone="{_zone_name(zone)}"'}
     events = []
     for listed in _graph_pages(client, '/me/calendars', {'$select': 'id,name'}, headers):
+        if len(events) >= CAP:
+            break
         events += _graph_pages(client, f"/me/calendars/{listed['id']}/calendarView", {
             'startDateTime': start.isoformat(), 'endDateTime': end.isoformat(), '$top': 250,
-            '$select': 'id,subject,start,end,isAllDay,isCancelled,location,attendees,webLink'}, headers)
+            '$select': 'id,subject,start,end,isAllDay,isCancelled,location,attendees,webLink'}, headers, CAP - len(events))
     return events
 
 
@@ -132,11 +135,13 @@ def _microsoft(item: dict, zone) -> dict:
 
 def _reason(error: Exception) -> str | None:
     """The provider's failure as one word of fetch_stalls.PHRASES; None for a fault in REM."""
+    from ..credentials import AmbientCredentialError
     from .fetch_stalls import failure
     reason = failure(error)
     if reason:
         return reason
-    if isinstance(error, GoogleAuthError):
+    # No OpenOnion key to refresh the token with, or one for another account: a login to fix, not a bug.
+    if isinstance(error, (GoogleAuthError, AmbientCredentialError)):
         return 'auth'
     # A reset connection, a TLS failure, httplib2's own errors.
     if isinstance(error, (ConnectionError, ssl.SSLError, HttpLib2Error)):
@@ -145,14 +150,15 @@ def _reason(error: Exception) -> str | None:
     return 'unavailable' if isinstance(error, OSError) else None
 
 
-def _read(kind: str, start, end, zone) -> list[dict] | None:
-    """The kind's events in one shape, or None when co cannot read that calendar."""
+def _read(kind: str, start, end, zone) -> tuple[list[dict], bool] | None:
+    """The kind's events in one shape and whether CAP cut them short, or None when co cannot read that calendar."""
     if not available(kind):
         return None
     shape = _google if kind == 'google' else _microsoft
-    rows = [{**shape(item, zone), 'calendar': kind} for item in calendar_events(kind, start, end, zone)]
+    items = calendar_events(kind, start, end, zone)
+    rows = [{**shape(item, zone), 'calendar': kind} for item in items]
     unique = {row['id']: row for row in rows if not row['cancelled'] and row['start']}
-    return [{key: value for key, value in row.items() if key != 'cancelled'} for row in unique.values()]
+    return [{key: value for key, value in row.items() if key != 'cancelled'} for row in unique.values()], len(items) >= CAP
 
 
 def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
@@ -160,24 +166,29 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
     path = state_path(root, 'calendar.json')
     saved = read_json(path, {})
     stamp = moment.isoformat(timespec='seconds')
-    events, errors, read_at = [], {}, {}
+    events, errors, read_at, capped = [], {}, {}, []
     start = moment.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     for kind in KINDS:
         try:
-            rows = _read(kind, start, start + timedelta(days=days + 1), zone)
+            result = _read(kind, start, start + timedelta(days=days + 1), zone)
         except Exception as error:  # noqa: BLE001 - no calendar may stop the night; a fault in REM is named, not hidden
             reason = _reason(error)
-            errors[kind] = {'reason': reason or BUG, 'at': stamp, **({} if reason else {'error': type(error).__name__})}
+            # A fault in REM carries its traceback to the night's run log (daily.py), never to the page.
+            errors[kind] = {'reason': reason or BUG, 'at': stamp,
+                            **({} if reason else {'error': type(error).__name__, 'traceback': traceback.format_exc()})}
             if kind in saved.get('read_at', {}):
                 read_at[kind] = saved['read_at'][kind]
                 events += [event for event in saved.get('events', []) if event['calendar'] == kind]
             continue
-        if rows is not None:
-            events += rows
+        if result is not None:
+            events += result[0]
             read_at[kind] = stamp
+            if result[1]:
+                capped.append(kind)
     events.sort(key=lambda event: event['start'])
-    write_json(path, {'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': errors, 'events': events})
-    return {'events': len(events), 'read': sorted(set(read_at) - set(errors)), 'errors': errors}
+    shown = {kind: {key: value for key, value in error.items() if key != 'traceback'} for kind, error in errors.items()}
+    write_json(path, {'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped, 'events': events})
+    return {'events': len(events), 'read': sorted(set(read_at) - set(errors)), 'errors': errors, 'capped': capped}
 
 
 def _people_by_address(records: list[dict], owner: str) -> dict:
@@ -210,7 +221,8 @@ def upcoming(root, records: list[dict], owner: str) -> dict | None:
                        'people': pages, 'guests': len(event.get('attendees', []))})
     errors, read_at = saved.get('errors', {}), saved.get('read_at', {})
     return {'saved_at': saved.get('saved_at', ''),
-            'read': [{'name': NAMES[kind], 'at': at} for kind, at in read_at.items() if kind not in errors],
+            'read': [{'name': NAMES[kind], 'at': at, **({'capped': CAP} if kind in saved.get('capped', []) else {})}
+                     for kind, at in read_at.items() if kind not in errors],
             'errors': [{'name': NAMES[kind], 'at': error['at'], 'read_at': read_at.get(kind, ''),
                         'reason': PHRASES.get(error['reason'], 'a fault in REM'), 'error': error.get('error', '')}
                        for kind, error in errors.items()],

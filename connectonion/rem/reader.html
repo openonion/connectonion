@@ -8969,6 +8969,7 @@ const AG_ZH = {
   "timed out": "超时", "network error": "网络出错", "server error": "服务器出错", "throttled": "被限流", "request refused": "请求被拒",
   "permission denied": "没有权限", "provider unavailable": "暂时不可用", "not found on the server (deleted or moved)": "服务器上找不到",
   "a fault in REM": "REM 自身出错",
+  "{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.": "{name} 这几周的日程超过 {n} 条；REM 只保存了前 {n} 条，其余跳过了。",
 };
 function agT(key, values = {}) {
   const words = uiLanguage === "zh" ? AG_ZH[key] : null;
@@ -9085,9 +9086,12 @@ function agendaNote() {
   // A night ran and no calendar is connected: say so, or the empty week reads as "nothing on".
   if (!read.length && !errors.length) return el("p", { class: "agenda-note", text: agT("No calendar is connected, so this shows only the notebook's own dates.") });
   // When, from each calendar's own times: a failure is not always last night's, nor its events tonight's.
-  return errors.length ? el("p", { class: "agenda-note", text: errors.map(e => agT("{name} could not be read on {when} ({reason}).", {
+  const lines = [...errors.map(e => agT("{name} could not be read on {when} ({reason}).", {
     name: e.name, when: fmtTime(e.at), reason: agT(e.reason) + (e.error ? " · " + e.error : "") })
-    + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")).join(" ") }) : null;
+    + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")),
+    // The night stops at a cap so a runaway series cannot fill the file; what it skipped is said, not hidden.
+    ...read.filter(c => c.capped).map(c => agT("{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.", { name: c.name, n: c.capped }))];
+  return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
 }
 function agendaBar(range) {
   const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
