@@ -69,6 +69,26 @@ The optional `session-sync/0.1` extension adds discovery, snapshot, watch, and
 metadata-update messages for retained conversations. These messages do not
 change the core OIP 0.1 lifecycle unless both peers negotiate the extension.
 
+### Access revocation
+
+The Host re-reads the requester's trust lists before dispatching each frame on
+an authenticated connection, including INPUT and approval responses. A block
+or a downgrade from admin, whitelist, or contact ends the connection's logical
+session and interrupts every running turn owned by that requester. Revocation
+waits for the requester's next frame; until it arrives, a running turn can
+continue. Interruption is cooperative and cannot undo completed external effects.
+The reply is:
+
+```json
+{"type":"ERROR","code":"ACCESS_REVOKED","message":"Your access to this agent was revoked by its admin."}
+```
+
+Direct WebSockets then close with code 1008. Through the relay, the Host removes
+the logical session and its authentication state; this does not close the
+shared Host-to-relay socket. A caller whose level was reduced may reconnect if
+the current policy still admits them. A stranger admitted by a default-allow
+policy remains welcome until explicitly blocked.
+
 ### Scoped native-provider stop
 
 `PROVIDER_INTERRUPT` stops one live Codex or Claude Code invocation without

@@ -423,6 +423,9 @@ def test_a_device_whose_home_is_still_rendering_sees_the_next_turn(monkeypatch):
             return None
 
     class Trust:
+        def get_level(self, address):
+            return "contact"
+
         def is_admin(self, address):
             return False
 

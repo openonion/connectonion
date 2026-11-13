@@ -292,17 +292,20 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
-    if restart:
-        _restart_listener(name, inbox)
-        return
     # The SDK is needed by listen alone; asking here, before the lock, means
     # the answer is exit 3 with the pip command on stderr, the same shape as
-    # a missing credential, and not "the listener exited at once".
+    # a missing credential, and not "the listener exited at once". Before a
+    # restart too: the new listener runs on this co's own Python, not the old
+    # one's venv, and stopping a working listener that this co cannot replace
+    # left none at all (#3001).
     needed = getattr(p, "listen_requirements", list)()
     if needed:
         for problem in needed:
             errors.print(problem, style="red")
         sys.exit(EXIT_CONFIG)
+    if restart:
+        _restart_listener(name, inbox)
+        return
     if not inbox.hold_lock():
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
@@ -864,7 +867,7 @@ def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
         # stops, so `--follow` with a filter would mean two different things at
         # once.
         window = _since_to_iso(since)
-        rows = [_named(record, saved) for record in inbox.history(chat=chat, since=window)]
+        rows = [_named(record, saved) for record in inbox.history(chat=chat, since=window, ours=True)]
         if sender:
             rows = [r for r in rows if sender in (r.get("sender", ""), r.get("sender_name", ""))]
         for record in rows[max(0, len(rows) - last):] if last is not None else rows:

@@ -175,3 +175,22 @@ def test_rem_relationship_stats_say_who_wrote_last(tmp_path):
     assert metrics([theirs, yours], {OWNER}, NOW)["last_from_you"] is True
     assert metrics([theirs], {OWNER}, NOW)["last_from_you"] is False
     assert metrics([], {OWNER}, NOW)["last_from_you"] is None
+
+
+def test_rem_relationship_stats_count_ninety_days_and_date_the_last_two_way_exchange():
+    """#2991: People sorts by recent two-way activity and shows 90-day message counts."""
+    from connectonion.rem.relationship_stats import metrics
+    def message(day, sender, recipients, thread="one"):
+        return [day, thread, sender, recipients, datetime.fromisoformat(day).timestamp()]
+    rows = [message("2026-05-01T00:00:00+00:00", OWNER, ["person@example.test"]),
+            message("2026-09-01T00:00:00+00:00", "person@example.test", [OWNER]),
+            message("2026-10-20T00:00:00+00:00", OWNER, ["person@example.test"]),
+            message("2026-11-05T00:00:00+00:00", "person@example.test", [OWNER]),
+            message("2026-11-06T00:00:00+00:00", "person@example.test", [OWNER])]
+    stats = metrics(rows, {OWNER}, NOW)
+    assert stats["messages_90d"] == 4  # 2026-09-01 is 68 days before NOW; 2026-05-01 is outside 90 days
+    # Both sides have written by the owner's 2026-10-20 message; their two later mails do not make it two-way again.
+    assert stats["last_two_way"] == "2026-10-20T00:00:00+00:00"
+    assert stats["last_from_you"] is False
+    one_way = metrics([message("2026-11-06T00:00:00+00:00", "person@example.test", [OWNER])], {OWNER}, NOW)
+    assert one_way["last_two_way"] == "" and one_way["messages_90d"] == 1

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc9
+## Current Version: 1.9.6rc10
+
+Release candidate 1.9.6rc10 for 1.9.6: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
+model ($1.50/$7.50 per 1M tokens), in Agent, llm_do, transcribe, `co ai` and the built-in subagents.
+`co/gemini-3.8-flash` stays selectable as the rollback. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc10.md).
+
+- 1.9.6rc10 (Gemini 4 Hydrogen is the default model).
+
+### Previous candidate: 1.9.6rc9
 
 Release candidate 1.9.6rc9 for 1.9.6: one mailbox failure no longer stops REM's night (#2986); Today has
 one count and one primary action per card with the closes as words (#2987); record pages lead with open

@@ -78,7 +78,7 @@ def validate(harness: str, model: str | None) -> str | None:
     """The reason this combination cannot run, or None.
 
     `model` is None when the flag was not given — a real sentinel, not a
-    comparison against our default: typing `--model co/gemini-3.8-flash`
+    comparison against our default: typing `--model co/gemini-4-hydrogen`
     produces the same string our default does, so a comparison reads an
     explicit choice as silence and forwards nothing.
     """

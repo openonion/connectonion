@@ -43,16 +43,21 @@ retain subsequent tool outcomes. The
 the outer call and any inner calls the adapter exposes. Human-readable output
 shows the Auto task summary and mode; `--json` includes all fields.
 
-To revoke access, run `co trust block <address>` on the Host. Removing contact or
-whitelist membership with `co trust remove <address>` returns it to stranger;
+To revoke access, use the Host console's printed
+`co trust block <address> --co-dir <host-trust-directory>` command. For `co ai`,
+`co trust block <address> --global` selects its global identity. All
+[trust commands](trust.md) accept either target option, including `unblock`.
+Removing contact or whitelist membership with
+`co trust remove <address> --co-dir <host-trust-directory>` returns it to stranger;
 an open trust policy may still admit strangers, so use **block** to deny access.
 For narrower provider authority, select **Ask for approval** or **Read Only**
 in the Codex Work Room. These commands/settings already exist.
 
-**Existing revocation limit:** blocking prevents new admissions, but an
-already-authenticated WebSocket can still submit work. It does not stop
-in-flight work. The Host's operator notice states this limit; full revocation
-of active connections is not implemented by this change.
+**Revocation timing:** blocking prevents new admissions. On the requester's
+next frame, the Host rejects the command, ends that connection's logical
+session, and asks the requester's running turns to stop. Work can continue
+until that frame arrives; interruption is cooperative and completed external
+effects cannot be undone.
 
 ## The three things that need the owner
 

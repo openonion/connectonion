@@ -1367,50 +1367,48 @@
   .evidence-claim > div::after { content: "”"; }
   .evidence-identity { border-bottom: 1px solid var(--rule); margin-bottom: 16px; padding-bottom: 8px; }
 
-  .people-sheet .sheet { table-layout: fixed; min-width: 1040px; }
-  .people-sheet .sheet .name { width: 23%; min-width: 0; max-width: none; }
-  .people-sheet .sheet .c-open { width: 25%; min-width: 0; max-width: none; }
-  .people-sheet .sheet :is(.c-company, .c-role) { width: 10%; min-width: 0; max-width: none; white-space: normal; }
-  .people-sheet .sheet :is(.c-company, .c-role) .clamp { max-width: none; overflow-wrap: normal; word-break: normal; }
-  .people-sheet .sheet :is(.c-email, .c-phone) { width: 10%; min-width: 0; }
-  .people-sheet .sheet .c-last { width: 8%; }
-  .people-sheet .sheet .c-mails { width: 4%; }
-  .people-sheet .sheet td { padding-top: 14px; padding-bottom: 14px; }
-  .more-columns { background: none; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--grey); padding: 5px 8px; font: var(--s-meta) var(--font); cursor: pointer; }
-  @media (min-width: 601px) {
-    .people-sheet .name-cell .sum { display: block; white-space: nowrap; text-overflow: ellipsis; }
-    .people-sheet:not(.more-columns-shown) .sheet { min-width: 640px; }
-    .people-sheet:not(.more-columns-shown) .sheet .name { width: 32%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-open { width: 40%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-company { width: 16%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-last { width: 12%; }
-    .people-sheet:not(.more-columns-shown) .extra-column { display: none; }
-  }
-  .people-sort, .people-card-meta { display: none; }
+  /* People (#2991): the page's name on one line with Columns, then the table; a phone gets the rows as cards. */
+  .people-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .people-head h1 { margin: 0; }
+  .people-find { margin-left: auto; width: 220px; min-width: 0; height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius); background: var(--paper); outline: var(--hair) solid var(--rule); color: var(--ink); font: var(--s-meta) var(--font); }
+  .people-find::placeholder { color: var(--grey); }
+  .people-chooser { position: relative; }
+  .people-columns { position: absolute; right: 0; top: calc(100% + 4px); z-index: 6; display: grid; gap: 2px; min-width: 200px; padding: 8px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); font: var(--s-meta) var(--font); }
+  .people-columns[hidden] { display: none; }
+  .people-columns label { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; cursor: pointer; white-space: nowrap; }
+  .people-sort { display: none; }
+  .people-table td { min-width: 0; max-width: none; white-space: nowrap; }
+  .people-table .c-name { font-size: var(--s-body); }
+  .people-table .c-name .nm a { color: var(--ink); text-decoration: none; }
+  .people-table .c-name .nm a:hover { text-decoration: underline; }
+  .people-table .c-org .clamp { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .people-table .depth { display: inline-flex; align-items: center; gap: 6px; color: var(--grey); }
+  .people-table .depth .moon { width: 10px; height: 10px; color: var(--ink); }
+  .people-table .unk { color: var(--grey); }
   .people-emails, .people-phones { display: flex; gap: 6px; min-width: 0; max-width: 100%; }
-  .contact-first { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-first { display: block; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .contact-more { flex: none; color: var(--grey); font-size: var(--s-meta); }
   @media (max-width: 600px) {
-    .people-sort { display: flex; align-items: center; gap: 8px; font: var(--s-meta) var(--font); }
-    .people-sort select { min-height: 44px; max-width: 100%; padding: 6px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: inherit; }
-    .people-sheet .sheet-scroll { max-height: none; overflow: visible; border: 0; }
-    .people-sheet::after, .people-sheet .sheet thead, .more-columns { display: none; }
-    .people-sheet .sheet, .people-sheet .sheet tbody { display: block; min-width: 0; }
-    .people-sheet .sheet tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; border-top: 1px solid var(--rule); }
-    .people-sheet .sheet td { position: static; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; background: transparent; font-size: var(--s-meta); }
-    .people-sheet .sheet td.name { width: auto; min-width: 0; max-width: none; grid-row: 1; }
-    .people-sheet .sheet .nm a { font-weight: var(--w-bold); font-size: var(--s-body); }
-    .people-sheet .sheet .sum { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .people-sheet .people-card-meta { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 14px; color: var(--grey); overflow-wrap: anywhere; white-space: normal; }
-    .people-card-meta .clamp { display: inline; color: inherit; }
-    .people-sheet .sheet td.c-open { width: auto; min-width: 0; max-width: none; grid-row: 2; }
-    .people-sheet .sheet td:is(.c-email, .c-phone) { width: auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-    .people-sheet .sheet td:is(.c-email, .c-phone):not([data-empty="true"])::before { content: attr(data-label) " "; color: var(--grey); font: var(--s-meta) var(--font); }
-    .people-sheet .sheet :is(.people-emails, .people-phones, .contact-first) { display: inline; }
-    .people-sheet .contact-first { white-space: normal; overflow-wrap: anywhere; }
-    .people-sheet .sheet .contact-more { display: inline; margin-left: 6px; }
-    .people-sheet .sheet td[data-empty="true"], .people-sheet .sheet td:is(.c-company, .c-role, .c-last, .c-mails) { display: none; }
-    .people-sheet .sheet .name-cell .sum { max-width: 100%; }
+    /* .sheet.people-table: the shared narrow .sheet rules (.name and .c-open widths, nowrap numbers) must not size the cards. */
+    .people-head { flex-wrap: wrap; align-items: center; }
+    .people-sort { display: block; min-height: 44px; max-width: 100%; padding: 6px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
+    .people-find { order: 5; flex-basis: 100%; width: auto; height: 44px; margin-left: 0; }
+    .people-chooser .r4-btn { min-height: 44px; }
+    .people-scroll { max-height: none; overflow: visible; border: 0; }
+    .sheet.people-table thead { display: none; }
+    .sheet.people-table, .people-table tbody { display: block; }
+    /* A card: the name on its own line, then each filled column as "label value", wrapping. */
+    .sheet.people-table tbody tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 12px; padding: 14px 0; border-top: 1px solid var(--rule); }
+    .sheet.people-table tbody tr:hover td { background: transparent; }
+    .sheet.people-table td { position: static; min-width: 0; max-width: none; width: auto; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; font-size: var(--s-meta); }
+    .sheet.people-table td.c-name { grid-column: 1 / -1; font-size: var(--s-body); font-weight: var(--w-bold); border-right: 0; }
+    .sheet.people-table td.c-org .clamp, .sheet.people-table td .clamp { display: inline; white-space: normal; }
+    .sheet.people-table td:not(.c-name)::before { content: attr(data-label) " "; color: var(--grey); }
+    .sheet.people-table td.num { text-align: left; }
+    .sheet.people-table td[data-empty="true"] { display: none; }
+    .sheet.people-table :is(.people-emails, .people-phones, .contact-first) { display: inline; }
+    .sheet.people-table .contact-first { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+    .sheet.people-table .contact-more { display: inline; margin-left: 6px; }
   }
   .contact-spark { display: inline-block; width: 104px; vertical-align: middle; }
   .contact-spark svg { display: block; width: 104px; height: 24px; fill: var(--grey); }
@@ -1418,28 +1416,6 @@
   .relationship-stats > div { display: flex; flex-direction: column; gap: 4px; }
   .relationship-stats > .contact-summary { flex-basis: 100%; }
   .relationship-label { color: var(--grey); }
-  .people-sheet .sheet .people-group th { padding-top: 20px; color: var(--grey); font: var(--s-meta) var(--font); text-align: left; }
-  .people-sheet .sheet :is(.c-contact, .c-trend) { width: 16%; white-space: nowrap; }
-  .people-sheet.more-columns-shown .sheet { min-width: 1600px; table-layout: auto; }
-  @media (min-width: 601px) {
-    /* A percentage name can grow wider than the scroller in the expanded table,
-       forcing its sticky edge left at the end of the row. Keep it readable. */
-    .people-sheet.more-columns-shown .sheet .name { width: 240px; min-width: 240px; max-width: 240px; }
-  }
-  @media (min-width: 601px) {
-    .people-sheet:not(.more-columns-shown) .sheet { min-width: 960px; }
-    .people-sheet:not(.more-columns-shown) .sheet .name { width: 24%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-open { width: 24%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-company { width: 12%; }
-    .people-sheet:not(.more-columns-shown) .sheet .c-last { width: 10%; }
-    .people-sheet:not(.more-columns-shown) .sheet :is(.c-contact, .c-trend) { width: 15%; }
-  }
-  @media (max-width: 600px) {
-    .people-sheet.more-columns-shown .sheet { min-width: 0; }
-    .people-sheet .sheet td:is(.c-contact, .c-trend, .c-starts, .c-replies) { width: auto; white-space: normal; }
-    .people-sheet .sheet td:is(.c-contact, .c-trend, .c-starts, .c-replies)::before { content: attr(data-label) " "; color: var(--grey); font: var(--s-meta) var(--font); }
-    .people-sheet .sheet tr.people-group { padding-bottom: 0; }
-  }
   .rem-activity { display: inline-block; margin-top: 28px; font: var(--s-meta) var(--font); color: var(--grey); }
   .rem-activity:hover { color: var(--ink); }
   .all-switch { margin: 0 0 22px; }
@@ -1457,18 +1433,6 @@
   .done-notice { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; z-index: 50; padding: 12px 18px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta)/1.5 var(--font); }
   .week-details, .done-details { margin-top: 28px; }
   :is(.gone-quiet, .week-details, .recent-details, .night-details, .done-details) > summary { display: list-item; cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-body)/1.5 var(--font); padding: 8px 0; }
-  @media (min-width: 900px) {
-    .people-sheet .sheet td { padding-block: 8px; border-bottom-color: var(--rule); }
-    .people-sheet .sheet .name { border-right: 0; }
-    .people-sheet .name-cell .sum { color: var(--grey); font-size: var(--s-meta); }
-    .people-sheet .open-cell { flex-wrap: nowrap; gap: 7px; }
-    .people-sheet .open-cell .dir { background: none; padding: 0; font-size: var(--s-meta); flex: none; }
-    .people-sheet .open-cell .txt { display: block; flex: 1 1 auto; white-space: nowrap; }
-    .people-sheet .open-cell .more { flex: none; }
-    .people-sheet .sheet .c-company .clamp { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .people-sheet .c-company a { color: var(--grey); text-decoration: none; }
-    .people-sheet .c-company a:hover { text-decoration: underline; }
-  }
   @media (max-width: 600px) {
     .pass-summary a, .today-who, .task-links a, .overnight-change a { display: inline-flex; align-items: center; min-height: 44px; }
     /* Full-size tap targets without the extra line height between rows. */
@@ -3350,7 +3314,7 @@ function readerStorage(key, value) {
 let uiLanguage = (/^zh(?:-|$)/i.test(REM?.owner_language || "")
     || !/^(?:en|zh)(?:-|$)/i.test(REM?.owner_language || "en") && (REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))) && "zh"
   || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
-let morePeopleColumns = false;
+let peopleColumns = [];
 const UI = {
   // One English word, two meanings: each has a key of its own. And the rail's cell is 56 wide: three English
   // names do not fit under a picture at 11px, so the rail has a short word for each (the names stay in aria-label).
@@ -3393,17 +3357,12 @@ const UI = {
     "About this person": "关于这个人",
     "{n} items": "{n} 件",
     "1 item in Today": "今天里有 1 件", "{n} items in Today": "今天里有 {n} 件",
-    "1 person waiting in Today →": "今天里有 1 人在等你 →", "{n} people waiting in Today →": "今天里有 {n} 人在等你 →",
     "1 organisation waiting in Today →": "今天里有 1 个组织在等你 →", "{n} organisations waiting in Today →": "今天里有 {n} 个组织在等你 →",
     "{name} is waiting on you": "{name} 在等你",
-    "Waiting on you · {n}": "在等你 · {n}",
     "Recently in touch": "最近联系",
-    "Filter name, company, role": "筛选姓名、公司、角色",
-    "Table": "表格",
-    "Rows": "列表",
-    "People waiting": "在等你",
+    "Messages · 90 days": "近 90 天消息", "Who wrote last": "最后谁写", "Open items": "未结事项", "Page depth": "页面深度",
+    "Columns": "列", "Filter name, company, role": "筛选姓名、公司、角色",
     "{n} more items": "其余 {n} 件",
-    "Show all {n} people": "显示全部 {n} 人",
     "Show all {n} entries": "显示全部 {n} 条",
     "All {n} entries": "全部 {n} 条", "Not translated yet — showing the original": "中文版还没好，先看原文",
     "Translate every page into Chinese": "全部翻译成中文", "Translated {n} / {m}": "已翻译 {n} / {m}",
@@ -5713,6 +5672,8 @@ function openWriter(draft, who, onSend) {
   body.focus();
 }
 function threadDraft(entry) {
+  // No drafts, no answer: skip working out the evidence (People asks this for every person's items).
+  if (!REM.drafts?.length) return undefined;
   const ids = obligationEvidence(entry).ids;
   const drafts = (REM.drafts || []).filter(d => ids.has("thread:" + d.provider + ":" + d.thread));
   return drafts.find(d => d.status === "prepared" || d.status === "no_reply") || drafts[0];
@@ -6158,11 +6119,6 @@ function relationshipCell(r, key) {
   return el("span", { class: "mono", title: t("Daily message rate: last 30 days vs prior 90 days") + ` · ${stats.messages_30d} / ${stats.messages_prior_90d}`,
     text: change == null ? t(stats.trend === "new" ? "↑ New contact" : "No recent mail") : (change > 0 ? "↑ " : change < 0 ? "↓ " : "→ ") + Math.abs(change) + "%" });
 }
-function byPeopleActivity(a, b) {
-  const x = a.index?.relationship, y = b.index?.relationship;
-  if (x || y) return (y?.last_mail || "").localeCompare(x?.last_mail || "") || a.title.localeCompare(b.title);
-  return byActivity(a, b);
-}
 
 // ---------- the sheet: People, Organisations, Projects as a table (#2064) ----------
 const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
@@ -6195,13 +6151,6 @@ function roleSummary(value, from) {
     el("span", { html: inline(roles[0].replace(/\s*\[W?\d{1,3}\]/g, ""), from) }),
     roles.length > 1 ? el("span", { class: "role-more", text: " +" + (roles.length - 1) }) : null]));
 }
-function peopleCardMeta(r, f) {
-  const parts = [knownValue(f.company) && textCell(f.company), knownValue(f.role) && roleSummary(f.role, r.path), f.last && dateCell(f.last, mappedContact(r))].filter(Boolean);
-  const meta = el("div", { class: "people-card-meta" }, parts.flatMap((node, i) => i ? [" · ", node] : [node]));
-  meta.querySelectorAll("a").forEach(link => link.replaceWith(...link.childNodes));
-  meta.title = meta.querySelector(".private") ? "" : meta.textContent;
-  return meta;
-}
 function peopleEmails(value) {
   const addresses = plainValue(value).match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || [];
   return peopleContact(addresses, "email");
@@ -6219,27 +6168,9 @@ function peopleContact(values, kind) {
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", role: "img", title: t(k.status), "aria-label": t(k.status) }, [moon(k.status)]), el("a", { href: href(r), text: r.title }), updatedMarker(r)]),
-    withSummary && k.summary ? el("span", { class: "sum", text: withoutDateClutter(summaryLine(k.summary)) }) : null,
-    r.category === "people" ? peopleCardMeta(r, f) : null]);
+    withSummary && k.summary ? el("span", { class: "sum", text: withoutDateClutter(summaryLine(k.summary)) }) : null]);
 }
 const COLUMNS = {
-  people: [
-    // What's open sits next to the name: it is why the sheet is opened, and it must never be the column cut off.
-    // Status is the moon beside the name and the Written / Mapped filters, not a column.
-    { key: "name", label: "Name", cls: "name", sort: (r) => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, true) },
-    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
-    { key: "company", label: "Company", sort: (r, f) => plainValue(f.company).toLowerCase() || "￿", cell: (r, f) => textCell(f.company) },
-    { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
-    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? peopleEmails(f.email) : textCell("") },
-    { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? peoplePhones(f.phone) : textCell("") },
-    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
-    ...[["contact", "Contact · 52 weeks"], ["trend", "Warming / cooling"], ["starts", "Who writes first"], ["replies", "Reply times"]].map(([key, label]) => ({
-      key, label, cell: r => relationshipCell(r, key), sort: r => {
-        const x = r.index?.relationship;
-        return key === "contact" ? x?.weekly_messages.reduce((a, b) => a + b, 0) ?? -1 : key === "trend" ? x?.change_percent ?? -Infinity : key === "starts" ? x?.started_by_them_percent ?? -1 : x?.reply_seconds_them ?? Infinity;
-      }, desc: key !== "replies" })),
-    { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? t("{n} from them, {m} from you", { n: f.received, m: f.sent }) : "", text: String(f.mails) }), desc: true },
-  ],
   orgs: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "domain", label: "Domain", cls: "mono-col", sort: (r, f) => f.domain || "￿", cell: (r, f) => f.domain ? el("span", { class: "mono", text: f.domain }) : textCell("") },
@@ -6254,31 +6185,21 @@ const FILTERS = [
   ["mine", "Yours to answer", (r, f) => f.open.some(t => t.dir === "mine")],
   ["written", "Written", r => known(r).status !== "Mapped"], ["mapped", "Mapped only", r => known(r).status === "Mapped"]];
 const SHEET = {};
-const EXTRA_PEOPLE_COLUMNS = new Set(["role", "email", "phone", "mails", "starts", "replies"]);
 function sheet(c, items) {
   const cols = COLUMNS[c].filter(col => col.key !== "status" || items.some(r => known(r).status !== "Investigated"));
   const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
-  const wrap = el("div", { class: "sheet-box" + (c === "people" ? " people-sheet" : "") });
+  const wrap = el("div", { class: "sheet-box" });
   const bar = el("div", { class: "sheet-bar" });
   const find = el("input", { type: "search", class: "sheet-find", placeholder: t("Filter {category}", { category: label(c).toLowerCase() }) + "…", "aria-label": t("Filter {category}", { category: label(c).toLowerCase() }), value: state.text });
   const chips = el("div", { class: "seg", role: "group", "aria-label": t("Show") });
   const count = el("span", { class: "sheet-count mono" });
-  const sortSelect = el("select", { "aria-label": t("Sort by") }, [el("option", { value: "", text: t("Last activity") }),
-    ...cols.map(col => el("option", { value: col.key, text: t(col.label) }))]);
-  const phoneSort = el("label", { class: "people-sort" }, [t("Sort by") + " ", sortSelect]);
   bar.append(find, chips, count);
-  if (c === "people") bar.appendChild(phoneSort);
-  const more = el("button", { type: "button", class: "more-columns" });
-  if (c === "people") bar.appendChild(more);
   const table = el("table", { class: "sheet" });
   const thead = el("thead"), tbody = el("tbody");
   table.append(thead, tbody);
   const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label(c) }) }, [table]);
   wrap.append(bar, scroller);
   const draw = () => {
-    wrap.classList.toggle("more-columns-shown", morePeopleColumns);
-    more.textContent = t(morePeopleColumns ? "Fewer columns" : "More columns");
-    more.setAttribute("aria-expanded", String(morePeopleColumns));
     chips.textContent = "";
     for (const [key, name, test] of FILTERS) {
       const n = items.filter(r => test(r, facts(r))).length;
@@ -6291,33 +6212,21 @@ function sheet(c, items) {
     const needle = state.text.trim().toLowerCase();
     let rows = items.filter(r => test(r, facts(r)) && (!needle || (r.title + " " + Object.values(facts(r)).filter(v => typeof v === "string").join(" ")).toLowerCase().includes(needle)));
     const col = cols.find(x => x.key === state.sort);
-    rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(c === "people" ? byPeopleActivity : byActivity);
-    const visibleCols = c === "people" && rows.length ? cols.filter(col => col.key === "name" || rows.some(r => {
-      const text = col.cell(r, facts(r))?.textContent?.trim();
-      return text && text !== "—";
-    })) : cols;
-    sortSelect.value = state.sort || "";
+    rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(byActivity);
     thead.textContent = "";
     const tr = el("tr");
-    for (const col of visibleCols) {
+    for (const col of cols) {
       const sorted = state.sort === col.key;
-      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(col.key) ? " extra-column" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
+      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
       const btn = el("button", { type: "button" }, [t(col.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
       btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
       th.appendChild(btn); tr.appendChild(th);
     }
     thead.appendChild(tr);
     tbody.textContent = "";
-    let lastGroup = null;
     for (const r of rows) {
-      if (c === "people" && !col && items.some(item => item.index?.relationship)) {
-        const stats = r.index?.relationship;
-        const group = !stats?.last_mail ? "No indexed mail" : stats.quiet ? "Quiet · over 90 days" : "Recently active";
-        if (group !== lastGroup) tbody.appendChild(el("tr", { class: "people-group" }, [el("th", { colspan: String(visibleCols.length), scope: "colgroup", text: t(group) })]));
-        lastGroup = group;
-      }
       const row = el("tr", { "data-href": href(r) });
-      for (const c2 of visibleCols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") + (c === "people" && EXTRA_PEOPLE_COLUMNS.has(c2.key) ? " extra-column" : "") }, [c2.cell(r, facts(r))]));
+      for (const c2 of cols) row.appendChild(el("td", { "data-empty": String(!knownValue(c2.cell(r, facts(r))?.textContent)), "data-label": t(c2.label), class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
     wrap.querySelector(".empty")?.remove();
@@ -6326,16 +6235,6 @@ function sheet(c, items) {
       state.text = ""; state.filter = "all"; find.value = ""; draw(); find.focus();
     }));
     count.textContent = rows.length === items.length ? t("{n} pages", { n: items.length }) : t("{n} of {m}", { n: rows.length, m: items.length });
-  };
-  more.onclick = () => {
-    morePeopleColumns = !morePeopleColumns;
-    readerStorage("co-rem-people-columns", morePeopleColumns ? "more" : "less");
-    draw();
-  };
-  sortSelect.onchange = () => {
-    state.sort = sortSelect.value || null;
-    state.desc = !!cols.find(col => col.key === state.sort)?.desc;
-    draw();
   };
   find.addEventListener("input", () => { state.text = find.value; draw(); });
   tbody.addEventListener("click", e => {
@@ -8560,9 +8459,8 @@ function contactDirectory() {
 
 // ---------- People and a person: rows, one next step (round 4) ----------
 // The person page leads with what is owed and the one thing to do next; the
-// People list groups who is waiting on you above who you spoke to recently.
 const PEN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
-let notDoneKeys = new Set(), peopleTable = false;
+let notDoneKeys = new Set();
 function face(name, size = "") {
   const words = name.replace(/\(.*?\)/g, "").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).filter(Boolean);
   const first = words[0] || "?";
@@ -8602,10 +8500,27 @@ function looksDone(entry) {
   return entry.t.dir === "mine" && !overdueDays(entry.t) && queuedReply(entry)?.state === "replied" && !notDoneKeys.has(doneKey(entry));
 }
 // The merged queue first; a thread on the page that the queue has not projected yet still shows.
-function personEntries(r) {
-  const entries = threadEntries().filter(entry => (entry.r.path === r.path || entry.also?.some(other => other.path === r.path)) && entry.t.dir !== "third");
+// Today's entries by the person they name, rebuilt only when Today's list is: People asks for every person at once.
+function entriesFor(path) {
+  const list = threadEntries();
+  if (entriesFor.source !== list) {
+    entriesFor.source = list;
+    entriesFor.index = new Map();
+    for (const entry of list) {
+      if (entry.t.dir === "third") continue;
+      for (const at of new Set([entry.r.path, ...(entry.also || []).map(other => other.path)])) {
+        if (!entriesFor.index.has(at)) entriesFor.index.set(at, []);
+        entriesFor.index.get(at).push(entry);
+      }
+    }
+  }
+  return entriesFor.index.get(path) || [];
+}
+// The page's own threads can be passed in when they are already parsed (facts(r).open is threads(r).items).
+function personEntries(r, items = threads(r).items) {
+  const entries = entriesFor(r.path);
   const listed = new Set(entries.flatMap(entry => (entry.members || [entry]).map(doneKey)));
-  const own = threads(r).items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
+  const own = items.filter(thread => thread.dir !== "third").map(thread => ({ r, t: thread })).filter(entry => !listed.has(doneKey(entry)));
   return [...entries, ...own];
 }
 function byUrgency(a, b) {
@@ -8954,100 +8869,152 @@ function personTopics(r) {
   section.refreshTopics();
   return section;
 }
-// People: who is waiting on you, then who you spoke to lately; the sheet one toggle away.
+// What is still owed between you and a person: Today's rows (D-30), counted here, never listed.
 function waitingOn(r) {
   return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet && !staleEntry(entry)).sort(byUrgency);
-}
-function peopleSpark(r) {
-  const weeks = r.index?.relationship?.weekly_messages;
-  if (!weeks) return null;
-  const recent = weeks.slice(-12), peak = Math.max(1, ...recent);
-  return el("span", { class: "spark", "aria-hidden": "true" }, recent.map((n, i) => el("i", { class: n ? (i >= 9 ? "hot" : "") : "z", style: "height:" + (n ? Math.max(3, Math.round(n / peak * 18)) : 2) + "px" })));
-}
-function peopleRowMeta(r, waiting) {
-  if (waiting.length) {
-    const parts = owedParts(waiting[0]);
-    return parts.head ? (parts.head.length < 48 && parts.quote ? "“" + parts.quote + "”" : parts.head) : null;
-  }
-  const f = facts(r), role = plainLine(String(f.role || "")).split(/;\s+/)[0], org = personOrg(r);
-  return [knownValue(role) ? role : "", org?.name || ""].filter(Boolean).join(" · ");
-}
-function peopleRow(r) {
-  const waiting = waitingOn(r), org = personOrg(r), meta = peopleRowMeta(r, waiting), late = Math.max(0, ...waiting.map(entry => overdueDays(entry.t)));
-  const chip = !waiting.length ? null : late ? el("span", { class: "chip late", text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) })
-    : waiting.length > 1 ? el("span", { class: "chip lamp", text: t("{n} items", { n: waiting.length }) }) : el("span", { class: "dot lamp", title: t("Waiting on you") });
-  return el("a", { class: "row prow", href: href(r) }, [face(r.title), el("div", { class: "body" }, [
-    el("div", { class: "t" }, [el("span", { class: "nm", text: r.title }), waiting.length && org ? el("span", { class: "org", text: org.name }) : null]),
-    meta === null ? el("div", { class: "s lock", text: t("Personal item") }) : meta ? privateFallback(el("div", { class: "s", text: meta })) : null]),
-    el("div", { class: "end" }, [chip, peopleSpark(r), el("span", { class: "when", text: facts(r).last ? fmtDate(facts(r).last) : "—" })])]);
-}
-function peopleTabs(items, waiting) {
-  const orgs = new Map();
-  for (const r of items) { const org = personOrg(r)?.name; if (org) orgs.set(org, (orgs.get(org) || 0) + 1); }
-  const top = [...orgs].sort((a, b) => b[1] - a[1]).slice(0, 2).filter(([, n]) => n > 1);
-  return [["all", t("All"), items.length, () => true], ["waiting", t("People waiting"), waiting.length, r => waiting.includes(r)],
-    ...top.map(([name, n]) => ["org:" + name, name, n, r => personOrg(r)?.name === name])];
-}
-function peopleGroup(title, rows, lamp, more) {
-  return [el("h2", { class: "grp" }, [lamp ? el("span", { class: "dot lamp" }) : null, title]), el("div", { class: "rows" }, [...rows, more])];
-}
-function peopleRows(items, waiting, state) {
-  const needle = state.text.trim().toLowerCase();
-  const test = (peopleTabs(items, waiting).find(tab => tab[0] === state.tab) || [])[3] || (() => true);
-  const match = r => test(r) && (!needle || [r.title, plainLine(String(facts(r).company || "")), plainLine(String(facts(r).role || ""))].join(" ").toLowerCase().includes(needle));
-  const first = waiting.filter(match), rest = items.filter(r => !waiting.includes(r) && match(r)).sort(byPeopleActivity);
-  const limit = state.all || needle ? rest.length : 14;
-  const more = rest.length > limit ? el("button", { type: "button", class: "row more", text: t("Show all {n} people", { n: rest.length }) }) : null;
-  if (more) more.onclick = () => { state.all = true; state.draw(); };
-  if (!first.length && !rest.length) return [emptyState("No matching pages", "Clear filters →", "#c=people", () => { state.text = ""; state.tab = "all"; state.reset(); })];
-  return [...(first.length ? peopleGroup(t("Waiting on you · {n}", { n: first.length }), first.map(peopleRow), true) : []),
-    ...(rest.length ? peopleGroup(t("Recently in touch"), rest.slice(0, limit).map(peopleRow), false, more) : [])];
-}
-function peopleFoot() {
-  const directory = contactDirectory(), { held, service } = peopleExclusions(), missing = REM.people_coverage?.missing;
-  const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
-    held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
-    service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [...notes.map(note => el("p", { class: "held-note", text: note })), directory]);
-}
-function peopleList(items) {
-  const waiting = items.filter(r => waitingOn(r).length).sort((a, b) => byUrgency(waitingOn(a)[0], waitingOn(b)[0]));
-  const state = { text: "", tab: "all", all: false };
-  const find = el("input", { type: "search", class: "r4-find", placeholder: t("Filter name, company, role"), "aria-label": t("Filter {category}", { category: label("people").toLowerCase() }) });
-  const tabs = el("div", { class: "r4-tabs", role: "group", "aria-label": t("Show") });
-  const table = el("button", { type: "button", class: "r4-btn sm ghost table-toggle", "aria-pressed": "false", text: t("Table") });
-  const list = el("div", { class: "people-rows" });
-  state.draw = () => {
-    tabs.replaceChildren(...peopleTabs(items, waiting).map(([key, name, n]) => {
-      const b = el("button", { type: "button", class: state.tab === key ? "on" : "", "aria-pressed": String(state.tab === key) }, [name, el("i", { text: String(n) })]);
-      b.onclick = () => { state.tab = key; state.draw(); };
-      return b;
-    }));
-    list.replaceChildren(...peopleRows(items, waiting, state));
-  };
-  state.reset = () => { find.value = ""; state.draw(); find.focus(); };
-  find.oninput = () => { state.text = find.value; state.draw(); };
-  // Enter opens the first match: type a name, press Enter, you are on the page.
-  find.onkeydown = event => { if (event.key === "Enter") list.querySelector(".row.prow")?.click(); };
-  table.onclick = () => { peopleTable = true; readerStorage("co-rem-people-view", "table"); render(); };
-  state.draw();
-  return [el("div", { class: "r4-bar" }, [find, tabs, table]), list];
 }
 // Entity lists are records; what you owe lives in Today, reached by this one quiet line.
 function listTodayLink(text) {
   return text ? el("a", { class: "list-today", href: "#", text }) : null;
 }
+// ---------- People: the page's name, then the table (owner, 2026-11-13, #2991, #2841) ----------
+// «上来直接就是表格»: People is what has settled, so no count of who is waiting and no Today link.
+// The title row holds the page's name, a filter and Columns; one grey line under the table says who
+// is left out of it. The columns compare people; the phone shows the same rows as cards.
+function relation(r) { return r.index?.relationship || null; }
+// Ties fall to the last time both sides had written (relationship_stats.py), then any mail, then the page's own date.
+function byTwoWay(a, b) {
+  const x = relation(a), y = relation(b);
+  return (y?.last_two_way || "").localeCompare(x?.last_two_way || "") || (y?.last_mail || "").localeCompare(x?.last_mail || "") || byActivity(a, b);
+}
+// The same liveness as Today's rows (todayGroups): not done, not quiet, not stale, not already answered.
+function openItems(r, f = facts(r)) {
+  return personEntries(r, f.open).filter(entry => !isDone(entry) && !looksDone(entry) && !entry.t.quiet
+    && (entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry))).length;
+}
+// One row's values, worked out once per draw: sorting and cells read these, never recompute them.
+function peopleRow(r) {
+  const f = facts(r);
+  return { r, f, open: openItems(r, f), org: personOrg(r), rel: relation(r), status: known(r).status };
+}
+function depthCell(status) {
+  const mark = moon(status);
+  mark.setAttribute("aria-hidden", "true");
+  return el("span", { class: "depth" }, [mark, t(status)]);
+}
+const DEPTH_RANK = { "Investigated": 0, "Partly investigated": 1, "Mapped": 2 };
+const blank = value => value === "" || value == null ? null : value;
+// A sort key of null is a blank: it goes last whichever way the column is sorted.
+const PEOPLE_COLUMNS = [
+  { key: "name", label: "Name", sort: d => d.r.title, cell: d => el("span", { class: "nm" }, [el("a", { href: href(d.r), text: d.r.title }), updatedMarker(d.r)]) },
+  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? el("span", { class: "clamp", title: d.org.full || "", text: d.org.name }) : textCell("") },
+  { key: "last", label: "Last contact", num: true, desc: true, sort: d => blank(d.f.last), cell: d => dateCell(d.f.last, mappedContact(d.r)) },
+  { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: d => blank(d.rel?.messages_90d),
+    cell: d => d.rel?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(d.rel.messages_90d) }) },
+  { key: "lastby", label: "Who wrote last", sort: d => d.rel?.last_from_you == null ? null : d.rel.last_from_you ? 1 : 0,
+    cell: d => d.rel?.last_from_you == null ? textCell("") : el("span", { text: t(d.rel.last_from_you ? "You" : "Them") }) },
+  { key: "open", label: "Open items", num: true, desc: true, sort: d => d.open, cell: d => el("span", { class: d.open ? "mono" : "mono unk", text: String(d.open) }) },
+  { key: "depth", label: "Page depth", sort: d => DEPTH_RANK[d.status] ?? 2, cell: d => depthCell(d.status) },
+  // Chosen from Columns; off by default.
+  { key: "role", label: "Role", extra: true, sort: d => blank(plainValue(d.f.role)), cell: d => textCell(d.f.role) },
+  { key: "email", label: "Email", extra: true, sort: d => blank(d.f.email), cell: d => d.f.email ? peopleEmails(d.f.email) : textCell("") },
+  { key: "phone", label: "Phone", extra: true, sort: d => blank(d.f.phone), cell: d => d.f.phone ? peoplePhones(d.f.phone) : textCell("") },
+  ...[["contact", "Contact · 52 weeks"], ["trend", "Warming / cooling"], ["starts", "Who writes first"], ["replies", "Reply times"]].map(([key, label]) => ({
+    key, label, extra: true, desc: key !== "replies", cell: d => relationshipCell(d.r, key), sort: d => {
+      const x = d.rel;
+      return blank(key === "contact" ? x?.weekly_messages.reduce((a, b) => a + b, 0) : key === "trend" ? x?.change_percent : key === "starts" ? x?.started_by_them_percent : x?.reply_seconds_them);
+    } })),
+  { key: "mails", label: "Mails", extra: true, num: true, desc: true, sort: d => blank(d.f.mails),
+    cell: d => d.f.mails == null ? textCell("") : el("span", { class: "mono", title: d.f.sent != null ? t("{n} from them, {m} from you", { n: d.f.received, m: d.f.sent }) : "", text: String(d.f.mails) }) }];
+// co-rem-people-columns holds the chosen keys; its older "more" / "less" read as all columns / the default ones.
+function peopleColumnKeys(saved) {
+  if (saved === "more") return PEOPLE_COLUMNS.map(col => col.key);
+  const keys = (saved && saved !== "less" ? saved.split(",") : []).filter(key => PEOPLE_COLUMNS.some(col => col.key === key));
+  return keys.length ? ["name", ...keys.filter(key => key !== "name")] : PEOPLE_COLUMNS.filter(col => !col.extra).map(col => col.key);
+}
+// The default is the visible Last contact column, newest first (review of #2991).
+// The filter's words live here too, so a render (marking done, switching language) keeps them.
+const PEOPLE_SORT = { sort: "last", desc: true, text: "" };
+// Names sort as the reader reads them: pinyin order in Chinese, numbers by value.
+function peopleOrder(col, desc) {
+  const collator = new Intl.Collator(uiLanguage === "zh" ? "zh-u-co-pinyin" : "en", { numeric: true, sensitivity: "base" });
+  const sign = desc ? -1 : 1;
+  return (a, b) => {
+    const x = a.keys[col.key], y = b.keys[col.key];
+    if (x === null || y === null) return x === y ? byTwoWay(a.r, b.r) : x === null ? 1 : -1;
+    const order = typeof x === "string" ? collator.compare(x, y) : x - y;
+    return order ? order * sign : byTwoWay(a.r, b.r);
+  };
+}
+function peopleChooser(draw) {
+  const button = el("button", { type: "button", class: "r4-btn sm ghost people-columns-open", "aria-expanded": "false", text: t("Columns") });
+  const panel = el("div", { class: "people-columns", hidden: "" }, PEOPLE_COLUMNS.filter(col => col.key !== "name").map(col => {
+    const box = el("input", { type: "checkbox", value: col.key });
+    box.checked = peopleColumns.includes(col.key);
+    box.onchange = () => {
+      peopleColumns = PEOPLE_COLUMNS.map(c => c.key).filter(key => key === "name" || (key === col.key ? box.checked : peopleColumns.includes(key)));
+      readerStorage("co-rem-people-columns", peopleColumns.join(","));
+      draw();
+    };
+    return el("label", {}, [box, t(col.label)]);
+  }));
+  button.onclick = () => { panel.hidden = !panel.hidden; button.setAttribute("aria-expanded", String(!panel.hidden)); };
+  return el("div", { class: "people-chooser" }, [button, panel]);
+}
+// Who is not in the table, in one grey line under it: never a count of who is waiting.
+function peopleFoot() {
+  const { held, service } = peopleExclusions(), missing = REM.people_coverage?.missing;
+  const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
+    held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
+    service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory()]);
+}
 function peopleView(items) {
   const main = document.getElementById("main");
-  const waiting = items.filter(r => waitingOn(r).length).length;
-  const head = [el("div", { class: "eyebrow", text: t("People") }), el("div", { class: "list-head" }, [el("h1", { text: t("{n} people", { n: items.length }) }), listTodayLink(waiting ? t(waiting === 1 ? "1 person waiting in Today →" : "{n} people waiting in Today →", { n: waiting }) : "")])];
-  if (peopleTable) {
-    const rows = el("button", { type: "button", class: "r4-btn sm ghost table-toggle", "aria-pressed": "true", text: t("Rows") });
-    rows.onclick = () => { peopleTable = false; readerStorage("co-rem-people-view", "rows"); render(); };
-    main.appendChild(el("div", { class: "r4 r4-people wide" }, [...head, el("div", { class: "r4-bar" }, [rows]), sheet("people", items), peopleFoot()]));
-    return;
-  }
-  main.appendChild(el("div", { class: "r4 r4-people" }, [...head, ...peopleList(items), peopleFoot()]));
+  const thead = el("thead"), tbody = el("tbody");
+  const scroller = el("div", { class: "sheet-scroll people-scroll", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("people") }) }, [el("table", { class: "sheet people-table" }, [thead, tbody])]);
+  const sortSelect = el("select", { class: "people-sort", "aria-label": t("Sort by") });
+  const find = el("input", { type: "search", class: "people-find", placeholder: t("Filter name, company, role"), "aria-label": t("Filter {category}", { category: label("people").toLowerCase() }) });
+  const empty = el("div", { class: "people-empty" });
+  const rows = items.map(peopleRow);
+  for (const d of rows) d.text = [d.r.title, d.org?.name || "", plainValue(d.f.company), plainValue(d.f.role), d.f.email].join(" ").toLowerCase();
+  const draw = () => {
+    const cols = PEOPLE_COLUMNS.filter(col => peopleColumns.includes(col.key));
+    // A sorted column hidden from Columns hands the sort to the first column shown, arrow and phone menu alike.
+    if (!cols.some(x => x.key === PEOPLE_SORT.sort)) Object.assign(PEOPLE_SORT, { sort: cols[0].key, desc: !!cols[0].desc });
+    const col = cols.find(x => x.key === PEOPLE_SORT.sort);
+    const needle = PEOPLE_SORT.text.trim().toLowerCase();
+    const shown = rows.filter(d => !needle || d.text.includes(needle));
+    if (col) for (const d of shown) (d.keys = d.keys || {})[col.key] ??= col.sort(d);
+    shown.sort(col ? peopleOrder(col, PEOPLE_SORT.desc) : (a, b) => byTwoWay(a.r, b.r));
+    thead.replaceChildren(el("tr", {}, cols.map(c => {
+      const sorted = col === c;
+      const button = el("button", { type: "button" }, [t(c.label), el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (PEOPLE_SORT.desc ? "↓" : "↑") : "↕" })]);
+      button.onclick = () => { PEOPLE_SORT.desc = sorted ? !PEOPLE_SORT.desc : !!c.desc; PEOPLE_SORT.sort = c.key; draw(); };
+      return el("th", { scope: "col", class: "c-" + c.key + (c.key === "name" ? " name" : "") + (c.num ? " num" : ""), "aria-sort": sorted ? (PEOPLE_SORT.desc ? "descending" : "ascending") : "none" }, [button]);
+    })));
+    tbody.replaceChildren(...shown.map(d => el("tr", { "data-href": href(d.r) }, cols.map(c => {
+      const cell = c.cell(d);
+      return el("td", { class: "c-" + c.key + (c.key === "name" ? " name" : "") + (c.num ? " num" : ""), "data-label": t(c.label), "data-empty": String(!!cell.classList?.contains("unk") && c.key !== "open") }, [cell]);
+    }))));
+    scroller.hidden = !shown.length;
+    empty.replaceChildren(...(shown.length ? [] : rows.length ? [emptyState("No matching pages", "Clear filters →", "#c=people", () => { find.value = PEOPLE_SORT.text = ""; draw(); find.focus(); })]
+      : [emptyState("No contacts yet")]));
+    sortSelect.replaceChildren(...cols.map(c => el("option", { value: c.key, text: t(c.label) })));
+    sortSelect.value = col ? col.key : "";
+  };
+  sortSelect.onchange = () => { PEOPLE_SORT.sort = sortSelect.value; PEOPLE_SORT.desc = !!PEOPLE_COLUMNS.find(c => c.key === PEOPLE_SORT.sort)?.desc; draw(); };
+  find.value = PEOPLE_SORT.text;
+  find.oninput = () => { PEOPLE_SORT.text = find.value; draw(); };
+  // Enter opens the first match: type a name, press Enter, you are on the page.
+  find.onkeydown = event => { const first = tbody.querySelector("tr[data-href]"); if (event.key === "Enter" && first) location.hash = first.dataset.href; };
+  tbody.addEventListener("click", event => {
+    const row = event.target.closest("tr[data-href]");
+    if (row && !event.target.closest("a") && !String(window.getSelection())) location.hash = row.dataset.href;
+  });
+  draw();
+  main.appendChild(el("div", { class: "r4 r4-people wide" }, [
+    el("div", { class: "people-head" }, [el("h1", { text: label("people") }), find, sortSelect, peopleChooser(draw)]), scroller, empty, peopleFoot()]));
 }
 
 function ledeSeparator(text) {
@@ -9072,7 +9039,7 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
-  if (c === "people" && (items.length || (REM.contact_candidates || []).length)) { peopleView(items); return; }
+  if (c === "people") { peopleView(items); return; }
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: t("Contents") }), el("span", { class: "sep", text: "/" }), el("span", { text: t("Category") })]));
   main.appendChild(el("h1", { text: c === "all" ? t("All records") : label(c) }));
@@ -10878,7 +10845,8 @@ function skillsView(items) {
       t(nameOnly.length === 1 ? "{n} skill has only a name: " : "{n} skills have only a name: ", { n: nameOnly.length }),
       ...nameOnly.flatMap((r, i) => [i ? ", " : "", el("a", { href: href(r), text: r.title })])]));
   };
-  find.oninput = draw;
+  find.value = PEOPLE_SORT.text;
+  find.oninput = () => { PEOPLE_SORT.text = find.value; draw(); };
   box.append(find, content); draw();
   return box;
 }
@@ -13194,7 +13162,7 @@ function render() {
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? t("All records") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
-  const viewKey = r || (c === "people" ? c + (peopleTable ? ":table" : ":rows") : c) || view || (reviews ? "reviews" : query ? "search" : "today");
+  const viewKey = r || c || view || (reviews ? "reviews" : query ? "search" : "today");
   if (viewKey !== entranceView) document.querySelectorAll("#main .fresh-label, #main .updated-label, #main .changed-value").forEach(node => node.classList.add("memory-enter"));
   entranceView = viewKey;
   refreshFocusExpansion();
@@ -13622,11 +13590,13 @@ function rememberPick(id) {
   paletteRecent = [id, ...paletteRecent.filter(item => item !== id)].slice(0, 6);
   readerStorage("co-rem-palette-recent", JSON.stringify(paletteRecent));
 }
+// A snapshot keeps no mark (markThread), so the palette does not offer one there: a command that does nothing
+// would read as a mark that failed (#3018).
 function todayActions() {
   return todayGroups(threadEntries().filter(entry => !isDone(entry))).flatMap(({ r }) => {
     const name = threadWho(r);
     return [{ id: "reply:" + r.path, label: t("Draft a reply to {name}", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.reply()) },
-      { id: "done:" + r.path, label: t("Mark {name} done", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.markDone()) }];
+      liveHere() ? { id: "done:" + r.path, label: t("Mark {name} done", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.markDone()) } : null].filter(Boolean);
   });
 }
 function paletteItems() {
@@ -13960,10 +13930,9 @@ window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
-  readerStorage("co-rem-people-view"), readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, peopleMode, notDone, kept]) => {
+  readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey())]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
-  morePeopleColumns = columns === "more";
-  peopleTable = peopleMode === "table";
+  peopleColumns = peopleColumnKeys(columns);
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   keptOpen = kept ? JSON.parse(kept) : {};
   const fallback = saved ? JSON.parse(saved) : null;

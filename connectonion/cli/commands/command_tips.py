@@ -355,14 +355,14 @@ NEXT = {
     "co telegram chats": HANDLER,
     "co telegram log": "co telegram ls",
     "co telegram consume": "co telegram ls",
-    "co trust list": "Check one address:  co trust level <address>",
+    "co trust list": HANDLER,  # handler retains the selected trust directory
     "co trust level": HANDLER,  # the next step depends on the level it printed
-    "co trust add": "See every list:  co trust list",
-    "co trust remove": "See every list:  co trust list",
-    "co trust block": "See every list:  co trust list",
-    "co trust unblock": "See every list:  co trust list",
-    "co trust admin add": "See every list:  co trust list",
-    "co trust admin remove": "See every list:  co trust list",
+    "co trust add": HANDLER,  # handler retains the selected trust directory
+    "co trust remove": HANDLER,  # handler retains the selected trust directory
+    "co trust block": HANDLER,  # handler retains the selected trust directory
+    "co trust unblock": HANDLER,  # handler retains the selected trust directory
+    "co trust admin add": HANDLER,  # handler retains the selected trust directory
+    "co trust admin remove": HANDLER,  # handler retains the selected trust directory
     # co canny: each handler names its next command from what Canny returned
     # (the first post's id, the exact --yes command after a preview).
     "co canny check": HANDLER,

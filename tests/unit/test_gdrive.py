@@ -8,11 +8,17 @@ Tests cover:
 - upload and delete (trash, not permanent)
 """
 
+import hashlib
 import os
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
+NATIVE_DOC = "application/vnd.google-apps.document"
 ENV = {
     "GOOGLE_SCOPES": "gmail.send,gmail.readonly,gmail.modify,calendar,drive",
     "GOOGLE_ACCESS_TOKEN": "test-token",
@@ -50,6 +56,87 @@ def file_resource(**overrides):
     }
     resource.update(overrides)
     return resource
+
+
+class FakeDrive:
+    """A loopback stand-in for Drive's media endpoint: serves `body`, honours Range, and can misbehave.
+
+    limit: no byte at or past this offset is sent; then, by `mode`, the
+    connection closes ("drop"), goes silent ("stall"), or waits for `gate`
+    and sends the rest ("gate").
+    """
+
+    def __init__(self, body: bytes):
+        self.body, self.ranges = body, []
+        self.limit, self.mode, self.gate = None, "drop", threading.Event()
+        self.ignore_range, self.closing = False, threading.Event()
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                fake.handle(self)
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/files"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def handle(self, request):
+        header = request.headers.get("Range", "")
+        self.ranges.append(header)
+        start = 0 if self.ignore_range or not header else int(header.removeprefix("bytes=").rstrip("-"))
+        request.send_response(206 if start else 200)
+        request.send_header("Content-Length", str(len(self.body) - start))
+        request.end_headers()
+        stop = len(self.body) if self.limit is None else max(self.limit, start)
+        self.send(request, start, stop)
+        if stop == len(self.body) or self.mode == "drop":
+            return
+        if self.mode == "stall":
+            self.closing.wait()
+            return
+        self.gate.wait()
+        self.send(request, stop, len(self.body))
+
+    def send(self, request, start, stop):
+        for offset in range(start, stop, 64 * 1024):
+            request.wfile.write(self.body[offset:min(offset + 64 * 1024, stop)])
+        request.wfile.flush()
+
+    def close(self):
+        self.closing.set()
+        self.gate.set()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+
+
+@pytest.fixture
+def fake_drive(monkeypatch):
+    """Serve 20 MB of incompressible bytes at a loopback media URL; stalls give up after 0.3 s."""
+    from connectonion.useful_tools import gdrive
+    fake = FakeDrive(os.urandom(20 * 1024 * 1024))
+    monkeypatch.setattr(gdrive, "DRIVE_FILES_URL", fake.url)
+    monkeypatch.setattr(gdrive, "STALL_SECONDS", 0.3)
+    monkeypatch.setattr(gdrive, "PROGRESS_SECONDS", 0)
+    yield fake
+    fake.close()
+
+
+def streaming_drive(fake, name="Interview.mov", **kwargs):
+    """A GDrive, as the CLI builds it, whose file is `fake`'s body fetched over plain HTTP."""
+    from connectonion.useful_tools.gdrive import GDrive
+    kwargs.setdefault("allow_external_downloads", True)
+    with patch.dict(os.environ, ENV, clear=False):
+        drive = GDrive(**kwargs)
+    drive._get_meta = lambda file_id: {"id": file_id, "name": name, "mimeType": "video/quicktime",
+                                       "size": str(len(fake.body)), "md5Checksum": hashlib.md5(fake.body).hexdigest()}
+    drive._media_session = requests.Session
+    return drive
 
 
 class TestGDriveInit:
@@ -247,17 +334,27 @@ class TestDownload:
 
         monkeypatch.setattr("connectonion.useful_tools.gdrive.MediaIoBaseDownload", fake_downloader)
 
-    def test_binary_file_uses_get_media(self, tmp_path, monkeypatch):
-        self._stub_download(monkeypatch)
+    @staticmethod
+    def _streamed(service, fake):
+        """A drive over `service` whose binary bytes come from `fake`."""
+        drive = drive_with_service(service)
+        drive._media_session = requests.Session
+        return drive
+
+    @staticmethod
+    def _binary(fake, **overrides):
+        return file_resource(size=str(len(fake.body)), md5Checksum=hashlib.md5(fake.body).hexdigest(), **overrides)
+
+    def test_binary_file_streams_its_media(self, tmp_path, fake_drive):
         service = MagicMock()
-        service.files.return_value.get.return_value.execute.return_value = file_resource()
+        service.files.return_value.get.return_value.execute.return_value = self._binary(fake_drive)
 
         with patch.dict(os.environ, ENV, clear=False):
-            result = drive_with_service(service).download("file-1", dest=str(tmp_path))
+            result = self._streamed(service, fake_drive).download("file-1", dest=str(tmp_path))
 
-        service.files.return_value.get_media.assert_called_once()
         service.files.return_value.export_media.assert_not_called()
-        assert (tmp_path / "Report.pdf").read_bytes() == b"filebytes"
+        assert fake_drive.ranges == [""]
+        assert (tmp_path / "Report.pdf").read_bytes() == fake_drive.body
         assert "Report.pdf" in result
 
     def test_google_doc_is_exported_with_an_extension(self, tmp_path, monkeypatch):
@@ -303,8 +400,7 @@ class TestDownload:
         assert "folder" in str(exc.value)
         assert "Projects" in str(exc.value)
 
-    def test_shortcut_resolves_to_its_target(self, tmp_path, monkeypatch):
-        self._stub_download(monkeypatch)
+    def test_shortcut_resolves_to_its_target(self, tmp_path, fake_drive):
         service = MagicMock()
         service.files.return_value.get.return_value.execute.side_effect = [
             file_resource(
@@ -314,24 +410,120 @@ class TestDownload:
                 size=None,
                 shortcutDetails={"targetId": "file-1"},
             ),
-            file_resource(),
+            self._binary(fake_drive),
         ]
 
         with patch.dict(os.environ, ENV, clear=False):
-            drive_with_service(service).download("shortcut-1", dest=str(tmp_path))
+            self._streamed(service, fake_drive).download("shortcut-1", dest=str(tmp_path))
 
-        assert (tmp_path / "Report.pdf").exists()
+        assert (tmp_path / "Report.pdf").read_bytes() == fake_drive.body
 
-    def test_explicit_destination_path_is_honoured(self, tmp_path, monkeypatch):
-        self._stub_download(monkeypatch)
+    def test_explicit_destination_path_is_honoured(self, tmp_path, fake_drive):
         service = MagicMock()
-        service.files.return_value.get.return_value.execute.return_value = file_resource()
+        service.files.return_value.get.return_value.execute.return_value = self._binary(fake_drive)
         target = tmp_path / "renamed.pdf"
 
         with patch.dict(os.environ, ENV, clear=False):
-            drive_with_service(service).download("file-1", dest=str(target))
+            self._streamed(service, fake_drive).download("file-1", dest=str(target))
 
-        assert target.read_bytes() == b"filebytes"
+        assert target.read_bytes() == fake_drive.body
+
+
+class TestStreamedDownload:
+    """A video streams to disk, reports progress, resumes, and says when it is stuck (#3002)."""
+
+    def test_bytes_reach_disk_while_the_download_runs(self, fake_drive, tmp_path):
+        fake_drive.limit, fake_drive.mode = len(fake_drive.body) // 2, "gate"
+        lines, result = [], {}
+        worker = threading.Thread(target=lambda: result.update(
+            path=streaming_drive(fake_drive).download("vid", dest=str(tmp_path), progress=lines.append)))
+        worker.start()
+        part = tmp_path / "Interview.mov.part"
+        deadline = time.monotonic() + 10
+        while (not part.exists() or part.stat().st_size < fake_drive.limit) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        half_way = part.stat().st_size
+        fake_drive.gate.set()
+        worker.join(timeout=20)
+
+        assert half_way >= fake_drive.limit, "nothing was written before the download finished"
+        assert (tmp_path / "Interview.mov").read_bytes() == fake_drive.body
+        assert not part.exists()
+        assert any("MB of 20.0 MB" in line and "/s" in line and "left" in line for line in lines), lines
+        assert lines[-1].startswith("done: 20.0 MB")
+
+    def test_a_dropped_connection_is_resumed_with_range(self, fake_drive, tmp_path):
+        fake_drive.limit = 7 * 1024 * 1024
+        served = []
+
+        def lift_the_limit(line):
+            served.append(line)
+            fake_drive.limit = None   # the next connection serves the rest
+
+        streaming_drive(fake_drive).download("vid", dest=str(tmp_path), progress=lift_the_limit)
+
+        assert (tmp_path / "Interview.mov").read_bytes() == fake_drive.body
+        assert fake_drive.ranges[0] == "" and fake_drive.ranges[-1] == f"bytes={7 * 1024 * 1024}-"
+        assert any("connection dropped at 7.0 MB of 20.0 MB; resuming" in line for line in served), served
+
+    def test_a_stuck_download_stops_keeps_its_part_and_the_rerun_resumes(self, fake_drive, tmp_path, monkeypatch):
+        from connectonion.useful_tools import gdrive
+        monkeypatch.setattr(gdrive, "STALL_RETRIES", 1)
+        fake_drive.limit, fake_drive.mode = 5 * 1024 * 1024, "stall"
+        lines = []
+
+        with pytest.raises(gdrive.DriveDownloadError) as stuck:
+            streaming_drive(fake_drive).download("vid", dest=str(tmp_path), progress=lines.append)
+
+        part = tmp_path / "Interview.mov.part"
+        assert str(stuck.value).startswith("Stuck: no data from Drive for 0.3 s at 5.0 MB of 20.0 MB, 2 times")
+        assert str(part) in str(stuck.value) and "run the same command again" in str(stuck.value)
+        assert any(line.startswith("stalled: no data from Drive") and "attempt 1 of 1" in line for line in lines)
+        assert part.stat().st_size == 5 * 1024 * 1024
+        assert not (tmp_path / "Interview.mov").exists()
+
+        fake_drive.limit, lines = None, []
+        streaming_drive(fake_drive).download("vid", dest=str(tmp_path), progress=lines.append)
+
+        assert fake_drive.ranges[-1] == f"bytes={5 * 1024 * 1024}-"
+        assert lines[0] == "resuming Interview.mov.part: 5.0 MB of 20.0 MB already on disk"
+        assert (tmp_path / "Interview.mov").read_bytes() == fake_drive.body
+        assert not part.exists()
+
+    def test_a_part_left_by_a_killed_run_is_resumed(self, fake_drive, tmp_path):
+        (tmp_path / "Interview.mov.part").write_bytes(fake_drive.body[:3_000_000])
+
+        streaming_drive(fake_drive).download("vid", dest=str(tmp_path))
+
+        assert fake_drive.ranges == ["bytes=3000000-"]
+        assert (tmp_path / "Interview.mov").read_bytes() == fake_drive.body
+
+    def test_a_part_that_is_not_this_file_is_removed_not_renamed(self, fake_drive, tmp_path):
+        from connectonion.useful_tools.gdrive import DriveDownloadError
+        (tmp_path / "Interview.mov.part").write_bytes(b"x" * 1000)
+
+        with pytest.raises(DriveDownloadError, match="md5 differs"):
+            streaming_drive(fake_drive).download("vid", dest=str(tmp_path))
+
+        assert not (tmp_path / "Interview.mov").exists()
+        assert not (tmp_path / "Interview.mov.part").exists()
+
+    def test_a_server_that_ignores_range_restarts_from_zero(self, fake_drive, tmp_path):
+        (tmp_path / "Interview.mov.part").write_bytes(fake_drive.body[:1000])
+        fake_drive.ignore_range = True
+
+        streaming_drive(fake_drive).download("vid", dest=str(tmp_path))
+
+        assert (tmp_path / "Interview.mov").read_bytes() == fake_drive.body
+
+    def test_a_finished_file_is_kept_and_the_new_one_gets_a_suffix(self, fake_drive, tmp_path):
+        (tmp_path / "Interview.mov").write_bytes(b"mine")
+
+        result = streaming_drive(fake_drive).download("vid", dest=str(tmp_path))
+
+        assert (tmp_path / "Interview.mov").read_bytes() == b"mine"
+        assert (tmp_path / "Interview-1.mov").read_bytes() == fake_drive.body
+        assert "Interview-1.mov" in result
 
 
 class TestDownloadStaysInItsFolder:
@@ -342,8 +534,23 @@ class TestDownloadStaysInItsFolder:
         from connectonion.useful_tools.gdrive import GDrive
         with patch.dict(os.environ, ENV, clear=False):
             drive = GDrive(**kwargs)
+        # An exported doc: the in-memory path. A streamed file picks its name the same way (_target).
+        drive._get_meta = lambda file_id: {"id": file_id, "name": name, "mimeType": NATIVE_DOC}
         drive._read_file = lambda file_id: {"name": name, "data": data}
         return drive
+
+    def test_a_streamed_file_does_not_follow_a_symlink_at_its_name(self, tmp_path, monkeypatch, fake_drive):
+        monkeypatch.chdir(tmp_path)
+        outside = tmp_path / "outside.txt"
+        outside.write_text("keep")
+        (tmp_path / "Interview.mov").symlink_to(outside)
+        (tmp_path / "Interview-1.mov.part").symlink_to(outside)
+
+        streaming_drive(fake_drive).download("f", dest=str(tmp_path))
+
+        assert outside.read_text() == "keep"
+        assert not (tmp_path / "Interview-1.mov").exists()
+        assert (tmp_path / "Interview-2.mov").read_bytes() == fake_drive.body
 
     def test_a_traversal_name_stays_in_the_destination(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
