@@ -864,7 +864,7 @@ def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
         # stops, so `--follow` with a filter would mean two different things at
         # once.
         window = _since_to_iso(since)
-        rows = [_named(record, saved) for record in inbox.history(chat=chat, since=window)]
+        rows = [_named(record, saved) for record in inbox.history(chat=chat, since=window, ours=True)]
         if sender:
             rows = [r for r in rows if sender in (r.get("sender", ""), r.get("sender_name", ""))]
         for record in rows[max(0, len(rows) - last):] if last is not None else rows:

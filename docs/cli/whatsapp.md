@@ -274,6 +274,15 @@ listener asks WhatsApp for the account and sends to the jid WhatsApp gives, or
 refuses with `+61498765432 is not on WhatsApp, so nothing was sent` and exits 1.
 `sent.jsonl` records the jid.
 
+## Reading a chat back, your own side included
+
+`co whatsapp log --chat <id> --since 2d` prints that chat's messages from the
+last two days, oldest first, and among them what this account said: replies
+`co` sent (from `sent.jsonl`) and what the owner typed on the phone (from
+`own.jsonl`), each marked `"from_me": true` and listed once. A send that
+failed is not listed. `--sender` narrows to someone else's messages, so it
+leaves ours out (#3001).
+
 ## Sending photos and files
 
 ```bash
@@ -302,6 +311,11 @@ chat (#1856).
   when none is running.
   The request carries the file's absolute path and the listener reads the file
   from there; the file only has to stay put until the id is printed.
+- The listener doing the sending can be an older install than the `co` you
+  typed (its own venv, started weeks ago). One from before pictures existed
+  read the request as text and answered only `'text'` (#3001). Now `send`
+  checks the running listener's version first and, if it is too old, exits 1
+  naming it and `co whatsapp listen --restart`. Nothing is queued.
 - Checked before anything is queued: a missing or empty file, both options at
   once, a picture WhatsApp will not show inline, or a file over the limit exits
   1 with a sentence naming the fix. Nothing is sent.

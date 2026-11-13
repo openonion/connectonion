@@ -69,6 +69,14 @@ IMAGE_LIMIT_BYTES = 16 * 1024 * 1024
 FILE_LIMIT_BYTES = 100 * 1024 * 1024
 _IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
 
+# The first release whose listener sends pictures and files (#1856). An older
+# listener reads every request as text and answers only "'text'" (#3001); it
+# also predates the upgrade restart, so it never replaces itself.
+MEDIA_LISTENER_SINCE = "1.8.9b16"
+# Every request kind this listener performs; a request with no kind is text.
+REQUEST_KINDS = {None, "lookup", "reaction", "edit", "revoke", "group_create", "group_add",
+                 "image", "document"}
+
 # How long `send` waits for the listener to pick the request up and answer.
 SEND_TIMEOUT_SECONDS = 30.0
 # A request older than the sender's wait plus this has no sender left: it gave
@@ -1117,11 +1125,30 @@ class WhatsApp:
         media = self.attachment(image=image, file=file)
         caption = text if plain else to_whatsapp(text)
         if media:
+            self._listener_handles("send pictures or files", MEDIA_LISTENER_SINCE)
             # The listener reads the file from this absolute path (#1856).
             return self._queue({"kind": media["kind"], "chat": chat, "path": media["path"],
                                 "name": media["name"], "mime": media["mime"], "caption": caption,
                                 "reply_to": reply_to, "phone": phone})
         return self._queue({"chat": chat, "text": caption, "reply_to": reply_to, "phone": phone})
+
+    def _listener_handles(self, what: str, since: str) -> None:
+        """Refuse before queueing when the running listener is older than `since`.
+
+        The listener can be a different install from this `co` (its own venv,
+        started weeks ago), and it is the one that performs the request."""
+        from packaging.version import Version
+
+        inbox = Inbox(self.name)
+        pid = inbox.listener_pid()
+        if pid is None or pid < 0:
+            return
+        version = inbox.listener_version(pid)
+        if version and Version(version) >= Version(since):
+            return
+        running = f"runs {version}" if version else "started before version tracking"
+        raise RuntimeError(f"the running listener (pid {pid}) {running}, older than {since}, and cannot "
+                           f"{what}; nothing was sent. Next: co {self.name} listen --restart")
 
     def render(self, text: str) -> str:
         """The exact characters WhatsApp will receive, given Markdown.
@@ -1258,6 +1285,9 @@ class WhatsApp:
         yet may still be draining one."""
         try:
             kind = payload.get("kind")
+            if kind not in REQUEST_KINDS:
+                raise RuntimeError(f"this listener does not perform {kind!r} requests; it is older than "
+                                   f"the co that asked. Next: co {self.name} listen --restart")
             if kind == "lookup":
                 return {"results": [self._lookup_now(phone) for phone in payload["phones"]]}
             if payload.get("phone"):

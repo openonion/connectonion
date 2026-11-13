@@ -2242,7 +2242,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
                                            help="Keep only the most recent N"),
     ):
-        """Every message ever received, one JSON line each. Changes nothing in the chat or the queue."""
+        """Every message ever received, one JSON line each; with a filter, what this account sent is included too, marked from_me. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 

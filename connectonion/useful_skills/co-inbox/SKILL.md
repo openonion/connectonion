@@ -81,6 +81,8 @@ co whatsapp log --sender "Eric Fu"          # by name or by id
 ```
 
 A filtered `log` answers from the record and stops; `-f` tails the whole inbox.
+With `--chat` or `--since` it includes what this account said there, marked
+`"from_me": true`, so you can see what you already replied.
 `-n` keeps the **most recent** N, because a conversation is read backwards from
 its last turn.
 
