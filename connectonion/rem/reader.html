@@ -13590,11 +13590,13 @@ function rememberPick(id) {
   paletteRecent = [id, ...paletteRecent.filter(item => item !== id)].slice(0, 6);
   readerStorage("co-rem-palette-recent", JSON.stringify(paletteRecent));
 }
+// A snapshot keeps no mark (markThread), so the palette does not offer one there: a command that does nothing
+// would read as a mark that failed (#3018).
 function todayActions() {
   return todayGroups(threadEntries().filter(entry => !isDone(entry))).flatMap(({ r }) => {
     const name = threadWho(r);
     return [{ id: "reply:" + r.path, label: t("Draft a reply to {name}", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.reply()) },
-      { id: "done:" + r.path, label: t("Mark {name} done", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.markDone()) }];
+      liveHere() ? { id: "done:" + r.path, label: t("Mark {name} done", { name }), hint: t("Today"), run: () => onTodayCard(r.path, card => card.markDone()) } : null].filter(Boolean);
   });
 }
 function paletteItems() {
