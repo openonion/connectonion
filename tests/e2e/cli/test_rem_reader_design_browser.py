@@ -3425,12 +3425,13 @@ def test_cjk_citation_tethers_do_not_bind_a_whole_sentence(reader):
 
 
 @pytest.mark.parametrize('width', [1440, 390])
-@pytest.mark.parametrize('notebook_languages, browser_language', [(['zh', 'en'], 'en-AU'), (['en', 'zh'], 'en-AU'), ([], 'zh-CN')])
-def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, browser_language):
+# owner: languages.owner_language for that list, as reader.py hands it to the page (a configured list here).
+@pytest.mark.parametrize('notebook_languages, owner, browser_language', [(['zh', 'en'], 'zh', 'en-AU'), (['en', 'zh'], 'zh', 'en-AU'), ([], None, 'zh-CN')])
+def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, owner, browser_language):
     from connectonion.rem import reader as rem_reader
     page, _ = reader
     data = rem_reader.snapshot(tmp_path / 'rem', local=True)
-    data['your_languages'] = notebook_languages
+    data['your_languages'], data['owner_language'] = notebook_languages, owner
     page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
     monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False, today=False: data)
     path = tmp_path / 'chinese-reader.html'
@@ -4026,11 +4027,13 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         assert page.evaluate("document.documentElement.classList.contains('hide-private')")
         assert '公开试点' in page.locator('.today-brief').text_content()  # every card, raised or waiting behind its face
         no_private_words()
-        # Missing translations have no note in either home row type.
+        # A translated page's rows carry no 原文 (Today's rows of untranslated pages do: sprint 15, language);
+        # the week has no note at all.
         page.locator('.week-details > summary').click()
         no_private_words()
+        assert page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"] .lang-status').count() == 0
+        assert page.locator('.week .lang-status').count() == 0
         for selector in ('.today-brief', '.week'):
-            assert page.locator(selector).locator('.lang-status').count() == 0
             # Missing archived mail is useful context, not a translation badge.
             assert '尚无中文译文，显示原文' not in page.locator(selector).inner_text()
         page.goto(html.as_uri() + '#view=open')
