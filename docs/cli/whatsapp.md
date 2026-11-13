@@ -252,7 +252,9 @@ listener and starts one if none is running.
   leading 0 is refused unless `--country AU` says how to read it, because
   `0412345678` sent as it is names another account or none, and that would
   look exactly like "not on WhatsApp". `--country` follows that country's own
-  dialling rules (Italy keeps its 0).
+  dialling rules (Italy keeps its 0). It is the one part that needs the
+  `whatsapp` extra; without it, `--country` says how to install it, and
+  numbers written with their country code work as they are.
 
 **`contacts add WHO --name NAME [--note TEXT]`** saves a name, locally, in
 `~/.co/inbox/whatsapp/contacts.json`. WHO is the `jid` that `lookup` printed,

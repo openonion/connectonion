@@ -72,10 +72,43 @@ def test_a_number_with_its_country_code_is_its_digits():
 def test_a_local_number_needs_a_country_rather_than_reaching_nobody():
     with pytest.raises(ValueError, match="--country"):
         contacts.phone_digits("0412 345 678")
+
+
+def test_country_reads_a_local_number_the_way_that_country_dials_it():
+    pytest.importorskip("phonenumbers")
     assert contacts.phone_digits("0412 345 678", "au") == ALEX
     # Italy keeps its leading 0 after the country code; stripping it, as a
     # hand-written rule would, names a different number.
     assert contacts.phone_digits("06 1234 5678", "IT") == "390612345678"
+
+
+@pytest.fixture
+def no_phonenumbers(monkeypatch):
+    """The core install: the whatsapp extra, and phonenumbers with it, absent."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "phonenumbers", None)
+
+
+def test_without_the_extra_country_says_how_to_install_it(no_phonenumbers, capsys):
+    with pytest.raises(SystemExit) as exit_:
+        whatsapp_commands.handle_contacts_add("0412 345 678", "Alex Example", country="AU")
+
+    assert exit_.value.code == 2
+    err = " ".join(capsys.readouterr().err.split())
+    assert "pip install 'connectonion[whatsapp]'" in err and "Traceback" not in err
+    assert contacts.read_contacts() == {}
+
+
+def test_without_the_extra_full_numbers_and_contacts_still_work(no_phonenumbers, capsys):
+    assert contacts.phone_digits("+61 412 345 678") == ALEX
+    whatsapp_commands.handle_contacts_add("+61 412 345 678", "Alex Example")
+    whatsapp_commands.handle_contacts_ls()
+    whatsapp_commands.handle_contacts_rm("Alex Example")
+
+    out = capsys.readouterr().out
+    assert out.count(f"{ALEX}@s.whatsapp.net\tAlex Example") == 3
+    assert contacts.read_contacts() == {}
 
 
 # ---- lookup ----------------------------------------------------------------
@@ -106,13 +139,13 @@ class FakeProvider:
         return self.results
 
 
-def test_a_number_not_on_whatsapp_is_a_result_and_exit_4(monkeypatch, capsys):
+def test_a_number_not_on_whatsapp_is_a_result_and_exit_4(no_phonenumbers, monkeypatch, capsys):
     fake = FakeProvider([{"phone": f"+{ALEX}", "on_whatsapp": True, "jid": f"{ALEX}@s.whatsapp.net"},
                          {"phone": f"+{NOBODY}", "on_whatsapp": False}])
     monkeypatch.setattr(listen_commands, "provider", lambda name: fake)
 
     with pytest.raises(SystemExit) as exit_:
-        whatsapp_commands.handle_lookup(["0412345678", "+61498765432"], country="AU")
+        whatsapp_commands.handle_lookup([f"+{ALEX}", "+61498765432"])
 
     assert exit_.value.code == whatsapp_commands.EXIT_NOT_ON_WHATSAPP == 4
     assert fake.asked == [ALEX, NOBODY]
@@ -136,7 +169,7 @@ def test_lookup_refuses_a_local_number_before_asking_anyone(monkeypatch, capsys)
 # ---- contacts --------------------------------------------------------------
 
 def test_contacts_add_ls_rm(capsys):
-    whatsapp_commands.handle_contacts_add("0412 345 678", "Alex Example", note="Acme", country="AU")
+    whatsapp_commands.handle_contacts_add("+61 412 345 678", "Alex Example", note="Acme")
     whatsapp_commands.handle_contacts_ls()
     out = capsys.readouterr().out
     assert f"{ALEX}@s.whatsapp.net\tAlex Example\n" in out

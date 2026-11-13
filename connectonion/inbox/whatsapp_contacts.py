@@ -76,8 +76,18 @@ def phone_digits(text: str, country: Optional[str] = None) -> str:
     return digits
 
 
+# --country is the one thing here that needs a library: every other path takes
+# a number that already carries its country code.
+PHONENUMBERS_MISSING = ("--country needs the phone number library, which comes with the WhatsApp extra. "
+                        "Run: pip install 'connectonion[whatsapp]'  (with uv: uv pip install "
+                        "'connectonion[whatsapp]'), or write the number with its country code: +61…")
+
+
 def _national(raw: str, country: str) -> str:
-    import phonenumbers
+    try:
+        import phonenumbers
+    except ImportError:
+        raise ValueError(PHONENUMBERS_MISSING) from None
 
     try:
         parsed = phonenumbers.parse(raw, country.upper())
