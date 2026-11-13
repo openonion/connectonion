@@ -4686,6 +4686,9 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page, uri = reader
     page.goto(uri)
     page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
+    # #2956: links ease their colour over --t-press when the theme changes, and the mark's link is not redrawn
+    # by the route changes below; measuring it mid-fade read the light ink on the dark page (3.58, then 1.03).
+    page.evaluate('Promise.all(document.getAnimations().filter(a => a instanceof CSSTransition).map(a => a.finished))')
     for route, selectors in [('#c=people', '.brand .sub, nav a .n, .r4 .row .s, .r4 .row .when, .r4 .grp, .r4 .chip, .r4-tabs i'),
                              ('#r=people%2Fmara-ostrowski.md', '.hero-marks, .r4-stats div, .fuse-ends span, .said-src, .tl-e .d, .wt h2'),
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
