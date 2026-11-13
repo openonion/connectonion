@@ -94,9 +94,9 @@ dependencies = [
     "protobuf>=6.33.5",
     "pyasn1>=0.6.5",
     "Pygments>=2.20.0",
-    # CVE-2026-126192 is fixed in 2.10 and CVE-2026-126190 in 4.0; 4.x needs Python 3.11.5.
-    "soupsieve>=4.0; python_full_version >= '3.11.5'",
-    "soupsieve>=2.10; python_full_version < '3.11.5'",
+    # CVE-2026-126192 is fixed in 2.10; CVE-2026-126190 in 4.0, which needs Python 3.11.5,
+    # so uv.lock resolves 4.x there and 2.10 only on 3.11.0-3.11.4.
+    "soupsieve>=2.10",
     "urllib3>=2.8.0",
 ]
 
