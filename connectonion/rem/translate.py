@@ -339,8 +339,21 @@ def _waiting_pages(root):
             and not threads.blocked(root, threads.done_key(row["path"], text), states=states)}
 
 
-def backlog(root, language, *, changed=()):
-    """Waiting-on-you pages first, then newest page edits; omit current translations.
+# Today shows nine rows or so; the pages behind them come first, in the order shown. Waiting alone
+# was ~90 pages on a real notebook, more than a night translates, so Today stayed English.
+TODAY_FIRST = 8
+
+
+def shown_today(root):
+    """The pages behind the rows Today shows, in its order, at most TODAY_FIRST. today.queue reads
+    the whole notebook (~5 s on a real one), so a round computes this once and hands it to backlog."""
+    from .today import queue
+    return list(dict.fromkeys(row["record"] for row in queue(root) if row["section"]))[:TODAY_FIRST]
+
+
+def backlog(root, language, *, changed=(), shown=()):
+    """The pages behind Today's visible rows (`shown`, from shown_today) first, then the other waiting-on-you pages, then
+    newest page edits; omit current translations.
 
     Both scheduled paths use this order before applying the shared daily cap.
     Explicit requests and this round's changes break equal modification times.
@@ -350,8 +363,9 @@ def backlog(root, language, *, changed=()):
     requested = read_json(state_path(root, "translation-requests.json"), {}).get(language, [])
     requested = {record: position for position, record in enumerate(requested)}
     waiting, changed = _waiting_pages(root), set(changed)
+    shown = {record: position for position, record in enumerate(shown)}
     records = sorted(book.list(), key=lambda record: (
-        record not in waiting, -book.path(record).stat().st_mtime_ns,
+        shown.get(record, len(shown)), record not in waiting, -book.path(record).stat().st_mtime_ns,
         record not in changed, requested.get(record, len(requested)), record))
     return [record for record in records if cached(root, record, language) is None]
 
@@ -366,12 +380,13 @@ def attempts_today(root):
 
 
 def languages(root):
-    """The languages pages are translated into: the reader's requests, then the configured
-    list, or when that is empty the languages the owner writes, detected (D-103)."""
+    """The languages pages are translated into: the owner's own first (languages.owner_language,
+    the one the reader and drafts use), then the reader's requests, then the configured list, or
+    when that is empty the languages the owner writes, detected (D-103)."""
     from .files import read_json
-    from .languages import owner_languages
+    from .languages import owner_language, owner_languages
     requested = read_json(state_path(root, 'translation-requests.json'), {})
-    return list(dict.fromkeys([*requested, *owner_languages(root)['languages']]))
+    return list(dict.fromkeys(filter(None, [owner_language(root), *requested, *owner_languages(root)['languages']])))
 
 
 def coverage(root, *, next_run=None):
