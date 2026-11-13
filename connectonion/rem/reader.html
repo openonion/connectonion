@@ -2184,6 +2184,66 @@
     .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
     .today-brief .qcard, .qitem { transition: none; }
   }
+  /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
+  .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
+  .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
+  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+  .agenda-bar button { font: var(--s-ui) var(--font); color: var(--ink); background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--radius); min-height: 32px; padding: 4px 12px; cursor: pointer; }
+  .agenda-bar .ag-step { min-width: 32px; padding: 4px 8px; }
+  .agenda-bar .ag-views button[aria-pressed="true"] { box-shadow: var(--e-ink); }
+  .agenda-bar .ag-views { margin-left: auto; }
+  .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
+  .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
+  .agenda-note { margin: -4px 0 14px; font-size: var(--s-meta); color: var(--grey); }
+  .agenda-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .ag-col { min-height: 300px; padding: 10px 8px 14px; border-left: var(--hair) solid var(--rule); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ag-col:first-child { border-left: 0; }
+  .ag-col.today { background: var(--well); }
+  .ag-colhead { display: flex; flex-direction: column; padding: 0 4px 6px; }
+  .ag-colhead .ag-date { font: var(--w-bold) var(--s-ui)/18px var(--font); }
+  .ag-now { font-size: var(--s-meta); color: var(--grey); }
+  .ag-col.past .ag-colhead { color: var(--grey); }
+  .ag-empty { color: var(--grey); padding: 0 4px; }
+  .ag-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e-ring); min-width: 0; }
+  .ag-item.ag-event { box-shadow: var(--e1); }
+  .ag-main { display: flex; flex-direction: column; min-width: 0; }
+  .ag-main:hover .ag-title { text-decoration: underline; text-underline-offset: 3px; }
+  .ag-time { font-size: var(--s-meta); color: var(--grey); }
+  .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
+  .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
+  .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ag-who { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-who a:hover { text-decoration: underline; }
+  .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
+  .ag-cell { background: var(--paper); min-height: 112px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ag-cell.out { color: var(--grey); }
+  .ag-cell.today { background: var(--well); }
+  .ag-cell > .ag-date { font: var(--w-bold) var(--s-meta)/16px var(--font); }
+  .ag-cell .ag-item { padding: 3px 6px; }
+  .ag-cell .ag-main { flex-direction: row; gap: 6px; }
+  .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
+  .ag-cell .ag-time { flex: none; }
+  .ag-cell .ag-note, .ag-cell .ag-who { display: none; }
+  .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
+  .agenda-days { display: none; }
+  .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
+  .agenda-earlier a { color: var(--ink); }
+  .agenda-earlier a:hover { text-decoration: underline; }
+  .agenda-earlier .k { color: var(--grey); }
+  @media (max-width: 640px) {
+    .agenda-bar, .agenda-week, .agenda-month { display: none; }
+    .agenda-days { display: flex; flex-direction: column; gap: 18px; }
+    .ag-day { display: flex; flex-direction: column; gap: 8px; }
+    .ag-dayhead { margin: 0; font: var(--w-bold) var(--s-ui)/18px var(--font); }
+    .ag-day.today .ag-dayhead { color: var(--ink); }
+    .ag-day .ag-item { padding: 0 12px 8px; }
+    .ag-day .ag-main { min-height: 44px; justify-content: center; padding-top: 8px; }
+    .ag-day .ag-title { font-size: var(--s-body); line-height: 22px; }
+    .ag-day .ag-who a { display: inline-block; min-height: 32px; line-height: 32px; }
+    .ag-day .ag-empty { margin: 0; padding: 0; }
+    .agenda-earlier { line-height: 32px; }
+  }
 </style>
 <style id="org-style">
   /* Organisations (#c=orgs and an organisation's page): visual system v1, scoped to .ov. */
@@ -8852,6 +8912,7 @@ function category(c) {
   if (c === "projects" && inCategory("projects").length) { projectsView(); return; }
   if (c === "orgs") { orgsView(); return; }
   if (c === "knowledge") { topicList(); return; }
+  if (c === "agenda") { agendaView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
   const items = c === "all" ? listedRecords() : inCategory(c);
@@ -8886,6 +8947,166 @@ function category(c) {
   if (c === "skills" && items.length) main.appendChild(skillsView(items));
   else if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- agenda: a calendar of the owner's next days (#2998, asked in #2841) ----------
+// Owner, 2026-11-13: «我需要快速看到我最近日历上有什么事件». The week opens on today, not on Monday: on a Friday a
+// Monday-first week is mostly finished days. Month is the usual Monday-first grid. Events are what the night
+// saved from his connected calendars (calendar.py; the page never calls a calendar), beside the notebook's
+// own dates: promises with a due date and agenda pages. Every item is a link: an event to the calendar it
+// came from, a notebook item to its page. Open notebook items dated before the range stay in one line under
+// it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
+const AG_ZH = {
+  "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
+  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题",
+  "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
+  "Still open from earlier": "更早、仍开着",
+  "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
+  "{name} could not be read last night ({reason}).": "昨晚没能读取 {name}（{reason}）。",
+  "authorization expired": "授权已过期", "not allowed": "没有权限", "unavailable": "暂时不可用", "not connected for calendar": "未连接日历",
+  "From {names} · read {when}": "来自 {names} · {when}读取", " and ": " 和 ",
+};
+function agT(key, values = {}) {
+  const words = uiLanguage === "zh" ? AG_ZH[key] : null;
+  return (words || t(key)).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+}
+const agendaState = { view: "week", offset: 0 };
+function agDay(day, n) {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function agToday() { return calendarDay(REM.as_of || new Date().toISOString()); }
+function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
+function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
+// 24-hour in the notebook's zone, the zone calendarDay files the event under.
+function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
+function agendaItems() {
+  const today = agToday(), items = [];
+  for (const e of REM.calendar?.events || []) {
+    const first = calendarDay(e.start);
+    if (!first) continue;
+    // Both calendars end an all-day event on the day after its last; a timed one is filed under its start.
+    const last = e.all_day ? agDay(calendarDay(e.end) || agDay(first, 1), -1) : first;
+    for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
+      items.push({ day, time: e.all_day ? "" : agTime(e.start), title: e.title || agT("No title"), href: e.link, external: true,
+        people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
+  }
+  const placed = new Set();
+  for (const row of REM.today_queue || []) {
+    if (!row.due || row.closed || row.quiet) continue;
+    const page = byPath(row.record);
+    placed.add(row.record + "@" + row.due);
+    // A promise on the owner's own page is named by what it is, not by his name.
+    const mine = row.record === REM.owner, note = stripCites(row.text);
+    items.push({ day: row.due, time: "", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record),
+      note: mine ? "" : note, late: row.due < today, kind: "due" });
+  }
+  for (const r of inCategory("agenda")) {
+    const due = (r.text || "").match(/\b(?:due|deadline|by)(?:\s+(?:on|is))?\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
+    // Otherwise the first date the page states (its status line, in whatever language its headings are), never its Sources.
+    const noted = (r.text || "").split("\n").filter(line => !/^\s*Sources?:/i.test(line)).join("\n").match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
+    const day = due || noted || calendarDay(r.last_activity || r.updated);
+    if (!day || placed.has(r.path + "@" + day)) continue;
+    items.push({ day, time: "", title: r.title, href: href(r), late: !!due && due < today, kind: due ? "due" : "page" });
+  }
+  // All-day and dated items lead a day, then events by time.
+  return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
+}
+function agItem(item) {
+  const when = item.kind === "event" ? (item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
+  const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
+    el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
+    item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
+  if (item.external && !item.href) main.removeAttribute("href");
+  const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
+    : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
+  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, who]);
+}
+function agColumnHead(day, today) {
+  return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
+    el("span", { class: "ag-date", text: agFormat(day, { weekday: "short" }) + " " + Number(day.slice(8)) })]);
+}
+function agendaWeek(items, start) {
+  const today = agToday();
+  return el("div", { class: "agenda-week" }, Array.from({ length: 7 }, (_, i) => {
+    const day = agDay(start, i), mine = items.filter(item => item.day === day);
+    return el("section", { class: "ag-col" + (day === today ? " today" : day < today ? " past" : "") }, [agColumnHead(day, today),
+      ...(mine.length ? mine.map(agItem) : [el("span", { class: "ag-empty", "aria-hidden": "true", text: "—" })])]);
+  }));
+}
+function agMonthStart(offset) {
+  const d = new Date(agToday().slice(0, 7) + "-01T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + offset);
+  return d.toISOString().slice(0, 10);
+}
+function agendaMonth(items, first) {
+  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7;
+  const next = agMonthStart(agendaState.offset + 1), length = Math.round((new Date(next) - new Date(first)) / 86400000);
+  const start = agDay(first, -lead), cells = Math.ceil((lead + length) / 7) * 7;
+  const names = Array.from({ length: 7 }, (_, i) => el("span", { class: "ag-wd", text: agFormat(agDay(start, i), { weekday: "short" }) }));
+  return el("div", { class: "agenda-month" }, [...names, ...Array.from({ length: cells }, (_, i) => {
+    const day = agDay(start, i), mine = items.filter(item => item.day === day);
+    return el("div", { class: "ag-cell" + (day.slice(0, 7) !== first.slice(0, 7) ? " out" : "") + (day === today ? " today" : "") }, [
+      el("span", { class: "ag-date", text: String(Number(day.slice(8))) }), ...mine.slice(0, 3).map(agItem),
+      mine.length > 3 ? el("span", { class: "ag-more", text: agT("{n} more", { n: mine.length - 3 }) }) : null]);
+  })]);
+}
+function agendaDays(items) {
+  const today = agToday(), end = agDay(today, 20), list = el("div", { class: "agenda-days" });
+  for (let day = today; day <= end; day = agDay(day, 1)) {
+    const mine = items.filter(item => item.day === day);
+    if (!mine.length && day !== today) continue;
+    const name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
+    const date = agFormat(day, { weekday: "short", day: "numeric", month: "short" });
+    list.appendChild(el("section", { class: "ag-day" + (day === today ? " today" : "") }, [
+      el("h2", { class: "ag-dayhead", text: name ? name + " · " + date : date }),
+      ...(mine.length ? mine.map(agItem) : [el("p", { class: "ag-empty", text: agT("Nothing in these days.") })])]));
+  }
+  return list;
+}
+function agendaEarlier(items, start) {
+  const open = items.filter(item => item.kind !== "event" && item.day < start);
+  if (!open.length) return null;
+  const seen = new Set(), unique = open.reverse().filter(item => !seen.has(item.href) && seen.add(item.href));
+  return el("p", { class: "agenda-earlier" }, [el("span", { class: "k", text: agT("Still open from earlier") + " " }),
+    ...unique.flatMap((item, i) => [i ? " · " : null, el("a", { href: item.href, class: item.late ? "late" : "", text: item.title }),
+      el("span", { class: "mono", text: " " + calendarDate(item.day) })])]);
+}
+function agendaNote() {
+  if (REM.shared) return null;
+  if (!REM.calendar) return el("p", { class: "agenda-note", text: agT("No calendar read yet: REM reads your connected Google and Outlook calendars each night.") });
+  const failed = Object.entries(REM.calendar.errors || {});
+  return failed.length ? el("p", { class: "agenda-note", text: failed.map(([name, reason]) => agT("{name} could not be read last night ({reason}).", { name, reason: agT(reason) })).join(" ") }) : null;
+}
+function agendaBar(range) {
+  const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
+  const button = (text, attrs, act) => { const b = el("button", { type: "button", ...attrs }, [text]); b.onclick = act; return b; };
+  const views = el("div", { class: "seg ag-views", role: "group" }, [["week", "Week"], ["month", "Month"]].map(([view, name]) =>
+    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { agendaState.view = view; agendaState.offset = 0; agendaView(); })));
+  const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: agT("From {names} · read {when}", {
+    names: REM.calendar.read.join(agT(" and ")), when: fmtTime(REM.calendar.saved_at) }) }) : null;
+  return el("div", { class: "agenda-bar" }, [
+    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, step(-1)),
+    button(agT("Today"), { class: "ag-today" }, () => { agendaState.offset = 0; agendaView(); }),
+    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, step(1)),
+    el("span", { class: "ag-range", text: range }), read, views]);
+}
+function agendaView() {
+  const main = document.getElementById("main"), items = agendaItems();
+  let body, start, range;
+  if (agendaState.view === "month") {
+    const first = agMonthStart(agendaState.offset);
+    range = agFormat(first, { month: "long", year: "numeric" });
+    body = agendaMonth(items, first);
+    start = agDay(first, -((new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7));
+  } else {
+    start = agDay(agToday(), 7 * agendaState.offset);
+    const end = agDay(start, 6);
+    range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
+    body = agendaWeek(items, start);
+  }
+  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items, start)]));
 }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
@@ -12792,7 +13013,7 @@ function render() {
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
   // The sheet views use the full width; reading views keep a measure.
-  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
+  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && (COLUMNS[c] && inCategory(c).length || c === "agenda")));
   if (reviews) reviewPage();
   else if (query) search(query, related);
   else if (r) record(r, heading);
