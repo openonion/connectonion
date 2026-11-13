@@ -60,10 +60,13 @@ including requester identity, tool, bounded/redacted task description, mode, UTC
 and outcome. These audit entries also apply when ordinary logging is disabled.
 After that action, the Host's existing Rich console tells the operator what ran,
 how to inspect `co approvals --who <address>`, and how to revoke access with
-`co trust block <address>`. This is an operator console notification, not a
-message to an admin inbox. **Existing limitation:** blocking prevents new
-admissions, but an already-authenticated WebSocket can still submit work; this
-command does not cancel in-flight work. The operator notice states that limit.
+`co trust block <address> --co-dir <host-trust-directory>`. The printed command
+targets the lists the running Host reads, including the selected identity's
+lists for `co ai`. This is an operator console notification, not a message to
+an admin inbox. Revocation waits for the requester's next message (frame).
+At that point the Host rejects the frame, ends that connection's logical
+session, and requests interruption of that requester's running turns. Until the next frame arrives,
+a running turn can continue; completed external effects cannot be undone.
 The same context behavior applies to Claude Code
 automatic profiles, Full access, and ordinary Auto-approved write/command tools.
 The summary outcome belongs to the first qualifying action; detailed `turn`

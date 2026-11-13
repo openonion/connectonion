@@ -104,7 +104,7 @@ async def _serve_socket(send, receive, *, route_handlers, storage, registry, tru
         await send({"type": "websocket.close", "code": 4003})
         return
 
-    await run_ws_session(
+    outcome = await run_ws_session(
         send_msg, recv_msg,
         route_handlers=route_handlers,
         storage=storage,
@@ -115,3 +115,5 @@ async def _serve_socket(send, receive, *, route_handlers, storage, registry, tru
         transport="direct",
         sealed_by=sealed_by,
     )
+    if outcome == "ACCESS_REVOKED":
+        await send({"type": "websocket.close", "code": 1008})

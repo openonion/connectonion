@@ -11,14 +11,24 @@ afterwards. Individual tool entries retain the outcomes of later actions. This a
 ordinary Auto-approved writes/commands. Existing manual permission boundaries
 still apply.
 
-Revoke access on the Host with `co trust block <address>`. Use
-`co trust remove <address>` to remove contact/whitelist membership; an open
-policy may still allow strangers, so removal alone is not a guaranteed denial.
+Revoke access using the Host console's printed command:
+`co trust block <address> --co-dir <host-trust-directory>`.
+For `co ai`, this normally targets `~/.co`; ordinary `co trust` commands use
+the project's `.co`. Every trust subcommand, including `list`, `add`,
+`unblock`, and `admin add/remove`, accepts `--co-dir <directory>`.
+`--global` (or `-g`) selects the global identity (`~/.co`, or the directory
+selected by `AGENT_CONFIG_PATH`), just like `--co-dir ~/.co` by default.
+See the [trust CLI reference](../cli/trust.md) for examples. Use
+`co trust remove <address> --co-dir <host-trust-directory>` to remove
+contact/whitelist membership; an open policy may still allow strangers, so
+removal alone is not a guaranteed denial.
 Codex's existing **Ask for approval** or **Read Only** Work Room permission
 can also tighten the provider's authority for subsequent work.
-Blocking prevents new admissions; already-authenticated WebSocket sessions
-can still submit work, and in-flight work is not cancelled. Active-connection
-revocation remains an existing gap.
+Blocking prevents new admissions. Live-session revocation waits for the
+requester's next message (frame). The Host then rejects the frame, ends that
+connection's logical session, and requests interruption of the requester's
+running turns. A running turn can continue until that frame arrives. Interruption is cooperative;
+completed external effects cannot be undone.
 
 ## Quick Start
 

@@ -47,7 +47,8 @@ def test_auto_notice_once_but_every_provider_run_is_recorded(tmp_path, monkeypat
     after_first = capsys.readouterr().out
     assert "Host Auto" in after_first and ADDRESS in after_first
     assert f"co trust block {ADDRESS}" in after_first
-    assert "Existing connected sessions may still submit work" in after_first
+    assert "requester's next message (frame)" in after_first
+    assert "a running turn is stopped then" in after_first
     assert installed.provider in after_first and "completed" in after_first
     assert "co approvals" in after_first
 
@@ -320,3 +321,14 @@ def test_full_access_executor_defers_provider_eligibility(tmp_path, monkeypatch,
     assert not any(e["type"] == "host_notice" for e in agent.current_session["trace"])
     assert not [e for e in approvals.read(tmp_path / ".co") if e["path"] == "auto"]
     assert "Host Auto:" not in capsys.readouterr().out
+
+
+def test_auto_hint_does_not_mistake_audit_directory_for_trust(tmp_path, capsys):
+    from connectonion.core.host_context import begin_auto_run, finish_auto_run
+
+    agent = host_agent(tmp_path)
+    context = begin_auto_run(agent, "write", "write a note")
+    finish_auto_run(agent, context, "completed")
+    output = capsys.readouterr().out
+    assert f"co trust block {ADDRESS}." in output
+    assert "--co-dir" not in output
