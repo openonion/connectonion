@@ -301,7 +301,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
     from .translate import cached_languages
-    from .languages import language_of, owner_languages, spoken
+    from .languages import language_of, owner_language, owner_languages, spoken
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
         # For the "Read in" menu: what the page is written in, and what this person speaks.
@@ -322,6 +322,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                if absolute.is_relative_to(home) else str(absolute))
     data = {"language": read_config(root, validated=False).get("language") or "en",
             "your_languages": languages["languages"],
+            # The interface's language, the same rule drafts and the night's translation use.
+            "owner_language": owner_language(root),
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
@@ -570,7 +572,7 @@ PROGRESS_SECONDS = 3.0
 # language, chosen as the page chooses it (uiLanguage in reader.html).
 UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
             'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
-            '<script>(() => { const zh = (window.REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))'
+            '<script>(() => { const zh = /^zh(?:-|$)/i.test(window.REM?.owner_language || "")'
             ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
             ' = zh ? "正在更新…" : "Updating…"; })();</script>')
 
