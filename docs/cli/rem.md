@@ -2430,25 +2430,44 @@ privacy labels, quoted passages and reader markers. When a check fails, the
 model gets one repair turn with the exact difference ("missing [12] (1 time)");
 a second failure is reported and nothing is cached.
 
-To backfill existing pages once (the English pages remain the audited source):
+To translate every page at once (the pages themselves remain the audited source):
 
 ```bash
-co rem translate --all --to zh
-co rem --root /path/to/rem translate --all --category people
-co rem translate people/avery-lin.md --to zh
+co rem translate
+co rem translate --category people
+co rem translate "Avery Lin"
+co rem translate people/avery-lin.md --to ja
 ```
 
-Omit `--to` to use the owner's first configured or detected non-English language.
-`--all` translates people, orgs, projects, decisions, principles and skills,
-using up to `limits.workers` concurrent pages. It skips current caches, logs/activity, catalog indexes, duplicate
-installations and unlisted records. `--category` selects one of those six types.
-Each page prints `translated`, `cached`, or `failed: reason`, followed by counts.
-A page's reported translation failure does not stop the next page; any failures
-make the command exit 1. `--json` returns the outcomes and counts instead.
-Open or refresh the reader afterward: 中文 mode shows current cached prose, with
-quotes in their original language. An untranslated record still says
-**中文版还没好，先看原文** under its header.
+With no page named, `co rem translate` translates every page `co rem status`
+counts that is not yet read in your language, Today's pages first (the night's
+own queue), using up to `limits.workers` concurrent pages. It first says how
+many are already read in that language and how many it will translate, prints
+`[n/N] PAGE: translated` or `failed: reason` for each, then the counts and how
+many pages are now read in the language. Run again, it does nothing. A page's
+failure does not stop the next page; any failures make the command exit 1.
+`--json` returns the outcomes and counts. `--category` limits it to one
+category; `--all` is the old spelling of naming no page. Omit `--to` to use the
+language you read REM in (the one owner-language rule, `languages.owner_language`).
 
+Chinese, English and mixed pages: a page counts as already in your language when
+every line of its own prose is, and at least one line is. Quotes, names, link
+texts, code, source ids, privacy labels, Facts labels and the reader's English
+markers are not counted, since they stay as written in any translation. For
+Chinese a line with two Han characters in a row is Chinese, so names and English
+terms inside a Chinese sentence do not make it mixed; any other line of three
+words or more is another language. A page written in Chinese costs no model
+turn; a page that mixes Chinese and English prose is translated (its Chinese
+lines come back as they were). The reader marks a mixed page `written_in:
+"mixed"`, so it waits for and offers the translation like an English page.
+
+The live reader runs the same job from a worded button, **全部翻译成中文**, in
+Settings, beside **中文版还没好，先看原文** on a page, and in the home translation
+notice. It posts to the Host's `/rem/translate-all` (`start`, `status`, `stop`)
+under the same loopback, cookie and JSON-only rules as every other write, then
+shows **已翻译 N / M** until it is done, with **停止翻译**: pages already begun
+finish, the rest are left as they are. When it ends the reader rebuilds and the
+open page reloads with the translations. No command to copy (D-60).
 
 Each model translation records a `translate` run with its language, page,
 duration, harness/model and usage, including failed attempts with reported
@@ -2460,7 +2479,8 @@ Reader settings shows **Notebook languages: 中文 · English — detected** (or
 command to copy (D-60); `co rem config set languages` in a terminal still
 overrides detection. The home translation notice is a fallback based only on written pages.
 When the last init or daily translation reported failures, it names how many
-pages could not be translated and offers a copyable `translate --all` command.
+pages could not be translated and offers the **全部翻译成中文** button, never a
+command to copy (D-60).
 
 ### Codex history during maintenance
 

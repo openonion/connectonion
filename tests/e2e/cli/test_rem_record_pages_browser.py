@@ -115,7 +115,9 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
     page = open_page(hash_, width=width, live=True)
     line = page.locator("#main .translation-line")
     assert line.count() == 1
-    assert line.inner_text() == "中文版还没好，先看原文"
+    # The words, then the one worded button that translates every page (#2999).
+    assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
+    assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
     assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
     assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(

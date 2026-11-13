@@ -13,7 +13,8 @@ POST /rem/task hands any unfinished row to Codex or Claude and follows it
 (run, status, stop, undo, result); POST /rem/talk is a conversation with the
 agent about a row or an archived session (begin, say, read); POST /rem/review
 records the owner's verdict on a review in 问题与关联 (reviews.decide); POST /rem/sender
-ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender).
+ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender);
+POST /rem/translate-all starts, follows or stops translating every page (translate.every_page).
 
 Only loopback clients, and only a Host header naming loopback (a rebound DNS
 name gets nothing), are answered. A translation runs in a worker thread; the
@@ -92,7 +93,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -176,6 +177,12 @@ async def _action(scope, receive, send, root, headers):
     elif scope["path"] == "/rem/language":
         from ...rem.config import request_language
         operation = lambda: request_language(root, body.get("language"))
+    elif scope["path"] == "/rem/translate-all":
+        # «全部翻译成中文»: start, follow or stop the job `co rem translate` runs (translate.every_page).
+        if body.get("action", "status") not in ("start", "status", "stop") or not isinstance(body.get("language", ""), str):
+            await _reply(send, 400, json.dumps({"error": "Expected action start, status or stop"}), "application/json")
+            return
+        operation = lambda: translate.every_page(root, body.get("action", "status"), body.get("language", ""))
     elif scope["path"] == "/rem/translation-request":
         operation = lambda: translate.request(root, body.get("page"), body.get("language"))
     elif body.get("action") == "prepare" and isinstance(body.get("provider"), str) and isinstance(body.get("thread"), str):
@@ -203,7 +210,7 @@ async def _action(scope, receive, send, root, headers):
     # The owner's own change shows now, not at the reader's next rebuild interval.
     # A task status or result read changes nothing, and neither does a conversation.
     if not (scope["path"] == "/rem/task" and body.get("action", "status") in ("status", "result")
-            or scope["path"] == "/rem/talk"):
+            or scope["path"] in ("/rem/talk", "/rem/translate-all")):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 

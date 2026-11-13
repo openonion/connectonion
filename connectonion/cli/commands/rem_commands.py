@@ -1760,37 +1760,40 @@ def make_rem_app(factory):
 
     @rem.command("translate", cls=V("co rem translate"))
     def translate_page(ctx: typer.Context, page: str = typer.Argument(""),
-                       to: str = typer.Option("", "--to", help="Language tag; defaults to your first non-English language"),
-                       all_pages: bool = typer.Option(False, "--all", help="Backfill all reader records, skipping current caches"),
-                       category: str = typer.Option("", "--category", help="With --all: people, orgs, projects, decisions, principles or skills")):
-        from ...rem.census import listed, pages
-        from ...rem.files import Notebook, RemError
-        from ...rem.languages import owner_languages
-        from ...rem.translate import checked_language, translate, translate_pages
+                       to: str = typer.Option("", "--to", help="Language tag; defaults to the language you read REM in"),
+                       all_pages: bool = typer.Option(False, "--all", help="Old spelling of translating every page"),
+                       category: str = typer.Option("", "--category", help="Only this category's pages")):
+        from ...rem.files import CATEGORIES, Notebook, RemError
+        from ...rem.languages import native_name, owner_language
+        from ...rem.translate import checked_language, plan, translate, translate_pages
 
         def operation(root):
-            if bool(page) == all_pages or (category and not all_pages):
-                raise RemError("Choose PAGE or --all; --category goes with --all")
-            language = to or next((tag for tag in owner_languages(root)["languages"]
-                                   if tag.split("-")[0].lower() != "en"), "")
-            if not language:
-                raise RemError("No non-English owner language; choose --to LANGUAGE or set co rem config set languages zh,en")
+            if page and (all_pages or category):
+                raise RemError("Name one PAGE, or leave it out to translate every page; --all and --category go without PAGE")
+            if category and category not in CATEGORIES:
+                raise RemError("--category must be one of " + ", ".join(CATEGORIES))
+            # The one owner-language rule (#2989): the language the reader and drafts use.
+            language = to or owner_language(root) or ""
+            if not language or (not to and language.split("-")[0].lower() == "en"):
+                raise RemError("REM reads your notebook in English, the language pages are written in; "
+                               "name another with --to LANGUAGE")
             checked_language(language)
-            if not all_pages:
+            if page:
                 record = _resolve_page(Notebook(root), page)
                 return translate(root, record, language), ["show", record]
-            categories = ("people", "orgs", "projects", "decisions", "principles", "skills")
-            if category and category not in categories:
-                raise RemError("--category must be one of " + ", ".join(categories))
-            found = pages(root)
-            records = [record for record in Notebook(root).list()
-                       if record.split("/")[0] in ((category,) if category else categories)
-                       and record != "skills/catalog/index.md"
-                       and (record not in found or listed(found[record]))]
             from ...rem.config import read_config
-            result = translate_pages(root, language, records, say=None if ctx.obj["json"] else typer.echo,
-                                     workers=read_config(root)["limits"]["workers"])
-            summary = ", ".join(f"{result[outcome]} {outcome}" for outcome in ("translated", "cached", "failed"))
+            total, pending = plan(root, language, category)
+            say = None if ctx.obj["json"] else typer.echo
+            if say:
+                say(f"{total - len(pending)} of {total} pages already read in {native_name(language)}; "
+                    f"translating {len(pending)}…" if pending else
+                    f"All {total} pages already read in {native_name(language)}; nothing to translate.")
+            step = iter(range(1, len(pending) + 1))
+            result = translate_pages(root, language, pending, workers=read_config(root)["limits"]["workers"],
+                                     say=say and (lambda line: say(f"[{next(step)}/{len(pending)}] {line}")))
+            result.update(total=total, current=total - len(pending) + result["translated"] + result["cached"])
+            summary = (", ".join(f"{result[outcome]} {outcome}" for outcome in ("translated", "cached", "failed"))
+                       + f". {result['current']} of {total} pages now read in {native_name(language)}.")
             return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
         _handle(ctx, operation, ["list"])
 
