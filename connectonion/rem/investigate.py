@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 
+from . import fetch_stalls
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
 from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
@@ -815,11 +816,37 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
         items.extend(local)
-        attached = 0
+        attached, unlisted, gone = 0, [], []
 
         def attachment_metadata(message_id: str) -> list[dict]:
+            # Attachments are enrichment, not a gate: one listing that timed out
+            # (after _patient's retries) ended the owner's turns from 2026-11-12.
             with _fetch_slot(kind):
-                return _patient(client.list_attachments, message_id)
+                try:
+                    return _patient(client.list_attachments, message_id)
+                except Exception as error:  # noqa: BLE001 -- only a mailbox's failure is kept; a bug re-raises
+                    reason = fetch_stalls.failure(error)
+                    if reason is None:
+                        raise
+                    unlisted.append(reason)
+                    return []
+
+        def fetch_body(message_id: str) -> str | None:
+            # A mail deleted or moved since it was listed is that mail's gap:
+            # one Graph 404 ended 16 turns in a row on 2026-11-12.
+            try:
+                return _mail_body(client, message_id, kind=kind, root=archive_root)
+            except Exception as error:  # noqa: BLE001 -- only "not found" is skipped; anything else re-raises
+                if fetch_stalls.failure(error) != "not_found":
+                    raise
+                gone.append(message_id)
+                return None
+
+        def note_gaps() -> None:
+            if unlisted:
+                why = ", ".join(fetch_stalls.PHRASES[reason] for reason in sorted(set(unlisted)))
+                coverage.append(f"{kind}: attachments for {len(unlisted)} message(s) not listed: {why}")
+                unlisted.clear()
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
                             metadata=None) -> None:
@@ -862,6 +889,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 for item, listed in zip(local, metadata):
                     add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
                                     item.get("relationship_scope", ""), listed)
+            note_gaps()
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
@@ -926,9 +954,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
         with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
-            bodies = pool.map(partial(_mail_body, client, kind=kind, root=archive_root),
-                              (row["id"] for row in mail_to_read))
+            bodies = pool.map(fetch_body, (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
+                if body is None:
+                    continue
                 provenance = {}
                 if archive_root is not None:
                     from .mail_archive import retain_message
@@ -962,8 +991,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
                 if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                     stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
+        note_gaps()
+        if gone:
+            coverage.append(f"{kind}: {len(gone)} message(s) skipped: {fetch_stalls.PHRASES['not_found']}")
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
-                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
+                        f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read) - len(gone)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments indexed")
     for kind in ("outlook", "gmail"):

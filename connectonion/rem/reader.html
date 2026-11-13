@@ -2901,6 +2901,15 @@
   .nh .nt { flex: none; white-space: nowrap; }
   .nh .night-sum { margin-left: 8px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .night-card.sparse .faces { flex-direction: row; align-items: center; gap: 24px; padding: 6px 0 4px; }
+  /* Why the nights read nothing: one plain line under the title; the pages set aside fold beneath it. */
+  .night-stall { margin: 4px 0 0 23px; color: var(--ink); font: var(--w-regular) var(--s-meta)/1.5 var(--font); }
+  .night-stall > summary { cursor: pointer; list-style: none; }
+  .night-stall > summary::-webkit-details-marker { display: none; }
+  .night-stall > summary::after { content: " ›"; color: var(--grey); }
+  .night-stall[open] > summary::after { content: " ⌄"; }
+  .night-stall ul { margin: 4px 0 0; padding: 0; list-style: none; }
+  .night-stall li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .night-stall li .meta { color: var(--grey); }
   .night-card.sparse .frow { flex: 1; min-width: 0; }
   .hyp-wrap { flex: 1; min-width: 0; }
   .hyp { display: block; width: 100%; height: auto; overflow: visible; }
@@ -3096,6 +3105,8 @@
     .nh .nt { display: none; }
     .night-card.sparse .nh .nt { display: inline; }
     .night-card.sparse .faces { gap: 8px; }
+    /* The fold under the night line opens with a thumb: a full 44px target (it measured 33). */
+    .night-stall > summary { display: flex; align-items: center; min-height: 44px; }
     .qcard.focal[data-step="send"]:not(.full) .qitem:first-child .words { display: block; }
     .qdraft .mail-row .v { white-space: normal; overflow: visible; text-overflow: clip; }
     .qdraft .mail-row .v > .addr { display: none; }
@@ -4345,6 +4356,15 @@ const UI = {
     "Last {d} days: 1 run of reading or rewriting": "近 {d} 天：读信或整理页面 1 次",
     "Last {d} days: no mail read and no page rewritten; REM handled {n} things in Today": "近 {d} 天没有读信、也没有整理页面；今天的事 REM 处理了 {n} 件",
     "Last {d} days: no mail read and no page rewritten": "近 {d} 天没有读信、也没有整理页面",
+    "Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest": "昨夜 {provider} 出了问题（{why}），REM 那一轮没再问它，其余照常",
+    "Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest": "REM 昨夜在 {provider} 上卡住了：{why} {times} 次，已跳过这一项，其余照常",
+    "Last night 1 page was set aside because {provider} {why}; REM will try again": "昨夜 1 项因 {provider} {why}跳过，会再试",
+    "Last night {n} pages were set aside because {provider} {why}; REM will try again": "昨夜 {n} 项因 {provider} {why}跳过，会再试",
+    "{n} pages wait for {provider}; REM will try again": "{n} 项在等 {provider}，会再试",
+    "1 page waits for {provider}; REM will try again": "1 项在等 {provider}，会再试",
+    "timed out": "超时", "mail deleted or moved": "信件已删除或移走", "server error": "服务器出错", "network down": "网络不通",
+    "authorization expired": "授权已过期", "permission denied": "没有权限", "throttled": "被限流", "request refused": "请求被拒", "unavailable": "暂时不可用",
+    "tries again from {when}": "{when} 起再试", "tries again next round": "下一轮再试",
     "Around today": "今天的其他事",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
@@ -7861,7 +7881,33 @@ function nightCard(groups, current, ticked) {
   return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
       el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
+    nightStall(),
     el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+}
+// Why the nights read nothing (sprint 14): a mailbox failed while REM prepared a page. One plain sentence, never
+// an exception name; the pages set aside fold under it with when each is tried again (fetch_stalls.last_night).
+const STALL_WHY = { timeout: "timed out", not_found: "mail deleted or moved", server: "server error", network: "network down",
+  auth: "authorization expired", denied: "permission denied", throttled: "throttled", refused: "request refused", unavailable: "unavailable" };
+function stallSentence(s) {
+  const values = { provider: s.provider, why: t(STALL_WHY[s.reason] || "unavailable"), times: s.times, n: s.pages };
+  if (s.stopped) return t("Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest", values);
+  if (s.times >= 3 && s.pages === 1) return t("Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest", values);
+  if (!s.times) return t(s.pages === 1 ? "1 page waits for {provider}; REM will try again" : "{n} pages wait for {provider}; REM will try again", values);
+  return t(s.pages === 1 ? "Last night 1 page was set aside because {provider} {why}; REM will try again"
+    : "Last night {n} pages were set aside because {provider} {why}; REM will try again", values);
+}
+function nightStall() {
+  const s = REM.night_stall;
+  if (!s) return null;
+  const now = Date.parse(REM.as_of || new Date().toISOString());
+  const when = at => new Date(at).toLocaleString(uiLocale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  // A page the reader does not list (private, or gone) is not named: never a raw path.
+  const rows = (s.parked || []).filter(row => byPath(row.record)).map(row => {
+    const r = byPath(row.record), at = Date.parse(row.retry_at);
+    return el("li", {}, [el("a", { href: href(r), text: r.title }),
+      el("span", { class: "meta", text: at > now ? t("tries again from {when}", { when: when(at) }) : t("tries again next round") })]);
+  });
+  return el("details", { class: "night-stall" }, [el("summary", { text: stallSentence(s) }), rows.length ? el("ul", {}, rows) : null]);
 }
 // The night chart: a hypnogram of REM's real work, read from the run logs (reading mail sits at the first
 // depth, rewriting and translating pages at the deepest) and from when each reply or task was prepared (the

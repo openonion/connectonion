@@ -1604,7 +1604,7 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null;
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightStall = () => null;
       let mine = 5;
       const threadCounts = () => ({mine}), staleEntry = () => false, threadDraft = () => null;
       const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
@@ -1652,7 +1652,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
       const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7}), threadDraft = () => null, staleEntry = () => false;
-      const icon = () => null, nightChart = () => null, threadAge = () => 'new', overdueDays = () => 0;
+      const icon = () => null, nightChart = () => null, nightStall = () => null, threadAge = () => 'new', overdueDays = () => 0;
       const face = name => ({tag: 'span', text: name, append() {}});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];

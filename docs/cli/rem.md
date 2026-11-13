@@ -2566,6 +2566,53 @@ after midnight. Manual sync refuses to overlap pending native work.
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
 when available. Otherwise usage remains unknown.
 
+### When a mailbox fails on one page
+
+A mailbox failing while `next` prepares one page sets that page aside; `next`
+goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
+on a real notebook ended with no task: 16 turns on an Outlook HTTP 404, then 14
+on a ReadTimeout listing one mail's attachments, both while preparing one
+person's page. The error left `next` before the round was saved, so each turn
+tried the same page again, and four nights read no mail.
+
+- **Attachments are enrichment.** A listing that still fails after its retries
+  becomes a coverage line (`outlook: attachments for 1 message(s) not listed:
+  timed out`), and the page is written from the mail bodies. Those attachments
+  are not asked for again in that investigation; the page's next investigation
+  lists them again.
+- **A mail gone from the server is skipped** with a coverage line
+  (`outlook: 1 message(s) skipped: not found on the server (deleted or moved)`),
+  never a hint to open the inbox.
+- **Any other mailbox failure while preparing a page** (a body that times out, a
+  5xx, a network error) parks that page in `.state/fetch-parked.json` with the
+  mailbox, the reason and a retry time: 1 hour, then 6 hours, then once a day.
+  `next` prints `Set people/x.md aside: Outlook timed out; tried again no earlier than …`
+  (the retry time is the earliest; the page waits for the first round after it)
+  and serves the next page. Later rounds leave the page out until its retry time,
+  then bring back the same job; a page prepared again clears its entry. A bug in
+  REM is not a mailbox failure and still stops `next`, so it is seen.
+- **A mailbox failing for three pages in one turn, or whose authorization has
+  expired, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
+  `next` typed by hand is a turn of its own). Pages that would ask it wait for
+  the next turn without back-off, back in the same round, and work that needs no
+  mail (projects, skills, retries from held material, summaries, translations)
+  goes on. A page that was merged while it waited comes back as the page it was
+  merged into; one that no longer exists is dropped from the ledger.
+- **A mailbox failing outside any one page** — listing who wrote since the last
+  round when a round starts, or reading a slot's new mail — is recorded the same
+  way (an event in `.state/fetch-parked.json`, the night card's sentence) and is
+  not asked again in that turn; the other mailboxes are still listed and the
+  sessions are still read. Four nights read no mail while a failing mailbox was
+  read again at every slot.
+
+Today's night card says why in one plain sentence under its title, in the
+reader's language, and folds the pages set aside with when each is tried again:
+«昨夜 1 项因 Outlook 超时跳过，会再试», or when one page failed again and again
+«REM 昨夜在 Outlook 上卡住了：超时 3 次，已跳过这一项，其余照常» (at most three in a day under the back-off), or for a mailbox
+stopped for a turn «昨夜 Outlook 出了问题（授权已过期），REM 那一轮没再问它，其余照常».
+No exception name or command is shown; the reader has no reconnect button yet,
+so expired authorization is said in words only. A shared reader carries none of it.
+
 ### One quiet morning message
 
 `co rem morning --dry-run` prints one line saying what a real run would do now
