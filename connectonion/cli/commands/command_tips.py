@@ -156,6 +156,11 @@ NEXT = {
     "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
     "co feishu consume": "co feishu ls",
+    "co feishu lookup": HANDLER,  # names the id it found
+    "co feishu groups": HANDLER,
+    "co feishu contacts add": HANDLER,
+    "co feishu contacts ls": HANDLER,
+    "co feishu contacts rm": "co feishu contacts ls",
     "co lark listen": "co lark receive --timeout 0",
     "co lark receive": "co lark reply <message-id>",
     "co lark send": "co lark receive --timeout 0",
@@ -169,6 +174,11 @@ NEXT = {
     "co lark chats": HANDLER,
     "co lark log": "co lark ls",
     "co lark consume": "co lark ls",
+    "co lark lookup": HANDLER,  # names the id it found
+    "co lark groups": HANDLER,
+    "co lark contacts add": HANDLER,
+    "co lark contacts ls": HANDLER,
+    "co lark contacts rm": "co lark contacts ls",
     "co whatsapp listen": "co whatsapp receive --timeout 0",
     "co whatsapp receive": "co whatsapp reply <message-id>",
     "co whatsapp send": "co whatsapp receive --timeout 0",

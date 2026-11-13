@@ -42,7 +42,12 @@ def prepare(root, config, *, scheduled):
     set_aside = []
     batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
-    basics_changed = refresh_basics(root)
+    basics_changed = refresh_basics(root) + project_pages.refresh_last_activity(root)
+    # Skill call counts are a script over the session files, like the basics above:
+    # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
+    from .skill_map import map_skills
+    if Notebook(root).exists("skills/catalog/index.md"):  # refresh a mapped catalog; init makes one
+        map_skills(Notebook(root), lock_held=True, subscriptions=sources)
     from .direct_send import refresh as set_direct_send
     basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
@@ -265,6 +270,8 @@ def _reset_attempts(root, cursor):
     day = service.notebook_today(root).isoformat()
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
+        # A round that crosses midnight reads Today again: yesterday's rows are not today's.
+        cursor.pop("shown_today", None)
 
 
 # D-104: a portion interleaves the night's work and never stops it. After PORTION
@@ -275,6 +282,7 @@ PORTION = 8
 
 def translation_share(root):
     """Translation turns per portion: a fiftieth of the pages waiting, at least 4, never more than wait."""
+    # Only the count matters here, so Today's order is not asked for.
     waiting = sum(len(translate.backlog(root, tag)) for tag in translate.languages(root)
                   if tag.split("-")[0].lower() != "en")
     return min(waiting, max(4, -(-waiting // 50)))
@@ -292,11 +300,14 @@ def _translation_turn(root, cursor, config, directory):
 
 def prepare_translation(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    # Today's pages lead; its queue reads the whole notebook, so it is computed once per round, not per turn.
+    if "shown_today" not in cursor:
+        cursor["shown_today"] = translate.shown_today(root)
     for language in translate.languages(root):
         if language.split("-")[0].lower() == "en":
             continue
         attempted = cursor.get("translation_attempts", [])
-        for record in translate.backlog(root, language, changed=cursor["changed"]):
+        for record in translate.backlog(root, language, changed=cursor["changed"], shown=cursor["shown_today"]):
             if [language, record] in attempted:
                 continue
             task = translate.prepare(root, record, language, directory=directory, native=True)
