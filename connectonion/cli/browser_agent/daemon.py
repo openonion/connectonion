@@ -2148,7 +2148,7 @@ class BrowserDaemon:
                     sys.exit(0)  # another daemon already serving
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
-        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
+        _publish_pid(transport.pid_path(self.sock_path))
         self._srv.listen(MAX_IN_FLIGHT)
 
     def _bind_windows(self):
@@ -2244,6 +2244,21 @@ class BrowserDaemon:
                     os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
             with contextlib.suppress(FileNotFoundError):
                 pid_file.unlink()
+
+
+def _publish_pid(pid_file: str) -> None:
+    """Write this daemon's pid so that no reader ever sees the file empty.
+
+    The pid file is how every client tells a live daemon from a stale socket
+    (client._owner_pid). write_text creates the file empty and fills it a moment
+    later; a client that read it in between found no owner and unlinked the live
+    daemon's socket, after which the daemon accepted on a name nobody could reach
+    (test_permission_error_never_unlinks_a_live_socket, run 43215710328). A
+    rename is atomic on POSIX: the file is absent, then whole.
+    """
+    partial = f"{pid_file}.{os.getpid()}.tmp"
+    Path(partial).write_text(str(os.getpid()), encoding="utf-8")
+    os.replace(partial, pid_file)
 
 
 def _ago(seconds: float) -> str:

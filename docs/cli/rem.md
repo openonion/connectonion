@@ -803,9 +803,11 @@ The reader returns the context REM carried forward. It remains a point-in-time s
 When pages already exist but no background schedule is authorized, its status
 says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
-The sidebar's footer is one quiet block: the release (**co 1.9.3**, read from
-the installed package and the same in both languages) and the snapshot time,
-then **EN · 中文** and **Auto · Light · Dark**, each a control. The primary
+The foot of the rail holds **Settings** and your own face. **Settings** opens one
+sheet: **EN · 中文**, **Auto · Light · Dark**, Reduce motion, Hide labelled
+passages, the notebook's languages, REM's state in words, the legend, and last
+the release (**co 1.9.3**, read from the installed package and the same in both
+languages) with the snapshot time and **Keyboard shortcuts**. The primary
 language control is the one-click button at the top right of every page (in the
 phone header too): it names the language it switches to (**EN** while in
 Chinese, **中** while in English), saves the same choice as **EN · 中文**, and
@@ -1036,13 +1038,23 @@ pinned to that edge: it comes into view with the draft.
   notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
   Opening it again returns the same conversation.
-- **The sidebar** is three groups: **Your day** (Today, Waiting on you,
-  Memory changes), **Explore memory** (People, Organisations, Projects, Skills,
-  Knowledge, Decisions, Principles, Agenda, Agent sessions, and Opportunities
-  or Works when they hold pages; any other empty one is left out, but People,
-  Organisations and Projects always show), and **All records** last. Only **Waiting on you** carries a
-  number; a category's size is not something to do. Rows share one size, grey,
-  with the current page in ink and the fuse mark, and nothing boxed. There is
+- **The rail** (D-132) is a 72px column of places, each a picture with its
+  word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
+  **Organisations** (*Orgs*), **Projects**, **Skills**, **All records** (*All*),
+  then **More**, and at the foot **Settings** and your face. A short word is
+  the start of the place's accessible name (*Orgs* is named "Orgs ·
+  Organisations"), so saying the word you see finds it. **More** opens beside
+  its button, wherever the rail has scrolled to, and is never taller than the
+  window: **Memory changes**, then Knowledge, Decisions, Principles, Agenda,
+  Agent sessions, Opportunities and Works when they hold pages. Your face opens
+  your own page and shows **You · name** beside it on hover and on keyboard
+  focus. Only **Waiting on you** carries a number; a category's size is not
+  something to do. The current place is in ink, in bold, on a raised cell. In a
+  window lower than the rail (656px) the rail itself scrolls, so every place
+  stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
+  People, Search, More); **More** opens a sheet with every place by its full
+  name, Skills and All records among them, the More list under them with its
+  labels in the same column, and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.

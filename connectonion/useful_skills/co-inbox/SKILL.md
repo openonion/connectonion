@@ -43,6 +43,7 @@ docs/cli/slack.md.
 | **take back something you said** | `co feishu delete <id>` |
 | **acknowledge a message without a reply** | `co feishu react <id> 👍` |
 | **start a group with people (WhatsApp)** | `co whatsapp group create "<name>" <phone>…` |
+| **check a new number, save a name (WhatsApp)** | `co whatsapp lookup +61…`, then `co whatsapp contacts add <jid> --name "<name>"`; send to the name |
 | see what is waiting | `co feishu ls` |
 | **find out which conversations exist** | `co feishu chats` |
 | **read one conversation back** | `co feishu log --chat <id>` |
