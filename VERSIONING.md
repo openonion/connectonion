@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc8
+## Current Version: 1.9.6rc9
+
+Release candidate 1.9.6rc9 for 1.9.6: one mailbox failure no longer stops REM's night (#2986); Today has
+one count and one primary action per card with the closes as words (#2987); record pages lead with open
+threads (#2988); drafts, the reader and translation use one rule for the owner's language (#2989); a
+non-text research capture is refused by name (#2963); soupsieve past two CVEs (#3008). Stable remains
+1.9.5. See [candidate notes](docs/releases/1.9.6rc9.md).
+
+- 1.9.6rc9 (the night survives a mailbox failure; one count on Today; open threads first; one language rule).
+
+### Previous candidate: 1.9.6rc8
 
 Release candidate 1.9.6rc8 for 1.9.6: `co server` describes servers as billed monthly in advance, which
 is how oo-api bills them: the first month at create, each next month as it starts, the unused part
