@@ -4109,7 +4109,9 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     # A static, undrafted mail card opens its recorded provider thread; it
     # cannot promise a live Draft now action. Local completion stays available.
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
-    assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
+    # A snapshot's rows close with the strip's words, kept on this device (#2990), never an icon-only tick.
+    assert page.locator('.qcard .qitem .strip-ignore').count() == page.locator('.qcard .qitem').count()
+    assert page.locator('.qcard .qdone').count() == 0
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
     assert page.locator('#nav .n.waiting').inner_text() == '7'  # items, not people (TOP10 #9), said once: in the sidebar
     assert 'items waiting on you' not in page.locator('.waiting-more').inner_text()
@@ -4195,8 +4197,8 @@ def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(rea
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    # The card's first action: its green step, or in a snapshot with no step the row's own tick (sprint 14).
-    action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .qdone)').first
+    # The card's first action: its green step, or with no step the row's worded Mark done (sprint 14, #2990).
+    action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .strip-done)').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
     action.focus()

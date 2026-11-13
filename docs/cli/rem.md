@@ -945,8 +945,8 @@ pinned to that edge: it comes into view with the draft.
   days ago, with no message on its thread for 60 days either (the span after
   which an undated thread goes quiet), is not counted among the people waiting
   and has no red. It is triage of the past, so it is not in the side column: one folded grey line under the
-  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with **Mark
-  done** (the usual mark) and **Still open**, which brings it back to the count, and **Mark all N done**
+  desk, **N have gone quiet for a long time · Look** (N 件很久没动静 · 看看), opens in place, each row with the strip every Today row carries (**Mark done** · **Not now** · **Ignore**,
+  then the hand-offs) and, beside the name, **Still open**, which brings it back to the count, and **Mark all N done**
   (都标为完成（N）, N counting the ones the fold does not show too) closes every one of them, each as its own mark
   (never linked as one thread), with one notice and one **Undo** that reopens only the marks the notebook kept;
   any it refused get one *Not saved · Try again* for just those;
@@ -960,9 +960,9 @@ pinned to that edge: it comes into view with the draft.
   title (*Last 3 days: no mail read and no page rewritten; REM handled 6 things
   in Today*, the same count as the side line) and the people waiting take the row.
 - **Hand to Codex / Hand to Claude** (交给 Codex / 交给 Claude, D-100) sit as two
-  quiet text buttons on every unfinished row: Today, and all three bands of
-  **Waiting on you** (yours, on others, other open context), whether or not the
-  night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
+  quiet text buttons on every unfinished row: Today's cards, its long-quiet and **Gone quiet** folds, all three
+  bands of **Waiting on you** (yours, on others, other open context) and its **Gone quiet** section, whether or
+  not the night prepared it. A click posts `{"action": "run", "key": <the item's key>, "agent": "codex" | "claude"}`
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
   receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
@@ -972,8 +972,9 @@ pinned to that edge: it comes into view with the draft.
   deliverable, else its last message, `{"action": "result", "id"}`) under the
   row, and **Take back from Codex** (从 Codex 撤回交办) removes the work and
   brings the two buttons back; it never reads **Undo**, which undoes the item.
-  The strip ends with the row's three ways to close it, as words on screen, never an icon, before and after a
-  hand-off: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
+  The strip carries the row's three ways to close it, as words on screen, never an icon, before and after a
+  hand-off (first on Today, last on Waiting on you), in a saved snapshot too, where a close is kept on this
+  device until the live reader syncs it and Ignore never offers to stop a sender: **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
   (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
   *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come

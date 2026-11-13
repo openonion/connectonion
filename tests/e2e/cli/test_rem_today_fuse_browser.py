@@ -353,7 +353,11 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     page.locator(".settings-open").click()
     assert page.evaluate(NO_COMMAND, isolated_context=False) == {"cmd": 0, "words": []}
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
-    assert page.locator(".handoff button:not(:disabled)").count() == 0
+    # The hand-offs need the Host, so they are disabled work. The three closes are not (#2990): a snapshot keeps
+    # them on the device until the live reader syncs them, so they are the only enabled buttons in a strip.
+    closes = ".strip-done, .strip-later, .strip-ignore"
+    assert page.locator(f".handoff button:not(:disabled):not({closes})").count() == 0
+    assert page.locator(f".handoff :is({closes}):not(:disabled)").count() > 0
     assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
     if not route:
         send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)

@@ -310,7 +310,11 @@
   .quiet-list { list-style: none; padding: 0; font-size: var(--s-meta); }
   .quiet-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rule); }
   .quiet-list p { margin: 4px 0 0; color: var(--grey); font: var(--s-meta)/1.4 var(--font); }
-  .quiet-list span { white-space: nowrap; color: var(--grey); }
+  .quiet-list .quiet-age { white-space: nowrap; color: var(--grey); }
+  .quiet-list li > div { flex: 1; min-width: 0; }
+  /* The strip under a folded row (#2990): its closes are words the owner reads, so ink, not the fold's grey. */
+  :is(.quiet-list, .stale) .handoff { margin: 6px 0 0; }
+  :is(.quiet-list, .stale) .handoff-line .btn-quiet { color: var(--ink); }
   /* Morning recall: the foreground is what the notebook retained, not its run log. */
   .morning { margin: 24px 0 0; padding: 24px 0; border-top: 1px solid var(--rule); color: var(--ink); }
 
@@ -3050,6 +3054,7 @@
   .stale ul { list-style: none; margin: 0; padding: 0; }
   .stale li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; padding: 8px 0;
     border-top: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .stale li > .handoff { grid-column: 1 / -1; }
   .stale li:first-child { border-top: 0; padding-top: 0; }
   .stale li > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: var(--w-bold); }
   .stale :is(.stale-what, .stale-when) { grid-column: 1 / -1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3095,10 +3100,14 @@
     .qitem { margin: 0 -6px; }
     .qcard .qdone, .qcard.open .qdone { opacity: 1; width: 44px; height: 44px; }
     /* Words without dots on a phone: the three closes are the first line, the hand-offs and More the second. */
-    .qcard .handoff-line { gap: 0; margin-left: -8px; }
-    .qcard .handoff-line > .sep { display: none; }
-    .qcard .handoff-line > .sep:has(+ [data-agent="codex"]) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
-    .qcard .handoff-line :is(.btn-quiet, .talk-menu > summary) { padding: 0 8px; white-space: nowrap; }
+    /* The folded rows (long quiet, Gone quiet) break the same way as a card's: the closes, then the hand-offs. */
+    :is(.qcard, .stale, .quiet-list) .handoff-line { gap: 0; margin-left: -8px; }
+    :is(.qcard, .stale, .quiet-list) .handoff-line > .sep { display: none; }
+    :is(.qcard, .stale, .quiet-list) .handoff-line > .sep:has(+ :is([data-agent="codex"], .handed)) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
+    :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary, .handed) { padding: 0 8px; white-space: nowrap; }
+    /* The closes replaced the snapshot's 44px tick (#2990), so on a phone they keep a full touch target; .qkind outranks
+       the card's compact 28px strip above. */
+    :is(.qcard .qkind, .stale, .quiet-list) .handoff-line :is(.strip-done, .strip-later, .strip-ignore) { min-height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
@@ -6696,7 +6705,7 @@ function threadRow(r, thread, withPage, also = [], grouped = false, strip = fals
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
-      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage, strip && liveHere()), draftNote(threadDraft({ r, t: thread, also }))]),
+      withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage, strip), draftNote(threadDraft({ r, t: thread, also }))]),
     // A stale promise keeps its date but not the red (staleEntry): it is asked about, not burning.
     el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread }) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
 }
@@ -7238,7 +7247,7 @@ function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
 // lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
 function handOff(entry, mark, lead) {
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark, lead) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
   return el("div", { class: "handoff" }, [line, panel]);
@@ -7247,9 +7256,10 @@ function handOff(entry, mark, lead) {
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
 // same as everywhere else. The strip is only drawn on unfinished rows (Waiting on you and Today both leave a
 // done row out, and its Undo is the page's done notice), so there is no done state to show here.
+// A snapshot closes rows too: the mark is kept on this device and the live reader syncs it (saveThreadState), so
+// its rows carry the same three worded closes and no icon-only tick (#2990: «为什么没有"忽略"这个功能呢？»).
 function stripMarksDone(entry) {
-  // A snapshot keeps Mark done where it always was, on the row itself; the strip there is disabled work.
-  return !entry.ask && !!entry.r && !!entry.t && liveHere();
+  return !entry.ask && !!entry.r && !!entry.t;
 }
 // Closing an item is Today's core verb (owner, 2026-11-12: «忽略和标记完成很重要，有的任务就是线下说了，或者现在不需要
 // 处理，或者广告要忽略»), so the strip says three ways to close it, in words, never an icon (owner: «你要有个文字按钮»):
@@ -7267,7 +7277,8 @@ function stripDone(entry, mark, lead = false) {
   const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now") });
   later.onclick = close("skipped");
   const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore") });
-  const sender = todayRow(entry)?.sender;
+  // Stopping a sender is a Host rule, so a snapshot's Ignore closes only the row.
+  const sender = liveHere() && todayRow(entry)?.sender;
   ignore.onclick = close("ignored", sender ? () => stopSenderButton(entry, sender) : null);
   return [done, later, ignore];
 }
@@ -7365,7 +7376,8 @@ function todayStrip(agents, talk, closes) {
   return [...closes, ...agents, more];
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
-function handState(entry, show, panel, mark) {
+// lead: as in handOff; on Today (not undefined) the three closes stay first, as before the hand-off (D-100's order).
+function handState(entry, show, panel, mark, lead) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
   const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
@@ -7386,7 +7398,8 @@ function handState(entry, show, panel, mark) {
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
   const actions = liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
-  return [...dotted([status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel), ...stripDone(entry, mark)]), output].filter(Boolean);
+  const work = [status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel)], closes = stripDone(entry, mark);
+  return [...dotted(lead === undefined ? [...work, ...closes] : [...closes, ...work]), output].filter(Boolean);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
@@ -7529,14 +7542,24 @@ function mailboxLink(entry) {
   const url = threadUrl(reply, kind);
   return url ? el("a", { class: "btn-quiet", href: url.href, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", { channel: url.channel }) }) : null;
 }
+// A Waiting row with the hand-off strip, whoever it waits on: its closes, then 交给 Codex / 交给 Claude.
+// grouped rows carry no direction label, so the row's body is its first child, else its second.
+function stripRow(entry, grouped = false) {
+  const node = threadRow(entry.r, entry.t, true, entry.also, grouped, true);
+  node.children[grouped ? 0 : 1].append(handOff(entry));
+  return node;
+}
+// Gone quiet: on Today five rows in a fold, on Waiting all of them. Each row is still open, so each says the three
+// closes in words, with the hand-offs after them (#2990, D-100); on Today the strip sits under the row's preview.
 function quietThreads(entries, count, home = false) {
   if (!count) return null;
   const items = entries.filter(entry => entry.t.quiet || staleEntry(entry));
   if (!items.length) return null;
   return el("details", { id: "gone-quiet", class: "gone-quiet" }, [el("summary", { text: t("Gone quiet") + " (" + count + ")" }),
-    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(({ r, t: thread, also }) => el("li", {}, [
-      el("div", {}, [el("a", { href: href(r), text: threadWho(r) }), el("p", { text: threadPreview(thread.text) }), alsoOn(also)]), el("span", { text: age(thread.since) })])))
-      : el("ul", { class: "threads" }, items.map(({ r, t, also }) => threadRow(r, t, true, also))),
+    home ? el("ul", { class: "quiet-list" }, items.slice(0, 5).map(entry => el("li", {}, [
+      el("div", {}, [el("a", { href: href(entry.r), text: threadWho(entry.r) }), el("p", { text: threadPreview(entry.t.text) }), alsoOn(entry.also),
+        handOff(entry, null, null)]), el("span", { class: "quiet-age", text: age(entry.t.since) })])))
+      : el("ul", { class: "threads" }, items.map(entry => stripRow(entry))),
     home ? el("a", { href: "#view=open", text: t("See all quiet threads →") }) : null]);
 }
 
@@ -7576,13 +7599,8 @@ function taskView(kind) {
   for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
     if (!count) continue;
     const items = entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
-    const rowFor = row => {
-      const node = threadRow(row.r, row.t, true, row.also, true, true);
-      node.firstElementChild.append(handOff(row));  // every unfinished row, whoever it waits on
-      return node;
-    };
     main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)),
-      el("ul", { class: "threads" }, items.map(rowFor))]));
+      el("ul", { class: "threads" }, items.map(entry => stripRow(entry, true)))]));
   }
   const quiet = quietThreads(entries, counts.quiet);
   if (quiet) main.appendChild(quiet);
@@ -8074,7 +8092,8 @@ function todaySide(counts) {
 // Promises long past their date with no word since (staleEntry): triage of the past, so not in the rail above the
 // fold but one folded line under the desk, opening in place, never in red (sprint 14 #6). Mark done closes one the
 // way the card's Mark done does; Still open puts it back among the people waiting; Mark all done closes every one
-// of them at once, with the page's one Undo.
+// of them at once, with the page's one Undo. Each row also says Not now and Ignore, the strip of every Today row
+// (#2990: the owner looked for 忽略 here and found only 标为完成 / 还开着); Still open stays beside the name.
 function staleWidget(entries) {
   if (!entries.length) return null;
   // The count is in the words: the fold shows three, and this closes every one of them.
@@ -8082,14 +8101,13 @@ function staleWidget(entries) {
   all.onclick = () => closeAllStale(entries);
   const rows = entries.slice(0, 3).map(entry => {
     const who = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
-    const done = el("button", { type: "button", class: "btn-quiet", text: t("Mark done") });
-    done.onclick = () => setDone(entry, true);
     const keep = el("button", { type: "button", class: "btn-quiet", text: t("Still open") });
     keep.onclick = () => keepStale(entry);
     const { words } = morningWords(entry.t.text, entry.r, entry.t);
-    return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [done, keep]),
+    return el("li", { "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }), el("span", { class: "stale-acts" }, [keep]),
       wordsLine("stale-what", words, entry.r, [], { title: words }),
-      el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) })]);
+      el("p", { class: "stale-when", text: t("Due {date}; no new message for {n} days", { date: threadDate(entry.t.due), n: daysSince(entry.t.since) }) }),
+      handOff(entry, null, null)]);
   });
   const n = entries.length;
   return el("details", { id: "today-stale", class: "stale fold" }, [

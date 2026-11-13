@@ -2854,7 +2854,7 @@ def test_quiet_threads_on_home_show_the_thread_words_even_before_translation():
     result = _run_reader_js(function + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const href = r => '#r=' + r.path, threadWho = () => 'Fern', threadPreview = text => text, alsoOn = () => null, age = () => '3 days';
-      const threadRow = () => null;
+      const threadRow = () => null, handOff = () => ({tag: 'strip'});  // the row's closes (#2990) are browser-tested
       const entries = [{r: {path: 'people/fern.md'}, t: {quiet: true, text: 'Still waiting on the slides.', since: '2026-11-01'}}];
       console.log(JSON.stringify(quietThreads(entries, 1, true)));
     ''')

@@ -53,7 +53,7 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
     assert page.locator("#today-stale > summary").inner_text() == "1 has gone quiet for a long time · Look"
     _open_stale(page)
     assert asked.locator(".stale-when").inner_text() == "Due Apr 14; no new message for 174 days"
-    assert asked.get_by_role("button").all_inner_texts() == ["Mark done", "Still open"]
+    assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
     assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(192, 42, 23)"
     # Still open: the owner says it is live, so it counts and burns again.
     asked.get_by_role("button", name="Still open", exact=True).click()
@@ -319,6 +319,6 @@ def test_a_stale_promise_is_never_red_or_waiting_one_click_away(today):
     page.evaluate("location.hash = '#view=open'", isolated_context=False)
     page.locator(".task-band").first.wait_for()
     assert page.locator(".task-band li").filter(has_text="loan agreement").count() == 0
-    page.locator("#gone-quiet summary").click()
+    page.locator("#gone-quiet > summary").click()
     row = page.locator("#gone-quiet li").filter(has_text="loan agreement")
     assert row.count() == 1 and row.locator(".when.overdue").count() == 0
