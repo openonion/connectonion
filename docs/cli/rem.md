@@ -1648,6 +1648,10 @@ below is good to about one point.
   `"paused": "quota"` in that date's `morning.json` entry; a night the floor
   held at any time carries `"paused": "quota"` in `night-stats.jsonl`. The pause
   ends at the first turn the floor no longer stops, or when the week resets.
+  `co rem status --json` always has a `paused` key: `null` when REM is not
+  paused, otherwise `{"reason": "quota", "since", "used_percent", "floor",
+  "resets_at"}` (`resets_at` in Unix seconds), so a script reads one field
+  instead of testing whether it exists.
   Waiting and raising the floor are both the owner's choice; REM changes
   neither, and does not move the work to another runner.
 - When the meter cannot be read (another runner, Codex not signed in, an older
