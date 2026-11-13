@@ -124,6 +124,9 @@ synology = [
 # version bump is a protocol change and deserves to be a deliberate one.
 whatsapp = [
     "neonize==0.4.3.post0",
+    # `lookup --country AU` reads 0412 345 678 the way that country dials it
+    # (#2964). The lite build: the same parser without geocoding data.
+    "phonenumberslite>=8.13,<10",
 ]
 # Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few

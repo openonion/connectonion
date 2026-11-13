@@ -2132,7 +2132,8 @@ def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(r
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
-    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records']  # D-01: the catch-all last
+    # D-01: the catch-all last; #2961: each name starts with the word you see (Orgs · Organisations)
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'All records']
     assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
@@ -4686,6 +4687,9 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page, uri = reader
     page.goto(uri)
     page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
+    # #2956: links ease their colour over --t-press when the theme changes, and the mark's link is not redrawn
+    # by the route changes below; measuring it mid-fade read the light ink on the dark page (3.58, then 1.03).
+    page.evaluate('Promise.all(document.getAnimations().filter(a => a instanceof CSSTransition).map(a => a.finished))')
     for route, selectors in [('#c=people', '.brand .sub, nav a .n, .r4 .row .s, .r4 .row .when, .r4 .grp, .r4 .chip, .r4-tabs i'),
                              ('#r=people%2Fmara-ostrowski.md', '.hero-marks, .r4-stats div, .fuse-ends span, .said-src, .tl-e .d, .wt h2'),
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
