@@ -6482,7 +6482,7 @@ function icon(name, cls = "") {
   return el("span", { class: "icw", "aria-hidden": "true", html: '<svg class="ic' + (cls ? " " + cls : "") + '" viewBox="0 0 24 24">' + (ICONS[name] || "") + "</svg>" });
 }
 // 更多 lists the categories that have no rail entry of their own; these are their pictures.
-const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "book", agenda: "calendar", sessions: "terminal",
+const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
   opportunities: "activity", works: "doc" };
 // The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
 // and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
