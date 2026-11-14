@@ -267,8 +267,10 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
     from . import threads
-    from .reader_model import cited_context, cited_conversations, relationships, reply_drafts
-    links = {} if today else relationships(records)
+    from .merge import aliases
+    from .reader_model import canonical_aliases, cited_context, cited_conversations, relationships, reply_drafts
+    redirects = {} if today else canonical_aliases(records, aliases(root), local=local)
+    links = {} if today else relationships(records, aliases=redirects)
     for record in records:
         record["relations"] = links.get(record["path"], [])
     from .reader_model import graph_snapshot, topic_mentions
@@ -334,7 +336,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
             "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
-            "categories": list(CATEGORIES), "records": records, "graph": graph,
+            "categories": list(CATEGORIES), "records": records, "aliases": redirects, "graph": graph,
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status.get("people_coverage"),
             "drafts": reply_drafts(root, local=local, records=records),
