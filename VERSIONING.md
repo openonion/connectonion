@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc12
+## Current Version: 1.9.6rc13
+Release candidate 1.9.6rc13 for 1.9.6: a Host records every automatic run a contact's message
+triggers in `co approvals`, not only the first (#3025), and a revoked requester's running turn stops
+before its next tool or model step even after they disconnect (#3026). `co trust add`, `unblock` and
+`admin add/remove` name the trust file they changed (#2819). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc13.md).
+
+### Previous candidate: 1.9.6rc12
 
 Release candidate 1.9.6rc12 for 1.9.6: `co whatsapp` links again on a fresh install. The pinned
 neonize 0.4.3 was refused by WhatsApp at connect ("Client outdated (405)"); the pin is now 0.10.0,
