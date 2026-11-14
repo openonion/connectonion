@@ -12,6 +12,7 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
   appendChild(node) { this.children.push(node); },
   get childElementCount() { return this.children.length; }});
 const orgT = text => text, t = text => text;
+const orgSummary = text => text || '';
 '''
 
 
@@ -28,6 +29,7 @@ def test_org_list_is_one_contact_order_without_waiting_groups():
 def test_org_row_shows_relationship_instead_of_an_overdue_task():
     result = run_js(['orgTableRow'], r'''
       const orgHidden = () => false, orgFact = () => '', orgRelation = () => 'Research partner';
+      const orgSummary = text => text || '';
       const orgActivity = () => null, orgWebsite = () => null, orgName = r => r.title;
       console.log(JSON.stringify(orgTableRow({r:{title:'Fernhill'}, people:[], last:'2026-11-01', pages:[]})));
     ''')

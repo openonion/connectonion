@@ -198,6 +198,7 @@ def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_th
 
 def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
     result = run_js(['orgOpening'], ROLLUP + r'''
+      const orgSummary = text => text || '';
       const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), calendarDate = day => day;
       const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
       const uiLanguage = 'en', facts = () => ({}), orgRelation = () => '', orgProse = x => x;

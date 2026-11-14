@@ -1178,8 +1178,11 @@ pinned to that edge: it comes into view with the draft.
   The default columns show a local logo or monogram, name, kind, what they do
   or mean to you, website, location, people known there, activity (messages in
   90 days), and last contact. Search and kind filters follow the reader’s
-  language; activity stays a readable message count at row height. Unknown
-  facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
+  language; activity stays a readable message count at row height. An organisation
+  with no messages in the window shows a quiet dash and sorts last, like unknown facts. Kind chips
+  include **Unclassified** for pages with no recorded kind; the reader does not
+  infer one. Summaries occupy at most two lines on desktop, with the full text in
+  the cell's title and on the organisation page. **Columns** remembers your choices
   separately from People and can add first contact, subordinate unit count,
   legal entity and parent.
   Blanks sort last in either direction. On a phone rows become cards.
@@ -1212,6 +1215,8 @@ pinned to that edge: it comes into view with the draft.
   A person with several unit memberships appears once, with those roles together.
   The page reads as an article in one centred reading column: opening sentences
   give its summary, relationship, people known and first/latest contact dates.
+  Mapped placeholders are omitted: the opening starts with what is known, a
+  connection without a summary is just its linked name, and absent facts have no label.
   The tree is followed by the organisation's own dated History as prose milestones,
   connections as text links, and facts and sources at the foot. Correspondents'
   activity is not the article's body; **Full memory and sources** keeps the page's

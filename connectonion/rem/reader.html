@@ -1440,6 +1440,9 @@
   .org-table .c-activity { width: 13%; }
   .org-table .c-last { width: 9%; }
   .org-table .clamp, .org-site a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (min-width: 601px) {
+    .org-table .c-summary .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  }
   .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; }
   .org-table-name a { overflow: hidden; text-overflow: ellipsis; }
   .org-name-text { min-width: 0; display: flex; flex-direction: column; }
@@ -10157,12 +10160,19 @@ function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.tit
 function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
 function orgKind(r) { return r.unit_kind ? orgT(r.unit_kind) : r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
 function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
+// Reuse the mapped-page placeholder tests, including the translated organisation lead.
+function orgSummary(text) {
+  const value = (text || "").trim();
+  const translated = /^未知(?:\s*[—–-]\s*尚未(?:调查|核实|验证))?[。.!]?$/u;
+  return !value || UNFILLED_LEAD.test(value) || UNFILLED_LINE.test(value)
+    || /^(?:unknown|not known)[.!]?$/i.test(value) || translated.test(value) ? "" : value;
+}
 // The first sentence of what the organisation is to you, labels kept: a labelled passage is held as one
 // token so it never ends the sentence, and orgProse shows it behind its own reveal. The source is the
 // first one with something public in it, so hiding labelled passages never empties the line.
 function orgRelation(r) {
   const k = known(r), lead = k.intro || (k.kept.find(s => !MECHANICAL.has(s.title.toLowerCase())) || { text: "" }).text;
-  const text = [r.to_you, facts(r).how, lead].find(value => plainLine(value || "")) || "", held = [];
+  const text = [r.to_you, facts(r).how, lead].map(orgSummary).find(value => plainLine(value)) || "", held = [];
   const masked = privatePassages(plainLine(text, true), passage => "\u0006" + (held.push(passage) - 1) + "\u0006");
   return firstSentence(masked).replace(/\u0006(\d+)\u0006/g, (_, i) => held[i]);
 }
@@ -10242,7 +10252,7 @@ function orgRows() {
 // Organisations use the same chooser, blank-last sorter and phone cards as People.
 const ORG_TABLE_ZH = {
   "By structure": "按结构", "Flat": "平铺", "List layout": "列表布局", "Subordinate units": "下属单位", "{n} units · {m} people": "{n} 个下属单位 · {m} 人",
-  "Kind": "类别", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
+  "Kind": "类别", "Unclassified": "未分类", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
   "company": "公司", "service": "服务", "team": "团队", "course": "课程", "event": "活动",
   "club": "社团",
   "Filter organisations, people, domains": "搜索组织、联系人或域名",
@@ -10292,7 +10302,7 @@ function orgTableRow(o) {
   return { ...o, rel, website: hidden ? null : orgWebsite(r, people),
     first: hidden ? "" : dates[0] || "", last: hidden ? "" : [o.last, rel?.last_mail?.slice(0, 10)].filter(Boolean).sort().at(-1) || "",
     kind: hidden ? "" : r.unit_kind || r.kind || orgFact(r, "Kind"),
-    summary: hidden ? "" : orgFact(r, "What they do") || orgRelation(r),
+    summary: hidden ? "" : orgSummary(orgFact(r, "What they do")) || orgSummary(orgRelation(r)),
     location: hidden ? "" : orgFact(r, "Location"), legal: hidden ? "" : orgFact(r, "Legal entity"),
     text: [orgName(r), hidden ? "" : [orgRelation(r), ...people.map(p => p.title), ...(o.units || []), r.domain || ""].join(" ")].join(" ").toLowerCase() };
 }
@@ -10338,7 +10348,7 @@ const ORG_COLUMNS = [
   {key: "location", label: "Location", sort: d => blank(d.location), cell: d => textCell(d.location)},
   {key: "people", label: "People known there", num: true, desc: true, sort: d => orgHidden(d.r) ? null : d.people.length,
     cell: d => orgHidden(d.r) ? textCell("") : el("span", {class: "mono", text: String(d.people.length)})},
-  {key: "activity", label: "Activity", desc: true, sort: d => blank(d.rel?.messages_90d), cell: d => d.rel ? el("span", {class: "org-activity"},
+  {key: "activity", label: "Activity", desc: true, sort: d => d.rel?.messages_90d || null, cell: d => d.rel?.messages_90d ? el("span", {class: "org-activity"},
     [el("span", {class: "mono", text: orgTableT("{n} messages · 90 days", {n: d.rel.messages_90d})})]) : textCell("")},
   {key: "last", label: "Last contact", desc: true, sort: d => blank(d.last), cell: d => d.last ? el("span", {class: "mono", text: calendarDate(d.last)}) : textCell("")},
   {key: "first", label: "First contact", extra: true, sort: d => blank(d.first), cell: d => d.first ? el("span", {class: "mono", text: calendarDate(d.first)}) : textCell("")},
@@ -10413,12 +10423,12 @@ function orgFilterRows(rows, kind, needle) {
 }
 function orgDescendants(d) { return (d.children || []).flatMap(child => [child, ...orgDescendants(child)]); }
 function orgKindFilters(rows, draw) {
-  const kinds = [...new Set(rows.flatMap(d => [d, ...orgDescendants(d)]).map(d => d.kind).filter(Boolean))].sort();
+  const kinds = [...new Set(rows.flatMap(d => [d, ...orgDescendants(d)]).map(d => d.kind))].sort();
   const bar = el("div", {class: "org-kind-filters", role: "group", "aria-label": orgTableT("Kind")});
   const tabs = ["all", ...kinds];
   if (!tabs.includes(orgFilter.tab)) orgFilter.tab = "all";
   bar.append(...tabs.map(kind => {
-    const button = el("button", {type: "button", "aria-pressed": String(orgFilter.tab === kind), text: kind === "all" ? orgTableT("All") : orgTableT(ORG_KINDS[kind] || kind)});
+    const button = el("button", {type: "button", "aria-pressed": String(orgFilter.tab === kind), text: kind === "all" ? orgTableT("All") : orgTableT(ORG_KINDS[kind] || kind || "Unclassified")});
     button.onclick = () => { orgFilter.tab = kind; orgListMode = "flat"; bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button))); draw(); };
     return button;
   }));
@@ -10510,7 +10520,7 @@ function orgStage(v) {
       translationLine(r), orgOpening(v)]), orgTree(v)]);
 }
 function orgOpening(v) {
-  const summary = known(v.r).summary || "", relation = orgRelation(v.r);
+  const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
   const first = [facts(v.r).first, ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
   const last = [known(v.r).last, ...v.people.map(orgLast), ...v.events.map(e => e.day)].filter(Boolean).sort().at(-1);
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
@@ -10650,10 +10660,13 @@ function orgConnections(v) {
   const pages = [...new Set(paths)].map(byPath).filter(p => p && p.path !== v.r.path && ["projects", "orgs", "knowledge"].includes(p.category) && !orgHidden(p));
   if (!pages.length) return null;
   return el("section", { class: "ov-connections" }, [el("h2", { text: uiLanguage === "zh" ? "关联" : "Connections" }),
-    ...pages.map(p => el("p", {}, [el("a", { href: href(p), text: p.title }), known(p).summary ? " — " : "", orgProse(known(p).summary)]))]);
+    ...pages.map(p => {
+      const summary = orgSummary(known(p).summary);
+      return el("p", {}, [el("a", { href: href(p), text: p.title }), ...(summary ? [" — ", orgProse(summary)] : [])]);
+    })]);
 }
 function orgCoda(v) {
-  const fact = name => (parseFacts(v.r).get(name) || []).map(item => plainLine(item.value, true)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
+  const fact = name => (parseFacts(v.r).get(name) || []).map(item => orgSummary(plainLine(item.value, true))).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
   const what = fact("What they do"), place = fact("Location"), website = orgWebsite(v.r, v.people || [])
     || (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(v.r.domain || "") ? {url: "https://" + v.r.domain} : null);
   const row = (label, value) => value ? el("div", {}, [el("dt", {text: label}), el("dd", {}, [value])]) : null;
