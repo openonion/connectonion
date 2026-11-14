@@ -513,7 +513,16 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
 Run `co rem decisions` to see how many decision and principle pages exist and how
-many captured decisions are waiting. Run `co rem decisions write` to write them
+many supported captured decisions are waiting. Waiting and left count only lines
+with a verbatim quote and a bound original source, excluding captures contradicted
+by stored owner input. Status and the final write summary separately count captures
+with no quote, no bound source, or contradicted owner words; these totals count
+each line once across the notebook, rather than accumulating across rounds.
+Legacy session pages list unnumbered sources: a quote receives a numbered binding
+only when its words and captured clock identify one retained owner turn on that
+page. Ambiguous or unmatched quotes stay out of the packet. No original transcripts
+are added to the model's material, and the session page remains unchanged.
+Run `co rem decisions write` to write supported captures
 now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
 round calls the existing configured model runner once and uses the same material,
 input character bound, owner-quote and citation checks, and decisions/principles
@@ -523,6 +532,9 @@ captured in the supplied Decisions or Key decisions into the body immediately
 followed by its `[n]`; `## Sources` defines the original source ID for that number
 and keeps the originating page as context. A quote
 placed only under Sources is refused with instructions to move it into the body.
+The page limit is a ceiling: zero pages is valid. Skip a line whose words or source
+cannot support a page; never turn a paraphrase into an owner quote. A quote too long
+for the input bound stays pending, rather than being split into unusable fragments.
 An empty round counts as a failed attempt for its slice, sets it aside for a later
 retry, and moves to the next slice. It continues until nothing unattempted is left
 or two empty rounds occur in a row; a successful round resets that streak.

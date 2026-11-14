@@ -11,7 +11,7 @@ from .service import now
 def status(root):
     notebook = Notebook(root)
     return {"decisions": len(notebook.list("decisions")), "principles": len(notebook.list("principles")),
-            "waiting": captured_decisions.pending_count(notebook)}
+            "waiting": captured_decisions.pending_count(notebook), "skipped": captured_decisions.skipped_counts(notebook)}
 
 
 def _round(notebook, items, config):
@@ -73,4 +73,5 @@ def write(root, *, rounds=None, progress=None):
     written = sum(len(row["changed"]) for row in rows)
     return {"rounds": rows, "written": written, "refused": sum(len(row["refused"]) for row in rows),
             "left": captured_decisions.pending_count(notebook), "reason": reason, "set_aside": set_aside,
+            "skipped": captured_decisions.skipped_counts(notebook),
             "failed": not written and bool(reason)}

@@ -19,7 +19,16 @@ def _summary(value):
         ending = f"stopped: {value['reason']} · {ending}"
     noun = "slice" if value['set_aside'] == 1 else "slices"
     deferred = f"{value['set_aside']} {noun} set aside for a later retry · "
-    return f"Done: {len(value['rounds'])} rounds · {value['written']} pages written · {value['refused']} refused · {deferred}{ending}"
+    return (f"Done: {len(value['rounds'])} rounds · {value['written']} pages written · {value['refused']} refused · {deferred}{ending}"
+            + _skipped(value))
+
+
+def _skipped(value):
+    counts = value['skipped']
+    if not any(counts.values()):
+        return ""
+    return (f" · Skipped: {counts['no_quote']} no quote captured · {counts['no_source']} no bound source"
+            f" · {counts['not_owner']} owner quote contradicted")
 
 
 def write_decisions(ctx, rounds, handle, written):
@@ -56,7 +65,7 @@ def add_decisions_app(rem, factory, handle, written):
         def operation(root):
             value = status(root)
             text = (f"Decision pages: {value['decisions']} · Principle pages: {value['principles']} · "
-                    f"Decisions waiting: {value['waiting']}")
+                    f"Decisions waiting: {value['waiting']}" + _skipped(value))
             return (value if ctx.obj["json"] else text), ["decisions", "write"]
         handle(ctx, operation, ["init"])
 

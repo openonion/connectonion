@@ -1100,14 +1100,15 @@ Back:     co rem advanced --help
 ## co rem decisions
 
 ```
-Count your decision and principle pages and the captured decisions waiting to be written.
+Count your decision and principle pages and the supported captured decisions waiting to be written.
 Reads the decisions already on session and project pages. No model; no files written.
+Waiting counts only lines with a verbatim quote and a bound original source, excluding known authorship contradictions.
 
 Usage:    co rem decisions [COMMAND]
 Example:  co rem decisions
 Commands:
   write   Write decision and principle pages now, continuing until caught up.
-Output:   Decision pages, principle pages and decisions waiting, then the next command.
+Output:   Decision pages, principle pages, decisions waiting and skipped captures by reason, then the next command.
 Effects:  Reads notebook pages and saved progress. No model; no writes.
 Next:     co rem decisions write
 Back:     co rem --help
@@ -1122,8 +1123,10 @@ Usage:    co rem decisions write [--rounds N]
 Example:  co rem decisions write  |  co rem decisions write --rounds 2
 Stops when nothing unattempted is left or two empty rounds in a row write no page. --rounds N limits this run to N rounds.
 Reads up to 20 decisions per round, oldest first. Shares progress with the night; its round limit does not apply.
+Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
+Legacy session quotes receive numbered sources only when retained owner turns establish a unique match.
 An empty round counts as a failed slice, set aside for a later retry, then moves to the next slice.
-Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry and decisions left. Exit 1 if no attempted round writes a page; 0 on progress or no work.
+Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, decisions left and skipped counts once. Exit 1 if no attempted round writes a page; 0 on progress or no work.
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
           Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.
 Next:     co rem list decisions
