@@ -221,8 +221,13 @@ def test_org_kind_labels_localise_known_kinds_and_preserve_unknown_words():
     page = harness.TEMPLATE.read_text()
     labels = '\n'.join(re.search(r'const ' + name + r' = .*?^};', page, re.M | re.S)[0]
                        for name in ['ORG_UI_ZH', 'ORG_TABLE_ZH'])
-    result = run_js(['orgT', 'orgTableT'], labels + r'''
+    labels += '\n' + re.search(r'^const ORG_KINDS = .*?;$', page, re.M | re.S)[0]
+    result = run_js(['orgT', 'orgTableT', 'orgCrumb'], DOM.replace('const orgT = text => text, t = text => text;', '') + labels + r'''
       const uiLanguage = 'zh', t = x => x;
-      console.log(JSON.stringify(['event','company','team','programme','venue','unclassified-kind'].map(orgTableT)));
+      const document = {createTextNode: text => ({text})}, byPath = () => null;
+      const categoryHref = () => '#c=orgs', label = () => '组织';
+      const kinds = ['event','company','team','programme','venue','unclassified-kind'];
+      console.log(JSON.stringify({labels:kinds.map(orgTableT),
+        crumbs:kinds.map(kind => orgCrumb({path:'orgs/field.md',kind}).children.at(-1).text)}));
     ''')
-    assert result == ['活动', '公司', '团队', '项目组', '场所', 'unclassified-kind']
+    assert result['labels'] == result['crumbs'] == ['活动', '公司', '团队', '项目组', '场所', 'unclassified-kind']

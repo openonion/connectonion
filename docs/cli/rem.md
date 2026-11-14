@@ -1223,6 +1223,7 @@ pinned to that edge: it comes into view with the draft.
   give its summary, relationship, people known and first/latest contact dates.
   Mapped placeholders are omitted: the opening starts with what is known, a
   connection without a summary is just its linked name, and absent facts have no label.
+  A known location or website is shown even when no description is recorded.
   The tree is followed by the organisation's own dated History as prose milestones,
   connections as text links, and facts and sources at the foot. Correspondents'
   activity is not the article's body; **Full memory and sources** keeps the page's

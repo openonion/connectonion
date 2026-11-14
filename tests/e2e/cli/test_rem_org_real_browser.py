@@ -95,7 +95,10 @@ def test_org_placeholder_paths_show_dash_in_source_and_cached_translation(
     page.locator('.org-table .c-name a').filter(has_text='Cedar Works').click()
     assert page.locator('.ov-opening').inner_text().startswith('你认识这里的 1 个人。' if stored else 'You know 1 person here.')
     assert page.locator('.ov-connections p').all_inner_texts() == ['Field team']
-    assert page.locator('.ov-about dt').count() == 0
+    # Fern's business email still supplies a known website; only unknown/empty facts disappear.
+    assert page.locator('.ov-about dt').all_inner_texts() == ['网站' if stored else 'Website']
+    assert page.locator('.ov-about dd').all_inner_texts() == ['cedar.example']
+    assert page.locator('.ov-about dd a').get_attribute('href') == 'https://cedar.example'
     assert '尚未调查' not in page.locator('.ov-page').inner_text()
     assert 'not investigated yet' not in page.locator('.ov-page').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -123,7 +126,9 @@ def test_long_org_location_is_two_lines_with_full_title_and_page_text(
         assert row.bounding_box()['height'] <= 88
         assert page.locator('.people-scroll').evaluate('e => e.scrollWidth <= e.clientWidth + 1')
     row.locator('.c-name a').click()
+    assert page.locator('.ov-crumb').inner_text().endswith('公司')
     assert location in page.locator('.ov-about').inner_text()
+    assert page.locator('.ov-about dt').all_inner_texts() == ['所在', '网站']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 

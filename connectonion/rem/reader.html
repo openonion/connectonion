@@ -10518,7 +10518,7 @@ function orgCrumb(r) {
   const chain = [], seen = new Set([r.path]);
   for (let page = byPath(r.parent); page && !seen.has(page.path); page = byPath(page.parent)) { seen.add(page.path); chain.unshift(page); }
   const links = chain.length ? chain.map(page => el("a", { href: href(page), text: orgName(page) }))
-    : [el("a", { href: categoryHref("orgs"), text: label("orgs") }), ...(r.kind ? [document.createTextNode(orgT(ORG_KINDS[r.kind]))] : [])];
+    : [el("a", { href: categoryHref("orgs"), text: label("orgs") }), ...(r.kind ? [document.createTextNode(orgTableT(ORG_KINDS[r.kind] || r.kind))] : [])];
   return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
 }
 function orgOver(r) {
