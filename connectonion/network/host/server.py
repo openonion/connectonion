@@ -73,6 +73,7 @@ from .http_router import (
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
+from .revocation import stop_turn_when_revoked
 from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, SessionViewers, start_cleanup_job
@@ -385,9 +386,17 @@ def _create_route_handlers(
 
     agent_factory = create_agent
 
+    stop_if_revoked = stop_turn_when_revoked(trust_agent)
+
     def create_agent():
         agent = agent_factory()
         agent._host_trust_dir = trust_agent._co_dir
+        # A requester who disconnected sends no frame for the socket check to
+        # catch, so every tool or model step of their turn re-checks trust.
+        # host(agent) hands back the same Agent for every turn: install once.
+        for event in ('before_llm', 'before_each_tool'):
+            if stop_if_revoked not in agent.events[event]:
+                agent.events[event].append(stop_if_revoked)
         return agent
 
     def notify_result(result, prompt):

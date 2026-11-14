@@ -16,8 +16,8 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
+from ..revocation import REVOKED, lost_access
 from .connect import (
-    current_trust_level,
     establish_connection,
     handle_authenticated_reconnect,
     handle_connect,
@@ -30,8 +30,6 @@ from .proxy import attach_proxy, detach_proxy
 from .remote_browser import run_remote_browser
 
 console = Console()
-# Handoffs only permits handoff messages; it grants no tool access to revoke.
-TRUST_GRANTS = {"admin": 3, "whitelist": 2, "contact": 1}
 
 
 def _access_revoked(conn, trust_agent, blacklist):
@@ -41,11 +39,9 @@ def _access_revoked(conn, trust_agent, blacklist):
         return True, "blocked"
     if "trust_level" not in conn:
         return False, None
-    level = current_trust_level(trust_agent, address)
     # Reconnect after any downgrade to establish the reduced authorization
     # context; cached admin flags must never outlive an admin grant.
-    revoked = level == "blocked" or TRUST_GRANTS.get(level, 0) < TRUST_GRANTS.get(conn["trust_level"], 0)
-    return revoked, level
+    return lost_access(trust_agent, address, conn["trust_level"])
 
 
 def _stop_requester_turns(registry, address):
@@ -243,7 +239,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 await send_msg({
                     "type": "ERROR",
                     "code": "ACCESS_REVOKED",
-                    "message": "Your access to this agent was revoked by its admin.",
+                    "message": REVOKED,
                 })
                 return "ACCESS_REVOKED"
 

@@ -84,7 +84,7 @@ def test_host_auto_hint_blocks_the_hosts_lists_even_when_logs_and_cwd_differ(tmp
     storage = SessionStorage(tmp_path / "sessions.jsonl")
     routes["ws_input"](storage, "write a note", None, session={"session_id": "one"}, requester_address=CALLER)
     output = capsys.readouterr().out
-    assert "requester's next message" in output
+    assert "before its next tool or model step, connected or not" in output
     command = output.split("Revoke access on this Host: ", 1)[1].split(". Revocation", 1)[0]
     args = shlex.split(command)
     assert args[:4] == ["co", "trust", "block", CALLER]
@@ -174,3 +174,23 @@ def test_conflicting_targets_fail_without_writing(tmp_path, monkeypatch):
     assert "Use either --co-dir or --global" in click.unstyle(result.output)
     assert not (tmp_path / "host").exists()
     assert not (tmp_path / ".co").exists()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("command,written", [
+    (["add"], "contacts"), (["add", "-w"], "whitelist"), (["unblock"], "blocklist"),
+    (["admin", "add"], "admins"), (["admin", "remove"], "admins"),
+])
+def test_every_trust_edit_names_the_file_it_wrote(tmp_path, monkeypatch, explicit, command, written):
+    """#3026 / #2819: add, unblock and admin add/remove say which list they changed."""
+    project = tmp_path / "project"
+    (project / ".co").mkdir(parents=True)
+    monkeypatch.chdir(project)
+    selected = tmp_path / "host identity" / ".co" if explicit else project / ".co"
+    selected.mkdir(parents=True, exist_ok=True)
+    (selected / "blocklist.txt").write_text(CALLER + "\n")
+    (selected / "admins.txt").write_text(CALLER + "\n")
+    args = ["--co-dir", str(selected)] if explicit else []
+    result = CliRunner().invoke(app, ["trust", *command, CALLER, *args])
+    assert result.exit_code == 0, result.output
+    assert f"Updated: {selected / f'{written}.txt'}" in result.output
