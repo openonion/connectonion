@@ -1150,7 +1150,7 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations and Projects** open as a sheet: one row per page, the facts
+- **Organisations** opens as a sheet: one row per page, the facts
   in columns, a sticky header, sort on any shown column, filters (*Something
   open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
   opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
@@ -1246,12 +1246,20 @@ pinned to that edge: it comes into view with the draft.
   original/translated state match. A destination page's introduction is never
   substituted under another page's source labels. Qualified or distinct evidence
   stays visible. This is pending review/publication, not behavior claimed for rc12.
-- **A page** opens on a focused status, next exchanges, compact facts, related
-  records and filterable dated Activity. Project pages add purpose and a
-  recorded decision when supported. A project opens on its current supported
-  finding; on a phone, a long purpose shows four lines with **Read full purpose**
-  (**展开用途**) to reveal the rest in one tap. Its citations stay directly after
-  the purpose and its toggle. Connected cards without a snippet stay compact;
+- **Projects** opens on a board with **Active**, **Waiting**, **Quiet** and
+  **Done** columns. Cards name the next step and who holds it; late promises
+  stay visible on their card. Waiting means every confirmed open step is with
+  someone else or an agent. Quiet follows the existing activity rule; Done
+  requires an explicitly completed project. Longer columns unfold in place;
+  on wide desktop screens an empty state keeps a narrow header and its zero count; on a phone
+  the columns stack. **List** and **Timeline** remain available.
+  A project page leads with the same state, up to three next steps (overdue
+  owner-held steps first), and recent sessions or dated history. **+N more**
+  opens the remaining steps in **Full memory and sources**. Purpose, findings,
+  facts, people, decisions, detailed sessions, tags, local graph and history stay
+  in that collapsed disclosure. Source markers beside steps still open their evidence.
+- **Other record pages** open on a focused status, next exchanges, compact
+  facts, related records and filterable dated Activity. Connected cards without a snippet stay compact;
   desktop cards with snippets align their source dates across each row.
   When only part of its queued or archived session history was read,
   the page says how many inputs were supplied. Explicit links and unambiguous name

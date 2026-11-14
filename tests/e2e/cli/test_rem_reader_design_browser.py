@@ -801,18 +801,21 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     # This fixture names the pilot participants without linking their paths.
     # They remain available as text hints, behind progressive disclosure.
+    assert not page.locator('.related-records').is_visible()
+    assert not page.locator('.deep-note-limit').is_visible()
+    page.locator('details.deep-note > summary').click()
     page.locator('.mention-hints > summary').click()
     connected = page.locator(".related-records .relation-card")
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
         "Mara Ostrowski", "Fernhill Labs"}
     assert "what this project does" in page.locator('.focus-kicker').inner_text().lower()
     assert "command-line tool" in page.locator('.focus-statement').inner_text()
-    assert not page.locator('.deep-note-limit').is_visible()
-    page.locator('details.deep-note > summary').click()
     assert "did not confirm current project work" in page.locator('.deep-note-limit').inner_text()
-    assert page.get_by_role("heading", name="Recorded direction").is_visible()
+    # Match the original section and its content without depending on the permalink’s accessible name.
+    assert page.locator(".deep-note .note h2#key-decisions").is_visible()
+    assert "one brief per team" in page.locator(".deep-note .note").inner_text()
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
-    page.get_by_role("link", name="View all decisions").click()
+    page.goto(uri + "#r=projects%2Fharbour.md&h=key-decisions")
     assert page.locator(".deep-note #key-decisions").is_visible()
     page.goto(uri + "#r=projects%2Fharbour.md")
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
@@ -935,7 +938,7 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     assert 'not found' in started.inner_text()
 
 
-def test_project_hero_leads_with_current_finding_before_historical_pattern(reader):
+def test_project_full_memory_keeps_current_finding_before_historical_pattern(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -944,12 +947,14 @@ def test_project_hero_leads_with_current_finding_before_historical_pattern(reade
         + '- Changed: A later UI request corrected its wording. [2]\\n- Now: A release was requested in July. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 768, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
 
 
-def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(reader):
+def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_insight(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -961,6 +966,8 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
         + '- 2026-10-15 - The release checks passed. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'origin/main has a commit titled “1.9.3b5 release”.'
@@ -970,6 +977,8 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
       r.text = r.text.split('## Where it stands')[0] + '## Where it stands\\n- Unknown';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
@@ -1029,6 +1038,7 @@ def test_a_session_summary_names_the_owner_you_not_owner(reader, language):
     }""", [language, list(cases)], isolated_context=False)
     shown = page.evaluate("summaries => summaries.map(s => ownerAsYou(s))", list(cases), isolated_context=False)
     assert dict(zip(cases, shown)) == cases
+    page.locator('details.deep-note > summary').click()
     rows = page.locator('.project-sessions .session-context-summary').all_inner_texts()
     assert "你要求重写摘要。" in rows and "Owner 要求重写摘要。" not in rows, rows
     page.evaluate("() => { location.hash = 'r=sessions%2Fs0.md'; }", isolated_context=False)
@@ -1085,25 +1095,33 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 150, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert page.locator('.scope-note').count() == 0
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         page.evaluate('togglePrivate()', isolated_context=False)
+        # Privacy may redraw records when the notebook contains private topics.
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
-        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 1
-        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
+        assert page.locator('.deep-note .block-insight').get_by_text('Hidden labelled passage').is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
         # The directory never quotes a page's purpose, so nothing private can leak into a row.
         assert page.locator('#main').get_by_role('link', name='Harbour', exact=True).first.is_visible()
         assert 'hidden description' not in page.locator('#main').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         page.evaluate('togglePrivate()', isolated_context=False)
+        page.locator('details.deep-note').evaluate('node => node.open = true')
+        assert 'A hidden finding' in page.locator('.deep-note .block-insight').inner_text()
 
 
-def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(reader):
+def test_project_without_current_insight_keeps_purpose_and_input_limit_folded(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -1124,7 +1142,7 @@ def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(re
         assert 'reads a local daily log' in page.locator('.focus-statement').inner_text()
         assert 'recent commit' not in page.locator('.focus-statement').inner_text()
         assert '7-day session sample did not confirm current project work' in page.locator('.deep-note-limit').inner_text()
-        assert page.locator('.project-workspace').get_by_text('What this is').count() == 0
+        assert page.locator('.deep-note .purpose-lead').is_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.evaluate("() => { byPath('projects/harbour.md').project_coverage.inputs_read = 0; render(); }",
                   isolated_context=False)
@@ -1150,19 +1168,23 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
       r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview')
     assert 'property lead workflow' in purpose.inner_text()
+    purpose.scroll_into_view_if_needed()
     assert purpose.bounding_box()['y'] < 812
     assert page.locator('.scope-note').count() == 0
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
     sources = page.locator('.focus-source').bounding_box()
-    assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert sources['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
+def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=projects%2Fharbour.md')
@@ -1173,13 +1195,17 @@ def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
       r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     statement = page.locator('.focus-statement')
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
     chip = page.locator('.project-purpose-cites a.cite').first
     source = page.locator('.focus-source')
+    chip.scroll_into_view_if_needed()
     assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
-    assert source.bounding_box()['y'] + source.bounding_box()['height'] <= 812
+    assert source.is_visible()
     page.get_by_role('button', name='Read full purpose').wait_for()
     # Once open its label reads "Show less"; follow the button by what it controls.
     more = page.locator('button.focus-more[aria-controls="' + statement.get_attribute('id') + '"]')
@@ -1209,6 +1235,9 @@ def test_long_private_purpose_can_expand_after_revealing_passages(reader, has_fi
       document.documentElement.classList.add('hide-private');
       KNOWN.clear(); FACTS.clear(); render();
     }''', has_finding, isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview' if has_finding else '.focus-statement')
     more = page.locator('button.focus-more[aria-controls="' + purpose.get_attribute('id') + '"]')
     assert purpose.inner_text() == 'Hidden labelled passage'
@@ -1858,11 +1887,11 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       r.last_activity = '2026-09-16';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last mapped session' in page.locator('.leadrow').inner_text()
-    assert 'Last mapped session' not in page.locator('.focus-facts').inner_text()
+    assert 'Last mapped session' in page.locator('.project-state').inner_text()
+    assert not page.locator('.deep-note .focus-facts').is_visible()
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
-    assert 'Last active' not in page.locator('.leadrow').inner_text()
+    assert 'Last active' not in page.locator('.project-state').inner_text()
     # The directory's list shows the same mapped date as its latest activity.
     page.goto(uri + '#c=projects&v=list')
     page.evaluate('() => { pdQuietOpen = true; KNOWN.clear(); FACTS.clear(); render(); }', isolated_context=False)
@@ -2454,11 +2483,12 @@ def test_project_focus_and_deep_note_do_not_repeat_purpose_or_threads(reader):
     assert page.locator('.lead-open').count() == 0
     assert page.locator('.next-exchanges .thread').count() == 3
     assert page.locator('#what-it-is').count() == 1
-    assert page.locator('.project-workspace h2').filter(has_text='What this is').count() == 0
+    assert not page.locator('#what-it-is').is_visible()
+    assert page.locator('.deep-note .note #what-it-is').count() == 0
     page.locator('details.deep-note > summary').click()
     assert page.locator('.deep-note .block-threads .thread').count() == 2
     assert 'obligation 1' not in page.locator('.deep-note .block-threads').inner_text()
-    assert page.locator('.deep-note #what-it-is').count() == 0
+    assert page.locator('.deep-note #what-it-is').count() == 1
     page.goto(uri + '#r=projects%2Fharbour.md&h=what-it-is')
     assert page.locator('#what-it-is').is_visible()
 
@@ -2810,6 +2840,8 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
         REM.records.filter(r => r.category === 'sessions').map(r => r.path);
     }""", isolated_context=False)
     page.evaluate("location.hash = '#r=projects%2Falpha.md'", isolated_context=False)
+    expect(page.locator(".project-recent li")).to_have_count(3)
+    page.locator("details.deep-note > summary").click()
     rows = page.locator(".project-sessions .session-context-row")
     expect(rows).to_have_count(10)
     expect(rows.first.locator(".session-context-summary")).to_have_text("Shipped a searchable reader with stable focus.")
@@ -3006,7 +3038,8 @@ def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate(r"""() => { const r = byPath('projects/harbour.md'); r.text += '\n\n## Uncertainties\n- Pilot size is not confirmed. [1]'; KNOWN.clear(); render(); }""", isolated_context=False)
-    assert page.locator('.record-focus.projects .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.project-context .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
     for node in page.locator('.record-focus.projects .focus-facts, .record-focus.projects .thread:last-child').all():
         assert node.evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
     sources = page.locator('.project-purpose-cites')
@@ -3165,7 +3198,10 @@ def test_activity_discloses_five_complete_rows_and_filters(reader, path, width):
         assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         return
-    activity = page.locator('.activity-view')
+    # The project lead has three recent rows; the full five-row activity and filters stay folded.
+    assert page.locator('.record-focus.projects .recent-activity .activity-list > li:visible').count() == 3
+    page.locator('details.deep-note > summary').click()
+    activity = page.locator('.deep-note .activity-view')
     rows = activity.locator('.activity-list > li:visible')
     assert rows.count() == 5
     assert activity.locator('.activity-list').evaluate('node => node.scrollHeight <= node.clientHeight')
@@ -3196,10 +3232,10 @@ def test_project_threads_only_label_explicit_direction_and_deduplicate_date(read
       KNOWN.clear(); render();
     }''', isolated_context=False)
     rows = page.locator('.next-exchanges .thread')
-    assert rows.locator('.dir').all_inner_texts() == ['Open', 'You owe', 'They owe']
-    assert rows.first.locator('.what').inner_text().startswith('You asked to revisit')
-    assert '2026-09-13' not in rows.first.locator('.what').inner_text()
-    assert 'since Sep 13' in rows.first.locator('.when').get_attribute('title')
+    assert rows.locator('.dir').all_inner_texts() == ['You owe', 'They owe', 'Open']
+    assert rows.nth(2).locator('.what').inner_text().startswith('You asked to revisit')
+    assert '2026-09-13' not in rows.nth(2).locator('.what').inner_text()
+    assert 'since Sep 13' in rows.nth(2).locator('.when').get_attribute('title')
 
 
 @pytest.mark.parametrize('path', ['people/quinn-alder.md', 'skills/catalog/weekly-brief.md'])
@@ -4305,10 +4341,14 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
       KNOWN.clear(); FACTS.clear(); render();
       return language === 'zh' ? chinese : purpose;
     }''', language, isolated_context=False)
+    assert page.locator('.project-state').is_visible()
+    assert not page.locator('.project-purpose-preview').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview')
     assert purpose.count() == 1
     if width == 390:
         assert purpose.evaluate(r'''node => getComputedStyle(node).webkitLineClamp === '4' && node.scrollHeight > node.clientHeight''')
+        page.locator('.project-purpose-cites a.cite').first.scroll_into_view_if_needed()
         chip = page.locator('.project-purpose-cites a.cite').first.bounding_box()
         assert 0 <= chip['y'] and chip['y'] + chip['height'] <= 812
     page.get_by_role('button', name='展开用途' if language == 'zh' else 'Read full purpose', exact=True).wait_for()
@@ -4360,8 +4400,9 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
           r.text = r.shown ? r.translations[r.shown] : r.original;
           KNOWN.clear(); FACTS.clear(); render();
         }''', record, isolated_context=False)
-        if record.startswith(('people/', 'orgs/')):
-            page.locator('details.deep-note > summary').click()
+        # All three record categories keep these disclosures inside Full memory.
+        assert not page.locator('.related-records').is_visible()
+        page.locator('details.deep-note > summary').click()
         summaries = page.locator('.more-relations > summary:visible')
         assert page.locator('.related-records > .more-relations > summary:visible').count() == 3
         assert page.locator('.conversation-view .more-relations > summary:visible').count() == 1
@@ -5304,12 +5345,16 @@ def test_project_directory_opens_on_one_rem_sentence_with_no_green_and_no_overfl
     # Owner, 2026-11-09 (sidebar in Fuse): the rail carries no category counts; the title is the count's home.
     expect(page.locator('#nav a[href="#c=projects"] .n')).to_have_count(0)
     expect(page.locator(".pd-views [aria-current='page']")).to_have_text({"timeline": "Timeline", "list": "List", "board": "Board"}[view])
-    lede = page.locator(".pd-lede")
-    expect(lede).to_contain_text(f"{total} projects on record")
-    tomas = page.evaluate("byPath('people/tomas-reyes.md').title", isolated_context=False)
-    expect(lede.locator(".red")).to_have_text(f"On Capstone review, a promise to {tomas} is 14 days late.")
-    assert "Songti" not in lede.evaluate("node => getComputedStyle(node).fontFamily")  # one typeface across the reader
-    expect(page.locator(".pd-basis")).to_contain_text("made by rule")
+    if view == "board":
+        expect(page.locator(".pd-colm h2 > span")).to_have_text(["Active", "Waiting", "Quiet", "Done"])
+        expect(page.locator(".pd-lede")).to_have_count(0)
+    else:
+        lede = page.locator(".pd-lede")
+        expect(lede).to_contain_text(f"{total} projects on record")
+        tomas = page.evaluate("byPath('people/tomas-reyes.md').title", isolated_context=False)
+        expect(lede.locator(".red")).to_have_text(f"On Capstone review, a promise to {tomas} is 14 days late.")
+        assert "Songti" not in lede.evaluate("node => getComputedStyle(node).fontFamily")  # one typeface across the reader
+        expect(page.locator(".pd-basis")).to_contain_text("made by rule")
     assert _visible_green_buttons(page) == 0
     # Nothing REM does not have is drawn: no families, no grouping or merge button, no per-project line.
     assert page.locator(".pd").get_by_text(re.compile(r"Accept|Merge|采用|合并")).count() == 0
@@ -5434,10 +5479,9 @@ def test_project_board_axis_is_a_question_and_each_answer_is_computed(reader, wi
 
     page = _project_page(reader, "board", width)
     cols = page.locator(".pd-colm h2 > span")
-    expect(cols).to_have_text(["Off track", "At risk", "On track", "Quiet"])
-    expect(page.locator(".pd-colm").first.locator(".pd-card")).to_have_count(2)  # atlas-docs, a sub-project, has its card
-    expect(page.locator(".pd-pencil-box")).to_contain_text("Tidewater")
-    expect(page.locator('.pd-card[data-path="projects/fernhill-pilot.md"]')).to_have_class(re.compile(r"\bweak\b"))  # read 2 of 40
+    expect(cols).to_have_text(["Active", "Waiting", "Quiet", "Done"])
+    expect(page.locator('.pd-state-col[data-state="active"] .pd-card[data-path="projects/atlas-docs.md"]')).to_have_count(1)
+    expect(page.locator('.pd-card[data-path="projects/fernhill-pilot.md"] .pd-step-what')).to_have_text("You owe Mara the weekly chart report")
     page.locator(".pd-asks").get_by_role("link", name="Who waits on whom").click()
     expect(page.locator(".pd-colm h2 > span")).to_have_text(["You owe others", "You wait on others", "Only with agents", "No open promise"])
     quinn = page.evaluate("byPath('people/quinn-alder.md').title", isolated_context=False)

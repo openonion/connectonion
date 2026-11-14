@@ -2073,13 +2073,14 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
 def test_record_header_dates_appear_once_and_strip_dates_are_localized():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'recordEyebrow', 'leadRow', 'recordFacts', 'fmtDate', 'calendarDay', 'daysSince', 'age'])
+        'recordEyebrow', 'leadRow', 'projectStateLine', 'recordFacts', 'fmtDate', 'calendarDay', 'daysSince', 'age'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + r''';
       const REM = {as_of: '2026-10-20', owner: 'people/avery-lin.md'}, DAY_MS = 86400000;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
       const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
+      const projectState = () => 'active', projectLate = () => null, PD_STATES = [['active', 'Active']], pdT = s => s;
       const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
       const statusPill = () => null, originalMark = () => null, translationMark = () => null, mappedContact = () => false;
       const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
@@ -2091,7 +2092,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
         uiLanguage = language;
         output[language] = ['projects', 'orgs'].map(category => {
           r.category = category;
-          return {eyebrow: recordEyebrow(r, false), lead: leadRow(r), strip: recordFacts(r)};
+          return {eyebrow: recordEyebrow(r, false), lead: category === "projects" ? projectStateLine(r) : leadRow(r), strip: recordFacts(r)};
         });
         r.category = 'people'; output[language].push(recordFacts(r));
       }

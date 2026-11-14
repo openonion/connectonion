@@ -98,8 +98,90 @@ def test_a_project_page_leads_with_state_next_steps_and_recent_sessions_and_fold
     tops = [box["y"] for box in (state.bounding_box(), steps.first.bounding_box(), recent.locator("li").first.bounding_box())]
     assert tops == sorted(tops) and tops[-1] < height, tops
     # Everything else is one fold away, never beside the lead.
-    for selector in (".focus-facts", ".related-records", ".project-workspace", ".project-sessions"):
+    for selector in (".focus-facts", ".related-records", ".project-context", ".project-sessions"):
         assert all(not node.is_visible() for node in page.locator(selector).all()), selector
     page.locator("details.deep-note > summary").click()
     assert page.locator(".deep-note .related-records").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_full_size_board_renders_in_one_second_and_opens_project_and_citation(reader, width):
+    from patchright.sync_api import expect
+
+    page = _open(reader, "#c=projects", width)
+    elapsed = page.evaluate("""() => {
+      const sample = byPath('projects/fernhill-pilot.md');
+      // The synthetic project must carry a retained source, not just a source definition.
+      REM.source_context['codex:fernhill-pilot'] = {source: 'codex',
+        time: '2026-09-28T10:00:00Z', excerpt: 'Project notes: You owe Mara the weekly chart report.'};
+      REM.records = REM.records.filter(r => r.category !== 'projects');
+      for (let i = 0; i < 500; i++) REM.records.push({...sample, path: 'projects/pilot-' + i + '.md',
+        title: 'Pilot ' + i, score: 0, relations: [], health: 'on_track'});
+      KNOWN.clear(); FACTS.clear();
+      const start = performance.now(); render();
+      document.querySelector('.pd').getBoundingClientRect();
+      return performance.now() - start;
+    }""", isolated_context=False)
+    assert elapsed < 1000, f"500 projects took {elapsed:.0f} ms"
+    expect(page.locator('.pd-count')).to_have_text('500')
+    expect(page.locator('.pd-state-col[data-state="active"] h2 small')).to_have_text('500')
+    page.locator('.pd-state-col[data-state="active"]').get_by_role('button').click()
+    expect(page.locator('.pd-state-card')).to_have_count(500)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.locator('.pd-state-card .pd-card-name').first.click()
+    expect(page.locator('.project-state')).to_contain_text('Active')
+    expect(page.locator('.next-exchanges')).to_contain_text('You owe Mara the weekly chart report')
+    page.locator('.project-step a.cite').first.click()
+    expect(page.locator('#evidence-panel')).to_be_visible()
+    expect(page.locator('#evidence-panel')).to_contain_text('Project notes: You owe Mara the weekly chart report.')
+
+
+def test_more_steps_reveals_only_the_remainder_in_the_same_priority_order(reader):
+    from patchright.sync_api import expect
+
+    page = _open(reader, "#r=projects%2Ffernhill-pilot.md", 390)
+    page.evaluate(r"""() => {
+      const r = byPath('projects/fernhill-pilot.md');
+      const lines = ['Waiting on Quinn for a review', 'Ask Codex to check the chart',
+        'You owe Mara the report', 'You owe Mara the release by 2026-09-20', 'An unassigned follow-up'];
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/,
+        '## Open threads\n' + lines.map(line => '- ' + line + ' [1].').join('\n') + '\n');
+      r.open = lines.map((text, i) => ({text: text + ' [1].', kind: ['waiting', 'agent', 'owed', 'owed', 'unknown'][i]}));
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    lead = page.locator('.next-exchanges .what')
+    expect(lead).to_contain_text(['You owe Mara the release', 'You owe Mara the report', 'Waiting on Quinn'])
+    page.locator('.project-more-steps').click()
+    expect(page.locator('details.deep-note')).to_have_attribute('open', '')
+    rest = page.locator('.deep-note .block-threads .what')
+    expect(rest).to_contain_text(['Ask Codex to check the chart', 'An unassigned follow-up'])
+    assert page.locator('.deep-note .block-threads').inner_text().count('You owe Mara the release') == 0
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_board_switch_clears_column_headers_and_empty_states_keep_only_a_narrow_header(reader, width):
+    from patchright.sync_api import expect
+
+    page = _open(reader, "#c=projects", width)
+    # Use the owner's interface language and an empty Done state, as in the reported screenshot.
+    page.evaluate("""() => {
+      REM.records = REM.records.filter(r => r.category !== 'projects' || projectState(r) !== 'done');
+      KNOWN.clear(); FACTS.clear(); setInterfaceLanguage('zh');
+    }""", isolated_context=False)
+    switch = page.locator('.pd-asks').bounding_box()
+    for heading in page.locator('.pd-colm h2').all():
+        box = heading.bounding_box()
+        assert (switch['y'] + switch['height'] <= box['y'] or
+                box['y'] + box['height'] <= switch['y'] or
+                switch['x'] + switch['width'] <= box['x'] or
+                box['x'] + box['width'] <= switch['x']), (switch, box)
+    done = page.locator('.pd-state-col[data-state="done"]')
+    expect(done.locator('h2')).to_contain_text('完成')
+    expect(done.locator('h2 small')).to_have_text('0')
+    expect(done.locator('.pd-card')).to_have_count(0)
+    if width == 1440:
+        active = page.locator('.pd-state-col[data-state="active"]')
+        assert done.bounding_box()['width'] <= 100
+        assert active.bounding_box()['width'] > done.bounding_box()['width'] * 2
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
