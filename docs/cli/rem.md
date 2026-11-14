@@ -1146,11 +1146,21 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations** lists each organisation once, with its units folded into that
-  row, ordered by most recent contact, and a compact shape showing branches by
-  the people you know there. Search
-  also finds an organisation by its unit names. A unit whose parent page is
-  missing stays in the list so its record can still be found.
+- **Organisations** opens as a full-width sortable table, newest contact first.
+  The default columns show a local logo or monogram, name, kind, what they do
+  or mean to you, website, location, people known there, activity (messages in
+  90 days and a 52-week contact strip), and last contact. Unknown facts are quiet
+  dashes. Kind chips filter the directory. **Columns** remembers your choices
+  separately from People and can add first contact, legal entity and parent.
+  Blanks sort last in either direction. On a phone rows become cards.
+  Websites open in a new tab; when Website is Unknown, a contact's business
+  email domain can supply a link marked **Derived** (free mail is excluded).
+  A `Logo:` fact can name a notebook-relative PNG, JPEG, GIF or WebP; the reader
+  embeds it in both live data and the self-contained snapshot, without fetching
+  images from the network. Missing logos use monograms.
+  Units stay folded under their parent until its disclosure is expanded; a
+  unit whose parent is missing stays findable in the list. Search also finds
+  organisations by their unit names.
   An organisation page shows an indented, collapsible tree: organisation →
   units, courses or teams → people, with most recently active branches first.
   People keep their role in each unit;

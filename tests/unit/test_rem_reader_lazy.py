@@ -59,6 +59,8 @@ def test_offline_startup_finishes_details_without_navigation():
     startup = template[template.index('Promise.all([readerStorage('):].split('</script>')[0]
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
+      const ORG_COLUMNS = [];
+      let orgTableColumns;
       let detailLoad = null, detailReady = false, peopleColumns,
         pendingThreads, threadStates, notebookThreads, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
