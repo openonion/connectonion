@@ -101,7 +101,7 @@ def test_person_and_project_pages_carry_a_local_graph_and_their_topics(page):
     block.wait_for()
     # A person opens with two rings: what they link to, and what those reach in turn (Cove, through Heat storage).
     assert block.locator(".gx-rings-svg a.near").count() == 2
-    assert block.locator(".gx-rings-svg a.far").get_attribute("aria-label") == "Cove. Project. Through Heat storage"
+    assert block.locator(".gx-rings-svg g.far").get_attribute("aria-label") == "Cove. Project. Through Heat storage"
     assert block.locator(".gx-topic-line a").inner_text() == "Heat storage"
     page.goto(uri + "#r=projects%2Fcove.md")
     assert page.locator(".gx-attach .gx-topic-line a").inner_text() == "Heat storage"

@@ -2712,8 +2712,6 @@
   .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
   .gx-local-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   /* ---- a person's relationships: two rings, lit by pointer, focus or tap, with a card that says why ---- */
-  .gx-rings .wt { margin-bottom: var(--u1); }
-  .gx-rings .wt h4 { margin: 0; color: inherit; font: inherit; }
   /* A page's own svg rules (.r4 svg strokes every icon) must not reach the marks: each part names its paint below. */
   .gx .gx-rings-svg { display: block; width: 100%; height: auto; overflow: visible; fill: none; stroke: none; }
   .gx-attach.gx-inline .gx-rings { width: min(100%, 372px); }
@@ -2725,27 +2723,26 @@
   .gx-rings-svg .g.rnd { stroke: var(--grey); stroke-width: 2; stroke-linejoin: round; }
   .gx-rings-svg .g.private { fill: none; stroke: var(--grey); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
   .gx-rings-svg .slash { stroke: var(--grey); stroke-width: 1.2; }
-  .gx-rings-svg a.far .g { opacity: .45; }
+  .gx-rings-svg .far .g { opacity: .45; }
   .gx-rings-svg text { font: var(--w-regular) var(--s-ui) var(--font); fill: var(--grey); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
-  .gx-rings-svg a.far text { font-size: var(--s-meta); opacity: 0; }
+  .gx-rings-svg .far text { font-size: var(--s-meta); opacity: 0; }
   .gx-rings-svg text.quiet { opacity: 0; }
   /* Lit: the record under the pointer and what it touches in ink, with their names; everything else steps back. */
-  .gx-rings-svg a, .gx-rings-lines line { transition: opacity var(--t-press) var(--ease-out); }
+  .gx-rings-svg [data-id], .gx-rings-lines line { transition: opacity var(--t-press) var(--ease-out); }
   .gx-rings-svg a:focus:not(:focus-visible) { outline: none; }  /* a tap lights the mark; the ring is for the keyboard */
-  .gx-rings-svg.lit a:not(.on) { opacity: .14; }
+  .gx-rings-svg.lit [data-id]:not(.on) { opacity: .14; }
   .gx-rings-svg.lit .gx-rings-lines line:not(.on) { opacity: .12; }
   .gx-rings-svg.lit .gx-rings-lines line.on { stroke: var(--grey); stroke-width: 1.25; }
-  .gx-rings-svg.lit a.on:not(.centre) .g { fill: var(--ink); opacity: 1; }
-  .gx-rings-svg.lit a.on .g.rnd { stroke: var(--ink); }
-  .gx-rings-svg.lit a.on text { opacity: 1; }
-  .gx-rings-svg.lit a.me:not(.centre) text { fill: var(--ink); font-weight: var(--w-bold); }
+  .gx-rings-svg.lit [data-id].on:not(.centre) .g { fill: var(--ink); opacity: 1; }
+  .gx-rings-svg.lit [data-id].on .g.rnd { stroke: var(--ink); }
+  .gx-rings-svg.lit [data-id].on text { opacity: 1; }
+  .gx-rings-svg.lit [data-id].me:not(.centre) text { fill: var(--ink); font-weight: var(--w-bold); }
   .gx-rings-svg a.centre circle { fill: var(--well); stroke: var(--rule); stroke-width: 1; }
   .gx-rings-svg a.centre text { font: var(--w-bold) var(--s-meta) var(--font); fill: var(--ink); stroke: none; }
   .gx-rings-svg a.centre .g { fill: var(--ink); }
-  .gx-rings-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
-  .gx-rings-links { display: flex; gap: var(--u3); margin-left: auto; white-space: nowrap; }
-  .gx-rings-foot :is(a, button) { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .gx-rings-foot :is(a, button):hover { color: var(--ink) !important; }
+  .gx-rings-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-rings-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .gx-rings-foot a:hover { color: var(--ink) !important; }
   /* The card is Related pages' own entry, floated on N3's top layer. */
   .gx-rings { position: relative; }
   .gx-rings-card { position: absolute; z-index: 3; left: 0; right: 0; padding: 12px 14px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3);
@@ -12528,8 +12525,7 @@ const GRAPH_UI_ZH = {
   "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
   "{n} more": "其余 {n} 个", "Personal": "个人事项", "Knowledge entry": "知识", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
   "Last mentioned": "最近提到", "First mentioned": "首次提到", "Aliases": "别名", "About": "关于",
-  "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
-  "{n} more through them": "再连出 {n} 条", "{n} more through them, {m} shown": "再连出 {n} 条，图上 {m} 条", "All relationships ↓": "全部关系 ↓",
+  "Local graph": "局部图谱", "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
   "Through {names}": "通过 {names}", "Through {n} sessions": "经由 {n} 个会话",
   "Related knowledge": "相关知识", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
   "Linked here": "链接到这里", "Where you stand": "你现在在哪", "Timeline": "时间线", "Open threads": "还没结的线",
@@ -13166,15 +13162,16 @@ const LOCAL_GLYPH = {
   other: { d: "M12 8.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", s: 1, c: 0 },  // skills, decisions, sessions
 };
 // mark, far and face are ink heights in px; width is the relationships widget's inner width; a person with at most
-// `rings` direct links gets the outer ring, which holds at most `second` records.
-const LOCAL = { mark: 16, far: 10, face: 36, width: 372, rings: 6, second: 12 };
-function graphRings(r, related = null) {
+// `rings` direct links gets the outer ring, which holds at most `second` records. On a notebook REM wrote, people had
+// four to eleven direct links; past four the first ring is new to the page, and two rings only crowd it.
+const LOCAL = { mark: 16, far: 10, face: 36, width: 372, rings: 4, second: 8 };
+function graphRings(r) {
   const model = graphModel(), centre = model.byId.get(r.path);
-  const head = () => el("div", { class: "wt" }, [icon("graph"), el("h4", { text: t("Relationships") })]);
+  const head = () => el("h4", { text: graphT("Local graph") });
   if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-rings" }, [head(), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
   const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
     .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
-  const reach = r.category === "people" && ring.length <= LOCAL.rings ? localReach(model, r, ring) : [], far = reach.slice(0, LOCAL.second);
+  const far = ring.length <= LOCAL.rings ? localReach(model, r, ring).slice(0, LOCAL.second) : [];
   const W = LOCAL.width, H = far.length ? 270 : 180, pos = localLayout(centre, ring, far, W, H);
   const named = new Set(ring.length <= 8 ? ring.map(n => n.id) : [...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 6).map(n => n.id));
   const line = (a, b, cls) => svgEl("line", { x1: pos.get(a.id).x.toFixed(1), y1: pos.get(a.id).y.toFixed(1), x2: pos.get(b.id).x.toFixed(1), y2: pos.get(b.id).y.toFixed(1),
@@ -13188,15 +13185,11 @@ function graphRings(r, related = null) {
     ...ring.map(n => localMark(n, pos.get(n.id), LOCAL.mark, false, says(n), placed.get(n.id)))];
   // The picture is as tall as what it holds: a record with two links does not leave an empty band.
   const ys = [...pos.values()].map(p => p.y), top = Math.max(0, Math.min(...ys) - 34), tall = Math.min(H, Math.max(...ys) + 34) - top;
-  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}`, role: "img", "aria-label": t("Relationships") },
+  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}`, role: "img", "aria-label": graphT("Local graph") },
     [svgEl("g", { class: "gx-rings-lines" }, lines), ...marks, localCentre(centre, pos.get(centre.id))]);
-  const counted = graphT("{n} directly linked", { n: ring.length }) + (!far.length ? "" : reach.length > far.length
-    ? " · " + graphT("{n} more through them, {m} shown", { n: reach.length, m: far.length }) : " · " + graphT("{n} more through them", { n: reach.length }));
-  const all = related ? el("button", { type: "button", text: graphT("All relationships ↓") }) : null;
-  if (all) all.onclick = () => { const fold = related.closest("details"); if (fold) fold.open = true; related.scrollIntoView({ block: "start" }); };
   const section = el("section", { class: "gx-rings" }, [head(), svg,
-    el("div", { class: "gx-rings-foot" }, [el("span", { text: counted }), el("span", { class: "gx-rings-links" }, [all,
-      el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]), el("div", { class: "gx-rings-card" })]);
+    el("div", { class: "gx-rings-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }),
+      el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })]), el("div", { class: "gx-rings-card" })]);
   // Drawn once, in viewBox units: CSS scales the picture, marks and names together, to the width it is shown at.
   localWire(section, r, ring, far);
   return section;
@@ -13274,7 +13267,8 @@ function localLabel(name) {
   return svgEl("text", { class: name.quiet ? "quiet" : "", "text-anchor": name.anchor, x: name.x.toFixed(1), y: name.y.toFixed(1) }, [document.createTextNode(name.text)]);
 }
 function localMark(n, p, size, far, says, name) {
-  return svgEl("a", { class: far ? "far" : "near", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), "data-id": n.id, "aria-label": says }, [
+  const at = far ? { class: "far", role: "img" } : { class: "near", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) };
+  return svgEl(far ? "g" : "a", { ...at, "data-id": n.id, "aria-label": says }, [
     svgEl("circle", { class: "hit", cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: far ? 11 : 14 }),
     localGlyph(n, p.x, p.y, size), name ? localLabel(name) : null]);
 }
@@ -13326,13 +13320,13 @@ function localWire(section, r, ring, far) {
   const light = id => {
     const lit = new Set(id ? [id, ...(touch.get(id) || [])] : []);
     svg.classList.toggle("lit", !!id);
-    for (const mark of svg.querySelectorAll("a[data-id]")) { mark.classList.toggle("on", lit.has(mark.dataset.id)); mark.classList.toggle("me", mark.dataset.id === id); }
+    for (const mark of svg.querySelectorAll("[data-id]")) { mark.classList.toggle("on", lit.has(mark.dataset.id)); mark.classList.toggle("me", mark.dataset.id === id); }
     for (const line of svg.querySelectorAll("line")) line.classList.toggle("on", (line.dataset.a === id || line.dataset.b === id) && lit.has(line.dataset.a) && lit.has(line.dataset.b));
     localCard(section, id && id !== r.path ? localWhy(r, graphModel().byId.get(id), far) : null);
   };
   const show = id => { clearTimeout(later); light(id); };
   const settle = () => { clearTimeout(later); later = setTimeout(() => light(pinned), 140); };  // long enough to reach the card
-  for (const mark of svg.querySelectorAll("a[data-id]")) {
+  for (const mark of svg.querySelectorAll("[data-id]")) {
     const id = mark.dataset.id;
     mark.addEventListener("pointerenter", event => { if (event.pointerType !== "touch") show(id); });
     mark.addEventListener("pointerleave", event => { if (event.pointerType !== "touch") settle(); });
@@ -13343,7 +13337,7 @@ function localWire(section, r, ring, far) {
   }
   card.addEventListener("pointerenter", () => clearTimeout(later));
   card.addEventListener("pointerleave", settle);
-  section.addEventListener("pointerdown", event => { pointer = event.pointerType; if (pinned && !event.target.closest("a[data-id], .gx-rings-card")) { pinned = ""; light(""); } });
+  section.addEventListener("pointerdown", event => { pointer = event.pointerType; if (pinned && !event.target.closest("[data-id], .gx-rings-card")) { pinned = ""; light(""); } });
   section.addEventListener("keydown", event => { if (event.key === "Escape" && pinned) { pinned = ""; light(""); } });
 }
 // The card docks along the widget's top or bottom edge, whichever covers less of what is lit; a short widget lets
@@ -13353,7 +13347,7 @@ function localCard(section, entry) {
   card.replaceChildren(...(entry ? [entry] : []));
   if (!entry || !entry.offsetHeight) return card.classList.remove("on");   // nothing to say, or a private record with passages hidden
   const box = section.getBoundingClientRect(), tall = card.offsetHeight;
-  const lit = [...section.querySelectorAll(".gx-rings-svg a.on:not(.centre)")].map(mark => mark.getBoundingClientRect());
+  const lit = [...section.querySelectorAll(".gx-rings-svg [data-id].on:not(.centre)")].map(mark => mark.getBoundingClientRect());
   const top = Math.min(...lit.map(b => b.top)) - box.top, bottom = Math.max(...lit.map(b => b.bottom)) - box.top;
   const cover = y => Math.max(0, Math.min(bottom, y + tall) - Math.max(top, y)) / Math.max(1, bottom - top);
   const [best] = [box.height - tall, 0].map(y => ({ y, covered: cover(y) })).sort((a, b) => a.covered - b.covered);
@@ -13366,10 +13360,8 @@ function graphRailAttach(main, r) {
   const model = graphModel();
   if (!model.adj.has(r.path)) return;
   const topics = [...model.adj.get(r.path)].map(id => model.byId.get(id)).filter(n => n.k === "knowledge" && n.r && !privateTopicHidden(n.r));
-  // Every relationship and its sentence is listed once, in the full note's Related pages; the widget points there.
-  const related = main.querySelector(".deep-note .related-records");
   // A person gets their relationships; an organisation or project page keeps the local graph until #2992 and #2993 settle.
-  const block = el("div", { class: "gx gx-attach" }, [r.category === "people" ? graphRings(r, related) : graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Knowledge here") + " " }),
+  const block = el("div", { class: "gx gx-attach" }, [r.category === "people" ? graphRings(r) : graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Knowledge here") + " " }),
     ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
   // A person's rail keeps who they are first; a project or organisation page has no rail yet, so the block sits above the full note.
   const rail = main.querySelector(".rel-slot, .r4-rail"), deep = main.querySelector(":scope > .deep-note");

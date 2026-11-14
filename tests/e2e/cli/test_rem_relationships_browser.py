@@ -73,26 +73,30 @@ def reader(tmp_path, monkeypatch):
 
 
 def mark(page, name):
-    return page.locator(f'.gx-rings-svg a[aria-label^="{name}."]')
+    return page.locator(f'.gx-rings-svg [aria-label^="{name}."]')
 
 
 def lit(page):
-    return sorted(label.split(".")[0] for label in page.locator(".gx-rings-svg a.on").evaluate_all("marks => marks.map(a => a.getAttribute('aria-label'))"))
+    return sorted(label.split(".")[0] for label in page.locator(".gx-rings-svg [data-id].on").evaluate_all("marks => marks.map(a => a.getAttribute('aria-label'))"))
 
 
 def test_a_person_has_two_rings_and_one_with_many_links_keeps_to_one(reader):
     page = reader(IDA)
     assert page.locator(".gx-rings-svg a.near").count() == 2
-    assert page.locator(".gx-rings-svg a.far").get_attribute("aria-label") == "Sol Marek. Person. Yard manager · Through Tern Yard"
-    assert page.locator(".gx-rings-foot > span").first.inner_text() == "2 directly linked · 1 more through them"
+    assert page.locator(".gx-rings-svg g.far").get_attribute("aria-label") == "Sol Marek. Person. Yard manager · Through Tern Yard"
+    assert page.locator(".gx-rings-foot > span").first.inner_text() == "2 directly linked"
+    # The widget adds a ring, not words or controls: upstream's heading and foot, and the outer ring is not a row of links.
+    assert page.locator(".gx-rings h4").inner_text() == "Local graph"
+    assert page.locator(".gx-rings-svg g.far").evaluate("g => g.tagName") == "g"
+    assert page.locator(".gx-rings a[href], .gx-rings button").count() == 4  # Tern Yard, Depot, Ida in the middle, Open in graph
     # Nothing is lit and no card is up until a mark is pointed at; the outer ring keeps its names to itself.
     assert page.locator(".gx-rings-svg.lit, .gx-rings-card.on").count() == 0
-    assert page.locator(".gx-rings-svg a.far text").evaluate("text => getComputedStyle(text).opacity") == "0"
+    assert page.locator(".gx-rings-svg g.far text").evaluate("text => getComputedStyle(text).opacity") == "0"
     assert page.locator(".gx-rings button", has_text="ring").count() == 0  # no depth switch: Open in graph has one
     # Seven direct links are a ring of their own; an organisation's ring is its people.
     page.goto(page.url.split("#")[0] + "#r=people%2Fmax-hale.md")
     page.locator(".gx-rings-svg a.near").nth(6).wait_for()
-    assert page.locator(".gx-rings-svg a.far").count() == 0
+    assert page.locator(".gx-rings-svg g.far").count() == 0
     assert page.locator(".gx-rings-foot > span").first.inner_text() == "7 directly linked"
     # An organisation's page keeps the local graph it had (#2992 will redraw it as a tree).
     page.goto(page.url.split("#")[0] + "#r=orgs%2Ftern-yard.md")
@@ -108,10 +112,10 @@ def test_pointing_at_a_mark_lights_what_it_touches_and_a_card_says_why(reader, w
     card.locator("strong").wait_for()
     # Tern Yard, the person reached through it and Ida stay; Depot steps back.
     assert lit(page) == ["Ida Voss", "Sol Marek", "Tern Yard"]
-    faded = "() => [...document.querySelectorAll('.gx-rings-svg a:not(.on)')].every(mark => getComputedStyle(mark).opacity < .2)"
+    faded = "() => [...document.querySelectorAll('.gx-rings-svg [data-id]:not(.on)')].every(mark => getComputedStyle(mark).opacity < .2)"
     page.wait_for_function(faded)
-    assert page.locator(".gx-rings-svg a:not(.on)").count() == 1
-    page.wait_for_function("() => getComputedStyle(document.querySelector('.gx-rings-svg a.far text')).opacity === '1'")
+    assert page.locator(".gx-rings-svg [data-id]:not(.on)").count() == 1
+    page.wait_for_function("() => getComputedStyle(document.querySelector('.gx-rings-svg g.far text')).opacity === '1'")
     # The card is Related pages' own entry: the kind and who linked, the name, the sentence, its citation.
     assert card.locator(".relation-kind").inner_text().startswith("Organisation · Linked from this page")
     assert card.locator("strong").inner_text() == "Tern Yard"
@@ -178,12 +182,3 @@ def test_a_link_inside_a_personal_passage_draws_no_line(reader):
     assert mark(page, "Wick Court").count() == 0
     labels = page.locator(".gx-rings-svg a").evaluate_all("marks => marks.map(a => a.getAttribute('aria-label') || '')")
     assert not any("leaving" in label for label in labels)
-
-
-def test_all_relationships_opens_the_full_note_at_related_pages(reader):
-    page = reader(IDA)
-    assert not page.locator("details.deep-note").evaluate("fold => fold.open")
-    page.locator(".gx-rings-foot button", has_text="All relationships").click()
-    assert page.locator("details.deep-note").evaluate("fold => fold.open")
-    assert page.locator(".related-records h2").is_visible()
-    assert page.locator(".gx-rings-foot a").get_attribute("href") == "#view=graph&focus=people%2Fida-voss.md"
