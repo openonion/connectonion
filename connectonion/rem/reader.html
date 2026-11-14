@@ -1430,15 +1430,25 @@
   .org-table .c-activity { width: 13%; }
   .org-table .c-last { width: 9%; }
   .org-table .clamp, .org-site a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; }
   .org-table-name a { overflow: hidden; text-overflow: ellipsis; }
+  .org-name-text { min-width: 0; display: flex; flex-direction: column; }
+  .org-unit-summary, .org-unit-path { color: var(--grey); font: var(--s-meta)/1.5 var(--font); white-space: normal; }
+  .org-tree-guide { position: absolute; top: -12px; bottom: -12px; border-left: 1px solid var(--rule); pointer-events: none; }
+  .org-list-controls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; }
+  .org-layout-switch { display: flex; gap: 12px; }
+  .org-layout-switch button { border: 0; background: transparent; color: var(--grey); font: inherit; cursor: pointer; padding: 8px 0; }
+  .org-layout-switch button[aria-pressed=true] { color: var(--ink); text-decoration: underline; text-underline-offset: 6px; }
   .org-table .org-logo { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: var(--radius); font-size: var(--s-meta); }
   .org-disclosure { flex: none; width: 24px; min-height: 32px; padding: 0; border: 0; color: var(--grey); background: transparent; cursor: pointer; }
+  .org-disclosure-space { flex: none; width: 24px; }
   .org-site small { color: var(--grey); font-size: var(--s-meta); }
   .org-activity { display: flex; flex-direction: column; gap: 4px; font-size: var(--s-meta); }
   @media (max-width: 600px) {
     .org-directory .org-kind-filters button { min-height: 44px; }
+    .org-layout-switch button { min-height: 44px; }
     .org-table .org-disclosure { min-width: 44px; min-height: 44px; }
+    .org-table .org-disclosure-space { width: 44px; }
     .sheet.org-table :is(th, td) { overflow: visible; }
     .sheet.org-table td.c-name { width: auto; }
     .org-table-name a { white-space: normal; }
@@ -10149,6 +10159,7 @@ function orgRows() {
 }
 // Organisations use the same chooser, blank-last sorter and phone cards as People.
 const ORG_TABLE_ZH = {
+  "By structure": "按结构", "Flat": "平铺", "List layout": "列表布局", "Subordinate units": "下属单位", "{n} units · {m} people": "{n} 个下属单位 · {m} 人",
   "Kind": "类别", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
   "company": "公司", "service": "服务", "team": "团队", "course": "课程", "event": "活动",
   "club": "社团",
@@ -10159,7 +10170,8 @@ function orgTableT(key, values = {}) {
 }
 let orgTableColumns = null;
 const ORG_SORT = { sort: "last", desc: true, text: "" };
-const orgExpanded = new Set();
+let orgListMode = "tree";
+let orgCollapsed = new Set();
 function orgFact(r, key, raw = false) {
   const fields = parseFacts(r).get(key) || r.facts?.[key] || [];
   return fields.map(f => raw ? unlabelled(f.value) : plainValue(f.value)).filter(v => v && !/^unknown\b/i.test(v)).join("; ");
@@ -10202,22 +10214,35 @@ function orgTableRow(o) {
     location: hidden ? "" : orgFact(r, "Location"), legal: hidden ? "" : orgFact(r, "Legal entity"),
     text: [orgName(r), hidden ? "" : [orgRelation(r), ...people.map(p => p.title), ...(o.units || []), r.domain || ""].join(" ")].join(" ").toLowerCase() };
 }
-function orgVisibleRows(rows, expanded, depth = 0, seen = new Set()) {
+function orgVisibleRows(rows, collapsed, depth = 0, seen = new Set()) {
   return rows.flatMap(d => {
     if (seen.has(d.r.path)) return [];
     seen.add(d.r.path);
-    return [{...d, depth, expanded: expanded.has(d.r.path)}, ...(expanded.has(d.r.path) ? orgVisibleRows(d.children || [], expanded, depth + 1, seen) : [])];
+    const expanded = !collapsed.has(d.r.path);
+    return [{...d, depth, expanded}, ...(expanded ? orgVisibleRows(d.children || [], collapsed, depth + 1, seen) : [])];
   });
 }
 function orgNameCell(d, draw) {
   const {r} = d, hidden = orgHidden(r);
   const logo = !hidden && /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(r.logo || "")
     ? el("img", {class: "org-logo", src: r.logo, alt: ""}) : orgTile(r, "org-logo");
-  const toggle = d.children?.length ? el("button", {type: "button", class: "org-disclosure", "aria-label": orgTableT("Units and people") + " · " + orgName(r),
+  const toggle = !d.flat && d.children?.length ? el("button", {type: "button", class: "org-disclosure", "aria-label": orgTableT("Units and people") + " · " + orgName(r),
     "aria-expanded": String(!!d.expanded), text: d.expanded ? "▾" : "▸"}) : null;
-  if (toggle) toggle.onclick = () => { orgExpanded.has(r.path) ? orgExpanded.delete(r.path) : orgExpanded.add(r.path); draw(); };
+  if (toggle) toggle.onclick = () => {
+    const collapsed = d.expanded;
+    d.expanded = !collapsed;
+    for (const paths of [orgCollapsed, ORG_SORT.search?.collapsed].filter(Boolean)) {
+      collapsed ? paths.add(r.path) : paths.delete(r.path);
+    }
+    readerStorage("co-rem-org-collapsed", [...orgCollapsed].join("\n"));
+    draw();
+  };
+  const summary = d.unitCount && !hidden ? el("small", {class: "org-unit-summary", text: orgTableT("{n} units · {m} people", {n: d.unitCount, m: d.people.length})}) : null;
+  const path = d.flat && d.ancestors?.length ? el("small", {class: "org-unit-path", text: [...d.ancestors, orgName(r)].join(" › ")}) : null;
+  const guides = Array.from({length: d.depth || 0}, (_, i) => el("span", {class: "org-tree-guide", "aria-hidden": "true", style: `left:${i * 18 + 8}px`}));
+  const disclosure = toggle || (!d.flat ? el("span", {class: "org-disclosure-space", "aria-hidden": "true"}) : null);
   return el("span", {class: "nm org-table-name", style: `padding-left:${(d.depth || 0) * 18}px`},
-    [toggle, logo, el("a", {href: href(r), text: orgName(r)}), hidden ? orgLock() : null]);
+    [...guides, disclosure, logo, el("span", {class: "org-name-text"}, [el("a", {href: href(r), text: orgName(r)}), summary, path]), hidden ? orgLock() : null]);
 }
 function orgWebsiteCell(d) {
   return d.website ? el("span", {class: "org-site"}, [el("a", {href: d.website.url, target: "_blank", rel: "noopener",
@@ -10235,6 +10260,8 @@ const ORG_COLUMNS = [
     [el("span", {class: "mono", text: orgTableT("{n} messages · 90 days", {n: d.rel.messages_90d})})]) : textCell("")},
   {key: "last", label: "Last contact", desc: true, sort: d => blank(d.last), cell: d => d.last ? el("span", {class: "mono", text: calendarDate(d.last)}) : textCell("")},
   {key: "first", label: "First contact", extra: true, sort: d => blank(d.first), cell: d => d.first ? el("span", {class: "mono", text: calendarDate(d.first)}) : textCell("")},
+  {key: "units", label: "Subordinate units", extra: true, num: true, desc: true, sort: d => orgHidden(d.r) ? null : d.unitCount,
+    cell: d => orgHidden(d.r) ? textCell("") : el("span", {class: "mono", text: String(d.unitCount)})},
   {key: "legal", label: "Legal entity", extra: true, sort: d => blank(d.legal), cell: d => textCell(d.legal)},
   {key: "parent", label: "Parent", extra: true, sort: d => blank(byPath(d.r.parent)?.title), cell: d => byPath(d.r.parent) ? el("a", {href: href(byPath(d.r.parent)), text: orgName(byPath(d.r.parent))}) : textCell("")}
 ];
@@ -10244,7 +10271,9 @@ function orgTableChildren(d, seen = new Set()) {
   return d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path)).map(r => {
     const people = orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
+    child.ancestors = [...(d.ancestors || []), orgName(d.r)];
     child.children = orgTableChildren(child, next);
+    child.unitCount = child.children.length;
     return child;
   });
 }
@@ -10252,9 +10281,8 @@ function orgsView() {
   document.getElementById("main").textContent = "";
   orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS);
   const rows = orgRows().map(orgTableRow);
-  for (const d of rows) d.children = orgTableChildren(d);
+  for (const d of rows) { d.children = orgTableChildren(d); d.unitCount = d.children.length; }
   if (orgFilter.tab !== "all" && !rows.some(d => [d, ...orgDescendants(d)].some(child => child.kind === orgFilter.tab))) orgFilter.tab = "all";
-  let previousFilter = "";
   peopleView([], {category: "orgs", translate: orgTableT,
     widths: {name: 20, kind: 8, summary: 22, website: 13, location: 13, people: 6, activity: 10, last: 8, first: 9, legal: 16, parent: 14}, columns: ORG_COLUMNS, state: ORG_SORT, rows,
     chosen: () => orgTableColumns, choose: keys => { orgTableColumns = keys; }, storage: "co-rem-org-columns",
@@ -10262,18 +10290,37 @@ function orgsView() {
     className: "ov-list org-directory", tableClass: "org-table", rowClass: "org-table-row",
     title: orgTableT("{n} organisations", {n: rows.length}), placeholder: "Filter organisations, people, domains",
     matches: (d, needle) => orgFilterRows([d], orgFilter.tab, needle).length > 0,
-    visible: (shown, col, state) => {
-      const sort = list => { for (const d of list) { d.keys = {[col.key]: col.sort(d)}; sort(d.children || []); } list.sort(peopleOrder(col, state.desc)); };
-      const needle = state.text.trim().toLowerCase();
-      const filtered = orgFilterRows(shown, orgFilter.tab, needle);
-      sort(filtered);
-      const filter = JSON.stringify([orgFilter.tab, needle]);
-      if (filter !== previousFilter && (orgFilter.tab !== "all" || needle)) {
-        for (const d of filtered.flatMap(d => [d, ...orgDescendants(d)])) if (d.children.length) orgExpanded.add(d.r.path);
-      }
-      previousFilter = filter;
-      return orgVisibleRows(filtered, orgExpanded);
-    }, filters: draw => orgKindFilters(rows, draw)});
+    visible: orgListRows, filters: draw => orgListControls(rows, draw)});
+  const directory = document.querySelector(".org-directory");
+  // Capture the user's sort intent, including clicking the already selected Last contact.
+  directory.addEventListener("click", event => { if (event.target.closest("th button")) orgListMode = "flat"; }, true);
+  directory.addEventListener("change", event => { if (event.target.matches(".people-sort")) orgListMode = "flat"; }, true);
+}
+function orgListRows(rows, col, state) {
+  const all = rows.flatMap(d => [d, ...orgDescendants(d)]);
+  for (const d of all) d.keys = {[col.key]: col.sort(d)};
+  const order = list => list.sort(peopleOrder(col, state.desc));
+  const needle = state.text.trim().toLowerCase();
+  if (state.search?.text !== needle) state.search = {text: needle, collapsed: new Set()};
+  document.querySelectorAll(".org-layout-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === orgListMode)));
+  if (orgListMode === "flat") return order(all.filter(d => (orgFilter.tab === "all" || d.kind === orgFilter.tab) && (!needle || d.text.includes(needle))))
+    .map(d => ({...d, flat: true, depth: 0}));
+  const sortTree = list => order(list).map(d => ({...d, children: sortTree(d.children || [])}));
+  const filtered = sortTree(orgFilterRows(rows, "all", needle));
+  return orgVisibleRows(filtered, needle ? state.search.collapsed : orgCollapsed);
+}
+function orgListControls(rows, draw) {
+  const layout = el("div", {class: "org-layout-switch", role: "group", "aria-label": orgTableT("List layout")});
+  for (const [mode, label] of [["tree", "By structure"], ["flat", "Flat"]]) {
+    const button = el("button", {type: "button", "data-mode": mode, "aria-pressed": String(orgListMode === mode), text: orgTableT(label)});
+    button.onclick = () => {
+      orgListMode = mode;
+      if (mode === "tree") { orgFilter.tab = "all"; ORG_SORT.sort = "last"; ORG_SORT.desc = true; orgsView(); }
+      else draw();
+    };
+    layout.append(button);
+  }
+  return el("div", {class: "org-list-controls"}, [layout, orgKindFilters(rows, draw)]);
 }
 function orgFilterRows(rows, kind, needle) {
   return rows.flatMap(d => {
@@ -10290,7 +10337,7 @@ function orgKindFilters(rows, draw) {
   if (!tabs.includes(orgFilter.tab)) orgFilter.tab = "all";
   bar.append(...tabs.map(kind => {
     const button = el("button", {type: "button", "aria-pressed": String(orgFilter.tab === kind), text: kind === "all" ? orgTableT("All") : orgTableT(ORG_KINDS[kind] || kind)});
-    button.onclick = () => { orgFilter.tab = kind; bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button))); draw(); };
+    button.onclick = () => { orgFilter.tab = kind; orgListMode = "flat"; bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button))); draw(); };
     return button;
   }));
   return bar;
@@ -13799,10 +13846,11 @@ window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
-  readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved]) => {
+  readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns"), readerStorage("co-rem-org-collapsed")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved, collapsed]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   peopleColumns = peopleColumnKeys(columns);
   orgTableColumns = peopleColumnKeys(orgSaved, ORG_COLUMNS);
+  orgCollapsed = new Set((collapsed || "").split("\n").filter(Boolean));
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   keptOpen = kept ? JSON.parse(kept) : {};
   const fallback = saved ? JSON.parse(saved) : null;

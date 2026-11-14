@@ -45,14 +45,14 @@ def test_org_table_columns_links_activity_and_calm_blanks(browser, tmp_path, mon
     page = _open(browser, tmp_path, monkeypatch, width)
     assert page.locator('.org-table thead th').count() == 8
     assert page.locator('.org-table th.c-last').get_attribute('aria-sort') == 'descending'
-    assert _names(page) == ['Cedar Works', 'Elm Desk', 'Ash']
+    assert _names(page) == ['Cedar Works', 'Field team', 'Elm Desk', 'Ash']
     cedar = page.locator('.org-table tbody tr').filter(has_text='Cedar Works')
     assert cedar.locator('.c-people').inner_text() == '1'
     assert '9' in cedar.locator('.c-activity').inner_text()
     assert cedar.locator('.c-activity').inner_text() == '9 messages · 90 days'
     assert cedar.locator('.contact-spark').count() == 0
     assert cedar.locator('img').get_attribute('src').startswith('data:image/png;base64,')
-    assert page.locator('.org-logo').count() == 3
+    assert page.locator('.org-logo').count() == 4
     for a in page.locator('.c-website a').all():
         assert a.get_attribute('target') == '_blank' and a.get_attribute('rel') == 'noopener'
     assert 'Derived' in page.locator('tr').filter(has_text='Elm Desk').inner_text()
@@ -74,7 +74,7 @@ def test_org_table_columns_links_activity_and_calm_blanks(browser, tmp_path, mon
 def test_org_table_nesting_kind_filter_and_column_memory(browser, tmp_path, monkeypatch):
     page = _open(browser, tmp_path, monkeypatch, 1440)
     toggle = page.locator('.org-disclosure').first
-    toggle.click()
+    assert toggle.get_attribute('aria-expanded') == 'true'
     assert _names(page) == ['Cedar Works','Field team','Elm Desk','Ash']
     assert page.locator('tr').filter(has_text='Field team').locator('.org-table-name').evaluate('e => parseInt(e.style.paddingLeft)') == 18
     page.locator('.org-disclosure').first.click()
@@ -83,28 +83,30 @@ def test_org_table_nesting_kind_filter_and_column_memory(browser, tmp_path, monk
     assert _names(page) == ['Elm Desk']
     page.locator('.org-kind-filters').get_by_role('button', name='All', exact=True).click()
     page.locator('.org-kind-filters').get_by_role('button', name='team', exact=True).click()
-    assert _names(page) == ['Cedar Works', 'Field team']
+    assert _names(page) == ['Field team']
     page.locator('.org-kind-filters').get_by_role('button', name='All', exact=True).click()
-    page.locator('.org-disclosure').first.click()
+    page.locator('.org-layout-switch').get_by_role('button', name='By structure', exact=True).click()
     assert 'Field team' not in _names(page)
     page.locator('.people-columns-open').click()
-    for key in ('first','legal','parent'):
+    for key in ('first','units','legal','parent'):
         page.locator(f'.people-columns input[value={key}]').check()
-    assert page.locator('.org-table thead th').count() == 11
+    assert page.locator('.org-table thead th').count() == 12
     page.evaluate('async () => { orgTableColumns = peopleColumnKeys(await readerStorage("co-rem-org-columns"), ORG_COLUMNS); render(); }', isolated_context=False)
-    assert page.locator('.org-table thead th').count() == 11
+    assert page.locator('.org-table thead th').count() == 12
     assert page.evaluate("readerStorage('co-rem-people-columns')", isolated_context=False) is None
 
 
 def test_org_table_every_header_sorts_both_ways_blank_last(browser, tmp_path, monkeypatch):
     page = _open(browser, tmp_path, monkeypatch, 1440)
     page.evaluate("() => { orgTableColumns = peopleColumnKeys('more', ORG_COLUMNS); render(); }", isolated_context=False)
-    for key in ('name','kind','summary','website','location','people','activity','last','first','legal','parent'):
+    for key in ('name','kind','summary','website','location','people','activity','last','first','units','legal','parent'):
         for _ in range(2):
             page.locator(f'.org-table th.c-{key} button').click()
             assert page.evaluate(r'''key => {
               const col = ORG_COLUMNS.find(c=>c.key===key);
-              const rows = orgRows().map(orgTableRow);
+              const roots = orgRows().map(orgTableRow);
+              for (const d of roots) { d.children = orgTableChildren(d); d.unitCount = d.children.length; }
+              const rows = roots.flatMap(d => [d, ...orgDescendants(d)]);
               const values = [...document.querySelectorAll('.org-table tbody tr')].map(tr=>col.sort(rows.find(d=>href(d.r)===tr.dataset.href)));
               const desc = document.querySelector('.org-table th.c-'+key).getAttribute('aria-sort')==='descending';
               const blank = values.indexOf(null);
@@ -133,4 +135,4 @@ def test_org_search_and_kind_filters_are_visible_and_localised(browser, tmp_path
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
     assert page.locator('.empty').count() == 0
-    assert _names(page) == ['Cedar Works', 'Elm Desk', 'Ash']
+    assert _names(page) == ['Cedar Works', 'Field team', 'Elm Desk', 'Ash']
