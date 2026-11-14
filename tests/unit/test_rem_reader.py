@@ -405,14 +405,6 @@ def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card()
     assert out == ["Dina Morrow", "Brightlane annual…", "接收港湾租约邮件…", "接收港湾…", "𠀀𠀁𠀂…"]
 
 
-def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_letters():
-    label = re.search(r"function graphLocalLabel\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-    cases = [["Dina Morrow", 120, 236, True], ["Applied Brightlane Holdings", 61, 236, False],
-             ["Applied Brightlane Holdings", 25, 236, False], ["Ian Chan", 230, 236, True]]
-    out = _run_reader_js(short + "\n" + label + "\nconsole.log(JSON.stringify(" + json.dumps(cases)
-                         + ".map(([t, x, w, right]) => graphLocalLabel(t, x, w, right))));")
-    assert out == ["Dina Morrow", "Applied…", "", ""]
 
 
 def test_org_company_name_uses_the_most_common_linked_company_fact():
