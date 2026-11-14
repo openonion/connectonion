@@ -1119,8 +1119,7 @@ def _harbour_page(tmp_path):
 
 
 def test_last_activity_is_the_newest_dated_activity_on_the_page(tmp_path, monkeypatch):
-    """The night round lifts it to the session of 20 October; a snapshot's read day
-    and a web page's date are not activity."""
+    """Every dated source participates; the night round and promotion agree."""
     from connectonion.rem import facts, native_round, service
     from connectonion.rem.config import read_config
     book = _harbour_page(tmp_path)
@@ -1131,7 +1130,7 @@ def test_last_activity_is_the_newest_dated_activity_on_the_page(tmp_path, monkey
     monkeypatch.setattr(native_round, "_jobs", lambda *args: [])
     native_round.prepare(tmp_path, read_config(tmp_path), scheduled=False)
     fact = facts.parse(book.read("projects/harbour.md"), "projects/harbour.md")["Last activity"][0]
-    assert fact["value"] == "2026-10-20" and fact["citations"] == ["3"]
+    assert fact["value"] == "2026-11-03" and fact["citations"] == ["6"]
 
 
 def test_a_promoted_project_page_cannot_date_its_activity_before_its_own_sources(tmp_path):
@@ -1139,8 +1138,22 @@ def test_a_promoted_project_page_cannot_date_its_activity_before_its_own_sources
     book = _harbour_page(tmp_path)
     runner._write_page(book, "projects/harbour.md", book.read("projects/harbour.md"), [])
     page = book.read("projects/harbour.md")
-    assert facts.parse(page, "projects/harbour.md")["Last activity"][0]["value"] == "2026-10-20"
+    assert facts.parse(page, "projects/harbour.md")["Last activity"][0]["value"] == "2026-11-03"
     later = page.replace(re.search(r"(?m)^- Last activity:.*$", page)[0],
                          "- Last activity: 2026-10-25 — release planned in a session [3]")
     runner._write_page(book, "projects/harbour.md", later, [])
-    assert "- Last activity: 2026-10-25 — release planned in a session [3]" in book.read("projects/harbour.md")
+    saved = book.read("projects/harbour.md")
+    fact = facts.parse(saved, "projects/harbour.md")["Last activity"][0]
+    assert fact["value"] == "2026-11-03"
+    assert re.search(rf"^- \[{fact['citations'][0]}\] web:https://example.test/harbour — 2026-11-03$", saved, re.M)
+
+
+@pytest.mark.parametrize("value", ["Unknown", "2026-12-01 — planned release [3]"])
+def test_project_activity_replaces_unknown_or_a_later_model_chosen_day(tmp_path, value):
+    from connectonion.rem import facts
+    book = _harbour_page(tmp_path)
+    page = re.sub(r"(?m)^- Last activity:.*$", "- Last activity: " + value, book.read("projects/harbour.md"))
+    after = project_pages.settle_last_activity(tmp_path, page)
+    assert facts.parse(after, "projects/harbour.md")["Last activity"][0]["value"] == "2026-11-03"
+    assert "quiet since 2026-10-01" not in after
+    assert project_pages.settle_last_activity(tmp_path, after) == after
