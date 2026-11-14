@@ -897,8 +897,8 @@ def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
         name = _safe_name(patch["name"], f"code-{n}")
         saved = folder / "code" / name
         saved.mkdir(parents=True, exist_ok=True)
-        (saved / "commits.mbox").write_text(patch["commits"], encoding="utf-8")
-        (saved / "changes.diff").write_text(patch["changes"], encoding="utf-8")
+        (saved / "commits.mbox").write_bytes(sessions.patch_bytes(patch["commits"]))
+        (saved / "changes.diff").write_bytes(sessions.patch_bytes(patch["changes"]))
         if entry.get("repository"):
             lines.append(f"The code is on {entry['repository']} up to {patch['base'][:12]}; the rest is in {saved}: "
                          f"clone it, check out {patch['base'][:12]}, then git am {saved / 'commits.mbox'}, "
@@ -913,9 +913,11 @@ def _unpack_code(entries: list, patches: list, folder: Path) -> list[str]:
 
 
 def _rebuild(target: Path, saved: Path, patch: dict) -> None:
+    # Bytes, not text: git copies a patch line onto stderr (a trailing-whitespace warning), and that
+    # line may be the non-UTF-8 one (#2570). Decoding it here raised after the file was already written.
     git = lambda *args: subprocess.run(["git", "-C", str(target), "-c", "user.name=co handoff",
                                         "-c", "user.email=handoff@connectonion", *args],
-                                       check=True, capture_output=True, text=True)
+                                       check=True, capture_output=True)
     target.mkdir(parents=True)
     git("init", "-q", "-b", "main")
     if patch["commits"]:
