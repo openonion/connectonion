@@ -518,8 +518,13 @@ now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
 round calls the existing configured model runner once and uses the same material,
 input character bound, owner-quote and citation checks, and decisions/principles
 write scope as the night. Passing pages are kept; refused pages and reasons are
-printed and saved with the run. It continues until nothing is left or a round
-writes no page; `--rounds 2` stops after at most two rounds. Output gives per-round
+printed and saved with the run. Each decision copies the owner's quote exactly as
+captured in the supplied Decisions or Key decisions into the body immediately
+followed by its `[n]`; `## Sources` defines the original source ID for that number
+and keeps the originating page as context. A quote
+placed only under Sources is refused with instructions to move it into the body.
+It continues until nothing is left or a round writes no page; `--rounds 2` stops
+after at most two rounds. Output gives per-round
 counts and totals, decisions left, then `co rem list decisions`. Exit is 0 after
 progress or when nothing is waiting; it is 1 when the first round writes no page,
 with the reason on the last line. A crash leaves its decisions pending. Manual

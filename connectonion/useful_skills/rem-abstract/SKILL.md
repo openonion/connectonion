@@ -25,6 +25,14 @@ The test for whether something is a decision at all:
 launchd interval tick rather than a calendar trigger" has one, and a reason.
 Expect to discard most of what you read.
 
+Copy the owner’s verbatim words into the body, immediately followed by its `[n]`.
+Keep the quote and its citation on the same line, before `## Sources`.
+Copy the quote exactly as captured in the supplied `## Decisions` or
+`## Key decisions`; preserve its original source ID when renumbering citations.
+Under `## Sources`, define each `[n]` with its original source ID and keep the
+originating page path as context. That section holds source definitions; the
+owner’s quoted choice belongs beside the decision in the body.
+
 The entry key is the question, so **several artifacts collapse into one page**,
 and a later reversal **edits that page** rather than opening a second:
 
@@ -32,7 +40,8 @@ and a later reversal **edits that page** rather than opening a second:
 # Where the notebook is stored: Markdown or SQLite
 
 Markdown. Chosen 2026-09-02 for portability; the user corrected the reason to
-inspectability on 2026-09-07 and kept the choice. SQLite was discussed and not
+inspectability on 2026-09-07 and kept the choice:
+“Use Markdown so I can inspect the pages.” [1] SQLite was discussed and not
 adopted. Revisit only if plain-text search stops holding up.
 
 ## Why
@@ -42,7 +51,8 @@ would have made search cheaper and every other kind of inspection harder.
 ## What it cost
 Search is linear. At 143 pages that is not yet a problem.
 
-Sources: PR #1234, PR #1288 (the correction), codex:s1:347
+## Sources
+- [1] codex:s1:347 — owner, 2026-09-07; originating page: `sessions/storage.md`, `## Decisions`.
 ```
 
 Four sections, and the second one is load-bearing: **`## Why` is the raw

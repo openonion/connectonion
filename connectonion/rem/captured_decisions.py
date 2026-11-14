@@ -135,4 +135,5 @@ def quote_errors(text, items):
                 for pair in _quote_bindings(item["text"]) if pair[1]]
     if any(binding and (words, binding) in captured for words, binding in _quote_bindings(text)):
         return []
-    return ["Decision must quote the owner's words with the original source citation from captured Decisions or Key decisions"]
+    return ["Decision must quote the owner's words exactly as captured in Decisions or Key decisions; "
+            "put the quote in the body immediately followed by its [n] and define the original source ID under ## Sources"]

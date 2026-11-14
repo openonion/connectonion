@@ -2347,7 +2347,12 @@ def unquoted_decisions(text: str, *, decision_page=False) -> list[str]:
     2026-10-20 reruns: four of five handoff decisions were paraphrased though
     rem-page-project asks each to quote the sentence that carries the choice.
     """
-    if decision_page and not QUOTE.search(prose(text).partition('\n## Sources\n')[0]):
+    body, _, sources = prose(text).partition('\n## Sources\n')
+    if decision_page and not QUOTE.search(body):
+        sources = re.split(r'^## ', sources, maxsplit=1, flags=re.M)[0]
+        if QUOTE.search(sources):
+            return ["Decision: the quote is under Sources; put it in the body beside its [n]. "
+                    "Keep the original source ID under ## Sources"]
         return ["Decision without the owner's words -- quote the sentence that carries the choice, copied from the message it cites"]
     span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
