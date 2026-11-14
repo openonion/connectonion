@@ -21,7 +21,7 @@ none, and prints which file it read.
 | `path` | When |
 |---|---|
 | `turn` | every tool call in an agent turn, done or declined, including calls made inside Codex or Claude Code |
-| `auto` | once per non-admin requester turn in hosted Auto or Full access; includes `task_summary`, `mode` and outcome |
+| `auto` | every automatic run by a non-admin requester in hosted Auto or Full access; includes `task_summary`, `mode` and that run's outcome |
 | `exec` | every network EXEC, allowed or refused |
 | `browser` | every Remote Browser request |
 | `trust` | every change to contacts, the whitelist, the blocklist or admins, with the block reason. `subject` is whom it is about; `--who` matches it too |
@@ -33,12 +33,11 @@ Each line has `ts`, `who` (`key:0x…`, `email:…`, `chat:<provider>:<sender>`,
 TOKEN, SECRET or PASSWORD are replaced with `***` before the line is written.
 
 Hosted Auto follows **context over control**: a non-admin is told once per
-session that the work is allowed, recorded, and subject to revocation. The first
-qualifying action per requester turn is recorded, and the Host prints an operator notice afterwards
+session that the work is allowed, recorded, and subject to revocation. Every
+automatic run is recorded with its own outcome, and the Host prints an operator notice after each
 with the requester, tool, task, mode, outcome and commands to review or revoke.
 This applies across coding providers, Full access and ordinary Auto-approved tools.
-The summary outcome describes that first action; individual `turn` entries
-retain subsequent tool outcomes. The
+An
 `auto` entry summarizes the delegated run; ordinary `turn` entries still record
 the outer call and any inner calls the adapter exposes. Human-readable output
 shows the Auto task summary and mode; `--json` includes all fields.

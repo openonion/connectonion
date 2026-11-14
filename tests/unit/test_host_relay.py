@@ -370,6 +370,7 @@ class TestCreateRouteHandlers:
         created_agents = []
         def tracking_factory():
             agent = Mock()
+            agent.events = {"before_llm": [], "before_each_tool": []}
             agent.input = Mock(return_value="result")
             agent.current_session = {}
             created_agents.append(agent)
@@ -392,6 +393,7 @@ class TestCreateRouteHandlers:
 
         def mock_factory():
             agent = Mock()
+            agent.events = {"before_llm": [], "before_each_tool": []}
             agent.input = Mock(return_value="expected result")
             agent.current_session = {"messages": []}
             return agent

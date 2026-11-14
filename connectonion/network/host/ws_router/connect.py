@@ -22,18 +22,11 @@ from ..protocol import (
     requests_session_sync_only,
     supports_oip,
 )
+from ..revocation import current_trust_level
 from .agent_io import resume_forwarding
 
 console = Console()
 logger = logging.getLogger(__name__)
-
-
-def current_trust_level(trust_agent, address):
-    """Read live list membership, with an explicit block taking precedence."""
-    level = trust_agent.get_level(address)
-    if level == "blocked":
-        return level
-    return "admin" if trust_agent.is_admin(address) else level
 
 
 def _record_oip_compatibility(data, conn):
