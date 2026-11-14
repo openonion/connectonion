@@ -1598,7 +1598,7 @@ def trust_unblock(
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
-    """Accept calls from a blocked address again by removing it from the blocklist. Its contacts, whitelist and your trust setting still decide access."""
+    """Accept calls from a blocked address again. Removes it from the blocklist; its contacts, whitelist and your trust setting still decide access."""
     from .commands.trust_commands import handle_trust_unblock, trust_target
     handle_trust_unblock(address, co_dir=trust_target(co_dir, global_))
 
