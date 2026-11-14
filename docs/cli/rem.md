@@ -1072,7 +1072,9 @@ pinned to that edge: it comes into view with the draft.
   linked record that All records used to draw (`#view=graph`; the old `#c=all`
   address opens it too). Every record the All records list held is still in its
   own category (a rail place or **More**) and in search; **Graph** is also in
-  the ⌘K palette. With nothing linked yet, **Graph** shows the entries instead.
+  the ⌘K palette. A list with one or two entries also offers **Explore linked
+  records →** when the graph has links. With nothing linked yet, **Graph** shows
+  the entries instead.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
   with its name and its finder (*Find among N skills…*) on one line, the most
@@ -1080,7 +1082,11 @@ pinned to that edge: it comes into view with the draft.
   no caption. Today's number stands beside the faces it starts with, without
   *Start with these N people*. The graph's heading is **Knowledge** and its
   switch; its counts are in the legend under the map, and the panel lists the
-  entries, then the busiest pages, divided by a rule.
+  entries, then the busiest pages, divided by a rule. Sessions keeps its count
+  without an explanatory subtitle; Projects keeps its factual summary at body
+  size and drops the sentences describing its sort order and board axes. The
+  [category heading audit](rem-heading-audit.md) records each keep/drop decision
+  and inventories the former All records paths.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a

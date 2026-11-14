@@ -124,12 +124,13 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
-def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
+@pytest.mark.parametrize('place', ['', '#c=knowledge'], ids=['today', 'knowledge-active'])
+def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, place):
     """D-132: a 72px rail of pictures with their words under them. Its content is 656 tall: a window that tall
     shows all of it, and in a lower one the rail itself scrolls, so every place, 更多, settings and you stay in reach."""
     page, uri = reader
     page.set_viewport_size({'width': 960, 'height': 700})
-    page.goto(uri)
+    page.goto(uri + place)
     boxes = "nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })"
     tall = page.locator('.rail .nav').evaluate_all(boxes)
     assert len(tall) == 10 and all(top >= 0 and bottom <= 700 and width == 56 for top, bottom, width in tall)
@@ -152,8 +153,11 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
       cell = w.parentElement.getBoundingClientRect(), picture = w.parentElement.querySelector('.ic').getBoundingClientRect();
       return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
         inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
-    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings']
-    assert all(w['shown'] and w['size'] == '11px' and w['height'] == 14 and w['inside'] and w['under'] for w in words), words
+    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings']
+    expected = {'shown': True, 'size': '11px', 'height': 14, 'inside': True, 'under': True}
+    failures = [{'word': w['word'], **{key: w[key] for key, value in expected.items() if w[key] != value}}
+                for w in words if any(w[key] != value for key, value in expected.items())]
+    assert not failures, failures
     page.locator('.nav.more').click()
     assert page.locator('#rail-more a[href="#view=changes"]').is_visible()
     menu = page.locator('#rail-more').bounding_box()
@@ -2595,7 +2599,7 @@ def test_sessions_search_keeps_focus_and_bookmarks_full_reply(session_reader, wi
     page.goto(uri + "#c=sessions")
     box = page.get_by_role("searchbox", name="Search sessions")
     assert box.evaluate("node => node === document.activeElement") == (width == 1400)
-    expect(page.locator("h1")).to_have_text("6 sessions · What you worked on with your coding agents")
+    expect(page.locator("h1")).to_have_text("6 sessions")
     expect(page.locator(".session-result-line")).to_have_count(0)
     assert "Imported" not in page.locator("#main").inner_text()
     box.press_sequentially("cloud sql", delay=150)
@@ -5537,7 +5541,7 @@ def test_sessions_tabs_choose_unfinished_or_one_agent(session_reader):
     expect(page.locator(".session-result-line")).to_have_count(0)
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(tabs.locator("button")).to_have_text(["全部", "没做完 1", "Codex", "Claude Code"])
-    expect(page.locator("h1.page-state")).to_have_text("6 个会话 · 和编程 agent 一起做的事")
+    expect(page.locator("h1.page-state")).to_have_text("6 个会话")
 
 
 @pytest.mark.parametrize("width", [1400, 375])

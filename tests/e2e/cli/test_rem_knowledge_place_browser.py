@@ -31,6 +31,8 @@ def notebook(root):
     from connectonion.rem.files import Notebook
     build(root, datetime(2026, 10, 1, 12, tzinfo=timezone.utc))
     nb = Notebook(root)
+    nb.write("principles/steady.md", "# Steady pace\n\nKeep a steady pace.\n")
+    nb.write("orgs/fable.md", "# Fable Research Cooperative\n\nStudies Heat storage.\n")
     nb.stub_topic("knowledge/heat-storage.md", "Heat storage", ["Heat storage", "thermal battery"])
     nb.write("projects/cove.md", "# Cove\n## What it is\n- Cove sells heat storage to farms. [1]\n\n"
              "## Sources\n- [1] gmail:c1 — 2026-01-10 — Cove\n")
@@ -96,6 +98,13 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
     assert entry.locator("b").inner_text() == "Heat storage"
     # A wiki entry shows what it links to: the project that names it is one tap from the list.
     assert entry.locator('a[href="#r=projects%2Fcove.md"]').count() == 1
+    if width < 400:
+        title = entry.locator('.gx-entry').bounding_box()
+        assert title['width'] >= 250, title
+        assert entry.locator('.gx-entry-links a').evaluate_all(
+            "links => links.every(a => a.getBoundingClientRect().right <= innerWidth)")
+    # A sparse wiki offers the existing linked records without inventing more topics.
+    assert page.locator('.gx-topics > .gx-quiet-line a[href="#view=graph"]').inner_text() == "Explore linked records →"
     switch = page.locator(".knowledge-switch")
     assert switch.locator("a").all_inner_texts() == ["Entries", "Graph"]
     assert switch.locator('a[aria-current="page"]').inner_text() == "Entries"
@@ -130,6 +139,11 @@ def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(bro
     assert unplaced == []
     go(page, "#q=Cove")
     assert page.locator('#main a[href="#r=projects%2Fcove.md"]').count() >= 1
+    go(page, "#q=Steady%20pace")
+    isolated = page.locator('#main a[href="#r=principles%2Fsteady.md"]')
+    assert isolated.count() == 1  # no graph edge is needed for a record to remain reachable
+    isolated.click()
+    assert page.locator('#main h1').inner_text() == "Steady pace"
     page.close()
 
 
@@ -143,7 +157,16 @@ def test_pages_lose_the_sentences_that_explained_their_order(browser, built, lan
                          "把记录串起来的知识", "条知识", "在图谱里看"],
         "#view=graph": ["records linked together", "Whole map", "Click a point to see what it connects", "Most connected",
                         "条记录连在一起", "整张图", "点一个点", "连接最多", "All records", "全部记录"],
-        "#c=decisions": ["what we chose and why", "Category", "分类"],
+        "#c=sessions": ["What you worked on with your coding agents", "和编程 agent 一起做的事"],
+        "#c=projects": ["Sorted by health; a sub-project sits under its project", "按健康排列；子项目缩在它的项目下"],
+        "#c=projects&v=board": ["The board's axis is a question:", "看板的轴是一个问题："],
+        "#c=people": ["Who is this, and where did we leave off?", "这是谁？上次聊到哪了？", "Contents\n"],
+        "#c=orgs": ["Companies, teams, and groups we correspond with", "有往来的公司、团队与组织", "Contents\n"],
+        "#c=agenda": ["Promises, waiting on others, dates that matter", "承诺、等待对方的事项与重要日期", "Contents\n"],
+        "#c=opportunities": ["Worth exploring, not yet committed", "值得探索，尚未决定投入", "Contents\n"],
+        "#c=principles": ["Standing rules we adopted", "已采用的长期原则", "Contents\n"],
+        "#c=works": ["Outputs that can be reused or shown", "可复用或展示的成果", "Contents\n"],
+        "#c=decisions": ["What we chose and why", "做了什么决定，为什么", "Category", "分类"],
     }
     page = open_page(browser, built, 1440, language)
     for hash_, sentences in gone.items():

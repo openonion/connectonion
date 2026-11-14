@@ -1708,8 +1708,8 @@
   .pd-seg a { font-size: var(--s-meta); color: var(--grey); padding: 3px 11px; border-radius: var(--radius); line-height: 1.5; }
   .pd-seg a:hover { text-decoration: none; color: var(--ink); }
   .pd-seg a.on { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); outline: var(--hair) solid var(--rule); }
-  .pd-rem { margin: 34px 0 0; max-width: 900px; }
-  .pd-lede { margin: 0; font: var(--w-regular) var(--s-head)/1.65 var(--font); letter-spacing: .005em; color: var(--ink); }
+  .pd-rem { margin: 16px 0 0; max-width: 900px; }
+  .pd-lede { margin: 0; font: var(--w-regular) var(--s-body)/1.65 var(--font); letter-spacing: .005em; color: var(--ink); }
   .pd-lede .pd-asked { color: var(--grey); }  /* a promise gone stale is asked about, never shouted in red */
   .pd-basis { margin: 10px 0 0; color: var(--grey); font-size: var(--s-meta); }
   .pd-rule { border: 0; border-top: 1px solid var(--ink); margin: 30px 0 0; }
@@ -2647,10 +2647,11 @@
   .gx-topics, .gx-topic { max-width: 1040px; margin: 0 auto; }
   .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
   .gx-rows { border-top: 1.5px solid var(--ink); }
-  .gx-rows li { display: flex; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .gx-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
   .gx-rows .gx-entry { flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 16px; }
   .gx-rows .gx-entry:hover b { text-decoration: underline; text-underline-offset: 4px; }
-  .gx-entry-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .gx-entry b, .gx-entry small { overflow-wrap: anywhere; }
+  .gx-entry-links { max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .gx-entry-links a { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: var(--r-pill); background: var(--well); font-size: var(--s-meta); }
   .gx-entry-links a:hover { color: var(--ink); text-decoration: underline; }
   .knowledge-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; width: fit-content; }
@@ -2745,6 +2746,7 @@
     .gx-link-row { grid-template-columns: 14px minmax(0, 1fr); }
     .gx-link-row time { display: none; }
     .gx-row-name { flex-wrap: wrap; }
+    .gx-rows .gx-entry { flex-basis: 100%; }
   }
 </style>
 <style id="n3-style">
@@ -2774,6 +2776,8 @@
   .nav .ic, .tab .ic { width: 20px; height: 20px; }
   .nav .w { font: var(--w-regular) var(--s-meta)/14px var(--font); white-space: nowrap; }
   .nav.active .w { font-weight: var(--w-bold); }
+  /* Knowledge is wider than its 56px cell at 11px (also when active). Keep the full word under its picture. */
+  .nav[href="#c=knowledge"] .w { letter-spacing: -.06em; }
   .nav .n { position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--ink); color: var(--paper);
     font: var(--w-bold) var(--s-meta)/18px var(--font); text-align: center; }
   .tip { position: absolute; left: 54px; top: 50%; transform: translate(-4px, -50%); opacity: 0; pointer-events: none; white-space: nowrap; z-index: 50;
@@ -9616,7 +9620,7 @@ function projectHead(all, state) {
         el("a", { href: pdHref({ zoom: key }), class: key === state.zoom ? "on" : "", "aria-pressed": String(key === state.zoom), text: pdT(name) })))])]);
 }
 function projectLegend() {
-  return el("div", { class: "pd-legend" }, [el("span", { class: "pd-legend-what", text: pdT("Sorted by health; a sub-project sits under its project") }),
+  return el("div", { class: "pd-legend" }, [
     el("span", { class: "pd-keys" }, [
       el("span", {}, [el("i", { class: "k-tick" }), pdT("session")]), el("span", {}, [el("i", { class: "k-pencil" }), pdT("forecast · 30-day rule")]),
       el("span", {}, [el("i", { class: "k-late" }), pdT("overdue promise")]), el("span", {}, [el("i", { class: "pd-dot quiet" }), pdT("quiet")])])]);
@@ -9868,7 +9872,7 @@ function projectBoard(all, win, notes, pairs, ask) {
   const [say, cols] = ask === "waiting" ? projectBoardWaiting(all, win, notes) : ask === "drop" ? projectBoardDrop(all, win, notes)
     : ask === "same" ? projectBoardSame(all, win, pairs) : projectBoardHealth(all, win, notes);
   return el("section", { class: "pd-board", "data-ask": ask }, [
-    el("div", { class: "pd-asks" }, [el("span", { class: "mut", text: pdT("The board's axis is a question:") }),
+    el("div", { class: "pd-asks" }, [
       el("div", { class: "pd-seg" }, PD_ASKS.map(([key, name]) => el("a", { href: pdHref({ ask: key }), class: key === ask ? "on" : "", "aria-pressed": String(key === ask), text: pdT(name) })))]),
     el("p", { class: "pd-answer" }, [say]), el("div", { class: "pd-cols" }, cols)]);
 }
@@ -11129,7 +11133,7 @@ function sessionsView() {
   let timer;
   search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { if (view.isConnected) change("find", search.value); }, 120); };
   view.append(el("p", { class: "page-kicker", text: label("sessions") }),
-    el("h1", { class: "page-state" }, [t("{n} sessions", { n: records.length }), pageStateSub(t("What you worked on with your coding agents"))]),
+    el("h1", { class: "page-state", text: t("{n} sessions", { n: records.length }) }),
     sessionStopped(records) || document.createDocumentFragment(), el("div", { class: "session-controls" }, [search, tabs]), results);
   main.replaceChildren(view);
   function change(key, value) {
@@ -12471,6 +12475,7 @@ const GRAPH_UI_ZH = {
   "{n} mentions, from {first} to {last}": "{n} 次提到，从 {first} 到 {last}",
   "{n} records": "{n} 条记录",
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
+  "Explore linked records →": "探索相连的记录 →",
   "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
 };
@@ -12922,7 +12927,9 @@ function topicList() {
     .sort((a, b) => b.linked.length - a.linked.length || b.last.localeCompare(a.last));
   main.appendChild(el("div", { class: "gx gx-topics" }, [knowledgeHead("entries"),
     items.length ? el("ul", { class: "gx-rows" }, rows.map(topicEntry))
-      : el("p", { class: "gx-quiet-line gx-filed", text: graphT("REM files knowledge from your records on its night run.") })]));
+      : el("p", { class: "gx-quiet-line gx-filed", text: graphT("REM files knowledge from your records on its night run.") }),
+    items.length > 0 && items.length < 3 && graphModel().linked.length
+      ? el("p", { class: "gx-quiet-line" }, [el("a", { href: "#view=graph", text: graphT("Explore linked records →") })]) : null]));
 }
 function topicEntry({ r, linked, last }) {
   const shown = linked.slice(0, 4);
