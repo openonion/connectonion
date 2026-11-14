@@ -74,18 +74,19 @@ when possible. Direct file reading is sufficient for an already authorized
 file's raw text. Use CLI metadata parsing for structured Obsidian questions.
 Neither method permits scope expansion.
 
-Human listings cache row references for 15 minutes outside the vault.
+Note lists save their row numbers for 15 minutes outside the vault.
 `co obsidian read 1` uses the most recent note list and its saved scope.
-Copy `Next` or pass `--listing <id>` to pin the rows and scope from a
-specific `notes`, `ls` or `search` result. Explicit scope flags must match
-the original vault and folders.
+Get note numbers from `notes --folder`, `ls --folder` or `search`.
+Copy the suggested read command or pass `--listing <id>` to use a specific
+list. If you give `--vault` with a note number, include `--folder` too.
+Explicit scope flags must match the original vault and folders.
 Vault and folder rows apply to `ls` and `notes`. Use explicit paths for scripts
 and confirmed writes. JSON leaves the row cache unchanged and prints `Next` on stderr.
 Without a folder, `ls --json` returns `vault`, `folders` and `notes` filenames.
-The help examples use the synthetic registered vault `Personal` and its
-`Course` folder; replace those names with your selected scope. Each command's
-first help paragraph describes its task and effects so an agent can choose
-the command, then use its documented arguments and example.
+The help examples use `Personal` as a vault name and `Course` and `Lab` as
+folder names. Replace those names with your selected scope. Examples without
+`--vault` assume one available vault or a saved list of notes. If a folder-based
+example finds several vaults, add `--vault` with the name or path you chose.
 
 ## Write only the requested change
 

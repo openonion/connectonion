@@ -1081,7 +1081,7 @@ def test_write_help_needs_no_registry_and_documents_yes_and_exit_codes(operation
     text = " ".join(result.stdout.split())
     assert "--yes" in text and "--expect" in text and "--content" in text
     assert "previews" in text
-    assert "Exit 0" in text and "2 wrong argument" in text
+    assert re.findall(r"\bExit (\d+)\b", text) == ["0", "1", "2"]
 
 
 # -- co rem logs --source -------------------------------------
