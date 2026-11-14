@@ -152,11 +152,11 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        header, sections = self._parse_sections(file_content)
         sections[key] = content
 
         # Write back
-        new_content = self._serialize_sections(sections)
+        new_content = self._serialize_sections(sections, header)
         with open(self.memory_file, 'w', encoding="utf-8") as f:
             f.write(new_content)
 
@@ -176,7 +176,7 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if key not in sections:
             available = ", ".join(sorted(sections.keys())) if sections else "none"
@@ -192,7 +192,7 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if not sections:
             return "No memories stored yet"
@@ -212,7 +212,7 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if not sections:
             return "No memories to search"
@@ -244,11 +244,23 @@ class Memory:
         return "\n".join(output)
 
 
-    def _parse_sections(self, content: str) -> dict:
-        """Parse memory.md into sections."""
+    def _parse_sections(self, content: str) -> tuple:
+        """Parse memory.md into a header and sections.
+
+        The header is any content that appears before the first ``## `` section
+        heading (for example a leading ``# Title`` line). It is preserved so
+        that writing back to the file does not silently drop it.
+
+        Returns:
+            A ``(header, sections)`` tuple where ``header`` is the raw text
+            before the first section heading and ``sections`` maps each key to
+            its content.
+        """
+        header_lines = []
         sections = {}
         current_key = None
         current_content = []
+        in_header = True
 
         for line in content.split('\n'):
             if line.startswith('## '):
@@ -258,6 +270,9 @@ class Memory:
                 # Start new section
                 current_key = line[3:].strip()
                 current_content = []
+                in_header = False
+            elif in_header:
+                header_lines.append(line)
             elif current_key:
                 current_content.append(line)
 
@@ -265,11 +280,14 @@ class Memory:
         if current_key:
             sections[current_key] = '\n'.join(current_content).strip()
 
-        return sections
+        return '\n'.join(header_lines).strip(), sections
 
-    def _serialize_sections(self, sections: dict) -> str:
-        """Serialize sections back to memory.md format."""
+    def _serialize_sections(self, sections: dict, header: str = "") -> str:
+        """Serialize sections back to memory.md format, preserving any header."""
         output = []
+        if header:
+            output.append(header)
+            output.append("")
         for key in sorted(sections.keys()):
             output.append(f"## {key}\n")
             output.append(f"{sections[key]}\n")
