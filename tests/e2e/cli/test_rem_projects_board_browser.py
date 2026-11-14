@@ -58,7 +58,7 @@ def test_projects_open_on_a_board_by_state_with_the_next_step_and_who_holds_it(r
     room = waiting.locator('.pd-card[data-path="projects/waiting-room.md"]')
     expect(room.locator(".pd-step-what")).to_have_text("Waiting on Quinn for the contract")
     expect(room.locator(".pd-owner")).to_have_text(quinn)
-    expect(waiting.locator('.pd-card[data-path="projects/agent-only.md"] .pd-owner')).to_have_text("Agent")
+    expect(waiting.locator('.pd-card[data-path="projects/agent-only.md"] .pd-owner')).to_have_text("Agent request")
     expect(_column(page, "Done").locator(".pd-card")).to_contain_text(["Spring workshop"])
     # Every card carries its last activity.
     expect(fernhill.locator(".pd-when")).not_to_have_text("")
@@ -90,7 +90,7 @@ def test_a_project_page_leads_with_state_next_steps_and_recent_sessions_and_fold
     state = page.locator(".project-state")
     assert state.inner_text().startswith("Active")
     steps = page.locator(".next-exchanges .thread")
-    assert steps.locator(".dir").all_inner_texts() == ["You owe", "You owe", "Agent"]
+    assert steps.locator(".dir").all_inner_texts() == ["You owe", "You owe", "Agent request"]
     assert steps.first.locator(".what").inner_text().startswith("You owe Mara the weekly chart report")
     recent = page.locator(".project-recent")
     assert recent.locator("li a").all_inner_texts() == ["Pilot session 4", "Pilot session 3", "Pilot session 2"]

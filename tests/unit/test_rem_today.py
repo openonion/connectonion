@@ -153,6 +153,38 @@ def reader_functions(*names):
     return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
 
 
+@pytest.mark.parametrize('timing', ['due 2026-11-01', 'since 2026-11-08'])
+def test_counterparty_debt_never_takes_an_owner_today_slot(tmp_path, timing):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/tariq.md', '# Tariq Bell\n\n## Open threads\n'
+               f'- The user asked Tariq to arrange a call; {timing}.\n'
+               '- Tariq asked the user to review the proposal.\n')
+    rows = today.queue(tmp_path, as_of=date(2026, 11, 8))
+    assert rows[0]['dir'] == 'mine'
+    assert rows[0]['section'] == 'morning'
+    theirs = next(row for row in rows if row['dir'] == 'theirs')
+    assert theirs['section'] == ''
+    assert theirs['rank'] > rows[0]['rank']
+
+
+def test_waiting_cards_and_overdue_counts_ignore_counterparty_rows_in_old_snapshots():
+    result = _run_reader_js(reader_functions('todayGroups', 'personGroups', 'todayEntries', 'groupLate') + r'''
+      const mine = {r: {path: 'people/tariq.md'}, t: {key: 'mine', dir: 'mine', due: 2}};
+      const theirs = {r: mine.r, t: {key: 'theirs', dir: 'theirs', due: 15}};
+      const onlyTheirs = {r: {path: 'people/fern.md'}, t: {key: 'fern', dir: 'theirs', due: 20}};
+      const entries = [theirs, onlyTheirs, mine], REM = {owner: '', today_queue: entries.map(entry =>
+        ({key: entry.t.key, section: 'today'}))};
+      const doneKey = entry => entry.t.key, waitingOnYou = entry => entry.t.dir === 'mine';
+      const isDone = () => false, answered = () => false, staleEntry = () => false;
+      const overdueDays = thread => thread.due, morningEntries = entries => todayEntries(entries, 'morning');
+      const groups = todayGroups(entries);
+      console.log(JSON.stringify({cards: groups.map(group => group.r.path),
+        lead: groups[0].entries[0].t.key, late: groupLate({entries})}));
+    ''')
+    assert result == {'cards': ['people/tariq.md'], 'lead': 'mine', 'late': 2}
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 @pytest.mark.parametrize('status', [None, 'pending'])
 def test_replied_card_offers_completion_first_and_localized_explanation(language, status):

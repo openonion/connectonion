@@ -850,6 +850,10 @@
   .project-state-word { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font: var(--w-bold) var(--s-body)/20px var(--font); }
   .record-focus.projects .project-step .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .record-focus.projects .project-step .dir.you { color: var(--ink); font-weight: var(--w-bold); }
+  .record-focus.projects .project-step > .dir { white-space: normal; overflow-wrap: anywhere; }
+  .record-focus.projects .next-exchanges .threads { border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 14px; }
+  .record-focus.projects .next-exchanges .project-step { margin: 0; border-radius: 0; }
+  .record-focus.projects .project-step .thread-actions > :is(a, button) { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; }
   .project-more-steps { margin-top: 6px; }
   .project-recent { grid-column: 1 / -1; }
   .project-recent ul { margin: 0; padding: 0; list-style: none; }
@@ -1844,7 +1848,9 @@
   .pd-lknown span { color: var(--grey); }
 
   /* 看板 */
-  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px; font-size: var(--s-meta); }
+  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; padding: 2px; font-size: var(--s-meta); }
+  .pd-asks a { flex: 0 0 auto; white-space: nowrap; }
+  .pd-head-end:has(.pd-asks) { min-width: 0; max-width: 100%; }
   .pd-board { margin-top: 24px; }
   @media (min-width: 1241px) {
     /* Empty states keep their header width; populated states share the remaining space. */
@@ -3919,6 +3925,9 @@ const UI = {
     "Search sessions": "搜索会话",
     "Search what you typed and what the agent replied": "搜你说过的话和 agent 的回复",
     "Agent": "智能体",
+    "Agent request": "给智能体的请求",
+    "Owner unconfirmed": "待确认负责人",
+    "Answer available": "已有回答",
     "Time": "时间",
     "View": "视图",
     "By day": "按日期",
@@ -7088,7 +7097,7 @@ function personGroups(entries) {
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   // A promise gone stale is asked about at the side, not counted as someone waiting.
-  entries = entries.filter(entry => entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry));
+  entries = entries.filter(waitingOnYou);
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
@@ -8073,7 +8082,7 @@ function fusedFace(r, late, size = "l") {
     + (burn ? '<circle class="burn" cx="50" cy="50" r="50" stroke-dasharray="' + (burn * RING).toFixed(1) + ' ' + RING + '"/>' : "") + "</svg>" }));
   return node;
 }
-function groupLate(group) { return Math.max(0, ...group.entries.map(entry => overdueDays(entry.t))); }
+function groupLate(group) { return Math.max(0, ...group.entries.filter(entry => entry.t.dir === "mine").map(entry => overdueDays(entry.t))); }
 function faceStrip(groups, current) {
   return el("div", { class: "frow", role: "group", "aria-label": t("Who is waiting, and how late") }, groups.map(group => {
     const late = groupLate(group), name = threadWho(group.r);
@@ -9423,7 +9432,9 @@ function projectOpenItem(r, thread) {
 // Who holds a step, in the words Today uses; an agent's instruction and a named person are said as such.
 function projectStepOwner(r, thread) {
   const item = projectOpenItem(r, thread);
-  if (item && ["agent", "answerable"].includes(item.kind)) return { owner: "agent", label: t("Agent") };
+  if (item?.kind === "answerable") return { owner: "answerable", label: t("Answer available") };
+  if (item?.kind === "unconfirmed" || item?.needs_review) return { owner: "", label: t("Owner unconfirmed") };
+  if (item?.kind === "agent") return { owner: "agent", label: t("Agent request") };
   if (item?.kind === "waiting") return { owner: "them", label: pdWho(item.who) || t(DIRECTION_LABEL.theirs) };
   if (item?.kind === "owed" || thread.dir === "mine") return { owner: "you", label: t(DIRECTION_LABEL.mine) };
   return { owner: thread.dir === "theirs" ? "them" : "", label: t(DIRECTION_LABEL[thread.dir] || "Open") };

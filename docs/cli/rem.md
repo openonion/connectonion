@@ -848,7 +848,10 @@ pinned to that edge: it comes into view with the draft.
   pinned as **You**.
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
-  notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
+  notebook. Its cards lead with what you owe; their overdue chips and the faces'
+  day counts use only your debts. What someone else owes stays under **Waiting
+  on others**, even when overdue, and never takes a place in this queue.
+  Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
   waiting on you, with no nightly count (D-104), and every failed item named in status. Missing originals are fetched
   from already-consented mailboxes. Owner-last answers and promised work receive
   [morning outcomes](../rem-night-outcomes.md). Drafts use the `rem-reply-draft` skill: it reads who you both are (your page, their page,
@@ -1308,11 +1311,16 @@ pinned to that edge: it comes into view with the draft.
   requires an explicitly completed project. Longer columns unfold in place;
   on wide desktop screens an empty state keeps a narrow header and its zero count; on a phone
   the columns stack. **List** and **Timeline** remain available.
+  The board's four-way switch stays in one horizontally scrolling row on a phone.
   A project page leads with the same state, up to three next steps (overdue
   owner-held steps first), and recent sessions or dated history. **+N more**
   opens the remaining steps in **Full memory and sources**. Purpose, findings,
   facts, people, decisions, detailed sessions, tags, local graph and history stay
   in that collapsed disclosure. Source markers beside steps still open their evidence.
+  Open steps share one frame and align each item's action buttons. **Agent request**
+  (给智能体的请求), **Owner unconfirmed** (待确认负责人) and **Answer available**
+  (已有回答) distinguish a request from an unassigned step and a retained answer;
+  none of these labels claims a running task or an accepted hand-off.
 - **Other record pages** open on a focused status, next exchanges, compact
   facts, related records and filterable dated Activity. Connected cards without a snippet stay compact;
   desktop cards with snippets align their source dates across each row.

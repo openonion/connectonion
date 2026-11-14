@@ -6,7 +6,7 @@ import re
 from .census import direction, threads
 from .reader_model import CITATION, REFERENCE, source_definitions
 
-KINDS = ('owed', 'waiting', 'agent', 'answerable')
+KINDS = ('owed', 'waiting', 'agent', 'answerable', 'unconfirmed')
 DAY = r'\d{4}-\d{2}-\d{2}'
 MONTH = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
 WEEKDAY = r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)'
@@ -153,10 +153,10 @@ def classify(record, text, sources, people, owner_name='', names=()):
         debt = 'mine'
     if debt in ('mine', 'theirs'):
         return ('owed' if debt == 'mine' else 'waiting'), 'explicit owner/counterparty direction', False
+    if record['category'] == 'projects' and not people:
+        return 'unconfirmed', 'project action without an identified owner', True
     if session and not people:
         return 'agent', 'session source with no human counterparty', False
-    if record['category'] == 'projects' and not people:
-        return 'agent', 'project action without an identified human waiter', True
     return 'owed', 'human-page obligation with unspecified direction; needs review', True
 
 
