@@ -1,5 +1,7 @@
 """忽略 can stop a sender: a line in the notebook keeps their mail out of Today and out of the night's drafts."""
 import json
+
+import pytest
 from datetime import date
 
 from tests.unit.test_rem_live_reader import call, host  # noqa: F401
@@ -165,3 +167,13 @@ def test_a_shared_snapshot_names_no_sender(tmp_path, rem_clock):
     shared, local = reader.snapshot(tmp_path), reader.snapshot(tmp_path, local=True)
     assert shared['ignored_senders'] == {} and all('sender' not in row for row in shared['today_queue'])
     assert local['ignored_senders'] and any(row.get('sender') == SHOP for row in local['today_queue'])
+
+
+@pytest.mark.parametrize("sender", [
+    "messages-noreply@social.example.test", "notifications@codehost.example.test",
+    "calendar-notification@calendar.example.test", "Messages-Noreply@Social.Example.Test",
+])
+def test_shared_notifications_are_never_offered_even_if_the_map_calls_them_notices(tmp_path, rem_clock, sender):
+    rows = _cited(tmp_path, True, '[1]', {'notification': sender})
+    assert [row['sender'] for row in rows] == ['']
+    assert today._offered({sender.casefold()}, {OWNER}, {sender.casefold()}) == ''

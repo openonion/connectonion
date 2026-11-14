@@ -1001,7 +1001,9 @@ pinned to that edge: it comes into view with the draft.
   notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
   lets the sender back; a save the Host refuses says *Not saved · Try again* and changes nothing. REM never stops a
   sender by itself, never offers a person-looking address, and relay addresses that carry many different people are
-  never offered. With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
+  never offered. Shared notification mailboxes (`messages-noreply@…`, `notifications@…`
+  and `calendar-notification@…`) are never offered either, including on custom domains.
+  With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
   only its domain. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
   can be edited by hand (a bare address or `Name <address>` is read too): Today leaves out an item only when every
   mail it cites came from listed senders, the night drafts
@@ -2050,17 +2052,17 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses (a third party's mail to more
-  than five recipients, such as a notice to a list, does not count) in the
+  messages involving the person's own addresses that the person or the owner
+  sent (a third party's group mail never counts, regardless of group size) in the
   retained archive, in the notebook's time zone. They are recomputed after
   promotion and on sync; they describe the archive's bounds, which may not span
   the whole relationship.
-- On project pages, a dated `Last activity` is never older than the newest
-  dated session message, mail, chat or commit history listed in the page's own
-  `## Sources`; code lifts it to that day after promotion and at the start of
-  every night round (an `Unknown` stays, and the reader dates the project by its
-  newest source). A snapshot's read day, a file's saved day and a web page's
-  date are not activity.
+- On project pages, `Last activity` is the newest valid day listed in the page's
+  own `## Sources`, with a citation to that source. Sessions, mail, chat,
+  commits, documents and other dated sources use the same rule, including for
+  projects without a repository. Code recomputes it after promotion and at the
+  start of every night round, replacing `Unknown` and model-selected dates.
+  An older dated "quiet since" status is cleared when newer evidence contradicts it.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it
