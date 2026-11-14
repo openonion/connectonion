@@ -2557,12 +2557,10 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["review"])
 
     @rem.command("abstract", cls=V("co rem abstract"))
-    def abstract_pages(ctx: typer.Context):
-        from ...rem.config import read_config
-        from ...rem.files import Notebook
-        from ...rem.runner import run_stage
-        _handle(ctx, lambda root: (
-            run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list", "decisions"]), ["status"])
+    def abstract_pages(ctx: typer.Context, rounds: Optional[int] = typer.Option(None, "--rounds", min=1)):
+        from .rem_decisions import write_decisions
+        _moved(ctx, "abstract", ["decisions", "write"])
+        write_decisions(ctx, rounds, _handle, _WRITTEN)
 
     @rem.command("capture", cls=V("co rem capture"))
     def capture_session(ctx: typer.Context, transcript: Path, source: str = typer.Option(..., "--source")):
@@ -2573,6 +2571,8 @@ def make_rem_app(factory):
     # ------------------- Project pages from the user's own messages (#1943)
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
+    from .rem_decisions import add_decisions_app
+    add_decisions_app(rem, factory, _handle, _WRITTEN)
     from .rem_import import add_import_app
     add_import_app(rem, factory, _handle)
 

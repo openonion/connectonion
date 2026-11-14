@@ -52,20 +52,29 @@ def _piece(heading, body, sources, offset, budget):
     return "", offset
 
 
-def material(notebook, config=None):
-    from .config import read_config
-    budget = (config or read_config(notebook.root))["limits"]["input_chars_per_batch"]
+def _pending(notebook):
     offered = read_json(state_path(notebook.root, "abstract-offered.json"), {})
     sections = sorted(_sections(notebook), key=lambda row: (notebook.path(row[0]).stat().st_mtime, row[0]))
-    items = []
-    lines_left = NIGHT_PAGE_LIMIT
     for record, heading, body, sources in sections:
         captured = _captured(heading, body, sources)
         digest = hashlib.sha256(captured.encode()).hexdigest()
         saved = offered.get(record, {})
         offset = saved.get("offset", 0) if saved.get("sha256") == digest else 0
-        if offset >= len(body):
-            continue
+        if offset < len(body):
+            yield record, heading, body, sources, digest, offset
+
+
+def pending_count(notebook):
+    return sum(bool(line.strip()) for _, _, body, _, _, offset in _pending(notebook)
+               for line in body[offset:].splitlines())
+
+
+def material(notebook, config=None):
+    from .config import read_config
+    budget = (config or read_config(notebook.root))["limits"]["input_chars_per_batch"]
+    items = []
+    lines_left = NIGHT_PAGE_LIMIT
+    for record, heading, body, sources, digest, offset in _pending(notebook):
         # Cap nonempty decision lines at page capacity so every offered choice can become a page.
         ends = [match.end() for match in re.finditer(r'.*(?:\n|$)', body[offset:]) if match[0].strip()]
         bounded = body[:offset + ends[lines_left - 1]] if len(ends) > lines_left else body

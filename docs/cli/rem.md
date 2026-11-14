@@ -292,7 +292,7 @@ Piping human output does not hide the next step. Grouped help covers:
 |---|---|
 | Map and investigate | `init`, `investigate`, `map-skills`, `scan`, `stub` |
 | Browse | `open`, `list`, `show`, `search`, `status` |
-| Update and review | `sync`, `capture`, `reflect`, `reflections`, `propose`, `review`, `abstract` |
+| Update and review | `sync`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` (alias) |
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
@@ -493,7 +493,9 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
-| `co rem abstract` | Run rem-abstract over existing notebook evidence. |
+| `co rem decisions` | Count decision and principle pages and captured decisions waiting. No model; no writes. |
+| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until caught up, a round writes no page, or N rounds finish. |
+| `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -509,6 +511,22 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
+
+Run `co rem decisions` to see how many decision and principle pages exist and how
+many captured decisions are waiting. Run `co rem decisions write` to write them
+now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
+round calls the existing configured model runner once and uses the same material,
+input character bound, owner-quote and citation checks, and decisions/principles
+write scope as the night. Passing pages are kept; refused pages and reasons are
+printed and saved with the run. It continues until nothing is left or a round
+writes no page; `--rounds 2` stops after at most two rounds. Output gives per-round
+counts and totals, decisions left, then `co rem list decisions`. Exit is 0 after
+progress or when nothing is waiting; it is 1 when the first round writes no page,
+with the reason on the last line. A crash leaves its decisions pending. Manual
+success shares the night's saved progress, so neither repeats the other's work.
+A manual attempt neither uses nor consumes `limits.abstract_rounds_per_night`;
+manual failures also do not count as failed nights. `co rem abstract` remains an
+alias for this command.
 
 After session summaries, the night runs successive abstract slices when session `## Decisions`
 or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,

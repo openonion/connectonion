@@ -20,7 +20,7 @@ from connectonion.cli.main import app
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "investigate", "enrich", "muse", "deepen", "open", "list", "show", "search", "translate", "start", "stop", "status",
-                 "sync", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
+                 "sync", "decisions", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
 ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
@@ -65,7 +65,7 @@ def test_every_command_and_subcommand_has_a_page():
     names = set(pages())
     for command in [*ROOT_COMMANDS, *ADVANCED, "advanced"]:
         assert f"co rem {command}" in names, command
-    for group in ("sources", "config", "projects", "import"):
+    for group in ("sources", "config", "projects", "decisions", "import"):
         for sub in REM.commands[group].commands:
             assert f"co rem {group} {sub}" in names, (group, sub)
 

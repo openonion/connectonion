@@ -23,10 +23,11 @@ from .source import with_local_times
 
 
 class RunFailed(RemError):
-    def __init__(self, message, usage=None, changed=()):
+    def __init__(self, message, usage=None, changed=(), refusals=()):
         super().__init__(message)
         self.usage = usage
         self.changed = sorted(changed)
+        self.refusals = list(refusals)
 
 
 STAGES = ("init", "extract", "maintain", "investigate", "enrich", "muse", "abstract")
@@ -1736,7 +1737,10 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     from .inquiry import stage_config
     from .service import notebook_zone
     config = stage_config(notebook.root, config, stage)
-    task = prepare(notebook, items, config, kind, stage=stage, directory=directory, search=search)
+    # Captured choices use the night's exact preparation and checks, with the
+    # existing manual model runner. Whole-page first-build calls keep their path.
+    captured = stage == "abstract" and any(item.get("role") == "captured-decisions" for item in items)
+    task = prepare(notebook, items, config, kind, stage=stage, directory=directory, search=search, native=captured)
     record, before, items = task["record"], task["before"], task["items"]
     candidate = Path(task["candidate"]) if task["candidate"] else None
     prompt, summary, metrics = task["prompt"], task["summary"], task["metrics"]
@@ -1747,7 +1751,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             # investigation may finish concurrently on a different page;
             # do not claim its edit or charge it to this run.
             return [record] if notebook.read(record) != before[record] else []
-        after = {r: notebook.read(r) for r in notebook.list()}
+        records = ([r for category in ("decisions", "principles") for r in notebook.list(category)]
+                   if captured else notebook.list())
+        after = {r: notebook.read(r) for r in records}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
     started = time.monotonic()
@@ -1811,7 +1817,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         task["config"] = selected_config
         refusals = check(task, result, maintenance_lock_held=maintenance_lock_held, run_turn=run_turn,
-                         stage_progress=stage_progress)
+                         stage_progress=stage_progress, native=captured)
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if result.get("critic_usage_pending") and isinstance(error, RunFailed):
@@ -1828,7 +1834,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
-        raise RunFailed(str(error), usage, changed()) from error
+        raise RunFailed(str(error), usage, changed(), read_json(directory / "review.json", {}).get("refused", [])) from error
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
     insight_counts = {key: result[key] for key in
                       ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}

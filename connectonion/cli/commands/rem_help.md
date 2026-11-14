@@ -27,6 +27,8 @@ Keep it current
   stop          Turn the schedule off. Pages and approvals stay.
   status        Is the schedule on, when it runs next, what ran today.
   sync          Run one update now.
+  decisions     Count decision and principle pages and decisions waiting. No model.
+                Run co rem decisions write to write them now.
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
@@ -57,9 +59,10 @@ Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, reflect,
-              reflections, propose, review, abstract, capture, projects)
+              reflections, propose, review, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
+              abstract is an alias for co rem decisions write and prints its new name.
 ```
 
 ## co rem exec
@@ -67,6 +70,13 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Run the configured background upkeep round. Runs the selected coding agent and
 writes notebook pages, reports and run state; never sends mail.
+
+After session summaries, the night writes decisions/ and principles/ in rounds,
+reading up to 20 captured decision lines each, oldest first. The limit is
+limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nights
+clear N lines, or longer if rounds fail or the input character limit reads fewer.
+A round that writes no passing page stops this work for the night. A restart keeps
+the round count. Run co rem decisions write to catch up now without that limit.
 
 Usage:    co rem exec [--scheduled]
 Example:  co rem exec --scheduled
@@ -881,7 +891,7 @@ Experimental: corrections and questions (#1611, #1609)
   reflections   Read the records for a page, or write a compact copy of them.
   propose       Save a question about a page, or a possible link between two pages.
   review        Answer the saved questions and links.
-  abstract      Write decision and principle pages from the pages you already have.
+  abstract      Old name for co rem decisions write; runs the same command.
 Experimental: session capture (#1520)
   capture       Queue the user's messages from one coding-session file. Run by a hook.
 Experimental: project pages from your own messages (#1943)
@@ -1086,43 +1096,50 @@ Next:     co rem review
 Back:     co rem advanced --help
 ```
 
+## co rem decisions
+
+```
+Count your decision and principle pages and the captured decisions waiting to be written.
+Reads the decisions already on session and project pages. No model; no files written.
+
+Usage:    co rem decisions [COMMAND]
+Example:  co rem decisions
+Commands:
+  write   Write decision and principle pages now, continuing until caught up.
+Output:   Decision pages, principle pages and decisions waiting, then the next command.
+Effects:  Reads notebook pages and saved progress. No model; no writes.
+Next:     co rem decisions write
+Back:     co rem --help
+```
+
+## co rem decisions write
+
+```
+Turn the decisions already written on your session and project pages into decision pages.
+Then write principle pages for the reasons that recur.
+Usage:    co rem decisions write [--rounds N]
+Example:  co rem decisions write  |  co rem decisions write --rounds 2
+Stops when nothing is left or a round writes no page. --rounds N limits this run to N rounds.
+Reads up to 20 decisions per round, oldest first. Shares progress with the night; its round limit does not apply.
+Output:   Counts per round, refused pages and why, totals and decisions left. Exit 1 if the first round writes no page; 0 on progress or no work.
+Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
+Next:     co rem list decisions
+Back:     co rem decisions --help
+```
+
 ## co rem abstract
 
 ```
-Write the layer above the pages: decision pages (a question that was settled,
-with the alternative that was rejected), then principle pages (a reason that
-keeps recurring across decisions). Reads pages only, never mail or sessions.
-Runs the model once.
+Old name for co rem decisions write; runs the same command and prints its new name.
+Turn captured decisions into decision pages, then principle pages for recurring reasons.
 
-After session summaries, the night runs successive abstract slices when session ## Decisions
-or project ## Key decisions contains new or changed captured material. Oldest sections are offered first,
-with at most 20 nonempty decision lines per packet (large sections continue on later
-slices), within the configured input character budget and with only sources bound
-to their quotes. Each completed slice that promotes at least one page admits the next,
-up to limits.abstract_rounds_per_night (default 6). A backlog of N decision lines
-takes roughly ceil(N / 20 / rounds) nights, where rounds is that nightly limit,
-or longer when slices fail or the character budget requires smaller packets. Section hashes
-advance only after a recorded completed turn promotes at least one page; otherwise
-the slice retries. After failures on three distinct nights, the slice is released and
-its offsets, failure nights and give-up reason are saved in abstract-offered.json.
-A crashed turn leaves its material pending. It writes or updates at
-most 20 pages under decisions/ and principles/ only, with the owner's words
-and original citations on each decision. Assistant proposals without the owner's
-acceptance are excluded. Principles still need at least three decisions. The saved
-night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
-keeps the count and the next night starts at zero. An unfinished or failed slice,
-or one that promotes nothing, stops new abstract slices for that night. The later
-same-person and translation passes follow at most six abstract rounds by default.
-Passing pages are saved; rejected
-pages and their errors are recorded in the run. A task with no passing pages
-fails. With no unoffered material, this stage makes no model call.
-
-Usage:    co rem abstract
-Example:  co rem abstract
-Output:   Pages under decisions/ and principles/, cited to the pages they came from.
-Effects:  Calls the model. Writes pages.
+Usage:    co rem abstract [--rounds N]
+Example:  co rem abstract  |  co rem abstract --rounds 2
+          --rounds N  Stop after at most N rounds; otherwise continue until caught up or a round writes no page.
+Output:   Counts per round, refused pages and why, totals and decisions left.
+Effects:  Calls the model once per round. Writes decisions/ and principles/ and saves progress privately.
 Next:     co rem list decisions
-Back:     co rem advanced --help
+Back:     co rem decisions --help
 ```
 
 ## co rem capture
