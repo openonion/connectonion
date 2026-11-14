@@ -77,14 +77,15 @@ def test_pids_that_have_all_exited_are_none_left(tmp_path):
     assert host_leak_guard.hosts_under(tmp_path, [gone.pid]) == []
 
 
-def test_a_truncated_multibyte_command_does_not_hide_a_host(tmp_path, monkeypatch):
-    """Exercise subprocess's real text decoder, including an unrelated broken line."""
-    run = subprocess.run
-    listing = (f"999999 {os.getuid()} co ai --port 9128 --no-listen --no-launch HOME={tmp_path}/home\n"
-               f"999998 {os.getuid()} desktop ").encode() + '界'.encode()[:2]
-
-    def ps(*args, **kwargs):
-        return run([sys.executable, '-c', f'import sys; sys.stdout.buffer.write({listing!r})'], **kwargs)
-
-    monkeypatch.setattr(host_leak_guard.subprocess, 'run', ps)
-    assert host_leak_guard.hosts_under(tmp_path) == [(999999, str(tmp_path / 'home'), 'unknown test')]
+def test_a_command_cut_mid_character_does_not_hide_a_host(tmp_path, monkeypatch):
+    """macOS ps cuts long command lines at a byte limit, mid multi-byte character (#3041)."""
+    home = tmp_path / "run" / "home"
+    cut = "/Applications/小红书直播助手.app".encode()[:-8]   # ends inside 直 or a later character
+    listing = (b"101 %d " % os.getuid() + cut + b"\n"
+               + b"102 %d co ai --port 4100 --no-listen --no-launch HOME=%s\n" % (os.getuid(), str(home).encode()))
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/listing").write_bytes(listing)
+    (tmp_path / "bin/ps").write_text(f"#!/bin/sh\ncat '{tmp_path / 'bin/listing'}'\n")
+    (tmp_path / "bin/ps").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    assert host_leak_guard.hosts_under(tmp_path / "run") == [(102, str(home), "unknown test")]
