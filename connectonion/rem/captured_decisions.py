@@ -77,6 +77,8 @@ def skipped_counts(notebook):
                 counts["no_source" if QUOTE.search(match[0]) else "no_quote"] += 1
             elif match.start() in eligible and match.start() not in supported:
                 counts["not_owner"] += 1
+    from .decision_progress import counts as progress_counts
+    counts['not_decision'] = progress_counts(notebook)['not_decision']
     return counts
 
 
@@ -90,12 +92,20 @@ def _captured(heading, body, sources):
     return f"## {heading}\n{body}\n\n## Sources\n" + "\n".join(lines) + "\n"
 
 
-def _piece(heading, lines, sources, offset, budget):
+def line_id(record, digest, start, end):
+    """A short receipt name independent of packet boundaries and attempts."""
+    key = json.dumps([record, digest, start, end], ensure_ascii=False)
+    return 'd' + hashlib.sha256(key.encode()).hexdigest()[:12]
+
+
+def _piece(heading, lines, sources, offset, budget, record, digest):
     lines = list(lines)
     # A packet ends at a whole eligible line; an oversized quote stays pending.
     while lines:
         end = offset + lines[-1].end()
-        text = _captured(heading, ''.join(match[0] for match in lines), sources)
+        body = ''.join(f'[{line_id(record, digest, offset + match.start(), offset + match.end())}] {match[0]}'
+                       for match in lines)
+        text = _captured(heading, body, sources)
         if len(text) <= budget:
             return text, end
         lines.pop()
@@ -143,7 +153,7 @@ def material(notebook, config=None, *, attempted=()):
     for record, heading, sources, digest, offset, lines in _pending(notebook, attempted):
         # Unsupported lines consume neither page capacity nor a model turn.
         lines = lines[:lines_left]
-        text, end = _piece(heading, lines, sources, offset, budget)
+        text, end = _piece(heading, lines, sources, offset, budget, record, digest)
         while text:
             item = {"role": "captured-decisions", "record": record, "source": f"notebook:{record}",
                     "section_sha256": digest, "section_start": offset, "section_end": end,
@@ -154,7 +164,7 @@ def material(notebook, config=None, *, attempted=()):
                 break
             if items:
                 return items  # Start the next section whole next slice, in oldest-first order.
-            text, end = _piece(heading, lines, sources, offset, len(text) - excess)
+            text, end = _piece(heading, lines, sources, offset, len(text) - excess, record, digest)
         if not text:
             break
         items.append(item)
@@ -182,7 +192,7 @@ def _complete(saved, start, end):
         saved.pop("failures", None)
 
 
-def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages", changed=None, refusals=()):
+def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages", changed=None, refusals=(), report=''):
     """Checkpoint promoted lines; give up each failed line on its third attempt.
 
     The slice-only default remains for older callers; writers supply changed
@@ -192,12 +202,11 @@ def remember_offered(root, items, *, promoted=True, night=None, reason="No passi
     offered = _offered(Notebook(root))
     if changed is not None:
         from .decision_progress import line_results
-        results = line_results(Notebook(root), items, changed, refusals)
-        reason = '; '.join(dict.fromkeys(error for row in refusals for error in row['errors'])) or reason
+        results = line_results(Notebook(root), items, changed, refusals, report=report, reason=reason)
     else:
-        results = ((item, promoted) for item in items)
+        results = ((item, {'state': 'written' if promoted else 'no_answer', 'reason': reason}) for item in items)
     deferred = []
-    for item, promoted in results:
+    for item, verdict in results:
         digest = item.get("section_sha256")
         if not digest:
             continue
@@ -206,12 +215,15 @@ def remember_offered(root, items, *, promoted=True, night=None, reason="No passi
             saved = {"sha256": digest, "offset": 0}
         if changed is not None:
             saved['line_progress'] = True
+        saved['verdict_progress'] = True
         start, end = item.get("section_start", 0), item["section_end"]
         if saved["offset"] >= end or any(left <= start and right >= end for left, right in saved.get("completed", [])):
             continue
-        if promoted:
+        saved.setdefault('verdicts', {})[f'{start}:{end}'] = verdict
+        if verdict['state'] in ('written', 'merged', 'not_decision'):
             _complete(saved, start, end)
         else:
+            reason = verdict.get('reason', reason)
             failures = saved.setdefault("failures", {})
             key = f"{start}:{end}"
             prior = [n for span, nights in failures.items() for n in nights
@@ -221,7 +233,9 @@ def remember_offered(root, items, *, promoted=True, night=None, reason="No passi
                 nights.append(night)
                 saved.setdefault('failure_reasons', {})[key] = reason
             if len(nights) >= 3:
-                saved.setdefault("given_up", []).append(dict(start=start, end=end, nights=nights, reason=reason))
+                given_up = saved.setdefault('given_up', [])
+                given_up[:] = [row for row in given_up if (row['start'], row['end']) != (start, end)]
+                given_up.append(dict(start=start, end=end, nights=nights, reason=reason))
                 _complete(saved, start, end)
             else:
                 deferred.append(slice_key(item))

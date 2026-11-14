@@ -45,7 +45,7 @@ def test_only_bound_quotes_are_counted_and_offered(book):
     assert 'Prefer readable' not in packet[0]['text']
     assert 'unbound choice' not in packet[0]['text']
     assert '- Unknown' not in packet[0]['text']
-    assert decisions.status(book.root)['skipped'] == {'no_quote': 2, 'no_source': 1, 'not_owner': 0}
+    assert decisions.status(book.root)['skipped'] == {'no_quote': 2, 'no_source': 1, 'not_owner': 0, 'not_decision': 0}
 
 
 def test_no_quote_backlog_never_calls_model_and_is_counted_once(book, monkeypatch):
@@ -54,7 +54,7 @@ def test_no_quote_backlog_never_calls_model_and_is_counted_once(book, monkeypatc
     for _ in range(2):
         report = decisions.write(book.root)
         assert report['rounds'] == [] and report['left'] == 0
-        assert report['skipped'] == {'no_quote': 2, 'no_source': 0, 'not_owner': 0}
+        assert report['skipped'] == {'no_quote': 2, 'no_source': 0, 'not_owner': 0, 'not_decision': 0}
 
 
 @pytest.mark.parametrize('role,text', [('user', 'Keep the choice open.'), ('assistant', WORDS)])
@@ -133,10 +133,10 @@ def test_cli_explains_eligibility_and_reports_skips_once(book):
     args = ['rem', '--root', str(book.root), 'decisions']
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.output
-    assert 'Decisions waiting: 1' in result.output
+    assert 'Captured lines waiting: 1' in result.output
     assert '1 no quote captured' in result.output
     data = CliRunner().invoke(app, ['rem', '--root', str(book.root), '--json', 'decisions'])
-    assert json.loads(data.output)['data']['skipped'] == {'no_quote': 1, 'no_source': 0, 'not_owner': 0}
+    assert json.loads(data.output)['data']['skipped'] == {'no_quote': 1, 'no_source': 0, 'not_owner': 0, 'not_decision': 0}
 
 
 def test_prompt_makes_cap_optional_and_requires_copying_supplied_definitions(book):

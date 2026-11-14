@@ -21,6 +21,21 @@ decisions it abstracts exist.
 Measured on a real repository: of 400 merged pull requests in five weeks, about
 30 carry the "was an alternative rejected?" signal.
 
+On a notebook trial, eight rounds read 159 captured lines and wrote 77 pages,
+but 75 of 83 lines reported as left had no passing page; most sampled lines
+were instructions or questions without a rejected alternative. Discarding and
+merging were correct abstraction work that the queue mistook for failure.
+Stable line IDs and explicit report verdicts now distinguish those completed
+outcomes from refused pages and missing answers. A merge names a decision page
+that passed this round; it cannot hide a refused or unwritten page.
+
+The task names its report at `.state/tasks/abstract-<id>/report.md`, beside
+`instructions.md`, outside the output notebook. Both that file and the final
+message feed the same verdict checks and are saved together in `result.json`
+before cleanup removes the report file. Previously only the final message
+was read: a reply linking to a report lost every verdict held only in the file.
+Links without verdict lines still leave the captured line unanswered.
+
 ## `## Why` is load-bearing
 
 A decision page that records only what was chosen grows nothing above it; the

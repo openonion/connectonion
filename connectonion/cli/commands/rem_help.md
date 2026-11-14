@@ -1121,16 +1121,17 @@ Turn the decisions already written on your session and project pages into decisi
 Then write principle pages for the reasons that recur.
 Usage:    co rem decisions write [--rounds N]
 Example:  co rem decisions write  |  co rem decisions write --rounds 2
-Stops when nothing unattempted is left or two empty rounds in a row write no page. --rounds N limits this run to N rounds.
+Stops when nothing unattempted is left or two empty rounds in a row resolve no lines. --rounds N limits this run to N rounds.
 Reads up to 20 decisions per round, oldest first. Shares progress with the night; its round limit does not apply.
 Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
 Legacy session quotes receive numbered sources only when retained owner turns establish a unique match.
 An empty round counts as a failed slice, set aside for a later retry, then moves to the next slice.
-Progress is saved per captured line: a refused or unwritten choice stays queued even when another page passes.
+Progress is saved per captured line: written, merged, not a decision, refused, or no answer.
+Merged lines name a page that passed this round; they and lines judged not a decision are done without retry.
 Pending lines are offered once per manual run or night; after three failed attempts they are recorded as given up with the reason.
 Retries carry the recorded refusal text. Saved refused pages recover identifiable choices hidden by older whole-slice progress.
 Under Sources use exactly one - [n] source-id definition per citation; put originating-page context inline, without [n]: Markdown link definitions.
-Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, decisions left and skipped counts once. Exit 1 if no attempted round writes a page; 0 on progress or no work.
+Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, captured lines left and skipped counts once. Line totals: written, merged, refused, no answer, given up. Skipped includes not a decision. Exit 1 if no attempted round resolves a line; 0 on progress or no work.
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
           Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.
 Next:     co rem list decisions

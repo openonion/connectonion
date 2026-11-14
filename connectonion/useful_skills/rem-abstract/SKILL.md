@@ -25,6 +25,23 @@ The test for whether something is a decision at all:
 launchd interval tick rather than a calendar trigger" has one, and a reason.
 Expect to discard most of what you read.
 
+Every offered captured line starts with a short ID in brackets, such as
+`[d0123456789ab]`. Account for each line: either quote it in a decision page,
+or give its verdict in your final message. One verdict per line, on its own line:
+
+```text
+VERDICT d0123456789ab not-a-decision
+VERDICT dabcdef012345 merged decisions/storage.md
+```
+
+`not-a-decision` means no alternative was rejected. `merged` means this line
+belongs to the same settled question as another line; name the decision page
+you wrote or updated this round. That page must pass review. These verdicts
+finish the line without another attempt. A missing verdict leaves it for retry.
+Use only IDs supplied in this packet; keep the IDs out of the notebook pages.
+Also put the verdict lines in `report.md` at the path named by the task.
+Repeat the verdict lines in your final message; a link to the report alone is not a verdict.
+
 Copy the owner’s verbatim words into the body, immediately followed by its `[n]`.
 Keep the quote and its citation on the same line, before `## Sources`.
 Copy the quote exactly as captured in the supplied `## Decisions` or

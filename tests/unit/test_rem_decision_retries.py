@@ -60,6 +60,7 @@ def test_mixed_round_keeps_refused_and_unwritten_lines_with_feedback(book, mixed
     first = decisions.write(book.root, rounds=1)
     assert first['written'] == 1 and first['refused'] == 1
     assert first['left'] == 2
+    assert first['lines']['written'] == first['lines']['refused'] == first['lines']['no_answer'] == 1
     status = decisions.status(book.root)
     assert status['to_retry'] == 2
     cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'decisions'])
@@ -203,3 +204,253 @@ def test_line_attempts_survive_a_different_packet_budget(book, monkeypatch):
     captured_decisions.remember_offered(book.root, items, changed=[], night='third', reason='Still refused')
     state = read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/example.md']
     assert state['given_up'] and all(len(row['nights']) == 3 for row in state['given_up'])
+
+
+def verdict_model(monkeypatch, reply=None, *, pages=(), report=None):
+    calls = []
+
+    def run(workspace, prompt, config, stage, **options):
+        packet = next(workspace.glob('abstract-*/material.json'))
+        items = json.loads(packet.read_text())
+        lines = [(match[1], match[2]) for item in items
+                 for match in re.finditer(r'(?m)^\[(d[0-9a-f]{12})\] (.+)$', item['text'])]
+        assert lines, 'Every offered line needs its stable ID in the packet'
+        calls.append(lines)
+        output = Notebook(packet.parent / 'notebook')
+        for record, text in pages:
+            output.write(record, text)
+        if report is not None:
+            (packet.parent / 'report.md').write_text(report(lines), encoding='utf-8')
+        final = reply(lines) if reply else f'[Report and verdicts]({packet.parent.name}/report.md)'
+        return {'result': final, 'usage': {}}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    return calls
+
+
+def test_decision_verdicts_only_in_report_file_survive_link_only_reply(book, monkeypatch):
+    verdict_model(monkeypatch, report=lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision' for line_id, _ in lines))
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['not_decision'] == 3 and result['left'] == 0
+    assert result['lines']['no_answer'] == 0 and result['set_aside'] == 0
+    folder = next(state_path(book.root, 'tasks').glob('abstract-*'))
+    saved = read_json(folder / 'result.json', {})
+    assert saved['report'] == result['rounds'][0]['report']
+    assert saved['report'].startswith(f'[Report and verdicts]({folder.name}/report.md)\n\n')
+    assert saved['report'].count('VERDICT ') == 3
+    assert not (folder / 'report.md').exists()  # Collected before private task copies are scrubbed.
+    assert decisions.status(book.root)['waiting'] == 0
+
+
+def test_decision_verdicts_union_report_file_and_final_message(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: f'VERDICT {lines[0][0]} not-a-decision', report=lambda lines:
+        f'VERDICT {lines[0][0]} not-a-decision\nVERDICT {lines[1][0]} not-a-decision\n'
+        'VERDICT d000000000000 not-a-decision')
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['not_decision'] == 2
+    assert result['lines']['no_answer'] == 1 and result['left'] == 1
+
+
+def test_decision_merge_in_report_file_requires_passing_page(book, monkeypatch):
+    verdict_model(monkeypatch, report=lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged decisions/zero.md' for line_id, _ in lines[1:]),
+        pages=[('decisions/zero.md', page(0))])
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['written'] == 1 and result['lines']['merged'] == 2
+    assert result['left'] == 0
+
+
+@pytest.mark.parametrize('target', ['missing', 'existing', 'refused'])
+def test_decision_report_file_cannot_merge_into_unpassed_page(book, monkeypatch, target):
+    if target == 'existing':
+        book.write('decisions/target.md', page('unoffered'))
+    verdict_model(monkeypatch, report=lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged decisions/target.md' for line_id, _ in lines),
+        pages=[('decisions/target.md', page(1, broken=True))] if target == 'refused' else [])
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['merged'] == 0 and result['left'] == 3
+    assert result['lines']['refused' if target == 'refused' else 'no_answer'] == 3
+    assert 'VERDICT ' in result['rounds'][0]['report']  # Failed checks retain the collected report too.
+
+
+def test_decision_conflicting_verdicts_across_file_and_message_stay_unanswered(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision' for line_id, _ in lines), report=lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged decisions/missing.md' for line_id, _ in lines))
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['no_answer'] == 3 and result['left'] == 3
+    assert result['skipped']['not_decision'] == 0
+
+
+def test_decision_link_without_report_file_is_no_answer(book, monkeypatch):
+    verdict_model(monkeypatch)
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['no_answer'] == 3 and result['left'] == 3
+    assert result['skipped']['not_decision'] == 0
+
+
+def test_decision_written_counts_the_quoted_line_only(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '', pages=[('decisions/zero.md', page(0))])
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['written'] == 1
+    assert result['lines']['no_answer'] == 2
+    assert result['left'] == 2
+    assert decisions.status(book.root)['lines'] == result['lines']
+
+
+def test_decision_merged_names_a_passing_page_and_never_retries(book, monkeypatch):
+    calls = verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged decisions/zero.md' for line_id, _ in lines[1:]),
+        pages=[('decisions/zero.md', page(0))])
+    result = decisions.write(book.root)
+    assert result['lines']['written'] == 1 and result['lines']['merged'] == 2
+    assert result['left'] == 0 and result['set_aside'] == 0
+    assert decisions.status(book.root)['to_retry'] == 0
+    assert decisions.write(book.root)['rounds'] == [] and len(calls) == 1
+    cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'decisions'])
+    assert '2 merged' in cli.output
+
+
+def test_not_a_decision_finishes_without_pages_or_retry_and_counts_skipped(book, monkeypatch):
+    calls = verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision' for line_id, _ in lines))
+    cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'decisions', 'write'])
+    assert cli.exit_code == 0, cli.output
+    assert '3 not a decision' in cli.output and '0 captured lines left' in cli.output
+    assert 'Round 1:' in cli.output and 'Skipped: 3 not a decision' in cli.output.split('Done:')[0]
+    assert 'stopped:' not in cli.output
+    status = decisions.status(book.root)
+    assert status['waiting'] == 0 and status['to_retry'] == 0
+    assert status['skipped']['not_decision'] == 3
+    assert decisions.write(book.root)['rounds'] == [] and len(calls) == 1
+
+
+def test_refused_merge_keeps_check_reason_and_gives_up_on_third_try(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged decisions/one.md' for line_id, _ in lines),
+        pages=[('decisions/one.md', page(1, broken=True))])
+    for attempt in range(3):
+        result = decisions.write(book.root, rounds=1)
+        assert result['lines']['refused'] == 3
+        assert result['left'] == (3 if attempt < 2 else 0)
+    assert result['given_up'] == 3
+    assert decisions.status(book.root)['to_retry'] == 0
+    cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'decisions'])
+    assert '3 refused' in cli.output and '3 given up' in cli.output
+    state = read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/example.md']
+    assert all('Missing or duplicate citation: 1' in row['reason'] for row in state['given_up'])
+
+
+def test_no_answer_ignores_unoffered_verdicts_and_gives_up_on_third_try(book, monkeypatch):
+    calls = verdict_model(monkeypatch, lambda lines: 'VERDICT d000000000000 not-a-decision')
+    for attempt in range(3):
+        result = decisions.write(book.root, rounds=1)
+        assert result['lines']['no_answer'] == 3 and result['lines']['refused'] == 0
+        assert result['left'] == (3 if attempt < 2 else 0)
+    assert result['given_up'] == 3 and len(calls) == 3
+    assert calls[0] == calls[1] == calls[2]
+    assert decisions.status(book.root)['skipped']['not_decision'] == 0
+
+
+def test_old_failures_get_one_more_offer_for_a_verdict_without_losing_history(book, monkeypatch):
+    # Produce the pre-verdict on-disk shape, including lines already given up.
+    items = captured_decisions.material(book)
+    for attempt in range(3):
+        captured_decisions.remember_offered(book.root, items, changed=[], night=str(attempt), reason='Old failure')
+    path = state_path(book.root, 'abstract-offered.json')
+    saved = read_json(path, {})
+    for state in saved.values():
+        state.pop('verdict_progress', None)
+        state.pop('verdicts', None)
+    write_json(path, saved)
+    original = path.read_bytes()
+    assert decisions.status(book.root)['waiting'] == 3
+    assert path.read_bytes() == original  # Status migration is read-only.
+    calls = verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision' for line_id, _ in lines))
+    result = decisions.write(book.root)
+    assert result['left'] == 0 and result['skipped']['not_decision'] == 3
+    assert len(calls) == 1 and decisions.write(book.root)['rounds'] == []
+    assert read_json(path, {})['sessions/example.md']['given_up'] == saved['sessions/example.md']['given_up']
+
+
+@pytest.mark.parametrize('target', ['decisions/missing.md', 'principles/existing.md', 'decisions/existing.md'])
+def test_merge_requires_a_decision_page_that_passed_this_round(book, monkeypatch, target):
+    if 'missing' not in target:
+        book.write(target, page(0))
+    verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} merged {target}' for line_id, _ in lines))
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['merged'] == 0
+    assert result['left'] == (2 if target == 'decisions/existing.md' else 3)
+
+
+def test_decision_ids_survive_packet_size_changes(book):
+    config = default_config()
+    first = captured_decisions.material(book)
+    config['limits']['input_chars_per_batch'] = 480
+    smaller = captured_decisions.material(book, config)
+    ids = lambda items: re.findall(r'(?m)^\[(d[0-9a-f]{12})\]', items[0]['text'])
+    assert ids(smaller) and ids(smaller) == ids(first)[:len(ids(smaller))]
+
+
+def test_abstract_prompt_teaches_verdicts_without_removing_trialled_text(book):
+    directory = book.root / 'verdict-prompt'
+    prompt = runner.prepare(book, captured_decisions.material(book), default_config(), stage='abstract',
+                            directory=directory, native=True)['prompt']
+    assert f'Write your report, including the VERDICT lines, to {directory / "report.md"}.' in prompt
+    assert 'Repeat those lines in your final message' in prompt
+    prompt += runner.instructions('abstract')
+    for text in ['Was an alternative rejected?', 'Expect to discard most of what you read.',
+                 'several artifacts collapse into one page', 'VERDICT', 'not-a-decision', 'merged']:
+        assert text in prompt
+
+
+def test_not_decision_verdict_cannot_acknowledge_a_refused_quote(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision' for line_id, _ in lines),
+        pages=[('decisions/one.md', page(1, broken=True))])
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['refused'] == 1
+    assert result['skipped']['not_decision'] == 2
+    assert result['left'] == 1
+
+
+def test_conflicting_verdicts_leave_the_line_unanswered(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '\n'.join(
+        f'VERDICT {line_id} not-a-decision\nVERDICT {line_id} merged decisions/missing.md'
+        for line_id, _ in lines))
+    result = decisions.write(book.root, rounds=1)
+    assert result['lines']['no_answer'] == 3 and result['left'] == 3
+    assert result['skipped']['not_decision'] == 0
+
+
+def test_inexact_quote_is_refused_with_its_check_reason(book, monkeypatch):
+    verdict_model(monkeypatch, lambda lines: '', pages=[('decisions/inexact.md', page('invented'))])
+    first = decisions.write(book.root, rounds=1)
+    assert first['lines']['refused'] == 3 and first['lines']['no_answer'] == 0
+    prepared = runner.prepare(book, captured_decisions.material(book), default_config(), stage='abstract',
+                              directory=book.root / 'inexact-retry', native=True)
+    assert "quote the owner's words exactly as captured" in prepared['prompt']
+
+
+def test_cli_reports_each_line_state_separately(book, monkeypatch):
+    book.write('sessions/example.md', '# Example\n\n## Decisions\n'
+               + '\n'.join(f'- “Choice {n}.” [1]' for n in range(5))
+               + f'\n\n## Sources\n- [1] {SOURCE}\n')
+    verdict_model(monkeypatch, lambda lines:
+        f'VERDICT {lines[1][0]} merged decisions/zero.md\nVERDICT {lines[2][0]} not-a-decision',
+        pages=[('decisions/zero.md', page(0)), ('decisions/three.md', page(3, broken=True))])
+    args = ['rem', '--root', str(book.root), 'decisions']
+    result = CliRunner().invoke(app, [*args, 'write', '--rounds', '1'])
+    assert result.exit_code == 0, result.output
+    status = CliRunner().invoke(app, args)
+    for output in (result.output, status.output):
+        assert 'Lines: 1 written · 1 merged · 1 refused · 1 no answer' in output
+        assert '1 not a decision' in output
+    assert '2 captured lines left' in result.output
+    assert 'Captured lines waiting: 2 · 2 to retry' in status.output
+    pending = str(captured_decisions.material(book))
+    assert 'Choice 3.' in pending and 'Choice 4.' in pending
+    assert all(f'Choice {number}.' not in pending for number in range(3))

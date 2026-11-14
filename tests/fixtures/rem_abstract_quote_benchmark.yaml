@@ -62,3 +62,25 @@ cases:
         - The two decisions remain decisions until a third supports the recurring reason.
       must_not:
         - A principle page is written from only two decisions.
+  - id: captured-verdict-report
+    kind: normal
+    input: |
+      Account for this offered captured line without writing a decision page:
+      [d0123456789ab] - “Fix the typo.” [1]
+      ## Sources
+      - [1] codex:example:41
+      Write your report to /task/abstract-example/report.md.
+    expect:
+      must:
+        - The report file and final message both contain VERDICT d0123456789ab not-a-decision on its own line.
+  - id: captured-verdict-link-only
+    kind: counterexample
+    input: |
+      Finish accounting for the offered line d0123456789ab, which rejected no alternative.
+      The report at /task/abstract-example/report.md contains its not-a-decision verdict.
+      Return your final message now.
+    expect:
+      must:
+        - The final message repeats the offered line's explicit not-a-decision verdict.
+      must_not:
+        - The final message contains only a link to the report instead of its verdict line.

@@ -23,11 +23,12 @@ from .source import with_local_times
 
 
 class RunFailed(RemError):
-    def __init__(self, message, usage=None, changed=(), refusals=()):
+    def __init__(self, message, usage=None, changed=(), refusals=(), report=''):
         super().__init__(message)
         self.usage = usage
         self.changed = sorted(changed)
         self.refusals = list(refusals)
+        self.report = report
 
 
 STAGES = ("init", "extract", "maintain", "investigate", "enrich", "muse", "abstract")
@@ -1230,7 +1231,7 @@ def _abstract_scope(working, changed, usage, *, native):
         raise RunFailed(f"Abstract may change at most {NIGHT_PAGE_LIMIT} pages per slice", usage)
 
 
-def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False, stage="maintain"):
+def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False, stage="maintain", report=''):
     """Write every page that passes review; keep the ones that do not, with why.
 
     A batch used to be refused whole when any one page failed, and a refused
@@ -1302,7 +1303,11 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items) + authorship_errors
         errors += [shrunk] if shrunk else []
         if errors:
-            refusals.append({"record": record, "errors": errors})
+            refusal = {"record": record, "errors": errors}
+            if stage == 'abstract':
+                from .page_review import _quote_bindings
+                refusal['quotes'] = [words for words, _ in _quote_bindings(after[record])]
+            refusals.append(refusal)
             kept = directory / "refused" / record
             kept.parent.mkdir(parents=True, exist_ok=True)
             kept.write_text(after[record], encoding="utf-8")  # what the model wrote, unrepaired
@@ -1321,9 +1326,14 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'repairs': {record: found for record, found in repairs.items() if any(found.values())},
                    'factual_quality': 'not automatically assessed'})
-        if native and refusals and (stage != "abstract" or not accepted):
+        verdict_progress = False
+        if native and stage == 'abstract' and not accepted:
+            from .decision_progress import line_results
+            verdict_progress = any(verdict['state'] == 'not_decision' for _, verdict in
+                                   line_results(notebook, items, [], refusals, report=report))
+        if native and refusals and (stage != "abstract" or (not accepted and not verdict_progress)):
             raise RunFailed("Maintenance rejected: " + "; ".join(e for row in refusals for e in row["errors"]), usage)
-        if native and stage == "abstract" and not accepted:
+        if native and stage == "abstract" and not accepted and not verdict_progress:
             raise RunFailed("Abstract wrote no passing pages", usage)
         for record, text in accepted:
             _write_page(notebook, record, text, items,
@@ -1634,6 +1644,9 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
         prompt += (f" Optionally write {directory / 'review-candidates.json'} as a JSON list of zero to two evidence-linked questions or connections. "
                    'Each item has kind (question/link), subjects (one/two existing notebook paths), question, basis. '
                    'A connection is only a candidate; do not establish it before user review. Do not repeat rejected proposals. ')
+    if stage == "abstract":
+        prompt += (f"\n\nWrite your report, including the VERDICT lines, to {directory / 'report.md'}. "
+                   "Repeat those lines in your final message; a link alone does not account for a captured line. ")
     if candidate and record.startswith("projects/"):
         prompt += (" Before saving the Project page, check every Sources entry: "
                    "investigation:coverage, investigation:project-scope, investigation:timeline, "
@@ -1687,10 +1700,20 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
             "prompt": prompt, "metrics": metrics, "summary": summary}
 
 
+def _collect_abstract_report(task, result):
+    """Keep both verdict carriers in the result before review and task scrubbing."""
+    report = Path(task['directory']) / 'report.md'
+    if task['stage'] == 'abstract' and report.is_file():
+        final = str(result.get('result') or '')
+        written = report.read_text(encoding='utf-8')
+        result['result'] = '\n\n'.join(dict.fromkeys(text for text in (final, written) if text))
+
+
 def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_progress=None,
           automatic_repairs=True, native=False):
     """Validate and promote prepared output; no preparation or evidence collection is repeated."""
     notebook = Notebook(Path(task["root"]))
+    _collect_abstract_report(task, result)
     directory, workdir = Path(task["directory"]), Path(task["directory"]).parent
     record, before, items, stage = task["record"], task["before"], task["items"], task["stage"]
     if native:
@@ -1732,7 +1755,8 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
         metrics["render_usage"] = result.get("usage")
     elif stage in ("maintain", "abstract") and not candidate:
         refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
-                                        result.get("usage"), maintenance_lock_held, stage=stage, **({"native": True} if native else {}))
+                                        result.get("usage"), maintenance_lock_held, stage=stage, report=result.get('result', ''),
+                                        **({"native": True} if native else {}))
         if stage == "maintain" and items and not changed():
             if refusals:
                 raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
@@ -1852,8 +1876,10 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                      for key in (usage or {}).keys() | inquiry_usage.keys()}
         metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
-                   "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
-        raise RunFailed(str(error), usage, changed(), read_json(directory / "review.json", {}).get("refused", [])) from error
+                   "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed(),
+                   "report": result.get('result', '')})
+        raise RunFailed(str(error), usage, changed(), read_json(directory / "review.json", {}).get("refused", []),
+                        report=str(result.get('result') or '')) from error
     metrics.update(repairs=result.get("repairs", 0), repair_usage=result.get("repair_usage", {}))
     insight_counts = {key: result[key] for key in
                       ("insights_proposed", "insights_kept", "insights_rejected", "insights_flips") if key in result}

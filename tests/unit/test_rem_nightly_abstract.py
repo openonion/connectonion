@@ -1,5 +1,7 @@
 """The night lifts captured choices without reopening sources or other pages."""
 from pathlib import Path
+import json
+import re
 
 import pytest
 
@@ -86,6 +88,44 @@ def test_two_successful_abstract_slices_in_one_night(book, abstract_config):
         assert result['changed'] == [record]
         end_abstract(book, state, prepared, changed=result['changed'])
     assert native_round.prepare_task(book.root, state, abstract_config, book.root / 'empty') is None
+
+
+def test_native_verdict_only_rounds_drain_without_empty_stop(book, abstract_config, monkeypatch):
+    from connectonion.rem import decisions, native
+    decision_backlog(book, 45)
+    write_json(state_path(book.root, 'round.json'), {**cursor(), 'started_at': service.now().isoformat()})
+    monkeypatch.setattr(native, '_stop', lambda *a, **kw: (None, {'used_percent': 0}))
+    for _ in range(3):
+        offered = native.next_task(book.root)
+        assert offered['outcome'] == 'task'
+        task = native.pending(book.root)[0]
+        folder = Path(task['directory'])
+        items = json.loads((folder / 'material.json').read_text())
+        ids = re.findall(r'(?m)^\[(d[0-9a-f]{12})\]', '\n'.join(item['text'] for item in items))
+        (folder / 'report.md').write_text('\n'.join(f'VERDICT {identity} not-a-decision' for identity in ids))
+        assert native.submit(book.root, offered['id'])['outcome'] == 'accepted'
+    status = decisions.status(book.root)
+    assert status['waiting'] == status['to_retry'] == 0
+    assert status['skipped']['not_decision'] == 45
+
+
+def test_native_refusal_does_not_block_independent_not_decision_verdicts(book, abstract_config, monkeypatch):
+    from connectonion.rem import decisions, native
+    decision_backlog(book, 3)
+    write_json(state_path(book.root, 'round.json'), {**cursor(), 'started_at': service.now().isoformat()})
+    monkeypatch.setattr(native, '_stop', lambda *a, **kw: (None, {'used_percent': 0}))
+    offered = native.next_task(book.root)
+    task = native.pending(book.root)[0]
+    folder = Path(task['directory'])
+    items = json.loads((folder / 'material.json').read_text())
+    ids = re.findall(r'(?m)^\[(d[0-9a-f]{12})\]', '\n'.join(item['text'] for item in items))
+    Notebook(Path(task['task']['task_root'])).write('decisions/bad.md',
+        DECISION.replace(WORDS, 'Choice 0.') + '\nOriginating pages:\n[1]: ../sessions/backlog.md\n')
+    (folder / 'report.md').write_text('\n'.join(f'VERDICT {identity} not-a-decision' for identity in ids[1:]))
+    assert native.submit(book.root, offered['id'])['outcome'] == 'accepted'
+    status = decisions.status(book.root)
+    assert status['waiting'] == status['to_retry'] == status['lines']['refused'] == 1
+    assert status['skipped']['not_decision'] == 2
 
 
 @pytest.mark.parametrize('outcome', ['completed', 'discarded', 'parked'])
@@ -558,7 +598,8 @@ def test_nightly_packet_matches_page_capacity_and_drains(book, sections):
         os.utime(book.path(record), (index + 1, index + 1))
     for night in range(3):
         items = captured(book)
-        lines = [line for item in items for line in item['text'].splitlines() if line.startswith('- 2026')]
+        lines = [line for item in items for line in item['text'].splitlines()
+                 if line.startswith('[d') and '] - 2026' in line]
         assert len(lines) == NIGHT_PAGE_LIMIT
         assert f'“Choice {night * 20}.”' in lines[0]
         assert f'“Choice {night * 20 + 19}.”' in lines[-1]

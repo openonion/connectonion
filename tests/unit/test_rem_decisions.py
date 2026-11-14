@@ -79,7 +79,7 @@ def test_decisions_status_counts_pages_and_pending_without_model(book, model):
     book.write('principles/existing.md', '# A principle\n')
     result = invoke(book, 'decisions')
     assert result.exit_code == 0, result.output
-    assert 'Decision pages: 1 · Principle pages: 1 · Decisions waiting: 41' in result.output
+    assert 'Decision pages: 1 · Principle pages: 1 · Captured lines waiting: 41' in result.output
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} decisions write')
     assert model[0] == []
     assert not state_path(book.root, 'abstract-offered.json').exists()
@@ -91,16 +91,16 @@ def test_manual_decisions_drains_several_rounds_and_reports_each(book, model):
     assert result.exit_code == 0, result.output
     assert len(model[0]) == 3
     assert len(book.list('decisions')) == 45
-    assert 'Round 1: 20 decisions read · 20 pages written · 0 refused' in result.output
-    assert 'Round 3: 5 decisions read · 5 pages written · 0 refused' in result.output
-    assert 'Done: 3 rounds · 45 pages written · 0 refused · 0 slices set aside for a later retry · 0 decisions left' in result.output
+    assert 'Round 1: 20 captured lines read · 20 pages written · 0 pages refused' in result.output
+    assert 'Round 3: 5 captured lines read · 5 pages written · 0 pages refused' in result.output
+    assert 'Done: 3 rounds · 45 pages written · 0 pages refused · 0 slices set aside for a later retry · 0 captured lines left' in result.output
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} list decisions')
     runs = [read_json(path, {}) for path in state_path(book.root, 'runs').glob('*.json')]
     assert len(runs) == 3 and all(run['outcome'] == 'completed' for run in runs)
     assert not state_path(book.root, 'abstract-night.json').exists()
     again = invoke(book, 'decisions', 'write')
     assert again.exit_code == 0 and len(model[0]) == 3
-    assert 'Done: 0 rounds · 0 pages written · 0 refused · 0 slices set aside for a later retry · 0 decisions left' in again.output
+    assert 'Done: 0 rounds · 0 pages written · 0 pages refused · 0 slices set aside for a later retry · 0 captured lines left' in again.output
 
 
 @pytest.mark.parametrize('success_first', [False, True])
@@ -112,9 +112,9 @@ def test_manual_stops_after_two_empty_rounds_with_correct_exit(book, model, succ
     assert len(model[0]) == (3 if success_first else 2)
     number = 3 if success_first else 2
     left = 45 if success_first else 65
-    assert f'Round {number}: 20 decisions read · 0 pages written · 0 refused' in result.output
+    assert f'Round {number}: 20 captured lines read · 0 pages written · 0 pages refused' in result.output
     assert f'2 slices set aside for a later retry · stopped:' in result.output
-    assert f'{left} decisions left' in result.output
+    assert f'{left} captured lines left' in result.output
     assert 'two empty rounds in a row' in result.output
     offered = read_json(state_path(book.root, 'abstract-offered.json'), {})
     assert len(offered['sessions/backlog.md']['failures']) == 40
@@ -129,7 +129,7 @@ def test_manual_empty_then_success_keeps_failed_slice_for_retry(book, model):
     assert result.exit_code == 0, result.output
     assert len(model[0]) == 3 and len(book.list('decisions')) == 25
     assert '1 slice set aside for a later retry' in result.output
-    assert '20 decisions left' in result.output
+    assert '20 captured lines left' in result.output
     retry = invoke(book, 'decisions', 'write')
     assert retry.exit_code == 0, retry.output
     assert len(model[0]) == 4 and model[0][0] == model[0][-1]
@@ -165,7 +165,7 @@ def test_manual_round_limit_is_independent_of_night_cap(book, model):
     result = invoke(book, 'decisions', 'write', '--rounds', '2')
     assert result.exit_code == 0, result.output
     assert len(model[0]) == 2
-    assert 'Done: 2 rounds · 40 pages written · 0 refused · 0 slices set aside for a later retry · 25 decisions left' in result.output
+    assert 'Done: 2 rounds · 40 pages written · 0 pages refused · 0 slices set aside for a later retry · 25 captured lines left' in result.output
     assert read_json(state_path(book.root, 'abstract-night.json'), {}) == marker
 
 
@@ -213,7 +213,7 @@ def test_manual_partial_refusals_are_printed_and_recorded(book, model):
     model[1].append('partial')
     result = invoke(book, 'decisions', 'write')
     assert result.exit_code == 0, result.output
-    assert 'Round 1: 2 decisions read · 2 pages written · 1 refused' in result.output
+    assert 'Round 1: 2 captured lines read · 2 pages written · 1 pages refused' in result.output
     assert 'refused decisions/proposal.md:' in result.output
     assert not book.exists('decisions/proposal.md')
     run = read_json(next(state_path(book.root, 'runs').glob('*.json')), {})
@@ -301,3 +301,22 @@ def test_decisions_are_discoverable_and_help_teaches_the_workflow():
                  'Calls the model once per round.', 'Writes only under decisions/ and principles/.',
                  'two empty rounds in a row', 'slices set aside for a later retry', 'Speaker unverified.']:
         assert text in help_page.output
+
+
+def test_verdict_only_rounds_drain_backlog_without_an_empty_stop(book, monkeypatch):
+    from connectonion.rem import decisions
+    backlog(book, 45)
+    calls = []
+
+    def run(workspace, prompt, config, stage, **options):
+        items = json.loads(next(workspace.glob('abstract-*/material.json')).read_text())
+        ids = re.findall(r'(?m)^\[(d[0-9a-f]{12})\]', '\n'.join(item['text'] for item in items))
+        calls.append(ids)
+        return {'result': '\n'.join(f'VERDICT {identity} not-a-decision' for identity in ids)}
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    result = decisions.write(book.root)
+    assert len(calls) == 3 and sum(map(len, calls)) == 45
+    assert result['left'] == 0 and result['written'] == 0
+    assert result['skipped']['not_decision'] == 45
+    assert not result['failed'] and not result['reason']

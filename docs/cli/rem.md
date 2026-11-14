@@ -493,7 +493,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
-| `co rem decisions` | Count decision and principle pages and captured decisions waiting. No model; no writes. |
+| `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
 | `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
@@ -513,10 +513,10 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
 Run `co rem decisions` to see how many decision and principle pages exist and how
-many supported captured decisions are waiting. Waiting and left count only lines
+many supported captured lines are waiting. Waiting and left count only lines
 with a verbatim quote and a bound original source, excluding captures contradicted
 by stored owner input. Status and the final write summary separately count captures
-with no quote, no bound source, or contradicted owner words; these totals count
+with no quote, no bound source, contradicted owner words, or judged not a decision; these totals count
 each line once across the notebook, rather than accumulating across rounds.
 Legacy session pages list unnumbered sources: a quote receives a numbered binding
 only when its words and captured clock identify one retained owner turn on that
@@ -532,21 +532,35 @@ captured in the supplied Decisions or Key decisions into the body immediately
 followed by its `[n]`; `## Sources` defines the original source ID for that number
 and keeps the originating page as context. A quote
 placed only under Sources is refused with instructions to move it into the body.
-The page limit is a ceiling: zero pages is valid. Skip a line whose words or source
-cannot support a page; never turn a paraphrase into an owner quote. A quote too long
+The page limit is a ceiling: zero pages is valid. Never turn a paraphrase into an owner quote. A quote too long
 for the input bound stays pending, rather than being split into unusable fragments.
-An empty round counts as a failed attempt for its slice, sets it aside for a later
-retry, and moves to the next slice. It continues until nothing unattempted is left
-or two empty rounds occur in a row; a successful round resets that streak.
+Each offered line has a stable short ID. A passing page that quotes it counts as
+written. For every line it does not quote, the model reports either a merge into a
+decision page it wrote this round, or not a decision because no alternative was
+rejected. A merge finishes only when the named page passes review. Merged lines
+and lines judged not a decision are done and never retried. Verdicts for IDs outside
+the packet are ignored. Refused lines keep the check's reason; lines with neither a
+page nor a verdict count as no answer. Both retry up to three attempts.
+A round that resolves no lines counts as an empty round, sets its slice aside for
+a later retry, and moves to the next slice. It continues until nothing unattempted
+is left or two empty rounds occur in a row; a written, merged or not-a-decision
+outcome resets that streak.
 `--rounds 2` stops after at most two rounds. Output gives per-round counts and
-totals, slices set aside for a later retry, decisions left, then `co rem list decisions`.
-Exit is 0 after progress or when nothing is waiting; it is 1 when no attempted
-round writes a page, with the reason on the last line. A crash leaves its decisions pending.
+totals, slices set aside for a later retry, captured lines left, then `co rem list decisions`.
+Status and the final summary show line totals separately: written, merged,
+refused, no answer, and given up. Skipped includes not a decision. Refused and
+no-answer totals include given-up lines; waiting and to retry exclude them.
+These saved totals count each current captured line once, across runs.
+Exit is 0 after progress (including verdicts) or when nothing is waiting; it is 1
+when no attempted round resolves a line, with the reason on the last line.
+A crash leaves its captured lines pending.
 Manual success shares the night's saved progress, so neither repeats the other's work.
 A manual attempt neither uses nor consumes `limits.abstract_rounds_per_night`;
 each failed manual run counts once for that slice toward the existing three-failure
 rule, as does each distinct failed night. After three failures the queue releases
-the slice and records the reason. Successes after a failed gap are saved separately
+the line and records the reason. Old receipts without verdicts retain their failure
+history and get one more offer, including lines previously given up, so the model
+can give a verdict. Successes after a failed gap are saved separately
 so the gap can retry without repeating later successes. `co rem abstract` remains an alias.
 
 Quote equality with a captured line does not prove who said it. Before promotion,
@@ -579,7 +593,8 @@ acceptance are excluded. Principles still need at least three decisions. The sav
 night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
 keeps the count, attempted slices and consecutive empty count; the next night starts
 at zero. An unfinished reservation blocks new slices until its outcome is recorded.
-Two empty rounds in a row stop new abstract slices for that night. The later
+Two rounds in a row with neither passing pages nor completed line verdicts stop
+new abstract slices for that night. The later
 same-person and translation passes follow at most six abstract rounds by default.
 Passing pages are saved; rejected
 pages and their errors are recorded in the run. A task with no passing pages
