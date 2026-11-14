@@ -9,9 +9,11 @@ from .service import now
 
 
 def status(root):
+    from .decision_progress import retry_details
     notebook = Notebook(root)
     return {"decisions": len(notebook.list("decisions")), "principles": len(notebook.list("principles")),
-            "waiting": captured_decisions.pending_count(notebook), "skipped": captured_decisions.skipped_counts(notebook)}
+            "waiting": captured_decisions.pending_count(notebook), "to_retry": retry_details(notebook)[0],
+            "skipped": captured_decisions.skipped_counts(notebook)}
 
 
 def _round(notebook, items, config):
@@ -34,8 +36,9 @@ def _round(notebook, items, config):
         "started_at": started, "finished_at": now().isoformat(), "items": len(items),
         "outcome": "completed" if row["changed"] and not row["reason"] else "failed",
         "harness": config["runner"], "model": config["model"], "runner_attempts": 0})
-    deferred = captured_decisions.remember_offered(notebook.root, items, promoted=bool(row["changed"]),
-                                                  night=f"manual:{run_id}", reason=row["reason"] or "Round wrote no page")
+    deferred = captured_decisions.remember_offered(notebook.root, items, changed=row['changed'], refusals=row['refused'],
+                                                  night=f"manual:{run_id}", reason=row["reason"] or
+                                                  "No passing decision page for this captured line")
     row["set_aside"] = bool(deferred)
     return row
 
@@ -60,9 +63,9 @@ def write(root, *, rounds=None, progress=None):
         if progress:
             progress(len(rows), row)
         empty_rounds = 0 if row["changed"] else empty_rounds + 1
+        attempted.extend(captured_decisions.slice_key(item) for item in items)
+        set_aside += row["set_aside"]
         if not row["changed"]:
-            attempted.extend(captured_decisions.slice_key(item) for item in items)
-            set_aside += row["set_aside"]
             last_failure = row["reason"] or "Round wrote no page"
         if empty_rounds >= 2:
             reason = "Stopped after two empty rounds in a row: " + last_failure

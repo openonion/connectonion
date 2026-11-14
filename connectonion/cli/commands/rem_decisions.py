@@ -65,7 +65,7 @@ def add_decisions_app(rem, factory, handle, written):
         def operation(root):
             value = status(root)
             text = (f"Decision pages: {value['decisions']} · Principle pages: {value['principles']} · "
-                    f"Decisions waiting: {value['waiting']}" + _skipped(value))
+                    f"Decisions waiting: {value['waiting']} · {value['to_retry']} to retry" + _skipped(value))
             return (value if ctx.obj["json"] else text), ["decisions", "write"]
         handle(ctx, operation, ["init"])
 

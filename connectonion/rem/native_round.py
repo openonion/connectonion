@@ -302,7 +302,7 @@ def record_abstract_result(root, prepared, *, promoted, deferred=False):
             and saved.get("result_round") != saved.get("rounds", 1)):
         empty = 0 if promoted else saved.get("empty_rounds", 0) + 1
         attempted = saved.get("attempted", [])
-        if not promoted:
+        if not promoted or deferred:
             attempted += [slice_key(item) for item in prepared.get("items", [])]
         write_json(marker, {**saved, "empty_rounds": empty, "stopped": empty >= 2,
                             "attempted": attempted, "result_round": saved.get("rounds", 1),

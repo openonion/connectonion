@@ -1108,7 +1108,7 @@ Usage:    co rem decisions [COMMAND]
 Example:  co rem decisions
 Commands:
   write   Write decision and principle pages now, continuing until caught up.
-Output:   Decision pages, principle pages, decisions waiting and skipped captures by reason, then the next command.
+Output:   Decision pages, principle pages, decisions waiting, N to retry and skipped captures by reason, then the next command.
 Effects:  Reads notebook pages and saved progress. No model; no writes.
 Next:     co rem decisions write
 Back:     co rem --help
@@ -1126,6 +1126,10 @@ Reads up to 20 decisions per round, oldest first. Shares progress with the night
 Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
 Legacy session quotes receive numbered sources only when retained owner turns establish a unique match.
 An empty round counts as a failed slice, set aside for a later retry, then moves to the next slice.
+Progress is saved per captured line: a refused or unwritten choice stays queued even when another page passes.
+Pending lines are offered once per manual run or night; after three failed attempts they are recorded as given up with the reason.
+Retries carry the recorded refusal text. Saved refused pages recover identifiable choices hidden by older whole-slice progress.
+Under Sources use exactly one - [n] source-id definition per citation; put originating-page context inline, without [n]: Markdown link definitions.
 Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, decisions left and skipped counts once. Exit 1 if no attempted round writes a page; 0 on progress or no work.
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
           Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.

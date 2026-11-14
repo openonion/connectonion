@@ -117,7 +117,8 @@ def test_manual_stops_after_two_empty_rounds_with_correct_exit(book, model, succ
     assert f'{left} decisions left' in result.output
     assert 'two empty rounds in a row' in result.output
     offered = read_json(state_path(book.root, 'abstract-offered.json'), {})
-    assert len(offered['sessions/backlog.md']['failures']) == 2
+    assert len(offered['sessions/backlog.md']['failures']) == 40
+    assert len({night for nights in offered['sessions/backlog.md']['failures'].values() for night in nights}) == 2
     assert model[0][-1] != model[0][-2]
 
 
@@ -190,10 +191,14 @@ def test_manual_and_night_share_the_same_queue(book, model, night_first):
     first = 0 if night_first else 20
     assert f'“Choice {first}.”' in prepared['items'][0]['text']
     output = Notebook(Path(prepared['task_root']))
-    output.write(f'decisions/night-{first}.md', page(f'Choice {first}.'))
+    records = []
+    for number in range(first, first + 20):
+        record = f'decisions/night-{number}.md'
+        output.write(record, page(f'Choice {number}.'))
+        records.append(record)
     runner.check(prepared, {}, native=True)
     task.update(directory=prepared['directory'], run={'id': 'night', 'quota': {'after': {}}})
-    native._log(book.root, task, 'completed', changed=[f'decisions/night-{first}.md'])
+    native._log(book.root, task, 'completed', changed=records)
     if night_first:
         result = invoke(book, 'decisions', 'write')
         assert result.exit_code == 0, result.output
@@ -225,7 +230,8 @@ def test_manual_applies_nightly_page_checks_and_preserves_queue(book, model, mod
     assert result.exit_code == 1, result.output
     assert reason in result.output
     assert book.list('decisions') == [] and not book.exists('people/other.md')
-    assert len(read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/backlog.md']['failures']) == 1
+    failures = read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/backlog.md']['failures']
+    assert len(failures) == 20 and all(len(nights) == 1 for nights in failures.values())
     assert len(model[0]) == 1
 
 

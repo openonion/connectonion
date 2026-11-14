@@ -60,6 +60,11 @@ def end_abstract(book, state, prepared, *, changed, outcome='completed'):
     prepared.update(run={'id': name}, render_stage='abstract', id=name,
                     directory=prepared['task']['directory'])
     if outcome == 'completed':
+        # These queue tests simulate promotion; a success must contain the
+        # captured lines, rather than merely naming a nonexistent output page.
+        for record in changed:
+            if not book.exists(record):
+                book.write(record, '# Captured choices\n\n' + prepared['task']['items'][0]['text'])
         native._accept(book.root, state, prepared, {'changed': changed})
     else:
         native._discard(book.root, state, prepared, 'No passing pages', outcome=outcome)
@@ -447,11 +452,13 @@ def test_offered_sections_are_oldest_first_changed_and_crash_retry(book, monkeyp
     retry.update(run={'id': 'offered'}, render_stage='abstract', id='native-test', directory=retry['task']['directory'])
     monkeypatch.setattr(native.quota, 'read', lambda *a: {})
     monkeypatch.setattr(native.runner, 'scrub_task', lambda *a: None)
+    book.write('decisions/first.md', '# Captured choice\n\n' + retry['task']['items'][0]['text'])
     native._accept(book.root, cursor(), retry, {'changed': ['decisions/first.md']})
     write_json(state, {'day': '2020-01-01'})
     second = native_round.prepare_abstract(book.root, cursor(), config, book.root / 'second')
     assert [i['record'] for i in second['task']['items']] == ['sessions/fixture.md']
     second.update(run={'id': 'second'}, render_stage='abstract', id='native-test', directory=second['task']['directory'])
+    book.write('decisions/second.md', '# Captured choice\n\n' + second['task']['items'][0]['text'])
     native._accept(book.root, cursor(), second, {'changed': ['decisions/second.md']})
     write_json(state, {'day': '2020-01-01'})
     assert native_round.prepare_abstract(book.root, cursor(), config, book.root / 'empty') is None

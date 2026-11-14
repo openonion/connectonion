@@ -1409,6 +1409,10 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     definitions = source_definitions(sources)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
+    if record.startswith('decisions/') and any(defined[key] != 1 for key in refs):
+        errors.append('Under ## Sources, define each [n] exactly once as '
+                      '- [1] source-id — originating page: `sessions/example.md`; '
+                      'copy the supplied original source ID. Do not add [n]: Markdown link definitions.')
     known = _known_sources(items) | _archived_sources(root, definitions)
     if record.startswith('projects/'):
         from .project_pages import live_source_snapshot

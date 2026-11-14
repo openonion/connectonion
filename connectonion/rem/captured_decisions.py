@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 
-from .files import _readable_json, read_json, state_path, write_json
+from .files import Notebook, _readable_json, read_json, state_path, write_json
 from .page_review import QUOTE, _quote_bindings, _quoted_in
 
 # Twenty lets an older notebook catch up while keeping each slice's review bounded.
@@ -107,8 +107,13 @@ def slice_key(item):
     return {key: item[key] for key in ("record", "section_sha256", "section_start", "section_end")}
 
 
+def _offered(notebook):
+    from .decision_progress import recover
+    return recover(notebook, read_json(state_path(notebook.root, "abstract-offered.json"), {}))
+
+
 def _pending(notebook, attempted=()):
-    offered = read_json(state_path(notebook.root, "abstract-offered.json"), {})
+    offered = _offered(notebook)
     sections = sorted(_sections(notebook), key=lambda row: (notebook.path(row[0]).stat().st_mtime, row[0]))
     for record, heading, body, sources in sections:
         captured = _captured(heading, body, sources)
@@ -172,22 +177,35 @@ def _complete(saved, start, end):
     saved["completed"] = completed
     failures = saved.get("failures", {})
     failures.pop(f"{start}:{end}", None)
+    saved.get("failure_reasons", {}).pop(f"{start}:{end}", None)
     if not failures:
         saved.pop("failures", None)
 
 
-def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages"):
-    """Checkpoint success, or release a slice after three failed nights/manual runs."""
+def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages", changed=None, refusals=()):
+    """Checkpoint promoted lines; give up each failed line on its third attempt.
+
+    The slice-only default remains for older callers; writers supply changed
+    pages so one successful page cannot acknowledge its entire input slice.
+    """
     path = state_path(root, "abstract-offered.json")
-    offered = read_json(path, {})
+    offered = _offered(Notebook(root))
+    if changed is not None:
+        from .decision_progress import line_results
+        results = line_results(Notebook(root), items, changed, refusals)
+        reason = '; '.join(dict.fromkeys(error for row in refusals for error in row['errors'])) or reason
+    else:
+        results = ((item, promoted) for item in items)
     deferred = []
-    for item in items:
+    for item, promoted in results:
         digest = item.get("section_sha256")
         if not digest:
             continue
         saved = offered.get(item["record"], {})
         if saved.get("sha256") != digest:
             saved = {"sha256": digest, "offset": 0}
+        if changed is not None:
+            saved['line_progress'] = True
         start, end = item.get("section_start", 0), item["section_end"]
         if saved["offset"] >= end or any(left <= start and right >= end for left, right in saved.get("completed", [])):
             continue
@@ -195,9 +213,13 @@ def remember_offered(root, items, *, promoted=True, night=None, reason="No passi
             _complete(saved, start, end)
         else:
             failures = saved.setdefault("failures", {})
-            nights = failures.setdefault(f"{start}:{end}", [])
+            key = f"{start}:{end}"
+            prior = [n for span, nights in failures.items() for n in nights
+                     if int(span.split(':')[0]) <= start and int(span.split(':')[1]) >= end]
+            nights = failures.setdefault(key, list(dict.fromkeys(prior)))
             if night not in nights:
                 nights.append(night)
+                saved.setdefault('failure_reasons', {})[key] = reason
             if len(nights) >= 3:
                 saved.setdefault("given_up", []).append(dict(start=start, end=end, nights=nights, reason=reason))
                 _complete(saved, start, end)

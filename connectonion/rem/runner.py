@@ -1603,13 +1603,20 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                            "Every decision must copy the owner's verbatim words into the body, immediately followed by its [n]. "
                            "Copy the quote exactly as captured in the supplied ## Decisions or ## Key decisions; "
                            "preserve its original source ID when renumbering citations. "
-                           "Under ## Sources, define each [n] with the original source ID; keep the originating page path as context. "
+                           "Under ## Sources, define each [n] exactly once with the original source ID; put the originating page path inline as context. "
                            "Copy the supplied source definition in the form - [n] source-id, renumbering only the citation label. "
+                           "Use this exact line shape: - [1] source-id — originating page: `sessions/example.md`. "
+                           "Do not add [n]: Markdown link definitions or a second definition of any citation label. "
                            "Example body line: “Use Markdown so I can inspect the pages.” [1]\n"
                            "Example source definition under ## Sources: - [1] codex:s1:347\n"
                            "An assistant's proposal is not a decision unless the owner said or explicitly accepted it. "
                            "Preserve existing questions and edit their pages for reversals; skip choices already captured. "
                            "Write decisions first, then principles supported by at least three decisions. ")
+                from .decision_progress import retry_details
+                reasons = retry_details(notebook, items)[1]
+                if reasons:
+                    prompt += "\n\n## Previous refusals for these captured lines\nRepair these recorded errors on the same evidence:\n"
+                    prompt += '\n'.join('- ' + reason for reason in reasons) + '\n'
             else:
                 prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
                        "Write at most one NEW page in the output notebook; do not modify an existing canonical page. "
