@@ -8,8 +8,6 @@ description: >-
 
 # Obsidian as a source
 
-Why these rules: docs/rem-skills/rem-source-obsidian.md (repo design notes; not needed at runtime).
-
 Read with the stage Skill that loaded it. That one says what to produce and
 which page may change; this one says what this source can support.
 

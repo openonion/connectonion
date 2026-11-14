@@ -1,8 +1,10 @@
 """The #2068 benchmark fixtures say what they claim to, and check_pages catches what it must."""
 
 import importlib.util
+import re
 from pathlib import Path
 
+from connectonion.benchmark.suite import load
 from connectonion.rem import facts
 from connectonion.rem.fact_extract import extract
 
@@ -49,7 +51,20 @@ def test_generic_or_unlabelled_insight_is_refused_and_a_labelled_one_passes():
 
 
 def test_every_fixture_page_is_already_in_the_facts_shape():
+    obsidian, problems = load("rem-source-obsidian", root=BENCH.parents[1])
+    assert not problems, problems
+    records = {}
+    for case in obsidian.cases:
+        match = re.match(r"Maintain only the Wiki record (\S+\.md) ", case.input)
+        assert match, case.id
+        page = BENCH / case.fixture / "page.md"
+        assert page.is_file(), case.id
+        records[page] = match[1]
+
     for page in (BENCH / "fixtures").glob("*/page.md"):
-        kind = "people/" if page.parent.name.startswith("person-") else "projects/"
-        record = kind + page.parent.name + ".md"
-        assert facts.upgrade(record, page.read_text()) == page.read_text(), page.parent.name
+        record = records.get(page)
+        if record is None:
+            kind = "people" if page.parent.name.startswith("person-") else "projects"
+            record = f"{kind}/{page.parent.name}.md"
+        content = page.read_text(encoding="utf-8")
+        assert facts.upgrade(record, content) == content, page.parent.name
