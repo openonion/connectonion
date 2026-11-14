@@ -33,7 +33,9 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc13**: a Host records every automatic run in `co approvals`, and a revoked
+Release candidate **1.9.6rc14**: the REM reader shows organisations as a sortable table and a page that reads
+like a book, keeps one Knowledge place, and opens Projects on a board by state. See [1.9.6rc14 notes](releases/1.9.6rc14.md).
+Before it, release candidate **1.9.6rc13**: a Host records every automatic run in `co approvals`, and a revoked
 requester's turn stops before its next step even after they disconnect. See [1.9.6rc13 notes](releases/1.9.6rc13.md).
 Before it, release candidate **1.9.6rc12**: `co whatsapp` connects again on a fresh install (neonize 0.10.0;
 WhatsApp refused the old client), reads a group's history when the account is added to it, and
@@ -86,7 +88,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc13'
+python -m pip install --upgrade 'connectonion==1.9.6rc14'
 ```
 
 ## Previous stable
