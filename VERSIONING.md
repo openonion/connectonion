@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc15
+## Current Version: 1.9.6rc16
+Release candidate 1.9.6rc16 for 1.9.6: found by opening rc15 on a real notebook. The Organisations
+table never prints the not-investigated placeholder as a fact, whichever field or translation
+carried it (#3036, #3037); an organisation whose kind is `company` renders; a long location is
+clamped to two lines. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc16.md).
+
+- 1.9.6rc16 (REM reader: no placeholder printed as a fact, company pages render, long locations clamp).
+
+### Previous candidate: 1.9.6rc15
 Release candidate 1.9.6rc15 for 1.9.6: the REM reader's Organisations table shows its tree expanded
 and reads well on real notebooks (#3037, #3036); «Talk it over» shows its conversation after the
 reload that follows it; Today and Projects defects (#3042, #2947) and three fact errors (#2951,

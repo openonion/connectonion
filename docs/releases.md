@@ -33,7 +33,9 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc15**: the Organisations table shows its tree expanded, «Talk it over» shows its
+Release candidate **1.9.6rc16**: the Organisations table never prints the not-investigated placeholder as a
+fact, a company's page renders, and long locations clamp to two lines. See [1.9.6rc16 notes](releases/1.9.6rc16.md).
+Before it, release candidate **1.9.6rc15**: the Organisations table shows its tree expanded, «Talk it over» shows its
 conversation, facts on people and projects are corrected, and the reader's Chrome suite is green. See [1.9.6rc15 notes](releases/1.9.6rc15.md).
 Before it, release candidate **1.9.6rc14**: the REM reader shows organisations as a sortable table and a page that reads
 like a book, keeps one Knowledge place, and opens Projects on a board by state. See [1.9.6rc14 notes](releases/1.9.6rc14.md).
@@ -90,7 +92,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc15'
+python -m pip install --upgrade 'connectonion==1.9.6rc16'
 ```
 
 ## Previous stable
