@@ -1093,6 +1093,19 @@ with the alternative that was rejected), then principle pages (a reason that
 keeps recurring across decisions). Reads pages only, never mail or sessions.
 Runs the model once.
 
+After session summaries, the night runs one abstract task when session ## Decisions
+or project ## Key decisions contains new or changed captured material. Oldest sections are offered first,
+within the configured input character budget, with only sources bound to their
+quotes. Offered section hashes are saved after the turn’s outcome is recorded;
+a crashed turn leaves its material pending. It writes or updates at
+most 20 pages under decisions/ and principles/ only, with the owner's words
+and original citations on each decision. Assistant proposals without the owner's
+acceptance are excluded. Principles still need at least three decisions. A saved
+attempt prevents another abstract task that noon-to-noon night in the notebook’s
+time zone, even after a refusal or restart. Passing pages are saved; rejected
+pages and their errors are recorded in the run. A task with no passing pages
+fails. With no unoffered material, this stage makes no model call.
+
 Usage:    co rem abstract
 Example:  co rem abstract
 Output:   Pages under decisions/ and principles/, cited to the pages they came from.

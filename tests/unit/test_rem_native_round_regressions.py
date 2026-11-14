@@ -273,3 +273,25 @@ def test_legacy_project_completion_never_marks_unchanged_inputs_read(notebook, m
     assert native_round._project_task(notebook, cursor, read_config(notebook), notebook, record) is None
     assert page_state(notebook, record)['written_through'] == (new if changed else old)
     assert cursor['job_index'] == 1
+
+
+def test_native_abstract_submit_promotes_a_batch_and_leaves_other_pages_alone(notebook, monkeypatch):
+    from connectonion.rem import night, tasks
+    monkeypatch.setattr(night, 'prepare', lambda *a, **kw: [])
+    monkeypatch.setattr(tasks, 'auto_dispatch', lambda *a: None)
+    save_round(notebook, [])
+    book = Notebook(notebook)
+    quote = 'Use Markdown for inspection instead of a database.'
+    choice = (f'# Where to store pages\n\n“{quote}” [1]\n\n## Why\nInspection. [1]\n\n'
+              '## Sources\n- [1] codex:fixture:7\n')
+    book.write('sessions/fixture.md', f'# Fixture\n\n## Decisions\n- “{quote}” [1]\n\n## Sources\n- [1] codex:fixture:7\n')
+    book.write('decisions/existing.md', choice)
+    task = native.next_task(notebook)
+    assert task['outcome'] == 'task' and task['stage'] == 'abstract'
+    output = Notebook(Path(task['candidate']))
+    output.write('decisions/existing.md', choice.replace('Inspection.', 'Inspection and portability.'))
+    output.write('decisions/new.md', choice)
+    result = native.submit(notebook, task['id'])
+    assert result['outcome'] == 'accepted', result
+    assert result['changed'] == ['decisions/existing.md', 'decisions/new.md']
+    assert native.next_task(notebook)['outcome'] == 'done'

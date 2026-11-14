@@ -125,7 +125,9 @@ def _inputs(root, task, directory, *, handler):
     book = Notebook(root)
     paths.update(Path(path) for path in task.get("input_paths", []))
     paths.update(book.path(record) for record in task.get("before", {}))
-    paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md"))
+    output = Path(task["task_root"]) if task.get("stage") == "abstract" and task.get("task_root") else None
+    paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md")
+                 and not (output and path.is_relative_to(output)))
     from .project_claim_review import original_items
     items = [*task.get("items", []), *task.get("prior_items", [])]
     for item in [*items, *original_items(items)]:
@@ -533,10 +535,15 @@ def _save(root, cursor, task):
 
 
 def _log(root, task, outcome, **fields):
+    if task.get("operation") == "abstract":
+        fields.setdefault("refused", read_json(Path(task["directory"]) / "review.json", {}).get("refused", []))
     if outcome == "completed" and "after" not in task["run"].get("quota", {}):
         task["run"].setdefault("quota", {})["after"] = quota.read(read_config(root))
     task["run"].update(outcome=outcome, finished_at=service.now().isoformat(), usage=task.get("usage"), **fields)
     write_json(state_path(root, f"runs/{task['run']['id']}.json"), task["run"])
+    if task.get("operation") == "abstract" and outcome in ("completed", "discarded", "parked"):
+        from .captured_decisions import remember_offered
+        remember_offered(root, task["task"].get("items", []))
 
 
 def submit(root, task_id, *, usage=None):
@@ -780,6 +787,8 @@ def _promoted(root, task):
     if not task:
         return False
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
+    if "pages" in receipt:
+        return all(_hash(Notebook(root).path(record)) == digest for record, digest in receipt["pages"].items())
     return bool(receipt) and _hash(Notebook(root).path(receipt["record"])) == receipt["sha256"]
 
 
@@ -839,8 +848,10 @@ def _source_view(root, task, *, handler):
 
 def _recovered_result(root, task):
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
-    record = receipt["record"]
-    original = task["task"].get("before", {}).get(record)
-    changed = original is None or hashlib.sha256(original.encode()).hexdigest() != receipt["sha256"]
+    pages = receipt.get("pages", {}) if "pages" in receipt else {receipt["record"]: receipt["sha256"]}
+    before = task["task"].get("before", {})
+    changed = sorted(record for record, digest in pages.items()
+                     if record not in before or hashlib.sha256(before[record].encode()).hexdigest() != digest)
     report = Path(task["directory"]) / "report.md"
-    return {"changed": [record] if changed else [], "report": report.read_text() if report.is_file() else ""}
+    return {"changed": changed, "report": report.read_text() if report.is_file() else "",
+            "refused": read_json(Path(task["directory"]) / "review.json", {}).get("refused", [])}

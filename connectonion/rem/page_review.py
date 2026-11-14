@@ -960,7 +960,7 @@ def _known_sources(items: list[dict]) -> set:
     # the facts item even though the raw mail is absent from this turn.
     known.update(row['source'] for item in items if item.get('role') == 'facts'
                  for row in item.get('facts', []) if row.get('source'))
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence", "captured-decisions")
                for source in i.get("sources", [])]
     known.update(derived)
     # Numbered pieces are one original record. A citation to the whole record
@@ -2341,12 +2341,14 @@ def move_agent_threads(text: str) -> str:
     return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
 
 
-def unquoted_decisions(text: str) -> list[str]:
+def unquoted_decisions(text: str, *, decision_page=False) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
     2026-10-20 reruns: four of five handoff decisions were paraphrased though
     rem-page-project asks each to quote the sentence that carries the choice.
     """
+    if decision_page and not QUOTE.search(prose(text).partition('\n## Sources\n')[0]):
+        return ["Decision without the owner's words -- quote the sentence that carries the choice, copied from the message it cites"]
     span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "

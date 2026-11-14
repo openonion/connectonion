@@ -253,6 +253,9 @@ def prepare_task(root, cursor, config, directory):
         files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
         task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
         return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
+    task = prepare_abstract(root, cursor, config, directory)
+    if task:
+        return task
     pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] else None
     if pair:
         return _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
@@ -264,6 +267,22 @@ def prepare_task(root, cursor, config, directory):
         return task
     finish(root, cursor)
     return None
+
+
+def prepare_abstract(root, cursor, config, directory):
+    """One reserved attempt per noon-to-noon night, including refusals and discarded tasks."""
+    from .captured_decisions import material
+    from .night_stats import _night_of
+    day = _night_of(service.now(), service.notebook_zone(config)).isoformat()
+    marker = state_path(root, "abstract-night.json")
+    if read_json(marker, {}).get("day") == day:
+        return None
+    items = material(Notebook(root), config)
+    if not items:
+        return None
+    prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
+    write_json(marker, {"day": day})
+    return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
 
 
 def _reset_attempts(root, cursor):
@@ -591,7 +610,8 @@ def check_task(root, task, output):
     record = task["record"]
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
     if not record and receipt:
-        return {"changed": [receipt["record"]], "report": output["result"]}
+        from .native import _recovered_result
+        return {**_recovered_result(root, task), "report": output["result"]}
     changed = [record] if record and Notebook(root).read(record) != prepared["before"][record] else []
     return {"changed": changed, "report": output["result"],
             "review_candidates": read_json(Path(task["directory"]) / "review-candidates.json", [])}

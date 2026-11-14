@@ -510,6 +510,19 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
+After session summaries, the night runs one abstract task when session `## Decisions`
+or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,
+within the configured input character budget, with only sources bound to their
+quotes. Offered section hashes are saved after the turn’s outcome is recorded;
+a crashed turn leaves its material pending. It writes or updates at
+most 20 pages under `decisions/` and `principles/` only, with the owner's words
+and original citations on each decision. Assistant proposals without the owner's
+acceptance are excluded. Principles still need at least three decisions. A saved
+attempt prevents another abstract task that noon-to-noon night in the notebook’s
+time zone, even after a refusal or restart. Passing pages are saved; rejected
+pages and their errors are recorded in the run. A task with no passing pages
+fails. With no unoffered material, this stage makes no model call.
+
 `co rem show NAME` searches people, projects, orgs and skills. An exact page
 path wins; otherwise it matches page titles, page stems and project folder
 names case-insensitively. For example, `co rem show harbour` can read

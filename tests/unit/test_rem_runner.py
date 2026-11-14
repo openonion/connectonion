@@ -664,12 +664,13 @@ def test_abstract_writes_disposable_copy_then_promotes(notebook, monkeypatch, de
         workspace = Path(kw["cwd"])
         working = next(workspace.glob("abstract-*/notebook"))
         assert working != notebook.root
-        Notebook(working).write("decisions/example.md", "# Why use Markdown\n\n## Why\nReadable pages.\n")
+        Notebook(working).write("decisions/example.md", '# Why use Markdown\n\n“Use Markdown for readable pages.” [1]\n\n## Why\nReadable pages. [1]\n\n## Sources\n- [1] codex:fixture:7\n')
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 2}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", write_decision)
-    result = run_stage(notebook, [], default_config(), stage="abstract")
+    result = run_stage(notebook, [{"source": "codex:fixture:7", "text": "Use Markdown for readable pages."}],
+                       default_config(), stage="abstract")
     assert result["changed"] == ["decisions/example.md"]
     assert notebook.read("decisions/example.md").startswith("# Why use Markdown")
 

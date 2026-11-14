@@ -1215,7 +1215,21 @@ def _write_page(notebook, record, text, items, *, receipt=None):
         store.refresh(notebook.root)
 
 
-def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False):
+def _abstract_scope(working, changed, usage, *, native):
+    from .captured_decisions import NIGHT_PAGE_LIMIT
+    permitted = lambda record: record.startswith(("decisions/", "principles/")) and record.endswith(".md")
+    entries = list(working.root.rglob("*"))
+    if native and any(path.is_symlink() for path in entries):
+        raise RunFailed("Abstract may write only decisions/ and principles/ Markdown pages; no links", usage)
+    paths = [path.relative_to(working.root).as_posix() for path in entries if path.is_file()]
+    # Native output starts empty except for the two canonical categories.
+    if any(not permitted(record) for record in (paths if native else changed)):
+        raise RunFailed("Abstract may write only decisions/ and principles/ Markdown pages", usage)
+    if native and len(changed) > NIGHT_PAGE_LIMIT:
+        raise RunFailed(f"Abstract may change at most {NIGHT_PAGE_LIMIT} pages per night", usage)
+
+
+def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False, stage="maintain"):
     """Write every page that passes review; keep the ones that do not, with why.
 
     A batch used to be refused whole when any one page failed, and a refused
@@ -1230,9 +1244,13 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                               repair_project_overview, resolve_sources, restore_missing_facts, restore_runner_fields, shrinkage, single_title, validate,
                               verify_contacts, timezone_from_location)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
+    if native and stage == "abstract":
+        _abstract_scope(working, [], usage, native=True)
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
-    if native and (len(changed) > 1 or any(notebook.exists(record) and record not in before for record in changed)):
+    if stage == "abstract":
+        _abstract_scope(working, changed, usage, native=native)
+    if native and stage != "abstract" and (len(changed) > 1 or any(notebook.exists(record) and record not in before for record in changed)):
         raise RunFailed("Write one new page only; existing pages need a prepared page task", usage)
     accepted, refusals, repairs = [], [], {}
     for record in changed:
@@ -1272,7 +1290,11 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = (validate(record, text, original, items, pages=set(before),
                            owner=record == owner, root=notebook.root)
-                  if headings(record) else [])
+                  if headings(record) or record.startswith("decisions/") else [])
+        if native and stage == "abstract" and record.startswith("decisions/"):
+            from .captured_decisions import quote_errors
+            from .page_review import unquoted_decisions
+            errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items)
         errors += [shrunk] if shrunk else []
         if errors:
             refusals.append({"record": record, "errors": errors})
@@ -1283,6 +1305,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
     with nullcontext() if lock_held else maintenance_lock(notebook.root, wait=WRITE_WAIT_SECONDS):
+        if native and stage == "abstract" and any(
+                (notebook.read(r) if notebook.exists(r) else None) != before.get(r) for r in changed):
+            raise RunFailed("Notebook changed during abstraction; preserve current pages and retry", usage)
         if not native and {r: notebook.read(r) for r in notebook.list()} != before:
             write_json(directory / 'review.json', {'accepted': False, 'errors': ['Notebook changed during maintenance'],
                        'factual_quality': 'not automatically assessed'})
@@ -1291,10 +1316,16 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'repairs': {record: found for record, found in repairs.items() if any(found.values())},
                    'factual_quality': 'not automatically assessed'})
-        if native and refusals:
+        if native and refusals and (stage != "abstract" or not accepted):
             raise RunFailed("Maintenance rejected: " + "; ".join(e for row in refusals for e in row["errors"]), usage)
+        if native and stage == "abstract" and not accepted:
+            raise RunFailed("Abstract wrote no passing pages", usage)
         for record, text in accepted:
-            _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
+            _write_page(notebook, record, text, items,
+                        **({"receipt": directory / "promotion.json"} if native and stage != "abstract" else {}))
+        if native and stage == "abstract":
+            write_json(directory / "promotion.json", {"pages": {
+                record: hashlib.sha256(notebook.read(record).encode()).hexdigest() for record, _ in accepted}})
     return refusals
 
 
@@ -1469,8 +1500,9 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     from .service import notebook_zone
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     tails = thread_tails(notebook.root, items) if stage == "maintain" else []
-    items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
-                            config["limits"]["input_chars_per_batch"])
+    if not (native and stage == "abstract"):
+        items = _with_additions(items, [*reflections(notebook.root, subject), *reviews(notebook.root, subject), *tails],
+                                config["limits"]["input_chars_per_batch"])
     items = with_local_times(items, notebook_zone(read_config(notebook.root, validated=False)))
     prompt = (task_prompt(directory, items, stage, kind, native=native) + "\n\n## Evidence interpretation\n" + POLICY
               + today_note(notebook.root) + ("" if stage == "extract" else language_note(notebook.root))
@@ -1512,6 +1544,8 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
         prompt += size_note(len(notebook.read(record))) + history_note(notebook.read(record))
     before = ({record: notebook.read(record)} if record and (candidate or native)
               else {} if native else {r: notebook.read(r) for r in notebook.list()})
+    if native and stage == "abstract":
+        before = {r: notebook.read(r) for category in ("decisions", "principles") for r in notebook.list(category)}
     selected_hash = next((i.get("expected_page_sha256") for i in items if i.get("role") == "page"), None)
     if selected_hash and (record not in before or hashlib.sha256(before[record].encode()).hexdigest() != selected_hash):
         raise RunFailed("Page changed before feedback processing; preserve current page and pending feedback")
@@ -1545,12 +1579,26 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
         if stage in ("maintain", "abstract"):
             task_root = directory / "notebook"
             from .config import prepare
-            prepare(task_root)
+            if stage != "abstract" or not native:
+                prepare(task_root)
+            else:
+                task_root.mkdir(parents=True, exist_ok=True)
             for path, text in before.items():
                 copied = task_root / path
                 copied.parent.mkdir(parents=True, exist_ok=True)
                 copied.write_text(text, encoding="utf-8")
-            prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
+            if native and stage == "abstract":
+                from .captured_decisions import NIGHT_PAGE_LIMIT
+                prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
+                           f"Write or update at most {NIGHT_PAGE_LIMIT} pages, only decisions/ and principles/ in the output notebook. "
+                           "Read session ## Decisions and project ## Key decisions in the supplied material. "
+                           "Every decision must copy the owner's verbatim words and original source ID under ## Sources, "
+                           "with numbered citations beside the quote; keep the originating page path as context. "
+                           "An assistant's proposal is not a decision unless the owner said or explicitly accepted it. "
+                           "Preserve existing questions and edit their pages for reversals; skip choices already captured. "
+                           "Write decisions first, then principles supported by at least three decisions. ")
+            else:
+                prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
                        "Write at most one NEW page in the output notebook; do not modify an existing canonical page. "
                        if native else "This is a disposable notebook copy. Preserve all canonical headings, mapped metadata, diagrams and existing citations. ")
         prompt += f"\n\n## Output\nThe notebook root is {task_root}. "
@@ -1664,7 +1712,7 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
         metrics["render_usage"] = result.get("usage")
     elif stage in ("maintain", "abstract") and not candidate:
         refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
-                                        result.get("usage"), maintenance_lock_held, **({"native": True} if native else {}))
+                                        result.get("usage"), maintenance_lock_held, stage=stage, **({"native": True} if native else {}))
         if stage == "maintain" and items and not changed():
             if refusals:
                 raise RunFailed("Maintenance wrote only rejected pages; source progress was preserved",
