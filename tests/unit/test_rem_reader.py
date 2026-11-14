@@ -1640,13 +1640,14 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
         zh: zh.children[0].children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[0].children[1].children[0].children[1].text,
         date, find: t('Find')}));
     })();''')
-    # The number is the badge's (items waiting on you); the people are a subset, said in words (sprint 14 #4).
-    assert result['count'] == ['5', 'things waiting on you', 'Start with these 3 people']
+    # The number is the badge's (items waiting on you, sprint 14 #4); the faces beside it are the people to start
+    # with, and no sentence says so (owner, 2026-11-13, #2994).
+    assert result['count'] == ['5', 'things waiting on you']
     # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
     assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
     assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
     assert result['solo'] == 'nb solo'  # no logs and no drafts: no chart is drawn, the faces take the card
-    assert result['zh'] == ['5', '件在等你', '先看这 3 个人'] and result['zhLate'] == '2 天'
+    assert result['zh'] == ['5', '件在等你'] and result['zhLate'] == '2 天'
     assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
@@ -1683,7 +1684,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
         headline: nightCard(personGroups(today), null).children[0].children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '7things waiting on youStart with this 1 person'
+    assert _words(result.pop('headline')) == '7things waiting on you'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
@@ -1924,19 +1925,25 @@ def test_role_summary_shows_first_and_count_with_full_title():
     assert '[sensitive]' in result[2]['children'][0]['html']
 
 
-def test_category_lede_joins_counts_after_translated_punctuation():
-    page = TEMPLATE.read_text()
-    function = re.search(r'function ledeSeparator\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js(function + r'''
-      const lines = ['这是谁？上次聊到哪了？', '已完成。', '怎么做！', 'Who is this?', 'Written.', 'Ready!', '人物'];
-      uiLanguage = 'zh'; const zh = lines.map(text => text + ledeSeparator(text) + '已撰写 84 / 84 人');
-      uiLanguage = 'en'; const en = ['Who is this?', 'People'].map(text => text + ledeSeparator(text) + '84 written');
-      console.log(JSON.stringify({zh, en}));
-    ''')
-    assert result['zh'][0] == '这是谁？上次聊到哪了？ 已撰写 84 / 84 人'
-    assert all(' · ' not in line for line in result['zh'][:-1])
-    assert result['zh'][-1] == '人物 · 已撰写 84 / 84 人'
-    assert result['en'] == ['Who is this? 84 written', 'People. 84 written']
+def test_category_heading_names_the_place_without_an_explanatory_lede():
+    category = _reader_function('category')
+    assert 'CATEGORY_ASK' not in category
+    assert 'class: "lede"' not in category
+    assert 'class: "eyebrow"' not in category
+    assert 'label(c)' in category
+
+
+@pytest.mark.parametrize('name, sentence', [
+    ('sessionsView', 'What you worked on with your coding agents'),
+    ('projectLegend', 'Sorted by health; a sub-project sits under its project'),
+    ('projectBoard', "The board's axis is a question:"),
+    ('skillsView', 'Most used'),
+    ('graphPanelGuide', 'Click a point to see what it connects'),
+    ('topicList', 'Subjects that tie your records together'),
+])
+def test_category_renderers_do_not_emit_explanatory_headings(name, sentence):
+    # Test the rendering expression, not translation dictionaries: these words must not be emitted.
+    assert '"' + sentence not in _reader_function(name)
 
 
 def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
@@ -2073,13 +2080,14 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
 def test_record_header_dates_appear_once_and_strip_dates_are_localized():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'recordEyebrow', 'leadRow', 'recordFacts', 'fmtDate', 'calendarDay', 'daysSince', 'age'])
+        'recordEyebrow', 'leadRow', 'projectStateLine', 'recordFacts', 'fmtDate', 'calendarDay', 'daysSince', 'age'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + r''';
       const REM = {as_of: '2026-10-20', owner: 'people/avery-lin.md'}, DAY_MS = 86400000;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
       const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
+      const projectState = () => 'active', projectLate = () => null, PD_STATES = [['active', 'Active']], pdT = s => s;
       const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
       const statusPill = () => null, originalMark = () => null, translationMark = () => null, mappedContact = () => false;
       const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
@@ -2091,7 +2099,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
         uiLanguage = language;
         output[language] = ['projects', 'orgs'].map(category => {
           r.category = category;
-          return {eyebrow: recordEyebrow(r, false), lead: leadRow(r), strip: recordFacts(r)};
+          return {eyebrow: recordEyebrow(r, false), lead: category === "projects" ? projectStateLine(r) : leadRow(r), strip: recordFacts(r)};
         });
         r.category = 'people'; output[language].push(recordFacts(r));
       }
@@ -3403,11 +3411,12 @@ def test_no_task_card_says_this_version_does_not_run_it():
 def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
-                          for name in ['topicList', 'graphT'])
+                          for name in ['topicList', 'knowledgeHead', 'graphT'])
     zh = re.search(r'const GRAPH_UI_ZH = \{.*?\n\};', page, re.S)[0]
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(zh + '\n' + functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
       const el = (tag, attrs, children) => ({tag, ...attrs, children: (children || []).filter(c => c != null)});
+      const label = () => t('Knowledge');
       const topicRecords = () => [], remCommand = args => 'co rem ' + args, copyToClipboard = () => {};
       let view = null;
       const main = {set textContent(_) {}, appendChild: node => { view = node; }};
@@ -3417,7 +3426,8 @@ def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language
     ''')
     text = json.dumps(result, ensure_ascii=False)
     # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
-    assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') in text
+    assert result['children'][0]['children'][0]['text'] == ('知识' if language == 'zh' else 'Knowledge')
+    assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') not in text
     assert ('REM 会在夜里那一轮从已有记录里整理知识。' if language == 'zh' else 'REM files knowledge from your records on its night run.') in text
     assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
     # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
@@ -3462,25 +3472,28 @@ def test_the_knowledge_category_is_called_knowledge_not_topics(language, expecte
     assert _run_reader_js(script) == {'rail': expected, 'legend': expected}
 
 
-def test_the_old_graph_address_lands_on_all_records():
+def test_the_graph_and_the_old_all_records_address_land_on_knowledge():
+    # #2996: one Knowledge place holds the graph; #c=all was All records' address and stays a working bookmark.
     result = _run_reader_js(_reader_function('route') + '\n' + _reader_function('railActive') + r'''
       const ACTIVITY = new Set(['notes', 'logs']), location = {hash: '#view=graph&focus=knowledge%2Fheat.md'};
       const graph = railActive();
+      location.hash = '#c=all';
+      const all = railActive();
       location.hash = '#view=activity';
-      console.log(JSON.stringify({graph, activity: railActive()}));
+      console.log(JSON.stringify({graph, all, activity: railActive()}));
     ''')
-    assert result == {'graph': 'all', 'activity': 'activity'}
+    assert result == {'graph': 'knowledge', 'all': 'knowledge', 'activity': 'activity'}
 
 
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'archive', 'ellipsis', 'settings']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'book', 'ellipsis', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records', 'More', 'Settings'],
-           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings'],
+    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
+           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
-           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
+           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
@@ -3550,9 +3563,9 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
 def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
     rail = _rail(language)
     links = [cell['href'] for cell in rail['cells'][:7]]
-    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=all']
+    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=knowledge']
     assert [cell['active'] for cell in rail['cells'][:7]] == [link == '#c=skills' for link in links]
-    assert rail['menu'] == ['#view=changes', '#c=knowledge']
+    assert rail['menu'] == ['#view=changes']  # Knowledge has its own place now (#2996)
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -3578,25 +3591,19 @@ def test_the_reader_has_a_tab_icon_that_fetches_nothing_and_follows_the_system_t
     assert drawing.count('A4.6 4.6 0 0 0') == 2  # the same sleeping face, drawn for 16 px
 
 
-WORKING_STORAGE = "{getItem: key => saved[key] ?? null, setItem: (key, value) => { saved[key] = value; }}"
-BLOCKED_STORAGE = "{getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }}"
 
-
-@pytest.mark.parametrize('storage', [WORKING_STORAGE, BLOCKED_STORAGE], ids=['working', 'blocked'])
-def test_all_records_remembers_graph_or_list_and_survives_blocked_storage(storage):
-    result = _run_reader_js('const saved = {}; const localStorage = ' + storage + "; let allRecordsChoice = '';\n"
-                            + _reader_function('allRecordsMode') + r'''
-      const first = allRecordsMode();
-      const chosen = allRecordsMode('list');
-      const kept = allRecordsMode();
-      allRecordsChoice = '';
-      console.log(JSON.stringify({first, chosen, kept, again: allRecordsMode(), saved}));
+@pytest.mark.parametrize('mode', ['entries', 'graph'])
+def test_knowledge_switch_uses_bookmarkable_paths_without_storage(mode):
+    result = _run_reader_js(_reader_function('knowledgeHead') + r'''
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
+      const label = () => 'Knowledge', graphT = text => text;
+      console.log(JSON.stringify(knowledgeHead(''' + json.dumps(mode) + r''')));
     ''')
-    assert result['first'] == 'graph' and result['chosen'] == 'list' and result['kept'] == 'list'
-    if storage == WORKING_STORAGE:
-        assert result['again'] == 'list' and list(result['saved'].values()) == ['list']
-    else:  # this visit keeps the choice; nothing could be saved
-        assert result['again'] == 'graph' and result['saved'] == {}
+    title, nav = result['children']
+    assert title['text'] == 'Knowledge'
+    assert [link['href'] for link in nav['children']] == ['#c=knowledge', '#view=graph']
+    assert [link['text'] for link in nav['children'] if link.get('aria-current') == 'page'] == [
+        'Entries' if mode == 'entries' else 'Graph']
 
 
 # ---------- opening is instant: the last page from disk, rebuilt behind it (owner, 2026-11-09) ----------
@@ -4534,26 +4541,20 @@ def test_the_night_chart_window_never_ends_before_it_starts():
     assert result['phone'] == 30 and result['desk'] == 3
 
 
-def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
-    """Sprint 15: the org page said 16 things while Today's header said less. The org's number is Today's
-    waiting-on-you rule kept to its own rows: done, quiet, stale and answered items have left Today."""
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['orgWaiting', 'waitingOnYou'])
-    result = _run_reader_js(functions + r'''
-      const r = {path: 'people/mara-ostrowski.md'}, other = {path: 'people/tomas-reyes.md'};
-      const doneKey = entry => entry.r.path + '\n' + entry.t.text;
-      const make = (text, extra = {}, page = r) => ({r: page, t: {text, dir: 'mine', ...extra}});
-      const entries = [make('addendum'), make('export', {dir: 'theirs'}), make('quiet', {quiet: true}), make('stale'),
-        make('done'), make('held'), make('elsewhere', {}, other), make('merged copy')];
-      entries[7].members = [make('member of org row')];
-      const threadEntries = () => entries, isDone = entry => entry.t.text === 'done', staleEntry = entry => entry.t.text === 'stale';
-      const threadDraft = entry => entry.t.text === 'held' ? {status: 'held'} : null;
-      const answered = entry => ['held', 'sent'].includes(threadDraft(entry)?.status);
-      const row = text => ({row: {key: 'people/mara-ostrowski.md\n' + text}});
-      const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'member of org row'].map(row);
-      console.log(JSON.stringify(orgWaiting({owed}).map(entry => entry.t.text)));
+def test_an_org_record_never_counts_today_even_with_mixed_obligations():
+    """#3036 supersedes the quiet Today count: the organisation stays a record."""
+    function = re.search(r'function orgStage\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
+      const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
+      const orgOpening = () => 'facts', orgTree = () => 'tree';
+      const orgTodayLink = () => { throw Error('Organisation requested Today counts'); };
+      const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'merged copy'];
+      console.log(JSON.stringify(orgStage({r: {}, people: [], owed})));
     ''')
-    assert result == ['addendum', 'merged copy']
+    assert 'tree' in str(result) and 'facts' in str(result)
+    assert 'Today' not in str(result)
 
 
 def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_nothing():

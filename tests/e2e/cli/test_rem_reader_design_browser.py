@@ -124,12 +124,13 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
-def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
+@pytest.mark.parametrize('place', ['', '#c=knowledge'], ids=['today', 'knowledge-active'])
+def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, place):
     """D-132: a 72px rail of pictures with their words under them. Its content is 656 tall: a window that tall
     shows all of it, and in a lower one the rail itself scrolls, so every place, 更多, settings and you stay in reach."""
     page, uri = reader
     page.set_viewport_size({'width': 960, 'height': 700})
-    page.goto(uri)
+    page.goto(uri + place)
     boxes = "nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })"
     tall = page.locator('.rail .nav').evaluate_all(boxes)
     assert len(tall) == 10 and all(top >= 0 and bottom <= 700 and width == 56 for top, bottom, width in tall)
@@ -152,8 +153,11 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader):
       cell = w.parentElement.getBoundingClientRect(), picture = w.parentElement.querySelector('.ic').getBoundingClientRect();
       return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
         inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
-    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings']
-    assert all(w['shown'] and w['size'] == '11px' and w['height'] == 14 and w['inside'] and w['under'] for w in words), words
+    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings']
+    expected = {'shown': True, 'size': '11px', 'height': 14, 'inside': True, 'under': True}
+    failures = [{'word': w['word'], **{key: w[key] for key, value in expected.items() if w[key] != value}}
+                for w in words if any(w[key] != value for key, value in expected.items())]
+    assert not failures, failures
     page.locator('.nav.more').click()
     assert page.locator('#rail-more a[href="#view=changes"]').is_visible()
     menu = page.locator('#rail-more').bounding_box()
@@ -244,19 +248,20 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
       r.title = 'ConnectOnion'; r.domain = 'connectonion.com';
       r.text = r.text.replace(/^# .*/, '# connectonion.com')
         .replace(/^## Domains\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+      r.text += '\n\n## Facts\n- Website: https://connectonion.com [1]\n';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     # The name heads the record; the domain follows it in the facts line, smaller.
     assert _name(page.locator('.ov-say .ov-name')) == 'ConnectOnion'
-    domain = page.locator('.ov-say .ov-domain')
+    domain = page.locator('.ov-coda .ov-about dd a')
     assert domain.inner_text() == 'connectonion.com'
     assert domain.is_visible()
     assert domain.bounding_box()['y'] >= page.locator('.ov-say .ov-name').bounding_box()['y']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.goto(uri + '#c=orgs')
-    row = page.locator('.ov-row').filter(has_text='ConnectOnion')
-    assert row.locator('.ov-domain').inner_text() == 'connectonion.com'
-    assert row.locator('.ov-domain').is_visible()
+    row = page.locator('.org-table-row').filter(has_text='ConnectOnion')
+    assert row.locator('.c-website a').inner_text() == 'connectonion.com'
+    assert row.locator('.c-website a').is_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -301,13 +306,13 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # Sprint 14: the display number is the sidebar's (items waiting on you); the people are a subset, in words.
+    # Sprint 14: the display number is the sidebar's (items waiting on you); #2994: the faces say where to start.
     total = page.locator('#nav .n.waiting').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
     assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
     assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
-    assert page.locator('.night-card .count-of').text_content() == f'Start with these {len(whos)} people'
+    assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -801,18 +806,21 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     # This fixture names the pilot participants without linking their paths.
     # They remain available as text hints, behind progressive disclosure.
+    assert not page.locator('.related-records').is_visible()
+    assert not page.locator('.deep-note-limit').is_visible()
+    page.locator('details.deep-note > summary').click()
     page.locator('.mention-hints > summary').click()
     connected = page.locator(".related-records .relation-card")
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
         "Mara Ostrowski", "Fernhill Labs"}
     assert "what this project does" in page.locator('.focus-kicker').inner_text().lower()
     assert "command-line tool" in page.locator('.focus-statement').inner_text()
-    assert not page.locator('.deep-note-limit').is_visible()
-    page.locator('details.deep-note > summary').click()
     assert "did not confirm current project work" in page.locator('.deep-note-limit').inner_text()
-    assert page.get_by_role("heading", name="Recorded direction").is_visible()
+    # Match the original section and its content without depending on the permalink’s accessible name.
+    assert page.locator(".deep-note .note h2#key-decisions").is_visible()
+    assert "one brief per team" in page.locator(".deep-note .note").inner_text()
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
-    page.get_by_role("link", name="View all decisions").click()
+    page.goto(uri + "#r=projects%2Fharbour.md&h=key-decisions")
     assert page.locator(".deep-note #key-decisions").is_visible()
     page.goto(uri + "#r=projects%2Fharbour.md")
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
@@ -935,7 +943,7 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     assert 'not found' in started.inner_text()
 
 
-def test_project_hero_leads_with_current_finding_before_historical_pattern(reader):
+def test_project_full_memory_keeps_current_finding_before_historical_pattern(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -944,12 +952,14 @@ def test_project_hero_leads_with_current_finding_before_historical_pattern(reade
         + '- Changed: A later UI request corrected its wording. [2]\\n- Now: A release was requested in July. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 768, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
 
 
-def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(reader):
+def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_insight(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -961,6 +971,8 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
         + '- 2026-10-15 - The release checks passed. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'origin/main has a commit titled “1.9.3b5 release”.'
@@ -970,6 +982,8 @@ def test_project_hero_prefers_newest_where_it_stands_and_falls_back_to_insight(r
       r.text = r.text.split('## Where it stands')[0] + '## Where it stands\\n- Unknown';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.focus-statement').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
@@ -1029,6 +1043,7 @@ def test_a_session_summary_names_the_owner_you_not_owner(reader, language):
     }""", [language, list(cases)], isolated_context=False)
     shown = page.evaluate("summaries => summaries.map(s => ownerAsYou(s))", list(cases), isolated_context=False)
     assert dict(zip(cases, shown)) == cases
+    page.locator('details.deep-note > summary').click()
     rows = page.locator('.project-sessions .session-context-summary').all_inner_texts()
     assert "你要求重写摘要。" in rows and "Owner 要求重写摘要。" not in rows, rows
     page.evaluate("() => { location.hash = 'r=sessions%2Fs0.md'; }", isolated_context=False)
@@ -1085,25 +1100,33 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 150, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert page.locator('.scope-note').count() == 0
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         page.evaluate('togglePrivate()', isolated_context=False)
+        # Privacy may redraw records when the notebook contains private topics.
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
-        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 1
-        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
+        assert page.locator('.deep-note .block-insight').get_by_text('Hidden labelled passage').is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
         # The directory never quotes a page's purpose, so nothing private can leak into a row.
         assert page.locator('#main').get_by_role('link', name='Harbour', exact=True).first.is_visible()
         assert 'hidden description' not in page.locator('#main').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
+        page.locator('details.deep-note').evaluate('node => node.open = true')
         page.evaluate('togglePrivate()', isolated_context=False)
+        page.locator('details.deep-note').evaluate('node => node.open = true')
+        assert 'A hidden finding' in page.locator('.deep-note .block-insight').inner_text()
 
 
-def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(reader):
+def test_project_without_current_insight_keeps_purpose_and_input_limit_folded(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -1124,7 +1147,7 @@ def test_project_without_a_current_insight_leads_with_purpose_and_input_limit(re
         assert 'reads a local daily log' in page.locator('.focus-statement').inner_text()
         assert 'recent commit' not in page.locator('.focus-statement').inner_text()
         assert '7-day session sample did not confirm current project work' in page.locator('.deep-note-limit').inner_text()
-        assert page.locator('.project-workspace').get_by_text('What this is').count() == 0
+        assert page.locator('.deep-note .purpose-lead').is_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.evaluate("() => { byPath('projects/harbour.md').project_coverage.inputs_read = 0; render(); }",
                   isolated_context=False)
@@ -1150,19 +1173,23 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
       r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview')
     assert 'property lead workflow' in purpose.inner_text()
+    purpose.scroll_into_view_if_needed()
     assert purpose.bounding_box()['y'] < 812
     assert page.locator('.scope-note').count() == 0
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
     sources = page.locator('.focus-source').bounding_box()
-    assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert sources['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
+def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=projects%2Fharbour.md')
@@ -1173,13 +1200,17 @@ def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
       r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     statement = page.locator('.focus-statement')
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
     chip = page.locator('.project-purpose-cites a.cite').first
     source = page.locator('.focus-source')
+    chip.scroll_into_view_if_needed()
     assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
-    assert source.bounding_box()['y'] + source.bounding_box()['height'] <= 812
+    assert source.is_visible()
     page.get_by_role('button', name='Read full purpose').wait_for()
     # Once open its label reads "Show less"; follow the button by what it controls.
     more = page.locator('button.focus-more[aria-controls="' + statement.get_attribute('id') + '"]')
@@ -1209,6 +1240,9 @@ def test_long_private_purpose_can_expand_after_revealing_passages(reader, has_fi
       document.documentElement.classList.add('hide-private');
       KNOWN.clear(); FACTS.clear(); render();
     }''', has_finding, isolated_context=False)
+    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert page.locator('.project-state').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview' if has_finding else '.focus-statement')
     more = page.locator('button.focus-more[aria-controls="' + purpose.get_attribute('id') + '"]')
     assert purpose.inner_text() == 'Hidden labelled passage'
@@ -1295,7 +1329,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
     heading = page.locator('.night-card .count-line').inner_text()
-    assert heading.split('\n') == ([str(mine), 'thing waiting on you', 'Start with this 1 person'] if mine else ['0', 'Nobody is waiting on you today.'])
+    assert heading.split('\n') == ([str(mine), 'thing waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
@@ -1858,11 +1892,11 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       r.last_activity = '2026-09-16';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last mapped session' in page.locator('.leadrow').inner_text()
-    assert 'Last mapped session' not in page.locator('.focus-facts').inner_text()
+    assert 'Last mapped session' in page.locator('.project-state').inner_text()
+    assert not page.locator('.deep-note .focus-facts').is_visible()
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
-    assert 'Last active' not in page.locator('.leadrow').inner_text()
+    assert 'Last active' not in page.locator('.project-state').inner_text()
     # The directory's list shows the same mapped date as its latest activity.
     page.goto(uri + '#c=projects&v=list')
     page.evaluate('() => { pdQuietOpen = true; KNOWN.clear(); FACTS.clear(); render(); }', isolated_context=False)
@@ -2099,18 +2133,18 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
 # Owner, 2026-11-09: «我们的版本号是不是可以在侧边栏显示一下？顺便把侧边栏优化一下，现在看起来不是很好。»
 # The sidebar keeps one number, the one that asks for action, and names the release in its footer.
 SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organisations', 'Projects', 'Skills',
-                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions', 'All records']
+                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions']
 
 
 def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(reader):
-    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, all records),
-    the rest one 更多 away."""
+    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, knowledge),
+    the rest one 更多 away. #2996: Knowledge replaced All records; the owner could not tell the two apart."""
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
-    # D-01: the catch-all last; #2961: each name starts with the word you see (Orgs · Organisations)
-    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'All records']
-    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
+    # #2961: each name starts with the word you see (Orgs · Organisations)
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'Knowledge']
+    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
     assert 'Skills' not in more and 'Decisions' in more  # Skills has its own place now; the rest stay behind 更多
@@ -2176,13 +2210,13 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    # Owner, 2026-11-08: the catch-all goes last (N3: last of the rail's places). 2026-11-09: Activity is REM's run log, at the foot.
-    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'All records' and 'Activity' not in labels and 'Graph' not in labels
+    # #2996: Knowledge ends the rail's places, with no All records beside it. 2026-11-09: Activity is REM's run log, at the foot.
+    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'Knowledge' and 'Activity' not in labels and 'Graph' not in labels
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]
-    # Owner, 2026-11-09 (sidebar in Fuse): All records keeps no count in the rail; only Waiting on you does.
-    assert page.locator('#nav a[href="#c=all"] .n').count() == 0
+    # Owner, 2026-11-09 (sidebar in Fuse): only Waiting on you keeps a count in the rail.
+    assert page.locator('#nav a:not([href="#view=open"]) .n').count() == 0
     assert page.locator('.category-cards').count() == 0
     assert page.locator('.task-links').count() == 0  # the Find section is gone; the rail is the only navigation
     page.goto(path.as_uri() + '#q=coverage')
@@ -2454,11 +2488,12 @@ def test_project_focus_and_deep_note_do_not_repeat_purpose_or_threads(reader):
     assert page.locator('.lead-open').count() == 0
     assert page.locator('.next-exchanges .thread').count() == 3
     assert page.locator('#what-it-is').count() == 1
-    assert page.locator('.project-workspace h2').filter(has_text='What this is').count() == 0
+    assert not page.locator('#what-it-is').is_visible()
+    assert page.locator('.deep-note .note #what-it-is').count() == 0
     page.locator('details.deep-note > summary').click()
     assert page.locator('.deep-note .block-threads .thread').count() == 2
     assert 'obligation 1' not in page.locator('.deep-note .block-threads').inner_text()
-    assert page.locator('.deep-note #what-it-is').count() == 0
+    assert page.locator('.deep-note #what-it-is').count() == 1
     page.goto(uri + '#r=projects%2Fharbour.md&h=what-it-is')
     assert page.locator('#what-it-is').is_visible()
 
@@ -2595,7 +2630,7 @@ def test_sessions_search_keeps_focus_and_bookmarks_full_reply(session_reader, wi
     page.goto(uri + "#c=sessions")
     box = page.get_by_role("searchbox", name="Search sessions")
     assert box.evaluate("node => node === document.activeElement") == (width == 1400)
-    expect(page.locator("h1")).to_have_text("6 sessions · What you worked on with your coding agents")
+    expect(page.locator("h1")).to_have_text("6 sessions")
     expect(page.locator(".session-result-line")).to_have_count(0)
     assert "Imported" not in page.locator("#main").inner_text()
     box.press_sequentially("cloud sql", delay=150)
@@ -2810,6 +2845,8 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
         REM.records.filter(r => r.category === 'sessions').map(r => r.path);
     }""", isolated_context=False)
     page.evaluate("location.hash = '#r=projects%2Falpha.md'", isolated_context=False)
+    expect(page.locator(".project-recent li")).to_have_count(3)
+    page.locator("details.deep-note > summary").click()
     rows = page.locator(".project-sessions .session-context-row")
     expect(rows).to_have_count(10)
     expect(rows.first.locator(".session-context-summary")).to_have_text("Shipped a searchable reader with stable focus.")
@@ -2951,7 +2988,9 @@ def test_org_collapses_full_memory_and_omits_self_provenance(reader):
       render();
     }''', isolated_context=False)
     assert not page.locator('details.deep-note').evaluate('node => node.open')
-    assert re.search(r'\d+ sections · \d+ sources', page.locator('.deep-hint').inner_text())
+    hint = page.locator('.deep-hint').inner_text()
+    assert 'File updated' in hint and re.search(r'\d', hint)
+    assert not re.search(r'today|sections|sources', hint, re.I)
     page.locator('details.deep-note > summary').click()
     provenance = page.locator('.relation-provenance')
     assert provenance.locator('a:not(.cite)').count() == 0
@@ -3006,7 +3045,8 @@ def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate(r"""() => { const r = byPath('projects/harbour.md'); r.text += '\n\n## Uncertainties\n- Pilot size is not confirmed. [1]'; KNOWN.clear(); render(); }""", isolated_context=False)
-    assert page.locator('.record-focus.projects .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
+    page.locator('details.deep-note > summary').click()
+    assert page.locator('.project-context .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
     for node in page.locator('.record-focus.projects .focus-facts, .record-focus.projects .thread:last-child').all():
         assert node.evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
     sources = page.locator('.project-purpose-cites')
@@ -3155,17 +3195,17 @@ def test_activity_discloses_five_complete_rows_and_filters(reader, path, width):
       KNOWN.clear(); render();
     }''', path, isolated_context=False)
     if path.startswith('orgs/'):
-        # Org's new Lately timeline shows eight complete rows, with older rows disclosed.
-        rows = page.locator('.ov-tl .ov-e')
-        assert rows.count() == 8
-        assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
-        assert not page.locator('.ov-tl').evaluate('node => node.scrollHeight > node.clientHeight')
-        page.get_by_role('button', name='Show all 12 entries', exact=True).click()
+        # The article keeps complete dated prose, in chronological reading order.
+        rows = page.locator('.ov-milestones p')
         assert rows.count() == 12
         assert all(text.count('Complete history text.') == 8 for text in rows.all_inner_texts())
+        assert rows.locator('time').evaluate_all('nodes => nodes.map(n => n.dateTime)') == [f'2026-09-{i:02d}' for i in range(1, 13)]
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         return
-    activity = page.locator('.activity-view')
+    # The project lead has three recent rows; the full five-row activity and filters stay folded.
+    assert page.locator('.record-focus.projects .recent-activity .activity-list > li:visible').count() == 3
+    page.locator('details.deep-note > summary').click()
+    activity = page.locator('.deep-note .activity-view')
     rows = activity.locator('.activity-list > li:visible')
     assert rows.count() == 5
     assert activity.locator('.activity-list').evaluate('node => node.scrollHeight <= node.clientHeight')
@@ -3196,10 +3236,10 @@ def test_project_threads_only_label_explicit_direction_and_deduplicate_date(read
       KNOWN.clear(); render();
     }''', isolated_context=False)
     rows = page.locator('.next-exchanges .thread')
-    assert rows.locator('.dir').all_inner_texts() == ['Open', 'You owe', 'They owe']
-    assert rows.first.locator('.what').inner_text().startswith('You asked to revisit')
-    assert '2026-09-13' not in rows.first.locator('.what').inner_text()
-    assert 'since Sep 13' in rows.first.locator('.when').get_attribute('title')
+    assert rows.locator('.dir').all_inner_texts() == ['You owe', 'They owe', 'Open']
+    assert rows.nth(2).locator('.what').inner_text().startswith('You asked to revisit')
+    assert '2026-09-13' not in rows.nth(2).locator('.what').inner_text()
+    assert 'since Sep 13' in rows.nth(2).locator('.when').get_attribute('title')
 
 
 @pytest.mark.parametrize('path', ['people/quinn-alder.md', 'skills/catalog/weekly-brief.md'])
@@ -3456,7 +3496,7 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
     }''', isolated_context=False)
     assert page.locator('.leadrow .lead-open').count() == 0
     assert page.locator('.ov-page').is_visible()
-    assert page.locator('.ov-today').is_visible()
+    assert page.locator('.ov-today').count() == 0
     assert page.locator('.record-focus .next-exchanges').count() == 0
     page.locator('details.deep-note > summary').click()
     snippets = [value.strip().lower() for value in page.locator('.relation-basis').all_inner_texts() if value.strip()]
@@ -3542,7 +3582,8 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
-    assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
+    assert page.locator('.org-table tbody tr').count() > 0
+    assert page.locator('.fresh-label, .fresh-dot').count() == 0  # #3036: no alert badges in this directory
     page.goto(uri)
     page.locator('.week-details summary').click()
     assert page.locator('.week li').filter(has_text='Mara Ostrowski').locator('.fresh-label').is_visible()
@@ -3647,9 +3688,9 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
       setInterfaceLanguage(language);
       return byPath('skills/catalog/weekly-brief.md').text;
     }''', language, isolated_context=False)
-    assert page.locator('.lede').inner_text().startswith(
-        '你的 agent 会做的事，最常用的在前 · ' if language == 'zh' else 'What your agents can do, the ones you use most first. ')
-    assert page.locator('.lede .mono').inner_text() == ('3 个技能' if language == 'zh' else '3 skills')
+    # #2994: no sentence explains the order; the count lives in the finder beside the page's name.
+    assert page.locator('#main .lede').count() == 0
+    assert page.locator('.category-head .skills-find').get_attribute('placeholder') == ('在 3 个技能里找…' if language == 'zh' else 'Find among 3 skills…')
     assert page.locator('.skills-view .bar').count() == 0
     assert page.locator('.skill-card .skill-uses').first.inner_text().endswith(
         '最近 昨天' if language == 'zh' else 'last Yesterday')
@@ -3837,7 +3878,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert row.locator('.c-org').is_visible()
     assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
-    org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
+    org = page.locator('.ov-list .org-table-row').filter(has_text='Fernhill Labs')
     assert org.count() == 1
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
@@ -4048,7 +4089,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
     assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
-    assert page.locator('.night-card .count-of').text_content() == 'Start with this 1 person'
+    assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4248,9 +4289,9 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
     for record in ['projects/harbour.md', 'orgs/fernhill-labs.md']:
         page.goto(path.as_uri() + '#r=' + record.replace('/', '%2F'))
         if record.startswith('orgs/'):
-            # The organisation page is a record; its threads are one link to Today, with no ages to align.
+            # The organisation page is a record; tasks and their ages stay in Today.
             assert page.locator('.ov-owed .ov-owe').count() == 0
-            assert page.locator('.ov-today').count() == 1
+            assert page.locator('.ov-today').count() == 0
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
         rows = page.locator('.next-exchanges .thread')
@@ -4305,10 +4346,14 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
       KNOWN.clear(); FACTS.clear(); render();
       return language === 'zh' ? chinese : purpose;
     }''', language, isolated_context=False)
+    assert page.locator('.project-state').is_visible()
+    assert not page.locator('.project-purpose-preview').is_visible()
+    page.locator('details.deep-note > summary').click()
     purpose = page.locator('.project-purpose-preview')
     assert purpose.count() == 1
     if width == 390:
         assert purpose.evaluate(r'''node => getComputedStyle(node).webkitLineClamp === '4' && node.scrollHeight > node.clientHeight''')
+        page.locator('.project-purpose-cites a.cite').first.scroll_into_view_if_needed()
         chip = page.locator('.project-purpose-cites a.cite').first.bounding_box()
         assert 0 <= chip['y'] and chip['y'] + chip['height'] <= 812
     page.get_by_role('button', name='展开用途' if language == 'zh' else 'Read full purpose', exact=True).wait_for()
@@ -4360,8 +4405,9 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
           r.text = r.shown ? r.translations[r.shown] : r.original;
           KNOWN.clear(); FACTS.clear(); render();
         }''', record, isolated_context=False)
-        if record.startswith(('people/', 'orgs/')):
-            page.locator('details.deep-note > summary').click()
+        # All three record categories keep these disclosures inside Full memory.
+        assert not page.locator('.related-records').is_visible()
+        page.locator('details.deep-note > summary').click()
         summaries = page.locator('.more-relations > summary:visible')
         assert page.locator('.related-records > .more-relations > summary:visible').count() == 3
         assert page.locator('.conversation-view .more-relations > summary:visible').count() == 1
@@ -4605,7 +4651,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     assert page.locator('.empty .lead').inner_text() == 'No match'
     assert page.locator('.empty a').count() == 1
     page.locator('.empty a').click()
-    expect(page.locator('#main h1')).to_have_text('All records')
+    expect(page.locator('#main h1')).to_have_text('Knowledge')  # the graph, under Knowledge (#2996)
     page.goto(uri + '#view=open')
     page.evaluate(r'''() => { REM.records = []; KNOWN.clear(); FACTS.clear(); render(); }''', isolated_context=False)
     assert page.locator('.empty .lead').inner_text() == 'Nothing open'
@@ -4956,7 +5002,7 @@ def _org_view(page, uri, hash_, width, theme):
     page.set_viewport_size({"width": width, "height": 844 if width < 600 else 900})
     page.emulate_media(color_scheme=theme)
     page.goto(uri + hash_)
-    page.locator("#main .ov").wait_for()
+    page.locator("#main .ov, #main .org-directory").wait_for()
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -5304,12 +5350,16 @@ def test_project_directory_opens_on_one_rem_sentence_with_no_green_and_no_overfl
     # Owner, 2026-11-09 (sidebar in Fuse): the rail carries no category counts; the title is the count's home.
     expect(page.locator('#nav a[href="#c=projects"] .n')).to_have_count(0)
     expect(page.locator(".pd-views [aria-current='page']")).to_have_text({"timeline": "Timeline", "list": "List", "board": "Board"}[view])
-    lede = page.locator(".pd-lede")
-    expect(lede).to_contain_text(f"{total} projects on record")
-    tomas = page.evaluate("byPath('people/tomas-reyes.md').title", isolated_context=False)
-    expect(lede.locator(".red")).to_have_text(f"On Capstone review, a promise to {tomas} is 14 days late.")
-    assert "Songti" not in lede.evaluate("node => getComputedStyle(node).fontFamily")  # one typeface across the reader
-    expect(page.locator(".pd-basis")).to_contain_text("made by rule")
+    if view == "board":
+        expect(page.locator(".pd-colm h2 > span")).to_have_text(["Active", "Waiting", "Quiet", "Done"])
+        expect(page.locator(".pd-lede")).to_have_count(0)
+    else:
+        lede = page.locator(".pd-lede")
+        expect(lede).to_contain_text(f"{total} projects on record")
+        tomas = page.evaluate("byPath('people/tomas-reyes.md').title", isolated_context=False)
+        expect(lede.locator(".red")).to_have_text(f"On Capstone review, a promise to {tomas} is 14 days late.")
+        assert "Songti" not in lede.evaluate("node => getComputedStyle(node).fontFamily")  # one typeface across the reader
+        expect(page.locator(".pd-basis")).to_contain_text("made by rule")
     assert _visible_green_buttons(page) == 0
     # Nothing REM does not have is drawn: no families, no grouping or merge button, no per-project line.
     assert page.locator(".pd").get_by_text(re.compile(r"Accept|Merge|采用|合并")).count() == 0
@@ -5434,10 +5484,9 @@ def test_project_board_axis_is_a_question_and_each_answer_is_computed(reader, wi
 
     page = _project_page(reader, "board", width)
     cols = page.locator(".pd-colm h2 > span")
-    expect(cols).to_have_text(["Off track", "At risk", "On track", "Quiet"])
-    expect(page.locator(".pd-colm").first.locator(".pd-card")).to_have_count(2)  # atlas-docs, a sub-project, has its card
-    expect(page.locator(".pd-pencil-box")).to_contain_text("Tidewater")
-    expect(page.locator('.pd-card[data-path="projects/fernhill-pilot.md"]')).to_have_class(re.compile(r"\bweak\b"))  # read 2 of 40
+    expect(cols).to_have_text(["Active", "Waiting", "Quiet", "Done"])
+    expect(page.locator('.pd-state-col[data-state="active"] .pd-card[data-path="projects/atlas-docs.md"]')).to_have_count(1)
+    expect(page.locator('.pd-card[data-path="projects/fernhill-pilot.md"] .pd-step-what')).to_have_text("You owe Mara the weekly chart report")
     page.locator(".pd-asks").get_by_role("link", name="Who waits on whom").click()
     expect(page.locator(".pd-colm h2 > span")).to_have_text(["You owe others", "You wait on others", "Only with agents", "No open promise"])
     quinn = page.evaluate("byPath('people/quinn-alder.md').title", isolated_context=False)
@@ -5537,7 +5586,7 @@ def test_sessions_tabs_choose_unfinished_or_one_agent(session_reader):
     expect(page.locator(".session-result-line")).to_have_count(0)
     page.evaluate("setInterfaceLanguage('zh')", isolated_context=False)
     expect(tabs.locator("button")).to_have_text(["全部", "没做完 1", "Codex", "Claude Code"])
-    expect(page.locator("h1.page-state")).to_have_text("6 个会话 · 和编程 agent 一起做的事")
+    expect(page.locator("h1.page-state")).to_have_text("6 个会话")
 
 
 @pytest.mark.parametrize("width", [1400, 375])
@@ -5561,20 +5610,21 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, width, theme):
+def test_org_list_is_a_record_without_today_links_or_waiting_groups(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", width, theme)
     assert re.fullmatch(r"\d+ organisations", page.locator(".ov-list h1").inner_text().strip())
     assert page.locator(".ov-focal").count() == 0
     assert page.evaluate(GREEN) == 0
-    assert page.locator(".ov-list .list-today").inner_text() == "1 organisation waiting in Today →"
-    assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    assert page.locator(".ov-list .list-today, .ov-grp, .ov-chip.late").count() == 0
+    assert "Waiting on you" not in page.locator("#main").inner_text()
+    row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
-    assert page.locator(".ov-tabs button").count() <= 4
-    assert page.locator(".ov-find").count() == 1
-    page.locator(".ov-find").fill("no such organisation")
-    assert page.locator(".ov-row").count() == 0
+    assert page.locator(".org-kind-filters button").count() >= 1
+    assert page.locator(".org-table thead th").count() == 8
+    assert page.locator(".org-directory .people-find").count() == 1
+    page.locator(".org-directory .people-find").fill("no such organisation")
+    assert page.locator(".org-table-row").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5583,18 +5633,15 @@ def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, wid
 def test_org_page_answers_who_they_are_and_who_you_know(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, theme)
-    # A record of the organisation: its name leads, what you owe is one quiet link to Today.
+    # A record of the organisation: its name, structure and contact history.
     assert _name(page.locator(".ov-say .ov-name")) == "Fernhill Labs"
-    owed = page.evaluate("orgOwed(byPath('orgs/fernhill-labs.md')).length", isolated_context=False)
-    today = page.locator(".ov-say .ov-today")
-    assert today.inner_text() == f"{owed} things in Today involve Fernhill Labs →"
-    assert today.bounding_box()["y"] + today.bounding_box()["height"] <= (844 if width < 600 else 900)
+    assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
     assert page.evaluate(GREEN) == 0
-    for selector in (".ov-xray .ov-node", ".ov-structure .ov-m", ".ov-people li", ".ov-coda .ov-src"):
+    for selector in (".ov-org-tree [role=treeitem]", ".ov-org-tree .ov-trow[data-kind=person]", ".ov-coda .ov-src"):
         assert page.locator(selector).first.is_visible(), selector
     assert page.locator(".ov-owed, .ov-ball").count() == 0
-    assert "Mara Ostrowski" in page.locator(".ov-people").inner_text()
-    assert page.locator(".ov-coda").bounding_box()["y"] > page.locator(".ov-people").bounding_box()["y"]
+    assert "Mara Ostrowski" in page.locator(".ov-org-tree").inner_text()
+    assert page.locator(".ov-coda").bounding_box()["y"] > page.locator(".ov-org-tree").bounding_box()["y"]
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5616,19 +5663,22 @@ def test_org_with_nothing_owed_has_no_green_button(reader, width):
 def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", 1440, "light")
-    page.evaluate("() => { byPath('orgs/fernhill-labs.md').private = true; render(); }", isolated_context=False)
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    page.evaluate("() => { const r = byPath('orgs/fernhill-labs.md'); r.private = true; r.to_you = 'A recorded private studio relationship.'; render(); }", isolated_context=False)
+    row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert "Personal · shown only on this Mac" in row.inner_text()
     assert page.locator(".ov-focal").count() == 0
-    assert row.locator(".ov-dot, .ov-chip").count() == 1
-    assert "pilot" not in page.locator("#main").inner_text().lower()
+    assert row.locator(".ov-dot, .ov-chip").count() == 0
+    assert "pilot" not in page.locator("#main").inner_html().lower()
+    assert "A recorded private studio relationship" not in page.locator("#main").inner_html()
     page.evaluate("() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }", isolated_context=False)
     page.locator(".ov-curtain").wait_for()
     assert page.locator(".ov-primary").count() == 0
     assert "climate" not in page.locator("#main").inner_html().lower()
+    assert "A recorded private studio relationship" not in page.locator("#main").inner_html()
     page.get_by_role("button", name="Show", exact=True).click()
-    assert page.locator(".ov-xray .ov-node").count() >= 2
-    assert page.locator(".ov-today").count() == 1
+    assert page.locator(".ov-org-tree [role=treeitem]").count() >= 2
+    assert "A recorded private studio relationship" in page.locator(".ov-opening").inner_text()
+    assert page.locator(".ov-today").count() == 0
     assert page.evaluate(GREEN) == 0
 
 
@@ -5644,7 +5694,7 @@ def test_org_page_shows_each_labelled_passage_with_its_own_reveal(reader, width)
       org.text = org.text.replace('## Domains', '## Facts\\n- What they do: Climate data. Founder is in a lawsuit [sensitive] [1]\\n\\n'
         + '## History\\n- ' + REM.as_of.slice(0, 7) + '-02: Pilot kickoff with Mara [1]\\n- ' + REM.as_of.slice(0, 7) + '-03: Mara shared a diagnosis [personal] [1]\\n\\n## Domains');
       KNOWN.clear(); FACTS.clear(); render(); }""", isolated_context=False)
-    sub, about, lately = page.locator(".ov-sub"), page.locator(".ov-about"), page.locator(".ov-tl")
+    sub, about, lately = page.locator(".ov-sub"), page.locator(".ov-about"), page.locator(".ov-milestones")
     assert "Your first paying pilot." in sub.inner_text()
     for box, secret in ((sub, "family illness"), (about, "lawsuit"), (lately, "diagnosis")):
         assert secret in box.inner_text(), (secret, box.inner_text())
@@ -5654,7 +5704,7 @@ def test_org_page_shows_each_labelled_passage_with_its_own_reveal(reader, width)
         assert secret not in box.inner_text()
     assert "Pilot kickoff" in lately.inner_text() and "Climate data." in about.inner_text()
     # The fuse's tooltips never carry a labelled exchange.
-    assert "diagnosis" not in page.locator(".ov-time").inner_html()
+    assert page.locator(".ov-time").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5662,14 +5712,14 @@ def test_org_kind_and_teams_appear_when_the_page_records_them(reader):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", 1440, "light")
     assert "Client or partner" not in page.locator(".ov-sub").inner_text()
-    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 0
+    assert page.locator(".ov-org-tree .ov-trow[data-kind=unit]").count() == 0
     page.evaluate("""() => { const org = byPath('orgs/fernhill-labs.md');
       org.kind = 'client_partner'; org.to_you = 'Your first paying pilot.';
       byPath('people/mara-ostrowski.md').team = 'Pilot squad'; render(); }""", isolated_context=False)
-    assert page.locator(".ov-sub").inner_text() == "Client or partner · Your first paying pilot."
-    # A free-text team groups its people (a circle and a row) but never becomes a unit link.
-    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 1
-    team = page.locator(".ov-outline .ov-tn").filter(has_text="Pilot squad")
+    assert page.locator(".ov-opening").inner_text().casefold().count("your first paying pilot") == 1
+    # A free-text team groups its people in the tree without inventing a unit link.
+    assert page.locator(".ov-org-tree .ov-trow[data-kind=unit]").count() == 1
+    team = page.locator(".ov-trow").filter(has_text="Pilot squad")
     assert team.count() == 1 and team.locator("a").count() == 0
 
 
@@ -5691,24 +5741,25 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
       org.obligations.forEach(row => row.units = [team.path]);
       render();
     }""", isolated_context=False)
-    # The picture draws the course as a square and the team as a circle; the text outline links both.
-    assert page.locator('.ov-xray .ov-node[data-shape=square]').count() == 1
-    assert page.locator('.ov-xray .ov-node[data-shape=circle]').count() == 1
-    course_link = page.locator('.ov-tn > a').filter(has_text='Pilot course')
-    team_link = page.locator('.ov-tn > a').filter(has_text='Pilot squad')
+    # Nested tree levels link the course and team; both scoped memberships remain.
+    assert _org_item(page, 'Pilot course', 2).count() == 1
+    assert _org_item(page, 'Pilot squad', 3).count() == 1
+    course_link = page.locator('.ov-org-tree .ov-tl1 > a').filter(has_text='Pilot course')
+    team_link = page.locator('.ov-org-tree .ov-tl1 > a').filter(has_text='Pilot squad')
     expect(course_link).to_be_visible()
     expect(team_link).to_be_visible()
     expect(team_link).to_have_attribute('href', '#r=orgs%2Fpilot-squad.md')
-    mara = page.locator('.ov-outline .ov-m').filter(has_text='Mara Ostrowski')
-    expect(mara).to_have_count(2)
+    mara = page.locator('.ov-org-tree [role=treeitem]').filter(has=page.locator(':scope > .ov-trow[data-kind=person]')).filter(has_text='Mara Ostrowski')
+    expect(mara).to_have_count(1)
+    expect(mara).to_contain_text('Tutor')
     expect(mara.filter(has_text='Product Owner')).to_have_count(1)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     course_link.click()
     page.locator('.ov-page').wait_for()
-    direct = page.locator('.ov-outline > .ov-m').filter(has_text='Mara Ostrowski')
+    direct = _org_item(page, 'Mara Ostrowski', 2).locator(':scope > .ov-trow')
     expect(direct).to_contain_text('Tutor')
-    assert 'department not known yet' not in page.locator('.ov-outline').inner_text()
-    direct.click()
+    assert 'department not known yet' not in page.locator('.ov-org-tree').inner_text()
+    direct.locator("a").click()
     page.locator('.r4-person').wait_for()
     expect(page.locator('.r4-sub a[href="#r=orgs%2Fpilot-squad.md"]')).to_contain_text('Product Owner')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -5788,6 +5839,11 @@ def org_reader(tmp_path, monkeypatch):
     assert not errors, errors
 
 
+def _org_item(page, name, level):
+    return page.locator(f'.ov-org-tree [role=treeitem][aria-level="{level}"]').filter(
+        has=page.locator(':scope > .ov-trow .ov-tl1 > a, :scope > .ov-trow .ov-tl1 > b').filter(has_text=re.compile('^' + re.escape(name) + '$')))
+
+
 def _people_known(page):
     """Distinct people the snapshot files under the university, its units included."""
     return page.evaluate("orgMembers(byPath('orgs/fernhill-university.md')).length", isolated_context=False)
@@ -5797,18 +5853,15 @@ def _people_known(page):
 # who you know there and how long you have been in touch. To-dos live in Today.
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme):
+def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert _name(name) == "Fernhill University"
     # The organisation's name is what the page is about: --s-display (N3: 44, 36 on a phone).
     assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
-    facts = page.locator(".ov-say .ov-facts").inner_text()
-    assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
-    owed = 5  # the fixture's items waiting on you about the university, as in the English test below
-    today = page.locator(".ov-say a.ov-today")
-    assert today.inner_text() == f"今天里有 {owed} 件和 Fernhill University 有关的事 →" and today.get_attribute("href") == "#view=open"
-    assert page.locator(".ov-key li").count() == 3
+    facts = page.locator(".ov-opening").inner_text()
+    assert f"你认识这里的 {_people_known(page)} 个人" in facts and "起有往来" in facts and "最近往来" in facts
+    assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
     audit = page.evaluate(FIRST_SCREEN, isolated_context=False)
     assert audit["text"] <= 70, audit
     assert audit["buttons"] == [], audit["buttons"]
@@ -5816,88 +5869,82 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     assert audit["red"] == 0, audit
     assert set(audit["weights"]) <= {"400", "600"}  # N3: regular and semibold, audit["weights"]
     assert page.evaluate(GREEN, isolated_context=False) <= 1
-    # The picture: square = branch, circle = team or programme, sized by people you know there.
-    assert page.locator(".ov-xray .ov-node[data-shape=square]").count() == 3
-    assert page.locator(".ov-xray .ov-node[data-shape=circle]").count() == 9
-    assert page.locator(".ov-xray .ov-node").first.is_visible()
-    assert page.locator(".ov-time .ov-now").count() == 1
+    # Every recorded unit has its own row; the root counts distinct people.
+    assert page.locator('.ov-org-tree .ov-trow[data-kind=unit]').count() == 12
+    assert page.locator('.ov-trow[data-kind=unit] .ov-tk').count() == 0
+    root = _org_item(page, 'Fernhill University', 1)
+    assert page.locator(".ov-tc, .ov-tbar, .ov-mk").count() == 0
+    assert page.locator('.ov-org-tree [role=tree]').is_visible()
+    assert page.locator(".ov-time").count() == 0
+    assert page.locator(".ov-milestones time").count() == 4
     # Nothing on the page is a to-do ledger.
     assert page.locator(".ov-ball, .ov-owed, .ov-primary").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_org_today_link_follows_the_data_and_there_is_no_green(org_reader):
+def test_org_has_no_today_link_regardless_of_obligations(org_reader):
     page = org_reader(1440, language="en")
-    assert page.locator(".ov-today").inner_text() == "5 things in Today involve Fernhill University →"
+    assert page.locator(".ov-today").count() == 0
     assert page.evaluate(GREEN, isolated_context=False) == 0
     page.evaluate("""() => { for (const r of REM.records) if (r.category === 'orgs') r.obligations = r.obligations.filter(row => row.dir !== 'mine'); render(); }""",
                   isolated_context=False)
     assert page.locator(".ov-today").count() == 0
     assert _name(page.locator(".ov-say h1")) == "Fernhill University"
-    assert page.locator(".ov-xray .ov-node").count() == 13
+    assert page.locator(".ov-org-tree .ov-trow[data-kind=unit]").count() == 12
 
 
 @pytest.mark.parametrize("width", [1440, 390])
 def test_org_reduced_motion_shows_the_still_end_state(org_reader, width):
     page = org_reader(width, motion="reduce")
-    still = page.evaluate("""() => ({running: document.getAnimations().filter(a => a.playState === 'running').length,
-      name: getComputedStyle(document.querySelector('.ov-say h1')).opacity,
-      now: document.querySelector('.ov-now').getBoundingClientRect().x})""", isolated_context=False)
-    assert still["running"] == 0
-    assert still["name"] == "1"
-    page.wait_for_timeout(600)
-    assert page.evaluate("document.querySelector('.ov-now').getBoundingClientRect().x", isolated_context=False) == still["now"]
+    assert page.locator('.ov-time').count() == 0
+    assert page.locator('.ov-opening').is_visible()
+    assert page.evaluate("document.getAnimations().filter(a => a.playState === 'running').length", isolated_context=False) == 0
     moving = org_reader(width, motion="no-preference")
-    moving.evaluate("orgFreeze(150)", isolated_context=False)
-    assert float(moving.locator(".ov-say h1").evaluate("node => getComputedStyle(node).opacity")) < 1
-    moving.evaluate("orgFreeze(4000)", isolated_context=False)
-    assert moving.locator(".ov-say h1").evaluate("node => getComputedStyle(node).opacity") == "1"
-    assert moving.evaluate("document.querySelector('.ov-now').getBoundingClientRect().x", isolated_context=False) == still["now"]
+    assert moving.locator('.ov-say h1').evaluate("node => getComputedStyle(node).opacity") == "1"
+    assert moving.evaluate("document.getAnimations().filter(a => a.playState === 'running').length", isolated_context=False) == 0
 
 
-def test_org_missing_temperature_is_neutral_and_a_real_signal_shows_it(org_reader):
+
+def test_org_tree_has_no_warmth_or_cooling_dashboard(org_reader):
     page = org_reader(1440)
-    temps = page.locator(".ov-xray .ov-node[data-depth='2']").evaluate_all("nodes => nodes.map(node => node.dataset.temp)")
-    assert set(temps) == {"unknown"}
-    legend = page.locator(".ov-legend").inner_text()
-    assert "冷热还不知道" in legend and not re.search(r"\d{3,}", legend)
+    assert page.locator('.ov-page .ov-legend, .ov-page .ov-mk, .ov-page .fresh').count() == 0
     page.evaluate("""() => { byPath('people/juno-hale.md').index = {relationship: {trend: 'cooling', last_mail: '2026-09-01',
       weekly_messages: Array(52).fill(0), change_percent: -60, quiet: false}}; render(); }""", isolated_context=False)
-    wren = page.locator(".ov-xray .ov-node[aria-label*='Wren squad']")
-    assert wren.get_attribute("data-temp") == "cooling"
-    assert "在变冷" in page.locator(".ov-legend").inner_text()
-    assert "Juno Hale" in page.locator(".ov-cool").inner_text()
+    assert page.locator(".ov-cool, .ov-sq").count() == 0
+    assert "Juno Hale" in page.locator(".ov-org-tree").inner_text()
+    assert _org_item(page, 'Wren squad', 3).is_visible()
 
 
 @pytest.mark.parametrize("width", [1440, 390])
 def test_org_units_and_people_are_listed_with_roles_and_links(org_reader, width):
     page = org_reader(width)
-    section = page.locator(".ov-structure")
-    assert section.locator(".ov-sh h2").inner_text() == "分支与团队"
-    kestrel = section.locator(".ov-tn > a").filter(has_text="Kestrel squad")
-    assert kestrel.get_attribute("href") == "#r=orgs%2Fteam-kestrel.md"
-    fern = section.locator(".ov-m").filter(has_text="Fern Okafor")
-    assert "Product Owner" in fern.inner_text()
-    assert "Petra Lund" in section.locator(".ov-outline > .ov-meta").inner_text()
-    assert "Basil Thorne" in page.locator(".ov-people").inner_text()
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    kestrel = _org_item(page, 'Kestrel squad', 3)
+    assert kestrel.locator(':scope > .ov-trow a').get_attribute('href') == '#r=orgs%2Fteam-kestrel.md'
+    fern = _org_item(page, 'Fern Okafor', 4)
+    assert 'Product Owner' in fern.locator(':scope > .ov-trow').inner_text()
+    loose = _org_item(page, '还不清楚在哪个部门', 2)
+    loose.focus()
+    page.keyboard.press('ArrowRight')
+    assert 'Petra Lund' in loose.inner_text()
+    assert 'Basil Thorne' in page.locator('.ov-org-tree').inner_text()
+    assert page.locator('.ov-people').count() == 0
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_org_clicking_a_team_turns_the_tree_and_opens_its_panel(org_reader):
+def test_org_clicking_a_team_toggles_its_members_and_its_name_opens_the_record(org_reader):
     page = org_reader(1440)
-    node = page.locator(".ov-xray .ov-node[aria-label*='Osprey squad']")
-    before = node.bounding_box()
-    node.locator(".ov-shape").click()
-    panel = page.locator(".ov-np")
-    panel.wait_for(state="visible")
-    assert "Osprey squad" in panel.inner_text()
-    assert "Ilse Marr" in panel.inner_text() and "Theo Brand" in panel.inner_text()
-    assert "null" not in panel.inner_text() and "undefined" not in panel.inner_text()
-    assert panel.locator(".ov-btxt").evaluate("node => [getComputedStyle(node).fontSize, getComputedStyle(node).fontWeight]") == ["15px", "600"]
-    after = node.bounding_box()
-    assert abs(after["x"] - before["x"]) + abs(after["y"] - before["y"]) > 20
-    page.keyboard.press("Escape")
-    panel.wait_for(state="hidden")
+    node = _org_item(page, 'Osprey squad', 3)
+    row = node.locator(':scope > .ov-trow')
+    assert 'Ilse Marr' in node.inner_text() and 'Theo Brand' in node.inner_text()
+    row.locator('.ov-twisty').click()
+    assert node.get_attribute('aria-expanded') == 'false'
+    assert not node.locator(':scope > [role=group]').is_visible()
+    row.locator('.ov-twisty').click()
+    assert node.get_attribute('aria-expanded') == 'true'
+    assert node.locator(':scope > [role=group]').is_visible()
+    assert 'null' not in node.inner_text() and 'undefined' not in node.inner_text()
+    row.locator('a').click()
+    page.wait_for_function("location.hash === '#r=orgs%2Fteam-osprey.md'")
 
 
 # Round 2: keyboard use, large organisations, resize, the unit chain, and the whole scrolled page.
@@ -5917,66 +5964,57 @@ OVERLAPS = r"""() => {
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_org_fuse_ticks_real_dates_and_the_hierarchy_steps_down_for_the_keyboard(org_reader, width):
+def test_org_milestones_have_real_dates_and_the_hierarchy_steps_down_for_the_keyboard(org_reader, width):
     page = org_reader(width, language="en")
-    events = page.evaluate("orgCurrent.events.map(e => e.day)", isolated_context=False)
-    ticks = page.locator(".ov-time .ov-ev")
-    assert len(events) >= 6 and ticks.count() == len(events)
-    # Linear in time from the first exchange to today: later is never further left.
-    xs = ticks.evaluate_all("ticks => ticks.map(t => t.getBoundingClientRect().x)")
-    assert xs == sorted(xs)
-    assert page.locator(".ov-time .ov-axis").evaluate("node => getComputedStyle(node).strokeWidth") == "6px"
-    assert page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
-    # Each unit starts to the right of the unit it sits under.
-    steps = page.evaluate("""() => [...document.querySelectorAll('.ov-outline .ov-unit .ov-unit')].map(unit => [
-      unit.querySelector('.ov-tn').getBoundingClientRect().x, unit.parentElement.closest('.ov-unit').querySelector('.ov-tn').getBoundingClientRect().x])""",
-                          isolated_context=False)
+    expected = page.evaluate("orgHistory(orgCurrent.r, []).map(e => e.day).sort()", isolated_context=False)
+    dates = page.locator('.ov-milestones time')
+    assert dates.count() == len(expected) == 4
+    assert dates.evaluate_all("nodes => nodes.map(n => n.dateTime)") == expected
+    assert all(re.search(r'\d', text) for text in dates.all_inner_texts())
+    assert page.locator('.ov-page .ov-time, .ov-page svg').count() == 0
+    # Nested tree rows indent, and arrow navigation follows their reading order.
+    steps = page.evaluate("""() => [...document.querySelectorAll('.ov-org-tree [role=treeitem] [role=treeitem]')]
+      .filter(n => n.checkVisibility()).map(n => [n.querySelector('.ov-trow').getBoundingClientRect().x,
+        n.parentElement.closest('[role=treeitem]').querySelector('.ov-trow').getBoundingClientRect().x])""", isolated_context=False)
     assert steps and all(child > parent for child, parent in steps), steps
-    # Every unit and person in it is a link, in reading order for Tab.
-    links = page.locator(".ov-outline a")
-    links.first.focus()
-    page.keyboard.press("Tab")
-    assert page.evaluate("document.activeElement === document.querySelectorAll('.ov-outline a')[1]", isolated_context=False)
+    root = _org_item(page, 'Fernhill University', 1)
+    root.focus()
+    page.keyboard.press('ArrowDown')
+    assert page.evaluate("document.activeElement.getAttribute('aria-level')", isolated_context=False) == '2'
+    assert page.locator('.ov-org-tree [tabindex="0"]').count() == 1
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_org_enter_on_a_unit_keeps_keyboard_focus_and_space_works(org_reader):
-    page = org_reader(1440, motion="no-preference")
-    page.wait_for_timeout(2200)
-    osprey = page.locator(".ov-xray .ov-node[aria-label*='Osprey squad']")
-    assert osprey.get_attribute("role") == "button"
-    osprey.focus()
-    page.keyboard.press("Enter")
-    page.locator(".ov-np").wait_for(state="visible")
-    page.wait_for_timeout(100)
-    assert "Osprey squad" in page.evaluate("document.activeElement.getAttribute('aria-label') || ''", isolated_context=False)
-    page.keyboard.press("Escape")
-    page.locator(".ov-np").wait_for(state="hidden")
-    page.wait_for_timeout(900)
-    assert "Osprey squad" in page.evaluate("document.activeElement.getAttribute('aria-label') || ''", isolated_context=False)
-    page.locator(".ov-xray .ov-node[aria-label*='Wren squad']").focus()
-    page.keyboard.press(" ")
-    page.locator(".ov-np").filter(has_text="Wren squad").wait_for(state="visible")
-    # With a dialog open, Escape belongs to the dialog and the tree stays where it is.
-    page.evaluate("() => { const d = document.createElement('dialog'); d.id = 'probe'; document.body.append(d); d.showModal(); }", isolated_context=False)
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(100)
-    assert page.locator(".ov-np").is_visible()
+def test_org_space_keeps_keyboard_focus_and_enter_opens_the_unit(org_reader):
+    page = org_reader(1440, motion='no-preference')
+    node = _org_item(page, 'Osprey squad', 3)
+    node.focus()
+    page.keyboard.press(' ')
+    assert node.get_attribute('aria-expanded') == 'false'
+    assert node.evaluate('node => node === document.activeElement')
+    page.keyboard.press(' ')
+    assert node.get_attribute('aria-expanded') == 'true'
+    assert node.evaluate('node => node === document.activeElement')
+    page.keyboard.press('Enter')
+    page.wait_for_function("location.hash === '#r=orgs%2Fteam-osprey.md'")
+    assert _org_item(page, 'Osprey squad', 1).is_visible()
 
 
 @pytest.mark.parametrize("width", [1440, 390])
 def test_org_focus_ring_shows_on_every_node(org_reader, width):
     page = org_reader(width)
-    for node in page.locator(".ov-xray .ov-node[role=button]").all()[:4]:
-        node.focus()
-        assert node.locator(".ov-ring").evaluate("ring => getComputedStyle(ring).opacity") == "1"
-    links = page.locator(".ov-structure .ov-tn > a")
-    links.first.focus()
-    assert page.evaluate("document.activeElement.closest('.ov-structure') !== null", isolated_context=False)
+    root = _org_item(page, 'Fernhill University', 1)
+    root.focus()
+    for _ in range(4):
+        page.keyboard.press('ArrowDown')
+        assert page.evaluate("getComputedStyle(document.activeElement.querySelector('.ov-trow')).outlineStyle", isolated_context=False) == 'solid'
+        assert page.locator('.ov-org-tree [role=treeitem][tabindex="0"]').count() == 1
+    page.keyboard.press('Tab')
+    assert page.evaluate("!document.activeElement.closest('.ov-org-tree')", isolated_context=False)
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_org_large_organisation_caps_labels_and_keeps_them_on_screen(org_reader, width):
+def test_org_large_organisation_folds_wide_branches_and_keeps_names_on_screen(org_reader, width):
     page = org_reader(width)
     page.evaluate("""() => {
       const course = byPath('orgs/fieldwork-studio.md');
@@ -5988,10 +6026,16 @@ def test_org_large_organisation_caps_labels_and_keeps_them_on_screen(org_reader,
       }
       render();
     }""", isolated_context=False)
-    assert page.locator(".ov-xray .ov-node[data-depth='2']").count() >= 38
+    studio = _org_item(page, 'Fieldwork studio', 2)
+    assert studio.locator(':scope > [role=group] .ov-trow[data-kind=unit]').count() == 38
+    assert studio.get_attribute('aria-expanded') == 'false'
+    studio.focus()
+    page.keyboard.press('ArrowRight')
+    assert studio.get_attribute('aria-expanded') == 'true'
+    assert _org_item(page, 'Extra squad 32', 3).is_visible()
     audit = page.evaluate(FIRST_SCREEN, isolated_context=False)
     assert audit["text"] <= 70, audit
-    outside = page.evaluate("""() => [...document.querySelectorAll('.ov-xsvg text')].filter(t => t.checkVisibility())
+    outside = page.evaluate("""() => [...document.querySelectorAll('.ov-org-tree .ov-tl1')].filter(t => t.checkVisibility())
       .map(t => t.getBoundingClientRect()).filter(r => r.left < 0 || r.right > innerWidth).length""", isolated_context=False)
     assert outside == 0
     assert page.evaluate(OVERLAPS, isolated_context=False) == []
@@ -6008,17 +6052,16 @@ def test_org_resize_keeps_the_still_frame_and_redraws_across_the_phone_width(org
                          isolated_context=False) == 0
     page.set_viewport_size({"width": 600, "height": 900})
     page.wait_for_timeout(50)
-    assert page.locator(".ov-xsvg .ov-label").first.evaluate("node => node.style.fontSize") == "19.25px"  # --s-meta (11) × 21 / 12
+    assert _org_item(page, 'Fieldwork studio', 2).is_visible()
+    assert page.locator('.ov-org-tree .ov-tl1 a').first.evaluate('node => getComputedStyle(node).fontSize') == '15px'
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_org_as_of_guard_and_unit_page_has_its_chain(org_reader):
     page = org_reader(1440)
-    recent = page.locator(".ov-xray .ov-node[data-depth='2'][data-recent='1']")
-    assert recent.count() == 3 and recent.locator(".ov-recent").count() == 3
-    assert page.locator(".ov-xray .ov-node[data-depth='2'][data-recent='0'] .ov-recent").count() == 0
-    assert "45 天内有往来" in page.locator(".ov-legend").inner_text()
     page.evaluate("() => { REM.as_of = ''; render(); }", isolated_context=False)
-    assert page.evaluate("Number.isFinite(+document.querySelector('.ov-now').dataset.x)", isolated_context=False)
+    assert 'Invalid Date' not in page.locator('.ov-opening').inner_text()
+    assert page.locator('.ov-mk, .ov-time').count() == 0
     page.evaluate("() => { location.hash = 'r=orgs%2Fteam-kestrel.md'; }", isolated_context=False)
     page.locator(".ov-crumb a").first.wait_for()
     links = page.locator(".ov-crumb a")
@@ -6032,20 +6075,16 @@ def test_org_as_of_guard_and_unit_page_has_its_chain(org_reader):
 def test_org_full_page_reads_cleanly_to_the_bottom(org_reader, width, theme):
     page = org_reader(width, theme)
     # One event recorded on two pages is one entry.
-    entries = page.locator(".ov-tl .ov-e").all_inner_texts()
+    entries = page.locator(".ov-milestones p").all_inner_texts()
     assert sum("confirmed the final demo week" in text for text in entries) == 1
-    # No half-empty grid: two filled columns side by side, or one measured column.
-    layout = page.evaluate("""() => [...document.querySelectorAll('.ov-two')].map(row => [...row.children].map(col => col.childElementCount))""",
-                           isolated_context=False)
-    assert all(len(cols) == 2 and all(cols) for cols in layout), layout
-    # Branches and the units you are in touch with are named in the picture, phone included.
+    assert page.locator('.ov-page').bounding_box()['width'] <= 760
+    assert page.locator('.ov-two, .ov-time').count() == 0
+    # Branches and the units you are in touch with are visible in the tree, phone included.
     for name in ("Fieldwork studio", "Founders programme", "Global office", "Kestrel squad", "Heron squad", "Wren squad"):
-        label = page.locator(".ov-xray .ov-node", has_text=name).locator(".ov-label")
+        label = _org_item(page, name, 2 if name in ("Fieldwork studio", "Founders programme", "Global office") else 3).locator(":scope > .ov-trow a")
         assert label.count() == 1 and label.is_visible(), name
-    # The time line speaks the interface language and shows its real dated items.
-    times = page.locator(".ov-tsvg text").all_text_contents()
-    assert not [text for text in times if re.search(r"[A-Za-z]{3,}", text)], times
-    assert page.locator(".ov-tsvg .ov-ev:visible").count() >= 6
+    times = page.locator('.ov-milestones time').all_text_contents()
+    assert len(times) == 4 and all('月' in text for text in times), times
     assert page.evaluate(OVERLAPS, isolated_context=False) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -6070,14 +6109,24 @@ def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person
     onto a line of its own where it reads as the next person's role."""
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
-    page.evaluate("""() => { const p = REM.records.find(r => r.category === 'people');
+    page.evaluate("""() => { const p = byPath('people/mara-ostrowski.md');
       p.text = p.text.replace(/^(- Role: ).*$/m, '$1Former sales and marketing intern for the pilot programme across three campuses'); render(); }""",
       isolated_context=False)
     assert page.locator(".ov-say h1").bounding_box()["y"] < 180  # under N3's 76px top bar
-    for item in page.locator(".ov-key li").all():
-        name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
-        assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
-        assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"
+    assert page.locator(".ov-key").count() == 0
+    assert "Former sales and marketing intern" in page.locator(".ov-org-tree").inner_text()
+    for item in page.locator(".ov-trow[data-kind=person]:visible").all():
+        name = item.locator(".ov-tl1 a").bounding_box()
+        role = item.locator(".ov-tk")
+        if role.count():
+            meta = role.bounding_box()
+            assert role.inner_text().strip()
+            if width == 390:
+                assert meta["y"] >= name["y"] + name["height"] - 1
+                assert abs(meta["x"] - name["x"]) < 1
+            else:
+                assert meta["y"] >= name["y"] + name["height"] - 1
+
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -6227,8 +6276,7 @@ def test_skills_say_what_each_does_in_one_plain_line(reader, language):
     for jargon in ['recorded not installed', 'Source reviewed', 'Getting to know them', 'More to learn', 'written of',
                    '仅记录，未安装', '已核对来源', '待了解', '有内容', 'version unverified', '版本未验证']:
         assert jargon not in text
-    assert page.locator('.lede').inner_text() == ('你的 agent 会做的事，最常用的在前 · 21 个技能' if language == 'zh'
-                                                  else 'What your agents can do, the ones you use most first. 21 skills')
+    assert page.locator('.skills-find').get_attribute('placeholder') == ('在 21 个技能里找…' if language == 'zh' else 'Find among 21 skills…')
 
 
 def test_skills_have_one_search_that_is_big_enough_to_use(reader):

@@ -206,10 +206,9 @@ def _violations(html=None):
     for js in scripts:
         found += _script_findings(js)
     found += _markup_findings(markup)
-    # A size the JS interpolates is still a size. The one allowed is the org chart's SVG labels,
-    # which are in user units and derived from --s-meta (orgLabelPlan); any other is a new size.
+    # The tree uses the shared CSS sizes; no chart-label interpolation remains.
     interpolated = [name for js in scripts for name in re.findall(r'font-size:\s*\$\{(\w+)\}', js)]
-    if interpolated != ['fs'] or not any('fs = v.phone ? meta * 21 / 12 : meta' in js for js in scripts):
+    if interpolated:
         found.append(f'js: interpolated font-size {interpolated}')
     return found
 

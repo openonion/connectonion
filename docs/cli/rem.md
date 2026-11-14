@@ -1047,12 +1047,12 @@ pinned to that edge: it comes into view with the draft.
   Opening it again returns the same conversation.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
   word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
-  **Organisations** (*Orgs*), **Projects**, **Skills**, **All records** (*All*),
+  **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
   then **More**, and at the foot **Settings** and your face. A short word is
   the start of the place's accessible name (*Orgs* is named "Orgs ·
   Organisations"), so saying the word you see finds it. **More** opens beside
   its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Knowledge, Decisions, Principles, Agenda,
+  window: **Memory changes**, then Decisions, Principles, Agenda,
   Agent sessions, Opportunities and Works when they hold pages. Your face opens
   your own page and shows **You · name** beside it on hover and on keyboard
   focus. Only **Waiting on you** carries a number; a category's size is not
@@ -1060,11 +1060,33 @@ pinned to that edge: it comes into view with the draft.
   window lower than the rail (656px) the rail itself scrolls, so every place
   stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
   People, Search, More); **More** opens a sheet with every place by its full
-  name, Skills and All records among them, the More list under them with its
+  name, Skills and Knowledge among them, the More list under them with its
   labels in the same column, and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
+- **Knowledge** (#2996) is the notebook's wiki and its one place for how
+  records link: there is no **All records** any more. **Entries** lists one row
+  per topic, the most linked first, each row showing the people, organisations
+  and projects it ties together as links; **Graph** is the two-way map of every
+  linked record that All records used to draw (`#view=graph`; the old `#c=all`
+  address opens it too). Every record the All records list held is still in its
+  own category (a rail place or **More**) and in search; **Graph** is also in
+  the ⌘K palette. A list with one or two entries also offers **Explore linked
+  records →** when the graph has links. With nothing linked yet, **Graph** shows
+  the entries instead.
+- **Headings name a page, they do not explain it** (#2994): a category page
+  shows its name and its count, not a sentence about its order. Skills opens
+  with its name and its finder (*Find among N skills…*) on one line, the most
+  used as cards with no **Most used** heading, then the families' buttons with
+  no caption. Today's number stands beside the faces it starts with, without
+  *Start with these N people*. The graph's heading is **Knowledge** and its
+  switch; its counts are in the legend under the map, and the panel lists the
+  entries, then the busiest pages, divided by a rule. Sessions keeps its count
+  without an explanatory subtitle; Projects keeps its factual summary at body
+  size and drops the sentences describing its sort order and board axes. The
+  [category heading audit](rem-heading-audit.md) records each keep/drop decision
+  and inventories the former All records paths.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a
@@ -1118,12 +1140,8 @@ pinned to that edge: it comes into view with the draft.
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
   Graph labels are cut by width, so a Chinese title stays inside its card.
-  **All records**' **Most connected** leaves your own page out: you are every
+  The graph's list of the busiest pages leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
-- **An organisation's link to Today**, **N things in Today involve X**, counts
-  what Today counts: the items waiting on you (not done, not quiet, not a
-  stale promise, not a reply already sent or held) whose rows belong to the
-  organisation or its units, so it never exceeds Today's own number.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1150,16 +1168,46 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations and Projects** open as a sheet: one row per page, the facts
-  in columns, a sticky header, sort on any shown column, filters (*Something
-  open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
-  opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
-  cut edge shaded and the name column held. The columns come from the
-  notebook's index (`store.people_table`, #2067) when `.state/rem.db` exists,
-  embedded in the snapshot; before it does, from each page's Facts and the
-  map's mail counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in
-  the page); mail statistics come from `relationship_stats.py`.
-  People excludes your own page, which remains under **You** in the navigation.
+- **Organisations** opens as a full-width sortable table, newest contact first.
+  The default columns show a local logo or monogram, name, kind, what they do
+  or mean to you, website, location, people known there, activity (messages in
+  90 days), and last contact. Search and kind filters follow the reader’s
+  language; activity stays a readable message count at row height. Unknown
+  facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
+  separately from People and can add first contact, legal entity and parent.
+  Blanks sort last in either direction. On a phone rows become cards.
+  Websites open in a new tab; when Website is Unknown, a contact's business
+  email domain can supply a link marked **Derived** (free mail is excluded).
+  A `Logo:` fact can name a notebook-relative PNG, JPEG, GIF or WebP; the reader
+  embeds it in both live data and the self-contained snapshot, without fetching
+  images from the network. Missing logos use monograms.
+  Units stay folded under their parent until its disclosure is expanded; a
+  unit whose parent is missing stays findable in the list. Search also finds
+  organisations by their unit names.
+  The book page names all contacts when there are at most four; otherwise it
+  names the four most recent and says so. Business, location and website have
+  separate labels, and the website is a link.
+  An organisation page shows an indented, collapsible tree: organisation →
+  units, courses or teams → people, with most recently active branches first.
+  People keep their role in each unit;
+  those without a known unit are folded under **Department not known yet**.
+  Click beside a name to expand or collapse; the name opens its record. Tab
+  enters the tree once, arrows move between rows, Right expands or enters a
+  branch, Left collapses or returns to its parent, Home/End move to the first/last
+  visible row, Space toggles and Enter opens the selected record.
+  The breadcrumb comes first on a phone. The tree is the people directory;
+  repeated contact lists and the local graph are omitted from this record.
+  A person with several unit memberships appears once, with those roles together.
+  The page reads as an article in one centred reading column: opening sentences
+  give its summary, relationship, people known and first/latest contact dates.
+  The tree is followed by the organisation's own dated History as prose milestones,
+  connections as text links, and facts and sources at the foot. Correspondents'
+  activity is not the article's body; **Full memory and sources** keeps the page's
+  complete record reachable. **View sources →** at the top opens citations;
+  **Read full memory →** at the foot opens the complete record. There are no update badges, contact charts,
+  freshness dots, branch bars or questions asking for action on this page.
+  Organisation lists and pages carry no
+  waiting groups, task chips or Today counts; to-dos live in Today.
 - **Agent sessions** keeps topic tags and the outcome separate on each list
   card. A session page shows its summary, then the visible transcript, followed
   by decisions, follow-ups and artifacts. The transcript retains your turns
@@ -1220,9 +1268,9 @@ pinned to that edge: it comes into view with the draft.
   updated is noted in the Full memory and sources header. An organisation is
   private only when its title carries `[personal]`/`[sensitive]` or its Kind
   is personal. A labelled passage in its body shows with its label in the
-  first line, What they do, Lately and the full memory, and hides alone when
-  labelled passages are hidden, as on a person's page; the time line's ticks
-  never carry one. A labelled membership (the org's own roster line, or a
+  opening, facts, dated milestones and full memory, and hides alone when
+  labelled passages are hidden, as on a person's page.
+  A labelled membership (the org's own roster line, or a
   Company, Unit or Role in unit line on the person's page) places nobody in
   the organisation and draws no edge on the map. A project's folder path
   stays in its full memory, never as a fact on the page. A session summary
@@ -1246,12 +1294,20 @@ pinned to that edge: it comes into view with the draft.
   original/translated state match. A destination page's introduction is never
   substituted under another page's source labels. Qualified or distinct evidence
   stays visible. This is pending review/publication, not behavior claimed for rc12.
-- **A page** opens on a focused status, next exchanges, compact facts, related
-  records and filterable dated Activity. Project pages add purpose and a
-  recorded decision when supported. A project opens on its current supported
-  finding; on a phone, a long purpose shows four lines with **Read full purpose**
-  (**展开用途**) to reveal the rest in one tap. Its citations stay directly after
-  the purpose and its toggle. Connected cards without a snippet stay compact;
+- **Projects** opens on a board with **Active**, **Waiting**, **Quiet** and
+  **Done** columns. Cards name the next step and who holds it; late promises
+  stay visible on their card. Waiting means every confirmed open step is with
+  someone else or an agent. Quiet follows the existing activity rule; Done
+  requires an explicitly completed project. Longer columns unfold in place;
+  on wide desktop screens an empty state keeps a narrow header and its zero count; on a phone
+  the columns stack. **List** and **Timeline** remain available.
+  A project page leads with the same state, up to three next steps (overdue
+  owner-held steps first), and recent sessions or dated history. **+N more**
+  opens the remaining steps in **Full memory and sources**. Purpose, findings,
+  facts, people, decisions, detailed sessions, tags, local graph and history stay
+  in that collapsed disclosure. Source markers beside steps still open their evidence.
+- **Other record pages** open on a focused status, next exchanges, compact
+  facts, related records and filterable dated Activity. Connected cards without a snippet stay compact;
   desktop cards with snippets align their source dates across each row.
   When only part of its queued or archived session history was read,
   the page says how many inputs were supplied. Explicit links and unambiguous name
