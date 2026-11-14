@@ -238,7 +238,7 @@ def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
     return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
-SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source|obsidian)'
                        r'(?:-summary)?:[\w.:+-]+')
 
 
@@ -1067,8 +1067,13 @@ def resolve_sources(root: Path, record: str, text: str) -> str:
 
 
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
-    if PRIVATE_STORE.search(value) or value.strip().startswith('investigation:attachments-index:'):
+    if PRIVATE_STORE.search(value) or value.strip().startswith(("investigation:attachments-index:",
+                                                               "investigation:obsidian-scope")):
         return False
+    if value.lstrip().startswith("obsidian:"):
+        from ..useful_tools.obsidian_export import SOURCE_ID as OBSIDIAN_ID
+        source = value.split()[0]
+        return OBSIDIAN_ID.fullmatch(source) is not None and (source in known or _carried_over(value, old_sources))
     if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
         from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]

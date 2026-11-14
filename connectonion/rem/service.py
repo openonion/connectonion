@@ -14,7 +14,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from zoneinfo import ZoneInfo
 
 from google.auth.exceptions import GoogleAuthError
@@ -79,7 +79,8 @@ def claude_projects_root() -> Path:
 DEFAULT_LOOKBACK_DAYS = 60
 MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
+OBSIDIAN_KIND = "obsidian"
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, OBSIDIAN_KIND)
 
 
 def subscriptions(root: Path) -> dict:
@@ -109,7 +110,61 @@ def subscriptions(root: Path) -> dict:
                      else "waiting for co whatsapp listen"},
     }
     defaults.update(saved)
+    for name, source in defaults.items():
+        if name == OBSIDIAN_KIND or isinstance(source, dict) and source.get("kind") == OBSIDIAN_KIND:
+            defaults[name] = _obsidian_status(root, source, name)
+    vaults = obsidian_sources(defaults)
+    if len({source["source_instance_id"] for source in vaults.values()}) != len(vaults):
+        raise RemError("Duplicate Obsidian vault registration; preserve subscriptions.json for diagnosis")
     return defaults
+
+
+def obsidian_sources(sources: dict) -> dict:
+    """Each vault is an ordinary subscription with its own inbox and progress."""
+    return {name: source for name, source in sources.items()
+            if isinstance(source, dict) and source.get("kind") == OBSIDIAN_KIND}
+
+
+def _obsidian_selection(root: Path, vault, folders) -> dict:
+    """Validate metadata and bind the same notebook/vault inbox instance as collection."""
+    from ..useful_tools.obsidian import ObsidianError, validate_scope
+    from ..useful_tools.obsidian_export import source_directory
+
+    try:
+        scope = validate_scope(vault, folders=folders)
+        location = source_directory(Path(scope["vault"]), notebook_root=root)
+        source, notebook, original = location.resolve(), root.expanduser().resolve(), Path(scope["vault"])
+        if source.is_relative_to(original) or original.is_relative_to(source) or notebook.is_relative_to(original):
+            raise ValueError("Obsidian inbox and REM output must be outside the original vault")
+    except (ObsidianError, OSError, RuntimeError, ValueError) as error:
+        raise RemError(f"Cannot use the Obsidian scope: {error}. Check the vault path and chosen folders") from error
+    return {**scope, "root": str(location), "source_instance_id": location.name}
+
+
+def _obsidian_status(root: Path, source: dict, name: str = OBSIDIAN_KIND) -> dict:
+    """Refresh path availability without treating registration as collection or consent."""
+    if (not isinstance(source, dict) or source.get("kind") != OBSIDIAN_KIND
+            or source.get("id") != name or not isinstance(source.get("vault"), str)
+            or not source["vault"] or not isinstance(source.get("folders"), list) or not source["folders"]
+            or any(not isinstance(folder, str) for folder in source["folders"])
+            or not isinstance(source.get("source_instance_id"), str)
+            or not re.fullmatch(r"[0-9a-f]{32}", source["source_instance_id"])
+            or type(source.get("enabled")) is not bool or type(source.get("consented")) is not bool):
+        raise RemError("Invalid Obsidian subscription; preserve subscriptions.json for diagnosis")
+    if name not in (OBSIDIAN_KIND, f"obsidian-{source.get('source_instance_id')}"):
+        raise RemError("Invalid Obsidian subscription identity; preserve subscriptions.json for diagnosis")
+    try:
+        selection = _obsidian_selection(root, source["vault"], source["folders"])
+        if (selection["vault"] != source["vault"] or selection["folders"] != source["folders"]
+                or selection["source_instance_id"] != source.get("source_instance_id")):
+            raise RemError("The saved Obsidian scope or source identity changed")
+    except (RemError, OSError, RuntimeError) as error:
+        return {**source, "available": False, "adapter": "unavailable", "reason": str(error),
+                "status": "off" if not source["enabled"] else "unavailable",
+                "sync_status": "unavailable"}
+    return {**source, "root": selection["root"], "available": True, "adapter": "available", "reason": None,
+            "status": "registered" if source["enabled"] else "off",
+            "sync_status": "ready after consent" if source["enabled"] else "off"}
 
 
 def subscribe_read_mail(root: Path, kinds) -> list[str]:
@@ -135,12 +190,14 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
     return changed
 
 
-def approve_sources(root: Path, *, mail=()) -> None:
+def approve_sources(root: Path, *, mail=(), shown=None) -> None:
     """Record approved sources and the source/schedule summary; never called by inspection."""
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
         sources = subscriptions(root)
+        if shown is not None and _obsidian_approval(shown) != _obsidian_approval(consent_summary(root, mail=mail)):
+            raise RemError("Obsidian source access changed during approval; run co rem start again")
         for source in sources.values():
             if mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail:
                 continue
@@ -151,6 +208,11 @@ def approve_sources(root: Path, *, mail=()) -> None:
                                                       "authorized_at": now().isoformat(),
                                                       "summary_value": consent_summary(root, mail=mail),
                                                       "summary": summary_fingerprint(root, mail=mail)})
+
+
+def _obsidian_approval(summary: dict) -> tuple:
+    vaults = {name: source for name, source in summary["sources"].items() if "vault" in source}
+    return (vaults, summary["runner"], summary["model"], summary.get("obsidian_model_scope")) if vaults else ()
 
 
 def summary_fingerprint(root: Path, *, mail=()) -> str:
@@ -167,7 +229,7 @@ def summary_fingerprint(root: Path, *, mail=()) -> str:
 
 
 def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", about: str = "",
-                  since: str = "7d", chats=()) -> str:
+                  since: str = "7d", chats=(), vault: str = "", folders=()) -> str:
     """Store a choice, not permission to read bodies or run the model.
 
     A scope -- one directory, or one subject -- is a subscription of its own with its
@@ -176,8 +238,19 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     a real machine: 701 of 830 Codex sessions over six months, and 24 of 26 Claude Code
     ones, ran in the same workspace directory.
     """
+    if name != OBSIDIAN_KIND and (vault or folders):
+        raise RemError("--vault and --folder apply only to Obsidian")
+    if name == OBSIDIAN_KIND:
+        _obsidian_write_boundary(root, subscriptions(root), vault, enabled)
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if name == OBSIDIAN_KIND:
+            _obsidian_write_boundary(root, sources, vault, enabled)
+            if _toggle_obsidian_sources(root, sources, enabled, vault, folders, project, about, chats):
+                write_json(state_path(root, "subscriptions.json"), sources)
+            return name
+        if sources.get(name, {}).get("kind") == OBSIDIAN_KIND:
+            raise RemError("Choose an Obsidian scope with co rem sources add/remove obsidian and --vault")
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -196,7 +269,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and obsidian; `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -216,6 +289,164 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
         sources[name]["unsubscribed"] = not enabled
         write_json(state_path(root, "subscriptions.json"), sources)
     return name
+
+
+def _obsidian_write_boundary(root, sources, vault, enabled):
+    """Reject notebook writes inside any saved vault before even taking a lock."""
+    try:
+        boundaries = [Path(source["vault"]).absolute() for source in obsidian_sources(sources).values()]
+        if enabled and vault:
+            boundaries.append(Path(vault).expanduser().resolve())
+        notebook = root.expanduser().resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise RemError("Cannot resolve the Obsidian scope paths; check the notebook and vault locations") from error
+    if any(notebook.is_relative_to(path) for path in boundaries):
+        raise RemError("The REM notebook must be outside the original Obsidian vault")
+
+
+def _obsidian_target(sources, vault, enabled):
+    """An explicit path identifies one vault; never guess between saved vaults."""
+    if not vault:
+        if len(sources) > 1:
+            raise RemError("Several Obsidian vaults are registered; choose --vault PATH from `co rem sources`")
+        return next(iter(sources), None)
+    try:
+        path = Path(vault).expanduser()
+        target = os.path.normcase(os.path.abspath(path))
+        found = [name for name, source in sources.items() if os.path.normcase(source["vault"]) == target]
+        if not found:
+            target = os.path.normcase(str(path.resolve()))
+            found = [name for name, source in sources.items() if os.path.normcase(source["vault"]) == target]
+        if not found and path.exists():
+            # resolve() does not restore saved casing on case-insensitive macOS.
+            # Use the filesystem's identity, never casefold distinct Linux paths.
+            found = [name for name, source in sources.items() if Path(source["vault"]).exists()
+                     and str(Path(source["vault"]).resolve()) == source["vault"]
+                     and Path(source["vault"]).samefile(path)]
+    except (OSError, RuntimeError, ValueError) as error:
+        raise RemError("Cannot identify this Obsidian vault; use its saved path from `co rem sources`") from error
+    if not found and not enabled:
+        raise RemError("This Obsidian vault is not registered; inspect `co rem sources`")
+    return found[0] if found else None
+
+
+def _toggle_obsidian_sources(root, sources, enabled, vault, folders, project, about, chats) -> bool:
+    """Apply the requested scope and return whether to save the settings."""
+    if project or about or chats:
+        raise RemError("Obsidian uses --vault and --folder only, not --project, --about or --chat")
+    chosen = obsidian_sources(sources)
+    if not enabled and not vault and not folders:
+        for name in chosen:
+            sources.pop(name)
+        return bool(chosen)
+    name = _obsidian_target(chosen, vault, enabled)
+    previous = chosen.get(name)
+    selection = _toggle_obsidian(root, previous, enabled, vault, folders)
+    if selection is None:
+        sources.pop(name)
+    else:
+        name = name or (f"obsidian-{selection['source_instance_id']}" if OBSIDIAN_KIND in sources else OBSIDIAN_KIND)
+        if name == OBSIDIAN_KIND and name not in sources:
+            _restore_obsidian_progress(root, selection["source_instance_id"])
+        sources[name] = {**selection, "id": name}
+    changed = selection is None or previous is None or any(
+        selection.get(key) != previous.get(key) for key in ("vault", "folders", "enabled", "unsubscribed"))
+    if changed:
+        for source in obsidian_sources(sources).values():
+            source["consented"] = False
+    return True
+
+
+def _toggle_obsidian(root, source, enabled, vault, folders):
+    """Change one vault's explicit selection; a changed scope waits for approval."""
+    if source is not None:
+        source = {key: value for key, value in source.items()
+                  if key not in ("available", "adapter", "reason", "status", "sync_status")}
+    if not enabled:
+        return _obsidian_remove_selection(source, folders)
+    selection = _obsidian_add_selection(root, source, vault, folders)
+    same_scope = bool(source and source["folders"] == selection["folders"])
+    return {**(source or {}), "id": OBSIDIAN_KIND, "kind": OBSIDIAN_KIND, **selection,
+            "enabled": True, "unsubscribed": False,
+            "consented": bool(same_scope and source.get("enabled") and source.get("consented"))}
+
+
+def _obsidian_remove_selection(source, folders):
+    """Remove saved folder entries even when the original paths are unavailable."""
+    if source is None:
+        raise RemError("No Obsidian source is registered; inspect `co rem sources`")
+    if not folders:
+        return None
+    if isinstance(folders, (str, bytes)):
+        raise RemError("Choose registered Obsidian folders with --folder; inspect `co rem sources`")
+    requested = set()
+    for folder in folders:
+        if (not isinstance(folder, str) or not folder.strip() or "\\" in folder
+                or PureWindowsPath(folder).drive or PurePosixPath(folder).is_absolute()
+                or ".." in PurePosixPath(folder).parts
+                or any(ord(char) < 32 or ord(char) == 127 for char in folder)):
+            raise RemError("Choose vault-relative registered folders with --folder; inspect `co rem sources`")
+        requested.add(PurePosixPath(folder).as_posix())
+    if requested - set(source["folders"]):
+        raise RemError("--folder must name an explicitly selected Obsidian folder, not a child of one. "
+                       "Nothing changed; inspect `co rem sources` for the saved selection")
+    remaining = [folder for folder in source["folders"] if folder not in requested]
+    # Keep the old authorization summary intact; start must review the new scope.
+    return {**source, "folders": remaining, "consented": False} if remaining else None
+
+
+def _obsidian_add_selection(root, source, vault, folders):
+    """Validate every requested path before merging and removing folder overlap."""
+    if not vault and not folders and source is not None:
+        return _obsidian_selection(root, source["vault"], source["folders"])
+    if not vault or not folders:
+        raise RemError("Choose both --vault <path> and --folder <relative-folder>; '.' selects the whole vault")
+    selection = _obsidian_selection(root, vault, folders)
+    if source is None:
+        return selection
+    if source["vault"] != selection["vault"] and Path(source["vault"]).samefile(selection["vault"]):
+        selection = _obsidian_selection(root, source["vault"], folders)
+    if any(source[key] != selection[key] for key in ("vault", "source_instance_id")):
+        raise RemError("The selected Obsidian vault identity changed; nothing was saved. Inspect `co rem sources`")
+    return _obsidian_selection(root, selection["vault"], [*source["folders"], *selection["folders"]])
+
+
+def _obsidian_progress(progress: dict, instance: str) -> dict:
+    """Find one vault's consumption receipts, including a previously registered vault."""
+    from .obsidian import _progress
+    if not isinstance(progress, dict) or not isinstance(progress.get(OBSIDIAN_KIND, {}), dict):
+        raise RemError("Invalid consumption progress; preserve it for diagnosis")
+    current = progress.get(OBSIDIAN_KIND, {})
+    if current.get("source_instance_id") == instance:
+        return _progress(current, instance)
+    if f"obsidian-{instance}" in progress:
+        return _progress(progress[f"obsidian-{instance}"], instance)
+    saved = progress.get("obsidian_instances", {})
+    if not isinstance(saved, dict):
+        raise RemError("Invalid saved Obsidian progress; preserve it for diagnosis")
+    return _progress(saved.get(instance, {}), instance)
+
+
+def _restore_obsidian_progress(root: Path, instance: str) -> None:
+    """Reuse the legacy primary slot without losing another vault's receipts."""
+    from .obsidian import _progress
+    progress = read_json(state_path(root, "progress.json"), {})
+    restored = _obsidian_progress(progress, instance)
+    current = progress.get(OBSIDIAN_KIND, {})
+    if current.get("source_instance_id") == instance:
+        return
+    saved = dict(progress.get("obsidian_instances", {}))
+    if current:
+        previous = current.get("source_instance_id")
+        if not isinstance(previous, str) or not re.fullmatch(r"[0-9a-f]{32}", previous):
+            raise RemError("Invalid Obsidian source identity in progress; preserve it for diagnosis")
+        saved[previous] = _progress(current, previous)
+    if not current and instance not in saved and f"obsidian-{instance}" not in progress:
+        return
+    saved.pop(instance, None)
+    progress.pop(f"obsidian-{instance}", None)
+    write_json(state_path(root, "progress.json"),
+               {**progress, OBSIDIAN_KIND: restored, "obsidian_instances": saved})
 
 
 WINDOW = re.compile(r"(\d+)\s*([dwmy])", re.IGNORECASE)
@@ -248,7 +479,9 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and obsidian; `co rem sources` lists the ones saved here")
+        if sources[name].get("kind") == OBSIDIAN_KIND:
+            raise RemError("Obsidian uses folder scope; --since applies to dated sources")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")
@@ -262,6 +495,28 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
         sources[name] = {**sources[name], "since": since.isoformat()}
         write_json(state_path(root, "subscriptions.json"), sources)
     return {"subscription": name, "since": sources[name]["since"], "days": days, "changed": True}
+
+
+def source_logs(root: Path, source_id: str) -> dict:
+    """Trace collection and committed consumption separately, without a vault read."""
+    from ..inbox.store import default_home
+    from ..useful_tools.obsidian_export import SOURCE_ID, ObsidianStoreError, source_log
+
+    match = SOURCE_ID.fullmatch(source_id)
+    if not match:
+        raise RemError("Expected an Obsidian source ID returned by collection")
+    try:
+        trace = source_log(default_home("obsidian") / match[1], source_id, notebook_root=root)
+    except ObsidianStoreError as error:
+        raise RemError(str(error)) from error
+    progress = read_json(state_path(root, "progress.json"), {})
+    receipt = _obsidian_progress(progress, match[1])["receipts"].get(source_id)
+    if receipt:
+        return {**trace, **receipt, "ingestion_status": receipt["status"]}
+    attempts = [run for run in run_logs(root) if source_id in run.get("source_ids", [])]
+    last = max(attempts, key=lambda run: run.get("started_at", ""), default=None)
+    return {**trace, "ingestion_status": "not consumed yet",
+            "last_attempt": {key: last.get(key) for key in ("id", "outcome", "finished_at")} if last else None}
 
 
 def run_logs(root: Path, run_id: str = "") -> list[dict]:
@@ -918,11 +1173,14 @@ def consent_summary(root: Path, *, mail=()) -> dict:
 
     Without --mail, keep the summary identical so existing fingerprints match.
     """
+    from .obsidian import model_scope
     from .runner import CONFINEMENT
     config = read_config(root)
     sources = {}
     offered = offered_mailboxes(root, mail=mail)
     for name, source in subscriptions(root).items():
+        if source.get("kind") == OBSIDIAN_KIND and not source.get("enabled"):
+            continue
         if source.get("adapter") == "deferred":
             state = "not implemented yet"
         elif (mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail
@@ -945,12 +1203,19 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
+        elif source.get("kind") == OBSIDIAN_KIND:
+            state = ("will collect selected notes and process saved changes after approval"
+                     if source.get("available") else "unavailable: " + source["reason"])
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
+        if source.get("kind") == OBSIDIAN_KIND:
+            sources[name].update(vault=source["vault"], folders=source["folders"],
+                                 source_instance_id=source["source_instance_id"],
+                                 excluded_paths=source.get("excluded_paths", []))
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -958,7 +1223,9 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             "schedule": config["schedule"], "limits": config["limits"],
             # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
             # while asleep runs once at the next five-minute tick.
-            "background": background_summary(config)}
+            "background": background_summary(config),
+            **({"obsidian_model_scope": model_scope(root, config)}
+               if any("vault" in source for source in sources.values()) else {})}
 
 
 def background_summary(config: dict) -> str:
@@ -991,9 +1258,12 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
                     source["adapter"] = "available"
         write_json(state_path(root, "subscriptions.json"), sources)
         previous = read_json(state_path(root, "consent.json"), {})
+        # Refreshing connected mail cannot approve a vault or change its model.
+        if not obsidian_sources(sources):
+            previous = {**previous, "summary_value": consent_summary(root), "summary": summary_fingerprint(root)}
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
-            "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
+            "granted_by": "init"})
 
 
 def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
@@ -1046,7 +1316,7 @@ def ensure_consent(root: Path, *, confirm, mail=(), report_unchanged=False) -> b
         if not confirm(summary):
             return False
         subscribe_read_mail(root, offered)
-        approve_sources(root, mail=mail)
+        approve_sources(root, mail=mail, shown=summary)
     elif report_unchanged:
         return confirm(consent_summary(root, mail=mail))
     return True
@@ -1110,14 +1380,127 @@ def stop(root: Path, *, scheduler) -> dict:
 
 def _selected_sources(root: Path, selector: str) -> dict:
     sources = subscriptions(root)
-    if selector:
-        if selector not in sources or not sources[selector].get("enabled"):
+    if selector == OBSIDIAN_KIND:
+        sources = {name: source for name, source in obsidian_sources(sources).items() if source.get("enabled")}
+        if not sources:
             raise RemError("Requested subscription is missing or disabled")
-        sources = {selector: sources[selector]}
-        if sources[selector].get("adapter") == "deferred":
+    elif selector:
+        name = selector
+        if selector.startswith("obsidian-"):
+            instance = selector.removeprefix("obsidian-")
+            name = next((key for key, sub in obsidian_sources(sources).items()
+                         if sub["source_instance_id"] == instance), selector)
+        if name not in sources or not sources[name].get("enabled"):
+            raise RemError("Requested subscription is missing or disabled")
+        sources = {name: sources[name]}
+        if sources[name].get("adapter") == "deferred":
             raise RemError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
             if source.get("enabled") and source.get("kind") in READABLE}
+
+
+def _collect_obsidian(root: Path, chosen: dict) -> dict:
+    """Once per sync invocation, before any consumer sees the new committed batch."""
+    from ..useful_tools import obsidian_export
+    from ..useful_tools.obsidian import ObsidianError
+    from .obsidian import require_model_consent
+
+    # Validate every selected vault before reading the first body. A missing or
+    # unapproved second vault must not silently turn an update into a partial search.
+    for source in chosen.values():
+        if not source.get("available"):
+            raise RemError(f"Obsidian vault {source['vault']} is unavailable; check its folders with `co rem sources`")
+    for source in chosen.values():
+        require_model_consent(root, source)
+    reports = []
+    for source in chosen.values():
+        try:
+            result = obsidian_export.sync_notes(Path(source["vault"]), Path(source["root"]),
+                folders=source["folders"], notebook_root=root, excluded_paths=source.get("excluded_paths", []))
+            reports.append({**result, "vault": source["vault"], "folders": source["folders"]})
+        except (ObsidianError, obsidian_export.ObsidianStoreError, OSError, ValueError) as error:
+            message = ("Obsidian collection may already be committed; inspect its export status before retrying"
+                       if getattr(error, "committed", False) else
+                       "Obsidian collection failed; no consumption progress advanced. Check note UTF-8/frontmatter, "
+                       "vault access and inbox storage; inspect `co rem sources`")
+            if isinstance(error, ObsidianError):
+                message += ": " + str(error)
+            raise RemError(f"{source['vault']}: {message}") from error
+    if not reports:
+        return {}
+    if len(reports) == 1:
+        return {OBSIDIAN_KIND: reports[0]}
+    return {OBSIDIAN_KIND: {"vaults": reports,
+            **{key: sum(report[key] for report in reports) for key in
+               ("scanned_notes", "appended_records", "added", "modified", "deleted")},
+            "source_ids": [source for report in reports for source in report["source_ids"]]}}
+
+
+def _pending_sources(root, selected, progress):
+    """Show saved backlog per vault, with a total for the Obsidian source selector."""
+    pending, vaults = {}, []
+    for name, source in selected.items():
+        if source.get("kind") == OBSIDIAN_KIND:
+            state = _obsidian_progress(progress, source["source_instance_id"])
+            vaults.append({**_pending_source(root, source, state), "vault": source["vault"],
+                           "folders": source["folders"], "source_instance_id": source["source_instance_id"]})
+        else:
+            pending[name] = _pending_source(root, source, progress.get(name, {}))
+    if len(vaults) == 1:
+        pending[OBSIDIAN_KIND] = vaults[0]
+    elif vaults:
+        totals = {key: None if any(row[key] is None for row in vaults) else sum(row[key] for row in vaults)
+                  for key in ("pending_events", "pending_notes", "filtered_events")}
+        pending[OBSIDIAN_KIND] = {**totals, "vaults": vaults, "body_reads": False,
+            "source_available": all(row["source_available"] for row in vaults),
+            "initialized": all(row["initialized"] for row in vaults),
+            "count_scope": "saved backlog only; current vault changes are not scanned",
+            "freshness": "last collected snapshots"}
+    return pending
+
+
+def _pending_source(root, subscription, progress):
+    if subscription.get("kind") == OBSIDIAN_KIND:
+        from .obsidian import pending_notes
+        if not subscription["available"]:
+            return {"source_available": False, "body_reads": False, "initialized": False,
+                    "pending_events": None, "pending_notes": None, "filtered_events": 0,
+                    "reason": subscription["reason"]}
+        return pending_notes(subscription, progress, notebook_root=root)
+    if subscription.get("kind") in KINDS:
+        return pending_metadata(subscription, progress)
+    if subscription.get("kind") in CHAT_KINDS:
+        return {"chats": subscription.get("chats") or [], "body_reads": False,
+                "source_available": subscription.get("adapter") == "available"}
+    return {"candidate_files": None, "message_count": None, "body_reads": False,
+            "source_available": mail_available(subscription["kind"]),
+            "cursor": progress.get("cursor") or subscription.get("since")}
+
+
+def save_sync_progress(root, updated, record, obsidian_changes):
+    """Consumption receipts and the cursor become visible in the same atomic write."""
+    from copy import deepcopy
+    for name, value in updated.items():
+        if (not isinstance(value, dict) or not value.get("source_instance_id")
+                or name not in (OBSIDIAN_KIND, f"obsidian-{value['source_instance_id']}")):
+            continue
+        state = deepcopy(value)
+        instance = state.get("source_instance_id")
+        receipts = state.setdefault("receipts", {})
+        at = now().isoformat()
+        for receipt in receipts.values():
+            if receipt.get("status") == "skipped_scope" and not receipt.get("processed_at"):
+                receipt.update(processed_at=at, run_id=None)
+        for source_id, change_type in obsidian_changes.items():
+            if source_id.split(":")[1] != instance:
+                continue
+            completed = record["outcome"] == "completed"
+            status = ("processed_with_refusals" if record.get("refused") else "ingested") if completed else "partial"
+            receipts[source_id] = {"status": status, "processed_at": at,
+                                        "ingested_at": at if status == "ingested" else None,
+                                        "run_id": record["id"], "change_type": change_type}
+        updated[name] = state
+    write_json(state_path(root, "progress.json"), updated)
 
 
 PAGES_PER_BATCH = 5
@@ -1212,7 +1595,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             on_batch=None, say=None) -> dict | None:
+             on_batch=None, say=None, _obsidian_scanned=False) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -1231,14 +1614,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     # Inspection must win over every execution mode, including recursive backfill.
     if dry_run:
         progress = read_json(state_path(root, "progress.json"), {})
-        return {"dry_run": True, "sources": {
-            name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
-                   else {"chats": sub.get("chats") or [], "body_reads": False,
-                         "source_available": sub.get("adapter") == "available"}
-                   if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
-                         "source_available": mail_available(sub["kind"]),
-                         "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
-            for name, sub in _selected_sources(root, source).items()},
+        return {"dry_run": True, "sources": _pending_sources(root, _selected_sources(root, source), progress),
             # `status` said 30/30 while the dry run said nothing of it (#1957).
             "daily_cap": daily_cap(root)}
     if scheduled:
@@ -1246,16 +1622,17 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             root, source=source, with_person=with_person, all_pending=all_pending,
             runner=runner, extractor=extractor, on_batch=on_batch, say=say))
     if all_pending:
-        records, spent = [], ""
+        records, spent, collection = [], "", {}
         while True:
             try:
                 record = run_sync(root, source=source, with_person=with_person, runner=runner,
-                                  extractor=extractor)
+                                  extractor=extractor, _obsidian_scanned=bool(collection))
             except RemError as error:
                 if CAP_LIMIT not in str(error):
                     raise
                 spent = str(error)
                 break
+            collection.update(record.get("collection", {}))
             if record["outcome"] == "no_change":
                 break
             records.append(record)
@@ -1275,7 +1652,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                 "changed": sorted({path for r in records for path in r.get("changed", [])}),
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
                           for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
-                "runs": [r["id"] for r in records]}
+                "runs": [r["id"] for r in records], **({"collection": collection} if collection else {})}
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
     from .sessions import import_sessions
@@ -1284,8 +1661,11 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     with maintenance_lock(root), _terminate_as_interrupt():
         from .native import refuse_pending
         refuse_pending(root)
-        refresh_init_mailboxes(root, lock_held=True)
-        sessions = import_sessions(root, consented_only=True, lock_held=True)
+        only_obsidian = source == OBSIDIAN_KIND or source.startswith(f"{OBSIDIAN_KIND}-")
+        sessions = {}
+        if not only_obsidian:
+            refresh_init_mailboxes(root, lock_held=True)
+            sessions = import_sessions(root, consented_only=True, lock_held=True)
         config = validate(read_config(root))
         abandon_stale_runs(root)
         # An upgraded notebook is tidied by its first sync, before anything reads it (#1999).
@@ -1296,10 +1676,11 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
-                              with_person=with_person, include_local=not source, say=say)
+                              with_person=with_person, include_local=not source, say=say,
+                              obsidian_scanned=_obsidian_scanned)
         record = {**record, "sessions": sessions}
-        archive = (_resume_archive(root, say) if isinstance(record, dict)
-                   and record.get("outcome") != "failed" else None)
+        archive = (_resume_archive(root, say) if not only_obsidian and record.get("outcome") != "failed"
+                   else None)
         record = {**record, "mail_archive": archive} if archive else record
         if isinstance(record, dict):
             # The index the table and thread views read (#2067): after everything this
@@ -1453,7 +1834,8 @@ def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missi
     write_json(state_path(root, "source_reads.json"), reads)
 
 
-def prepare_sync(root, selected, progress, config, runner=None, *, with_person="", include_local=True):
+def prepare_sync(root, selected, progress, config, runner=None, *, with_person="", include_local=True,
+                 strict_obsidian=True, obsidian_scanned=False):
     """Collect and route one batch once, stopping before its first model call."""
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
@@ -1462,6 +1844,16 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
     source_skips, source_failures, sources_read, dropped_missing = [], [], [], {}
     kind = ""   # the one source this batch is drawn from; see the loop below
+    collection = {}
+    vaults = obsidian_sources(selected) if not with_person else {}
+    if vaults and not obsidian_scanned:
+        try:
+            collection = _collect_obsidian(root, vaults)
+        except RemError as error:
+            if strict_obsidian:
+                raise
+            source_failures.append({"source": OBSIDIAN_KIND, "error": str(error)})
+            selected = {name: sub for name, sub in selected.items() if name not in vaults}
     limits = config["limits"]
     # A batch is gathered against the extraction budget: large, because the
     # extraction pass reads it once. A batch that fits items_per_batch
@@ -1482,7 +1874,9 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     # Planning can recover an accepted native promotion interrupted before its
     # callback. Carry that persisted receipt into this batch's checkpoint too.
     updated, processed = dict(progress), progress.get("rem_local_material", [])
-    local = feedback_items or captured_pending(root, list(set(processed) | set(progress.get("rem_seen_source_ids", []))), max_items, remaining)
+    local = feedback_items or (captured_pending(
+        root, list(set(processed) | set(progress.get("rem_seen_source_ids", []))), max_items, remaining)
+        if include_local and not with_person else [])
     local = [item for item in local if item.get("feedback_revision") or item["source"] not in processed]
     selected_feedback = []
     if not with_person and include_local:
@@ -1523,8 +1917,11 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
             counts["local_material"] = len(items)
             updated["rem_local_material"] = sorted(set(processed) | seen)
     for name, subscription in _rotated(selected, progress.get("rem_last_source", "")).items():
-        if items:
+        obsidian = subscription.get("kind") == OBSIDIAN_KIND
+        if items and kind != OBSIDIAN_KIND:
             break
+        if items and not obsidian:
+            continue
         if len(items) >= max_items or remaining <= 0:
             break
         try:
@@ -1542,11 +1939,20 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
                 batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
+            elif obsidian:
+                from .obsidian import collect_notes, require_model_consent
+
+                require_model_consent(root, subscription)
+                position = _obsidian_progress(progress, subscription["source_instance_id"])
+                batch = collect_notes(subscription, position, max_items - len(items), remaining,
+                                      notebook_root=root, defer_oversized=bool(items))
             else:
                 batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         except (RemError, OSError, UnicodeError, ProviderCredentialError, RequestError,
                 HttpError, GoogleAuthError, HttpLib2Error) as error:
-            failure = _collection_failure(name, error)
+            if obsidian and strict_obsidian:
+                raise
+            failure = {"source": name, "error": str(error)} if obsidian else _collection_failure(name, error)
             source_failures.append(failure)
             _record_source_read(root, name, failure["error"], failure=failure)
             updated["rem_last_source"] = name
@@ -1565,22 +1971,22 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
             if item["source"] not in seen:
                 items.append(item)
                 seen.add(item["source"])
-                counts[name] = counts.get(name, 0) + 1
+                counted = OBSIDIAN_KIND if obsidian else name
+                counts[counted] = counts.get(counted, 0) + 1
                 remaining -= len(json.dumps(item, ensure_ascii=False))
         updated[name] = batch.progress
-        # One source per batch. Extraction is read through that source's own
-        # Skill -- where its words hide, how its store is laid out, what it has
-        # taught us -- and a batch mixing mail with coding sessions would have
-        # to be read through both, or through neither. The next batch takes the
-        # next source; nothing is skipped, only separated.
-        if items:
+        # Vaults share one source Skill; other subscriptions retain their own batches.
+        if batch.items:
             kind = subscription.get("kind", name)
             updated["rem_last_source"] = name
-            break
+            if not obsidian:
+                break
     if seen:
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
+    obsidian_changes = {item["source"]: item["change_type"] for item in items
+                        if item["source"].startswith("obsidian:") and "change_type" in item}
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
               "phase": "sync", "sources": list(selected), "items": len(items),
@@ -1606,6 +2012,8 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
               "material_remaining": {name: sum(len(rows) for rows in updated[name].get("pending", {}).values())
                                      for name in sources_read if selected[name].get("kind") in MAIL_KINDS},
               "usage_by_stage": {}, "items_by_source": counts,
+              **({"collection": collection} if collection else {}),
+              **({"source_ids": list(obsidian_changes)} if obsidian_changes else {}),
               "chars_in": sum(len(json.dumps(item, ensure_ascii=False)) for item in items), "seconds": None,
               **({"feedback_deferred": feedback_deferred} if feedback_deferred else {})}
     path = state_path(root, f"runs/{record['id']}.json")
@@ -1616,10 +2024,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                           progress_advanced=any(updated.get(name) != progress.get(name) for name in sources_read))
         if feedback_deferred:
             record.update(outcome="deferred", report="Local feedback remains pending; no eligible page turn")
-        write_json(state_path(root, "progress.json"), updated)
+        save_sync_progress(root, updated, record, obsidian_changes)
         # Nothing new was read and no model ran, so there is no run to list
         # (#1846). Messages passed over in an unfamiliar format are still said.
-        if record["warning"] or feedback_deferred:
+        if record["warning"] or feedback_deferred or any(row["appended_records"] for row in collection.values()):
             write_json(path, record)
         return {"done": True, "record": record}
     from .extract import finished_digest, forget_digest, remember_digest
@@ -1646,7 +2054,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     if (current or passed) and not leads:
         record.update(outcome="completed", report="Every page this material concerns has already read it, "
                                                   "is written by the project writer, or changed nothing a day ago")
-        write_json(state_path(root, "progress.json"), updated)
+        save_sync_progress(root, updated, record, obsidian_changes)
         forget_digest(root)
         write_json(path, record)
         return {"done": True, "record": record}
@@ -1671,22 +2079,25 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     attempts = extract_calls + (len(leads) or 1)
     return {"done": False, "items": items, "updated": updated, "record": record, "kind": kind,
             "leads": leads, "current": current, "passed": passed, "digested": digested,
-            "selected_feedback": selected_feedback, "attempts": attempts, "room": room, "local": local}
+            "selected_feedback": selected_feedback, "attempts": attempts, "room": room, "local": local,
+            "obsidian_changes": obsidian_changes}
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
-                 with_person="", include_local=True, say=None):
+                 with_person="", include_local=True, say=None, obsidian_scanned=False):
     from .extract import NOTHING, extraction_item, run_extract, forget_digest, remember_digest
     from .runner import run_stage
     from .leads import project_writer_pages
     from . import feedback
-    task = prepare_sync(root, selected, progress, config, runner, with_person=with_person, include_local=include_local)
+    task = prepare_sync(root, selected, progress, config, runner, with_person=with_person,
+                        include_local=include_local, obsidian_scanned=obsidian_scanned)
     if task["done"]:
         return task["record"]
     items, updated, record, kind = (task[key] for key in ("items", "updated", "record", "kind"))
     leads, current, passed, digested = (task[key] for key in ("leads", "current", "passed", "digested"))
     selected_feedback, attempts, room = (task[key] for key in ("selected_feedback", "attempts", "room"))
     local = task["local"]
+    obsidian_changes = task["obsidian_changes"]
     started = datetime.fromisoformat(record["started_at"])
     path = state_path(root, f"runs/{record['id']}.json")
     runner = runner or run_stage
@@ -1796,7 +2207,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         for key in ("rem_local_material", "rem_seen_source_ids"):
             if key in updated and waiting:
                 updated[key] = sorted(set(updated[key]) - waiting)
-        write_json(state_path(root, "progress.json"), updated)
+        save_sync_progress(root, updated, record, obsidian_changes)
         forget_digest(root)
     except BaseException as error:
         failed_usage = getattr(error, "usage", None)
@@ -1818,7 +2229,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         if written:
             if not isinstance(error, RemError):
                 record["error"] = "Runner failed after writing its pages; source progress advanced"
-            write_json(state_path(root, "progress.json"), updated)
+            save_sync_progress(root, updated, record, obsidian_changes)
             forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()

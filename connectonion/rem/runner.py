@@ -452,6 +452,9 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", 
         kind = ""
     one_page = stage in ONE_PAGE_STAGES or (stage == "maintain" and any(item.get("one_page") for item in items))
     owner = any(i.get("role") == "page" and i.get("owner") for i in items)
+    if stage == "investigate" and any(item.get("role") == "note" and item.get("source", "").startswith("obsidian:")
+                                      for item in items):
+        kind = "obsidian"
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
     # co ai expands /rem-{stage} before delegating. Repeating that core in the
     # arguments sent every rule twice on every model turn (#1972).

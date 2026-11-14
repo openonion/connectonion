@@ -107,3 +107,20 @@ nothing keeps git history from the Agent the way `.co/benchmarks/` is kept.
 Given 25 steps, the person page it wrote opened on the lead ("… Mia owes the
 signed SOW by 3 October 2026 [5]. Last contact: 2026-09-10 via Gmail [5].")
 and passed check_pages, with no coverage line.
+
+## Obsidian source Skill
+
+`rem-source-obsidian` has eight write-based cases. The synthetic fixtures cover
+knowledge, decisions, principles, quotations, revisions, withdrawals, ambiguous
+links, and instructions found in notes. The shared agent writes and reads a
+candidate under `out/` in each case.
+
+```sh
+co benchmark check rem-source-obsidian
+GIT_CEILING_DIRECTORIES="$(cd .. && pwd)" \
+  co eval run rem-source-obsidian --agent agent.py --skill rem-source-obsidian --invoke explicit --runs 1 --max-iterations 15
+co eval report rem-source-obsidian --latest
+```
+
+`eval run` calls an agent and a judge. Use its report to review the tool trace
+and the saved candidate. An interrupted run gives no verdict for that attempt.

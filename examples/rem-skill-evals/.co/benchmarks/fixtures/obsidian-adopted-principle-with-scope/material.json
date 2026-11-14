@@ -1,0 +1,14 @@
+[
+  {
+    "role": "extract",
+    "text": "From now on, for Atlas public demos, I will use synthetic notes rather than private vault content. This is our standing demo rule; it does not ban private notes in my own local notebook. Source: obsidian:61de9ff4a0f15413bc1ca06532b46c49:8a29a775a291474093c62880e489e98f:957c6b5423714fd2aeaf15a04e14bd76",
+    "timestamp": "2026-11-02T12:00:00+00:00",
+    "source": "obsidian:61de9ff4a0f15413bc1ca06532b46c49:8a29a775a291474093c62880e489e98f",
+    "reference": "obsidian:61de9ff4a0f15413bc1ca06532b46c49:8a29a775a291474093c62880e489e98f",
+    "project": "",
+    "messages": 1,
+    "sources": [
+      "obsidian:61de9ff4a0f15413bc1ca06532b46c49:8a29a775a291474093c62880e489e98f:957c6b5423714fd2aeaf15a04e14bd76"
+    ]
+  }
+]
