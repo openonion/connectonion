@@ -407,6 +407,8 @@ before its next tool or model step even after they disconnect (#3026). `co trust
 `admin add/remove` name the trust file they changed (#2819). Stable remains 1.9.5. See
 [candidate notes](docs/releases/1.9.6rc13.md).
 
+- 1.9.6rc13 (every automatic Host run recorded; a revoked requester's turn stops between steps).
+
 ### Previous candidate: 1.9.6rc12
 
 Release candidate 1.9.6rc12 for 1.9.6: `co whatsapp` links again on a fresh install. The pinned
