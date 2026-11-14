@@ -219,7 +219,9 @@ def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, p
     # The owner read the old 原文 chip above the name as jargon (sprint 15): it is gone from the header.
     assert page.locator(f"#main {head} .lang-status, #main .hero-marks .lang-status, #main .eyebrow .lang-status").count() == 0
     line = page.locator("#main .translation-line")
-    assert line.count() == 1 and line.inner_text() == "中文版还没好，先看原文"
+    assert line.count() == 1
+    assert line.evaluate("node => [...node.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join('')") == "中文版还没好，先看原文"
+    assert line.get_by_role("button", name="全部翻译成中文", exact=True).is_visible()
     assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
     assert line.get_attribute("role") is None                       # not announced again on every render

@@ -491,7 +491,9 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     before = int(page.locator(".night-card .count").inner_text())
-    release = "2099-01-01T00:10:00Z"
+    # The Host holds a Send for ten minutes. A decades-long fake hold overflows
+    # the browser timer and keeps replacing Undo before a real click can land.
+    release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
     answers["/rem/approve"] = lambda body: (200, {"release_at": release, "results": [
         {"id": i, "status": "cancelled" if body.get("action") == "undo" else "held", "release_at": release} for i in body["ids"]]})
     card = page.locator(".qcard.open")
@@ -815,7 +817,8 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     """Review of #2929: with nothing open, Today shows one sentence and no approve button, so an Undo that brought
     a held reply back had no button to show it in until the page was drawn again."""
     page, calls, answers = today
-    held = {"id": "reply:ines", "kind": "reply", "status": "held", "release_at": "2099-01-01T00:10:00Z",
+    release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
+    held = {"id": "reply:ines", "kind": "reply", "status": "held", "release_at": release,
             "to": "ines@example.test", "subject": "Re: Q3 receipts", "body": "The Q3 receipts are attached."}
     page.evaluate("""held => { REM.live = true; REM.approval_outcomes = []; REM.approval_pending = [held]; REM.today_queue = [];
       for (const r of REM.records) r.text = r.text.replace(/## Open threads[\\s\\S]*?(?=\\n## |$)/, '## Open threads\\nUnknown\\n');

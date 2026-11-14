@@ -75,3 +75,16 @@ def test_pids_that_have_all_exited_are_none_left(tmp_path):
     gone = subprocess.Popen([sys.executable, "-c", "pass"])
     gone.wait()
     assert host_leak_guard.hosts_under(tmp_path, [gone.pid]) == []
+
+
+def test_a_truncated_multibyte_command_does_not_hide_a_host(tmp_path, monkeypatch):
+    """Exercise subprocess's real text decoder, including an unrelated broken line."""
+    run = subprocess.run
+    listing = (f"999999 {os.getuid()} co ai --port 9128 --no-listen --no-launch HOME={tmp_path}/home\n"
+               f"999998 {os.getuid()} desktop ").encode() + '界'.encode()[:2]
+
+    def ps(*args, **kwargs):
+        return run([sys.executable, '-c', f'import sys; sys.stdout.buffer.write({listing!r})'], **kwargs)
+
+    monkeypatch.setattr(host_leak_guard.subprocess, 'run', ps)
+    assert host_leak_guard.hosts_under(tmp_path) == [(999999, str(tmp_path / 'home'), 'unknown test')]
