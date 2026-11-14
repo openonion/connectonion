@@ -18,7 +18,7 @@ def scheduled_slot(root, config):
 
 
 def prepare(root, config, *, scheduled, carry=None):
-    from .fast_forward import identity, limit_runs
+    from .catchup import identity, limit_runs
     moment = service.now()
     slot = scheduled_slot(root, config) if scheduled else None
     if scheduled and slot is None:
@@ -152,7 +152,7 @@ def prepare_translation_round(root, config, *, scheduled):
 def _jobs(root, first, logs, sources, set_aside=None):
     from datetime import datetime, timedelta
     from .people_pages import queue as people_queue
-    from .fast_forward import number
+    from .catchup import number
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
     _admit_correspondents(root, sources, datetime.fromisoformat(previous), [] if set_aside is None else set_aside)
@@ -290,7 +290,7 @@ def prepare_abstract(root, cursor, config, directory):
     """Reserve bounded slices; only a recorded promotion admits the next this night."""
     from .captured_decisions import material
     from .night_stats import _night_of
-    from .fast_forward import identity, key, marker
+    from .catchup import identity, key, marker
     day = key(root, _night_of(service.now(), service.notebook_zone(config)))
     path = marker(root, "abstract-night.json")
     saved = read_json(path, {})
@@ -310,8 +310,8 @@ def prepare_abstract(root, cursor, config, directory):
 
 def record_abstract_result(root, prepared, *, promoted):
     """Open the next slice only for the reservation whose outcome was recorded."""
-    from .fast_forward import marker
-    path = marker(root, "abstract-night.json", night=prepared.get('fast_forward_night'))
+    from .catchup import marker
+    path = marker(root, "abstract-night.json", night=prepared.get('catchup_night'))
     saved = read_json(path, {})
     if (prepared.get("abstract_night") and saved.get("day") == prepared["abstract_night"]
             and saved.get("rounds", 1) == prepared.get("abstract_round", 1)):
@@ -319,7 +319,7 @@ def record_abstract_result(root, prepared, *, promoted):
 
 
 def _reset_attempts(root, cursor):
-    from .fast_forward import key
+    from .catchup import key
     day = key(root, service.notebook_today(root))
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
@@ -492,7 +492,7 @@ def _retry_task(root, cursor, config, directory, job):
 def _prepare_investigation(root, cursor, job, directory):
     record = job["record"]
     if job['kind'] == 'owner':
-        from .fast_forward import key, marker
+        from .catchup import key, marker
         write_json(marker(root, 'owner-refresh.json'), {'date': key(root, service.notebook_today(root))})
     if job["kind"] == "skill":
         from . import skill_runs

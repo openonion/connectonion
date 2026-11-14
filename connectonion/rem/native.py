@@ -268,7 +268,7 @@ def _watching(root):
 
 
 def next_task(root, *, scheduled=False, discard=False):
-    from .fast_forward import resume
+    from .catchup import resume
     with resume(root, scheduled=scheduled):
         return _next_task(root, scheduled=scheduled, discard=discard)
 
@@ -336,11 +336,11 @@ def _offer_pending(root, task, *, preparer=None, takeover=False):
 
 def _next_round(root, cursor, *, scheduled, notices):
     from . import native_round
-    from .fast_forward import number
+    from .catchup import number
     config = read_config(root)
     night = number(root)
-    continuing = (cursor and not cursor.get('done') and cursor.get('fast_forward_night') != night
-                  and (night is not None or scheduled and cursor.get('fast_forward_night') is not None))
+    continuing = (cursor and not cursor.get('done') and cursor.get('catchup_night') != night
+                  and (night is not None or scheduled and cursor.get('catchup_night') is not None))
     if scheduled and (not cursor or cursor.get("done") or continuing) and native_round.scheduled_slot(root, config) is None:
         return {"outcome": "done", "reason": "not due", "notices": notices}
     reason, meter = _stop(root, config)
@@ -571,7 +571,7 @@ def _log(root, task, outcome, **fields):
 
 
 def submit(root, task_id, *, usage=None):
-    from .fast_forward import resume
+    from .catchup import resume
     with resume(root):
         return _submit(root, task_id, usage=usage)
 

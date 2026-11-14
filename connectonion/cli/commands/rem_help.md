@@ -29,7 +29,7 @@ Keep it current
   sync          Run one update now.
   decisions     Count decision and principle pages and decisions waiting. No model.
                 Run co rem decisions write to write them now.
-  fast-forward  Do the night's work now, one night or several in a row.
+  catchup       Do the night's work now: one night, or several back to back with --nights.
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
@@ -66,12 +66,12 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
               abstract is an alias for co rem decisions write and prints its new name.
 ```
 
-## co rem fast-forward
+## co rem catchup
 
 ```
-Do the night's work now: read new mail and sessions, update pages, write decisions and translate.
-Usage:    co rem fast-forward [--nights N]
-Example:  co rem fast-forward  |  co rem fast-forward --nights 3
+Do the night's work now: one night, or several back to back with --nights.
+Usage:    co rem catchup [--nights N]
+Example:  co rem catchup  |  co rem catchup --nights 5
 Stops after --nights N (default 1), a night that produces nothing, or a weekly budget or Codex quota floor.
 Output:   Counts for each night, then totals and why it stopped. Exit 1 on a refused or busy task; resume unfinished work with co rem exec.
 Effects:  Calls the configured model and saves pages and progress. Each night gets fresh limits; weekly quotas still apply. Schedule times stay the same.

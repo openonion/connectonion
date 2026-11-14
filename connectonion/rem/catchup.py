@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .files import RemError, maintenance_lock, read_json, state_path, write_json
 
-_NIGHT = ContextVar('rem_fast_forward_night', default=None)
+_NIGHT = ContextVar('rem_catchup_night', default=None)
 
 
 def number(root):
@@ -16,17 +16,17 @@ def number(root):
 
 def identity(root):
     night = number(root)
-    return {'fast_forward_night': night} if night is not None else {}
+    return {'catchup_night': night} if night is not None else {}
 
 
 def key(root, day):
     night = number(root)
-    return f'fast-forward:{night}' if night is not None else str(day)
+    return f'catchup:{night}' if night is not None else str(day)
 
 
 def marker(root, name, *, night=None):
     night = number(root) if night is None else night
-    return state_path(root, f'fast-forward/{night}/{name}' if night is not None else name)
+    return state_path(root, f'catchup/{night}/{name}' if night is not None else name)
 
 
 @contextmanager
@@ -44,7 +44,7 @@ def resume(root, *, scheduled=False):
     cursor = read_json(state_path(root, 'round.json'), {})
     night = number(root)
     if night is None and not cursor.get('done') and (not scheduled or cursor.get('pending')):
-        night = cursor.get('fast_forward_night')
+        night = cursor.get('catchup_night')
     with scope(root, night):
         yield
 
@@ -54,15 +54,15 @@ def limit_runs(root, logs, zone):
     from . import service
     night = number(root)
     if night is not None:
-        return [row for row in logs if row.get('fast_forward_night') == night]
-    return [row for row in service.runs_today(logs, zone)[1] if 'fast_forward_night' not in row]
+        return [row for row in logs if row.get('catchup_night') == night]
+    return [row for row in service.runs_today(logs, zone)[1] if 'catchup_night' not in row]
 
 
 def _begin(root):
     from . import native
     with maintenance_lock(root):
         native.refuse_pending(root)
-        path = state_path(root, 'fast-forward.json')
+        path = state_path(root, 'catchup.json')
         night = read_json(path, {}).get('nights', 0) + 1
         write_json(path, {'nights': night})
         return night
@@ -71,9 +71,9 @@ def _begin(root):
 def _counts(root, night):
     from . import service
     cursor = read_json(state_path(root, 'round.json'), {})
-    if cursor.get('fast_forward_night') != night:
+    if cursor.get('catchup_night') != night:
         cursor = {}
-    runs = [row for row in service.run_logs(root) if row.get('fast_forward_night') == night]
+    runs = [row for row in service.run_logs(root) if row.get('catchup_night') == night]
     changed = set(cursor.get('changed', []))
     changed.update(record for row in runs for record in row.get('changed', []))
     sources = service.subscriptions(root)
@@ -96,7 +96,7 @@ def run(root, *, nights=1, progress=lambda number, row: None):
     from . import quota, schedule, service
     from .config import read_config
     if nights < 1:
-        raise RemError('Use at least one night: co rem fast-forward --nights 1')
+        raise RemError('Use at least one night: co rem catchup --nights 1')
     root, rows, reason, failed = Path(root).resolve(), [], '', False
     for _ in range(nights):
         config = read_config(root)

@@ -106,7 +106,7 @@ def _clients(sources: dict) -> dict:
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None) -> tuple[dict, Path]:
     from .service import running_marker
-    from .fast_forward import identity
+    from .catchup import identity
     config = read_config(root)
     # The model and the process, so logs --usage can name one (#1974) and a
     # later run can tell this one died.
@@ -695,7 +695,7 @@ def _owner_due(root: Path) -> list[dict]:
     status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
     read = last_investigated(status)
     today = notebook_today(root)
-    from .fast_forward import key, marker, number
+    from .catchup import key, marker, number
     tried = read_json(marker(root, "owner-refresh.json"), {}).get("date", "")
     if (number(root) is None and read and read >= today) or tried == key(root, today):
         return []
@@ -707,7 +707,7 @@ def _owner_due(root: Path) -> list[dict]:
 def _owner(root, row, *, clients, subscriptions):
     """`investigate me` over the days since the page was last read. Stamped first,
     so a refused or crashed reading waits until tomorrow, not the next run."""
-    from .fast_forward import key, marker
+    from .catchup import key, marker
     write_json(marker(root, "owner-refresh.json"), {"date": key(root, notebook_today(root))})
     record = row['record']
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),

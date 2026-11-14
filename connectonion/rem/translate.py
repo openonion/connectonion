@@ -604,7 +604,7 @@ def backlog(root, language, *, changed=(), shown=()):
 def attempts_today(root):
     from . import service
     from .config import read_config
-    from .fast_forward import limit_runs
+    from .catchup import limit_runs
     runs = limit_runs(root, service.run_logs(root), service.notebook_zone(read_config(root)))
     # Summary records describe the same work as their individual translate runs.
     return sum(row.get('runner_attempts', 0) for row in runs

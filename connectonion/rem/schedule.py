@@ -473,7 +473,7 @@ class Systemd:
 
 
 def exec_round(root, *, scheduled=True):
-    from .fast_forward import resume
+    from .catchup import resume
     if scheduled:
         return _exec_round(root, scheduled=True)
     with resume(root):

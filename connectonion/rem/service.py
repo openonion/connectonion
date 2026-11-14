@@ -859,7 +859,7 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    from .fast_forward import limit_runs
+    from .catchup import limit_runs
     runs = limit_runs(root, run_logs(root), zone)
     translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
     limit = config["limits"]["runner_calls_per_day"]

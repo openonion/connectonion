@@ -98,7 +98,7 @@ def _skipped(pair, usage=None, say=lambda text: None, *, asked=False):
 
 def _due(root: Path, verdict: dict | None) -> bool:
     """Never judged, or a judgement that failed before today: answered pairs are not asked again."""
-    from .fast_forward import key, number
+    from .catchup import key, number
     if verdict and number(root) is not None:
         return "same" not in verdict and verdict.get('failed_night') != key(root, notebook_today(root))
     return not verdict or ("same" not in verdict and verdict.get("failed", "") < notebook_today(root).isoformat())
@@ -225,7 +225,7 @@ def check(task, result, *, lock_held=False, say=lambda text: None):
 
 
 def _failed(root: Path, pair: dict, error: Exception) -> dict:
-    from .fast_forward import key
+    from .catchup import key
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         verdicts = read_json(state_path(root, VERDICTS), {})
         verdicts["|".join(pair["pages"])] = {"why": pair["why"], "failed": notebook_today(root).isoformat(),

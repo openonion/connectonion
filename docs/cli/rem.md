@@ -292,7 +292,7 @@ Piping human output does not hide the next step. Grouped help covers:
 |---|---|
 | Map and investigate | `init`, `investigate`, `map-skills`, `scan`, `stub` |
 | Browse | `open`, `list`, `show`, `search`, `status` |
-| Update and review | `sync`, `fast-forward`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` (alias) |
+| Update and review | `sync`, `catchup`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` (alias) |
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
@@ -495,7 +495,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages and captured decisions waiting. No model; no writes. |
 | `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until caught up, a round writes no page, or N rounds finish. |
-| `co rem fast-forward [--nights N]` | Do the scheduled night's work now, once by default or N nights in a row. Each night gets fresh limits; weekly quotas and the Codex usage floor still apply. Stops after a night produces nothing. Prints each night's counts, totals, and `co rem open`. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Do the night's work now: one night, or several back to back with `--nights`. Calls the configured model. Each night gets fresh limits; weekly quotas and the Codex usage floor still apply. Stops after a night produces nothing. Prints each night's counts, totals, and `co rem open`. Leaves schedule times unchanged. |
 | `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
@@ -513,17 +513,19 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
-Run `co rem fast-forward` to do the night's work now, or add `--nights 3` to run
-three nights back to back. Each night uses `co rem exec`'s existing round and
-reads sources up to now. A notebook-local counter gives it fresh daily and
-nightly limits; page dates, source windows and scheduled due times stay real.
+Run `co rem catchup` to do one night's work now, or `co rem catchup --nights 5`
+to run five nights back to back. `--nights` is optional, defaults to 1 and must
+be at least 1. Each night uses `co rem exec`'s existing round, calls the configured
+model and reads sources up to now. The schedule is untouched. A notebook-local
+counter gives it fresh daily and nightly limits; page dates, source windows
+and scheduled due times stay real.
 Weekly investigation budgets and the Codex usage floor still stop the run.
 The daily investigation call cap leaves room for the same translation tail as
 the scheduled round. Each line reports that night's mail and sessions read,
 pages written, decision pages written, translations and drafts; totals follow.
 A night producing no pages, translations or drafts ends the run. A refused task
 also stops it with the reason; run `co rem exec` to resume unfinished work before
-starting another fast-forward. Saved work survives interruption.
+starting another catchup run. Saved work survives interruption.
 
 Run `co rem decisions` to see how many decision and principle pages exist and how
 many captured decisions are waiting. Run `co rem decisions write` to write them

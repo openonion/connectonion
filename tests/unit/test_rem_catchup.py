@@ -1,4 +1,4 @@
-"""Fast-forward runs the real exec path, with fresh limits and an unmoved clock."""
+"""Catchup runs the real exec path, with fresh limits and an unmoved clock."""
 
 import json
 import re
@@ -58,7 +58,7 @@ def model(monkeypatch):
 
 def invoke(book, *args, json_out=False):
     return CliRunner().invoke(app, ['rem', '--root', str(book.root),
-                                   *(['--json'] if json_out else []), 'fast-forward', *args])
+                                   *(['--json'] if json_out else []), 'catchup', *args])
 
 
 def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monkeypatch):
@@ -157,11 +157,11 @@ def test_capped_nights_read_sources_again_and_keep_unfinished_work(book, model, 
     monkeypatch.setattr(native_round, 'prepare', counted)
     result = invoke(book, '--nights', '2')
     assert result.exit_code == 0, result.output
-    assert len(reads) == 2, 'every fast-forwarded night must reread sources'
+    assert len(reads) == 2, 'every catchup night must reread sources'
     assert len(model[0]) == 2
 
 
-def test_ordinary_abstract_limit_survives_fast_forward(book, model):
+def test_ordinary_abstract_limit_survives_catchup(book, model):
     backlog(book, 60)
     marker = {'day': '2026-09-07', 'rounds': 1, 'stopped': False}
     write_json(state_path(book.root, 'abstract-night.json'), marker)
@@ -172,7 +172,7 @@ def test_ordinary_abstract_limit_survives_fast_forward(book, model):
 
 
 def test_daily_phase_and_cursor_counters_reset_each_night(book, monkeypatch):
-    from connectonion.rem import fast_forward
+    from connectonion.rem import catchup
     phases, scopes = [], []
 
     def one(root, **options):
@@ -188,14 +188,14 @@ def test_daily_phase_and_cursor_counters_reset_each_night(book, monkeypatch):
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    result = fast_forward.run(book.root, nights=2)
+    result = catchup.run(book.root, nights=2)
     assert len(result['nights']) == 2
     assert phases == ['daily-investigation', 'daily-investigation']
     assert len(set(scopes)) == 2
 
 
 def test_same_person_failed_retry_and_owner_refresh_get_new_nights(book, monkeypatch):
-    from connectonion.rem import fast_forward, same_person
+    from connectonion.rem import catchup, same_person
     record = 'people/owner.md'
     book.stub_person(record, 'Casey Reed', ['casey@example.test'], email='casey@example.test')
     write_json(state_path(book.root, 'map.json'), {'owner': {'record': record, 'addresses': ['casey@example.test']}})
@@ -218,14 +218,14 @@ def test_same_person_failed_retry_and_owner_refresh_get_new_nights(book, monkeyp
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    fast_forward.run(book.root, nights=2)
+    catchup.run(book.root, nights=2)
     assert len(attempts) == 2
     assert not state_path(book.root, 'owner-refresh.json').exists()
     assert daily._owner_due(book.root), 'a virtual night must not consume the real owner refresh'
 
 
 def test_translation_attempt_totals_use_each_virtual_night(book, monkeypatch):
-    from connectonion.rem import fast_forward, translate
+    from connectonion.rem import catchup, translate
     counts = []
 
     def one(root, **options):
@@ -240,7 +240,7 @@ def test_translation_attempt_totals_use_each_virtual_night(book, monkeypatch):
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    fast_forward.run(book.root, nights=2)
+    catchup.run(book.root, nights=2)
     assert counts == [1, 1]
     assert translate.attempts_today(book.root) == 0
 
@@ -296,7 +296,7 @@ def test_interrupted_night_reports_kept_pages_and_next_resumes_its_limits(book, 
 
 
 def test_daily_retry_and_no_change_cooldowns_get_fresh_nights(book, monkeypatch):
-    from connectonion.rem import fast_forward, leads, refusals
+    from connectonion.rem import catchup, leads, refusals
     record = 'people/fern.md'
     counts = []
 
@@ -318,13 +318,13 @@ def test_daily_retry_and_no_change_cooldowns_get_fresh_nights(book, monkeypatch)
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    fast_forward.run(book.root, nights=2)
+    catchup.run(book.root, nights=2)
     assert len(counts) == 2
 
 
 @pytest.mark.parametrize('same_page', [False, True])
 def test_imported_and_summarized_session_page_counts_are_exact(book, monkeypatch, same_page):
-    from connectonion.rem import fast_forward
+    from connectonion.rem import catchup
 
     def one(root, **options):
         cursor = native_round.prepare(root, read_config(root), scheduled=False)
@@ -334,16 +334,16 @@ def test_imported_and_summarized_session_page_counts_are_exact(book, monkeypatch
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    result = fast_forward.run(book.root)
+    result = catchup.run(book.root)
     assert result['written'] == (1 if same_page else 2)
     assert 'sessions/imported.md' in result['nights'][0]['changed']
 
 
 @pytest.mark.parametrize('held', ['weekly', 'daily'])
 def test_scheduled_takeover_keeps_unfinished_work_when_held(book, monkeypatch, held, rem_clock):
-    from connectonion.rem import fast_forward
+    from connectonion.rem import catchup
     config = read_config(book.root)
-    with fast_forward.scope(book.root, 1):
+    with catchup.scope(book.root, 1):
         cursor = native_round.prepare(book.root, config, scheduled=False)
     cursor.update(jobs=[{'record': 'people/fern.md', 'kind': 'person'}],
                   current={'record': 'people/fern.md', 'draft': 'Unfinished draft'},
@@ -363,7 +363,7 @@ def test_scheduled_takeover_keeps_unfinished_work_when_held(book, monkeypatch, h
         monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stop': 'daily cap reached'})
     native.next_task(book.root, scheduled=True)
     saved = read_json(state_path(book.root, 'round.json'), {})
-    assert 'fast_forward_night' not in saved
+    assert 'catchup_night' not in saved
     assert saved['slot'] is not None
     assert saved['jobs'][0]['record'] == 'people/fern.md'
     assert saved['current'] == cursor['current']
@@ -371,24 +371,24 @@ def test_scheduled_takeover_keeps_unfinished_work_when_held(book, monkeypatch, h
 
 
 def test_scheduled_pending_work_keeps_its_saved_limit_identity(book, monkeypatch):
-    from connectonion.rem import fast_forward
-    write_json(state_path(book.root, 'round.json'), {'fast_forward_night': 7, 'pending': 'fixture'})
+    from connectonion.rem import catchup
+    write_json(state_path(book.root, 'round.json'), {'catchup_night': 7, 'pending': 'fixture'})
 
     def inside(root, **options):
         record, _ = daily._reserve(root, 'daily-investigation', 1, {})
-        assert record['fast_forward_night'] == 7
+        assert record['catchup_night'] == 7
         assert service.daily_cap(root)['used'] == 1
         return {'outcome': 'task'}
 
     monkeypatch.setattr(native, '_next_task', inside)
     assert native.next_task(book.root, scheduled=True)['outcome'] == 'task'
-    assert fast_forward.number(book.root) is None
+    assert catchup.number(book.root) is None
     assert service.daily_cap(book.root)['used'] == 0
 
 
 def test_new_night_keeps_material_needed_by_an_unfinished_page(book, monkeypatch, rem_clock):
-    from connectonion.rem import fast_forward
-    with fast_forward.scope(book.root, 1):
+    from connectonion.rem import catchup
+    with catchup.scope(book.root, 1):
         cursor = native_round.prepare(book.root, read_config(book.root), scheduled=False)
     folder = state_path(book.root, 'tasks/native-fixture')
     folder.mkdir(parents=True)
@@ -398,7 +398,7 @@ def test_new_night_keeps_material_needed_by_an_unfinished_page(book, monkeypatch
     cursor.update(jobs=[{'record': 'people/fern.md', 'kind': 'person'}],
                   current={'record': 'people/fern.md', 'plan_path': str(plan)})
     monkeypatch.setattr(service, 'now', lambda: rem_clock + timedelta(minutes=1))
-    with fast_forward.scope(book.root, 2):
+    with catchup.scope(book.root, 2):
         native_round.prepare(book.root, read_config(book.root), scheduled=False, carry=cursor)
     runner.scrub_task(folder)
     assert plan.is_file(), 'new-night cleanup must keep the unfinished page material'
@@ -406,7 +406,7 @@ def test_new_night_keeps_material_needed_by_an_unfinished_page(book, monkeypatch
 
 @pytest.mark.parametrize('phase,draft', [('reply-draft', None), ('daily-investigation', 'Unfinished notebook prose')])
 def test_a_skipped_draft_does_not_count_as_output(book, monkeypatch, phase, draft):
-    from connectonion.rem import fast_forward
+    from connectonion.rem import catchup
 
     def one(root, **options):
         cursor = native_round.prepare(root, read_config(root), scheduled=False)
@@ -417,19 +417,23 @@ def test_a_skipped_draft_does_not_count_as_output(book, monkeypatch, phase, draf
         return {'outcome': 'done', 'reason': 'round done'}
 
     monkeypatch.setattr(schedule, 'exec_round', one)
-    result = fast_forward.run(book.root, nights=2)
+    result = catchup.run(book.root, nights=2)
     assert result['drafts'] == 0
     assert len(result['nights']) == 1
 
 
-def test_fast_forward_help_is_discoverable_and_plain():
+def test_catchup_help_is_discoverable_and_plain():
     root = CliRunner().invoke(app, ['rem', '--help'])
-    shown = CliRunner().invoke(app, ['rem', 'fast-forward', '--help'])
+    shown = CliRunner().invoke(app, ['rem', 'catchup', '--help'])
     assert shown.exit_code == 0, shown.output
-    assert 'fast-forward' in root.output
-    assert 'co rem fast-forward [--nights N]' in shown.output
+    assert 'catchup' in root.output
+    assert 'co rem catchup [--nights N]' in shown.output
+    assert "Do the night's work now: one night, or several back to back with --nights." in shown.output
+    assert 'Example:  co rem catchup  |  co rem catchup --nights 5' in shown.output
     assert '--nights N (default 1)' in shown.output
     assert 'quota floor' in shown.output
+    assert 'Calls the configured model' in shown.output
+    assert 'Schedule times stay the same.' in shown.output
     assert 'Next:     co rem open' in shown.output
     decisions = CliRunner().invoke(app, ['rem', 'decisions', 'write', '--help'])
     assert 'Resumes from where previous or overnight runs left off, ignoring the overnight run limit.' in decisions.output
