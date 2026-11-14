@@ -45,4 +45,9 @@ The next-action tips from `level` retain your selected directory. `remove`
 leaves blocks and admins unchanged. Removing a contact or whitelist entry does
 not deny strangers under an open policy; use `block` to deny access.
 Live revocation takes effect on the requester's next frame, when the Host
-rejects the request and asks running work to stop cooperatively.
+rejects the request and asks running work to stop cooperatively. A requester
+who has disconnected sends no frame, so the Host also re-checks trust before
+every tool or model step of their turn and stops it there. A step already
+running finishes first. Every edit (`add`, `remove`, `block`, `unblock`,
+`admin add/remove`) prints `Updated: <file>` for each list it wrote, and
+`level` prints the files it read.
