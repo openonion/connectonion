@@ -446,6 +446,26 @@ def test_a_persons_relationship_names_stay_inside_and_never_overlap():
                    ["big", "middle", True, False], ["small", "middle", True, True], ["wide", "middle", True, False],
                    ["covers", "middle", True, True]]
 
+
+def test_the_card_explains_a_line_by_a_written_link_then_sessions_then_a_mention():
+    """localReason picks what the card says, with no browser: the session rule was the one first got wrong."""
+    fn = re.search(r"function localReason\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    pages = {"sessions/a.md": {"category": "sessions", "relations": [{"path": "projects/depot.md"}]},
+             "sessions/b.md": {"category": "sessions", "relations": [{"path": "projects/depot.md"}]}}
+    relations = [{"path": "orgs/tern.md", "kind": "linked from this page"},
+                 {"path": "projects/depot.md", "kind": "mentioned on this page"},
+                 {"path": "sessions/a.md", "kind": "linked here"}, {"path": "sessions/b.md", "kind": "linked here"},
+                 {"path": "orgs/wick.md", "kind": "mentioned on this page"}]
+    cases = [["orgs/tern.md", None], ["projects/depot.md", None], ["orgs/wick.md", None], ["people/sol.md", {"via": ["orgs/tern.md"]}],
+             ["people/nobody.md", None]]
+    out = _run_reader_js(fn + "\nconst pages = " + json.dumps(pages) + ", relations = " + json.dumps(relations) + ";\n"
+                         "console.log(JSON.stringify(" + json.dumps(cases) + ".map(([id, reached]) => {"
+                         " const why = localReason(relations, id, reached, path => pages[path]);"
+                         " return why && (why.via ? 'via ' + why.via : why.link.path + (why.sessions ? ' x' + why.sessions : '')); })));")
+    # A written link wins; a project only mentioned on the page but named by two sessions is explained by them;
+    # a bare mention is the last resort; the outer ring is reached through; no link at all says nothing.
+    assert out == ["orgs/tern.md", "sessions/a.md x2", "orgs/wick.md", "via orgs/tern.md", None]
+
 def test_org_company_name_uses_the_most_common_linked_company_fact():
     from connectonion.rem.reader import _org_company_name
 

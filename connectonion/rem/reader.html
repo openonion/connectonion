@@ -13285,23 +13285,27 @@ function localCentre(n, p) {
   return svgEl("a", { class: "centre", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), "data-id": n.id, "aria-label": graphTitle(n) }, [
     svgEl("circle", { cx: p.x, cy: p.y, r: LOCAL.face / 2 }), mark]);
 }
-// What the card says about one mark. First ring: the sentence that links the two records, worded and cited as
-// Related pages words it; a project reached only through coding sessions folded into it says how many, with one of
-// their sentences. A name that merely appears on the page is the last resort: a mention alone is not why the line
-// is drawn. Second ring: who they are and the records they are reached through.
+// Which link explains a line, as data. An outer-ring record is reached through first-ring records. A first-ring
+// record is explained by a link written on either page; failing that, by the coding sessions folded into the person
+// that name it (how many, and one of them); a name that merely appears on the page is the last resort, since a
+// mention alone is not why the line is drawn. page(path) looks a record up, so a unit test can pass its own.
+function localReason(relations, id, reached, page) {
+  if (reached) return { via: reached.via };
+  const direct = relations.find(link => link.path === id);
+  if (direct && /^linked/.test(direct.kind)) return { link: direct };
+  const sessions = relations.filter(link => page(link.path)?.category === "sessions" && (page(link.path).relations || []).some(other => other.path === id));
+  return sessions.length ? { link: sessions[0], sessions: sessions.length } : direct ? { link: direct } : null;
+}
+// The card for one mark: Related pages' own entry for a first-ring record, worded and cited as it is there; who an
+// outer-ring record is and what it is reached through; the name alone for a private or unwritten record.
 function localWhy(r, n, far) {
   const open = n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), kind = graphT(GRAPH_ONE[n.k]);
   const plain = words => el("div", { class: "relation-entry" }, [el("a", { class: "relation-card", href: open }, [
     el("span", { class: "relation-kind", text: kind }), el("strong", { text: graphTitle(n) }), words ? el("span", { class: "relation-basis", text: words }) : null])]);
-  const reached = far.find(f => f.n.id === n.id), direct = (r.relations || []).find(link => link.path === n.id);
-  const linked = direct && /^linked/.test(direct.kind);
-  const sessions = reached || linked ? [] : (r.relations || []).filter(link => byPath(link.path)?.category === "sessions"
-    && (byPath(link.path).relations || []).some(other => other.path === n.id));
-  const link = linked ? direct : sessions[0] || direct;
-  const entry = graphHidden(n) || !n.r ? plain("")
-    : reached ? plain([graphRole(n), graphT("Through {names}", { names: reached.via.map(id => graphTitle(graphModel().byId.get(id))).join("、") })].filter(Boolean).join(" · "))
-    : link ? relationCard({ ...localizedRelation(link, r.path), path: n.id, ...(link === direct ? {} : { kind: graphT("Through {n} sessions", { n: sessions.length }) }) }, r.path)
-    : plain("");
+  const why = graphHidden(n) || !n.r ? null : localReason(r.relations || [], n.id, far.find(f => f.n.id === n.id), byPath);
+  const entry = !why ? plain("")
+    : why.via ? plain([graphRole(n), graphT("Through {names}", { names: why.via.map(id => graphTitle(graphModel().byId.get(id))).join("、") })].filter(Boolean).join(" · "))
+    : relationCard({ ...localizedRelation(why.link, r.path), path: n.id, ...(why.sessions ? { kind: graphT("Through {n} sessions", { n: why.sessions }) } : {}) }, r.path);
   if (graphLast(n)) entry.querySelector(".relation-kind").append(" · " + fmtDate(graphLast(n)));
   return entry;
 }
