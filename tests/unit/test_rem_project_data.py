@@ -20,6 +20,22 @@ def enrich(tmp_path, rows, contexts=None, **kwargs):
     return rows[0]
 
 
+@pytest.mark.parametrize('source', ['codex:session:12', 'gmail:note'])
+def test_unassigned_project_step_is_not_an_agent_request(tmp_path, source):
+    row = page(opened='- Review the release checklist. [1]', sources='- [1] ' + source)
+    item = enrich(tmp_path, [row])['open'][0]
+    assert item['kind'] == 'unconfirmed'
+    assert item['needs_review'] is True
+    assert item['who'] is None
+
+
+def test_unconfirmed_project_owner_does_not_create_a_human_debt_score(tmp_path):
+    row = page(opened='- Review the release checklist. [1]', sources='- [1] codex:session:12')
+    result = enrich(tmp_path, [row])
+    assert result['score'] == 0
+    assert result['reasons'] == []
+
+
 def test_overdue_promise_outranks_paying_client_without_one(tmp_path):
     client = page('projects/fernhill.md', 'Fernhill Labs', facts='- Unpaid invoice: AUD 12000.', opened='\n'.join([
         '- You owe [Fern](../people/fern.md) a report, since 2026-11-03.',
@@ -126,7 +142,7 @@ def test_directions_and_agent_requests_are_not_human_debts(tmp_path, category):
     ]), sources='- [1] gmail:in\n- [2] gmail:out\n- [3] codex:session:12')
     result = enrich(tmp_path, [row, page('people/fern.md', 'Fern')])
     assert [item['kind'] for item in result['open']] == ['owed', 'waiting', 'agent', 'agent']
-    assert result['kind_counts'] == {'owed': 1, 'waiting': 1, 'agent': 2, 'answerable': 0}
+    assert result['kind_counts'] == {'owed': 1, 'waiting': 1, 'agent': 2, 'answerable': 0, 'unconfirmed': 0}
     assert result['open'][0]['who'] == 'people/fern.md'
     assert result['open'][0]['sources'][0]['source'] == 'gmail:in'
 

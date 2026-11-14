@@ -848,7 +848,10 @@ pinned to that edge: it comes into view with the draft.
   pinned as **You**.
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
-  notebook. Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
+  notebook. Its cards lead with what you owe; their overdue chips and the faces'
+  day counts use only your debts. What someone else owes stays under **Waiting
+  on others**, even when overdue, and never takes a place in this queue.
+  Done threads stay out of both night-run draft queues. The schedule prepares one local reply draft per mail thread
   waiting on you, with no nightly count (D-104), and every failed item named in status. Missing originals are fetched
   from already-consented mailboxes. Owner-last answers and promised work receive
   [morning outcomes](../rem-night-outcomes.md). Drafts use the `rem-reply-draft` skill: it reads who you both are (your page, their page,
@@ -998,7 +1001,9 @@ pinned to that edge: it comes into view with the draft.
   notice then says *Ignored · mail from* address *no longer shows here*, and its one **Undo** reopens the item and
   lets the sender back; a save the Host refuses says *Not saved · Try again* and changes nothing. REM never stops a
   sender by itself, never offers a person-looking address, and relay addresses that carry many different people are
-  never offered. With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
+  never offered. Shared notification mailboxes (`messages-noreply@…`, `notifications@…`
+  and `calendar-notification@…`) are never offered either, including on custom domains.
+  With labelled passages hidden, the address of a labelled row (and every address in Settings) shows
   only its domain. The list is `.state/ignored-senders.txt`, one `YYYY-MM-DD address` per line, and
   can be edited by hand (a bare address or `Name <address>` is read too): Today leaves out an item only when every
   mail it cites came from listed senders, the night drafts
@@ -1044,7 +1049,9 @@ pinned to that edge: it comes into view with the draft.
   merge, send or post" line. Replies, and **See result**, render as the
   notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
-  Opening it again returns the same conversation.
+  Opening it again returns the same conversation. When the live reader loads a
+  newer page, the open conversation returns under its row with its context,
+  replies and any unsent message; its composer continues the same agent session.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
   word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
   **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
@@ -1168,24 +1175,36 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations** opens as a full-width sortable table, newest contact first.
+- **Organisations** opens as a full-width tree table, expanded by default,
+  with the most recently contacted organisations first.
   The default columns show a local logo or monogram, name, kind, what they do
   or mean to you, website, location, people known there, activity (messages in
   90 days), and last contact. Search and kind filters follow the reader’s
-  language; activity stays a readable message count at row height. Unknown
-  facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
-  separately from People and can add first contact, legal entity and parent.
+  language; activity stays a readable message count at row height. An organisation
+  with no messages in the window shows a quiet dash and sorts last, like unknown facts. Kind chips
+  include **Unclassified** for pages with no recorded kind; the reader does not
+  infer one. Summaries occupy at most two lines on desktop, with the full text in
+  the cell's title and on the organisation page. **Columns** remembers your choices
+  separately from People and can add first contact, subordinate unit count,
+  legal entity and parent.
   Blanks sort last in either direction. On a phone rows become cards.
   Websites open in a new tab; when Website is Unknown, a contact's business
   email domain can supply a link marked **Derived** (free mail is excluded).
   A `Logo:` fact can name a notebook-relative PNG, JPEG, GIF or WebP; the reader
   embeds it in both live data and the self-contained snapshot, without fetching
   images from the network. Missing logos use monograms.
-  Units stay folded under their parent until its disclosure is expanded; a
-  unit whose parent is missing stays findable in the list. Search also finds
-  organisations by their unit names.
+  Units appear directly beneath their parent, indented with guide lines at every
+  depth, with the same columns. Parent names include their direct unit count and
+  distinct people across the whole organisation. Disclosures collapse branches;
+  each organisation’s collapsed state is remembered in this browser. **By structure /
+  Flat** switches the layout. Sorting a column or filtering by kind switches to
+  flat rows, with a quiet ancestry path beneath each unit name. **By structure**
+  clears the kind filter and restores the tree and saved collapses. Search temporarily
+  opens matching branches. A unit whose parent is missing stays findable in the list.
   The book page names all contacts when there are at most four; otherwise it
-  names the four most recent and says so. Business, location and website have
+  names the four most recent and says so. Its opening uses the earliest recorded
+  first-contact date from the organisation or its contacts, including mapped mail
+  and index dates when there is no written history. Business, location and website have
   separate labels, and the website is a link.
   An organisation page shows an indented, collapsible tree: organisation →
   units, courses or teams → people, with most recently active branches first.
@@ -1200,6 +1219,8 @@ pinned to that edge: it comes into view with the draft.
   A person with several unit memberships appears once, with those roles together.
   The page reads as an article in one centred reading column: opening sentences
   give its summary, relationship, people known and first/latest contact dates.
+  Mapped placeholders are omitted: the opening starts with what is known, a
+  connection without a summary is just its linked name, and absent facts have no label.
   The tree is followed by the organisation's own dated History as prose milestones,
   connections as text links, and facts and sources at the foot. Correspondents'
   activity is not the article's body; **Full memory and sources** keeps the page's
@@ -1301,11 +1322,16 @@ pinned to that edge: it comes into view with the draft.
   requires an explicitly completed project. Longer columns unfold in place;
   on wide desktop screens an empty state keeps a narrow header and its zero count; on a phone
   the columns stack. **List** and **Timeline** remain available.
+  The board's four-way switch stays in one horizontally scrolling row on a phone.
   A project page leads with the same state, up to three next steps (overdue
   owner-held steps first), and recent sessions or dated history. **+N more**
   opens the remaining steps in **Full memory and sources**. Purpose, findings,
   facts, people, decisions, detailed sessions, tags, local graph and history stay
   in that collapsed disclosure. Source markers beside steps still open their evidence.
+  Open steps share one frame and align each item's action buttons. **Agent request**
+  (给智能体的请求), **Owner unconfirmed** (待确认负责人) and **Answer available**
+  (已有回答) distinguish a request from an unassigned step and a retained answer;
+  none of these labels claims a running task or an accepted hand-off.
 - **Other record pages** open on a focused status, next exchanges, compact
   facts, related records and filterable dated Activity. Connected cards without a snippet stay compact;
   desktop cards with snippets align their source dates across each row.
@@ -2035,17 +2061,17 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - On people pages, `First contact` and `Last contact` are the earliest and newest
-  messages to or from the person's own addresses (a third party's mail to more
-  than five recipients, such as a notice to a list, does not count) in the
+  messages involving the person's own addresses that the person or the owner
+  sent (a third party's group mail never counts, regardless of group size) in the
   retained archive, in the notebook's time zone. They are recomputed after
   promotion and on sync; they describe the archive's bounds, which may not span
   the whole relationship.
-- On project pages, a dated `Last activity` is never older than the newest
-  dated session message, mail, chat or commit history listed in the page's own
-  `## Sources`; code lifts it to that day after promotion and at the start of
-  every night round (an `Unknown` stays, and the reader dates the project by its
-  newest source). A snapshot's read day, a file's saved day and a web page's
-  date are not activity.
+- On project pages, `Last activity` is the newest valid day listed in the page's
+  own `## Sources`, with a citation to that source. Sessions, mail, chat,
+  commits, documents and other dated sources use the same rule, including for
+  projects without a repository. Code recomputes it after promotion and at the
+  start of every night round, replacing `Unknown` and model-selected dates.
+  An older dated "quiet since" status is cleared when newer evidence contradicts it.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
   at the end of a line covers the uncited values before it

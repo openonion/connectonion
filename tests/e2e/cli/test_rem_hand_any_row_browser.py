@@ -90,8 +90,10 @@ def live(tmp_path, monkeypatch):
         context.route("http*://**/*", serve)
         page.goto(BASE + "/rem#view=open")
         page.get_by_role("heading", name="Open threads").wait_for()
-        yield page, root
-        browser.close()
+        try:
+            yield page, root
+        finally:
+            browser.close()
     assert not errors, errors
 
 
@@ -107,7 +109,7 @@ def test_a_waiting_row_the_night_never_prepared_is_handed_watched_and_its_result
     line = row.locator(".handoff-line")
     line.get_by_text("Codex is working").wait_for(timeout=10000)
     # Taking the task back has its own words; the row's one Mark done stays in the strip (owner, 2026-11-11).
-    assert line.get_by_role("button").all_inner_texts() == ["Stop", "Take back from Codex", "Mark done", "Not now", "Ignore"]
+    assert line.get_by_role("button").all_inner_texts() == ["Mark done", "Not now", "Ignore", "Stop", "Take back from Codex"]
     line.get_by_text("Codex finished").wait_for(timeout=30000)       # it follows the run by itself
     line.get_by_role("button", name="See result").click()
     from patchright.sync_api import expect
@@ -124,22 +126,30 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     row = _row(page, "Fernhill Labs contract draft")
     line = row.locator(".handoff-line")
     assert line.evaluate("node => node.getBoundingClientRect().height") < 48      # one line, not four links on two
-    assert " ".join(line.inner_text().split()) == "Hand to Codex · Hand to Claude · Talk it over ▾ · Mark done · Not now · Ignore"
+    assert " ".join(line.inner_text().split()) == "Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾"
     if SHOTS:
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
         zh = _row(page, "Fernhill Labs contract draft")
-        assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "交给 Codex · 交给 Claude · 聊一聊 ▾ · 标为完成"
-        zh.locator(".talk-menu > summary").click()
-        menu = zh.locator(".talk-choices")
+        assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 ▾"
+        zh.get_by_text("更多 ▾", exact=True).click()
+        zh.get_by_text("聊一聊 ▾", exact=True).click()
+        menu = zh.locator(".strip-more .talk-menu > .talk-choices")
         assert menu.evaluate("node => document.elementFromPoint(node.getBoundingClientRect().left + 8, node.getBoundingClientRect().bottom - 8)?.closest('.talk-choices') === node")
         box = zh.bounding_box()
         page.screenshot(path=str(Path(SHOTS) / "row-zh-menu.png"),
                         clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"] + 90})
         page.evaluate("() => { setInterfaceLanguage('en'); render(); }", isolated_context=False)
         row, line = _row(page, "Fernhill Labs contract draft"), _row(page, "Fernhill Labs contract draft").locator(".handoff-line")
-    line.locator(".talk-menu > summary").click()
+    # Talk is nested under More; both disclosures share the menu styling.
+    line.get_by_text("More ▾", exact=True).click()
+    line.get_by_text("Talk it over ▾", exact=True).click()
     row.get_by_role("button", name="Talk with Claude about this").click()
     talk = row.locator(".talk")
+    talk.locator(".talk-context").wait_for()
+    talk.get_by_role("textbox", name="Your message").fill("Draft the follow-up to Fern, short.")
+    # The live reader reloads when a newer render arrives. Reopen the same talk in its row.
+    with page.expect_navigation():
+        page.evaluate("reloadOnto()", isolated_context=False)
     talk.locator(".talk-turn.agent").first.wait_for(timeout=30000)
     # The reply is Markdown: its fenced block is a code block, never literal backticks.
     first = talk.locator(".talk-turn.agent .agent-text").first
@@ -147,7 +157,9 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     assert "```" not in first.inner_text()
     assert talk.locator(".talk-context summary").inner_text() == "What Claude was given"
     assert talk.locator(".talk-turn.agent p").first.inner_text().strip()
-    talk.get_by_role("textbox", name="Your message").fill("Draft the follow-up to Fern, short.")
+    assert talk.get_by_role("textbox", name="Your message").input_value() == "Draft the follow-up to Fern, short."
+    page.evaluate("drawKeepingView()", isolated_context=False)
+    assert talk.get_by_role("textbox", name="Your message").input_value() == "Draft the follow-up to Fern, short."
     talk.get_by_role("button", name="Send").click()
     talk.locator(".talk-turn.owner").filter(has_text="Draft the follow-up to Fern, short.").wait_for()
     talk.locator(".talk-turn.agent").nth(1).wait_for(timeout=30000)

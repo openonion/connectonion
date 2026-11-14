@@ -2,6 +2,8 @@
 import json
 import re
 
+import pytest
+
 from connectonion.rem.reader import TEMPLATE
 from test_rem_reader import _run_reader_js
 
@@ -17,6 +19,22 @@ DOM = r'''
 const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(x => x != null),
   appendChild(node) { this.children.push(node); }, append(...nodes) {this.children.push(...nodes);} });
 '''
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_each_project_step_kind_says_what_its_owner_means(language):
+    page = TEMPLATE.read_text()
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(_functions('projectStepOwner') + '\nUI.zh = ' + ui +
+        '; uiLanguage = ' + json.dumps(language) + ';' + r'''
+      const DIRECTION_LABEL = {mine: 'You owe', theirs: 'They owe', plain: 'Open'};
+      const projectOpenItem = (r, thread) => thread.item, pdWho = who => who;
+      const kinds = ['owed', 'waiting', 'agent', 'unconfirmed', 'answerable'];
+      console.log(JSON.stringify(kinds.map(kind => projectStepOwner({}, {
+        dir: 'plain', item: {kind, who: 'Fern'}}).label)));
+    ''')
+    assert result == (['You owe', 'Fern', 'Agent request', 'Owner unconfirmed', 'Answer available']
+                      if language == 'en' else ['等你处理', 'Fern', '给智能体的请求', '待确认负责人', '已有回答'])
 
 
 def test_projects_default_to_four_state_columns_and_keep_every_record():

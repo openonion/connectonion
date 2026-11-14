@@ -850,6 +850,10 @@
   .project-state-word { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font: var(--w-bold) var(--s-body)/20px var(--font); }
   .record-focus.projects .project-step .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .record-focus.projects .project-step .dir.you { color: var(--ink); font-weight: var(--w-bold); }
+  .record-focus.projects .project-step > .dir { white-space: normal; overflow-wrap: anywhere; }
+  .record-focus.projects .next-exchanges .threads { border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 14px; }
+  .record-focus.projects .next-exchanges .project-step { margin: 0; border-radius: 0; }
+  .record-focus.projects .project-step .thread-actions > :is(a, button) { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; }
   .project-more-steps { margin-top: 6px; }
   .project-recent { grid-column: 1 / -1; }
   .project-recent ul { margin: 0; padding: 0; list-style: none; }
@@ -1436,15 +1440,28 @@
   .org-table .c-activity { width: 13%; }
   .org-table .c-last { width: 9%; }
   .org-table .clamp, .org-site a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  @media (min-width: 601px) {
+    .org-table .c-summary .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  }
+  .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; }
   .org-table-name a { overflow: hidden; text-overflow: ellipsis; }
+  .org-name-text { min-width: 0; display: flex; flex-direction: column; }
+  .org-unit-summary, .org-unit-path { color: var(--grey); font: var(--s-meta)/1.5 var(--font); white-space: normal; }
+  .org-tree-guide { position: absolute; top: -12px; bottom: -12px; border-left: 1px solid var(--rule); pointer-events: none; }
+  .org-list-controls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; }
+  .org-layout-switch { display: flex; gap: 12px; }
+  .org-layout-switch button { border: 0; background: transparent; color: var(--grey); font: inherit; cursor: pointer; padding: 8px 0; }
+  .org-layout-switch button[aria-pressed=true] { color: var(--ink); text-decoration: underline; text-underline-offset: 6px; }
   .org-table .org-logo { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: var(--radius); font-size: var(--s-meta); }
   .org-disclosure { flex: none; width: 24px; min-height: 32px; padding: 0; border: 0; color: var(--grey); background: transparent; cursor: pointer; }
+  .org-disclosure-space { flex: none; width: 24px; }
   .org-site small { color: var(--grey); font-size: var(--s-meta); }
   .org-activity { display: flex; flex-direction: column; gap: 4px; font-size: var(--s-meta); }
   @media (max-width: 600px) {
     .org-directory .org-kind-filters button { min-height: 44px; }
+    .org-layout-switch button { min-height: 44px; }
     .org-table .org-disclosure { min-width: 44px; min-height: 44px; }
+    .org-table .org-disclosure-space { width: 44px; }
     .sheet.org-table :is(th, td) { overflow: visible; }
     .sheet.org-table td.c-name { width: auto; }
     .org-table-name a { white-space: normal; }
@@ -1834,7 +1851,9 @@
   .pd-lknown span { color: var(--grey); }
 
   /* 看板 */
-  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px; font-size: var(--s-meta); }
+  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; padding: 2px; font-size: var(--s-meta); }
+  .pd-asks a { flex: 0 0 auto; white-space: nowrap; }
+  .pd-head-end:has(.pd-asks) { min-width: 0; max-width: 100%; }
   .pd-board { margin-top: 24px; }
   @media (min-width: 1241px) {
     /* Empty states keep their header width; populated states share the remaining space. */
@@ -3909,6 +3928,9 @@ const UI = {
     "Search sessions": "搜索会话",
     "Search what you typed and what the agent replied": "搜你说过的话和 agent 的回复",
     "Agent": "智能体",
+    "Agent request": "给智能体的请求",
+    "Owner unconfirmed": "待确认负责人",
+    "Answer available": "已有回答",
     "Time": "时间",
     "View": "视图",
     "By day": "按日期",
@@ -7078,7 +7100,7 @@ function personGroups(entries) {
 function todayGroups(entries) {
   // A reply you sent, or one held for its 10 minutes, answers the person: they leave Today until Undo.
   // A promise gone stale is asked about at the side, not counted as someone waiting.
-  entries = entries.filter(entry => entry.t.dir === "mine" ? waitingOnYou(entry) : !answered(entry) && !staleEntry(entry));
+  entries = entries.filter(waitingOnYou);
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
@@ -7534,6 +7556,7 @@ function talkPanel(begin) {
   const input = el("textarea", { rows: "2", "aria-label": t("Your message"), "data-keep": "talk:" + (begin.agent || "codex") + ":" + (begin.key || begin.session) });
   const send = el("button", { type: "submit", class: "btn-line", text: t("Send"), disabled: "" });
   const form = el("form", { class: "talk-form" }, [input, send]), box = el("section", { class: "talk", "aria-live": "polite" }, [turns, status, form]);
+  box.talkBegin = begin;  // Reloads reopen this same Host conversation, even before begin has answered.
   let talk = null;
   const paint = ({ ok, code, error, ...value }) => {
     if (!ok) { status.textContent = error || t("REM is not answering right now. Try again in a moment."); send.disabled = !talk; return; }
@@ -8063,7 +8086,7 @@ function fusedFace(r, late, size = "l") {
     + (burn ? '<circle class="burn" cx="50" cy="50" r="50" stroke-dasharray="' + (burn * RING).toFixed(1) + ' ' + RING + '"/>' : "") + "</svg>" }));
   return node;
 }
-function groupLate(group) { return Math.max(0, ...group.entries.map(entry => overdueDays(entry.t))); }
+function groupLate(group) { return Math.max(0, ...group.entries.filter(entry => entry.t.dir === "mine").map(entry => overdueDays(entry.t))); }
 function faceStrip(groups, current) {
   return el("div", { class: "frow", role: "group", "aria-label": t("Who is waiting, and how late") }, groups.map(group => {
     const late = groupLate(group), name = threadWho(group.r);
@@ -9413,7 +9436,9 @@ function projectOpenItem(r, thread) {
 // Who holds a step, in the words Today uses; an agent's instruction and a named person are said as such.
 function projectStepOwner(r, thread) {
   const item = projectOpenItem(r, thread);
-  if (item && ["agent", "answerable"].includes(item.kind)) return { owner: "agent", label: t("Agent") };
+  if (item?.kind === "answerable") return { owner: "answerable", label: t("Answer available") };
+  if (item?.kind === "unconfirmed" || item?.needs_review) return { owner: "", label: t("Owner unconfirmed") };
+  if (item?.kind === "agent") return { owner: "agent", label: t("Agent request") };
   if (item?.kind === "waiting") return { owner: "them", label: pdWho(item.who) || t(DIRECTION_LABEL.theirs) };
   if (item?.kind === "owed" || thread.dir === "mine") return { owner: "you", label: t(DIRECTION_LABEL.mine) };
   return { owner: thread.dir === "theirs" ? "them" : "", label: t(DIRECTION_LABEL[thread.dir] || "Open") };
@@ -10136,12 +10161,19 @@ function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.tit
 function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
 function orgKind(r) { return r.unit_kind ? orgT(r.unit_kind) : r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
 function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
+// Reuse the mapped-page placeholder tests, including the translated organisation lead.
+function orgSummary(text) {
+  const value = (text || "").trim();
+  const translated = /^未知(?:\s*[—–-]\s*尚未(?:调查|核实|验证))?[。.!]?$/u;
+  return !value || UNFILLED_LEAD.test(value) || UNFILLED_LINE.test(value)
+    || /^(?:unknown|not known)[.!]?$/i.test(value) || translated.test(value) ? "" : value;
+}
 // The first sentence of what the organisation is to you, labels kept: a labelled passage is held as one
 // token so it never ends the sentence, and orgProse shows it behind its own reveal. The source is the
 // first one with something public in it, so hiding labelled passages never empties the line.
 function orgRelation(r) {
   const k = known(r), lead = k.intro || (k.kept.find(s => !MECHANICAL.has(s.title.toLowerCase())) || { text: "" }).text;
-  const text = [r.to_you, facts(r).how, lead].find(value => plainLine(value || "")) || "", held = [];
+  const text = [r.to_you, facts(r).how, lead].map(orgSummary).find(value => plainLine(value)) || "", held = [];
   const masked = privatePassages(plainLine(text, true), passage => "\u0006" + (held.push(passage) - 1) + "\u0006");
   return firstSentence(masked).replace(/\u0006(\d+)\u0006/g, (_, i) => held[i]);
 }
@@ -10220,7 +10252,8 @@ function orgRows() {
 }
 // Organisations use the same chooser, blank-last sorter and phone cards as People.
 const ORG_TABLE_ZH = {
-  "Kind": "类别", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
+  "By structure": "按结构", "Flat": "平铺", "List layout": "列表布局", "Subordinate units": "下属单位", "{n} units · {m} people": "{n} 个下属单位 · {m} 人",
+  "Kind": "类别", "Unclassified": "未分类", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
   "company": "公司", "service": "服务", "team": "团队", "course": "课程", "event": "活动",
   "club": "社团",
   "Filter organisations, people, domains": "搜索组织、联系人或域名",
@@ -10230,7 +10263,8 @@ function orgTableT(key, values = {}) {
 }
 let orgTableColumns = null;
 const ORG_SORT = { sort: "last", desc: true, text: "" };
-const orgExpanded = new Set();
+let orgListMode = "tree";
+let orgCollapsed = new Set();
 function orgFact(r, key, raw = false) {
   const fields = parseFacts(r).get(key) || r.facts?.[key] || [];
   return fields.map(f => raw ? unlabelled(f.value) : plainValue(f.value)).filter(v => v && !/^unknown\b/i.test(v)).join("; ");
@@ -10269,26 +10303,39 @@ function orgTableRow(o) {
   return { ...o, rel, website: hidden ? null : orgWebsite(r, people),
     first: hidden ? "" : dates[0] || "", last: hidden ? "" : [o.last, rel?.last_mail?.slice(0, 10)].filter(Boolean).sort().at(-1) || "",
     kind: hidden ? "" : r.unit_kind || r.kind || orgFact(r, "Kind"),
-    summary: hidden ? "" : orgFact(r, "What they do") || orgRelation(r),
+    summary: hidden ? "" : orgSummary(orgFact(r, "What they do")) || orgSummary(orgRelation(r)),
     location: hidden ? "" : orgFact(r, "Location"), legal: hidden ? "" : orgFact(r, "Legal entity"),
     text: [orgName(r), hidden ? "" : [orgRelation(r), ...people.map(p => p.title), ...(o.units || []), r.domain || ""].join(" ")].join(" ").toLowerCase() };
 }
-function orgVisibleRows(rows, expanded, depth = 0, seen = new Set()) {
+function orgVisibleRows(rows, collapsed, depth = 0, seen = new Set()) {
   return rows.flatMap(d => {
     if (seen.has(d.r.path)) return [];
     seen.add(d.r.path);
-    return [{...d, depth, expanded: expanded.has(d.r.path)}, ...(expanded.has(d.r.path) ? orgVisibleRows(d.children || [], expanded, depth + 1, seen) : [])];
+    const expanded = !collapsed.has(d.r.path);
+    return [{...d, depth, expanded}, ...(expanded ? orgVisibleRows(d.children || [], collapsed, depth + 1, seen) : [])];
   });
 }
 function orgNameCell(d, draw) {
   const {r} = d, hidden = orgHidden(r);
   const logo = !hidden && /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(r.logo || "")
     ? el("img", {class: "org-logo", src: r.logo, alt: ""}) : orgTile(r, "org-logo");
-  const toggle = d.children?.length ? el("button", {type: "button", class: "org-disclosure", "aria-label": orgTableT("Units and people") + " · " + orgName(r),
+  const toggle = !d.flat && d.children?.length ? el("button", {type: "button", class: "org-disclosure", "aria-label": orgTableT("Units and people") + " · " + orgName(r),
     "aria-expanded": String(!!d.expanded), text: d.expanded ? "▾" : "▸"}) : null;
-  if (toggle) toggle.onclick = () => { orgExpanded.has(r.path) ? orgExpanded.delete(r.path) : orgExpanded.add(r.path); draw(); };
+  if (toggle) toggle.onclick = () => {
+    const collapsed = d.expanded;
+    d.expanded = !collapsed;
+    for (const paths of [orgCollapsed, ORG_SORT.search?.collapsed].filter(Boolean)) {
+      collapsed ? paths.add(r.path) : paths.delete(r.path);
+    }
+    readerStorage("co-rem-org-collapsed", [...orgCollapsed].join("\n"));
+    draw();
+  };
+  const summary = d.unitCount && !hidden ? el("small", {class: "org-unit-summary", text: orgTableT("{n} units · {m} people", {n: d.unitCount, m: d.people.length})}) : null;
+  const path = d.flat && d.ancestors?.length ? el("small", {class: "org-unit-path", text: [...d.ancestors, orgName(r)].join(" › ")}) : null;
+  const guides = Array.from({length: d.depth || 0}, (_, i) => el("span", {class: "org-tree-guide", "aria-hidden": "true", style: `left:${i * 18 + 8}px`}));
+  const disclosure = toggle || (!d.flat ? el("span", {class: "org-disclosure-space", "aria-hidden": "true"}) : null);
   return el("span", {class: "nm org-table-name", style: `padding-left:${(d.depth || 0) * 18}px`},
-    [toggle, logo, el("a", {href: href(r), text: orgName(r)}), hidden ? orgLock() : null]);
+    [...guides, disclosure, logo, el("span", {class: "org-name-text"}, [el("a", {href: href(r), text: orgName(r)}), summary, path]), hidden ? orgLock() : null]);
 }
 function orgWebsiteCell(d) {
   return d.website ? el("span", {class: "org-site"}, [el("a", {href: d.website.url, target: "_blank", rel: "noopener",
@@ -10302,10 +10349,12 @@ const ORG_COLUMNS = [
   {key: "location", label: "Location", sort: d => blank(d.location), cell: d => textCell(d.location)},
   {key: "people", label: "People known there", num: true, desc: true, sort: d => orgHidden(d.r) ? null : d.people.length,
     cell: d => orgHidden(d.r) ? textCell("") : el("span", {class: "mono", text: String(d.people.length)})},
-  {key: "activity", label: "Activity", desc: true, sort: d => blank(d.rel?.messages_90d), cell: d => d.rel ? el("span", {class: "org-activity"},
+  {key: "activity", label: "Activity", desc: true, sort: d => d.rel?.messages_90d || null, cell: d => d.rel?.messages_90d ? el("span", {class: "org-activity"},
     [el("span", {class: "mono", text: orgTableT("{n} messages · 90 days", {n: d.rel.messages_90d})})]) : textCell("")},
   {key: "last", label: "Last contact", desc: true, sort: d => blank(d.last), cell: d => d.last ? el("span", {class: "mono", text: calendarDate(d.last)}) : textCell("")},
   {key: "first", label: "First contact", extra: true, sort: d => blank(d.first), cell: d => d.first ? el("span", {class: "mono", text: calendarDate(d.first)}) : textCell("")},
+  {key: "units", label: "Subordinate units", extra: true, num: true, desc: true, sort: d => orgHidden(d.r) ? null : d.unitCount,
+    cell: d => orgHidden(d.r) ? textCell("") : el("span", {class: "mono", text: String(d.unitCount)})},
   {key: "legal", label: "Legal entity", extra: true, sort: d => blank(d.legal), cell: d => textCell(d.legal)},
   {key: "parent", label: "Parent", extra: true, sort: d => blank(byPath(d.r.parent)?.title), cell: d => byPath(d.r.parent) ? el("a", {href: href(byPath(d.r.parent)), text: orgName(byPath(d.r.parent))}) : textCell("")}
 ];
@@ -10315,7 +10364,9 @@ function orgTableChildren(d, seen = new Set()) {
   return d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path)).map(r => {
     const people = orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
+    child.ancestors = [...(d.ancestors || []), orgName(d.r)];
     child.children = orgTableChildren(child, next);
+    child.unitCount = child.children.length;
     return child;
   });
 }
@@ -10323,9 +10374,8 @@ function orgsView() {
   document.getElementById("main").textContent = "";
   orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS);
   const rows = orgRows().map(orgTableRow);
-  for (const d of rows) d.children = orgTableChildren(d);
+  for (const d of rows) { d.children = orgTableChildren(d); d.unitCount = d.children.length; }
   if (orgFilter.tab !== "all" && !rows.some(d => [d, ...orgDescendants(d)].some(child => child.kind === orgFilter.tab))) orgFilter.tab = "all";
-  let previousFilter = "";
   peopleView([], {category: "orgs", translate: orgTableT,
     widths: {name: 20, kind: 8, summary: 22, website: 13, location: 13, people: 6, activity: 10, last: 8, first: 9, legal: 16, parent: 14}, columns: ORG_COLUMNS, state: ORG_SORT, rows,
     chosen: () => orgTableColumns, choose: keys => { orgTableColumns = keys; }, storage: "co-rem-org-columns",
@@ -10333,18 +10383,37 @@ function orgsView() {
     className: "ov-list org-directory", tableClass: "org-table", rowClass: "org-table-row",
     title: orgTableT("{n} organisations", {n: rows.length}), placeholder: "Filter organisations, people, domains",
     matches: (d, needle) => orgFilterRows([d], orgFilter.tab, needle).length > 0,
-    visible: (shown, col, state) => {
-      const sort = list => { for (const d of list) { d.keys = {[col.key]: col.sort(d)}; sort(d.children || []); } list.sort(peopleOrder(col, state.desc)); };
-      const needle = state.text.trim().toLowerCase();
-      const filtered = orgFilterRows(shown, orgFilter.tab, needle);
-      sort(filtered);
-      const filter = JSON.stringify([orgFilter.tab, needle]);
-      if (filter !== previousFilter && (orgFilter.tab !== "all" || needle)) {
-        for (const d of filtered.flatMap(d => [d, ...orgDescendants(d)])) if (d.children.length) orgExpanded.add(d.r.path);
-      }
-      previousFilter = filter;
-      return orgVisibleRows(filtered, orgExpanded);
-    }, filters: draw => orgKindFilters(rows, draw)});
+    visible: orgListRows, filters: draw => orgListControls(rows, draw)});
+  const directory = document.querySelector(".org-directory");
+  // Capture the user's sort intent, including clicking the already selected Last contact.
+  directory.addEventListener("click", event => { if (event.target.closest("th button")) orgListMode = "flat"; }, true);
+  directory.addEventListener("change", event => { if (event.target.matches(".people-sort")) orgListMode = "flat"; }, true);
+}
+function orgListRows(rows, col, state) {
+  const all = rows.flatMap(d => [d, ...orgDescendants(d)]);
+  for (const d of all) d.keys = {[col.key]: col.sort(d)};
+  const order = list => list.sort(peopleOrder(col, state.desc));
+  const needle = state.text.trim().toLowerCase();
+  if (state.search?.text !== needle) state.search = {text: needle, collapsed: new Set()};
+  document.querySelectorAll(".org-layout-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === orgListMode)));
+  if (orgListMode === "flat") return order(all.filter(d => (orgFilter.tab === "all" || d.kind === orgFilter.tab) && (!needle || d.text.includes(needle))))
+    .map(d => ({...d, flat: true, depth: 0}));
+  const sortTree = list => order(list).map(d => ({...d, children: sortTree(d.children || [])}));
+  const filtered = sortTree(orgFilterRows(rows, "all", needle));
+  return orgVisibleRows(filtered, needle ? state.search.collapsed : orgCollapsed);
+}
+function orgListControls(rows, draw) {
+  const layout = el("div", {class: "org-layout-switch", role: "group", "aria-label": orgTableT("List layout")});
+  for (const [mode, label] of [["tree", "By structure"], ["flat", "Flat"]]) {
+    const button = el("button", {type: "button", "data-mode": mode, "aria-pressed": String(orgListMode === mode), text: orgTableT(label)});
+    button.onclick = () => {
+      orgListMode = mode;
+      if (mode === "tree") { orgFilter.tab = "all"; ORG_SORT.sort = "last"; ORG_SORT.desc = true; orgsView(); }
+      else draw();
+    };
+    layout.append(button);
+  }
+  return el("div", {class: "org-list-controls"}, [layout, orgKindFilters(rows, draw)]);
 }
 function orgFilterRows(rows, kind, needle) {
   return rows.flatMap(d => {
@@ -10355,13 +10424,13 @@ function orgFilterRows(rows, kind, needle) {
 }
 function orgDescendants(d) { return (d.children || []).flatMap(child => [child, ...orgDescendants(child)]); }
 function orgKindFilters(rows, draw) {
-  const kinds = [...new Set(rows.flatMap(d => [d, ...orgDescendants(d)]).map(d => d.kind).filter(Boolean))].sort();
+  const kinds = [...new Set(rows.flatMap(d => [d, ...orgDescendants(d)]).map(d => d.kind))].sort();
   const bar = el("div", {class: "org-kind-filters", role: "group", "aria-label": orgTableT("Kind")});
   const tabs = ["all", ...kinds];
   if (!tabs.includes(orgFilter.tab)) orgFilter.tab = "all";
   bar.append(...tabs.map(kind => {
-    const button = el("button", {type: "button", "aria-pressed": String(orgFilter.tab === kind), text: kind === "all" ? orgTableT("All") : orgTableT(ORG_KINDS[kind] || kind)});
-    button.onclick = () => { orgFilter.tab = kind; bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button))); draw(); };
+    const button = el("button", {type: "button", "aria-pressed": String(orgFilter.tab === kind), text: kind === "all" ? orgTableT("All") : orgTableT(ORG_KINDS[kind] || kind || "Unclassified")});
+    button.onclick = () => { orgFilter.tab = kind; orgListMode = "flat"; bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button))); draw(); };
     return button;
   }));
   return bar;
@@ -10452,8 +10521,10 @@ function orgStage(v) {
       translationLine(r), orgOpening(v)]), orgTree(v)]);
 }
 function orgOpening(v) {
-  const summary = known(v.r).summary || "", relation = orgRelation(v.r);
-  const first = [facts(v.r).first, ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
+  const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
+  // Mapped organisations often have no History: their contacts still carry mail/index dates.
+  const first = [...[v.r, ...v.people].flatMap(p => [facts(p).first, orgFact(p, "First contact")]),
+    ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
   const last = [known(v.r).last, ...v.people.map(orgLast), ...v.events.map(e => e.day)].filter(Boolean).sort().at(-1);
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
   const count = uiLanguage === "zh" ? `你认识这里的 ${v.people.length} 个人。` : `You know ${v.people.length} ${v.people.length === 1 ? "person" : "people"} here. `;
@@ -10592,10 +10663,13 @@ function orgConnections(v) {
   const pages = [...new Set(paths)].map(byPath).filter(p => p && p.path !== v.r.path && ["projects", "orgs", "knowledge"].includes(p.category) && !orgHidden(p));
   if (!pages.length) return null;
   return el("section", { class: "ov-connections" }, [el("h2", { text: uiLanguage === "zh" ? "关联" : "Connections" }),
-    ...pages.map(p => el("p", {}, [el("a", { href: href(p), text: p.title }), known(p).summary ? " — " : "", orgProse(known(p).summary)]))]);
+    ...pages.map(p => {
+      const summary = orgSummary(known(p).summary);
+      return el("p", {}, [el("a", { href: href(p), text: p.title }), ...(summary ? [" — ", orgProse(summary)] : [])]);
+    })]);
 }
 function orgCoda(v) {
-  const fact = name => (parseFacts(v.r).get(name) || []).map(item => plainLine(item.value, true)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
+  const fact = name => (parseFacts(v.r).get(name) || []).map(item => orgSummary(plainLine(item.value, true))).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
   const what = fact("What they do"), place = fact("Location"), website = orgWebsite(v.r, v.people || [])
     || (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(v.r.domain || "") ? {url: "https://" + v.r.domain} : null);
   const row = (label, value) => value ? el("div", {}, [el("dt", {text: label}), el("dd", {}, [value])]) : null;
@@ -10990,7 +11064,12 @@ function sessionRow(group, terms) {
 function sessionCurtain(groups, terms) {
   const count = groups.reduce((n, group) => n + group.length, 0);
   const row = el("li", { class: "session-row session-curtain" });
-  const show = sessionButton("Show", () => row.replaceWith(...groups.map(group => sessionRow(group, terms))), { class: "session-curtain-show" });
+  row.dataset.sessionDay = groups[0][0].session_date || "";
+  const show = sessionButton("Show", () => row.replaceWith(...groups.map(group => {
+    const revealed = sessionRow(group, terms);
+    revealed.dataset.revealedSession = row.dataset.sessionDay;
+    return revealed;
+  })), { class: "session-curtain-show" });
   row.append(el("span", { class: "session-state lock", "aria-hidden": "true" }), el("div", { class: "session-card-content" }, [
     el("span", { class: "session-title", text: t(count === 1 ? "{n} personal session" : "{n} personal sessions", { n: count }) }),
     el("div", { class: "session-meta", text: sessionPlace(groups[0][0]) + " · " + t("Shown only on this Mac") })]), show);
@@ -13790,6 +13869,8 @@ function reloadChoice({ latest, asOf, typing, unsaved }) {
 function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
 function viewState() {
   return { hash: location.hash, y: scrollY, fields: keptFields(),
+    talks: [...OPEN_TALKS].map(([key, panel]) => [key, panel.talkBegin]),
+    revealedSessions: [...document.querySelectorAll("[data-revealed-session]")].map(node => node.dataset.revealedSession),
     open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
 }
 // Every field the owner types into carries a stable key (data-keep: the slot, the talk, the review);
@@ -13861,6 +13942,10 @@ let pendingRestore = (() => {
   try {
     const saved = JSON.parse(sessionStorage.getItem(RELOAD_STATE) || "null");
     sessionStorage.removeItem(RELOAD_STATE);
+    // The row's panel nodes survived redraws, but a newer document needs to reopen them before rendering rows.
+    if (saved?.hash === location.hash && liveHere()) {
+      for (const [key, begin] of saved.talks || []) OPEN_TALKS.set(key, talkPanel(begin));
+    }
     return saved;
   } catch (error) {
     return null;
@@ -13870,6 +13955,11 @@ function restoreView(state) {
   if (!state || state.hash !== location.hash) return false;
   const open = new Set(state.open || []);
   document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) { node.open = true; node.fill?.(); } });
+  // A deferred redraw after the search loses focus must keep an explicit Show.
+  const revealed = new Set(state.revealedSessions || []);
+  document.querySelectorAll(".session-curtain").forEach(node => {
+    if (revealed.has(node.dataset.sessionDay)) node.querySelector("button").click();
+  });
   restoreFields(state.fields);
   scrollTo(0, state.y || 0);
   return true;
@@ -13912,10 +14002,11 @@ window.addEventListener("hashchange", render);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
 Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
-  readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved]) => {
+  readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns"), readerStorage("co-rem-org-collapsed")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved, collapsed]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   peopleColumns = peopleColumnKeys(columns);
   orgTableColumns = peopleColumnKeys(orgSaved, ORG_COLUMNS);
+  orgCollapsed = new Set((collapsed || "").split("\n").filter(Boolean));
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   keptOpen = kept ? JSON.parse(kept) : {};
   const fallback = saved ? JSON.parse(saved) : null;

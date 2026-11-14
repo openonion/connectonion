@@ -39,7 +39,7 @@ def test_org_units_expand_recursively_without_duplicates():
       console.log(JSON.stringify([orgVisibleRows([root],new Set()),
         orgVisibleRows([root],new Set(['root','child']))].map(rows=>rows.map(d=>[d.r.path,d.depth]))));
     ''')
-    assert result == [[['root', 0]], [['root', 0], ['child', 1], ['leaf', 2]]]
+    assert result == [[['root', 0], ['child', 1], ['leaf', 2]], [['root', 0]]]
 
 
 @pytest.mark.parametrize('value', ['logos/fern.png', 'https://example.com/logo.png', '../escape.png', 'logos/link.png'])

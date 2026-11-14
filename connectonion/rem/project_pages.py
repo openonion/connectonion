@@ -242,44 +242,31 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     return count
 
 
-# Sources whose date is something someone did on the project: a session message,
-# a mail, a chat, the commit history. A snapshot's date is when it was read and a
-# file's is when it was saved, so neither is activity (their items say so).
-ACTIVITY_SOURCES = ("codex:", "claude-code:", "gmail:", "outlook:", "email:", "whatsapp:")
+# The page's dated sources define activity consistently across all project kinds.
 DATED_SOURCE = re.compile(r"^[ \t]*- \[(\d+)\][ \t]+([a-z][\w-]*:\S+) — (\d{4}-\d{2}-\d{2})", re.M)
 LAST_ACTIVITY = re.compile(r"^- Last activity:[ \t]*(.*)$", re.M)
 
 
-def _activity(root: Path, source: str, given: dict) -> bool:
-    if source.startswith(ACTIVITY_SOURCES):
-        return True
-    if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
-        return False
-    kept = given.get(source) or read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
-    return str(kept.get("origin", "")).endswith(":recent-commits")
-
-
 def settle_last_activity(root: Path, text: str, items=()) -> str:
-    """Last activity is at least the newest dated activity in the page's own Sources (#2952).
-
-    The model cited one source of its choosing, so a page said "quiet since
-    1 October" above a session of 20 October. A later model-chosen day stays, and
-    an `Unknown` stays for the reader, which then dates the project by its newest source."""
+    """Compute Last activity from the newest dated source, independent of the model."""
     from .facts import _bounds
+    from .project_obligations import iso_day
     span = _bounds(text, "Facts")
     line = LAST_ACTIVITY.search(text, *span) if span else None
     if not line:
         return text
-    given = {item["source"]: item for item in items if item.get("source")}
     sources = text.partition("\n## Sources\n")[2]
-    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if _activity(root, source, given)]
+    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if iso_day(day)]
     if not dated:
         return text
     day, number = max(dated)
-    written = re.match(r"\d{4}-\d{2}-\d{2}", line[1])
-    if not written or written[0] >= day:
-        return text
-    return text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+    after = text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+    # A model's old "quiet since" claim contradicts newer evidence; do not infer
+    # another status from a date alone. Only touch this narrowly dated claim.
+    span = _bounds(after, "Facts")
+    body = re.sub(r"(?m)^- Status: quiet since (\d{4}-\d{2}-\d{2})[^\n]*$",
+                  lambda match: "- Status: Unknown" if match[1] < day else match[0], after[span[0]:span[1]])
+    return after[:span[0]] + body + after[span[1]:]
 
 
 def refresh_last_activity(root: Path) -> list[str]:
