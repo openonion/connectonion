@@ -2989,6 +2989,204 @@ from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
 
 
+# Obsidian: local Markdown notes with explicit folder selection.
+obsidian_app = _typer_app(
+    help="Browse Obsidian vaults and list, read, search, create, or append to Markdown notes.\n\n"
+         "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
+         "The list is read-only. Next suggests a command to browse a vault. "
+         "Use --folder to choose where to look for notes.\n\n"
+         "Create and append show a preview. Run the preview's Next command to save the change. "
+         "All Obsidian commands run locally without AI calls.\n\n"
+         "Exit 0 includes an empty list. Exit 1 cannot read the vault list. "
+         "Exit 2 wrong argument. Follow Next on errors.",
+    epilog='Example:  co obsidian\n\n'
+           'Example:  co obsidian notes --vault "Personal" --folder "Course"',
+    invoke_without_command=True,
+)
+app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.callback(invoke_without_command=True)
+def _obsidian_default(ctx: typer.Context):
+    """List all registered vaults when no Obsidian subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.obsidian_commands import handle_obsidian_vaults
+        handle_obsidian_vaults()
+
+
+@obsidian_app.command("vaults", epilog="Example:  co obsidian vaults\n\nExample:  co obsidian vaults --json")
+def _obsidian_vaults(json_output: bool = typer.Option(False, "--json", help="Print all registered vault records as JSON; Next goes to stderr")):
+    """List numbered vaults with their paths, availability and open status. Read-only.
+
+    Checks which vault folders exist without opening notes. A closed vault
+    can still be read. Next shows a command to browse the first available vault.
+    Use a listed number within 15 minutes, or pass a unique name or path to
+    co obsidian ls --vault.
+
+    Exit 0 includes an empty list. Open a vault in Obsidian or give ls its path.
+    Exit 1 cannot read the vault list. Follow Next. Exit 2 wrong argument.
+    Check this help for valid options.
+    """
+    from .commands.obsidian_commands import handle_obsidian_vaults
+    handle_obsidian_vaults(json_output=json_output)
+
+
+@obsidian_app.command("ls", short_help="List a vault's folders or the Markdown notes in selected folders. Read-only.",
+                      epilog='Example:  co obsidian ls --vault 1\n\n'
+                             'Example:  co obsidian ls --vault "Personal" --folder 1')
+@obsidian_app.command("notes", epilog='Example:  co obsidian notes --vault "Personal" --folder "Course" -n 20')
+def _obsidian_notes(
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault row, unique registered name, or path; omit when only one is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Folder row or vault-relative path; repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many notes, most recently modified first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print the result as JSON; no row numbers are saved"),
+):
+    """List a vault's folders or the Markdown notes in selected folders. Read-only.
+
+    ls is an alias for notes with the same options and output.
+    With no --folder, shows only folders and Markdown filenames at the top of
+    the vault. When folders are shown, Next suggests a command to list notes
+    in the first folder.
+    Use folder rows from that vault's latest list, or paths such as Course.
+    Use ./1 for a folder literally named 1.
+
+    With --folder, shows the latest 20 notes by default. Use -n up to 250.
+    Numbered rows show filenames, with a parent path when a name repeats.
+    Row numbers work for 15 minutes. JSON output does not save them.
+
+    Exit 0 includes an empty list; try another authorized folder or search.
+    Exit 1 could not read a file or vault, or save the list. Follow Next.
+    Exit 2 wrong argument, scope or ambiguous vault; check help and select again.
+    """
+    from .commands.obsidian_commands import handle_obsidian_notes
+    handle_obsidian_notes(vault=vault, folders=folders or (), last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("read", epilog='Example:  co obsidian read 1\n\n'
+                                    'Example:  co obsidian read "Course/Note.md" --vault "Personal" --folder "Course"')
+def _obsidian_read(
+    ref: str = typer.Argument(..., help="Note path, exact filename title, or row number from notes/search"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path for an explicit scope"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder; required for a note path or title; repeat to select several"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID shown by notes, ls or search (lasts 15 minutes)"),
+    json_output: bool = typer.Option(False, "--json", help="Print the full note record as JSON"),
+    raw: bool = typer.Option(False, "--raw", help="Show original Markdown in a terminal"),
+):
+    """Read a note by row number, path or exact filename title. Read-only.
+
+    Use a row from the latest notes, ls or search list within 15 minutes.
+    The command shown after Next uses the same list even if you list again.
+    If you give a vault or folders with a row, they must match the list.
+    For a path or title, give --folder and choose --vault if several vaults
+    are available.
+
+    The terminal shows formatted Markdown. Use --raw for the original text
+    or --json for the full note record. Piped output is raw by default.
+    Next appears on stderr, outside the piped note output.
+
+    Exit 0 success. Exit 1 cannot read or identify the note. Follow Next or
+    use its exact path. Exit 2 wrong argument, scope, vault or expired row.
+    Follow Next to correct the scope or list again.
+    """
+    from .commands.obsidian_commands import handle_obsidian_read
+    handle_obsidian_read(ref, vault=vault, folders=folders or (), listing=listing, json_output=json_output, raw=raw)
+
+
+@obsidian_app.command("search", epilog='Example:  co obsidian search "logic lecture" --vault "Personal" --folder "Course"')
+def _obsidian_search(
+    query: str = typer.Argument(..., help="All terms must match; quote phrases inside the query for an exact phrase"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many matches, title matches first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print search hits as JSON; no row numbers are saved"),
+):
+    """Search selected notes across title, body, tags, properties and links. Read-only.
+
+    All query terms must match, ignoring case. The example finds notes matching
+    both logic and lecture. Quotes inside the query keep a phrase together.
+    A query can match any field. Use co obsidian read with --json to check
+    a tag, property or link in a matching note.
+
+    Shows at most 20 matches by default, with title matches first. Row numbers
+    work for 15 minutes. JSON output does not save them. Repeat --folder to
+    search several folders.
+
+    Exit 0 includes no matches; revise the query within the selected scope.
+    Exit 1 could not read a file or vault, or save the list. Follow Next.
+    Exit 2 wrong argument, scope, vault or query; correct it using help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_search
+    handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("create", epilog='Example:  co obsidian create "Course/lecture.md" '
+                                      '--vault "Personal" --folder "Course" --content "Lecture notes"')
+def _obsidian_create(
+    note_path: str = typer.Argument(..., help="Vault-relative .md path; parent folder must already exist"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    yes: bool = typer.Option(False, "--yes", help="Create the note; otherwise preview without writing"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Value from the preview that checks for changes before writing"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Create a Markdown note in an existing folder; previews until --yes. Writes one note.
+
+    The path is relative to the vault and must be inside the selected folders.
+    Never overwrites an existing note or creates missing parent folders.
+    Symlinks and .obsidian, .trash and .git directories are refused.
+    Empty content is allowed. Does not make external AI or model calls.
+
+    Run the command shown after Next in the preview to save the note. Its
+    --expect value checks that the target, folders and text still match the
+    preview. For --content -, pipe the same text to the command again.
+
+    Exit 0 preview or successful write; verify a write with the printed read
+    command. Exit 1 file, availability or version failure; follow Next and
+    re-read or preview again. Exit 2 wrong argument or unsafe scope; check help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("create", note_path, content, vault=vault, folders=folders,
+                          yes=yes, expect=expect, json_output=json_output)
+
+
+@obsidian_app.command("append", epilog='Example:  co obsidian notes --vault "Personal" --folder "Course"\n\n'
+                                      'Example:  co obsidian append 1 --content "Review complete"')
+def _obsidian_append(
+    note_path: str = typer.Argument(..., help="Note row number for a preview, or a vault-relative path"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text to append; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; omit for a numbered row or when one vault is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder, required for a note path; repeat to select several; '.' selects the whole vault"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Use the rows from a specific notes, ls or search list (lasts 15 minutes)"),
+    yes: bool = typer.Option(False, "--yes", help="Write to a note path. For a row, preview and run the command shown after Next"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Value from the preview that checks for changes before writing"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Append to an existing Markdown note. It previews until --yes. Writes one note.
+
+    Pick a row such as 1 from the latest notes, ls or search list. The list
+    supplies the vault and folders for the preview. Rows last 15 minutes;
+    use --listing to choose a specific list.
+
+    Keeps the original text and frontmatter. Adds a line break if needed,
+    using the note's line endings. Empty input changes nothing.
+
+    Run the command shown after Next in the preview to save the change. Its
+    --expect value checks that the note, folders and text still match the
+    preview. For --content -, pipe the same text to the command again.
+
+    Exit 0 preview or success. Read the note to verify a write or check an
+    interrupted append. Exit 1 missing note, stale preview or failed write.
+    Follow Next to fix the cause or preview again. Exit 2 wrong argument or
+    unsafe scope. Check this help for valid options.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("append", note_path, content, vault=vault, folders=folders or (),
+                          yes=yes, expect=expect, json_output=json_output, listing=listing)
+
+
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
     help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",

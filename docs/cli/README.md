@@ -538,6 +538,15 @@ See [linear.md](linear.md).
 
 ---
 
+#### `co obsidian` - Browse and edit local Obsidian notes
+
+Run `co obsidian` to list registered vaults and `co obsidian ls --vault 1` to
+see the folders in the first vault. Choose a folder with `--folder`, then
+read or search its Markdown notes. Create and append show a preview before
+writing. See the [Obsidian command guide](obsidian.md) for examples.
+
+---
+
 #### `co onenote` - Browse OneNote by number
 
 After `co auth microsoft`, run `co onenote ls` to see numbered sections,
