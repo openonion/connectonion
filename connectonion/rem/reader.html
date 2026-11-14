@@ -13168,20 +13168,24 @@ const LOCAL_GLYPH = {
 // mark, far and face are ink heights in px; width is the relationships widget's inner width; a person with at most
 // `rings` direct links gets the outer ring, which holds at most `second` records.
 const LOCAL = { mark: 16, far: 10, face: 36, width: 372, rings: 6, second: 12 };
-function graphRings(r, related = null, width = LOCAL.width) {
+function graphRings(r, related = null) {
   const model = graphModel(), centre = model.byId.get(r.path);
   const head = () => el("div", { class: "wt" }, [icon("graph"), el("h4", { text: t("Relationships") })]);
   if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-rings" }, [head(), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
   const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
     .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
   const reach = r.category === "people" && ring.length <= LOCAL.rings ? localReach(model, r, ring) : [], far = reach.slice(0, LOCAL.second);
-  const W = width, H = far.length ? 270 : 180, pos = localLayout(centre, ring, far, W, H);
+  const W = LOCAL.width, H = far.length ? 270 : 180, pos = localLayout(centre, ring, far, W, H);
   const named = new Set(ring.length <= 8 ? ring.map(n => n.id) : [...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 6).map(n => n.id));
   const line = (a, b, cls) => svgEl("line", { x1: pos.get(a.id).x.toFixed(1), y1: pos.get(a.id).y.toFixed(1), x2: pos.get(b.id).x.toFixed(1), y2: pos.get(b.id).y.toFixed(1),
     "data-a": a.id, "data-b": b.id, class: [cls, a.k === "knowledge" || b.k === "knowledge" ? "topic" : ""].filter(Boolean).join(" ") });
   const lines = [...ring.map(n => line(centre, n, "")), ...far.flatMap(({ n, via }) => via.map(id => line(model.byId.get(id), n, "far")))];
   const says = n => localSays(localWhy(r, n, far));
-  const marks = [...far.map(({ n }) => localMark(n, pos.get(n.id), LOCAL.far, true, false, says(n))), ...ring.map(n => localMark(n, pos.get(n.id), LOCAL.mark, false, named.has(n.id), says(n)))];
+  const names = [...far.map(({ n }) => localName(n, pos.get(n.id), LOCAL.far, true, false)), ...ring.map(n => localName(n, pos.get(n.id), LOCAL.mark, false, !named.has(n.id)))];
+  const obstacles = [...pos.entries()].map(([id, q]) => ({ x: q.x, y: q.y, r: id === centre.id ? LOCAL.face / 2 : (ring.some(n => n.id === id) ? LOCAL.mark : LOCAL.far) / 2 }));
+  const placed = new Map(localPlace(names.filter(Boolean), W, obstacles).map(name => [name.id, name]));
+  const marks = [...far.map(({ n }) => localMark(n, pos.get(n.id), LOCAL.far, true, says(n), placed.get(n.id))),
+    ...ring.map(n => localMark(n, pos.get(n.id), LOCAL.mark, false, says(n), placed.get(n.id)))];
   // The picture is as tall as what it holds: a record with two links does not leave an empty band.
   const ys = [...pos.values()].map(p => p.y), top = Math.max(0, Math.min(...ys) - 34), tall = Math.min(H, Math.max(...ys) + 34) - top;
   const svg = svgEl("svg", { class: "gx-rings-svg", width: W, height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}`, role: "img", "aria-label": t("Relationships") },
@@ -13193,13 +13197,8 @@ function graphRings(r, related = null, width = LOCAL.width) {
   const section = el("section", { class: "gx-rings" }, [head(), svg,
     el("div", { class: "gx-rings-foot" }, [el("span", { text: counted }), el("span", { class: "gx-rings-links" }, [all,
       el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]), el("div", { class: "gx-rings-card" })]);
+  // Drawn once, in viewBox units: CSS scales the picture, marks and names together, to the width it is shown at.
   localWire(section, r, ring, far);
-  // Drawn at the width it is shown at, so a mark is 16px and a name 13px in a narrow cell or on a phone too.
-  requestAnimationFrame(() => {
-    const shown = svg.isConnected ? Math.round(svg.getBoundingClientRect().width) : W;
-    if (shown > 0 && Math.abs(shown - W) > 8) section.replaceWith(graphRings(r, related, shown));
-    else localFit(svg);
-  });
   return section;
 }
 // The second ring: records one step past the first, each with the first-ring records it is reached through, latest first.
@@ -13243,16 +13242,41 @@ function localGlyph(n, x, y, size) {
   return svgEl("g", {}, [path, svgEl("path", { class: "slash", d: graphSlash(x, y, size * .4) })]);
 }
 // A first-ring name sits under its mark; a second-ring name leans away from the middle and shows only when lit.
-function localLabel(n, p, half, far, quiet) {
-  const c = Math.cos(p.a), s = Math.sin(p.a), side = far && Math.abs(c) > .1;
-  return svgEl("text", { class: quiet ? "quiet" : "", "text-anchor": side ? (c > 0 ? "start" : "end") : "middle",
-    x: (side ? p.x + Math.sign(c) * (half + 6) : p.x).toFixed(1), y: (side ? p.y + 4 : far && s < 0 ? p.y - half - 7 : p.y + half + 15).toFixed(1),
-    "data-x": p.x.toFixed(1), "data-y": p.y.toFixed(1), "data-h": half, "data-rank": graphDegree(n) }, [document.createTextNode(graphShort(graphTitle(n), far ? 16 : 24))]);
+function localName(n, p, size, far, quiet) {
+  if (n.private) return null;
+  const c = Math.cos(p.a), s = Math.sin(p.a), half = size / 2, side = far && Math.abs(c) > .1;
+  return { id: n.id, text: graphShort(graphTitle(n), far ? 16 : 24), px: far ? 11 : 13, mx: p.x, my: p.y, half, far, quiet, rank: graphDegree(n),
+    anchor: side ? (c > 0 ? "start" : "end") : "middle", x: side ? p.x + Math.sign(c) * (half + 6) : p.x, y: side ? p.y + 4 : far && s < 0 ? p.y - half - 7 : p.y + half + 15 };
 }
-function localMark(n, p, size, far, named, says) {
+// A name's width without a browser: about .55em a letter, a full em for a wide (CJK) character.
+function localWidth(text, px) {
+  return [...text].reduce((w, ch) => w + (/[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3ffff}]/u.test(ch) ? px : px * .55), 0);
+}
+// Where the names go, from the widget's width alone: one that would cross a side moves under its mark and inside;
+// then, best-linked first, a first-ring name that would cover a mark or a name already placed waits to be lit.
+// marks: [{ x, y, r }] in the same units; a name never covers its own mark, which sits above it.
+function localPlace(names, W, marks = []) {
+  const out = names.map(name => {
+    const w = localWidth(name.text, name.px), left = name.anchor === "start" ? name.x : name.anchor === "end" ? name.x - w : name.x - w / 2;
+    if (left >= 0 && left + w <= W) return { ...name, w };
+    return { ...name, w, anchor: "middle", y: name.my + name.half + 15, x: Math.min(W - w / 2, Math.max(w / 2, name.mx)) };
+  });
+  const boxes = marks.map(m => ({ l: m.x - m.r, r: m.x + m.r, t: m.y - m.r, b: m.y + m.r }));
+  for (const name of out.filter(name => !name.far && !name.quiet).sort((a, b) => b.rank - a.rank)) {
+    const l = name.anchor === "start" ? name.x : name.anchor === "end" ? name.x - name.w : name.x - name.w / 2;
+    const box = { l, r: l + name.w, t: name.y - name.px, b: name.y + name.px * .3 };
+    if (boxes.some(o => box.l < o.r + 4 && o.l < box.r + 4 && box.t < o.b && o.t < box.b)) name.quiet = true;
+    else boxes.push(box);
+  }
+  return out;
+}
+function localLabel(name) {
+  return svgEl("text", { class: name.quiet ? "quiet" : "", "text-anchor": name.anchor, x: name.x.toFixed(1), y: name.y.toFixed(1) }, [document.createTextNode(name.text)]);
+}
+function localMark(n, p, size, far, says, name) {
   return svgEl("a", { class: far ? "far" : "near", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), "data-id": n.id, "aria-label": says }, [
     svgEl("circle", { class: "hit", cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: far ? 11 : 14 }),
-    localGlyph(n, p.x, p.y, size), n.private ? null : localLabel(n, p, size / 2, far, !far && !named)]);
+    localGlyph(n, p.x, p.y, size), name ? localLabel(name) : null]);
 }
 // The record itself: a person is their face, as in the hero; anything else is its own mark on the same disc.
 function localCentre(n, p) {
@@ -13260,25 +13284,6 @@ function localCentre(n, p) {
     : localGlyph(n, p.x, p.y, LOCAL.mark);
   return svgEl("a", { class: "centre", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), "data-id": n.id, "aria-label": graphTitle(n) }, [
     svgEl("circle", { cx: p.x, cy: p.y, r: LOCAL.face / 2 }), mark]);
-}
-// Keep every name inside the widget (one that would cross a side moves under its mark), and never draw two names
-// over each other: the best-linked are placed first, and a name that would overlap one already placed waits to be lit.
-function localFit(svg) {
-  if (!svg.isConnected) return;
-  const W = svg.viewBox.baseVal.width, placed = [];
-  const texts = [...svg.querySelectorAll("a.near text[data-x]:not(.quiet)")].sort((a, b) => b.dataset.rank - a.dataset.rank);
-  for (const text of svg.querySelectorAll("text[data-x]")) {
-    const box = text.getBBox();
-    if (box.x >= 0 && box.x + box.width <= W) continue;
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("y", (+text.dataset.y + +text.dataset.h + 15).toFixed(1));
-    text.setAttribute("x", Math.min(W - box.width / 2, Math.max(box.width / 2, +text.dataset.x)).toFixed(1));
-  }
-  for (const text of texts) {
-    const b = text.getBBox(), hit = placed.some(p => b.x < p.x + p.width + 4 && p.x < b.x + b.width + 4 && b.y < p.y + p.height && p.y < b.y + b.height);
-    if (hit) text.classList.add("quiet");
-    else placed.push(b);
-  }
 }
 // What the card says about one mark. First ring: the sentence that links the two records, worded and cited as
 // Related pages words it; a project reached only through coding sessions folded into it says how many, with one of
