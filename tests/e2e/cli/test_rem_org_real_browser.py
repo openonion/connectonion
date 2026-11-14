@@ -62,6 +62,76 @@ def test_mapped_org_shows_known_people_link_only_connections_and_no_empty_facts(
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('stored', [False, True], ids=['page-en', 'cached-zh'])
+@pytest.mark.parametrize('source', ['lead', 'who', 'relationship', 'what', 'to-you', 'model-to-you', 'model-what'])
+def test_org_placeholder_paths_show_dash_in_source_and_cached_translation(
+        browser, tmp_path, monkeypatch, width, stored, source):
+    page = _open(browser, tmp_path, monkeypatch, width)
+    page.evaluate(r'''({stored,source}) => {
+      const placeholder = stored ? 'Unknown — 尚未调查' : 'Unknown — not investigated yet.';
+      const sections = {who:'Who they are', relationship:'Our relationship'};
+      const fields = {what:'What they do', 'to-you':'To you'};
+      for (const path of ['orgs/cedar.md','orgs/team.md']) {
+        const r = byPath(path);
+        delete r.original; delete r.shown; delete r.readLanguage;
+        r.kind = ''; r.facts = {}; r.to_you = ''; r.translations = {};
+        const body = source === 'lead' ? placeholder
+          : sections[source] ? '## ' + sections[source] + '\n- ' + placeholder
+          : fields[source] ? '## Facts\n- ' + fields[source] + ': ' + placeholder : '';
+        const text = '# ' + r.title + '\n\n' + body;
+        r.text = stored ? '# ' + r.title + '\n\nUnknown — not investigated yet.' : text;
+        if (stored) r.translations.zh = text;
+        if (source === 'model-to-you') r.to_you = placeholder;
+        if (source === 'model-what') r.facts['What they do'] = [{value:placeholder}];
+      }
+      byPath('orgs/cedar.md').organisations = ['orgs/team.md'];
+      KNOWN.clear(); FACTS.clear(); PARSED_FACTS.clear(); setInterfaceLanguage(stored ? 'zh' : 'en'); render();
+    }''', {'stored': stored, 'source': source}, isolated_context=False)
+    for name in ['Cedar Works', 'Field team']:
+        row = page.locator('.org-table tbody tr').filter(has_text=name)
+        assert row.locator('.c-summary').inner_text() == '—'
+        assert row.locator('.c-summary [title]').count() == 0
+    page.locator('.org-table .c-name a').filter(has_text='Cedar Works').click()
+    assert page.locator('.ov-opening').inner_text().startswith('你认识这里的 1 个人。' if stored else 'You know 1 person here.')
+    assert page.locator('.ov-connections p').all_inner_texts() == ['Field team']
+    # Fern's business email still supplies a known website; only unknown/empty facts disappear.
+    assert page.locator('.ov-about dt').all_inner_texts() == ['网站' if stored else 'Website']
+    assert page.locator('.ov-about dd').all_inner_texts() == ['cedar.example']
+    assert page.locator('.ov-about dd a').get_attribute('href') == 'https://cedar.example'
+    assert '尚未调查' not in page.locator('.ov-page').inner_text()
+    assert 'not investigated yet' not in page.locator('.ov-page').inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('suffix', ['（邮件签名）。', ' (mail footer)'], ids=['free-text', 'qualifier'])
+def test_long_org_location_is_two_lines_with_full_title_and_page_text(
+        browser, tmp_path, monkeypatch, width, suffix):
+    page = _open(browser, tmp_path, monkeypatch, width)
+    location = '47 Lantern Avenue, Suite 820, Port Alder, OR 97000, Fictionland' + suffix
+    page.evaluate(r'''location => {
+      const r = byPath('orgs/cedar.md');
+      r.text = '# Cedar Works\n\nBuilds instruments.\n\n## Facts\n- Location: ' + location;
+      r.facts = {};
+      KNOWN.clear(); FACTS.clear(); PARSED_FACTS.clear(); setInterfaceLanguage('zh'); render();
+    }''', location, isolated_context=False)
+    row = page.locator('.org-table tbody tr').filter(has_text='Cedar Works')
+    cell = row.locator('.c-location .clamp')
+    assert cell.inner_text() == location
+    assert cell.get_attribute('title') == location
+    if width == 1440:
+        assert cell.evaluate('e => getComputedStyle(e).webkitLineClamp') == '2'
+        assert cell.evaluate('e => e.getBoundingClientRect().height <= 2 * parseFloat(getComputedStyle(e).lineHeight) + 1')
+        assert row.bounding_box()['height'] <= 88
+        assert page.locator('.people-scroll').evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+    row.locator('.c-name a').click()
+    assert page.locator('.ov-crumb').inner_text().endswith('公司')
+    assert location in page.locator('.ov-about').inner_text()
+    assert page.locator('.ov-about dt').all_inner_texts() == ['所在', '网站']
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_zero_org_and_unit_activity_is_dash_and_sorts_last(browser, tmp_path, monkeypatch):
     page = _open(browser, tmp_path, monkeypatch, 1440)
     page.evaluate('''() => {
