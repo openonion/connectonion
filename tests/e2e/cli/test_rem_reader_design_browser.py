@@ -5563,6 +5563,12 @@ def test_sessions_group_by_day_merge_repeats_curtain_private_work_and_lead_with_
     assert "/work/" not in page.locator("#main").inner_text()
     curtains.first.get_by_role("button", name="Show", exact=True).click()
     expect(page.locator(".session-row").filter(has_text="Plan source citations")).to_have_count(1)
+    # The desktop search can defer a redraw until Show takes focus. That redraw
+    # must retain this day's explicit reveal without opening the other curtain.
+    page.evaluate("drawKeepingView()", isolated_context=False)
+    expect(page.locator(".session-row").filter(has_text="Plan source citations")).to_have_count(1)
+    expect(page.locator(".session-curtain")).to_have_count(1)
+    assert "Review older notes" not in page.locator("#main").inner_text()
     if width == 390:
         box = resume.locator(".btn-act").bounding_box()
         assert box["y"] + box["height"] < 844

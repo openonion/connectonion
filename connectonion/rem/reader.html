@@ -11048,7 +11048,12 @@ function sessionRow(group, terms) {
 function sessionCurtain(groups, terms) {
   const count = groups.reduce((n, group) => n + group.length, 0);
   const row = el("li", { class: "session-row session-curtain" });
-  const show = sessionButton("Show", () => row.replaceWith(...groups.map(group => sessionRow(group, terms))), { class: "session-curtain-show" });
+  row.dataset.sessionDay = groups[0][0].session_date || "";
+  const show = sessionButton("Show", () => row.replaceWith(...groups.map(group => {
+    const revealed = sessionRow(group, terms);
+    revealed.dataset.revealedSession = row.dataset.sessionDay;
+    return revealed;
+  })), { class: "session-curtain-show" });
   row.append(el("span", { class: "session-state lock", "aria-hidden": "true" }), el("div", { class: "session-card-content" }, [
     el("span", { class: "session-title", text: t(count === 1 ? "{n} personal session" : "{n} personal sessions", { n: count }) }),
     el("div", { class: "session-meta", text: sessionPlace(groups[0][0]) + " · " + t("Shown only on this Mac") })]), show);
@@ -13848,6 +13853,7 @@ function reloadChoice({ latest, asOf, typing, unsaved }) {
 function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
 function viewState() {
   return { hash: location.hash, y: scrollY, fields: keptFields(),
+    revealedSessions: [...document.querySelectorAll("[data-revealed-session]")].map(node => node.dataset.revealedSession),
     open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
 }
 // Every field the owner types into carries a stable key (data-keep: the slot, the talk, the review);
@@ -13928,6 +13934,11 @@ function restoreView(state) {
   if (!state || state.hash !== location.hash) return false;
   const open = new Set(state.open || []);
   document.querySelectorAll("details").forEach(node => { if (open.has(detailsKey(node))) { node.open = true; node.fill?.(); } });
+  // A deferred redraw after the search loses focus must keep an explicit Show.
+  const revealed = new Set(state.revealedSessions || []);
+  document.querySelectorAll(".session-curtain").forEach(node => {
+    if (revealed.has(node.dataset.sessionDay)) node.querySelector("button").click();
+  });
   restoreFields(state.fields);
   scrollTo(0, state.y || 0);
   return true;
