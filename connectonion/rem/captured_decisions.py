@@ -52,7 +52,12 @@ def _piece(heading, body, sources, offset, budget):
     return "", offset
 
 
-def _pending(notebook):
+def slice_key(item):
+    """Only offsets and the captured section hash identify an attempted slice."""
+    return {key: item[key] for key in ("record", "section_sha256", "section_start", "section_end")}
+
+
+def _pending(notebook, attempted=()):
     offered = read_json(state_path(notebook.root, "abstract-offered.json"), {})
     sections = sorted(_sections(notebook), key=lambda row: (notebook.path(row[0]).stat().st_mtime, row[0]))
     for record, heading, body, sources in sections:
@@ -60,21 +65,26 @@ def _pending(notebook):
         digest = hashlib.sha256(captured.encode()).hexdigest()
         saved = offered.get(record, {})
         offset = saved.get("offset", 0) if saved.get("sha256") == digest else 0
-        if offset < len(body):
-            yield record, heading, body, sources, digest, offset
+        completed = saved.get("completed", []) if saved.get("sha256") == digest else []
+        skipped = completed + [[item["section_start"], item["section_end"]] for item in attempted
+                               if item["record"] == record and item["section_sha256"] == digest]
+        for start, end in sorted(skipped) + [[len(body), len(body)]]:
+            if start > offset:
+                yield record, heading, body[:start], sources, digest, offset
+            offset = max(offset, end)
 
 
-def pending_count(notebook):
-    return sum(bool(line.strip()) for _, _, body, _, _, offset in _pending(notebook)
+def pending_count(notebook, *, attempted=()):
+    return sum(bool(line.strip()) for _, _, body, _, _, offset in _pending(notebook, attempted)
                for line in body[offset:].splitlines())
 
 
-def material(notebook, config=None):
+def material(notebook, config=None, *, attempted=()):
     from .config import read_config
     budget = (config or read_config(notebook.root))["limits"]["input_chars_per_batch"]
     items = []
     lines_left = NIGHT_PAGE_LIMIT
-    for record, heading, body, sources, digest, offset in _pending(notebook):
+    for record, heading, body, sources, digest, offset in _pending(notebook, attempted):
         # Cap nonempty decision lines at page capacity so every offered choice can become a page.
         ends = [match.end() for match in re.finditer(r'.*(?:\n|$)', body[offset:]) if match[0].strip()]
         bounded = body[:offset + ends[lines_left - 1]] if len(ends) > lines_left else body
@@ -99,10 +109,28 @@ def material(notebook, config=None):
     return items
 
 
+def _complete(saved, start, end):
+    """Keep successes beyond a failed gap without losing the gap's later retry."""
+    completed = []
+    for left, right in sorted([*saved.get("completed", []), [start, end]]):
+        if left <= saved["offset"]:
+            saved["offset"] = max(saved["offset"], right)
+        elif completed and left <= completed[-1][1]:
+            completed[-1][1] = max(completed[-1][1], right)
+        else:
+            completed.append([left, right])
+    saved["completed"] = completed
+    failures = saved.get("failures", {})
+    failures.pop(f"{start}:{end}", None)
+    if not failures:
+        saved.pop("failures", None)
+
+
 def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages"):
-    """Checkpoint a durable success, or give up a slice after three distinct failed nights."""
+    """Checkpoint success, or release a slice after three failed nights/manual runs."""
     path = state_path(root, "abstract-offered.json")
     offered = read_json(path, {})
+    deferred = []
     for item in items:
         digest = item.get("section_sha256")
         if not digest:
@@ -111,22 +139,23 @@ def remember_offered(root, items, *, promoted=True, night=None, reason="No passi
         if saved.get("sha256") != digest:
             saved = {"sha256": digest, "offset": 0}
         start, end = item.get("section_start", 0), item["section_end"]
-        if saved["offset"] >= end:
+        if saved["offset"] >= end or any(left <= start and right >= end for left, right in saved.get("completed", [])):
             continue
         if promoted:
-            saved.update(offset=end)
-            saved.pop("failures", None)
+            _complete(saved, start, end)
         else:
             failures = saved.setdefault("failures", {})
             nights = failures.setdefault(f"{start}:{end}", [])
             if night not in nights:
                 nights.append(night)
             if len(nights) >= 3:
-                saved["offset"] = end
                 saved.setdefault("given_up", []).append(dict(start=start, end=end, nights=nights, reason=reason))
-                saved.pop("failures", None)
+                _complete(saved, start, end)
+            else:
+                deferred.append(slice_key(item))
         offered[item["record"]] = saved
     write_json(path, offered)
+    return deferred
 
 
 def quote_errors(text, items):

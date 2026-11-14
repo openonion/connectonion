@@ -1288,6 +1288,10 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                            "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
                            "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
                            "restored_lines": restored_lines}
+        authorship_errors = []
+        if native and stage == "abstract" and record.startswith("decisions/"):
+            from .decision_authorship import review as review_authorship
+            text, authorship_errors = review_authorship(notebook.root, text)
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = (validate(record, text, original, items, pages=set(before),
                            owner=record == owner, root=notebook.root)
@@ -1295,7 +1299,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         if native and stage == "abstract" and record.startswith("decisions/"):
             from .captured_decisions import quote_errors
             from .page_review import unquoted_decisions
-            errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items)
+            errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items) + authorship_errors
         errors += [shrunk] if shrunk else []
         if errors:
             refusals.append({"record": record, "errors": errors})

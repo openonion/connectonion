@@ -270,33 +270,43 @@ def prepare_task(root, cursor, config, directory):
 
 
 def prepare_abstract(root, cursor, config, directory):
-    """Reserve bounded slices; only a recorded promotion admits the next this night."""
+    """Reserve slices until two consecutive empty rounds, exhaustion or the nightly cap."""
     from .captured_decisions import material
     from .night_stats import _night_of
     day = _night_of(service.now(), service.notebook_zone(config)).isoformat()
     marker = state_path(root, "abstract-night.json")
     saved = read_json(marker, {})
+    if saved.get("day") != day:
+        saved = {}
     rounds = saved.get("rounds", 1) if saved.get("day") == day else 0
     if rounds >= config["limits"]["abstract_rounds_per_night"] or (rounds and saved.get("stopped", True)):
         return None
-    items = material(Notebook(root), config)
+    items = material(Notebook(root), config, attempted=saved.get("attempted", []))
     if not items:
         return None
     prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
     prepared.update(abstract_night=day, abstract_round=rounds + 1)
     # Count reservations before execution: an unfinished turn must survive a restart
-    # without admitting another slice. Only its durable successful outcome reopens it.
-    write_json(marker, {"day": day, "rounds": rounds + 1, "stopped": True})
+    # without admitting another slice. A durable outcome reopens it unless two were empty.
+    write_json(marker, {**saved, "day": day, "rounds": rounds + 1, "stopped": True})
     return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
 
 
-def record_abstract_result(root, prepared, *, promoted):
-    """Open the next slice only for the reservation whose outcome was recorded."""
+def record_abstract_result(root, prepared, *, promoted, deferred=False):
+    """Record a reservation once, keeping empty slices aside until the next night."""
+    from .captured_decisions import slice_key
     marker = state_path(root, "abstract-night.json")
     saved = read_json(marker, {})
     if (prepared.get("abstract_night") and saved.get("day") == prepared["abstract_night"]
-            and saved.get("rounds", 1) == prepared.get("abstract_round", 1)):
-        write_json(marker, {**saved, "rounds": saved.get("rounds", 1), "stopped": not promoted})
+            and saved.get("rounds", 1) == prepared.get("abstract_round", 1)
+            and saved.get("result_round") != saved.get("rounds", 1)):
+        empty = 0 if promoted else saved.get("empty_rounds", 0) + 1
+        attempted = saved.get("attempted", [])
+        if not promoted:
+            attempted += [slice_key(item) for item in prepared.get("items", [])]
+        write_json(marker, {**saved, "empty_rounds": empty, "stopped": empty >= 2,
+                            "attempted": attempted, "result_round": saved.get("rounds", 1),
+                            "set_aside": saved.get("set_aside", 0) + deferred})
 
 
 def _reset_attempts(root, cursor):

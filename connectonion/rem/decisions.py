@@ -34,8 +34,9 @@ def _round(notebook, items, config):
         "started_at": started, "finished_at": now().isoformat(), "items": len(items),
         "outcome": "completed" if row["changed"] and not row["reason"] else "failed",
         "harness": config["runner"], "model": config["model"], "runner_attempts": 0})
-    if row["changed"] and not row["reason"]:
-        captured_decisions.remember_offered(notebook.root, items)
+    deferred = captured_decisions.remember_offered(notebook.root, items, promoted=bool(row["changed"]),
+                                                  night=f"manual:{run_id}", reason=row["reason"] or "Round wrote no page")
+    row["set_aside"] = bool(deferred)
     return row
 
 
@@ -43,21 +44,33 @@ def write(root, *, rounds=None, progress=None):
     notebook, config = Notebook(root), read_config(root)
     rows = []
     reason = ""
+    last_failure = ""
+    attempted, empty_rounds, set_aside = [], 0, 0
     while rounds is None or len(rows) < rounds:
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-            items = captured_decisions.material(notebook, config)
+            items = captured_decisions.material(notebook, config, attempted=attempted)
             if not items:
-                if captured_decisions.pending_count(notebook):
+                if captured_decisions.pending_count(notebook, attempted=attempted):
                     reason = "No pending decision fits the configured input character limit"
+                elif attempted and not any(row["changed"] for row in rows):
+                    reason = "No unattempted slices left: " + last_failure
                 break
             row = _round(notebook, items, config)
         rows.append(row)
         if progress:
             progress(len(rows), row)
-        if not row["changed"] or row["reason"]:
-            reason = row["reason"] or "Round wrote no page"
+        empty_rounds = 0 if row["changed"] else empty_rounds + 1
+        if not row["changed"]:
+            attempted.extend(captured_decisions.slice_key(item) for item in items)
+            set_aside += row["set_aside"]
+            last_failure = row["reason"] or "Round wrote no page"
+        if empty_rounds >= 2:
+            reason = "Stopped after two empty rounds in a row: " + last_failure
             break
+    else:
+        if last_failure and not any(row["changed"] for row in rows):
+            reason = "Round limit reached without a page: " + last_failure
     written = sum(len(row["changed"]) for row in rows)
     return {"rounds": rows, "written": written, "refused": sum(len(row["refused"]) for row in rows),
-            "left": captured_decisions.pending_count(notebook), "reason": reason,
+            "left": captured_decisions.pending_count(notebook), "reason": reason, "set_aside": set_aside,
             "failed": not written and bool(reason)}

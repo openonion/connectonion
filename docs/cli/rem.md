@@ -494,7 +494,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages and captured decisions waiting. No model; no writes. |
-| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until caught up, a round writes no page, or N rounds finish. |
+| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
 | `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
@@ -523,34 +523,51 @@ captured in the supplied Decisions or Key decisions into the body immediately
 followed by its `[n]`; `## Sources` defines the original source ID for that number
 and keeps the originating page as context. A quote
 placed only under Sources is refused with instructions to move it into the body.
-It continues until nothing is left or a round writes no page; `--rounds 2` stops
-after at most two rounds. Output gives per-round
-counts and totals, decisions left, then `co rem list decisions`. Exit is 0 after
-progress or when nothing is waiting; it is 1 when the first round writes no page,
-with the reason on the last line. A crash leaves its decisions pending. Manual
-success shares the night's saved progress, so neither repeats the other's work.
+An empty round counts as a failed attempt for its slice, sets it aside for a later
+retry, and moves to the next slice. It continues until nothing unattempted is left
+or two empty rounds occur in a row; a successful round resets that streak.
+`--rounds 2` stops after at most two rounds. Output gives per-round counts and
+totals, slices set aside for a later retry, decisions left, then `co rem list decisions`.
+Exit is 0 after progress or when nothing is waiting; it is 1 when no attempted
+round writes a page, with the reason on the last line. A crash leaves its decisions pending.
+Manual success shares the night's saved progress, so neither repeats the other's work.
 A manual attempt neither uses nor consumes `limits.abstract_rounds_per_night`;
-manual failures also do not count as failed nights. `co rem abstract` remains an
-alias for this command.
+each failed manual run counts once for that slice toward the existing three-failure
+rule, as does each distinct failed night. After three failures the queue releases
+the slice and records the reason. Successes after a failed gap are saved separately
+so the gap can retry without repeating later successes. `co rem abstract` remains an alias.
+
+Quote equality with a captured line does not prove who said it. Before promotion,
+the manual and nightly abstract check local stored originals, without fetching a
+source or handing raw messages to the model. A quote found in another sender's
+own mail body or an assistant reply is refused as not authored by the owner.
+A quote absent from its complete cited original is also refused. Typed session
+input and the owner's own mail body can establish owner authorship; quoted mail
+history cannot inherit the sender's identity. Missing or truncated originals,
+unknown senders, and file, repository or web sources leave the speaker unverified.
+Such pages use the existing `## Uncertainties` section with one line:
+`- Speaker unverified.` No speaker is guessed from wording or a citation prefix.
 
 After session summaries, the night runs successive abstract slices when session `## Decisions`
 or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,
 with at most 20 nonempty decision lines per packet (large sections continue on later
 slices), within the configured input character budget and with only sources bound
-to their quotes. Each completed slice that promotes at least one page admits the next,
+to their quotes. Each completed slice admits the next, setting an empty slice aside,
 up to `limits.abstract_rounds_per_night` (default 6). A backlog of N decision lines
 takes roughly ceil(N / 20 / rounds) nights, where rounds is that nightly limit,
 or longer when slices fail or the character budget requires smaller packets. Section hashes
-advance only after a recorded completed turn promotes at least one page; otherwise
-the slice retries. After failures on three distinct nights, the slice is released and
-its offsets, failure nights and give-up reason are saved in abstract-offered.json.
+advance only over successful or released slices; later successes are saved beyond
+any failed gap. Empty slices retry on a later night or manual run. After three
+distinct failed nights/manual runs, a slice is released and its offsets, failure
+attempt IDs and give-up reason are saved in abstract-offered.json.
 A crashed turn leaves its material pending. It writes or updates at
 most 20 pages under `decisions/` and `principles/` only, with the owner's words
 and original citations on each decision. Assistant proposals without the owner's
 acceptance are excluded. Principles still need at least three decisions. The saved
 night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
-keeps the count and the next night starts at zero. An unfinished or failed slice,
-or one that promotes nothing, stops new abstract slices for that night. The later
+keeps the count, attempted slices and consecutive empty count; the next night starts
+at zero. An unfinished reservation blocks new slices until its outcome is recorded.
+Two empty rounds in a row stop new abstract slices for that night. The later
 same-person and translation passes follow at most six abstract rounds by default.
 Passing pages are saved; rejected
 pages and their errors are recorded in the run. A task with no passing pages

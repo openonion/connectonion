@@ -548,9 +548,9 @@ def _log(root, task, outcome, **fields):
         night = task["task"].get("abstract_night") or _night_of(
             service.now(), service.notebook_zone(read_config(root))).isoformat()
         promoted = outcome == "completed" and bool(fields.get("changed"))
-        remember_offered(root, task["task"].get("items", []), promoted=promoted,
-                         night=night, reason=fields.get("reason") or fields.get("report") or "No passing pages")
-        record_abstract_result(root, task["task"], promoted=promoted)
+        deferred = remember_offered(root, task["task"].get("items", []), promoted=promoted,
+                                   night=night, reason=fields.get("reason") or fields.get("report") or "No passing pages")
+        record_abstract_result(root, task["task"], promoted=promoted, deferred=bool(deferred))
 
 
 def submit(root, task_id, *, usage=None):

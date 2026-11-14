@@ -16,10 +16,10 @@ def _round_lines(number, row):
 def _summary(value):
     ending = f"{value['left']} decisions left"
     if value["reason"]:
-        stop = (f"round {len(value['rounds'])} " + ("failed" if value['rounds'][-1]['changed'] else "wrote no page")
-                if value["rounds"] else "before round 1")
-        ending = f"stopped: {stop} · {ending}"
-    return f"Done: {len(value['rounds'])} rounds · {value['written']} pages written · {value['refused']} refused · {ending}"
+        ending = f"stopped: {value['reason']} · {ending}"
+    noun = "slice" if value['set_aside'] == 1 else "slices"
+    deferred = f"{value['set_aside']} {noun} set aside for a later retry · "
+    return f"Done: {len(value['rounds'])} rounds · {value['written']} pages written · {value['refused']} refused · {deferred}{ending}"
 
 
 def write_decisions(ctx, rounds, handle, written):

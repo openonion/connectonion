@@ -93,32 +93,68 @@ def test_manual_decisions_drains_several_rounds_and_reports_each(book, model):
     assert len(book.list('decisions')) == 45
     assert 'Round 1: 20 decisions read · 20 pages written · 0 refused' in result.output
     assert 'Round 3: 5 decisions read · 5 pages written · 0 refused' in result.output
-    assert 'Done: 3 rounds · 45 pages written · 0 refused · 0 decisions left' in result.output
+    assert 'Done: 3 rounds · 45 pages written · 0 refused · 0 slices set aside for a later retry · 0 decisions left' in result.output
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} list decisions')
     runs = [read_json(path, {}) for path in state_path(book.root, 'runs').glob('*.json')]
     assert len(runs) == 3 and all(run['outcome'] == 'completed' for run in runs)
     assert not state_path(book.root, 'abstract-night.json').exists()
     again = invoke(book, 'decisions', 'write')
     assert again.exit_code == 0 and len(model[0]) == 3
-    assert 'Done: 0 rounds · 0 pages written · 0 refused · 0 decisions left' in again.output
+    assert 'Done: 0 rounds · 0 pages written · 0 refused · 0 slices set aside for a later retry · 0 decisions left' in again.output
 
 
 @pytest.mark.parametrize('success_first', [False, True])
-def test_manual_stops_when_round_writes_nothing_with_correct_exit(book, model, success_first):
-    backlog(book, 45)
-    model[1].extend(['good', 'empty'] if success_first else ['empty'])
+def test_manual_stops_after_two_empty_rounds_with_correct_exit(book, model, success_first):
+    backlog(book, 65)
+    model[1].extend(['good', 'empty', 'empty'] if success_first else ['empty', 'empty'])
     result = invoke(book, 'decisions', 'write')
     assert result.exit_code == (0 if success_first else 1), result.output
-    assert len(model[0]) == (2 if success_first else 1)
-    number = 2 if success_first else 1
-    left = 25 if success_first else 45
+    assert len(model[0]) == (3 if success_first else 2)
+    number = 3 if success_first else 2
+    left = 45 if success_first else 65
     assert f'Round {number}: 20 decisions read · 0 pages written · 0 refused' in result.output
-    assert f'stopped: round {number} wrote no page · {left} decisions left' in result.output
-    assert result.output.rstrip().endswith('Reason: Abstract wrote no passing pages')
+    assert f'2 slices set aside for a later retry · stopped:' in result.output
+    assert f'{left} decisions left' in result.output
+    assert 'two empty rounds in a row' in result.output
     offered = read_json(state_path(book.root, 'abstract-offered.json'), {})
-    assert 'failures' not in offered.get('sessions/backlog.md', {})
-    if not success_first:
-        assert offered == {}
+    assert len(offered['sessions/backlog.md']['failures']) == 2
+    assert model[0][-1] != model[0][-2]
+
+
+def test_manual_empty_then_success_keeps_failed_slice_for_retry(book, model):
+    backlog(book, 45)
+    model[1].extend(['empty', 'good', 'good'])
+    result = invoke(book, 'decisions', 'write')
+    assert result.exit_code == 0, result.output
+    assert len(model[0]) == 3 and len(book.list('decisions')) == 25
+    assert '1 slice set aside for a later retry' in result.output
+    assert '20 decisions left' in result.output
+    retry = invoke(book, 'decisions', 'write')
+    assert retry.exit_code == 0, retry.output
+    assert len(model[0]) == 4 and model[0][0] == model[0][-1]
+    assert len(book.list('decisions')) == 45
+
+
+def test_manual_success_resets_empty_streak(book, model):
+    backlog(book, 100)
+    model[1].extend(['empty', 'good', 'empty', 'good', 'good'])
+    result = invoke(book, 'decisions', 'write')
+    assert result.exit_code == 0, result.output
+    assert len(model[0]) == 5 and len(book.list('decisions')) == 60
+
+
+def test_manual_failure_counts_once_per_run_and_releases_on_third(book, model):
+    backlog(book, 20)
+    model[1].extend(['invalid'] * 3)
+    for attempt in range(3):
+        result = invoke(book, 'decisions', 'write')
+        assert result.exit_code == 1, result.output
+        assert len(model[0]) == attempt + 1
+    assert '0 slices set aside for a later retry' in result.output
+    assert invoke(book, 'decisions', 'write').exit_code == 0
+    assert len(model[0]) == 3
+    state = read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/backlog.md']
+    assert len(state['given_up'][0]['nights']) == 3
 
 
 def test_manual_round_limit_is_independent_of_night_cap(book, model):
@@ -128,8 +164,17 @@ def test_manual_round_limit_is_independent_of_night_cap(book, model):
     result = invoke(book, 'decisions', 'write', '--rounds', '2')
     assert result.exit_code == 0, result.output
     assert len(model[0]) == 2
-    assert 'Done: 2 rounds · 40 pages written · 0 refused · 25 decisions left' in result.output
+    assert 'Done: 2 rounds · 40 pages written · 0 refused · 0 slices set aside for a later retry · 25 decisions left' in result.output
     assert read_json(state_path(book.root, 'abstract-night.json'), {}) == marker
+
+
+def test_manual_cap_after_one_empty_does_not_report_two_empty_stop(book, model):
+    backlog(book, 65)
+    model[1].extend(['good', 'empty'])
+    result = invoke(book, 'decisions', 'write', '--rounds', '2')
+    assert result.exit_code == 0, result.output
+    assert len(model[0]) == 2 and '1 slice set aside for a later retry' in result.output
+    assert 'two empty' not in result.output and 'stopped:' not in result.output
 
 
 @pytest.mark.parametrize('night_first', [True, False])
@@ -180,7 +225,7 @@ def test_manual_applies_nightly_page_checks_and_preserves_queue(book, model, mod
     assert result.exit_code == 1, result.output
     assert reason in result.output
     assert book.list('decisions') == [] and not book.exists('people/other.md')
-    assert read_json(state_path(book.root, 'abstract-offered.json'), {}) == {}
+    assert len(read_json(state_path(book.root, 'abstract-offered.json'), {})['sessions/backlog.md']['failures']) == 1
     assert len(model[0]) == 1
 
 
@@ -247,5 +292,6 @@ def test_decisions_are_discoverable_and_help_teaches_the_workflow():
     help_page = CliRunner().invoke(app, ['rem', 'decisions', 'write', '--help'])
     assert help_page.exit_code == 0, help_page.output
     for text in ['Usage:', 'Example:', 'Output:', 'Effects:', 'Next:', 'Back:', '--rounds',
-                 'Calls the model once per round.', 'Writes only under decisions/ and principles/.']:
+                 'Calls the model once per round.', 'Writes only under decisions/ and principles/.',
+                 'two empty rounds in a row', 'slices set aside for a later retry', 'Speaker unverified.']:
         assert text in help_page.output
