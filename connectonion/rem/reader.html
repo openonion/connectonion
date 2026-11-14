@@ -779,7 +779,7 @@
   .lead-meta .k { color: var(--grey); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: var(--radius); background: var(--rule); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--grey); }
-  .fresh-dot { color: var(--ink); font: var(--s-meta) var(--font); margin-left: 6px; vertical-align: middle; }
+  .fresh-dot, .memory-legend-dot { color: var(--ink); font: var(--s-meta) var(--font); margin-left: 6px; vertical-align: middle; }
   .fresh-label { color: var(--ink); font: var(--s-meta) var(--font); margin-left: 6px; white-space: nowrap; }
   .updated-label { white-space: nowrap; color: var(--grey); font: var(--s-meta) var(--font); }
   .updated-label .fresh-dot { margin: 0 5px 0 0; }
@@ -3941,6 +3941,7 @@ const UI = {
     "Other open context": "其他待处理事项",
     "No pass yet": "暂无更新",
     "View sources →": "查看来源 →",
+    "Read full memory →": "阅读完整记忆 →",
     "Sources": "来源",
     "Source": "来源",
     "Finding source": "发现的来源",
@@ -6665,7 +6666,7 @@ function renderSettings() {
     // replaceChildren writes a null as the word "null": the rows only the live page has are left out instead.
     notebookLanguages(), ...[translating && row("Translate pages", translating), ignoredSendersList()].filter(Boolean),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
-    el("div", { class: "memory-legend" }, [el("span", { class: "fresh-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
+    el("div", { class: "memory-legend" }, [el("span", { class: "memory-legend-dot", "aria-hidden": "true", text: "●" }), " " + t("updated last night") + "  ",
       el("span", { class: "uncertain-marker", "aria-hidden": "true", text: "◌" }), t("not confirmed by sources")]),
     el("div", { class: "foot-line" }, [el("span", { class: "foot-facts" }, [REM.version ? el("span", { class: "version", text: "co " + REM.version }) : null,
       el("span", { class: "as-of", id: "rendered-at", text: t("Updated") + " " + asOf })]), shortcutsLink()]));
@@ -10531,7 +10532,7 @@ function orgCoda(v) {
     el("dl", { class: "ov-about" }, [row(t("What they do"), orgProse(what)),
       row(orgT("Where"), orgProse(place)), row(orgT("Website"), website ? el("a", {
         href: website.url, target: "_blank", rel: "noopener", text: website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}) : null)]),
-    el("a", { class: "ov-src", href: href(v.r) + "&h=full-memory-heading", text: t("View sources →") })]);
+    el("a", { class: "ov-src", href: href(v.r) + "&h=full-memory-heading", text: t("Read full memory →") })]);
 }
 
 function orgCurtain(r) {

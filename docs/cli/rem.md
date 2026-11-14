@@ -1181,7 +1181,8 @@ pinned to that edge: it comes into view with the draft.
   The tree is followed by the organisation's own dated History as prose milestones,
   connections as text links, and facts and sources at the foot. Correspondents'
   activity is not the article's body; **Full memory and sources** keeps the page's
-  complete record reachable. There are no update badges, contact charts,
+  complete record reachable. **View sources →** at the top opens citations;
+  **Read full memory →** at the foot opens the complete record. There are no update badges, contact charts,
   freshness dots, branch bars or questions asking for action on this page.
   Organisation lists and pages carry no
   waiting groups, task chips or Today counts; to-dos live in Today.

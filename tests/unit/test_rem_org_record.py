@@ -174,13 +174,20 @@ def test_org_opening_many_contacts_names_the_most_recent_and_says_so():
 
 
 def test_org_facts_have_individual_labels_and_a_clickable_website():
-    result = run_js(['orgCoda'], DOM + r'''
+    result = run_js(['orgCoda', 'orgOver'], DOM + r'''
+      const orgCrumb = () => 'breadcrumb', orgHidden = () => false, sourceList = () => ['source'];
       const parseFacts = () => new Map([['What they do',[{value:'Research'}]], ['Location',[{value:'Harbour'}]]]);
       const orgWebsite = () => ({url:'https://cedar.example',derived:false});
       const orgTableT = x => x, plainLine = x => x, orgProse = x => x, href = () => '#record';
-      console.log(JSON.stringify(orgCoda({r:{},people:[]})));
+      console.log(JSON.stringify({coda: orgCoda({r:{},people:[]}), header: orgOver({})}));
     ''')
-    facts = result['children'][0]
+    header_link = result['header']['children'][1]
+    memory_link = result['coda']['children'][1]
+    assert header_link['text'] == 'View sources →'
+    assert header_link['href'] == '#record&h=sources'
+    assert memory_link['text'] == 'Read full memory →'
+    assert memory_link['href'] == '#record&h=full-memory-heading'
+    facts = result['coda']['children'][0]
     assert facts['tag'] == 'dl'
     assert [row['children'][0]['text'] for row in facts['children']] == ['What they do', 'Where', 'Website']
     link = facts['children'][2]['children'][1]['children'][0]

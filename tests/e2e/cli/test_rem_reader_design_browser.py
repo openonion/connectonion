@@ -5668,7 +5668,7 @@ def test_org_kind_and_teams_appear_when_the_page_records_them(reader):
     page.evaluate("""() => { const org = byPath('orgs/fernhill-labs.md');
       org.kind = 'client_partner'; org.to_you = 'Your first paying pilot.';
       byPath('people/mara-ostrowski.md').team = 'Pilot squad'; render(); }""", isolated_context=False)
-    assert "Your first paying pilot." in page.locator(".ov-opening").inner_text()
+    assert page.locator(".ov-opening").inner_text().casefold().count("your first paying pilot") == 1
     # A free-text team groups its people in the tree without inventing a unit link.
     assert page.locator(".ov-org-tree .ov-trow[data-kind=unit]").count() == 1
     team = page.locator(".ov-trow").filter(has_text="Pilot squad")

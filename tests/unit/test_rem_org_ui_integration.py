@@ -173,7 +173,7 @@ def test_org_sources_do_not_prompt_for_missing_organisation_kind(unit_kind):
     ''')
     text = json.dumps(result, ensure_ascii=False)
     assert 'questions' not in text and 'What kind of organisation' not in text, 'organisation sources still ask questions'
-    assert 'View sources →' in text and 'Full memory and sources' not in text
+    assert 'Read full memory →' in text and 'Full memory and sources' not in text
 
 
 # The page's own "last contact" lags when REM has not re-read the organisation; its people wrote later.
