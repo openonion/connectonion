@@ -175,6 +175,28 @@ def _validate_scope(vault_path: Path, folders: Sequence[str]) -> _Scope:
 
 # -- scope reads ----------------------------------------------------------
 
+def validate_scope(vault_path: Path, *, folders: Sequence[str]) -> dict:
+    """Canonical vault/folders from metadata only; never enumerate or read notes.
+
+    Used by REM source registration. Relative folders use forward slashes on every
+    platform; a whole-vault scope must be selected explicitly with '.'.
+    """
+    if vault_path is None or not str(vault_path).strip() or any(
+            ord(char) < 32 or ord(char) == 127 for char in str(vault_path)):
+        raise ValueError("Choose an explicit Obsidian vault path without control characters.")
+    if not folders or isinstance(folders, (str, bytes)):
+        raise ValueError("Choose --folder explicitly; use '.' for the whole vault.")
+    for folder in folders:
+        if (not isinstance(folder, str) or not folder.strip() or "\\" in folder
+                or PureWindowsPath(folder).drive
+                or any(ord(char) < 32 or ord(char) == 127 for char in folder)
+                or any(part.casefold() in EXCLUDED_DIRS for part in Path(folder).parts)):
+            raise ValueError("Choose vault-relative folders outside .obsidian, .trash and .git.")
+    scope = _validate_scope(vault_path, folders)
+    return {"vault": str(scope.vault_path),
+            "folders": sorted(path.relative_to(scope.vault_path).as_posix() for path in scope.folders)}
+
+
 @dataclass(frozen=True)
 class _VaultIndex:
     """Relative filenames only; resolving a link never opens its target."""

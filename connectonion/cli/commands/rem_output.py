@@ -320,7 +320,22 @@ def _consent_source(name: str, source: dict) -> str:
         count = len(source_files({'kind': name, 'root': source['root']}))
         state = f'{count} found, will be read'
     scope = f" (project: {source['project']})" if source.get('project') else ''
+    if source.get("vault"):
+        label = "obsidian"
+        folders = ", ".join(source["folders"])
+        excluded = ", ".join(source.get("excluded_paths", []))
+        scope = f"\n    Vault: {source['vault']}\n    Folders: {folders}"
+        if excluded:
+            scope += f"\n    Excluded: {excluded}"
     return f'  {label}: {state}{scope}'
+
+
+def _obsidian_models(scope: dict | None) -> list[str]:
+    if scope is None:
+        return []
+    models = ", ".join(f"{level} {name}" for level, name in scope["models"].items())
+    return [f"Obsidian models: {models}",
+            *(f"  {stage}: {value['runner']} · {value['model']}" for stage, value in scope["routes"].items())]
 
 
 def _consent_text(value: dict) -> str:
@@ -341,6 +356,7 @@ def _consent_text(value: dict) -> str:
     lines = ['co rem start — source access and schedule', '', 'Sources:',
              *(_consent_source(name, source) for name, source in value['sources'].items()),
              f"Model: {value['runner']} · {value['model']} · through {route}",
+             *_obsidian_models(value.get("obsidian_model_scope")),
              f'Permissions: {permissions}',
              f"Schedule: {', '.join(schedule['times'])} ({schedule['timezone']})",
              f"Daily cap: {limits['runner_calls_per_day']} runner calls/day; "
@@ -516,6 +532,13 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if batch.get('sessions'):
         from ...rem.sessions import summary
         lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
+    collected = (batch.get("collection") or {}).get("obsidian")
+    if collected:
+        vault_count = len(collected.get("vaults") or [collected])
+        details = f"obsidian: {collected['appended_records']} changes from {collected['scanned_notes']} note(s)"
+        if vault_count > 1:
+            details += f" across {vault_count} vaults"
+        lines.append(rem_look.section("Collected", said(details)))
     failures = batch.get('source_failures') or ([{'source': batch['failed_source'],
                  'error': batch.get('error') or 'source could not be read'}] if batch.get('failed_source') else [])
     for name, count in batch.get("dropped_missing", {}).items():

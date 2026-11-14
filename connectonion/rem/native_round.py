@@ -98,7 +98,7 @@ def _read_sources(root, selected, progress, config, set_aside):
 
     prepare_sync already keeps one source's failure from ending the batch; without
     this the same failing mailbox was read again at every slot and every turn."""
-    batch = service.prepare_sync(root, selected, progress, config)
+    batch = service.prepare_sync(root, selected, progress, config, strict_obsidian=False)
     for row in batch["record"].get("source_failures", []):
         kind = selected.get(row["source"], {}).get("kind")
         if kind in service.MAIL_KINDS:
@@ -182,10 +182,26 @@ def prepare_batch(root, cursor, config, directory):
     batch = cursor["batch"]
     if batch["done"]:
         return None
+    sources = list(batch.get("obsidian_changes", {}))
+    if sources:
+        from .obsidian import require_approved_sources
+
+        try:
+            require_approved_sources(root, sources)
+        except RemError as error:
+            batch.update(done=True, abandoned=True)
+            record = batch["record"]
+            record.update(outcome="discarded", reason=str(error), finished_at=service.now().isoformat())
+            write_json(state_path(root, f"runs/{record['id']}.json"), record)
+            cursor.setdefault("set_aside", []).append(str(error))
+            extract.forget_digest(root)
+            return None
     if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
         raise RemError("Source progress changed between tasks; run co rem next --discard")
     if batch["record"]["extracted"] and batch["digested"] is None:
         task = extract.prepare(batch["items"], config, batch["kind"], root=root, directory=directory, native=True)
+        if sources:
+            task["obsidian_sources"] = sources
         return _task("extract", task, cursor, stage="extract", operation="batch")
     leads = batch["leads"] or [None]
     if cursor["batch_index"] < len(leads) and batch["items"]:
@@ -197,12 +213,22 @@ def prepare_batch(root, cursor, config, directory):
             items = [page, *(i for i in items if not i.get("feedback_revision")
                             or record in i["feedback_pending_targets"])]
         task = runner.prepare(Notebook(root), items, config, batch["kind"], directory=directory, native=True)
+        if sources:
+            task["obsidian_sources"] = sources
         return _task("runner", task, cursor, stage="maintain", record=record, operation="batch")
     batch["done"] = True
     if not batch.get("abandoned"):
         if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
             raise RemError("Source progress changed between tasks; run co rem next --discard")
-        write_json(state_path(root, "progress.json"), batch["updated"])
+        if sources:
+            record = batch["record"]
+            finished = service.now()
+            record.update(outcome="completed", finished_at=finished.isoformat(), progress_advanced=True,
+                          seconds=(finished - service.timestamp(record["started_at"])).total_seconds())
+            service.save_sync_progress(root, batch["updated"], record, batch["obsidian_changes"])
+            write_json(state_path(root, f"runs/{record['id']}.json"), record)
+        else:
+            write_json(state_path(root, "progress.json"), batch["updated"])
     extract.forget_digest(root)
     return None
 
@@ -383,6 +409,15 @@ def _prepare_job(root, cursor, config, directory):
         # The page changed under its open investigation (mail read while the floor held
         # the round, or the owner): investigate it again from the page as it is now.
         cursor["current"] = None
+    if cursor["current"] is not None:
+        from .obsidian import require_approved_sources
+        from .refusals import material_sources
+
+        try:
+            require_approved_sources(root, material_sources(
+                [item for part in cursor["current"]["parts"] for item in part]))
+        except RemError:
+            cursor["current"] = None
     if cursor["current"] is None:
         cursor["current"] = _prepare_investigation(root, cursor, job, directory)
         if cursor["current"] is None:
@@ -718,6 +753,9 @@ def _advance_batch(root, cursor, task, result):
         batch["updated"] = _finish_feedback(root, batch["updated"], batch["progress_before"],
                                             batch["selected_feedback"], task, result)
         batch["progress_before"] = batch["updated"]
+    if batch.get("obsidian_changes") and not result.get("discarded"):
+        record = batch["record"]
+        record["changed"] = sorted({*record["changed"], *result.get("changed", [])})
     if task["handler"] == "extract" and not result.get("discarded"):
         _digest(cursor, result["notes"])
     else:
@@ -777,10 +815,13 @@ def advance(root, cursor, task, result):
     elif operation == "retry":
         _advance_retry(root, cursor, task, result)
     elif operation == "inquiry":
-        state = cursor["current"]
-        stage = task["task"]["stage"]
-        state["inquiry"] = "synthesize" if stage == "plan" else "render"
-        state["plan_path" if stage == "plan" else "findings_path"] = task["candidate"]
+        if result.get("discarded"):
+            cursor["current"] = None
+        else:
+            state = cursor["current"]
+            stage = task["task"]["stage"]
+            state["inquiry"] = "synthesize" if stage == "plan" else "render"
+            state["plan_path" if stage == "plan" else "findings_path"] = task["candidate"]
     elif operation == "investigation":
         _advance_investigation(cursor, task, result)
     elif operation == "project":

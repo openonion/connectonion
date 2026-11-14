@@ -1082,3 +1082,849 @@ def test_write_help_needs_no_registry_and_documents_yes_and_exit_codes(operation
     assert "--yes" in text and "--expect" in text and "--content" in text
     assert "previews" in text
     assert "Exit 0" in text and "2 wrong argument" in text
+
+
+# -- co rem logs --source -------------------------------------
+
+@pytest.fixture
+def collected(monkeypatch, tmp_path):
+    """One collection of a synthetic vault into a tmp inbox, for a tmp notebook root."""
+    from connectonion.useful_tools import obsidian_export
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "inbox"))
+    vault = _notes_vault(tmp_path, {"Course/lecture.md": "secret body text\n", "Course/b.md": "b\n"}, name="Logs")
+    notebook = tmp_path / "rem"
+    result = obsidian_export.sync_notes(vault, folders=["Course"], notebook_root=notebook)
+    rows = {obsidian_export.source_log(result["source_dir"], sid, notebook_root=notebook)["path"]: sid
+            for sid in result["source_ids"]}
+    return {"notebook": notebook, "id": rows["Course/lecture.md"], "result": result, "vault": vault}
+
+
+def _logs(cli, notebook, *args, json_output=False):
+    return cli(["rem", "--root", str(notebook), *(["--json"] if json_output else []), "logs", *args])
+
+
+def test_logs_source_prints_the_note_path_and_collection_time(cli, collected):
+    result = _logs(cli, collected["notebook"], "--source", collected["id"])
+
+    assert result.exit_code == 0, result.output
+    assert collected["id"] in result.stdout
+    assert "Course/lecture.md" in result.stdout
+    assert collected["result"]["cursor"] in result.stdout          # when it was collected
+    assert "secret body text" not in result.output
+    assert "Next: co " in result.output
+
+
+def test_logs_source_json_has_path_and_times(cli, collected):
+    result = _logs(cli, collected["notebook"], "--source", collected["id"], json_output=True)
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["source_id"] == collected["id"] and data["path"] == "Course/lecture.md"
+    assert data["change_type"] == "added" and data["collected_at"] == collected["result"]["cursor"]
+    assert "ingested_at" in data and "note" not in data and "locator" not in data
+
+
+def test_logs_source_does_not_read_the_vault_or_write_the_notebook(cli, collected, monkeypatch):
+    monkeypatch.setattr(obsidian, "_read_markdown", lambda *a, **k: pytest.fail("logs must not read notes"))
+    before = _disk(collected["vault"])
+
+    result = _logs(cli, collected["notebook"], "--source", collected["id"])
+
+    assert result.exit_code == 0, result.output
+    assert _disk(collected["vault"]) == before
+    assert not collected["notebook"].exists()
+
+
+@pytest.mark.parametrize("source_id", ["obsidian:bad", "3fa9c1", "obsidian:" + ":".join(["0" * 32] * 3)],
+                         ids=["malformed", "no-prefix", "never-collected"])
+def test_logs_source_refuses_unknown_ids(source_id, cli, collected):
+    result = _logs(cli, collected["notebook"], "--source", source_id)
+
+    assert result.exit_code != 0, result.output
+    assert "Traceback (most recent call last)" not in result.output
+    assert "Next: co " in result.output
+
+
+def test_logs_source_is_bound_to_its_notebook(cli, collected, tmp_path):
+    result = _logs(cli, tmp_path / "another-notebook", "--source", collected["id"])
+
+    assert result.exit_code != 0, result.output
+    assert "Course/lecture.md" not in result.stdout
+
+
+@pytest.mark.parametrize("extra", [["--usage"], ["--days", "7"], ["run_" + "0" * 32]], ids=["usage", "days", "run"])
+def test_logs_source_must_be_used_alone(extra, cli, collected):
+    result = _logs(cli, collected["notebook"], *extra, "--source", collected["id"])
+
+    assert result.exit_code != 0, result.output
+    assert "--source alone" in result.output
+
+
+def test_logs_help_documents_source(cli):
+    result = cli(["rem", "logs", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--source" in result.stdout
+
+
+# -- co rem sources add obsidian -------------------------------
+#
+# Written from the acceptance criteria before the feature landed, so they assert only
+# what the AC and the existing `co rem sources` conventions fix: the subscription is
+# called "obsidian", --vault and --folder save the scope, a missing vault shows as
+# unavailable, and registering or listing never reads a note.
+
+@pytest.fixture
+def rem_sources(isolated_home, monkeypatch, tmp_path):
+    """`co rem --root <tmp> [--json] sources ...`, with the inbox in tmp_path."""
+    from connectonion.cli.main import app
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "inbox"))
+    root = tmp_path / "rem"
+    runner = CliRunner()
+
+    def invoke(*args, as_json=True):
+        return runner.invoke(app, ["rem", "--root", str(root), *(["--json"] if as_json else []), "sources", *args])
+    return root, invoke
+
+
+@pytest.fixture
+def scope_vault(tmp_path):
+    return _notes_vault(tmp_path, {
+        "Course/lecture.md": "chosen note\n",
+        "Course/Week1/intro.md": "nested chosen note\n",
+        "Personal/diary.md": "never read\n",
+        "root.md": "never read either\n",
+    }, name="RemScope")
+
+
+def _sources(result):
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    return payload["data"]
+
+
+def _texts(value):
+    """Every string inside a JSON value, keys included."""
+    if isinstance(value, dict):
+        return [t for k, v in value.items() for t in (_texts(k) + _texts(v))]
+    if isinstance(value, list):
+        return [t for v in value for t in _texts(v)]
+    return [value] if isinstance(value, str) else []
+
+
+def _mentions(value, text):
+    return any(text in t for t in _texts(value))
+
+
+def _add(invoke, vault, *folders, as_json=True):
+    return invoke("add", "obsidian", "--vault", str(vault),
+                  *[arg for folder in folders for arg in ("--folder", folder)], as_json=as_json)
+
+
+def test_obsidian_is_listed_but_off_before_it_is_added(rem_sources):
+    root, invoke = rem_sources
+
+    source = _sources(invoke())["obsidian"]
+
+    assert source.get("enabled") is False
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("vault_count", [0, 1, 2], ids=["empty", "one-vault", "two-vaults"])
+def test_sources_shows_selected_obsidian_vaults_under_one_root(
+    vault_count, rem_sources, scope_vault, tmp_path,
+):
+    root, invoke = rem_sources
+    other = _notes_vault(tmp_path, {"Projects/plan.md": "another vault\n"}, name="Other Vault")
+    selected = [(scope_vault, ["Course", "Personal"]), (other, ["Projects"])][:vault_count]
+    for vault, folders in selected:
+        assert _add(invoke, vault, *folders).exit_code == 0
+
+    result = invoke(as_json=False)
+
+    assert result.exit_code == 0, result.output
+    obsidian = result.stdout.split("Obsidian:\n", 1)[1]
+    inbox = root.parent / "inbox" / "obsidian"
+    roots = [line.strip() for line in obsidian.splitlines() if line.strip().startswith("Root:")]
+    assert roots == [f"Root: {inbox}"]
+    assert f"  Root: {inbox}\n  Vaults:" in obsidian
+    if selected:
+        assert "  Vaults:\n" in obsidian
+        for vault, folders in selected:
+            scope = [f"      Vault: {vault}", "      Folders:", *(f"        {folder}" for folder in folders)]
+            assert "\n".join(scope) + "\n" in obsidian
+    else:
+        assert "  Vaults: None\n" in obsidian
+    assert not inbox.exists()
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_add_saves_the_vault_and_folder(as_json, rem_sources, scope_vault):
+    root, invoke = rem_sources
+
+    result = _add(invoke, scope_vault, "Course", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    assert "Traceback" not in result.output
+    source = _sources(invoke())["obsidian"]
+    assert source.get("enabled") is True
+    assert _mentions(source, str(scope_vault.resolve())) or _mentions(source, str(scope_vault))
+    assert _mentions(source, "Course")
+    assert not _mentions(source, "Personal")
+
+
+def test_several_folders_are_saved(rem_sources, scope_vault):
+    root, invoke = rem_sources
+
+    assert _add(invoke, scope_vault, "Course", "Personal").exit_code == 0
+
+    source = _sources(invoke())["obsidian"]
+    assert _mentions(source, "Course") and _mentions(source, "Personal")
+
+
+def test_the_saved_scope_survives_a_new_command(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+
+    first = _sources(invoke())["obsidian"]
+    again = _sources(invoke())["obsidian"]
+
+    assert first == again
+    assert (root / ".state" / "subscriptions.json").is_file()
+
+
+def test_adding_a_scope_is_not_consent_to_read_it(rem_sources, scope_vault):
+    root, invoke = rem_sources
+
+    _add(invoke, scope_vault, "Course")
+
+    assert _sources(invoke())["obsidian"].get("consented") is False
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+@pytest.mark.parametrize("previously_registered", [False, True], ids=["first-time", "already-removed"])
+def test_remove_all_succeeds_without_an_obsidian_registration(as_json, previously_registered, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    settings = root / ".state" / "subscriptions.json"
+    if previously_registered:
+        assert _add(invoke, scope_vault, "Course").exit_code == 0
+        assert invoke("remove", "obsidian").exit_code == 0
+    before = settings.read_bytes() if settings.exists() else None
+
+    result = invoke("remove", "obsidian", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    if as_json:
+        assert _sources(result) == {"subscription": "obsidian", "enabled": False, "registered": False}
+    else:
+        assert "Subscription: obsidian" in result.stdout
+        assert "Enabled: No" in result.stdout and "Registered: No" in result.stdout
+        assert "Next:" in result.stdout
+    assert (settings.read_bytes() if settings.exists() else None) == before
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_remove_unregisters_obsidian_and_keeps_original_notes(as_json, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    before = _disk(scope_vault)
+    others = {name: source for name, source in _sources(invoke()).items() if name != "obsidian"}
+
+    result = invoke("remove", "obsidian", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    if as_json:
+        assert _sources(result) == {"subscription": "obsidian", "enabled": False, "registered": False}
+    else:
+        assert "Registered: No" in result.stdout
+    sources = _sources(invoke())
+    source = sources.pop("obsidian")
+    assert source.get("registered") is False and source.get("enabled") is False
+    assert source.get("consented") is False and not source.get("folders")
+    assert not source.get("vault") and not source.get("root") and not source.get("source_instance_id")
+    assert sources == others
+    assert _disk(scope_vault) == before
+
+
+@pytest.mark.parametrize("selection", ["same", "folders", "vault"])
+def test_remove_allows_an_explicit_new_scope(selection, rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    chosen = _notes_vault(tmp_path, {"Notes/new.md": "new vault\n"}, name="NewScope")
+    vault, folders = {
+        "same": (scope_vault, ["Course"]),
+        "folders": (scope_vault, ["Course/Week1", "Personal"]),
+        "vault": (chosen, ["Notes"]),
+    }[selection]
+    assert invoke("remove", "obsidian").exit_code == 0
+
+    assert _add(invoke, vault, *folders).exit_code == 0
+
+    source = _sources(invoke())["obsidian"]
+    assert source["vault"] == str(vault.resolve()) and source["folders"] == sorted(folders)
+    assert source["enabled"] is True and source["consented"] is False
+
+
+def test_removed_scope_cannot_be_restored_without_an_explicit_selection(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    assert invoke("remove", "obsidian").exit_code == 0
+
+    result = invoke("add", "obsidian")
+
+    assert result.exit_code != 0, result.output
+    assert "--vault" in result.output and "--folder" in result.output
+    assert _sources(invoke())["obsidian"].get("registered") is False
+
+
+def test_remove_works_when_the_registered_vault_is_unavailable(rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    moved = tmp_path / "moved-vault"
+    scope_vault.rename(moved)
+    before = _disk(moved)
+
+    result = invoke("remove", "obsidian")
+
+    assert result.exit_code == 0, result.output
+    assert _sources(invoke())["obsidian"].get("registered") is False
+    assert _disk(moved) == before
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_remove_one_folder_keeps_the_other_registration(as_json, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+    before = _sources(invoke())
+    original = _disk(scope_vault)
+
+    result = invoke("remove", "obsidian", "--folder", "Personal", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    sources = _sources(invoke())
+    source = sources.pop("obsidian")
+    previous = before.pop("obsidian")
+    assert source["folders"] == ["Course"] and source["enabled"] is True
+    assert source["consented"] is False
+    assert all(source[key] == previous[key] for key in ("vault", "root", "source_instance_id"))
+    assert sources == before and _disk(scope_vault) == original
+    if as_json:
+        assert _sources(result) == {"subscription": "obsidian", "enabled": True,
+                                    "registered": True, "folders": ["Course"], "consented": False}
+    else:
+        assert "Registered: Yes" in result.stdout and "Course" in result.stdout
+
+
+@pytest.mark.parametrize("folders", [["Course", "Personal"], ["Course", "Course", "Personal"], ["."]])
+def test_remove_last_selected_folders_unregisters_obsidian(folders, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, *(folders if folders == ["."] else ["Course", "Personal"]))
+    original = _disk(scope_vault)
+
+    result = invoke("remove", "obsidian", *[arg for folder in folders for arg in ("--folder", folder)])
+
+    assert _sources(result) == {"subscription": "obsidian", "enabled": False, "registered": False}
+    assert _sources(invoke())["obsidian"].get("registered") is False
+    assert _disk(scope_vault) == original
+    assert _add(invoke, scope_vault, "Personal").exit_code == 0
+
+
+def test_remove_normalizes_relative_folder_spelling(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course/Week1", "Personal")
+
+    result = invoke("remove", "obsidian", "--folder", "./Course//Week1/")
+
+    assert result.exit_code == 0, result.output
+    assert _sources(invoke())["obsidian"]["folders"] == ["Personal"]
+
+
+def test_remove_multiple_folders_keeps_the_unmentioned_folder(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    (scope_vault / "Work Notes").mkdir()
+    _add(invoke, scope_vault, "Course", "Personal", "Work Notes")
+
+    result = invoke("remove", "obsidian", "--folder", "Course", "--folder", "Personal")
+
+    assert result.exit_code == 0, result.output
+    assert _sources(invoke())["obsidian"]["folders"] == ["Work Notes"]
+
+
+@pytest.mark.parametrize("folder", ["Course/Week1", ".", "NoSuchFolder", "../Course", "/Course",
+                                    "C:/Course", "Course\\Week1", "Course/../Personal", "", " ", "Course\n"])
+def test_invalid_or_unselected_folder_removal_is_atomic(folder, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+    settings = root / ".state" / "subscriptions.json"
+    before = settings.read_bytes(), _disk(scope_vault)
+
+    result = invoke("remove", "obsidian", "--folder", "Personal", "--folder", folder)
+
+    assert result.exit_code != 0, result.output
+    assert (settings.read_bytes(), _disk(scope_vault)) == before
+    assert _sources(invoke())["obsidian"]["folders"] == ["Course", "Personal"]
+
+
+def test_a_whole_vault_selection_cannot_remove_its_child(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, ".")
+    before = (root / ".state" / "subscriptions.json").read_bytes()
+
+    result = invoke("remove", "obsidian", "--folder", "Course")
+
+    assert result.exit_code != 0, result.output
+    assert (root / ".state" / "subscriptions.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("missing", ["folder", "vault"])
+def test_remove_a_missing_selected_folder_uses_saved_registration(missing, rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+    original = scope_vault / "Personal" if missing == "folder" else scope_vault
+    moved = tmp_path / "moved"
+    original.rename(moved)
+    before = _disk(moved)
+
+    result = invoke("remove", "obsidian", "--folder", "Personal")
+
+    assert result.exit_code == 0, result.output
+    assert _sources(invoke())["obsidian"]["folders"] == ["Course"]
+    assert _disk(moved) == before
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+@pytest.mark.parametrize("folders", [[], ["--folder", "Personal"]], ids=["whole-source", "one-folder"])
+@pytest.mark.parametrize("target", ["loop", "notebook"])
+def test_remove_works_after_the_vault_path_is_replaced_by_a_link(target, folders, as_json, rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+    moved = tmp_path / "moved-vault"
+    scope_vault.rename(moved)
+    scope_vault.symlink_to(scope_vault if target == "loop" else root, target_is_directory=True)
+    original = _disk(moved)
+
+    result = invoke("remove", "obsidian", *folders, as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    source = _sources(invoke())["obsidian"]
+    assert source["folders"] == (["Course"] if folders else [])
+    assert _disk(moved) == original
+
+
+def test_remove_folder_reads_no_notes_and_creates_no_collection(rem_sources, scope_vault, no_note_reads):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+
+    result = invoke("remove", "obsidian", "--folder", "Personal")
+
+    assert result.exit_code == 0, result.output
+    assert not [path for path in no_note_reads.opened if path.startswith(str(scope_vault))]
+    assert not [path for path in no_note_reads.listed if path.startswith(str(scope_vault))]
+    assert not (root / ".state" / "progress.json").exists()
+    assert not (root.parent / "inbox").exists()
+
+
+@pytest.mark.parametrize("name, extra", [("whatsapp", []), ("codex", []),
+                                       ("obsidian", ["--chat", "123"]),
+                                       ("obsidian", ["--project", "123"])])
+def test_remove_folder_rejects_other_source_options(name, extra, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course", "Personal")
+    settings = root / ".state" / "subscriptions.json"
+    before = settings.read_bytes()
+
+    result = invoke("remove", name, "--folder", "Personal", *extra)
+
+    assert result.exit_code != 0, result.output
+    assert settings.read_bytes() == before
+
+
+def test_remove_folder_without_registration_has_a_root_aware_recovery(rem_sources):
+    root, invoke = rem_sources
+
+    result = invoke("remove", "obsidian", "--folder", "Course")
+
+    assert result.exit_code != 0, result.output
+    assert shlex.split(json.loads(result.stdout)["next"]) == ["co", "rem", "--root", str(root), "sources"]
+    assert not (root / ".state" / "subscriptions.json").exists()
+
+
+@pytest.mark.parametrize("registered", [False, True], ids=["no-registration", "registered"])
+def test_an_empty_vault_argument_does_not_remove_all_obsidian_sources(registered, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    settings = root / ".state" / "subscriptions.json"
+    if registered:
+        assert _add(invoke, scope_vault, "Course").exit_code == 0
+    before = settings.read_bytes() if settings.exists() else None
+
+    result = invoke("remove", "obsidian", "--vault", "")
+
+    assert result.exit_code != 0, result.output
+    assert "--vault" in result.output
+    assert (settings.read_bytes() if settings.exists() else None) == before
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_adding_another_vault_preserves_both_selections(as_json, rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    before = _sources(invoke())["obsidian"]
+    other = _notes_vault(tmp_path, {"Personal/new.md": "Other vault\n"}, name="OtherScope")
+
+    result = _add(invoke, other, "Personal", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    source = _sources(invoke())["obsidian"]
+    vaults = {entry["vault"]: entry for entry in source["vaults"]}
+    assert set(vaults) == {str(scope_vault), str(other)}
+    assert vaults[str(scope_vault)]["folders"] == ["Course"]
+    assert vaults[str(other)]["folders"] == ["Personal"]
+    assert vaults[str(scope_vault)]["source_instance_id"] == before["source_instance_id"]
+    assert vaults[str(scope_vault)]["root"] != vaults[str(other)]["root"]
+    assert source["consented"] is False
+
+
+@pytest.fixture
+def two_rem_vaults(rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    other = _notes_vault(tmp_path, {"Course/other.md": "second vault\n",
+                                    "Personal/new.md": "second personal\n"}, name="OtherVault")
+    assert _add(invoke, scope_vault, "Course", "Personal").exit_code == 0
+    assert _add(invoke, other, "Course", "Personal").exit_code == 0
+    return root, invoke, scope_vault, other
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+@pytest.mark.parametrize("first", [False, True], ids=["second", "first"])
+@pytest.mark.parametrize("folder", [False, True], ids=["vault", "folder"])
+def test_remove_a_vault_or_its_folder_keeps_other_vaults(first, folder, as_json, two_rem_vaults):
+    root, invoke, vault, other = two_rem_vaults
+    target, retained = (vault, other) if first else (other, vault)
+    original = _disk(vault), _disk(other)
+    previous = {v["vault"]: v for v in _sources(invoke())["obsidian"]["vaults"]}
+
+    result = invoke("remove", "obsidian", "--vault", str(target),
+                    *(["--folder", "Personal"] if folder else []), as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    source = _sources(invoke())["obsidian"]
+    entries = source.get("vaults", [source])
+    saved = {v["vault"]: v for v in entries}
+    assert saved[str(retained)]["folders"] == ["Course", "Personal"]
+    assert saved[str(retained)]["source_instance_id"] == previous[str(retained)]["source_instance_id"]
+    assert (str(target) in saved) is folder
+    if folder:
+        assert saved[str(target)]["folders"] == ["Course"]
+    assert (_disk(vault), _disk(other)) == original
+    assert source["consented"] is False
+
+
+def test_removing_all_obsidian_vaults_keeps_other_sources(two_rem_vaults):
+    root, invoke, vault, other = two_rem_vaults
+    before = _sources(invoke())
+    before.pop("obsidian")
+    original = _disk(vault), _disk(other)
+
+    assert invoke("remove", "obsidian").exit_code == 0
+
+    after = _sources(invoke())
+    assert after.pop("obsidian")["registered"] is False
+    assert after == before and (_disk(vault), _disk(other)) == original
+
+
+def test_a_folder_remove_requires_a_vault_when_several_are_registered(two_rem_vaults):
+    root, invoke, vault, other = two_rem_vaults
+    settings = root / ".state" / "subscriptions.json"
+    before = settings.read_bytes()
+
+    result = invoke("remove", "obsidian", "--folder", "Course")
+
+    assert result.exit_code != 0, result.output
+    assert "--vault" in result.output and settings.read_bytes() == before
+    assert shlex.split(json.loads(result.stdout)["next"])[-1] == "sources"
+
+
+def test_repeated_add_to_one_of_several_vaults_only_extends_that_vault(two_rem_vaults):
+    root, invoke, vault, other = two_rem_vaults
+    (other / "Projects").mkdir()
+
+    assert _add(invoke, other, "Projects").exit_code == 0
+    assert _add(invoke, other, "Course/../Personal").exit_code != 0
+
+    entries = _sources(invoke())["obsidian"]["vaults"]
+    saved = {v["vault"]: v["folders"] for v in entries}
+    assert saved == {str(vault): ["Course", "Personal"], str(other): ["Course", "Personal", "Projects"]}
+
+
+@pytest.mark.parametrize("mode", ["unknown-vault", "invalid-folder", "unknown-folder"])
+def test_failed_multi_vault_removal_leaves_every_selection_unchanged(mode, two_rem_vaults):
+    root, invoke, vault, other = two_rem_vaults
+    settings = root / ".state" / "subscriptions.json"
+    before = settings.read_bytes()
+    chosen = str(vault / "Unknown") if mode == "unknown-vault" else str(vault)
+    folders = ["Personal", "../outside" if mode == "invalid-folder" else "NoSuchFolder"]
+
+    result = invoke("remove", "obsidian", "--vault", chosen,
+                    *[arg for name in folders for arg in ("--folder", name)])
+
+    assert result.exit_code != 0, result.output
+    assert settings.read_bytes() == before
+
+
+def test_a_symlink_vault_is_refused_without_duplicating_registration(two_rem_vaults, tmp_path):
+    root, invoke, vault, other = two_rem_vaults
+    alias = tmp_path / "VaultAlias"
+    alias.symlink_to(other, target_is_directory=True)
+
+    before = (root / ".state" / "subscriptions.json").read_bytes()
+    result = _add(invoke, alias, "Course")
+
+    assert result.exit_code != 0 and "symlink" in result.output
+    assert (root / ".state" / "subscriptions.json").read_bytes() == before
+    assert len(_sources(invoke())["obsidian"]["vaults"]) == 2
+
+
+def test_case_spelling_of_the_same_physical_vault_reuses_its_registration(two_rem_vaults):
+    from connectonion.rem import service
+    root, invoke, vault, other = two_rem_vaults
+    alias = other.with_name(other.name.swapcase())
+    if not alias.exists() or not alias.samefile(other):
+        pytest.skip("this filesystem distinguishes case")
+    service.approve_sources(root)
+    before = _sources(invoke())["obsidian"]
+
+    assert _add(invoke, alias, "Course").exit_code == 0
+
+    assert _sources(invoke())["obsidian"] == before
+    result = invoke("remove", "obsidian", "--vault", str(alias), "--folder", "Course")
+    assert result.exit_code == 0, result.output
+    remaining = _sources(invoke())["obsidian"]["vaults"]
+    assert {row["vault"]: row["folders"] for row in remaining} == {
+        str(vault): ["Course", "Personal"], str(other): ["Personal"]}
+
+
+def test_single_vault_can_be_removed_by_its_path(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+
+    result = invoke("remove", "obsidian", "--vault", str(scope_vault))
+
+    assert _sources(result)["registered"] is False
+    assert _sources(invoke())["obsidian"]["registered"] is False
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_another_add_merges_folders_in_the_same_vault(as_json, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course/Week1")
+    original = _sources(invoke())["obsidian"]
+
+    result = _add(invoke, scope_vault, "Personal", as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    source = _sources(invoke())["obsidian"]
+    assert source["folders"] == ["Course/Week1", "Personal"]
+    assert source["vault"] == original["vault"] and source["root"] == original["root"]
+    assert source["source_instance_id"] == original["source_instance_id"]
+    assert source["consented"] is False
+    if as_json:
+        assert _sources(result)["folders"] == source["folders"]
+
+
+@pytest.mark.parametrize("folders, expected", [
+    (["Course", "Personal", "Personal"], ["Course", "Personal"]),
+    (["Course/Week1"], ["Course"]),
+    (["."], ["."]),
+])
+def test_add_normalizes_duplicate_and_overlapping_folders(folders, expected, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+
+    result = _add(invoke, scope_vault, *folders)
+
+    assert result.exit_code == 0, result.output
+    assert _sources(invoke())["obsidian"]["folders"] == expected
+
+
+@pytest.mark.parametrize("folder", ["../outside", "NoSuchFolder", ".obsidian"])
+@pytest.mark.parametrize("existing", ["Course", "."])
+def test_invalid_folder_add_keeps_the_existing_selection(folder, existing, rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, existing)
+    before = (root / ".state" / "subscriptions.json").read_bytes()
+
+    result = _add(invoke, scope_vault, "Personal", folder)
+
+    assert result.exit_code != 0, result.output
+    assert (root / ".state" / "subscriptions.json").read_bytes() == before
+    assert _sources(invoke())["obsidian"]["folders"] == [existing]
+
+
+def test_an_aliased_folder_is_refused_even_inside_the_existing_scope(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    (scope_vault / "Alias").symlink_to(scope_vault / "Personal", target_is_directory=True)
+    _add(invoke, scope_vault, ".")
+    before = (root / ".state" / "subscriptions.json").read_bytes()
+
+    result = _add(invoke, scope_vault, "Alias")
+
+    assert result.exit_code != 0, result.output
+    assert (root / ".state" / "subscriptions.json").read_bytes() == before
+
+
+def test_adding_folders_reads_no_notes_and_creates_no_collection(rem_sources, scope_vault, no_note_reads):
+    root, invoke = rem_sources
+    assert _add(invoke, scope_vault, "Course").exit_code == 0
+
+    assert _add(invoke, scope_vault, "Personal").exit_code == 0
+
+    assert not [path for path in no_note_reads.opened if path.startswith(str(scope_vault))]
+    assert not [path for path in no_note_reads.listed if path.startswith(str(scope_vault))]
+    assert not (root / ".state" / "progress.json").exists()
+    assert not (root / ".state" / "consent.json").exists()
+    assert not (root.parent / "inbox").exists()
+
+
+def test_remove_and_reselect_do_not_read_notes(rem_sources, scope_vault, no_note_reads):
+    root, invoke = rem_sources
+    assert _add(invoke, scope_vault, "Course").exit_code == 0
+
+    assert invoke("remove", "obsidian").exit_code == 0
+    assert _add(invoke, scope_vault, "Personal").exit_code == 0
+
+    vault = str(scope_vault)
+    assert not [path for path in no_note_reads.opened if path.startswith(vault)]
+    assert not [path for path in no_note_reads.listed if path.startswith(vault)]
+
+
+def test_invalid_reselection_leaves_obsidian_unregistered(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    assert invoke("remove", "obsidian").exit_code == 0
+    before = _disk(scope_vault)
+
+    result = _add(invoke, scope_vault, "../outside")
+
+    assert result.exit_code != 0, result.output
+    assert _sources(invoke())["obsidian"].get("registered") is False
+    assert _disk(scope_vault) == before
+
+
+@pytest.mark.parametrize("command", ["add", "remove"])
+def test_sources_help_explains_obsidian_reregistration(command, rem_sources):
+    root, invoke = rem_sources
+
+    result = invoke(command, "--help", as_json=False)
+
+    assert result.exit_code == 0, result.output
+    assert "--vault" in result.stdout and "--folder" in result.stdout
+    assert "co rem start" in result.stdout
+    if command == "remove":
+        assert "cancels all Obsidian registrations" in result.stdout
+        assert "Original notes" in result.stdout
+        assert '--folder "Projects"' in result.stdout
+        assert "last selected folder" in result.stdout
+        assert "explicitly registered" in result.stdout
+    assert not root.exists()
+
+
+def test_an_available_vault_is_not_shown_as_unavailable(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+
+    assert not _mentions(_sources(invoke())["obsidian"], "unavailable")
+
+
+@pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
+def test_a_vault_that_no_longer_exists_is_shown_as_unavailable(as_json, rem_sources, scope_vault, tmp_path):
+    root, invoke = rem_sources
+    _add(invoke, scope_vault, "Course")
+    scope_vault.rename(tmp_path / "moved-away")
+
+    result = invoke(as_json=as_json)
+
+    assert result.exit_code == 0, result.output
+    assert "unavailable" in result.stdout.lower()
+    if as_json:
+        source = _sources(result)["obsidian"]
+        assert _mentions(source, "unavailable") and _mentions(source, "Course")
+
+
+def test_registering_and_listing_read_no_note_at_all(rem_sources, scope_vault, no_note_reads):
+    root, invoke = rem_sources
+    with no_note_reads.paused():
+        before = _disk(scope_vault)
+
+    assert _add(invoke, scope_vault, "Course").exit_code == 0
+    assert invoke().exit_code == 0
+    assert invoke(as_json=False).exit_code == 0
+
+    vault = str(scope_vault)
+    # The spy also sees co's own help pages (rem_help.md); only the vault's notes count.
+    assert [path for path in no_note_reads.opened if path.startswith(vault)] == []
+    assert [path for path in no_note_reads.listed if path.startswith(vault)] == []
+    with no_note_reads.paused():
+        assert _disk(scope_vault) == before
+
+
+@pytest.mark.parametrize("folders", [[], ["../outside"], ["/abs/path"], [".obsidian"], ["Course/../.."]],
+                         ids=["no-folder", "parent", "absolute", "system-folder", "escape"])
+def test_bad_folders_are_refused_and_nothing_is_enabled(folders, rem_sources, scope_vault):
+    root, invoke = rem_sources
+
+    result = _add(invoke, scope_vault, *folders)
+
+    assert result.exit_code != 0, result.output
+    assert "Traceback" not in result.output
+    assert _sources(invoke())["obsidian"].get("enabled") is False
+
+
+def test_vault_is_required(rem_sources):
+    root, invoke = rem_sources
+
+    result = invoke("add", "obsidian", "--folder", "Course")
+
+    assert result.exit_code != 0, result.output
+    assert _sources(invoke())["obsidian"].get("enabled") is False
+
+
+def test_a_folder_that_is_not_in_the_vault_is_refused(rem_sources, scope_vault):
+    root, invoke = rem_sources
+
+    result = _add(invoke, scope_vault, "NoSuchFolder")
+
+    assert result.exit_code != 0, result.output
+    assert _sources(invoke())["obsidian"].get("enabled") is False
+
+
+def test_other_sources_keep_their_settings(rem_sources, scope_vault):
+    root, invoke = rem_sources
+    before = {name: source for name, source in _sources(invoke()).items() if name != "obsidian"}
+
+    _add(invoke, scope_vault, "Course")
+
+    after = {name: source for name, source in _sources(invoke()).items() if name != "obsidian"}
+    assert after.keys() == before.keys()
+    assert all(after[name].get("enabled") == before[name].get("enabled") for name in before)
+
+
+def test_coding_project_flag_still_means_a_directory(rem_sources, tmp_path):
+    root, invoke = rem_sources
+    work = tmp_path / "work"
+    work.mkdir()
+
+    result = invoke("add", "codex", "--project", str(work))
+
+    assert _sources(result)["subscription"].startswith("codex-dir-")
+
+
+def test_sources_add_help_documents_vault_and_folder(rem_sources, monkeypatch):
+    root, invoke = rem_sources
+    monkeypatch.setattr(obsidian, "_registry_path", lambda: pytest.fail("help must not look for the registry"))
+
+    result = invoke("add", "--help", as_json=False)
+
+    assert result.exit_code == 0, result.output
+    assert "obsidian" in result.stdout and "--vault" in result.stdout and "--folder" in result.stdout
+    assert not root.exists()

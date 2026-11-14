@@ -15,6 +15,43 @@ from .rem_help import show, verbatim
 from .rem_output import render
 
 
+def _obsidian_source_view(sources):
+    """Keep one-vault output compatible; show each selection when several are saved."""
+    from ...rem.service import obsidian_sources
+    vaults = sorted(obsidian_sources(sources).values(), key=lambda source: source["vault"])
+    if len(vaults) == 1:
+        return vaults[0]
+    return {"id": "obsidian", "kind": "obsidian", "registered": bool(vaults),
+            "enabled": any(source["enabled"] for source in vaults),
+            "consented": bool(vaults) and all(source["consented"] for source in vaults),
+            **({"vaults": [{"name": Path(source["vault"]).name, **source} for source in vaults]}
+               if vaults else {"status": "off", "folders": []})}
+
+
+def _obsidian_sources_listing(view):
+    """Show the provider inbox once above the individual vault scopes."""
+    from ...inbox.store import default_home
+
+    vaults = view.get("vaults", [])
+    if "vault" in view:
+        vaults = [{"name": Path(view["vault"]).name, **view}]
+    result = {
+        "id": "obsidian",
+        "kind": "obsidian",
+        "root": str(default_home("obsidian")),
+        "vaults": [
+            {key: value for key, value in vault.items() if key not in ("id", "kind", "root")}
+            for vault in vaults
+        ],
+        "registered": bool(vaults),
+        "enabled": view["enabled"],
+        "consented": view["consented"],
+    }
+    if not vaults:
+        result["status"] = "off"
+    return result
+
+
 def _next(ctx, arguments):
     """The next command, spelled the way the user invoked this one.
 
@@ -2038,6 +2075,11 @@ def make_rem_app(factory):
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
                                       say=lambda text: rem_look.step(text))
+                except RemError as error:
+                    if source == "obsidian" or source.startswith("obsidian-"):
+                        guidance = ["start"] if "co rem start" in str(error) else ["sources"]
+                        _emit(ctx, str(error), guidance, failed=True)
+                    raise
                 except KeyboardInterrupt:
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
@@ -2057,7 +2099,7 @@ def make_rem_app(factory):
                                        f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
-                    return record, ["sync"]
+                    return record, ["sync", "--source", source] if source else ["sync"]
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
@@ -2186,17 +2228,36 @@ def make_rem_app(factory):
 
     @sources_app.callback(invoke_without_command=True)
     def inspect_sources(ctx: typer.Context):
-        from ...rem.service import subscriptions
+        from ...rem.service import obsidian_sources, subscriptions
         if ctx.invoked_subcommand is None:
-            _handle(ctx, lambda root: (subscriptions(root), ["sync", "--dry-run"]), ["config"])
+            def operation(root):
+                sources = subscriptions(root)
+                chosen = obsidian_sources(sources)
+                obsidian = _obsidian_source_view(sources)
+                if not ctx.obj["json"]:
+                    obsidian = _obsidian_sources_listing(obsidian)
+                # An off row teaches how to opt in; it is not a saved subscription.
+                return {**{name: source for name, source in sources.items() if name not in chosen},
+                        "obsidian": obsidian}, ["sync", "--dry-run"]
+            _handle(ctx, operation, ["config"])
 
-    def _add_source(ctx, name, chat, project, about, since, only, force):
-        from ...rem.service import set_window, toggle_source
+    def _add_source(ctx, name, chat, project, about, since, only, force, vault="", folders=()):
+        from ...rem.files import RemError
+        from ...rem.service import OBSIDIAN_KIND, set_window, subscriptions, toggle_source
 
         def operation(root):
+            if name == OBSIDIAN_KIND and (since or only or force):
+                raise RemError("Obsidian uses vault/folder scope; --since, --only and --force do not apply")
+            scope = {"vault": vault, "folders": folders} if name == OBSIDIAN_KIND or vault or folders else {}
             subscription = toggle_source(root, name, True, project=project, about=about,
-                                         since=since or "60d", chats=chat)
+                                         since=since or "60d", chats=chat, **scope)
             result = {"subscription": subscription, "enabled": True}
+            if name == OBSIDIAN_KIND:
+                source = _obsidian_source_view(subscriptions(root))
+                if "vaults" in source:
+                    return {**result, "vaults": source["vaults"], "consented": source["consented"]}, ["sources"]
+                return {**result, **{key: source[key] for key in (
+                    "vault", "folders", "root", "source_instance_id", "consented", "status", "sync_status")}}, ["sources"]
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             if chat:
@@ -2206,11 +2267,25 @@ def make_rem_app(factory):
             return result, ["sync", "--dry-run"]
         _handle(ctx, operation, ["sources"])
 
-    def _remove_source(ctx, name, chat):
-        from ...rem.service import subscriptions, toggle_source
+    def _remove_source(ctx, name, chat, folders=(), vault=None):
+        from ...rem.files import RemError
+        from ...rem.service import OBSIDIAN_KIND, subscriptions, toggle_source
 
         def operation(root):
-            toggle_source(root, name, False, chats=chat)
+            if name == OBSIDIAN_KIND and vault is not None and not vault.strip():
+                raise RemError("Choose a vault path for --vault from `co rem sources`")
+            toggle_source(root, name, False, chats=chat,
+                          **({"folders": folders} if folders else {}), **({"vault": vault} if vault else {}))
+            if name == OBSIDIAN_KIND:
+                source = _obsidian_source_view(subscriptions(root))
+                if "vaults" in source:
+                    return {"subscription": name, "enabled": source["enabled"], "registered": True,
+                            "vaults": source["vaults"], "consented": source["consented"]}, ["sources"]
+                if source.get("vault"):
+                    return {"subscription": name, "enabled": bool(source.get("enabled")),
+                            "registered": True, "folders": source["folders"],
+                            "consented": bool(source.get("consented"))}, ["sources"]
+                return {"subscription": name, "enabled": False, "registered": False}, ["sources"]
             source = subscriptions(root)[name]
             return {"subscription": name, "enabled": bool(source.get("enabled")),
                     **({"chats": source.get("chats") or []} if chat else {})}, ["sources"]
@@ -2223,13 +2298,17 @@ def make_rem_app(factory):
                    about: str = typer.Option("", "--about"),
                    since: str = typer.Option("", "--since"),
                    only: bool = typer.Option(False, "--only"),
-                   force: bool = typer.Option(False, "--force")):
-        _add_source(ctx, name, chat, project, about, since, only, force)
+                   force: bool = typer.Option(False, "--force"),
+                   vault: str = typer.Option("", "--vault"),
+                   folders: List[str] = typer.Option([], "--folder")):
+        _add_source(ctx, name, chat, project, about, since, only, force, vault, folders)
 
     @sources_app.command("remove", cls=V("co rem sources remove"))
     def remove_source(ctx: typer.Context, name: str = typer.Argument(...),
-                      chat: List[str] = typer.Option([], "--chat")):
-        _remove_source(ctx, name, chat)
+                      chat: List[str] = typer.Option([], "--chat"),
+                      folders: List[str] = typer.Option([], "--folder"),
+                      vault: Optional[str] = typer.Option(None, "--vault")):
+        _remove_source(ctx, name, chat, folders=folders, vault=vault)
 
     config_app = factory(help="co rem config", no_args_is_help=False)
     config_app.info.cls = verbatim("co rem config", config_app.info.cls)
@@ -2296,10 +2375,16 @@ def make_rem_app(factory):
     def inspect_logs(ctx: typer.Context, run_id: str = typer.Argument(""),
                      usage: bool = typer.Option(False, "--usage"),
                      days: int = typer.Option(0, "--days", min=0),
-                     old_run: str = typer.Option("", "--run")):
-        from ...rem.service import run_logs, seen_outcome, usage_report
+                     old_run: str = typer.Option("", "--run"),
+                     source: str = typer.Option("", "--source")):
+        from ...rem.files import RemError
+        from ...rem.service import run_logs, seen_outcome, source_logs, usage_report
 
         def operation(root):
+            if source:
+                if run_id or old_run or usage or days:
+                    raise RemError("Use --source alone; RUN, --run, --usage and --days query run logs")
+                return source_logs(root, source), ["logs"]
             if usage:
                 report = usage_report(root, days or None)
                 if not report["runs"]:

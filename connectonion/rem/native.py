@@ -452,7 +452,22 @@ def _resume(root, cursor, task, *, discard, scheduled=False):
         _accept(root, cursor, task, committed if committed is not None else _recovered_result(root, task))
     elif service.now() - datetime.fromisoformat(task["created_at"]) > timedelta(days=1):
         return _discard(root, cursor, task, "stale: older than the daily window")
+    else:
+        try:
+            _require_obsidian_sources(root, task["task"])
+        except RemError as error:
+            return _discard(root, cursor, task, str(error))
     return []
+
+
+def _require_obsidian_sources(root, task):
+    from .obsidian import require_approved_sources
+    from .project_claim_review import original_items
+    from .refusals import material_sources
+
+    items = [*task.get("items", []), *task.get("prior_items", [])]
+    require_approved_sources(root, [*task.get("obsidian_sources", []), *material_sources(items),
+                                    *material_sources(original_items(items))])
 
 
 def _discard(root, cursor, task, reason, *, outcome="discarded", **fields):
@@ -557,6 +572,7 @@ def submit(root, task_id, *, usage=None):
             return _accept(root, cursor, task, committed)
         if _promoted(root, task):
             return _accept(root, cursor, task, _recovered_result(root, task))
+        _require_obsidian_sources(root, task["task"])
         inputs = _inputs(root, task["task"], Path(task["directory"]), handler=task["handler"])
         # Older tasks also saved unrelated notebook files; apply today's input scope.
         if (any(not _input_matches(root, task, Path(path), digest)

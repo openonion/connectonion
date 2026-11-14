@@ -379,6 +379,14 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
         for source in _budget_order(records, ids):
             if budget <= 0:
                 break
+            if source.startswith("obsidian:"):
+                from .obsidian import cited_snapshot
+                context = cited_snapshot(root, source)
+                if context:
+                    output[source] = {**context, "excerpt": context["excerpt"][:budget],
+                                      "truncated": len(context["excerpt"]) > budget}
+                    budget -= len(output[source]["excerpt"])
+                continue
             row = _cited_row(db, source) if db is not None else None
             if row is None:
                 from .attachments import attachment_context

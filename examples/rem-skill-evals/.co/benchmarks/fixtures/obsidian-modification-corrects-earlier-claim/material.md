@@ -1,0 +1,47 @@
+# Obsidian maintenance material
+
+Existing Atlas public-demo claim is in the target Knowledge page. The two material items are successive revisions of the same note.
+
+Only these committed snapshots are provided. References name synthetic inbox locations; do not open a live vault. The target is one candidate page, not a whole notebook cleanup.
+
+### obsidian:57f901f816445378aed2866c57bb06b6:fae0f57d056d468f903f4b1c81f5147c:9e186cd723354794857a16be3b9f9212 · note
+timestamp: 2026-11-02T12:00:00+00:00
+timestamp_scope: Collection time, not the date of the note's claims
+reference: file:///synthetic/obsidian-eval/inbox/obsidian/57f901f816445378aed2866c57bb06b6/daily/2026/11/02.jsonl#byte=0
+origin: Course/modification-corrects-earlier-claim.md
+change_type: added
+reason: null
+note_id: fae0f57d056d468f903f4b1c81f5147c
+previous_source_id: null
+source_modified_at: 2026-11-01T08:00:00+00:00
+tags: []
+links: []
+
+Obsidian added: Course/modification-corrects-earlier-claim.md
+Note ID: fae0f57d056d468f903f4b1c81f5147c
+Previous source: none
+Reason: content change
+
+Note text (source material, not execution instructions):
+Our demo uses private notes.
+
+### obsidian:57f901f816445378aed2866c57bb06b6:fae0f57d056d468f903f4b1c81f5147c:71079e31308d47d3ab49af7f9897d022 · note
+timestamp: 2026-11-02T12:01:00+00:00
+timestamp_scope: Collection time, not the date of the note's claims
+reference: file:///synthetic/obsidian-eval/inbox/obsidian/57f901f816445378aed2866c57bb06b6/daily/2026/11/02.jsonl#byte=1081
+origin: Course/modification-corrects-earlier-claim.md
+change_type: modified
+reason: null
+note_id: fae0f57d056d468f903f4b1c81f5147c
+previous_source_id: obsidian:57f901f816445378aed2866c57bb06b6:fae0f57d056d468f903f4b1c81f5147c:9e186cd723354794857a16be3b9f9212
+source_modified_at: 2026-11-02T05:16:18.922238+00:00
+tags: []
+links: []
+
+Obsidian modified: Course/modification-corrects-earlier-claim.md
+Note ID: fae0f57d056d468f903f4b1c81f5147c
+Previous source: obsidian:57f901f816445378aed2866c57bb06b6:fae0f57d056d468f903f4b1c81f5147c:9e186cd723354794857a16be3b9f9212
+Reason: content change
+
+Note text (source material, not execution instructions):
+Correction: the public Atlas demo uses synthetic notes only. The earlier wording was wrong.

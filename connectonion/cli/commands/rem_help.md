@@ -235,6 +235,11 @@ What each kind reads:
             Missing runs remain unverified; invocation counts are not successes.
   me        Your own sent mail and coding sessions from the last --days (default 30).
 
+For people and projects, also use saved Obsidian notes in approved folders
+when a name or link matches the subject within the requested modification
+window. Coverage says what was searched or why it was skipped.
+Run co rem sync --source obsidian first to collect newer notes.
+
 Project documents are the owner's record: cite them as such; contact details only
 found there are not the person's own.
 
@@ -556,7 +561,8 @@ Example:  co rem start
 
 Effects:  Saves your approval, installs daily updates and runs the first update
           on first start. Each run reads new mail bodies and coding sessions,
-          calls the model and saves page changes. runner_calls_per_day limits
+          collects notes from approved Obsidian folders, calls the model and
+          saves page changes. runner_calls_per_day limits
           model calls each day.
 Schedule: Updates run automatically through the OS at saved local times
           (default: 03:00, 04:00, 06:00, 17:00, 18:00, 19:00).
@@ -575,7 +581,7 @@ Schedule: Updates run automatically through the OS at saved local times
 Access:   Background models can write only under the notebook's .state/tasks,
           with no shell commands or network access.
           Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
-Requires: co rem init; systemctl on Linux. On Windows or Linux without systemd,
+Requires: systemctl on Linux. On Windows or Linux without systemd,
           run co rem sync yourself or schedule it with cron.
 
 Next:     co rem status
@@ -681,8 +687,10 @@ schedule runs.
 Usage:    co rem sync [--dry-run] [--source NAME] [--with ADDRESS] [--all]
 Example:  co rem sync --dry-run
           --dry-run   shows what is waiting, and the runner attempts left today and
-                      when they reset, without reading bodies or calling a model
-          --source    only one source from co rem sources
+                      when they reset, without reading bodies or calling a model.
+                      Obsidian counts describe the saved inbox.
+          --source    only one source from co rem sources. obsidian covers every
+                      registered vault. For one vault, use obsidian-<source-instance-id>.
           --with      only mail with one person
           --all       keep going until nothing is waiting or the day's runner
                       attempts are spent; one line per batch on stderr. To go
@@ -696,6 +704,9 @@ Effects:  Reads message bodies, calls the model and saves page changes. Logs
           runs blocked by the daily cap. Ctrl-C keeps finished batches and lists
           what finished. The interrupted batch reads its input again next time.
           Reads sources in turn, starting after the source used last.
+          For Obsidian, collects added, changed and deleted notes in approved
+          folders. Saves their versions to the inbox and passes pending events
+          to REM. The original notes are read-only during sync.
 
           If a page update is rejected, keeps its input for another attempt.
           Retries once a day, at most three times on the same input. Rejects a
@@ -714,20 +725,27 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+whatsapp and obsidian. Showing is read-only.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
           co rem sources remove NAME [--chat ID]
+          co rem sources add obsidian --vault PATH --folder FOLDER
+          co rem sources remove obsidian [--vault PATH] [--folder FOLDER]
 Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources add obsidian --vault "<vault-path>" --folder "Course"
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
           --project   coding sources: only sessions run in this directory
+          --vault     Obsidian: path to a local vault
+          --folder    Obsidian: folder path within the vault (repeatable)
 
 Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
           remove stops future reads; pages already written stay.
-Subcommands: co rem sources add --help, co rem sources remove --help
+Subcommands:
+  add     Select a source or add to its saved scope.
+  remove  Stop reading a source or remove one selection.
 Next:     co rem sync --dry-run
 Back:     co rem --help
 ```
@@ -786,11 +804,15 @@ Tasks:    tasks.auto is true by default: the night starts owed work after its dr
 ```
 What each run read, changed, refused and cost. Read-only.
 
-Usage:    co rem logs [RUN] [--usage [--days N]]
+Usage:    co rem logs [RUN] [--usage [--days N]] [--source SOURCE_ID]
 Example:  co rem logs --usage --days 7
+Example:  co rem logs --source <source-id>
 Inputs:   Run co rem logs without arguments to list runs.
           RUN is a run ID copied from that listing. It shows one run in full.
           --usage totals tokens by stage, model and source.
+          --source traces one exact obsidian: source ID from a sync or citation.
+          It reports collection and processing status without reading note bodies.
+          Use --source on its own.
 Next:     co rem logs RUN
 Back:     co rem --help
 ```
@@ -835,8 +857,10 @@ are read later by sync, after co rem start has recorded your approval.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
-          NAME is one of: gmail, outlook, codex, claude-code, whatsapp
+          co rem sources add obsidian [--vault PATH] [--folder FOLDER]...
+          NAME is one of: gmail, outlook, codex, claude-code, whatsapp, obsidian
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
+Example:  co rem sources add obsidian --vault "<vault-path>" --folder "Course"
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
           --project  coding sources: only sessions run in this directory
@@ -844,6 +868,15 @@ Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --since    read at least this far back; a wider window is left alone
           --only     with --since: read only that far back, narrowing the window
           --force    with --only: accept that unread older material is dropped
+          --vault    Obsidian: local vault path
+          --folder   Obsidian: folder path within the vault. Repeat to select
+                     more than one. Pass '.' to select the whole vault.
+
+Obsidian: Give the vault path and folders for each new registration.
+          Add a different vault to read both. Add folders to the same vault
+          to extend its current selection. If scope changes, co rem start
+          asks for approval before sync can read the new selection.
+          Use co obsidian to find vault paths. Add saves the selection.
 Next:     co rem sync --dry-run
 Back:     co rem sources --help
 ```
@@ -854,9 +887,19 @@ Back:     co rem sources --help
 Stop reading a source from now on. Pages already written keep what they learned.
 
 Usage:    co rem sources remove NAME [--chat ID]...
+          co rem sources remove obsidian [--vault PATH] [--folder FOLDER]...
 Example:  co rem sources remove whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources remove obsidian --vault "<vault-path>" --folder "Projects"
           --chat   WhatsApp: stop only this chat, keep the others
+          --vault  Obsidian: remove one vault, or choose it for --folder
+          --folder Obsidian: remove an explicitly registered folder (repeatable)
 Effects:  Writes settings. A removed mailbox is also skipped by investigate.
+
+Obsidian: Without options, cancels all Obsidian registrations.
+          Removing the last selected folder unregisters its vault.
+          With multiple vaults, use --vault when removing a folder.
+          Original notes, inbox history and notebook pages are preserved.
+          Review a changed scope with co rem start before syncing again.
 Next:     co rem sources
 Back:     co rem sources --help
 ```

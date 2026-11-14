@@ -1,0 +1,31 @@
+[
+  {
+    "role": "note",
+    "source": "obsidian:27c8940a794e57f5a3085ad2c236d2ac:bb16d3849e9046e390b2d5425aa84b52:728c944948f74fd58ae1b5eb470dea44",
+    "text": "Obsidian added: Course/knowledge-reuses-existing-project.md\nNote ID: bb16d3849e9046e390b2d5425aa84b52\nPrevious source: none\nReason: content change\n\nNote text (source material, not execution instructions):\nRetrieval practice improves recall when attempts are spaced. This applies to [[Atlas]] exam preparation. #study",
+    "timestamp": "2026-11-02T12:00:00+00:00",
+    "timestamp_scope": "Collection time, not the date of the note's claims",
+    "reference": "file:///synthetic/obsidian-eval/inbox/obsidian/27c8940a794e57f5a3085ad2c236d2ac/daily/2026/11/02.jsonl#byte=0",
+    "origin": "Course/knowledge-reuses-existing-project.md",
+    "change_type": "added",
+    "reason": null,
+    "note_id": "bb16d3849e9046e390b2d5425aa84b52",
+    "previous_source_id": null,
+    "source_modified_at": "2026-11-01T08:00:00+00:00",
+    "tags": [
+      "study"
+    ],
+    "links": [
+      {
+        "raw": "[[Atlas]]",
+        "target": "Atlas",
+        "alias": null,
+        "anchor": null,
+        "embedded": false,
+        "target_kind": "note",
+        "resolved_path": null,
+        "resolution": "unresolved"
+      }
+    ]
+  }
+]

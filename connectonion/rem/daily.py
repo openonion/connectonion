@@ -733,7 +733,7 @@ def _maintain_again(root, record, entry, config) -> dict:
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         task = prepare_retry(root, record, entry, config)
         if task is None:
-            return {'changed': [], 'refused': 0, 'report': 'Feedback targets already processed or unavailable'}
+            return {'changed': [], 'refused': 0, 'report': 'Retained material already processed or unavailable'}
         from . import feedback
         material, managed, progress, kind = (task[key] for key in ("material", "managed", "progress", "kind"))
         def finished(page, result):
@@ -749,9 +749,15 @@ def _maintain_again(root, record, entry, config) -> dict:
 
 def prepare_retry(root, record, entry, config):
     """Refresh retained feedback under the caller's lock before its next model step."""
-    from .refusals import forget_refusal
+    from .obsidian import require_approved_sources
+    from .refusals import forget_refusal, material_sources
     from .runner import RunFailed
     material = entry['material']
+    try:
+        require_approved_sources(root, material_sources(material))
+    except RemError:
+        # Rebuild from the current scope instead of replaying withdrawn bodies.
+        return None
     kind = str(material[0].get('source', '')).split(':', 1)[0]
     from . import feedback
     progress = read_json(state_path(root, 'progress.json'), {})
