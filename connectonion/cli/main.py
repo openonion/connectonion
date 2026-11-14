@@ -1325,7 +1325,7 @@ def server_destroy(
     name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; charges the used part of this month, or refunds the unused part of an old 12-month term."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; refunds the unused part of this month, or of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
         raise typer.Exit(1)
@@ -1517,10 +1517,12 @@ def skills_index(
 # Shortened on purpose: a full 64-hex address in help reads as a real one, and
 # could be one. `co trust list` prints the full address to paste.
 EXAMPLE_ADDRESS = "0x3f5a...c9e1"
+TRUST_DIR_HELP = "The .co folder whose trust lists to use, for example ~/.co for co ai (default: this project's .co)"
+TRUST_GLOBAL_HELP = "Use the lists in ~/.co, the global identity that co ai and co handoff use"
 trust_app = _typer_app(
-    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. "
+    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. Use --co-dir DIR or --global/-g on any command to select another identity. "
          "trust='careful' admits contacts and the whitelist; trust='strict' admits only the whitelist.",
-    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS}",
+    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --global  |  co trust list --co-dir /srv/agent/.co",
 )
 app.add_typer(trust_app, name="trust")
 
@@ -1534,74 +1536,99 @@ def trust_callback(ctx: typer.Context):
         handle_trust_list()
 
 
-@trust_app.command("list", epilog="Example:  co trust list --global")
-def trust_list(global_: bool = typer.Option(False, "--global", "-g",
-                                            help="The global identity in ~/.co, which co ai and co handoff use")):
+@trust_app.command("list", epilog="Example:  co trust list  |  co trust list --co-dir /srv/agent/.co  |  co trust list --global")
+def trust_list(
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """List every address on each trust list. Read-only."""
-    from .commands.trust_commands import handle_trust_list
-    from ..environment import global_config_dir
-    handle_trust_list(global_config_dir() if global_ else None)
+    from .commands.trust_commands import handle_trust_list, trust_target
+    handle_trust_list(co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}")
-def trust_level(address: str = typer.Argument(..., help="Address to check")):
+@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust level {EXAMPLE_ADDRESS} --global")
+def trust_level(
+    address: str = typer.Argument(..., help="Address to check"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Show whether an address is a stranger, contact, whitelisted or blocked. Read-only."""
-    from .commands.trust_commands import handle_trust_level
-    handle_trust_level(address)
+    from .commands.trust_commands import handle_trust_level, trust_target
+    handle_trust_level(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist")
+@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
 def trust_add(
     address: str = typer.Argument(..., help="Full 0x address of the agent to allow"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
     """Let an address call your agent: adds it to your contacts, or with --whitelist to the whitelist (needed when trust is 'strict'). Writes the trust list."""
-    from .commands.trust_commands import handle_trust_add
-    handle_trust_add(address, whitelist)
+    from .commands.trust_commands import handle_trust_add, trust_target
+    handle_trust_add(address, whitelist, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}")
-def trust_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}  |  co trust remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust remove {EXAMPLE_ADDRESS} --global")
+def trust_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Stop trusting an address, so it is a stranger again. Removes it from contacts and the whitelist; blocks and admins are unchanged."""
-    from .commands.trust_commands import handle_trust_remove
-    handle_trust_remove(address)
+    from .commands.trust_commands import handle_trust_remove, trust_target
+    handle_trust_remove(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"')
+@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"  |  co trust block {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust block {EXAMPLE_ADDRESS} --global')
 def trust_block(
     address: str = typer.Argument(..., help="Address to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
     """Refuse every call from an address. Writes the blocklist."""
-    from .commands.trust_commands import handle_trust_block
-    handle_trust_block(address, reason)
+    from .commands.trust_commands import handle_trust_block, trust_target
+    handle_trust_block(address, reason, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}")
-def trust_unblock(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
-    """Accept calls from a blocked address again. Removes it from the blocklist."""
-    from .commands.trust_commands import handle_trust_unblock
-    handle_trust_unblock(address)
+@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}  |  co trust unblock {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust unblock {EXAMPLE_ADDRESS} --global")
+def trust_unblock(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
+    """Accept calls from a blocked address again. Removes it from the blocklist; its contacts, whitelist and your trust setting still decide access."""
+    from .commands.trust_commands import handle_trust_unblock, trust_target
+    handle_trust_unblock(address, co_dir=trust_target(co_dir, global_))
 
 
 # Admin subcommand group
 admin_app = _typer_app(help="Addresses that may command your agent (super admin only).",
-                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
+                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS} --global  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co")
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
-def admin_add(address: str = typer.Argument(..., help="Full 0x address of the new admin")):
+@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
+def admin_add(
+    address: str = typer.Argument(..., help="Full 0x address of the new admin"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Let an address command your agent. Writes .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_add
-    handle_admin_add(address)
+    from .commands.trust_commands import handle_admin_add, trust_target
+    handle_admin_add(address, co_dir=trust_target(co_dir, global_))
 
 
-@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}")
-def admin_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin remove {EXAMPLE_ADDRESS} --global")
+def admin_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Stop an address from commanding your agent. Removes it from .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_remove
-    handle_admin_remove(address)
+    from .commands.trust_commands import handle_admin_remove, trust_target
+    handle_admin_remove(address, co_dir=trust_target(co_dir, global_))
 
 
 # SMS command group. `co sms` (no args) shows the inbox without changing state.
@@ -2086,16 +2113,36 @@ _INBOX_IDS = {
 # Inbox providers: feishu, lark, whatsapp, telegram, discord, slack. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
+# What `send` takes as its first argument where it is more than a chat id.
+_SEND_TO = {
+    "feishu": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "lark": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "whatsapp": "Chat id, a saved contact name, or a phone number with its country code",
+}
+_SEND_EXAMPLES = {
+    "feishu": 'co feishu send alex@example.com "Hello"  |  co feishu send "Ops Room" "Deploy done"  |  '
+              'co feishu send Alex "On my way"  |  echo "Hello" | co feishu send oc_5ce6d572455d361153b7cb51da133945',
+    "lark": 'co lark send alex@example.com "Hello"  |  co lark send "Ops Room" "Deploy done"  |  '
+            'co lark send Alex "On my way"  |  echo "Hello" | co lark send oc_5ce6d572455d361153b7cb51da133945',
+    "whatsapp": 'co whatsapp send 61412345678@s.whatsapp.net "Hello"  |  co whatsapp send "Alex Example" "Hello"  |  '
+                'co whatsapp send +61412345678 "Hello"  |  echo "Hello" | co whatsapp send 61412345678@s.whatsapp.net',
+}
+
+
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes: bool = False, media: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
 
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
-    says they refuse, instead of promising an id they never print."""
+    says they refuse, instead of promising an id they never print.
+
+    `media`: the provider sends pictures and files. Elsewhere --image and
+    --file stay, and their help says they are refused."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
+    not_here = "" if media else f" Not supported on {name.capitalize()} yet; commands using this option fail and nothing is sent."
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
@@ -2124,14 +2171,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     def _send(
-        chat: str = typer.Argument(..., help="Chat id"),
+        chat: str = typer.Argument(..., help=_SEND_TO.get(name, "Chat id")),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Send text, or a picture or file, to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
@@ -2139,8 +2186,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     if with_send:
         group.command("send", cls=NegativeIds,
-                      epilog=f'Example:  {co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
-                             f'{co} send {chat} "Thanks" --reply-to {msg}')(_send)
+                      epilog="Example:  " + _SEND_EXAMPLES.get(
+                          name, f'{co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
+                                f'{co} send {chat} "Thanks" --reply-to {msg}'))(_send)
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
@@ -2152,9 +2200,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
@@ -2221,7 +2269,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
                                            help="Keep only the most recent N"),
     ):
-        """Every message ever received, one JSON line each. Changes nothing in the chat or the queue."""
+        """Every message ever received, one JSON line each; with a filter, what this account sent is included too, marked from_me. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
@@ -2247,8 +2295,57 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     return group
 
 
-app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="feishu")
-app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="lark")
+def _people_verbs(group: typer.Typer, name: str) -> typer.Typer:
+    """Find who to send to on Feishu or Lark: a person by email or phone, the
+    groups the bot is in, and names saved for either (#3000)."""
+    co, brand = f"co {name}", name.capitalize()
+
+    @group.command("lookup", epilog=f"Example:  {co} lookup alex@example.com  |  {co} lookup +61412345678")
+    def _lookup(who: str = typer.Argument(..., help="An email, or a phone number with its +country code")):
+        """Find a person by email or phone: prints their user id (on_…), which send takes. Read-only. Needs the scope contact:user.id:readonly; without it, prints the link that grants it."""
+        from .commands.lark_commands import handle_lookup
+        handle_lookup(name, who)
+
+    @group.command("groups", epilog=f"Example:  {co} groups  |  {co} groups | grep -i ops",
+                   help=f"List the groups the bot is in, from {brand} itself: chat id and name. Read-only. "
+                        "Unlike `chats`, which lists only where messages arrived. Needs the scope "
+                        "im:chat:readonly; without it, prints the link that grants it.")
+    def _groups():
+        from .commands.lark_commands import handle_groups
+        handle_groups(name)
+
+    contacts = _typer_app(
+        help=f"Names for people and chats, so `{co} send Alex` works. Kept in this inbox's contacts.json; nothing changes on {brand}.",
+        epilog=f'Example:  {co} contacts add Alex alex@example.com  |  {co} contacts ls  |  {co} contacts rm Alex')
+
+    @contacts.command("add", epilog=f'Example:  {co} contacts add Alex alex@example.com  |  '
+                                    f'{co} contacts add "Sam Lee" +61412345678  |  {co} contacts add Ops oc_5ce6d572455d361153b7cb51da133945')
+    def _contacts_add(
+        contact: str = typer.Argument(..., help="The name you will send to"),
+        who: str = typer.Argument(..., help="An email, a +phone (looked up once, needs contact:user.id:readonly), or an id: oc_, ou_, on_"),
+    ):
+        """Save a name for a person or chat; replaces a name already saved. Prints the name and the id it stands for. Writes contacts.json only."""
+        from .commands.lark_commands import handle_contacts_add
+        handle_contacts_add(name, contact, who)
+
+    @contacts.command("ls", epilog=f"Example:  {co} contacts ls")
+    def _contacts_ls():
+        """List saved contacts, one name and id per line. Read-only."""
+        from .commands.lark_commands import handle_contacts_ls
+        handle_contacts_ls(name)
+
+    @contacts.command("rm", epilog=f"Example:  {co} contacts rm Alex")
+    def _contacts_rm(contact: str = typer.Argument(..., help="A saved name, from `contacts ls`")):
+        """Forget a saved name. Writes contacts.json only; nothing changes on the platform."""
+        from .commands.lark_commands import handle_contacts_rm
+        handle_contacts_rm(name, contact)
+
+    group.add_typer(contacts, name="contacts")
+    return group
+
+
+app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "feishu"), name="feishu")
+app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
 app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
@@ -2313,7 +2410,7 @@ def _slack_search(
 app.add_typer(_slack_app, name="slack",
               short_help="Experimental: Slack bot as an inbox, and a reader for its channels.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
-                             writes=True)
+                             writes=True, media=True)
 _whatsapp_groups = _typer_app(
     help="Start a group, or add people to one. One line per person. Creates or changes WhatsApp groups.",
     epilog='Example:  co whatsapp group create "Acme onboarding" 61412345678 61498765432  |  '
@@ -2342,6 +2439,69 @@ def _whatsapp_group_add(
 
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
+_WA_COUNTRY = typer.Option(None, "--country", metavar="AU",
+                           help="Read local numbers (0412 345 678) as dialled in this country, by its two-letter code")
+
+
+@_whatsapp_app.command(
+    "lookup", epilog="Example:  co whatsapp lookup +61412345678  |  co whatsapp lookup 0412345678 0498765432 --country AU")
+def _whatsapp_lookup(
+    phones: List[str] = typer.Argument(..., help="Phone numbers, with the country code (+61412345678) or local with --country"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Check whether each number is on WhatsApp, and who it is: one JSON line per number with on_whatsapp, jid, name, business, about, has_photo. Exits 4 if any number is not on WhatsApp. Read-only: sends nothing to the person; runs through the listener, starting one if needed."""
+    from .commands.whatsapp_commands import handle_lookup
+    handle_lookup(phones, country)
+
+
+_whatsapp_contacts = _typer_app(
+    help="Names for WhatsApp numbers, shown in chats, log and ls and usable with send. Local only: nothing is sent to anyone.",
+    epilog='Example:  co whatsapp contacts add +61412345678 --name "Alex Example"  |  co whatsapp contacts ls  |  '
+           'co whatsapp contacts rm "Alex Example"')
+
+
+@_whatsapp_contacts.command(
+    "add", epilog='Example:  co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"  |  '
+                  'co whatsapp contacts add 0412345678 --country AU --name "Alex Example"')
+def _whatsapp_contacts_add(
+    who: str = typer.Argument(..., help="The jid `lookup` printed, or a phone number"),
+    name: str = typer.Option(..., "--name", help="What to call them in chats, log and ls; send accepts it too"),
+    note: str = typer.Option("", "--note", help="Anything to remember about them; shown by contacts ls"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Save a name for a number. Prints the jid and the name. Writes contacts.json in the WhatsApp inbox; sends nothing."""
+    from .commands.whatsapp_commands import handle_contacts_add
+    handle_contacts_add(who, name, note, country)
+
+
+@_whatsapp_contacts.command("ls", epilog="Example:  co whatsapp contacts ls")
+def _whatsapp_contacts_ls():
+    """List saved contacts, one per line: jid, name, note. Read-only."""
+    from .commands.whatsapp_commands import handle_contacts_ls
+    handle_contacts_ls()
+
+
+@_whatsapp_contacts.command("rm", epilog='Example:  co whatsapp contacts rm "Alex Example"  |  co whatsapp contacts rm +61412345678')
+def _whatsapp_contacts_rm(
+    who: str = typer.Argument(..., help="The contact's name or phone number"),
+):
+    """Forget a saved contact. Prints what was removed. Changes contacts.json only; the chat and its history stay."""
+    from .commands.whatsapp_commands import handle_contacts_rm
+    handle_contacts_rm(who)
+
+
+_whatsapp_app.add_typer(_whatsapp_contacts, name="contacts")
+
+
+@_whatsapp_app.command(
+    "download", epilog="Example:  co whatsapp download 3EB0C127D8F1A2B4E5F6  |  co whatsapp download 3EB0C127D8F1A2B4E5F6 --to ./files")
+def _whatsapp_download(
+    message_id: str = typer.Argument(..., help="Id of a received message with a photo, video, voice note or document, from `co whatsapp log`"),
+    to: Optional[str] = typer.Option(None, "--to", metavar="DIR", help="Folder to save into (default: the inbox's media folder)"),
+):
+    """Fetch a received message's photo, video, voice note or document again, including ones shared as group history. Prints the saved path. Exits 4 when WhatsApp no longer has the file. Writes one file; sends nothing."""
+    from .commands.whatsapp_commands import handle_download
+    handle_download(message_id, to)
 app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.
@@ -2656,15 +2816,23 @@ def gdrive_info(
 
 
 @gdrive_app.command("get", epilog="Example:  co gdrive get <file-id> --to ~/Downloads  |  "
-                                  "co gdrive get 2 --listing <listing-id>")
+                                  "co gdrive get 2 --listing <listing-id>  |  co gdrive get <file-id> --quiet")
 def gdrive_get(
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+    quiet: bool = typer.Option(False, "--quiet", help="No progress lines on stderr"),
 ):
-    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged."""
+    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged.
+
+    A file streams into NAME.part, with a progress line (bytes, rate, time left)
+    on stderr every 5 seconds, and becomes NAME once its size and md5 match
+    Drive's. Interrupted? Run the same command again: it resumes from the
+    .part. After 60 seconds with no data it reconnects, up to 5 times, then
+    stops and says what is on disk.
+    """
     from .commands.gdrive_commands import handle_gdrive_get
-    handle_gdrive_get(file_id, dest=dest, listing=listing)
+    handle_gdrive_get(file_id, dest=dest, listing=listing, quiet=quiet)
 
 
 @gdrive_app.command("put", epilog="Example:  co gdrive put report.pdf --name \"Q3 report.pdf\"")

@@ -400,7 +400,64 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc7
+## Current Version: 1.9.6rc13
+Release candidate 1.9.6rc13 for 1.9.6: a Host records every automatic run a contact's message
+triggers in `co approvals`, not only the first (#3025), and a revoked requester's running turn stops
+before its next tool or model step even after they disconnect (#3026). `co trust add`, `unblock` and
+`admin add/remove` name the trust file they changed (#2819). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc13.md).
+
+- 1.9.6rc13 (every automatic Host run recorded; a revoked requester's turn stops between steps).
+
+### Previous candidate: 1.9.6rc12
+
+Release candidate 1.9.6rc12 for 1.9.6: `co whatsapp` links again on a fresh install. The pinned
+neonize 0.4.3 was refused by WhatsApp at connect ("Client outdated (405)"); the pin is now 0.10.0,
+which opens existing sessions without re-pairing, and a 405 now stops the listener with the upgrade
+command. A group's history is read when the account is added to it, and `co whatsapp download <id>`
+fetches older media (#3028, #2853). `co ai`'s modes and messages say what they do (#2849). Stable
+remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc12.md).
+
+- 1.9.6rc12 (WhatsApp connects again; group history; download older media).
+
+### Previous candidate: 1.9.6rc11
+
+Release candidate 1.9.6rc11 for 1.9.6: the REM reader's People page opens on a sortable table (#3017);
+with rc10's unannounced REM changes now described — Ignore as a word on every open row and honest
+offline snapshots (#3018, #3023), Agenda as a calendar of saved calendar events (#3015), and one-click
+translation of every page (#3014). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc11.md).
+
+- 1.9.6rc11 (People table; Ignore everywhere; Agenda calendar; translate every page).
+
+### Previous candidate: 1.9.6rc10
+
+Release candidate 1.9.6rc10 for 1.9.6: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
+model ($1.50/$7.50 per 1M tokens), in Agent, llm_do, transcribe, `co ai` and the built-in subagents.
+`co/gemini-3.8-flash` stays selectable as the rollback. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc10.md).
+
+- 1.9.6rc10 (Gemini 4 Hydrogen is the default model).
+
+### Previous candidate: 1.9.6rc9
+
+Release candidate 1.9.6rc9 for 1.9.6: one mailbox failure no longer stops REM's night (#2986); Today has
+one count and one primary action per card with the closes as words (#2987); record pages lead with open
+threads (#2988); drafts, the reader and translation use one rule for the owner's language (#2989); a
+non-text research capture is refused by name (#2963); soupsieve past two CVEs (#3008). Stable remains
+1.9.5. See [candidate notes](docs/releases/1.9.6rc9.md).
+
+- 1.9.6rc9 (the night survives a mailbox failure; one count on Today; open threads first; one language rule).
+
+### Previous candidate: 1.9.6rc8
+
+Release candidate 1.9.6rc8 for 1.9.6: `co server` describes servers as billed monthly in advance, which
+is how oo-api bills them: the first month at create, each next month as it starts, the unused part
+refunded at a destroy with a credit note (#2981). 1.9.6rc7 described arrears billing and cannot
+create a server. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc8.md).
+
+- 1.9.6rc8 (co server: monthly, paid in advance).
+
+### Previous candidate: 1.9.6rc7
 
 Release candidate 1.9.6rc7 for 1.9.6: every Today row in the REM reader closes with Mark done, Not now
 and Ignore in words, Ignore can stop a bulk sender for good (`.state/ignored-senders.txt`), stale

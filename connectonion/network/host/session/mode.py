@@ -9,8 +9,10 @@ from typing import Any
 
 from ....core.mode import (
     AUTO,
+    ASK_FIRST_DESCRIPTION,
     FULL_ACCESS,
     READ_ONLY,
+    MODE_NAMES,
     full_access_turns_left,
     mode_id,
     mode_of,
@@ -38,6 +40,7 @@ SERVER_OWNED_SESSION_KEYS = (
     "permissions",
     "approval",
     "requester",
+    "_host_auto_notice_sent",
 )
 
 
@@ -81,16 +84,14 @@ class HostPermissionPolicy:
     def state(self, session: dict, *, is_admin: bool) -> dict[str, Any]:
         normalized = self.normalized(session, is_admin=is_admin)
         available = self.available_mode_ids(is_admin=is_admin)
-        names = {
-            READ_ONLY: "Read only",
-            AUTO: "Auto",
-            FULL_ACCESS: "Full access",
-        }
         return {
             "currentModeId": normalized["mode"],
             "turnsLeft": normalized.get("turns_left"),
             "availableModes": [
-                {"id": current, "name": names[current]} for current in available
+                {
+                    "id": current, "name": MODE_NAMES[current],
+                    **({"description": ASK_FIRST_DESCRIPTION} if current == READ_ONLY else {}),
+                } for current in available
             ],
         }
 

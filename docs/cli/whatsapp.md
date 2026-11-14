@@ -92,6 +92,7 @@ bundled protocol implementation old enough to start failing.
 ├── outbox/             replies waiting for the listener (see below)
 ├── media/              photos, documents and voice notes, as they arrived
 ├── session.db          the linked device
+├── contacts.json       names you saved with `contacts add`
 └── log
 ```
 
@@ -118,11 +119,26 @@ A media message arrives with `kind` set to what it is — `image`, `video`,
 So a consumer that receives this can open the file, and one that cannot read
 images can at least say which file it is declining to read.
 
-**Why at arrival and not on demand.** The media keys live in the protobuf
-envelope, and the queue record does not keep it, so a later `download <id>`
-would have nothing to download from. WhatsApp also drops media from its own
-servers after a while. The moment the message arrives is the only moment the
-file is reliably reachable.
+A document keeps its own extension (`3EB0….pdf`, not `.bin`) and the record
+carries the name it was sent with as `media.name` (#2853).
+
+**At arrival, and again later.** The file is fetched as the message arrives,
+because WhatsApp drops media from its own servers after a while. The record
+also keeps what a later fetch needs (`attachments`: the file's path on
+WhatsApp's servers, its key and hashes), so one the listener missed can be
+fetched afterwards:
+
+```bash
+co whatsapp download 3EB0C127D8F1A2B4E5F6             # → ~/.co/inbox/whatsapp/media/3EB0….pdf
+co whatsapp download 3EB0C127D8F1A2B4E5F6 --to ./files
+```
+
+It needs no listener: it is one HTTPS request to WhatsApp's media server and a
+local decrypt, every hash checked. It exits 4 when WhatsApp no longer has the
+file, and 1 with a different sentence for a message that has no media, or one
+received before co kept the keys (#2853). The key is in `received.jsonl`,
+which is mode 0700 with the rest of the inbox; anyone who can read it can open
+that file.
 
 **When it fails, it says so.** An expired or unreachable file leaves
 `{"media":{"error":"…"}}` on the record and a line in `log`, and writes no
@@ -140,6 +156,24 @@ answered only `text` skipped them. A frame that carries nothing but that
 metadata is not a message and is not recorded. Before #1837 it was recorded,
 and because the sender's real first message shares its id, the real message
 was then dropped as a duplicate.
+
+## Joining a group: its earlier messages
+
+When someone adds this number to a group with WhatsApp's "share recent
+messages" switch on, their phone sends one encrypted bundle of those messages
+about a second later. The listener downloads it, opens it, and writes each
+message into `received.jsonl` with its own sender, time and kind and
+`"history": true`. None is queued, so nothing answers a question asked before
+the account was there; `co whatsapp log --chat <id>` shows them. Photos and
+documents in them keep what `download` needs. The bundle itself is recorded
+too (`kind: "history"`), saying how many messages it held or why they could
+not be read. Only entries for that group are accepted (#2853).
+
+neonize (and whatsmeow) cannot open these bundles, so co does it itself. The
+key derivation ("Group History") and the zlib-compressed payload come from an
+open-source client that implements the sending side; they have not yet been
+checked against a bundle from a real phone. If the key is wrong the MAC check
+fails, and the bundle's record says so: nothing is guessed.
 
 ## Groups: when the bot answers
 
@@ -217,6 +251,74 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
 co whatsapp listen --restart     # stop the running listener, start a background one
 ```
 
+The new listener runs on the Python of the `co` you typed, whatever install
+the old one ran from (a separate venv is left as it is and simply no longer
+used). So that `co` needs the whatsapp extra. Without it `--restart` exits 3
+with the install command and leaves the old listener running, rather than
+stopping it and starting nothing (#3001).
+
+## A new person: check the number, save a name, then send
+
+Given a new client's mobile, an agent can find out whether it has WhatsApp and
+who it belongs to, and save it under a name, before anything reaches them
+(#2964).
+
+```bash
+co whatsapp lookup +61412345678                     # or: 0412345678 --country AU
+{"phone": "+61412345678", "on_whatsapp": true, "jid": "61412345678@s.whatsapp.net",
+ "name": "Alex E.", "business": "", "about": "Building things", "has_photo": true, "saved_as": ""}
+
+co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"
+co whatsapp send "Alex Example" "Hi Alex, it's the Acme team"
+```
+
+**`lookup PHONE...`** prints one JSON line per number. It asks WhatsApp's
+servers, the same queries a phone's contact sync makes, and sends nothing to
+the person, so it is safe to run unattended. Like `send`, it goes through the
+listener and starts one if none is running.
+
+- `on_whatsapp: false` is an answer, not an error: the line says so, and the
+  command exits **4** when any number has no account. Exit 2 is a number that
+  is not a number, 1 a listener that did not answer.
+- `name` comes from this device's synced contacts: empty for someone who has
+  never written to this number. `business` is a verified business name,
+  `about` the profile's About text, `has_photo` whether a profile photo is
+  visible to this account (a photo hidden by privacy settings reads as false).
+- Numbers carry their country code (`+61412345678`, `0061…`). A number with a
+  leading 0 is refused unless `--country AU` says how to read it, because
+  `0412345678` sent as it is names another account or none, and that would
+  look exactly like "not on WhatsApp". `--country` follows that country's own
+  dialling rules (Italy keeps its 0). It is the one part that needs the
+  `whatsapp` extra; without it, `--country` says how to install it, and
+  numbers written with their country code work as they are.
+
+**`contacts add WHO --name NAME [--note TEXT]`** saves a name, locally, in
+`~/.co/inbox/whatsapp/contacts.json`. WHO is the `jid` that `lookup` printed,
+or a phone number. `contacts ls` lists them (jid, name, note), and
+`contacts rm NAME|JID|NUMBER` forgets one. One name means one person, so a
+name already in use is refused.
+
+The saved name is what `chats`, `ls` and `log` show for that person, and what
+the listener writes as `sender_name` on new messages. It also applies when they
+write from a group that addresses them by LID, which shares no digits with
+their number: the session's LID map joins the two. `log --sender "Alex Example"`
+finds them by it.
+
+**`send` takes a saved name or a phone number** as well as a chat id. A phone
+number, or a contact saved by number rather than by jid, is checked first: the
+listener asks WhatsApp for the account and sends to the jid WhatsApp gives, or
+refuses with `+61498765432 is not on WhatsApp, so nothing was sent` and exits 1.
+`sent.jsonl` records the jid.
+
+## Reading a chat back, your own side included
+
+`co whatsapp log --chat <id> --since 2d` prints that chat's messages from the
+last two days, oldest first, and among them what this account said: replies
+`co` sent (from `sent.jsonl`) and what the owner typed on the phone (from
+`own.jsonl`), each marked `"from_me": true` and listed once. A send that
+failed is not listed. `--sender` narrows to someone else's messages, so it
+leaves ours out (#3001).
+
 ## Sending photos and files
 
 ```bash
@@ -245,6 +347,11 @@ chat (#1856).
   when none is running.
   The request carries the file's absolute path and the listener reads the file
   from there; the file only has to stay put until the id is printed.
+- The listener doing the sending can be an older install than the `co` you
+  typed (its own venv, started weeks ago). One from before pictures existed
+  read the request as text and answered only `'text'` (#3001). Now `send`
+  checks the running listener's version first and, if it is too old, exits 1
+  naming it and `co whatsapp listen --restart`. Nothing is queued.
 - Checked before anything is queued: a missing or empty file, both options at
   once, a picture WhatsApp will not show inline, or a file over the limit exits
   1 with a sentence naming the fix. Nothing is sent.
@@ -264,6 +371,15 @@ The flip side is that the snapshot goes stale, and WhatsApp changing something
 under an old one fails in ways that do not name themselves. `check` reads the
 snapshot's date out of the shared library and says so once it is more than six
 months old.
+
+It can also go stale faster than that. In November 2026 WhatsApp started
+refusing neonize 0.4.3 at connect, `Client outdated (405)`, so the pin is now
+0.10.0. A listener refused this way stops with `WhatsApp rejected this client
+as outdated (405)` and the upgrade command, exit 3, instead of retrying a
+connection that cannot succeed. `check` names an installed neonize older than
+the pin, which is what a listener in its own venv keeps after co upgrades. The
+session file carries over: a listener on 0.10.0 opens a session linked under
+0.4.3 without a new QR scan.
 
 ## Environment
 

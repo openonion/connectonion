@@ -60,12 +60,20 @@ def _counted(record: str) -> bool:
     return category in CATEGORIES
 
 
+# A vendor's ticket desk answers, so its thread is two-way and the map's direction
+# rule kept it a person; it led People titled with its own domain (#3004).
+DESK = re.compile(r"^(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
+                  r"tickets?|no-?reply|do-?not-?reply)(?:\+[^@]*)?@", re.I)
+BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
+
+
 def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
     """Explicit entity/desk identity or the existing service rules, even after writing."""
     from .map import service_page
     from .scan import institutional_name
     return bool(re.search(r'^## Domains\s*$', text, re.M)
                 or re.search(r'\bshared mailbox\b', title, re.I)
+                or BARE_DOMAIN.match(title) or (emails and all(DESK.match(address) for address in emails))
                 or institutional_name(title) or service_page(title, emails, row, automated))
 
 

@@ -2,6 +2,8 @@
 
 import json
 import os
+import shlex
+import sys
 from pathlib import Path
 
 import typer
@@ -156,8 +158,14 @@ def _resolve_file_id(file_id: str, drive=None, listing: str | None = None) -> st
 
 
 @google_errors("co gdrive list")
-def handle_gdrive_get(file_id: str, dest: str = ".", *, listing: str | None = None):
-    """Download a Drive file. Accepts the listing # or a full file id."""
+def handle_gdrive_get(file_id: str, dest: str = ".", *, listing: str | None = None, quiet: bool = False):
+    """Download a Drive file. Accepts the listing # or a full file id.
+
+    Progress (bytes, rate, time left, stalls) goes to stderr unless quiet, so
+    stdout keeps only the result. A stalled or mismatched download exits 1 with
+    what is on disk and the command that resumes it.
+    """
+    from ...useful_tools.gdrive import DriveDownloadError
     drive = _gdrive()
     resolved = _resolve_file_id(file_id, drive, listing)
     if not resolved:
@@ -165,7 +173,14 @@ def handle_gdrive_get(file_id: str, dest: str = ".", *, listing: str | None = No
         print_tip("Refresh the listing: co gdrive list")
         raise typer.Exit(1)
 
-    console.print(drive.download(resolved, dest=dest).replace("Downloaded to", "\n[green]✓ Downloaded[/green]"))
+    progress = None if quiet else (lambda line: print(line, file=sys.stderr, flush=True))
+    try:
+        result = drive.download(resolved, dest=dest, progress=progress)
+    except DriveDownloadError as error:
+        console.print(f"\nError: {error}", markup=False, highlight=False, soft_wrap=True)
+        print(f"Next: co gdrive get {shlex.quote(resolved)} --to {shlex.quote(dest)}")
+        raise typer.Exit(1)
+    console.print(result.replace("Downloaded to", "\n[green]✓ Downloaded[/green]"))
     print_tip("Show more files: co gdrive list")
 
 

@@ -275,6 +275,57 @@ would otherwise be recorded as finished, and the real message with that id
 dropped the day it arrived. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
 
+### Sending to a person or a group by name
+
+`send` takes whoever you were asked to message, not only a chat id (#3000):
+
+```bash
+co feishu send alex@example.com "Hello"        # an email
+co feishu send +61412345678 "Hello"            # a phone; +country code outside mainland China
+co feishu send "Ops Room" "Deploy done"        # a group the bot is in, by its exact name (any case)
+co feishu send on_7c6d "Hello"                 # a person's id, the `sender` of a received message
+co feishu send ou_4f2a "Hello"                 # an open id, as other tools print it
+co feishu send oc_a1b2 "Hello"                 # a chat id, as before
+co feishu send Alex "Hello"                    # a saved contact (below)
+```
+
+The order it tries: an id or an email is used as given; then a saved contact;
+then something shaped like a phone number is looked up; anything else is a
+group name. A name that matches nothing, or two groups with the same name, is
+refused with the ids to choose from and nothing is sent. `sent.jsonl` records
+the id the name resolved to.
+
+To find people and groups without sending:
+
+```bash
+co feishu lookup alex@example.com     # → on_… (the id send takes); exit 1 if the bot cannot see them
+co feishu groups                      # every group the bot is in: chat id, name, "external" for a shared group
+co feishu contacts add Alex alex@example.com
+co feishu contacts add "Sam Lee" +61412345678   # the number is looked up once, now
+co feishu contacts add Ops oc_a1b2
+co feishu contacts ls
+co feishu contacts rm Alex
+```
+
+`groups` asks Feishu, so it lists groups nobody has written in yet; `chats`
+lists only the conversations this inbox has received messages from. Contacts
+are local names in `~/.co/inbox/feishu/contacts.json`; nothing changes on
+Feishu, and `co lark` keeps its own.
+
+What each needs beyond the scopes `co auth` grants:
+
+| to | scope | without it |
+|---|---|---|
+| send to an email or id | none | |
+| look up or send to a phone number, save a phone as a contact | `contact:user.id:readonly` | refused with the scope and a link that grants it |
+| `groups`, send to a group by name | `im:chat:readonly` | the same |
+
+The link is the same one-click page `check` prints for history recovery:
+approve it and run the command again. A person Feishu says exists but the bot
+cannot see is outside the app's contact range (Developer Console >
+Permissions); a person the bot cannot message (error 230013) is outside its
+availability (App Release > Version Management), and the refusal says so.
+
 ### Changing a message after it has gone out
 
 `edit` replaces the text of a message this account sent; `delete` removes one
@@ -460,6 +511,8 @@ What this tool spends, per Feishu's own list of what counts:
 | `tenant_access_token` | no (authentication) | every process, at most once |
 | `bot/v3/info` | yes | once per `listen` start and per `check` |
 | `messages/{id}/reply`, `messages` (send) | yes | once per `reply` or `send` |
+| `contact/v3/users/batch_get_id` | yes | once per `lookup`, per `send` to a phone, per `contacts add` of a phone |
+| `im/v1/chats` | yes | once per 100 groups, per `groups` and per `send` to a group name |
 
 So 10,000 a month is 10,000 replies, and listening costs nothing. Do not poll
 `check` on a timer: a bot that probed itself every minute is how others burnt

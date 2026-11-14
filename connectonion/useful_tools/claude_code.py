@@ -566,7 +566,11 @@ def _claude_command() -> tuple[list[str] | None, str]:
     except ValueError as exc:
         return None, f"Invalid $CLAUDE_CODE_CMD: {_one_line(exc)}"
     if command is None:
-        return None, "Claude Code CLI not found. Install it or set $CLAUDE_CODE_CMD."
+        return None, (
+            "Claude Code CLI not found. Looked for claude on PATH and at "
+            f"{Path.home() / '.local' / 'bin' / 'claude'}. "
+            "Install it or set $CLAUDE_CODE_CMD."
+        )
     if _is_unsafe_windows_batch(command[0]):
         return None, (
             "Claude Code resolved to a Windows .cmd/.bat wrapper, which cannot "
@@ -1427,7 +1431,12 @@ def _base_command() -> list[str] | None:
         command = _split_command(override)
         return command or None
     found = shutil.which("claude")
-    return [found] if found else None
+    if found:
+        return [found]
+    installed = Path.home() / ".local" / "bin" / "claude"
+    if installed.is_file() and os.access(installed, os.X_OK):
+        return [str(installed)]
+    return None
 
 
 def _split_command(value: str, *, windows: bool | None = None) -> list[str]:

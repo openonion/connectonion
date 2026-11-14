@@ -2,6 +2,41 @@
 
 Trust is a **host layer** concern that controls who can access your agent. It manages onboarding, access control, and client state (stranger → contact → trusted).
 
+Hosted Auto and Full access use **context over control**. Contacts and whitelisted requesters
+can run automatically permitted work; they receive a one-time session notice
+that they are not admins, the work is recorded, and access can be revoked.
+Every automatic run (each tool call and each Codex or Claude Code run) appears in
+[`co approvals`](../cli/approvals.md) with its own outcome, and the Host console
+tells the operator after each one. This applies across providers and
+ordinary Auto-approved writes/commands. Existing manual permission boundaries
+still apply.
+In Auto, a contact's Codex runs shell commands without prompts inside a sandbox
+that can read the whole disk and has no network.
+
+Revoke access using the Host console's printed command:
+`co trust block <address> --co-dir <host-trust-directory>`.
+For `co ai`, this normally targets `~/.co`; ordinary `co trust` commands use
+the project's `.co`. Every trust subcommand, including `list`, `add`,
+`unblock`, and `admin add/remove`, accepts `--co-dir <directory>`.
+`--global` (or `-g`) selects the global identity (`~/.co`, or the directory
+selected by `AGENT_CONFIG_PATH`), just like `--co-dir ~/.co` by default.
+See the [trust CLI reference](../cli/trust.md) for examples. Use
+`co trust remove <address> --co-dir <host-trust-directory>` to remove
+contact/whitelist membership; an open policy may still allow strangers, so
+removal alone is not a guaranteed denial.
+Codex's existing **Ask for approval** or **Read Only** Work Room permission
+can also tighten the provider's authority for subsequent work.
+Blocking prevents new admissions. A connected requester's next message (frame)
+is rejected: the Host ends that connection's logical session and requests
+interruption of the requester's running turns.
+The Host also re-checks the requester's trust before every tool or model
+step of their running turn, whether or not they are still connected, and
+stops the turn at the first step after revocation. A step already running
+(for example one Codex run) is cut short only while the requester is still
+connected, at their next frame; otherwise it finishes and the turn stops
+before the next step. Interruption is cooperative;
+completed external effects cannot be undone.
+
 ## Quick Start
 
 ```python

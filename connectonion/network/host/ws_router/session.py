@@ -16,7 +16,13 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from ..provider_permissions import ProviderPermissionError, commit_provider_permission
 from .agent_io import start_agent, start_provider_workroom_turn
-from .connect import establish_connection, handle_authenticated_reconnect, handle_connect, replay_check_for
+from ..revocation import REVOKED, lost_access
+from .connect import (
+    establish_connection,
+    handle_authenticated_reconnect,
+    handle_connect,
+    replay_check_for,
+)
 from .exec import run_exec
 from .mode import handle_mode_change
 from .ping import ping_loop
@@ -24,6 +30,26 @@ from .proxy import attach_proxy, detach_proxy
 from .remote_browser import run_remote_browser
 
 console = Console()
+
+
+def _access_revoked(conn, trust_agent, blacklist):
+    """Check local trust files on each frame without repeating onboarding/LLM."""
+    address = conn["agent_address"]
+    if blacklist and address in blacklist:
+        return True, "blocked"
+    if "trust_level" not in conn:
+        return False, None
+    # Reconnect after any downgrade to establish the reduced authorization
+    # context; cached admin flags must never outlive an admin grant.
+    return lost_access(trust_agent, address, conn["trust_level"])
+
+
+def _stop_requester_turns(registry, address):
+    """Stop this requester's work across sessions, including other sockets."""
+    for sid in registry.list_active():
+        active = registry.get(sid)
+        if active and active.owner == address:
+            active.io.request_interrupt()
 
 
 async def _watch_provider_station(station, send_msg):
@@ -202,6 +228,20 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     active_io = adopted_io
 
             msg_type = data.get("type")
+            revoked = False
+            if conn.get("authenticated"):
+                revoked, level = _access_revoked(conn, route_handlers.get("trust_agent"), blacklist)
+                if level is not None:
+                    conn["trust_level"] = level
+            if revoked:
+                _stop_requester_turns(registry, conn["agent_address"])
+                conn["authenticated"] = False
+                await send_msg({
+                    "type": "ERROR",
+                    "code": "ACCESS_REVOKED",
+                    "message": REVOKED,
+                })
+                return "ACCESS_REVOKED"
 
             # CONNECT establishes the identity and protocol capabilities for
             # this socket. Letting a second CONNECT overwrite that state makes

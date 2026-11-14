@@ -23,6 +23,16 @@ def _cards(page):
     return page.locator('#main .qcard')
 
 
+def _live(today):
+    """Today in the live reader, whose Host keeps each mark. A file:// snapshot keeps none (#3018): its E and its
+    closes do nothing, and the palette offers no Mark done there (test_a_snapshot_palette_offers_no_mark_done)."""
+    page, calls, answers = today
+    answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "at": "2026-10-20T12:00:00+00:00", "device": body["device"], "keys": body["keys"]})
+    page.evaluate('() => { REM.live = true; }', isolated_context=False)
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    return page
+
+
 def test_today_is_one_card_per_person_with_one_green_action(reader):
     page, _ = reader
     page.evaluate(TWO_ASKS, isolated_context=False)
@@ -35,14 +45,16 @@ def test_today_is_one_card_per_person_with_one_green_action(reader):
     assert paths[0] == first
     visible_green = page.evaluate('''() => [...document.querySelectorAll('#main button, #main a')]
       .filter(node => node.getClientRects().length && /rgb\\((34, 210, 122|59, 227, 143)\\)/.test(getComputedStyle(node).backgroundColor)).length''', isolated_context=False)
-    assert visible_green == 1
-    assert page.locator('.night-card .count-line').inner_text().endswith('waiting on you')
+    # One primary per card (sprint 14): green, or the row's lead in bold where the card has no green step.
+    lead = page.locator('#main .qcard.focal .strip-lead').evaluate_all('nodes => nodes.filter(node => node.getClientRects().length).length')
+    # A snapshot can close nothing from the strip and opens no page as a "step": its one line says where to act.
+    assert visible_green + lead == 1 or (visible_green + lead == 0 and page.locator('.snapshot-line').count() == 1)
+    assert page.locator('.night-card .count-words').inner_text().endswith('waiting on you')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
 
 
-def test_today_keys_move_close_undo_and_never_steal_typing(reader):
-    page, _ = reader
-    page.evaluate(TWO_ASKS, isolated_context=False)
+def test_today_keys_move_close_undo_and_never_steal_typing(today):
+    page = _live(today)
     count = _cards(page).count()
     assert count >= 2
     # N3: J/K deal the next or previous card onto the desk, in the faces' order; E closes the raised one.
@@ -75,9 +87,8 @@ def test_today_keys_move_close_undo_and_never_steal_typing(reader):
 
 
 @pytest.mark.parametrize('chord', ['Meta+k', 'Control+k'])
-def test_palette_searches_runs_actions_and_remembers(reader, chord):
-    page, uri = reader
-    page.evaluate(TWO_ASKS, isolated_context=False)
+def test_palette_searches_runs_actions_and_remembers(today, chord):
+    page = _live(today)
     page.keyboard.press(chord)
     palette = page.locator('#palette')
     assert palette.is_visible()
@@ -125,10 +136,9 @@ def test_palette_is_a_bottom_sheet_on_a_phone(reader, theme):
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
 
 
-def test_a_stray_e_never_closes_the_raised_card(reader):
+def test_a_stray_e_never_closes_the_raised_card(today):
     """Review of #2929: E marked the raised card done from anywhere on Today. It acts only with focus in that card."""
-    page, _ = reader
-    page.evaluate(TWO_ASKS, isolated_context=False)
+    page = _live(today)
     raised = page.locator('#main .qcard.focal').get_attribute('data-path')
     page.evaluate('document.activeElement.blur()', isolated_context=False)
     page.keyboard.press('e')
@@ -193,12 +203,11 @@ def test_j_steps_through_the_cards_in_the_page_when_the_notebook_moved_on(reader
     assert seen == cards[1:] + cards[:1]
 
 
-def test_the_readers_own_reduce_motion_closes_a_card_without_the_wait(reader):
+def test_the_readers_own_reduce_motion_closes_a_card_without_the_wait(today):
     """Review of #2929: only the system's setting skipped the wait for the leaving card; the reader's own
     Reduce motion switch, which already stills the animation, did not."""
-    page, _ = reader
+    page = _live(today)
     page.emulate_media(reduced_motion='no-preference')
-    page.evaluate(TWO_ASKS, isolated_context=False)
     page.evaluate("""() => { document.documentElement.classList.add('calm'); window.waits = [];
       const timer = window.setTimeout;
       window.setTimeout = (run, wait, ...rest) => { window.waits.push(wait); return timer(run, wait, ...rest); }; }""", isolated_context=False)
@@ -250,3 +259,14 @@ def test_e_again_while_the_card_is_leaving_closes_it_once(today):
     page.evaluate("""() => { for (const press of [1, 2])
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'e', bubbles: true, cancelable: true})); }""", isolated_context=False)
     _one_card_closed_and_saved_once(page, saves, count, raised)
+
+
+def test_a_snapshot_palette_offers_no_mark_done(reader):
+    """#3018: a file:// snapshot keeps no mark, so ⌘K offers to draft a reply there but never to mark someone done."""
+    page, _ = reader
+    page.evaluate(TWO_ASKS, isolated_context=False)
+    page.keyboard.press('Control+k')
+    page.keyboard.type('mara')
+    options = page.locator('#palette li[role="option"]').all_inner_texts()
+    assert any(option.startswith('Draft a reply to Mara') for option in options), options
+    assert not any(option.startswith('Mark Mara') for option in options), options

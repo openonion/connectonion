@@ -32,6 +32,58 @@ and returns the provider session ID without `account/read` or `turn/start`.
 There is no invented prompt and no model work. A later call supplies that ID and
 the user's real prompt to begin the first turn.
 
+## Hosted Auto: context for the requester and admin
+
+A non-admin requester can run sandboxed work in hosted Auto without prompts.
+On their first automatically permitted run in a Host session, Core emits this
+data event through the existing trace/IO stream:
+
+```json
+{
+  "type": "host_notice",
+  "code": "non_admin_auto",
+  "message": "You're not an admin of this Host. This is allowed, and it is recorded for the admin, who can revoke your access at any time."
+}
+```
+
+Frontends can show `message` as a plain informational notice; no approval reply
+is expected. Session replay also includes the notice. The server owns the
+once-per-session marker, so reconnects and later turns do not repeat it, and a
+client cannot suppress it by supplying session state. New sessions show it again.
+The same text enters the outer model context and the first provider result's
+`notice` field. Native Codex/Claude prompts contain only the requested task;
+the requester receives the `host_notice` event even on a native Host without
+an outer model. Opening a thread without a task emits no notice or run record.
+
+Every qualifying action (each tool call and each provider run) appends its own `auto` entry to the existing approvals record,
+including requester identity, tool, bounded/redacted task description, mode, UTC time, session
+and outcome. These audit entries also apply when ordinary logging is disabled.
+After each action, the Host's existing Rich console tells the operator what ran,
+how to inspect `co approvals --who <address>`, and how to revoke access with
+`co trust block <address> --co-dir <host-trust-directory>`. The printed command
+targets the lists the running Host reads, including the selected identity's
+lists for `co ai`. This is an operator console notification, not a message to
+an admin inbox. A connected requester's next message (frame) after revocation
+is rejected: the Host ends that connection's logical session and requests
+interruption of that requester's running turns.
+The Host also re-checks the requester's trust before every tool or model
+step of their running turn, whether or not they are still connected, and
+stops the turn at the first step after revocation. A step already running
+(for example one Codex run) is cut short only while the requester is still
+connected, at their next frame; otherwise it finishes and the turn stops
+before the next step.
+Completed external effects cannot be undone.
+The same context behavior applies to Claude Code
+automatic profiles, Full access, and ordinary Auto-approved write/command tools.
+Each `auto` entry carries the outcome of its own run, including later failures.
+In Auto, a contact's Codex runs shell commands without prompts inside a sandbox
+that can read the whole disk and has no network.
+
+Admin/local runs, Read only mode, and read-only or manual provider profiles do not trigger this notice. Existing manual approval gates and
+unexpected callback refusals remain in force. Selecting Codex **Ask for approval**
+or **Read Only** tightens its provider permission; a contact cannot answer an
+admin-only approval request.
+
 ## The original generic frontend contract
 
 The connection layer bundled in `@connectonion/react`
@@ -99,8 +151,11 @@ Work Room permissions do not reuse or rename the outer three COAI modes. The
 outer mode remains the authoritative Host ceiling; each typed
 `provider_invocation` may additionally carry a finite `providerPermission`
 catalog for the native provider. Codex keeps sandbox boundary and reviewer as
-separate fields, so **Ask for approval** and **Approve for me** both map to the
-native `:workspace` boundary without becoming the same policy. Claude Code
+separate fields, so **Ask for approval** and **Work automatically** both map to
+the native `:workspace` boundary without becoming the same policy. Hosted Auto
+defaults to **Work automatically**: `workspace-write` with `approvalPolicy=never`.
+An explicit **Ask for approval** selection keeps the manual approval gate.
+Unexpected callbacks still fail closed; they do not widen the sandbox. Claude Code
 exposes its own native Plan, Default, Accept edits, Auto, and Bypass permissions
 profiles through the same bounded shape.
 
@@ -112,6 +167,14 @@ mode ceiling before persisting the selection. Only then does it return
 `PROVIDER_PERMISSION_ACK` and append a newer canonical `provider_invocation`.
 The selected profile applies to subsequent native provider work; it cannot
 retroactively alter an active action or replace an individual approval.
+
+A declined native action or approval response makes the result envelope
+`status=blocked`, with a nonzero `exit_code`, an adapter-owned `blocked_reason`,
+and an error explanation. It remains a string-compatible `ToolFailure` so the
+outer tool trace and console record a failure. The existing Work Room wire
+status is `failed`, with a finite "Blocked: …" summary; raw native errors are
+never copied into that summary. Native `turn/completed` alone proves only that
+the turn ended, not that the requested actions ran.
 
 Old or malformed clients fail closed: missing catalogs render no selector,
 unadvertised and stale choices are rejected, and lowering the outer COAI mode

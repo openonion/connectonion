@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_rem_today_fuse_browser import BASE, today  # noqa: E402,F401
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CO_REM_BROWSER_TEST") != "1",
@@ -299,13 +301,13 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
 
 def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
-    # The statement counts people; the items total is the sidebar's, said once (TOP10 #9, polish).
+    # Sprint 14: the display number is the sidebar's (items waiting on you); the people are a subset, in words.
     total = page.locator('#nav .n.waiting').inner_text()
-    assert int(total) > 0 and f'{total} items waiting on you' not in page.locator('.night-card').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert page.locator('.night-card .count').text_content() == str(len(whos))  # N3: the count is the display element
-    assert page.locator('.night-card .count-line span').text_content() == 'people waiting on you'
+    assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
+    assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
+    assert page.locator('.night-card .count-of').text_content() == f'Start with these {len(whos)} people'
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
     changes = page.locator('.overnight .overnight-change')
@@ -314,14 +316,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert changes.get_by_role('link', name='source', exact=True).get_attribute('href').endswith('h=src-2')
     page.locator('.week-details summary').click()
     assert set(page.locator('.week a').all_inner_texts()) >= {'Mara Ostrowski', 'Harbour', 'Fernhill Labs'}
-    recall = page.locator(".recall")
-    assert recall.count() == 1
-    assert not recall.locator(".recall-answer").is_visible()
-    recall.get_by_role("button", name="Reveal the context").focus()
-    page.keyboard.press("Enter")
-    assert recall.locator(".recall-answer").is_visible()
-    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-expanded") == "true"
-    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-controls") == "recall-answer"
+    assert page.locator(".recall").count() == 0  # sprint 14: no "what should you remember" card without a reason
     assert page.locator(".night-details").count() == 1
     page.locator(".night-details summary").click()
     night = page.locator(".night-details .night")
@@ -341,25 +336,20 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
         assert band.locator("ul.threads > li").count() > 0
 
 
-def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
+def test_people_open_as_a_table_that_sorts_and_opens_a_row(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
-    page.get_by_role("button", name="More columns", exact=True).click()
-    sheet = page.locator("table.sheet")
+    table = page.locator("table.people-table")
     # a409b633: the owner has a separate You page, outside People.
-    assert sheet.locator("tbody tr[data-href]").count() == 5
-    assert not any("Avery Lin" in text for text in sheet.locator("tbody .name").all_inner_texts())
-    assert "mara@fernhill.example" in sheet.inner_text()
-    page.get_by_role("button", name="Yours to answer").click()
-    assert sheet.locator("tbody .name a").all_inner_texts() == ["Mara Ostrowski", "Inès Halvorsen"]
-    page.get_by_role("button", name="All").click()
-    sheet.locator("th", has_text="Mails").locator("button").click()
-    assert sheet.locator("tbody .name a").first.inner_text() == "Mara Ostrowski"
-    assert sheet.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
-    page.locator(".sheet-find").fill("ledgerline")
-    assert sheet.locator("tbody .name a").all_inner_texts() == ["Inès Halvorsen"]
-    sheet.locator("tbody tr").first.locator("td.c-last").click()
+    assert table.locator("tbody tr[data-href]").count() == 5
+    assert not any("Avery Lin" in text for text in table.locator("tbody .c-name").all_inner_texts())
+    page.get_by_role("button", name="Columns").click()
+    page.get_by_role("checkbox", name="Email").check()
+    assert "mara@fernhill.example" in table.inner_text()
+    table.locator("th.c-name button").click()
+    names = table.locator("tbody .c-name a").all_inner_texts()
+    assert names == sorted(names, key=str.lower)
+    table.locator("tbody tr").filter(has_text="Inès Halvorsen").locator("td.c-last").click()
     page.get_by_role("heading", name="Inès Halvorsen", exact=True).wait_for()
 
 
@@ -382,31 +372,27 @@ def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(read
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
+def test_the_people_table_fits_1440_and_scrolls_inside_itself_when_wider(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
-    scroller = page.locator(".sheet-scroll")
-    # The default columns fit at 1440, including what is open.
+    scroller = page.locator(".people-scroll")
+    # The default columns fit at 1440.
     assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
-    assert page.locator("th.c-open").evaluate("e => e.getBoundingClientRect().right <= innerWidth")
-    assert "clip-right" not in page.locator(".sheet-box").get_attribute("class")
-    page.get_by_role("button", name="More columns", exact=True).click()
-    # Narrower, the expanded sheet scrolls inside itself; the name stays put.
+    assert page.locator("th.c-depth").evaluate("e => e.getBoundingClientRect().right <= innerWidth")
+    # Every column, narrower: the table scrolls inside itself; the name stays put.
+    page.evaluate("() => { peopleColumns = peopleColumnKeys('more'); render(); }", isolated_context=False)
     page.set_viewport_size({"width": 900, "height": 900})
-    page.wait_for_function("document.querySelector('.sheet-box').classList.contains('clip-right')")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert scroller.evaluate("e => e.scrollWidth > e.clientWidth")
     scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
-    page.wait_for_function("!document.querySelector('.sheet-box').classList.contains('clip-right')")
-    assert page.locator("td.name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
+    assert page.locator("td.c-name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
 
 
 def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader):
     page, uri = reader
     page.set_viewport_size({'width': 1440, 'height': 1000})
     page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
-    page.get_by_role('button', name='More columns', exact=True).click()
+    page.evaluate("() => { peopleColumns = peopleColumnKeys('more'); }", isolated_context=False)
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index,
@@ -417,7 +403,6 @@ def test_people_desktop_contact_previews_and_adjacent_text_do_not_overlap(reader
       r.original = r.text;
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
     for kind, first, count, title in [
         ('email', 'marcus_jian.vale.partnerships@a-much-longer-department-domain.example', '+2',
@@ -475,7 +460,7 @@ def test_people_mobile_phone_preview_wraps_with_its_label(reader, width):
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 844})
     page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
+    page.evaluate("() => { peopleColumns = peopleColumnKeys('more'); }", isolated_context=False)
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index, phone: '+61 0491570157 (mobile partnerships desk after hours); +61 0491570158 (work)'};
@@ -503,40 +488,29 @@ def test_people_phone_cards_keep_contact_metadata_and_sorting(reader, width):
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#c=people")
     page.evaluate(r'''() => {
+      peopleColumns = [...peopleColumnKeys(null), 'email'];
       const r = byPath('people/mara-ostrowski.md');
       r.index = {...r.index, emails: ['long-address'.repeat(20) + '@fernhill.example', 'second@fernhill.example', 'third@fernhill.example']};
       r.text = (r.original || r.text).replace(/^- Email:.*\n/gm, '');
       r.original = r.text;
       FACTS.delete(r.path); render();
     }''', isolated_context=False)
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     row = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski')
-    assert row.locator('.name .nm a').is_visible()
+    assert row.locator('.c-name a').all_inner_texts() == ['Mara Ostrowski']
     assert row.locator('.email-first').is_visible()
     assert row.locator('.email-more').inner_text() == '+2'
     assert row.locator('.people-emails a').count() == 1
-    assert row.locator('.name .sum').is_visible()
-    assert 'Fernhill' in row.locator('.people-card-meta').inner_text()
-    assert row.locator('.name a').all_inner_texts() == ['Mara Ostrowski']
-    meta = row.locator('.people-card-meta')
-    assert meta.get_attribute('title') == meta.inner_text()
-    assert meta.evaluate("e => getComputedStyle(e).webkitLineClamp") == '2'
-    assert meta.evaluate("e => getComputedStyle(e).marginTop") == '14px'
+    assert 'Fernhill' in row.locator('.c-org').inner_text()
     assert row.locator('.c-email').evaluate(r'''e => {
       const label = getComputedStyle(e, '::before');
-      return !label.content.includes(':') && label.fontSize === '11px'
-        && getComputedStyle(e.querySelector('.people-emails')).display === 'inline'
+      return label.content.includes('Email') && getComputedStyle(e.querySelector('.people-emails')).display === 'inline'
         && getComputedStyle(e.querySelector('.email-first')).display === 'inline';
     }''')
-    assert row.locator('.people-card-meta .mono').is_visible()
-    assert row.locator('.c-open').is_visible()
-    assert not row.locator('.c-phone').is_visible()
-    assert row.locator('.c-open').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
-    assert row.locator('.people-card-meta').bounding_box()['y'] > row.locator('.name').bounding_box()['y']
+    assert row.locator('.c-org').bounding_box()['y'] > row.locator('.c-name').bounding_box()['y']
     assert page.locator('.sheet td.c-last .mono[title="Last contact in map"]').first.inner_text() == 'Sep 16'
     page.get_by_role('combobox', name='Sort by').select_option('last')
     assert page.locator('.sheet th.c-last').get_attribute('aria-sort') == 'descending'
-    assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
+    assert page.locator('.people-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
     assert page.evaluate(r"document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -555,22 +529,18 @@ def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, mon
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri() + "#c=people")
-    # Rows stay short: the recent group shows 14, then one button for the rest.
-    assert page.locator(".r4 .row.prow").count() <= 14 + 9
-    more = page.get_by_role("button", name=re.compile(r"Show all \d+ people"))
-    assert more.is_visible()
-    page.locator(".r4-find").fill("Correspondent 569")
-    assert page.locator(".r4 .row.prow").count() == 1
-    page.locator(".r4-find").fill("")
+    # Every person is a card in the one table (#2991); no rows list cut at 14.
+    assert page.locator(".people-table tbody tr").count() >= 575
+    page.locator(".people-find").fill("Correspondent 569")
+    assert page.locator(".people-table tbody tr").count() == 1
+    page.locator(".people-find").fill("")
     directory = page.locator(".contact-directory summary")
     directory.focus()
     directory.press("Enter")
     assert page.locator(".contact-directory").get_attribute("open") is not None
     page.locator(".contact-directory").get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
     assert page.locator(".contact-directory tbody tr").count() == 1
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
     sheet = page.locator(".sheet-scroll")
-    assert page.locator(".sheet tbody tr").count() >= 575
     for _ in range(2):
         sheet.evaluate("e => e.scrollLeft = e.scrollWidth")
         assert page.locator('.sheet-scroll').evaluate(r"e => e.scrollWidth <= e.clientWidth + 1")
@@ -1325,12 +1295,12 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
     heading = page.locator('.night-card .count-line').inner_text()
-    assert heading.split('\n') == (['1', 'person waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
+    assert heading.split('\n') == ([str(mine), 'thing waiting on you', 'Start with this 1 person'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
-        assert page.locator('.others .waiting-more').inner_text().split('\n') == [str(theirs), 'waiting on others']
+        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} waiting on others →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if theirs or mine:
         page.locator('.others .waiting-more').click()
@@ -1347,7 +1317,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
         assert page.locator('#main .lede').count() == 0
         assert page.locator('#main .empty .lead').inner_text() == 'Nothing open'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
-    assert page.evaluate('quietThreads([{t: {quiet: true}}], 0) === null', isolated_context=False)
+    assert page.evaluate('quietThreads([]) === null', isolated_context=False)  # nothing quiet: no fold, never (0)
 
 
 @pytest.mark.parametrize("count", [0, 1])
@@ -1843,7 +1813,6 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
 
         page.goto(uri + '#c=people')
         page.locator('.r4-people h1').wait_for()
-        page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
         quinn = page.locator('.sheet tbody tr').filter(has_text='Quinn Alder')
         assert quinn.locator('.c-last .mono').inner_text() == 'Sep 16'
         assert quinn.locator('.c-last .mono').get_attribute('title') == 'Last contact in map'
@@ -2139,7 +2108,8 @@ def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(r
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
-    assert names == ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records']  # D-01: the catch-all last
+    # D-01: the catch-all last; #2961: each name starts with the word you see (Orgs · Organisations)
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'All records']
     assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
@@ -3425,12 +3395,13 @@ def test_cjk_citation_tethers_do_not_bind_a_whole_sentence(reader):
 
 
 @pytest.mark.parametrize('width', [1440, 390])
-@pytest.mark.parametrize('notebook_languages, browser_language', [(['zh', 'en'], 'en-AU'), (['en', 'zh'], 'en-AU'), ([], 'zh-CN')])
-def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, browser_language):
+# owner: languages.owner_language for that list, as reader.py hands it to the page (a configured list here).
+@pytest.mark.parametrize('notebook_languages, owner, browser_language', [(['zh', 'en'], 'zh', 'en-AU'), (['en', 'zh'], 'zh', 'en-AU'), ([], None, 'zh-CN')])
+def test_chinese_interface_default_switch_and_persistence(reader, tmp_path, monkeypatch, width, notebook_languages, owner, browser_language):
     from connectonion.rem import reader as rem_reader
     page, _ = reader
     data = rem_reader.snapshot(tmp_path / 'rem', local=True)
-    data['your_languages'] = notebook_languages
+    data['your_languages'], data['owner_language'] = notebook_languages, owner
     page.add_init_script("Object.defineProperty(navigator, 'language', {value: " + repr(browser_language) + "});")
     monkeypatch.setattr(rem_reader, 'snapshot', lambda root, local=False, today=False: data)
     path = tmp_path / 'chinese-reader.html'
@@ -3538,28 +3509,6 @@ def test_hidden_excerpt_keeps_identity_claim_and_inline_reveal(reader, width):
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_people_columns_disclose_sort_and_remember_without_changing_phone_cards(reader):
-    page, uri = reader
-    page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
-    assert page.locator('.sheet th:visible').all_text_contents() == [
-        'Name↕', "What's open↕", 'Company↕', 'Last contact↕']
-    assert page.locator('.sheet td.c-email').first.is_hidden()
-    page.get_by_role('button', name='More columns', exact=True).click()
-    assert page.locator('.sheet th.c-role').is_visible()
-    page.locator('.sheet th.c-mails button').click()
-    assert page.locator('.sheet th.c-mails').get_attribute('aria-sort') == 'descending'
-    page.reload()
-    assert page.get_by_role('button', name='Fewer columns', exact=True).get_attribute('aria-expanded') == 'true'
-    page.get_by_role('button', name='Fewer columns', exact=True).click()
-    page.reload()
-    assert page.locator('.sheet th.c-role').is_hidden()
-    page.set_viewport_size({'width': 375, 'height': 844})
-    assert page.locator('.sheet tbody .c-email').first.is_visible()
-    assert page.get_by_role('button', name='More columns', exact=True).is_hidden()
-    assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
-
-
 @pytest.mark.parametrize('width', [1440, 375])
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, width, language):
@@ -3585,7 +3534,6 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     page.goto(uri + '#r=people%2Ftomas-reyes.md')
     assert page.locator('.eyebrow .updated-label, .hero-marks .updated-label, .changed-value').count() == 0
     page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     fresh = page.locator('.sheet tbody tr').filter(has_text='Mara Ostrowski').locator('.fresh-label')
     assert fresh.is_visible()
     assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
@@ -3791,10 +3739,9 @@ def test_memory_markers_enter_once_per_page_view_and_respect_reduced_motion(read
     page.evaluate(r'() => render()', isolated_context=False)
     assert field.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
     page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
     marker = page.locator('.fresh-label').first
     assert marker.evaluate(r'node => getComputedStyle(node).animationName') == ('none' if motion == 'reduce' else 'memory-dawn')
-    page.locator('.sheet-find').fill('Mara')
+    page.locator('.people-table th.c-name button').click()
     assert page.locator('.fresh-label').first.evaluate(r'node => getComputedStyle(node).animationName') == 'none'
 
 
@@ -3829,7 +3776,8 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
     assert '中文人物摘要' not in page.locator('#main').text_content()
     page.evaluate(r'''() => { setInterfaceLanguage('zh'); location.hash = 'c=people'; }''', isolated_context=False)
-    assert '中文待办摘要' in page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski').inner_text()
+    # People is a record (#2991): what is owed is counted there and read in Today.
+    assert '中文待办摘要' not in page.locator('.people-table').inner_text()
     page.evaluate(r'''() => { location.hash = ''; }''', isolated_context=False)
     assert '中文待办摘要' in page.locator('.today-brief').text_content()  # every card, raised or waiting behind its face
     page.locator('.week-details > summary').click()
@@ -3837,8 +3785,9 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     page.evaluate(r'''() => { location.hash = 'q=' + encodeURIComponent('中文人物摘要'); }''', isolated_context=False)
     assert '中文人物摘要' in page.locator('.search-group .hit').first.inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fquinn-alder.md'; }''', isolated_context=False)
-    assert page.locator('.hero-marks .lang-status').inner_text() == '原文'
-    assert page.locator('.hero-marks .lang-status').get_attribute('title') == '翻译待处理，后台更新未开启'
+    # A static page with no translation asked for is simply in English: no 原文 chip, no line (sprint 15).
+    header = page.locator('.person-head').inner_text() + page.locator('#main').inner_text().split('完整记忆与来源')[0]
+    assert '原文' not in header and '中文版还没好' not in header
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -3882,18 +3831,11 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert waiting.locator('.words .cite').first.get_attribute('data-sources') == '4'
     assert waiting.locator('.context').count() == 0
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
-    person_row = page.locator('.r4 .row.prow').filter(has_text='Mara Ostrowski')
-    assert 'Fernhill Labs 科研团队' in person_row.locator('.org').text_content()
-    assert person_row.locator('.org').is_visible() == (width >= 720)
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")
-    row = page.locator('.people-sheet tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
-    if width > 600:
-        page.locator('.more-columns').click()
-        assert row.locator('.c-role').inner_text() == '理学院教授'
-        assert row.locator('.c-company').inner_text() == 'Fernhill Labs 科研团队'
-    else:
-        assert '理学院教授' in row.locator('.people-card-meta').inner_text()
-        assert 'Fernhill Labs 科研团队' in row.locator('.people-card-meta').inner_text()
+    page.evaluate(r'''() => { peopleColumns = [...peopleColumnKeys(null), 'role']; render(); }''', isolated_context=False)
+    row = page.locator('.people-table tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
+    assert 'Fernhill Labs 科研团队' in row.locator('.c-org').inner_text()
+    assert row.locator('.c-org').is_visible()
+    assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
     org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
     assert org.count() == 1
@@ -4026,11 +3968,13 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         assert page.evaluate("document.documentElement.classList.contains('hide-private')")
         assert '公开试点' in page.locator('.today-brief').text_content()  # every card, raised or waiting behind its face
         no_private_words()
-        # Missing translations have no note in either home row type.
+        # A translated page's rows carry no 原文 (Today's rows of untranslated pages do: sprint 15, language);
+        # the week has no note at all.
         page.locator('.week-details > summary').click()
         no_private_words()
+        assert page.locator('.today-brief .qcard[data-path="people/mara-ostrowski.md"] .lang-status').count() == 0
+        assert page.locator('.week .lang-status').count() == 0
         for selector in ('.today-brief', '.week'):
-            assert page.locator(selector).locator('.lang-status').count() == 0
             # Missing archived mail is useful context, not a translation badge.
             assert '尚无中文译文，显示原文' not in page.locator(selector).inner_text()
         page.goto(html.as_uri() + '#view=open')
@@ -4066,7 +4010,9 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.search-group').count() == 0
         page.goto(html.as_uri() + '#r=people%2Fquinn-alder.md')
-        assert page.locator('.hero-marks .lang-status').inner_text() == '原文'
+        page.locator('.person-head').wait_for()
+        main = page.locator('#main').inner_text().split('完整记忆与来源')[0]
+        assert '原文' not in main and '中文版还没好' not in main
         assert not errors, errors
         browser.close()
 
@@ -4101,7 +4047,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.night-card .count').text_content() == '1'
+    assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
+    assert page.locator('.night-card .count-of').text_content() == 'Start with this 1 person'
     assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
@@ -4109,7 +4056,9 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     # A static, undrafted mail card opens its recorded provider thread; it
     # cannot promise a live Draft now action. Local completion stays available.
     assert page.locator('.qcard .card-acts a[target="_blank"]').count() == 1
-    assert page.locator('.qcard .qdone').count() == page.locator('.qcard .qitem').count()
+    # A snapshot's rows show the strip's closes as words, disabled since it keeps no mark (#2990), never an icon-only tick.
+    assert page.locator('.qcard .qitem .strip-ignore:disabled').count() == page.locator('.qcard .qitem').count()
+    assert page.locator('.qcard .qdone').count() == 0
     assert page.locator('.qcard').get_by_role('button', name='Draft now', exact=True).count() == 0
     assert page.locator('#nav .n.waiting').inner_text() == '7'  # items, not people (TOP10 #9), said once: in the sidebar
     assert 'items waiting on you' not in page.locator('.waiting-more').inner_text()
@@ -4131,40 +4080,28 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert 'pilot renewal' in page.locator('h1').inner_text()
 
 
-def test_round7_local_done_copy_undo_reload_and_record_tag(reader):
+def test_round7_a_snapshot_row_keeps_its_mailbox_link_and_says_why_it_cannot_be_marked(reader):
+    """Round 7 marked a snapshot's row done on this device, "sync pending". Nothing ever synced it: a file:// page's
+    storage is not the live reader's (#2990 review). The row keeps its way to the mailbox and no Copy prompt; its
+    Mark done is shown, disabled, and the band says in words where marking happens. The live mark, its Undo and
+    the record following it are tested on the live reader (test_rem_strip_done_browser.py)."""
     page, uri = reader
     page.goto(uri + '#view=open')
     target = page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').first
     before = int(page.locator('#nav a[href="#view=open"] .n').inner_text())
-    assert target.get_by_role('button', name='Mark done', exact=True).count() == 1
+    done = target.get_by_role('button', name='Mark done', exact=True)
+    assert done.count() == 1 and done.is_disabled()
     assert target.get_by_role('link', name='Open the Gmail thread', exact=True).count() == 1
     assert target.get_by_role('button', name='Copy prompt').count() == 0
-    target.get_by_role('button', name='Mark done', exact=True).click()
-    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 0
-    assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before - 1
-    page.locator('#done-notice').get_by_role('button', name='Undo', exact=True).click()
-    assert page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').count() == 1
-    page.locator('.task-band .thread').filter(has_text='Data-sharing addendum').get_by_role('button', name='Mark done').click()
-    page.reload()
-    page.locator('.done-details summary').wait_for()
-    assert page.locator('.done-details').get_attribute('open') is None
-    page.locator('.done-details summary').click()
-    assert 'sync pending' in page.locator('.done-details').inner_text()
-    assert page.locator('.done-details').get_by_role('button', name='Undo', exact=True).count() == 1
-    # Her record follows the decision without a ledger of its own (D-30): nothing of hers is left in Today.
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    assert page.locator('.owe').count() == 0 and page.locator('.r4-today').count() == 0
-    page.goto(uri + '#view=open')
-    page.locator('.done-details summary').click()
-    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
-    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    assert page.locator('.r4-today').inner_text() == '1 item in Today'
-    page.goto(uri)
-    assert 'Data-sharing addendum' in page.locator('.today-brief').text_content()  # every card, raised or waiting behind its face
+    band = page.locator('.task-band').filter(has=page.locator('.thread', has_text='Data-sharing addendum'))
+    assert 'This is an offline snapshot; open REM to mark it.' in band.inner_text()
     assert int(page.locator('#nav a[href="#view=open"] .n').inner_text()) == before
+    assert page.locator('.done-details').count() == 0
 
 
-def test_round7_done_remains_usable_when_storage_is_blocked(reader):
+def test_round7_a_snapshot_with_storage_blocked_still_draws_its_rows(reader):
+    """Blocked storage never breaks the page: the probe reads nothing back and the rows still draw, their closes
+    disabled with the reason (#2990 review), so nothing is lost by the block."""
     page, uri = reader
     page.add_init_script(r'''Object.defineProperty(window, 'localStorage', {
       get() { throw new Error('Storage blocked by this fixture'); }
@@ -4175,31 +4112,28 @@ def test_round7_done_remains_usable_when_storage_is_blocked(reader):
       await readerStorage('fixture-probe', 'value');
       return readerStorage('fixture-probe');
     }''', isolated_context=False) is None
-    page.locator('.task-band .thread').first.get_by_role('button', name='Mark done', exact=True).click()
-    assert page.locator('.done-details summary').is_visible()
-    page.goto(uri + '#')
-    page.goto(uri + '#view=open')
-    assert page.locator('.done-details summary').is_visible()
-    page.locator('.done-details summary').click()
-    page.locator('.done-details').get_by_role('button', name='Undo', exact=True).click()
-    assert page.locator('.done-details').count() == 0
+    row = page.locator('.task-band .thread').first
+    assert row.get_by_role('button', name='Mark done', exact=True).is_disabled()
+    assert row.get_by_role('button', name='Ignore', exact=True).get_attribute('title') == 'This is an offline snapshot; open REM to mark it.'
 
 
 def test_round7_desktop_people_rows_are_light_and_phone_actions_stay_visible(reader):
     page, uri = reader
     page.goto(uri + '#c=people')
-    assert page.evaluate(r'''() => [...document.querySelectorAll('.r4 .row.prow')].every(row => {
-      const box = row.getBoundingClientRect(), meta = row.querySelector('.s');
-      return box.height >= 56 && box.height <= 64 && (!meta || getComputedStyle(meta).whiteSpace === 'nowrap');
-    })''')
+    assert page.evaluate(r'''() => { const rows = [...document.querySelectorAll('.people-table tbody tr')];
+      return rows.length && rows.every(row => { const box = row.getBoundingClientRect(); return box.height >= 32 && box.height <= 64; }); }''')
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.goto(uri)
-    action = page.locator('.qcard.open .card-acts .btn-act').first
+    # The card's first action: its green step, or with no step the row's worded Mark done (sprint 14, #2990).
+    action = page.locator('.qcard.open :is(.card-acts .btn-act, .qitem .strip-done)').first
     action.scroll_into_view_if_needed()
     assert action.is_visible() and action.bounding_box()['height'] >= 44
-    action.focus()
-    assert action.evaluate(r'''node => node === document.activeElement''')
+    if action.is_disabled():  # a file:// snapshot keeps no mark (#2990 review): the button says why instead
+        assert action.get_attribute('title') == 'This is an offline snapshot; open REM to mark it.'
+    else:
+        action.focus()
+        assert action.evaluate(r'''node => node === document.activeElement''')
 
 
 @pytest.mark.parametrize('width', [390, 800, 1099, 1440])
@@ -4225,23 +4159,13 @@ def test_round_eight_home_source_button_and_reading_order(reader, tmp_path, widt
     assert source.count() == 1
     assert source.get_attribute('title') == ('有引用来源支持' if language == 'zh' else 'Supported by the cited source')
     assert source.get_attribute('href').endswith('h=src-2')
-    assert page.locator('.recall-toggle').evaluate(r'''button => {
-      const css = getComputedStyle(button);
-      // N3: the recall card's one control is a quiet icon (flip), named for what it does; no fill at rest.
-      return css.borderTopStyle === 'none' && !!button.getAttribute('aria-label') && !!button.querySelector('svg.ic')
-        && button.getBoundingClientRect().width >= 36;
-    }''')
-    page.locator('.recall-toggle').click()
-    assert page.locator('.recall-answer').is_visible()
-    page.locator('.recall-toggle').click()
-    assert not page.locator('.recall-answer').is_visible()
     if width < 1100:
         assert page.evaluate(r'''() => {
           const bottom = selector => document.querySelector(selector).getBoundingClientRect().bottom;
           const top = selector => document.querySelector(selector).getBoundingClientRect().top;
-          // N3: the desk (the card and, beside it or under it on a phone, the recall card), then the fold below it.
-          return (innerWidth > 640 || bottom('.today-brief') <= top('.recall'))
-            && bottom('.today-brief') <= top('.overnight') && bottom('.recall') <= top('.overnight')
+          // N3: the desk (the card and, beside it or under it on a phone, the side column), then the fold below it.
+          return (innerWidth > 640 || bottom('.today-brief') <= top('.tgrid > .side'))
+            && bottom('.today-brief') <= top('.overnight') && bottom('.tgrid > .side') <= top('.overnight')
             && (!document.querySelector('.gone-quiet') || bottom('.overnight') <= top('.gone-quiet'));
         }''')
     summaries = page.locator(':is(.gone-quiet, .week-details, .night-details, .done-details) > summary')
@@ -4672,7 +4596,7 @@ def test_round10_list_empty_states_offer_one_working_next_action(reader):
     page, uri = reader
     for category in ('people', 'orgs', 'skills'):  # Projects is a board without a filter field
         page.goto(uri + '#c=' + category)
-        page.locator('.sheet-find, .r4-find, .ov-find, .skills-find').first.fill('no-such-invented-page-zzzz')
+        page.locator('.people-find, .sheet-find, .r4-find, .ov-find, .skills-find').first.fill('no-such-invented-page-zzzz')
         assert page.locator('.empty .lead').inner_text() == 'No matching pages'
         assert page.locator('.empty a').count() == 1
         page.locator('.empty a').click()
@@ -4695,7 +4619,10 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
     page, uri = reader
     page.goto(uri)
     page.evaluate(r'''theme => setTheme(theme)''', theme, isolated_context=False)
-    for route, selectors in [('#c=people', '.brand .sub, nav a .n, .r4 .row .s, .r4 .row .when, .r4 .grp, .r4 .chip, .r4-tabs i'),
+    # #2956: links ease their colour over --t-press when the theme changes, and the mark's link is not redrawn
+    # by the route changes below; measuring it mid-fade read the light ink on the dark page (3.58, then 1.03).
+    page.evaluate('Promise.all(document.getAnimations().filter(a => a instanceof CSSTransition).map(a => a.finished))')
+    for route, selectors in [('#c=people', '.brand .sub, nav a .n, .people-table th button, .people-table .depth, .people-table .unk'),
                              ('#r=people%2Fmara-ostrowski.md', '.hero-marks, .r4-stats div, .fuse-ends span, .said-src, .tl-e .d, .wt h2'),
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
         page.goto(uri + route)
@@ -4719,9 +4646,9 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
         assert values and all(v['ratio'] >= 4.5 and v['opacity'] == '1' for v in values), values
         assert page.locator('span[aria-label]:not([role])').count() == 0
     page.goto(uri + '#c=people')
-    page.evaluate("document.querySelector('.table-toggle[aria-pressed=false]')?.click()")  # the sheet is one toggle away from the rows
-    assert page.locator('.st').count() > 0
-    assert page.locator('.st').evaluate_all(r'nodes => nodes.every(n => n.getAttribute("role") === "img" && n.getAttribute("aria-label"))')
+    # The depth moon is decoration beside its word.
+    assert page.locator('.people-table .depth svg').count() > 0
+    assert page.locator('.people-table .depth svg').evaluate_all(r'nodes => nodes.every(n => n.getAttribute("aria-hidden") === "true")')
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md');
@@ -4903,7 +4830,7 @@ def test_reader_copy_uses_one_local_date_format_and_omits_owner_and_redundant_ba
     assert all('Yesterday' in text for text in values[3:])
     page.goto(uri + '#c=people')
     head = page.locator('.r4-people').inner_text()
-    assert re.search(r'\d+ people', head)
+    assert head.startswith('People')
     assert 'written of' not in head and 'qualifying correspondents' not in head
 
 
@@ -5184,10 +5111,12 @@ def test_person_open_topics_are_facts_without_actions(reader, language):
     assert page.evaluate(GREEN, isolated_context=False) == 0
 
 
-def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(reader):
-    page, uri = reader
-    page.goto(uri + "#")
+def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(today):
+    # The live reader: a snapshot shows Not done yet disabled, as it does its closes (#2990 review).
+    page, _, _ = today
+    uri = BASE
     page.evaluate("""() => {
+      REM.live = true;
       // Your later mail looks like it settled her ask: REM would call it handled.
       const row = REM.today_queue.find(row => row.record === 'people/mara-ostrowski.md' && row.dir === 'mine');
       row.reply = {state: 'replied', since: REM.as_of.slice(0, 10), promise: 'Signed and attached.'};
@@ -5202,8 +5131,8 @@ def test_today_not_done_yet_keeps_a_looks_handled_item_open_everywhere(reader):
     card = page.locator('.qcard[data-path="people/mara-ostrowski.md"]')
     assert card.get_attribute("data-step") != "done" and card.get_by_role("button", name="Not done yet").count() == 0
     page.goto(uri + "#c=people")
-    row = page.locator(".r4 .row").filter(has_text="Mara Ostrowski")
-    assert row.locator(".chip, .dot").count() >= 1, "still waiting on you in the People list"
+    row = page.locator(".people-table tbody tr").filter(has_text="Mara Ostrowski")
+    assert int(row.locator("td.c-open").inner_text()) >= 1, "still open in the People table"
 
 
 def test_person_fuse_does_not_burn_once_today_has_it_handled(reader):
@@ -5253,31 +5182,20 @@ def test_person_quotes_carry_their_source_and_open_the_original(reader):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_people_are_a_record_list_with_search_few_tabs_and_one_quiet_today_link(reader, width, theme):
-    """People is a record, not a to-do list: no waiting headline, no green, one quiet link to Today."""
+def test_people_are_a_record_table_with_no_today_count_above_it(reader, width, theme):
+    """#2991: People is what has settled; the page is its name and the table, no waiting count, no green."""
     page, uri = reader
     page.set_viewport_size({"width": width, "height": 844})
     page.goto(uri + "#c=people")
     page.evaluate("theme => { setTheme(theme); setInterfaceLanguage('zh'); }", theme, isolated_context=False)
-    assert re.fullmatch(r"\d+ 人", page.locator(".r4-people h1").inner_text().strip())
-    today = page.locator(".r4-people .list-today")
-    assert re.fullmatch(r"今天里有 \d+ 人在等你 →", today.inner_text()) and today.get_attribute("href") == "#"
+    assert page.locator(".r4-people h1").inner_text().strip() == "人物"
+    assert page.locator(".r4-people .list-today, .r4-find, .r4-tabs, .r4 .grp").count() == 0
+    assert "等你" not in page.locator("#main").inner_text()
     assert _green_primaries(page) == []
-    assert page.locator(".r4-find").count() == 1
-    assert page.locator(".r4-tabs button").count() <= 4
-    groups = page.locator(".r4 .grp").all_inner_texts()
-    assert groups[0].startswith("在等你") and groups[-1] == "最近联系"
-    assert page.locator("table.sheet").count() == 0
-    rows = page.locator(".r4 .row.prow")
-    assert rows.count() >= 4
-    assert all(box["height"] >= 56 for box in (rows.nth(i).bounding_box() for i in range(rows.count())))
+    assert page.locator("table.people-table tbody tr").count() == 5
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.locator(".r4-find").fill("mara")
-    assert page.locator(".r4 .row.prow .nm").all_inner_texts()[0] == "Mara Ostrowski"
-    page.get_by_role("button", name="表格").click()
-    assert page.locator("table.sheet").is_visible()
-    page.get_by_role("button", name="列表").click()
-    assert page.locator("table.sheet").count() == 0
+    page.locator(".people-find").fill("mara")
+    assert page.locator(".people-table tbody td.c-name a").all_inner_texts() == ["Mara Ostrowski"]
 
 
 def _visible_green_buttons(page):
@@ -5887,7 +5805,7 @@ def test_org_first_screen_is_a_record_with_one_picture(org_reader, width, theme)
     assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
-    owed = page.evaluate("orgOwed(byPath('orgs/fernhill-university.md')).length", isolated_context=False)
+    owed = 5  # the fixture's items waiting on you about the university, as in the English test below
     today = page.locator(".ov-say a.ov-today")
     assert today.inner_text() == f"今天里有 {owed} 件和 Fernhill University 有关的事 →" and today.get_attribute("href") == "#view=open"
     assert page.locator(".ov-key li").count() == 3

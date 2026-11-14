@@ -2,6 +2,7 @@
 Purpose: Feishu and Lark as an inbox — the official SDK's long connection writes files, replies go out through the REST API
 LLM-Note:
   Dependencies: imports from [json, os, time, uuid, datetime, requests, inbox/store.py] and lazily from [lark_oapi] | imported by [inbox/__init__.py via provider()] | tested by [tests/unit/test_inbox_feishu.py]
+  People: resolve(to) turns an email, a phone number, a saved contact name (contacts.json in the inbox directory) or a group name into the id send() addresses; lookup() is POST /contact/v3/users/batch_get_id (scope contact:user.id:readonly), groups() is GET /im/v1/chats (scope im:chat:readonly); a missing scope raises MissingScope whose text says "need scope: <name>"
   Data flow: run(inbox) → lark_oapi.ws.Client long connection → im.message.receive_v1 event → to_message() → inbox.deliver(); reaction/recall/chat-member/chat-updated events → event_message() → inbox.deliver(); start/reconnect → HistoryRecovery.reconcile() (bounded, no timer) | send()/reply → tenant token → POST /open-apis/im/v1/messages or /messages/{id}/reply → message_id
   State/Effects: reads FEISHU_APP_ID/FEISHU_APP_SECRET (LARK_* for Lark) from the environment | one outbound WebSocket that dials out, so no port is opened | caches the tenant token in memory for its lifetime
   Integration: the same class serves `co feishu` and `co lark`; only the domain and the env prefix differ | the event handler does nothing but convert and write, acknowledgement follows the durable inbox write; storage failures remain retryable
@@ -19,7 +20,7 @@ from typing import Optional
 import requests
 
 from .._version import __version__
-from .store import Inbox, Message, iso_utc
+from .store import Inbox, Message, default_home, iso_utc
 from .recovery import HistoryRecovery, LarkError, MissingScope
 
 DOMAINS = {
@@ -50,6 +51,27 @@ QUOTA_EXHAUSTED = 99991403
 # The tenant token Feishu gave us is no longer good: rotated secret, or
 # invalidated on their side. The cache is wrong, not the clock.
 _TOKEN_INVALID = {99991663, 99991664, 99991665, 99991668}
+
+
+# A tenant token without the scope a call needs: 99991672 for most of the open
+# platform, 99991676 for a token whose permissions are short, 230027 for IM.
+_SCOPE_DENIED = {99991672, 99991676, 230027}
+# The person is outside the application's availability range.
+NO_AVAILABILITY = 230013
+LOOKUP_SCOPE = "contact:user.id:readonly"
+GROUPS_SCOPE = "im:chat:readonly"
+
+# What each id prefix is called in Lark's receive_id_type. A person's id in the
+# inbox (`sender`) is a union id, on_…; an open id, ou_…, is what other tools print.
+_ID_TYPES = {"oc_": "chat_id", "ou_": "open_id", "on_": "union_id"}
+_PHONE = re.compile(r"^\+?[0-9][0-9 ()-]{5,}$")
+
+
+def receive_id_type(to: str) -> str:
+    """How Lark should read a recipient: by prefix, an email by its @."""
+    if "@" in to:
+        return "email"
+    return next((kind for prefix, kind in _ID_TYPES.items() if to.startswith(prefix)), "chat_id")
 
 
 class CredentialsRefused(RuntimeError):
@@ -380,8 +402,85 @@ class Feishu:
                 "content": content,
                 "uuid": str(uuid.uuid4()),
             }
-            result = self._post("/open-apis/im/v1/messages?receive_id_type=chat_id", body)
+            result = self._post(f"/open-apis/im/v1/messages?receive_id_type={receive_id_type(chat)}", body)
         return str(result.get("message_id", ""))
+
+    # ---- people and groups -------------------------------------------------
+
+    def resolve(self, to: str) -> str:
+        """The id `send` addresses for what a person would say: a chat or user
+        id, an email, a saved contact name, a phone number, or a group name."""
+        if "@" in to or to.startswith(tuple(_ID_TYPES)):
+            return to
+        saved = {name.casefold(): target for name, target in self.contacts().items()}
+        if to.casefold() in saved:
+            return saved[to.casefold()]
+        if _PHONE.match(to):
+            return self.person(to)
+        return self.group_named(to)
+
+    def person(self, who: str) -> str:
+        """An email or phone number as the person's union id (on_…), or an id
+        unchanged. Raises when the bot cannot see anyone by that address."""
+        if who.startswith(tuple(_ID_TYPES)):
+            return who
+        if not ("@" in who or _PHONE.match(who)):
+            raise ValueError(f"{who!r} is not an email, a phone number or an id (oc_, ou_, on_)")
+        found = self.lookup(who)
+        if not found:
+            raise LarkError(
+                f"No {self.brand} user with {who} is visible to this bot: nobody has it, it is a "
+                f"number without its +country code, or the person is outside the app's contact range "
+                f"(Developer Console > Permissions > contact range). Next: co {self.name} lookup {who}")
+        return found
+
+    def lookup(self, who: str) -> Optional[str]:
+        """The union id of the person with this email or mobile, or None.
+        A number outside mainland China needs its +country code."""
+        field, value = ("emails", who) if "@" in who else ("mobiles", re.sub(r"[ ()-]", "", who))
+        body = self._post("/open-apis/contact/v3/users/batch_get_id?user_id_type=union_id",
+                          {field: [value]}, scope=LOOKUP_SCOPE)
+        return next((user["user_id"] for user in body.get("user_list") or [] if user.get("user_id")), None)
+
+    def groups(self) -> list:
+        """Every group the bot is in, from Lark: [{chat_id, name, external, …}]."""
+        items, token = [], ""
+        while True:
+            page = f"&page_token={token}" if token else ""
+            body = self._get(f"/open-apis/im/v1/chats?page_size=100{page}", scope=GROUPS_SCOPE)
+            items.extend(body.get("items") or [])
+            token = body.get("page_token") if body.get("has_more") else ""
+            if not token:
+                return items
+
+    def group_named(self, name: str) -> str:
+        """The chat id of the one group the bot is in with this name."""
+        matches = [group for group in self.groups() if (group.get("name") or "").casefold() == name.casefold()]
+        if len(matches) == 1:
+            return matches[0]["chat_id"]
+        if matches:
+            ids = ", ".join(group["chat_id"] for group in matches)
+            raise ValueError(f"{len(matches)} groups are named {name!r} ({ids}); send to one id. "
+                             f"Next: co {self.name} groups")
+        raise ValueError(f"No saved contact and no group the bot is in is named {name!r}. "
+                         f"Next: co {self.name} contacts ls, or co {self.name} groups")
+
+    # ---- contacts: local names, kept beside the inbox ---------------------
+
+    @property
+    def contacts_file(self):
+        return default_home(self.name) / "contacts.json"
+
+    def contacts(self) -> dict:
+        if not self.contacts_file.exists():
+            return {}
+        return json.loads(self.contacts_file.read_text(encoding="utf-8"))
+
+    def save_contacts(self, contacts: dict) -> None:
+        self.contacts_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.contacts_file.with_suffix(".tmp")
+        temporary.write_text(json.dumps(contacts, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.contacts_file)
 
     # ---- REST -------------------------------------------------------------
 
@@ -415,12 +514,12 @@ class Feishu:
             response = send()
         return response
 
-    def _get(self, path: str) -> dict:
+    def _get(self, path: str, *, scope: Optional[str] = None) -> dict:
         url = f"{self.base}{path}"
         response = self._call(lambda: requests.get(url, headers=self._headers(), timeout=15))
-        return _data(response, self.brand)
+        return _data(response, self.brand, scope)
 
-    def _post(self, path: str, body: dict) -> dict:
+    def _post(self, path: str, body: dict, *, scope: Optional[str] = None) -> dict:
         url = f"{self.base}{path}"
         delay = 1.0
         for attempt in range(3):
@@ -434,7 +533,7 @@ class Feishu:
                 time.sleep(delay)
                 delay *= 2
                 continue
-            return _data(response, self.brand)
+            return _data(response, self.brand, scope)
         raise RuntimeError(f"{self.brand} rate-limited this chat three times in a row; try again later")
 
 
@@ -445,13 +544,22 @@ def _code(response) -> Optional[int]:
         return None
 
 
-def _data(response, brand: str = "Feishu") -> dict:
+def _data(response, brand: str = "Feishu", scope: Optional[str] = None) -> dict:
+    """The payload, or the platform's refusal as an exception. `scope` is what
+    the call needs, named in the refusal when the platform's own words omit it,
+    so the CLI can print the link that grants it."""
     try:
         body = response.json()
     except ValueError:
         raise RuntimeError(f"{brand} returned HTTP {response.status_code} without JSON")
-    if body.get("code") == 230027:
-        raise MissingScope(f"{brand} error 230027: {body.get('msg')}")
+    code, msg = body.get("code"), body.get("msg")
+    if code in _SCOPE_DENIED:
+        named = "" if "need scope:" in str(msg) or not scope else f" (need scope: {scope})"
+        raise MissingScope(f"{brand} error {code}: {msg}{named}")
+    if code == NO_AVAILABILITY:
+        raise LarkError(f"{brand} error {code}: the bot cannot message this person, who is outside the "
+                        f"app's availability range. Add them in the Developer Console > App Release > "
+                        f"Version Management (availability), publish a new version, and send again", code)
     if body.get("code") != 0:
         raise LarkError(f"{brand} error {body.get('code')}: {body.get('msg')}", body.get("code"))
     # Most endpoints wrap the payload in `data`; /bot/v3/info puts `bot` at the

@@ -11,6 +11,14 @@ preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
+## Unreleased fixes
+
+- `co browser import` reads Chrome's encrypted cookies as bytes even when SQLite
+  stores them as TEXT. Target-cookie replies are scoped to one imported domain
+  at a time, including subdomains and all paths, so unrelated cookies no longer
+  overflow the OIP frame limit. If a target read fails, the command says
+  "nothing was written" and stops before loading any cookies ([#2887](https://github.com/openonion/connectonion/issues/2887)).
+
 ## Current release
 
 Stable **1.9.5** is the default production channel. A fresh install works again (typer 0.29.0
@@ -25,7 +33,28 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
+Release candidate **1.9.6rc13**: a Host records every automatic run in `co approvals`, and a revoked
+requester's turn stops before its next step even after they disconnect. See [1.9.6rc13 notes](releases/1.9.6rc13.md).
+Before it, release candidate **1.9.6rc12**: `co whatsapp` connects again on a fresh install (neonize 0.10.0;
+WhatsApp refused the old client), reads a group's history when the account is added to it, and
+`co whatsapp download <id>` fetches older media. See [1.9.6rc12 notes](releases/1.9.6rc12.md).
+
+Before it, release candidate **1.9.6rc11**: in the REM reader, People opens on a sortable table, Ignore is a word on
+every open row, Agenda is a calendar of your saved events, and one button translates every page. See
+[1.9.6rc11 notes](releases/1.9.6rc11.md).
+
+Before it, release candidate **1.9.6rc10**: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
+model. Name `co/gemini-3.8-flash` to roll back. See [1.9.6rc10 notes](releases/1.9.6rc10.md).
+
+Before it, release candidate **1.9.6rc9**: REM's night goes on when one mailbox fails and says why on Today; Today
+has one count and one primary action per card; record pages lead with open threads; drafts, the reader
+and translation agree on your language. See [1.9.6rc9 notes](releases/1.9.6rc9.md).
+
+Before it, release candidate **1.9.6rc8**: `co server new` charges the first month of a server now and each next
+month as it starts, and `co server destroy` refunds the unused part with a credit note. rc7 described
+the other way round and cannot create a server. See [1.9.6rc8 notes](releases/1.9.6rc8.md).
+
+Before it, release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
 Ignore in words, and Ignore can keep an advertiser out of Today for good. Records carry real names,
 record pages show the record, and the Skills page fits on one screen. See
 [1.9.6rc7 notes](releases/1.9.6rc7.md).
@@ -57,7 +86,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc7'
+python -m pip install --upgrade 'connectonion==1.9.6rc13'
 ```
 
 ## Previous stable

@@ -276,6 +276,25 @@ def test_a_changed_bundle_is_not_verified():
     assert not bundles.from_mail(bundles.notice(tampered, "prompt", carry_bundle=True)["html"])["verified"]
 
 
+def test_html_only_saved_mail_keeps_a_readable_prompt_and_a_parseable_bundle():
+    # The bundle rides only in the HTML part: a saved mail with no text/plain part, or one whose
+    # plain part is the readable note without it, still opens.
+    from email.message import EmailMessage
+    bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "Fix login", "task": "Use a cookie",
+                           "from": "alice@example.com", "to": "bob@example.com", "created_at": "2026-10-10",
+                           "where_it_stands": "Ready for review"})
+    mail = bundles.notice(bundle, "Paste this entire prompt\nThen accept", carry_bundle=True)
+    assert bundles.BEGIN not in mail["text"]
+    message = EmailMessage()
+    message.set_content(mail["html"], subtype="html")
+    assert bundles.from_saved_mail(message.as_string())["verified"]
+    assert bundles.prompt_in(mail["html"]) == "Paste this entire prompt\nThen accept"
+    message = EmailMessage()
+    message.set_content(mail["text"])
+    message.add_alternative(mail["html"], subtype="html")
+    assert bundles.from_saved_mail(message.as_string())["verified"]
+
+
 # ---- recipient ----
 
 def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypatch):

@@ -1,8 +1,9 @@
-"""The 1.8.2 product default is Gemini 3.8 everywhere it can be omitted.
+"""The product default is Gemini 4 Hydrogen everywhere it can be omitted.
 
 The managed gateway, direct-Gemini client, Agent, llm_do, transcription, and
-`co ai` must agree. Explicit OpenAI and Gemini 3.7 selections stay untouched:
-3.7 is a selectable rollback model, never an implicit fallback.
+`co ai` must agree. Explicit OpenAI and Gemini 3.8 selections stay untouched:
+3.8 is the selectable rollback model (the default before 2026-11-13), never an
+implicit fallback. 3.7, the default before that, must not come back either.
 """
 
 import inspect
@@ -26,9 +27,9 @@ import pytest
 pytestmark = pytest.mark.usefixtures("own_project")
 
 
-MANAGED_DEFAULT = "co/gemini-3.8-flash"
-DIRECT_DEFAULT = "gemini-3.8-flash"
-ROLLBACK = "co/gemini-3.7-flash"
+MANAGED_DEFAULT = "co/gemini-4-hydrogen"
+DIRECT_DEFAULT = "gemini-4-hydrogen"
+ROLLBACK = "co/gemini-3.8-flash"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -36,7 +37,7 @@ def _model_default(fn):
     return inspect.signature(fn).parameters["model"].default
 
 
-class TestOmittedModelSelectsGemini38:
+class TestOmittedModelSelectsGemini4Hydrogen:
 
     def test_the_shared_constants(self):
         assert DEFAULT_MODEL == MANAGED_DEFAULT
@@ -85,21 +86,21 @@ class TestExplicitModelsStayExplicit:
         agent = Agent("t", api_key="fake_key", model="o4-mini")
         assert agent.llm.model == "o4-mini"
 
-    def test_gemini_37_is_still_a_rollback(self):
+    def test_gemini_38_is_still_a_rollback(self):
         agent = Agent("t", api_key="fake_key", model=ROLLBACK)
-        assert agent.llm.model == "gemini-3.7-flash"
+        assert agent.llm.model == "gemini-3.8-flash"
 
     def test_default_and_rollback_are_advertised(self):
         assert MANAGED_DEFAULT in FREE_MANAGED_MODELS
         assert ROLLBACK in FREE_MANAGED_MODELS
 
 
-class TestNoGemini37DefaultRemains:
+class TestNoEarlierDefaultRemains:
     """Guard the supported source/docs surface without rewriting history."""
 
     def test_no_source_literal_assigns_37_as_a_model_default(self):
         assignment = re.compile(
-            r"model\s*(?::\s*str\s*)?=\s*['\"](?:co/)?gemini-3\.7-flash"
+            r"model\s*(?::\s*str\s*)?=\s*['\"](?:co/)?gemini-3\.[78]-flash"
         )
         offenders = []
         for path in (ROOT / "connectonion").rglob("*"):
@@ -112,17 +113,17 @@ class TestNoGemini37DefaultRemains:
                     offenders.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()}")
         assert offenders == []
 
-    def test_active_docs_do_not_call_37_the_default(self):
+    def test_active_docs_do_not_call_an_earlier_model_the_default(self):
         descriptions = []
         paths = [ROOT / "README.md", *(ROOT / "docs").rglob("*.md")]
         for path in paths:
             relative = path.relative_to(ROOT)
-            if relative.parts[:2] in {("docs", "blog"), ("docs", "design-decisions")}:
+            if relative.parts[:2] in {("docs", "blog"), ("docs", "releases"), ("docs", "design-decisions")}:
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 lower = line.lower()
                 if (
-                    "gemini-3.7-flash" in lower
+                    ("gemini-3.7-flash" in lower or "gemini-3.8-flash" in lower)
                     and "default" in lower
                     and "rollback" not in lower
                 ):

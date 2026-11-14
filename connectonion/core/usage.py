@@ -130,6 +130,10 @@ MODEL_PRICING = {
     # actually bills; this table only estimates, and oo-api carries both windows
     # (openonion/oo-api#269). Update this row on 2026-12-01.
     "gemini-4-argon": {"input": 2.00, "output": 10.00, "cached": 0.10},
+    # Carbon shares Argon's price and its 2026-12-01 doubling; update both
+    # rows then. Hydrogen is one flat rate (pricing page, 2026-11-13).
+    "gemini-4-carbon": {"input": 2.00, "output": 10.00, "cached": 0.10},
+    "gemini-4-hydrogen": {"input": 1.50, "output": 7.50, "cached": 0.075},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00, "cached": 0.3125},
@@ -162,6 +166,8 @@ MODEL_CONTEXT_LIMITS = {
     # would fire about eight times too early, the way gemini-3-flash-preview
     # did below.
     "gemini-4-argon": 1_048_576,
+    "gemini-4-carbon": 1_048_576,
+    "gemini-4-hydrogen": 1_048_576,
     "gemini-3.8-flash": 1_048_576,
     "gemini-3.7-flash": 1000000,
     "gemini-3.6-flash": 1000000,
@@ -188,10 +194,14 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # "what is the default model" was previously answered by separate literals
 # that drifted apart. The previous default stays on FREE_MANAGED_MODELS
 # below as the rollback.
-# Gemini 3.8, by the owner's decision (#1869). 1.8.9b10 made the free co/llama
-# (Llama 3.1 8B) the default; free models are what `co status` suggests when
-# the balance reaches 0, not what every new Agent silently gets.
-DEFAULT_MODEL = "co/gemini-3.8-flash"
+# Gemini 4 Hydrogen, by the owner's decision (2026-11-13): the cheapest
+# Gemini 4 model, $1.50/$7.50 against 3.8 Flash's $0.75/$3.75 until that
+# promotion ends on 2027-01-01. Carbon and Argon stay one name away for hard
+# reasoning. Verified from a fresh free identity: a tool-calling Agent and an
+# audio transcription both completed. Earlier (#1869): 1.8.9b10 made the free
+# co/llama the default; free models are what `co status` suggests when the
+# balance reaches 0, not what every new Agent silently gets.
+DEFAULT_MODEL = "co/gemini-4-hydrogen"
 DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 
 # Which managed models a free account can call. The backend refuses the rest
@@ -205,6 +215,7 @@ DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-4-hydrogen",
     "co/gemini-3.8-flash",
     "co/llama",
     "co/gemma",

@@ -243,7 +243,7 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-5")
 response = llm_do("Hello", model="co/claude-sonnet-4")
-response = llm_do("Hello", model="co/gemini-3.8-flash")
+response = llm_do("Hello", model="co/gemini-4-hydrogen")
 ```
 
 **Available models:**
@@ -379,6 +379,8 @@ pip install 'connectonion[whatsapp]'
 brew install libmagic                  # also needed; apt install libmagic1 on Debian/Ubuntu
 co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
 echo "on it" | co whatsapp reply 3EB0A1
+co whatsapp lookup +61412345678       # on WhatsApp? who? sends nothing
+co whatsapp contacts add +61412345678 --name "Alex Example"   # then: co whatsapp send "Alex Example" "Hi"
 ```
 
 The same nine verbs, against a linked companion device — which is the only way

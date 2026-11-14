@@ -156,6 +156,11 @@ NEXT = {
     "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
     "co feishu consume": "co feishu ls",
+    "co feishu lookup": HANDLER,  # names the id it found
+    "co feishu groups": HANDLER,
+    "co feishu contacts add": HANDLER,
+    "co feishu contacts ls": HANDLER,
+    "co feishu contacts rm": "co feishu contacts ls",
     "co lark listen": "co lark receive --timeout 0",
     "co lark receive": "co lark reply <message-id>",
     "co lark send": "co lark receive --timeout 0",
@@ -169,6 +174,11 @@ NEXT = {
     "co lark chats": HANDLER,
     "co lark log": "co lark ls",
     "co lark consume": "co lark ls",
+    "co lark lookup": HANDLER,  # names the id it found
+    "co lark groups": HANDLER,
+    "co lark contacts add": HANDLER,
+    "co lark contacts ls": HANDLER,
+    "co lark contacts rm": "co lark contacts ls",
     "co whatsapp listen": "co whatsapp receive --timeout 0",
     "co whatsapp receive": "co whatsapp reply <message-id>",
     "co whatsapp send": "co whatsapp receive --timeout 0",
@@ -179,6 +189,11 @@ NEXT = {
     "co whatsapp react": "co whatsapp log",
     "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
     "co whatsapp group add": HANDLER,
+    "co whatsapp lookup": HANDLER,  # names the jid to save
+    "co whatsapp contacts add": HANDLER,  # names the contact to send to
+    "co whatsapp contacts ls": 'co whatsapp send "<name>" "<text>"',
+    "co whatsapp contacts rm": "co whatsapp contacts ls",
+    "co whatsapp download": "co whatsapp log",
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,
@@ -341,14 +356,14 @@ NEXT = {
     "co telegram chats": HANDLER,
     "co telegram log": "co telegram ls",
     "co telegram consume": "co telegram ls",
-    "co trust list": "Check one address:  co trust level <address>",
+    "co trust list": HANDLER,  # handler retains the selected trust directory
     "co trust level": HANDLER,  # the next step depends on the level it printed
-    "co trust add": "See every list:  co trust list",
-    "co trust remove": "See every list:  co trust list",
-    "co trust block": "See every list:  co trust list",
-    "co trust unblock": "See every list:  co trust list",
-    "co trust admin add": "See every list:  co trust list",
-    "co trust admin remove": "See every list:  co trust list",
+    "co trust add": HANDLER,  # handler retains the selected trust directory
+    "co trust remove": HANDLER,  # handler retains the selected trust directory
+    "co trust block": HANDLER,  # handler retains the selected trust directory
+    "co trust unblock": HANDLER,  # handler retains the selected trust directory
+    "co trust admin add": HANDLER,  # handler retains the selected trust directory
+    "co trust admin remove": HANDLER,  # handler retains the selected trust directory
     # co canny: each handler names its next command from what Canny returned
     # (the first post's id, the exact --yes command after a preview).
     "co canny check": HANDLER,

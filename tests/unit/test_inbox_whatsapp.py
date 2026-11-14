@@ -77,7 +77,7 @@ def sdk(monkeypatch):
     for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "GroupInfoEv",
                  "JoinedGroupEv", "KeepAliveRestoredEv", "KeepAliveTimeoutEv",
                  "LoggedOutEv", "MessageEv", "PairStatusEv", "StreamReplacedEv",
-                 "TemporaryBanEv", "UndecryptableMessageEv"):
+                 "TemporaryBanEv", "UndecryptableMessageEv", "ClientOutdatedEv"):
         setattr(connection, name, type(name, (), {}))
     client_module = ModuleType("neonize.client")
     client_module.NewClient = lambda path: None      # each test replaces this
@@ -813,6 +813,20 @@ def test_a_temporary_ban_stops_the_listener_and_says_when(sdk, monkeypatch):
     assert "402" in str(stopped.value) and "3600" in str(stopped.value)
 
 
+def test_whatsapp_refusing_an_outdated_client_stops_the_listener_with_the_upgrade(sdk, monkeypatch):
+    # neonize 0.4.3 got "Client outdated (405)" at every connect and the
+    # listener kept retrying with only a raw log line to show for it (#2853).
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox, (ev.ClientOutdatedEv, SimpleNamespace()))
+
+    assert "rejected this client as outdated (405)" in str(stopped.value)
+    assert "connectonion[whatsapp]" in str(stopped.value)
+
+
 def test_an_ordinary_disconnection_is_logged_and_survived(sdk, monkeypatch):
     # The SDK reconnects from these. Logging them is what makes a later gap
     # visible; stopping on them would take the listener down every time a
@@ -1379,6 +1393,27 @@ def test_a_photo_is_fetched_while_its_keys_are_still_in_hand(tmp_path, sdk):
     assert message.media["size"] == 13 and message.media["mime"] == "image/jpeg"
     assert "error" not in message.media
     assert asked["message"] is event.Message   # the protobuf, not a copy of the record
+
+
+def test_a_document_keeps_its_own_extension_and_name(tmp_path, sdk):
+    """A PDF saved as `<id>.bin` was a file neither `read_file` nor a person
+    browsing media/ could place (#2853). The real name is on documentMessage."""
+    from connectonion.inbox.whatsapp import WhatsApp
+
+    class Client:
+        def download_any(self, message, path=None):
+            Path(path).write_bytes(b"%PDF-1.7 itinerary")
+
+    provider = linked(WhatsApp())
+    event = media_event("documentMessage", message_id="3EB0DOC")
+    variant = event.Message.ListFields()[0][1]
+    variant.mimetype, variant.fileName = "application/pdf", "Acme itinerary.PDF"
+    message = provider.to_message(event)
+    provider.fetch_media(Inbox("whatsapp", tmp_path), message, event, Client())
+
+    assert Path(message.media["path"]).name == "3EB0DOC.PDF"
+    assert message.media["name"] == "Acme itinerary.PDF"
+    assert message.media["mime"] == "application/pdf"
 
 
 def test_a_media_download_that_fails_says_so_on_the_message(tmp_path, sdk):

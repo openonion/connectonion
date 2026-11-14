@@ -7,8 +7,10 @@ resolution-markers = [
     "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "(python_full_version == '3.13.*' and platform_machine != 'x86_64') or (python_full_version == '3.13.*' and sys_platform != 'darwin')",
     "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "(python_full_version < '3.12' and platform_machine != 'x86_64') or (python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin') or (python_full_version < '3.12' and sys_platform == 'emscripten') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and platform_machine != 'x86_64') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'emscripten') or (python_full_version >= '3.11.5' and python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten') or (python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin')",
+    "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version < '3.11.5' and platform_machine != 'x86_64') or (python_full_version < '3.11.5' and sys_platform != 'darwin')",
     "python_version < '0'",
 ]
 
@@ -146,7 +148,8 @@ name = "beautifulsoup4"
 version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "soupsieve" },
+    { name = "soupsieve", version = "2.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11.5'" },
+    { name = "soupsieve", version = "4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11.5'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/77/e9/df2358efd7659577435e2177bfa69cba6c33216681af51a707193dec162a/beautifulsoup4-4.14.2.tar.gz", hash = "sha256:2a98ab9f944a11acee9cc848508ec28d9228abfd522ef0fad6a02a72e0ded69e", size = 625822, upload-time = "2025-09-29T10:05:42.613Z" }
@@ -338,7 +341,7 @@ wheels = [
 
 [[package]]
 name = "connectonion"
-version = "1.9.6rc7"
+version = "1.9.6rc13"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -373,13 +376,15 @@ dependencies = [
     { name = "questionary" },
     { name = "requests" },
     { name = "rich" },
-    { name = "soupsieve" },
+    { name = "soupsieve", version = "2.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11.5'" },
+    { name = "soupsieve", version = "4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11.5'" },
     { name = "textual" },
     { name = "textual-autocomplete" },
     { name = "typer" },
     { name = "urllib3" },
     { name = "uvicorn" },
     { name = "websockets" },
+    { name = "zstandard" },
 ]
 
 [package.optional-dependencies]
@@ -428,7 +433,7 @@ requires-dist = [
     { name = "keyring", marker = "extra == 'synology'", specifier = ">=25,<26" },
     { name = "lark-oapi", specifier = ">=1.7.3" },
     { name = "mnemonic", specifier = ">=0.20" },
-    { name = "neonize", marker = "extra == 'whatsapp'", specifier = "==0.4.3.post0" },
+    { name = "neonize", marker = "extra == 'whatsapp'", specifier = "==0.10.0" },
     { name = "onionwright", marker = "extra == 'wtf'", specifier = ">=0.0.15" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1.0" },
@@ -460,13 +465,14 @@ requires-dist = [
     { name = "questionary", specifier = ">=2.0.0" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "rich", specifier = ">=13.0.0" },
-    { name = "soupsieve", specifier = ">=2.8.4" },
+    { name = "soupsieve", specifier = ">=2.10" },
     { name = "textual", specifier = ">=0.86.0" },
     { name = "textual-autocomplete", specifier = ">=3.0.0" },
     { name = "typer", specifier = ">=0.20.0,<0.29" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "websockets", specifier = ">=11.0.0" },
+    { name = "zstandard", specifier = ">=0.23.0" },
 ]
 provides-extras = ["wtf", "synology", "whatsapp", "rem", "wiki", "dev"]
 
@@ -1234,32 +1240,32 @@ wheels = [
 
 [[package]]
 name = "neonize"
-version = "0.4.3.post0"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "linkpreview" },
     { name = "phonenumbers" },
     { name = "pillow" },
     { name = "protobuf" },
+    { name = "pycryptodome" },
     { name = "python-magic", marker = "sys_platform != 'win32'" },
     { name = "python-magic-bin", marker = "sys_platform == 'win32'" },
     { name = "requests" },
     { name = "segno" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/e9/f611667c8b6bfb80b37c1a84b8694157c18c61db5705fa379b7fe7b5a24c/neonize-0.4.3.post0.tar.gz", hash = "sha256:659feb762ce9f3e9c1c2c359b3adfefe93e4cb746d03d6f4ec53f853a1e8414c", size = 502861, upload-time = "2026-07-12T09:35:36.509Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/01/0397619931f5d318ad0670dd527a79bf589d06c57b5ea9da40e1d9d84dd2/neonize-0.4.3.post0-py3-none-any.whl", hash = "sha256:c9ea72794f265e51f3484ba95e5dcedbb399d323e5335820545ff335a81a8129", size = 604187, upload-time = "2026-07-12T09:35:35.262Z" },
-    { url = "https://files.pythonhosted.org/packages/4e/c7/29776da49acfb612c8dcbbce6d75b91452c9d034d8c244dadfa97b05547d/neonize-0.4.3.post0-py310-none-macosx_12_0_arm64.whl", hash = "sha256:16562910a728c82ea749340e8beadc0022468ad7a463ddca7f12071f3ad2cc46", size = 7170385, upload-time = "2026-07-12T09:27:26.587Z" },
-    { url = "https://files.pythonhosted.org/packages/b8/b9/81e408f176d6065ccf3f3f4c8dcec64238304d123e60856e9a4d3f240e8e/neonize-0.4.3.post0-py310-none-macosx_12_0_x86_64.whl", hash = "sha256:dabd4835f15f9381a78a7fece5a00a32d2f85d0f1c83d4ccb72fa4d6693bb569", size = 7654249, upload-time = "2026-07-12T09:27:28.341Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/eb/17094cbcc32b517bad27df6ba32fdf4aa71ff26986ffd0c9cfc0a3c815c3/neonize-0.4.3.post0-py310-none-manylinux2014_aarch64.whl", hash = "sha256:4654bc1157dfbdbc9747ee6786a1703d6c82563f99d60e33c3760fc22f304128", size = 7399556, upload-time = "2026-07-12T09:31:31.621Z" },
-    { url = "https://files.pythonhosted.org/packages/90/13/42872c04e2ff1f8e4e71c08d39a635785f25a383b7302904c3040d55b39c/neonize-0.4.3.post0-py310-none-manylinux2014_i686.whl", hash = "sha256:9fffc6e337f59e149f6580df66cb1796a5acabf8f717ce7762484247f5cd9a05", size = 10693381, upload-time = "2026-07-12T09:34:17.01Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/32/91cd90f2447033399f8c908855cdb084ef2c40e62ab8d2dbf9667f33c833/neonize-0.4.3.post0-py310-none-manylinux2014_s390x.whl", hash = "sha256:4f059081ea7a81eceeaa4486f6ec7fc69b405e09ef75a65c5d18aaa364dd1201", size = 7974851, upload-time = "2026-07-12T09:31:33.664Z" },
-    { url = "https://files.pythonhosted.org/packages/6d/b6/b5376fd3901caafb696ad090cdd48b04f3728ff437efe2dd0515339dc662/neonize-0.4.3.post0-py310-none-manylinux2014_x86_64.whl", hash = "sha256:e5ac977bf6e71f7a11920f3aff86b61fd58acb324325e2cbb884b93426971f08", size = 7977344, upload-time = "2026-07-12T09:31:35.756Z" },
-    { url = "https://files.pythonhosted.org/packages/ea/36/ac17cc7e599cd7991652d8754d71501e6adca30b172acb32a8ff817709f9/neonize-0.4.3.post0-py310-none-win32.whl", hash = "sha256:13b4ff1e4b1a86d8c3d427b41dd49d5735dd87b22edadd9b94b064b53fad9ea7", size = 7783622, upload-time = "2026-07-12T09:34:19.529Z" },
-    { url = "https://files.pythonhosted.org/packages/70/e5/460c0a129c1a4eafd53b78152fb0189b1a458e498c72d9a0f30900ed66ff/neonize-0.4.3.post0-py310-none-win_amd64.whl", hash = "sha256:4c0f4dd3b6592d9c0ba42211d2a28b91a00362ea4278a5de2497a1fdd8ebcc98", size = 7862158, upload-time = "2026-07-12T09:34:21.653Z" },
-    { url = "https://files.pythonhosted.org/packages/1b/08/c693c5c819e16eded9d0b8330fb8a1e905ceb22cbe4fbdbf7d99cce9217d/neonize-0.4.3.post0-py310-none-win_arm64.whl", hash = "sha256:4ba4f252450c0f8abf906c3e45eafb14a5cf93a356923669a012fd66504ad1b7", size = 7142843, upload-time = "2026-07-12T09:34:23.748Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/c7/7b2e1c3c347f0f7ecb19b800b58def5a60bde7771eafbe8f01fe268ffb81/neonize-0.10.0-py310-none-macosx_12_0_arm64.whl", hash = "sha256:07611e4b25342ebc8883b06689fdd4a00382cf9b53a4c5a53dce9c83232195ec", size = 6463352, upload-time = "2026-11-03T03:57:08.975Z" },
+    { url = "https://files.pythonhosted.org/packages/34/a1/55274b7d78262fb5c0ed4e39dfe886e037061af7b90c970091e14c046cc4/neonize-0.10.0-py310-none-macosx_12_0_x86_64.whl", hash = "sha256:60924e589d60553c27d8c1375ac8f6ccff1aefc5f33e37e3413b4ab9e136eef0", size = 6899157, upload-time = "2026-11-03T03:57:10.525Z" },
+    { url = "https://files.pythonhosted.org/packages/df/33/cbe23adca7f3314bb02b172f8fc1d9763dde365ddf262abdda9972f0e244/neonize-0.10.0-py310-none-manylinux2014_aarch64.whl", hash = "sha256:8f291c2b538650cda3e29da0cd895895d955261e7d2f1ace98d13445fba440ce", size = 6686994, upload-time = "2026-11-03T03:57:12.432Z" },
+    { url = "https://files.pythonhosted.org/packages/55/9f/35c0d4ba58d9539546ccf01e92be95f0c0975a8c638d1ecf01c0d1b9cd0b/neonize-0.10.0-py310-none-manylinux2014_i686.whl", hash = "sha256:c284c0f8280374ffa992d174ade749b623d6aa88f6da7222f7a11709ff341189", size = 9748960, upload-time = "2026-11-03T03:57:14.253Z" },
+    { url = "https://files.pythonhosted.org/packages/01/f8/531e8623cf7bbd41c2334da95dfb745b5f501623ed22eac1fc1490abe104/neonize-0.10.0-py310-none-manylinux2014_s390x.whl", hash = "sha256:95ea4e9b787ee60c20b92f0261b87b3c8a4dc6052abfe76bd31eb449c8c8c5d1", size = 7180093, upload-time = "2026-11-03T03:57:16.174Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/67/a1a40f3b088ec22de735c7f9727ad381459002b657b1a60ca4657183d9d1/neonize-0.10.0-py310-none-manylinux2014_x86_64.whl", hash = "sha256:b4351142e0a4392dcd130ac8c10bb0ec8c503493c453d37b9022f9516926aafb", size = 7196964, upload-time = "2026-11-03T03:57:18.596Z" },
+    { url = "https://files.pythonhosted.org/packages/13/f4/560a841dfe1c4e0e7f5c26740573d4e52c0e34cf4ffa267ac653c1d52a1c/neonize-0.10.0-py310-none-win32.whl", hash = "sha256:65fcc011bb00c75ce7a68601b5e485981f768cae7eade776229f3a74b6b8e7fe", size = 7040690, upload-time = "2026-11-03T03:57:19.992Z" },
+    { url = "https://files.pythonhosted.org/packages/17/24/747d6c05fec156aa5b65c74f1113c6898e833c26ebe854c0ae7dc575e311/neonize-0.10.0-py310-none-win_amd64.whl", hash = "sha256:672e55e4c80dd04ee1bd9599605a2a748e8be8eb178f63d4408c115935c4f239", size = 7120528, upload-time = "2026-11-03T03:57:21.375Z" },
+    { url = "https://files.pythonhosted.org/packages/58/00/c0a94b532a8de61c642acc25ce328a15611f89b4554368b5763c8b21291a/neonize-0.10.0-py310-none-win_arm64.whl", hash = "sha256:97c1423ae9f65523a3021ef68cc85520e96e08ba2d010e642c0aa60b73acd95c", size = 6477192, upload-time = "2026-11-03T03:57:22.687Z" },
 ]
 
 [[package]]
@@ -2132,11 +2138,33 @@ wheels = [
 
 [[package]]
 name = "soupsieve"
-version = "2.9.2"
+version = "2.10"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/69/99/a6ca3beb3ccacb41fb3321d8a60e5566f9e6467601ef8eba6a17e1b89778/soupsieve-2.9.2.tar.gz", hash = "sha256:4a55d8cf158a9c2e587fa4922f1bbb91d68ac829e2d6f25403a85747c71daf74", size = 122445, upload-time = "2026-08-07T00:57:24.801Z" }
+resolution-markers = [
+    "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version < '3.11.5' and platform_machine != 'x86_64') or (python_full_version < '3.11.5' and sys_platform != 'darwin')",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/c3/1b817965ac12dc002d7c9cd7dfffdd7d4fbf9b45763ef2ffe7b86ee94670/soupsieve-2.10.tar.gz", hash = "sha256:49e9380d7d2905463583bafe285e818c7366a9ed7b3aee221c1ac79c905d8bc0", size = 124337, upload-time = "2026-09-24T02:36:35.048Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/dc/ad025c1ee131eba60c69f4dd5779b18fcf1e6b21a343e2162a84d5d133c7/soupsieve-2.9.2-py3-none-any.whl", hash = "sha256:8089a26fd974ca7a1f30276d3d8492ab266ab15af581642dfe8aa162e0c1c823", size = 37370, upload-time = "2026-08-07T00:57:23.524Z" },
+    { url = "https://files.pythonhosted.org/packages/66/87/5ed59e1d0290564e2027ed066c52b059892c4637741337fc0967183c8d4d/soupsieve-2.10-py3-none-any.whl", hash = "sha256:8596eb8967d744174820280fa62b4542a2e955bfaccca73ed8a13c6eb8e9b502", size = 38019, upload-time = "2026-09-24T02:36:33.709Z" },
+]
+
+[[package]]
+name = "soupsieve"
+version = "4.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version >= '3.14' and platform_machine != 'x86_64') or (python_full_version >= '3.14' and sys_platform != 'darwin')",
+    "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version == '3.13.*' and platform_machine != 'x86_64') or (python_full_version == '3.13.*' and sys_platform != 'darwin')",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and platform_machine != 'x86_64') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'emscripten') or (python_full_version >= '3.11.5' and python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten') or (python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin')",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/48/21a393ff731b8f928fa4f8176f9a7ceba2252ee60a5149f25b45c292aa5c/soupsieve-4.1.tar.gz", hash = "sha256:ca9abf7126667010d8f6e9b39bfc1bc3b23c8aed9bcb0f54a754dde969bb8aab", size = 161955, upload-time = "2026-11-10T01:59:50.399Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/73/6a2087c72975cfc07394623bca8d17654342ea4055ae368deafe5a81a542/soupsieve-4.1-py3-none-any.whl", hash = "sha256:e4d667b3974ce6e038e7390486b8093369854a1d345ffdd4c121dfc4a782e809", size = 52302, upload-time = "2026-11-10T01:59:48.571Z" },
 ]
 
 [[package]]

@@ -153,6 +153,9 @@ class Message:
     attachments: Optional[list] = None
     # Explicit provider ID types, when available, alongside canonical sender.
     sender_ids: Optional[dict] = None
+    # Arrived as group history shared when the account joined, not live
+    # (#2853): recorded, never queued, never answered.
+    history: bool = False
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -173,6 +176,8 @@ class Message:
             record["attachments"] = self.attachments
         if self.sender_ids:
             record["sender_ids"] = self.sender_ids
+        if self.history:
+            record["history"] = True
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -203,6 +208,7 @@ class Message:
             media=record.get("media") if isinstance(record.get("media"), dict) else None,
             attachments=record.get("attachments") if isinstance(record.get("attachments"), list) else None,
             sender_ids=record.get("sender_ids") if isinstance(record.get("sender_ids"), dict) else None,
+            history=record.get("history") is True,
         )
 
 
@@ -473,6 +479,16 @@ class Inbox:
             record["media"] = media  # {kind, path, size}: what went with the caption (#1856)
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
+    def record_history(self, messages: list) -> int:
+        """Lines in received.jsonl and nothing in the queue: what happened
+        before we were here is read, never answered. Ids the log already has
+        are skipped; returns how many were new."""
+        known = {record.get("id") for record in self._records(self.received)}
+        fresh = [m for m in messages if m.id not in known]
+        for message in fresh:
+            self._append(self.received, message.to_json())
+        return len(fresh)
+
     def record_own(self, message: Message) -> None:
         """One line in own.jsonl: a message the account owner sent themselves."""
         self._append(self.own, message.to_json())
@@ -594,7 +610,8 @@ class Inbox:
         return sorted(seen.values(), key=lambda row: row["last_at"])
 
     def history(self, chat: Optional[str] = None, sender: Optional[str] = None,
-                since: Optional[str] = None, last: Optional[int] = None) -> list[dict]:
+                since: Optional[str] = None, last: Optional[int] = None,
+                ours: bool = False) -> list[dict]:
         """Received records, narrowed. Oldest first; `last` keeps the recent end.
 
         Which end a cap keeps is not a detail — a conversation is read backwards
@@ -611,9 +628,22 @@ class Inbox:
             if since and str(record.get("at", "")) < since:
                 continue
             rows.append(record)
+        if ours and not sender:
+            rows = sorted(rows + self._ours(chat, since), key=lambda r: str(r.get("at", "")))
         if last is not None and last >= 0:
             rows = rows[max(0, len(rows) - last):]
         return rows
+
+    def _ours(self, chat: Optional[str], since: Optional[str]) -> list[dict]:
+        """What this account said, marked `from_me` (#3001): own.jsonl, then
+        sends from sent.jsonl that own.jsonl does not already echo. A failed
+        send was never said."""
+        rows = [{**r, "from_me": True} for r in self._records(self.own)]
+        echoed = {r.get("id") for r in rows}
+        rows += [{**r, "from_me": True} for r in self._records(self.sent)
+                 if r.get("ok", True) and r.get("id") not in echoed]
+        return [r for r in rows if (not chat or r.get("chat") == chat)
+                and not (since and str(r.get("at", "")) < since)]
 
     def recent_records(self, path: Path, count: int = 5) -> list[dict]:
         """The last `count` well-formed records from a JSONL file. A missing

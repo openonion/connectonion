@@ -11,6 +11,7 @@ Tests cover:
 - Session to ChatItem conversion for UI
 """
 
+import asyncio
 import json
 import time
 import threading
@@ -25,6 +26,46 @@ from connectonion.network.host.session import (
     ActiveSessionRegistry,
     session_to_chat_items,
 )
+from connectonion.useful_plugins.system_reminder import reminder_message
+
+
+@pytest.fixture
+def provider_history():
+    """Persisted Host shapes: routing/build/settlement reminders have no turn marker."""
+    session = {'session_id': 'provider-history', 'messages': [], 'trace': [], 'turn': 4}
+    turns = [
+        ('Use Claude Code to build the app', 'claude_code', 'completed', 'Built the app.'),
+        ('Use Codex to review it', 'codex', 'completed', 'Reviewed the app.'),
+        ('Try the command; I will reject approval', 'claude_code', 'cancelled', 'Approval rejected.'),
+        ('Start the long Claude Code task', 'claude_code', 'cancelled', 'Stopped the task.'),
+    ]
+    for turn, (prompt, provider, status, reply) in enumerate(turns, 1):
+        messages, trace = session['messages'], session['trace']
+        messages.append({'role': 'user', 'content': prompt})
+        trace.append({'type': 'user_input', 'content': prompt, 'turn': turn})
+        messages.append(reminder_message('Building ConnectOnion Agents'))
+        if provider == 'codex':
+            messages.append(reminder_message('This request explicitly targets Codex'))
+        messages.append({'role': 'assistant', 'content': None, 'tool_calls': [{
+            'id': f'call-{turn}', 'type': 'function',
+            'function': {'name': provider, 'arguments': json.dumps({'prompt': prompt})},
+        }]})
+        trace.extend([
+            {'type': 'tool_result', 'tool_id': f'read-{turn}', 'name': 'read_file',
+             'status': 'success', 'result': f'Context for turn {turn}'},
+            {'type': 'tool_call', 'tool_id': f'call-{turn}', 'name': provider},
+            {'type': 'provider_invocation', 'invocationId': f'{provider}:call-{turn}',
+             'parentToolCallId': f'call-{turn}', 'provider': provider,
+             'status': 'running', 'stateRevision': 1},
+        ])
+        trace.append({**trace[-1], 'status': status, 'stateRevision': 2})
+        trace.append({'type': 'tool_result', 'tool_id': f'call-{turn}', 'name': provider,
+                      'status': 'success', 'result': reply})
+        messages.append({'role': 'tool', 'tool_call_id': f'call-{turn}', 'content': reply})
+        messages.append(reminder_message('Native provider work has completed'))
+        messages.append({'role': 'assistant', 'id': f'answer-{turn}', 'content': reply})
+        trace.append({'type': 'turn_result', 'turn': turn, 'reason': 'natural'})
+    return session
 
 
 class TestSession:
@@ -592,6 +633,128 @@ class TestActiveSessionRegistry:
 
 class TestSessionToChatItems:
     """Test session_to_chat_items() function."""
+
+    @pytest.mark.parametrize('last_status', ['cancelled', 'running', 'awaiting_approval'])
+    def test_provider_history_stays_under_its_user_after_reload(self, provider_history, last_status, tmp_path):
+        from connectonion.network.host.ws_router.connect import _reattach_connected_frame
+
+        session = provider_history
+        if last_status != 'cancelled':
+            # A reload before the final tool result/assistant answer exists.
+            session['messages'] = session['messages'][:-3]
+            session['trace'] = session['trace'][:-3]
+            session['trace'][-1].update(status=last_status)
+        storage = SessionStorage(tmp_path / 'history.jsonl')
+        storage.save(Session(session_id=session['session_id'], status='running',
+                             prompt='Use Claude Code to build the app', session=session))
+        if last_status == 'awaiting_approval':
+            storage.checkpoint(session)
+        restored = storage.get(session['session_id']).session
+        frame = _reattach_connected_frame(
+            {'session_id': session['session_id'], 'session': restored},
+            'connected' if last_status == 'cancelled' else 'running', {}, True,
+        )
+        items = frame['chat_items']
+        groups = []
+        for item in items:
+            if item['type'] == 'user':
+                groups.append([])
+            groups[-1].append(item)
+
+        prompts = [msg['content'] for msg in session['messages']
+                   if msg['role'] == 'user' and not msg.get('internal')]
+        assert [group[0]['content'] for group in groups] == prompts
+        for turn, group in enumerate(groups, 1):
+            provider = 'codex' if turn == 2 else 'claude_code'
+            has_reply = turn < 4 or last_status == 'cancelled'
+            assert [item['id'] for item in group[1:]] == [
+                f'read-{turn}', f'{provider}:call-{turn}',
+                *([f'answer-{turn}'] if has_reply else []),
+            ]
+            assert group[2]['status'] == (
+                last_status if turn == 4 else 'cancelled' if turn == 3 else 'completed'
+            )
+        assert len({item['id'] for item in items}) == len(items)
+        assert not any('system-reminder' in str(item.get('content', '')) for item in items)
+
+    def test_unmarked_reminders_do_not_consume_a_later_watch_or_runtime_turn(self):
+        from connectonion.useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
+
+        observation = reminder_message('Task finished')
+        observation['watch_events'] = [{'event_id': 'watch-1', 'summary': 'Task finished'}]
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'first'},
+                reminder_message('build context'),
+                observation,
+                reminder_message('settlement context'),
+                {'role': 'assistant', 'content': 'Observed.'},
+                {'role': 'user', 'content': RUNTIME_INPUT_FRAME_PREFIX + 'also test it'},
+                reminder_message('more context'),
+                {'role': 'assistant', 'content': 'Tested.'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'content': 'first', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 'read-1', 'name': 'read_file', 'status': 'success'},
+                {'type': 'user_input', 'content': 'Task finished', 'turn': 1,
+                 'internal': True, 'watch_event_ids': ['watch-1']},
+                {'type': 'tool_result', 'tool_id': 'read-2', 'name': 'read_file', 'status': 'success'},
+                {'type': 'user_input', 'content': 'also test it', 'turn': 1, 'runtime_input': True},
+                {'type': 'tool_result', 'tool_id': 'test-1', 'name': 'bash', 'status': 'success'},
+            ],
+        }
+        items = session_to_chat_items(session)
+        assert [item['id'] for item in items] == [
+            'msg-0', 'read-1', 'watch-1', 'read-2', 'msg-4', 'msg-5', 'test-1', 'msg-7',
+        ]
+        assert [item['content'] for item in items if item['type'] == 'user'] == ['first', 'also test it']
+
+    @pytest.mark.asyncio
+    async def test_pending_approval_remains_answerable_after_history_reload(self, provider_history, tmp_path):
+        from connectonion.network.host.ws_router.agent_io import resume_forwarding
+        from connectonion.network.host.ws_router.connect import _reattach_connected_frame
+        from connectonion.network.io import WebSocketIO
+
+        session = provider_history
+        session['messages'] = session['messages'][:-3]
+        session['trace'] = session['trace'][:-3]
+        session['trace'][-1].update(status='awaiting_approval')
+        storage = SessionStorage(tmp_path / 'pending.jsonl')
+        storage.checkpoint(session)
+        restored = storage.get(session['session_id']).session
+        frame = _reattach_connected_frame(
+            {'session_id': session['session_id'], 'session': restored}, 'running', {}, True,
+        )
+        assert [item['id'] for item in frame['chat_items'][-3:]] == [
+            f"msg-{len(session['messages']) - 3}", 'read-4', 'claude_code:call-4',
+        ]
+        io = WebSocketIO()
+        io.send(dict(session['trace'][-1]))
+        io.send({'type': 'approval_needed', 'id': 'approve-4', 'tool_name': 'bash',
+                 'invocationId': 'claude_code:call-4', 'parentToolCallId': 'call-4'})
+        registry = ActiveSessionRegistry()
+        registry.register(session['session_id'], io, thread=None)
+        replayed = asyncio.Event()
+        frames = []
+
+        async def send(frame):
+            frames.append(frame)
+            if frame['type'] == 'approval_needed':
+                replayed.set()
+
+        resumed_io, task = resume_forwarding(
+            send, registry.get(session['session_id']), registry, session['session_id'], storage,
+        )
+        try:
+            await asyncio.wait_for(replayed.wait(), 2)
+            assert resumed_io is io
+            request = next(item for item in frames if item['type'] == 'approval_needed')
+            response = {'type': 'APPROVAL_RESPONSE', 'request_id': request['id'], 'approved': False}
+            assert io.answer_request(response) is None
+            assert io.receive() == {'approved': False, 'scope': 'once', 'mode': 'reject_hard'}
+        finally:
+            io.mark_agent_done()
+            await asyncio.wait_for(task, 2)
 
     def test_converts_user_messages(self):
         """Converts user messages to user ChatItems."""
@@ -1230,3 +1393,25 @@ class TestCheckpointApprovalFlow:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_host_replays_user_stop_details_as_terminal_data():
+    event = {
+        "type": "turn_result", "id": "terminal", "reason": "interrupted",
+        "interruption": {"stopped_by": "user", "stopped_at": {"name": "write", "step": 2},
+                         "completed": [{"name": "read", "result": "contents"}],
+                         "not_run": [{"id": "next"}]},
+    }
+    items = session_to_chat_items({"messages": [{"role": "user", "content": "work"}],
+                                   "trace": [{"type": "user_input"}, event]})
+    assert items[-1] == event
+
+
+def test_host_replays_connectonion_build_intent_flag():
+    items = session_to_chat_items({
+        "messages": [{"role": "user", "content": "build an agent"}],
+        "trace": [{"type": "user_input"}, {"type": "intent", "id": "intent",
+                  "ack": "ConnectOnion agent creation", "is_build": True}],
+    })
+    assert items[-1]["is_build"] is True
+    assert "is_connectonion_agent_build" not in items[-1]

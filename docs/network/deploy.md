@@ -302,6 +302,24 @@ machine registered by hand needs no separate path: its **first** deploy is the o
 sets it up. A marker at `/srv/<agent>/.co/provision.json` is read in one ssh call to
 decide whether to spend seconds or tens of seconds.
 
+### When a deploy says the agent is running
+
+`restart` is followed by a watch of up to 45 seconds. The agent counts as running
+only when all three hold: the unit is active **and became active after this
+restart** (its `ActiveEnterTimestampMonotonic` moved past the value read just
+before it), it has stayed up for 15 seconds without restarting itself, and
+`/info` answers on the agent's port on the server. A unit that restarts itself
+fails the deploy at once with `crashed and is being restarted (N time(s) so far)`.
+Giving up says what was still missing, for example
+`never came up within 45 s (unit active; /info on port 8000 did not answer)`,
+followed by the last 20 journal lines.
+
+The watch only reads state, so a watch whose ssh connection dropped is asked again
+once. If the server still cannot be asked, the deploy says
+`could not watch <agent> start: <the ssh error>` instead of a verdict about the
+agent. On 1.9.6rc8 a dropped watch connection printed `order-agent did not start.`
+for a unit that was active with `NRestarts=0` and answering `/info` (#3016).
+
 ### What survives, and what does not
 
 The rsync carries the project tree. Framework-owned state under `.co/` is

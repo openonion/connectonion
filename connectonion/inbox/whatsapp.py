@@ -29,6 +29,8 @@ from typing import Optional
 from . import ANSWERING, SEEN, ListenerStopped, reactions_enabled
 from .formatting import to_whatsapp
 from .store import Inbox, Message, default_home, iso_utc
+from .whatsapp_contacts import resolve_chat, saved_name
+from .whatsapp_media import decrypt, fetch, history_entries, reference
 
 SDK_MISSING = (
     "The WhatsApp library is not installed. Run: pip install 'connectonion[whatsapp]'"
@@ -54,8 +56,7 @@ MEDIA_KINDS = {"image", "video", "audio", "document", "sticker"}
 # What each kind is usually saved as. The extension is a convenience for the
 # person who opens the folder; the mime recorded on the message is what a
 # caller should branch on.
-MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg",
-                "document": ".bin", "sticker": ".webp"}
+MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg", "sticker": ".webp"}
 # WhatsApp's own ceiling for media is 2 GB, but an inbox that fills a disk
 # stops answering anybody. Past this, the record says the file was too large
 # and where it would have gone, which is recoverable; a full disk is not.
@@ -68,6 +69,14 @@ MEDIA_MAX_BYTES = 64 * 1024 * 1024
 IMAGE_LIMIT_BYTES = 16 * 1024 * 1024
 FILE_LIMIT_BYTES = 100 * 1024 * 1024
 _IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
+# The first release whose listener sends pictures and files (#1856). An older
+# listener reads every request as text and answers only "'text'" (#3001); it
+# also predates the upgrade restart, so it never replaces itself.
+MEDIA_LISTENER_SINCE = "1.8.9b16"
+# Every request kind this listener performs; a request with no kind is text.
+REQUEST_KINDS = {None, "lookup", "reaction", "edit", "revoke", "group_create", "group_add",
+                 "image", "document"}
 
 # How long `send` waits for the listener to pick the request up and answer.
 SEND_TIMEOUT_SECONDS = 30.0
@@ -109,6 +118,44 @@ def _sdk_will_not_load(exc: ImportError) -> str:
         f"The WhatsApp library is installed but will not load: {detail}. "
         "Next: python -c 'import neonize' for the full traceback."
     )
+
+
+UPGRADE = ("pip install -U 'connectonion[whatsapp]'  (installed with uv: "
+           "uv tool install --reinstall 'connectonion[whatsapp]'), then co whatsapp listen --restart")
+
+
+# neonize.proto.Neonize_pb2.CLIENT_OUTDATED: the ConnectFailure reason for
+# WhatsApp's 405. A number here so the handler needs no SDK import; a test
+# checks it against the SDK.
+CLIENT_OUTDATED = 6
+
+
+def _neonize_versions() -> tuple:
+    """(installed neonize, the version this connectonion pins), either None when unknown."""
+    from importlib import metadata
+
+    from packaging.requirements import Requirement
+
+    try:
+        installed = metadata.version("neonize")
+    except metadata.PackageNotFoundError:
+        installed = None
+    try:
+        requires = metadata.requires("connectonion") or []
+    except metadata.PackageNotFoundError:
+        return installed, None   # a source checkout: no installed metadata to read
+    for line in requires:
+        requirement = Requirement(line)
+        if requirement.name == "neonize":
+            return installed, next(iter(requirement.specifier)).version
+    return installed, None
+
+
+def outdated_message() -> str:
+    """What to say when WhatsApp refuses the bundled client (405)."""
+    installed, _ = _neonize_versions()
+    return (f"WhatsApp rejected this client as outdated (405): the bundled WhatsApp protocol "
+            f"(neonize {installed or 'unknown'}) is too old. Upgrade: {UPGRADE}")
 
 
 def _sending_failed(exc: Exception) -> str:
@@ -222,6 +269,8 @@ KINDS = {
     "contactsArrayMessage": "contact",
     "reactionMessage": "reaction",
     "encReactionMessage": "reaction",
+    # Earlier messages of a group, shared when this account was added (#2853).
+    "messageHistoryBundle": "history",
 }
 
 
@@ -286,6 +335,40 @@ def _mime_of(message, kind: str) -> str:
     except Exception:  # noqa: BLE001 - a mime we cannot read costs the caller nothing
         pass
     return ""
+
+
+def _variant_of(message, kind: str):
+    """The set field of a Message that carries `kind` (its imageMessage, …), or None."""
+    for descriptor, variant in message.ListFields():
+        if KINDS.get(getattr(descriptor, "name", "")) == kind:
+            return variant
+    return None
+
+
+def _references(message, kind: str) -> Optional[list]:
+    """What `co whatsapp download` needs later, kept on the record (#2853)."""
+    variant = _variant_of(message, kind) if kind in MEDIA_KINDS else None
+    ref = reference(variant, kind) if variant is not None else None
+    return [ref] if ref else None
+
+
+def _file_name_of(message) -> str:
+    """The file name a document was sent with: `itinerary.pdf`, or ""."""
+    for descriptor, variant in message.ListFields():
+        if getattr(descriptor, "name", "") == "documentMessage":
+            return str(getattr(variant, "fileName", "") or "")
+    return ""
+
+
+def _media_suffix(kind: str, file_name: str, mime: str) -> str:
+    """What a saved file ends in. A document keeps its own extension (#2853):
+    saved as `.bin`, a PDF was a file nobody, and no `read_file`, could place."""
+    if kind != "document":
+        return MEDIA_SUFFIX.get(kind, ".bin")
+    import mimetypes
+
+    own = re.sub(r"[^A-Za-z0-9.]", "", Path(file_name).suffix)[:12]
+    return own or mimetypes.guess_extension(mime) or ".bin"
 
 
 def _quoted_reference(context, own_ids) -> Optional[dict]:
@@ -476,9 +559,24 @@ class WhatsApp:
         problems = self.listen_requirements()
         if problems:
             return problems
+        problems.extend(self.protocol_floor())
         problems.extend(self.linked())
         problems.extend(self.protocol_age())
         return problems
+
+    def protocol_floor(self) -> list:
+        """An installed neonize older than the one this co pins, as a problem.
+
+        A listener in its own venv keeps whatever it was installed with, and
+        WhatsApp refuses an old enough one at connect (405): neonize 0.4.3
+        stopped linking at all in November 2026."""
+        from packaging.version import Version
+
+        installed, pinned = _neonize_versions()
+        if not installed or not pinned or Version(installed) >= Version(pinned):
+            return []
+        return [f"neonize {installed} is installed; this co needs {pinned}, and WhatsApp refuses "
+                f"older clients. Upgrade: {UPGRADE}"]
 
     def protocol_age(self) -> list:
         """The bundled WhatsApp protocol implementation, and whether it is old.
@@ -538,7 +636,7 @@ class WhatsApp:
                                     GroupInfoEv, JoinedGroupEv, KeepAliveRestoredEv,
                                     KeepAliveTimeoutEv, LoggedOutEv, MessageEv,
                                     PairStatusEv, StreamReplacedEv, TemporaryBanEv,
-                                    UndecryptableMessageEv)
+                                    UndecryptableMessageEv, ClientOutdatedEv)
 
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         client = NewClient(str(self.session_path))
@@ -593,8 +691,12 @@ class WhatsApp:
 
         @client.event(ConnectFailureEv)
         def _on_connect_failure(_client, event) -> None:
-            inbox.log(f"connect failed: {getattr(event, 'Reason', '?')} "
-                      f"{getattr(event, 'Message', '')}".strip())
+            self._connect_failed(inbox, stop, event)
+
+        @client.event(ClientOutdatedEv)
+        def _on_outdated(_client, _event) -> None:
+            # Every reconnect would be refused the same way; only an upgrade helps.
+            self._fatal(inbox, stop, outdated_message())
 
         @client.event(DisconnectedEv)
         def _on_disconnected(_client, _event) -> None:
@@ -631,6 +733,9 @@ class WhatsApp:
                     message.raw = {"info": str(event.Info), "message": str(event.Message)}
                 except Exception as exc:
                     inbox.log(f"raw payload of {message.id} not kept: {exc}")
+            if message.kind == "history":
+                self.read_history(inbox, message, event)
+                return
             # Before `take`, because the queue record is what a consumer reads:
             # a path that arrives after delivery arrives after the answer.
             self.fetch_media(inbox, message, event, _client)
@@ -706,6 +811,14 @@ class WhatsApp:
         except Exception as exc:
             inbox.log(f"{kind} event not recorded ({type(exc).__name__}: {exc})")
 
+    def _connect_failed(self, inbox: Inbox, stop: threading.Event, event) -> None:
+        """A refused connect: a log line, or the end of the listener for a 405."""
+        reason = getattr(event, "Reason", "?")
+        if reason == CLIENT_OUTDATED:
+            self._fatal(inbox, stop, outdated_message())
+            return
+        inbox.log(f"connect failed: {reason} {getattr(event, 'Message', '')}".strip())
+
     def _fatal(self, inbox: Inbox, stop: threading.Event, reason: str) -> None:
         """Record why this listener can never receive again, and wind it down.
 
@@ -748,28 +861,49 @@ class WhatsApp:
         lookups at this size are not worth a staleness bug.
         """
         user = _user_of(jid)
-        if not user or not self.session_path.exists():
+        if not user:
             return ""
+        users = [user, *self._aliases(user)]
+        saved = saved_name(users)
+        if saved or not self.session_path.exists():
+            return saved
         import sqlite3
 
         try:
             with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
-                name = self._name_row(db, user)
-                if name:
-                    return name
-                # A LID with no contact row of its own: the phone number it
-                # belongs to may have one.
-                for (other,) in db.execute(
-                        "select pn from whatsmeow_lid_map where lid = ? limit 1", (user,)):
-                    return self._name_row(db, str(other))
-                for (other,) in db.execute(
-                        "select lid from whatsmeow_lid_map where pn = ? limit 1", (user,)):
-                    return self._name_row(db, str(other))
+                for candidate in users:
+                    name = self._name_row(db, candidate)
+                    if name:
+                        return name
         except sqlite3.Error:
             # Not whatsmeow's database, or mid-write. A missing name is a
             # missing name; it must never cost the message.
             return ""
         return ""
+
+    def contact_name(self, jid: str) -> str:
+        """The name the owner saved for this id with `contacts add`, or "" (#2964).
+
+        A sender in a migrated group arrives as a LID, which shares no digits
+        with the number the contact was saved under; the session's LID map
+        joins the two."""
+        user = _user_of(jid)
+        return saved_name([user, *self._aliases(user)]) if user else ""
+
+    def _aliases(self, user: str) -> list:
+        """The other id this account goes by: the number for a LID, the LID for a number."""
+        if not self.session_path.exists():
+            return []
+        import sqlite3
+
+        try:
+            with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
+                rows = db.execute("select pn from whatsmeow_lid_map where lid = ? "
+                                  "union select lid from whatsmeow_lid_map where pn = ?",
+                                  (user, user)).fetchall()
+        except sqlite3.Error:
+            return []
+        return [str(other) for (other,) in rows]
 
     @staticmethod
     def _name_row(db, user: str) -> str:
@@ -916,9 +1050,12 @@ class WhatsApp:
         """
         if message.kind not in MEDIA_KINDS:
             return
+        message.attachments = _references(event.Message, message.kind)
         directory = inbox.root / "media"
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", message.id) or "message"
-        target = directory / f"{safe}{MEDIA_SUFFIX.get(message.kind, '.bin')}"
+        mime = _mime_of(event.Message, message.kind)
+        file_name = _file_name_of(event.Message) if message.kind == "document" else ""
+        target = directory / f"{safe}{_media_suffix(message.kind, file_name, mime)}"
         try:
             directory.mkdir(parents=True, exist_ok=True)
             client.download_any(event.Message, str(target))
@@ -933,8 +1070,52 @@ class WhatsApp:
             message.media = {"error": f"{type(exc).__name__}: {exc}"}
             inbox.log(f"media of {message.id} not fetched: {exc}")
             return
-        message.media = {"path": str(target), "mime": _mime_of(event.Message, message.kind), "size": size}
+        message.media = {"path": str(target), "mime": mime, "size": size}
+        if file_name:
+            message.media["name"] = file_name
         inbox.log(f"media of {message.id} saved to {target} ({size} bytes)")
+
+    def read_history(self, inbox: Inbox, message: Message, event) -> None:
+        """Expand a group history bundle into the messages it holds (#2853).
+
+        WhatsApp sends it once, about a second after someone adds this account
+        to a group with "share recent messages" on. Each message goes into the
+        log as `history: true`, with its own sender, time and kind, and nothing
+        is queued: an agent can read what was said before it arrived, and
+        nobody gets an answer to a question asked last week. The bundle itself
+        is recorded the same way, saying how many it held or why they could
+        not be read. Media in them keeps what `download` needs.
+
+        Never raises: this runs in the MessageEv handler.
+        """
+        ref = reference(event.Message.messageHistoryBundle, "history")
+        try:
+            if ref is None:
+                raise RuntimeError("the bundle names no file")
+            shared = [self._history_message(entry, message.chat)
+                      for entry in history_entries(decrypt(fetch(ref), ref))]
+            fresh = inbox.record_history([m for m in shared if m is not None])
+            message.text = f"shared {fresh} earlier messages of this group; they are in the log as history"
+        except Exception as exc:  # in the Go callback, a raise ends the listener
+            message.text = f"shared earlier messages of this group, which could not be read: {exc}"
+        inbox.log(f"history bundle {message.id} in {message.chat}: {message.text}")
+        message.mentioned, message.history, message.attachments = False, True, [ref] if ref else None
+        inbox.record_history([message])
+
+    def _history_message(self, entry: bytes, chat: str) -> Optional[Message]:
+        """One shared WebMessageInfo as a history Message; None for another chat's."""
+        from neonize.proto.waWeb.WAWebProtobufsWeb_pb2 import WebMessageInfo
+        from neonize.utils.message import extract_text
+
+        info = WebMessageInfo.FromString(entry)
+        if info.key.remoteJID and _user_of(info.key.remoteJID) != _user_of(chat):
+            return None   # a bundle for this group speaks only for this group
+        sender = info.participant or info.key.participant or info.key.remoteJID
+        kind = _kind(info.message)
+        return Message(id=info.key.ID, chat=chat, sender=sender, text=extract_text(info.message) or "",
+                       at=_iso(info.messageTimestamp), kind=kind, mentioned=False, history=True,
+                       sender_name=self.name_of(sender) or info.pushName,
+                       attachments=_references(info.message, kind))
 
     def keep_own(self, inbox: Inbox, event, client) -> None:
         """Record what the user typed on their own phone, without queueing it.
@@ -1047,8 +1228,17 @@ class WhatsApp:
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return {"kind": "document", "path": str(path), "size": size, "mime": mime, "name": path.name}
 
+    def resolve_chat(self, target: str) -> tuple:
+        """(chat id, phone to check first) for a JID, a saved contact name or a phone number."""
+        return resolve_chat(target)
+
+    def lookup(self, phones: list) -> list:
+        """Whether each number is on WhatsApp, and who it is. Sends nothing to them (#2964)."""
+        return self._request({"kind": "lookup", "phones": list(phones)})["results"]
+
     def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
-             plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> str:
+             plain: bool = False, image: Optional[str] = None, file: Optional[str] = None,
+             phone: str = "") -> str:
         """Send text to a chat. Returns the new message id.
 
         The listener owns the connection, so this hands the request over and
@@ -1064,11 +1254,30 @@ class WhatsApp:
         media = self.attachment(image=image, file=file)
         caption = text if plain else to_whatsapp(text)
         if media:
+            self._listener_handles("send pictures or files", MEDIA_LISTENER_SINCE)
             # The listener reads the file from this absolute path (#1856).
             return self._queue({"kind": media["kind"], "chat": chat, "path": media["path"],
                                 "name": media["name"], "mime": media["mime"], "caption": caption,
-                                "reply_to": reply_to})
-        return self._queue({"chat": chat, "text": caption, "reply_to": reply_to})
+                                "reply_to": reply_to, "phone": phone})
+        return self._queue({"chat": chat, "text": caption, "reply_to": reply_to, "phone": phone})
+
+    def _listener_handles(self, what: str, since: str) -> None:
+        """Refuse before queueing when the running listener is older than `since`.
+
+        The listener can be a different install from this `co` (its own venv,
+        started weeks ago), and it is the one that performs the request."""
+        from packaging.version import Version
+
+        inbox = Inbox(self.name)
+        pid = inbox.listener_pid()
+        if pid is None or pid < 0:
+            return
+        version = inbox.listener_version(pid)
+        if version and Version(version) >= Version(since):
+            return
+        running = f"runs {version}" if version else "started before version tracking"
+        raise RuntimeError(f"the running listener (pid {pid}) {running}, older than {since}, and cannot "
+                           f"{what}; nothing was sent. Next: co {self.name} listen --restart")
 
     def render(self, text: str) -> str:
         """The exact characters WhatsApp will receive, given Markdown.
@@ -1205,6 +1414,15 @@ class WhatsApp:
         yet may still be draining one."""
         try:
             kind = payload.get("kind")
+            if kind not in REQUEST_KINDS:
+                raise RuntimeError(f"this listener does not perform {kind!r} requests; it is older than "
+                                   f"the co that asked. Next: co {self.name} listen --restart")
+            if kind == "lookup":
+                return {"results": [self._lookup_now(phone) for phone in payload["phones"]]}
+            if payload.get("phone"):
+                # Given a number, not a WhatsApp id: only an account WhatsApp
+                # confirms gets the message, at the id WhatsApp gives for it.
+                payload = {**payload, "chat": self._account_of(payload["phone"])}
             if kind == "reaction":
                 return self._react_now(payload["chat"], payload["message_id"],
                                        payload["emoji"], payload.get("sender", ""),
@@ -1281,6 +1499,38 @@ class WhatsApp:
         if needs_invite:
             result["invite_link"] = self._client.get_group_invite_link(group)
         return result
+
+    def _account_of(self, phone: str) -> str:
+        """The JID WhatsApp gives this number; refuses one with no account."""
+        if self._client is None:
+            raise RuntimeError("not connected")
+        hit = self._client.is_on_whatsapp(f"+{phone}")[0]
+        if not hit.IsIn:
+            raise RuntimeError(f"+{phone} is not on WhatsApp, so nothing was sent. "
+                               f"Next: co whatsapp lookup +{phone}")
+        return _jid_str(hit.JID)
+
+    def _lookup_now(self, phone: str) -> dict:
+        """One number: on WhatsApp or not, its JID, the names WhatsApp will tell us, and its photo.
+
+        Two queries to WhatsApp's servers, none to the person: `is_on_whatsapp`
+        and `get_user_info` are the lookups the phone's own contact sync makes.
+        `name` comes from this device's synced contacts and is empty for
+        someone who has never written to this number; `business` is the
+        verified business name, which WhatsApp shows to anyone."""
+        if self._client is None:
+            raise RuntimeError("not connected")
+        hit = self._client.is_on_whatsapp(f"+{phone}")[0]
+        if not hit.IsIn:
+            return {"phone": f"+{phone}", "on_whatsapp": False}
+        jid = _jid_str(hit.JID)
+        info = self._client.get_user_info(hit.JID)[0].UserInfo
+        contact = self._client.contact.get_contact(hit.JID)
+        name = next((n for n in (contact.FullName, contact.FirstName, contact.PushName) if n), "")
+        return {"phone": f"+{phone}", "on_whatsapp": True, "jid": jid, "name": name,
+                "business": hit.VerifiedName.Details.verifiedName or contact.BusinessName,
+                "about": info.Status, "has_photo": bool(info.PictureID),
+                "saved_as": saved_name([_user_of(jid)])}
 
     def _send_now(self, chat: str, text: str, reply_to: Optional[str] = None) -> str:
         """The actual send, on the listener's own connection."""

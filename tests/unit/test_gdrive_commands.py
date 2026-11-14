@@ -245,8 +245,45 @@ class TestGetPutRm:
                                  'files', ['file-a'], provider='gdrive')
             handle_gdrive_get("1", dest="/tmp", listing=token)
 
-        drive.download.assert_called_once_with("file-a", dest="/tmp")
+        drive.download.assert_called_once()
+        assert drive.download.call_args.args == ("file-a",)
+        assert drive.download.call_args.kwargs["dest"] == "/tmp"
         assert "Report.pdf" in plain(capsys.readouterr().out)
+
+    def test_get_reports_progress_on_stderr_and_quiet_silences_it(self, capsys):
+        drive = MagicMock()
+
+        def download(file_id, dest, progress):
+            if progress:
+                progress("5.0 MB of 20.0 MB (25%), 9.1 MB/s, 2 s left")
+            return f"Downloaded to {dest}/Interview.mov"
+
+        drive.download.side_effect = download
+        with patch.object(gdrive_commands, "_gdrive", return_value=drive):
+            handle_gdrive_get("file-a", dest="/tmp")
+            loud = capsys.readouterr()
+            handle_gdrive_get("file-a", dest="/tmp", quiet=True)
+            quiet = capsys.readouterr()
+
+        assert "5.0 MB of 20.0 MB" in loud.err and "MB/s" not in loud.out
+        assert "Interview.mov" in plain(loud.out)
+        assert quiet.err == "" and "Interview.mov" in plain(quiet.out)
+
+    def test_get_that_is_stuck_names_the_part_and_the_command_that_resumes(self, capsys):
+        from connectonion.useful_tools.gdrive import DriveDownloadError
+        drive = MagicMock()
+        drive.download.side_effect = DriveDownloadError(
+            "Stuck: no data from Drive for 60 s at 5.0 MB of 20.0 MB, 6 times in a row. "
+            "The partial download is kept at /tmp/Interview.mov.part; run the same command again to resume from there.")
+
+        with patch.object(gdrive_commands, "_gdrive", return_value=drive):
+            with pytest.raises(typer.Exit) as exit_info:
+                handle_gdrive_get("file-a", dest="/tmp/my videos")
+
+        out = capsys.readouterr().out
+        assert exit_info.value.exit_code == 1
+        assert "Stuck: no data from Drive" in out and "/tmp/Interview.mov.part" in out
+        assert "Next: co gdrive get file-a --to '/tmp/my videos'" in out
 
     def test_get_unknown_number_exits(self, capsys):
         drive = MagicMock()
