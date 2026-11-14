@@ -187,7 +187,7 @@ def test_missing_credentials_name_the_variable_and_the_console(monkeypatch):
     assert Feishu().check() == problems, "check stops at configuration"
 
 
-def test_check_reports_a_missing_sdk_with_the_pip_command(creds, monkeypatch):
+def test_check_reports_a_missing_sdk_with_the_reinstall_command(creds, monkeypatch):
     monkeypatch.setitem(sys.modules, "lark_oapi", None)  # import raises ImportError
     monkeypatch.setattr(feishu_module.requests, "post", lambda *a, **k: FakeResponse(
         {"code": 0, "tenant_access_token": "t", "expire": 7200}))
@@ -196,7 +196,12 @@ def test_check_reports_a_missing_sdk_with_the_pip_command(creds, monkeypatch):
 
     problems = Feishu().check()
 
-    assert problems == ["The Feishu SDK is not installed. Run: pip install lark-oapi"]
+    assert problems == [feishu_module.SDK_MISSING]
+    # A dependency of connectonion now (#2163): the answer reinstalls this exact
+    # connectonion, not a bare `pip install lark-oapi` into whichever Python is first.
+    from connectonion._version import __version__
+    assert f"uv tool install --force 'connectonion=={__version__}'" in problems[0]
+    assert "pip install lark-oapi" not in problems[0]
 
 
 def test_check_passes_when_the_bot_answers(creds, monkeypatch):

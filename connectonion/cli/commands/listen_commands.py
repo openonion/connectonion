@@ -176,8 +176,8 @@ def _listener_died(inbox: Inbox, code, when: str = "at once") -> None:
     """
     errors.print(f"the listener exited {when}:", style="red")
     # The reason is the child's last few lines; an agent that reads
-    # stderr should not have to go and open the log to learn "pip
-    # install lark-oapi".
+    # stderr should not have to go and open the log to learn which
+    # command restores a missing SDK.
     for line in inbox.why_listener_stopped():
         # Unwrapped: a pip command split across two lines cannot be copied.
         errors.print(f"  {line}", style="red", soft_wrap=True, highlight=False)
