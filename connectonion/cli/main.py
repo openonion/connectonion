@@ -74,7 +74,11 @@ def _typer_app(**kwargs) -> typer.Typer:
     The doubling above was present on all twelve groups, and a fix applied at
     the call sites is a fix that the thirteenth group will not get.
     """
-    return typer.Typer(cls=_OneSuggestion, **kwargs)
+    # Most command groups use the standard one-suggestion parser. Source
+    # imports may supply a compatible specialised group class to tailor
+    # incomplete-import feedback without passing ``cls`` twice to Typer.
+    command_class = kwargs.pop("cls", _OneSuggestion)
+    return typer.Typer(cls=command_class, **kwargs)
 
 
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
@@ -1201,7 +1205,8 @@ def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
 @env_app.command("set", epilog="Example:  co env set OPENAI_API_KEY sk-...  |  "
                                 "co env set GITHUB_TOKEN ghp_... --secret")
 def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
-            value: str = typer.Argument(..., help="Value; quote it if it has spaces"),
+            value: Optional[str] = typer.Argument(None, help="Value; omit with --secret --prompt for hidden input"),
+            prompt: bool = typer.Option(False, "--prompt", help="Read a secret value without echoing it"),
             from_console: bool = typer.Option(
                 False, "--from-console",
                 help="For FEISHU_/LARK_ app credentials copied from the Developer Console, "
@@ -1214,6 +1219,14 @@ def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
             )):
     """Save one setting to ~/.co/keys.env, which every project reads, or to --env-file. Writes that file."""
     from .commands.env_commands import handle_env_set
+    if prompt:
+        if value is not None or not secret:
+            raise typer.BadParameter("--prompt requires --secret and no value argument")
+        if not sys.stdin.isatty():
+            raise typer.BadParameter("--prompt needs a local terminal; enter the secret there, never in chat")
+        value = typer.prompt("Secret value", hide_input=True, confirmation_prompt=True)
+    if value is None:
+        raise typer.BadParameter("Supply a value, or use --secret --prompt in a local terminal")
     handle_env_set(key, value, from_console=from_console, secret=secret)
 
 
@@ -3244,6 +3257,192 @@ def outlook_search(
     from .commands.outlook_commands import handle_outlook_search
     handle_outlook_search(query, last=last)
 
+
+
+# Granola: read-only personal-summary collection and optional approved REM intake.
+from .commands.import_feedback import ImportFeedbackCommand, ImportFeedbackGroup
+# Granola (F13FCAKE-3rd-source): verify key, list folders, import meeting notes.
+granola_app = _typer_app(
+    cls=ImportFeedbackGroup,
+    help="""Read-only for Granola; save summaries from one selected personal folder locally.
+
+    First use verify, then folders to select a personal folder, then notes to
+    discover note IDs. Import reads summaries/meeting metadata; excludes private
+    notes, transcripts, audio and attachments. No scheduling or model calls.
+
+    For background REM, save the key once in a local terminal:
+    co env set GRANOLA_API_KEY --secret --prompt
+    Temporary shell input remains available for a one-off command.
+    Bash: read -rsp 'Granola key: ' GRANOLA_API_KEY; export GRANOLA_API_KEY
+    Zsh: read -rs 'GRANOLA_API_KEY?Granola key: '; export GRANOLA_API_KEY
+    Keep it set through the import session, then unset GRANOLA_API_KEY.
+
+    For automatic collection, use co rem sources connect granola --config FILE,
+    then approve init/start. Standalone import writes local summary records only.
+    Select a child folder directly or opt in with --include-children; only
+    personal descendants are eligible. Shared-space folders remain excluded.
+    Next: co granola verify
+    """,
+    epilog="Example:  co granola verify",
+    no_args_is_help=True,
+)
+app.add_typer(granola_app, name="granola")
+
+
+@granola_app.command("verify", cls=ImportFeedbackCommand, epilog="Example:  co granola verify --json")
+def _granola_verify(
+    as_json: bool = typer.Option(False, "--json", help="Output verification result as JSON"),
+):
+    """Read-only: check the configured Granola API key with a minimal request.
+
+    Set GRANOLA_API_KEY using the no-echo procedure in co granola --help. No
+    credentials are saved. Success proves one minimal read, not access to every
+    folder/note or the user's account identity. Empty notes are valid. --json
+    returns verified_read and verify_scope; exit 1 reports failure and recovery.
+    Next: co granola folders
+    """
+    from .commands.granola_commands import handle_granola_verify
+    handle_granola_verify(as_json=as_json)
+
+
+@granola_app.command("folders", cls=ImportFeedbackCommand, epilog="Example:  co granola folders --json")
+def _granola_folders(
+    as_json: bool = typer.Option(False, "--json", help="Output folder list as JSON"),
+):
+    """Read-only: list personal folder IDs and names to choose an import scope.
+
+    Use co granola verify with your configured GRANOLA_API_KEY first. Follows folder
+    pagination and filters shared-space folders. Copy a listed ID into notes;
+    empty means no eligible folders, not failed authentication. --json returns
+    folders. Exit 1 means the listing failed. No local import files or model calls.
+    Next: co granola notes --help
+    """
+    from .commands.granola_commands import handle_granola_folders
+    handle_granola_folders(as_json=as_json)
+
+
+@granola_app.command(
+    "notes",
+    cls=ImportFeedbackCommand,
+    epilog=(
+        "Example:  co granola notes fld-abc  |  "
+        "co granola notes fld-abc --limit 50  |  "
+        "co granola notes fld-abc --json"
+    ),
+)
+def _granola_notes(
+    folder_id: str = typer.Argument(..., help="Personal folder ID from co granola folders"),
+    limit: int = typer.Option(
+        100,
+        "--limit",
+        min=1,
+        max=1000,
+        help="Maximum notes to list (default: 100, range: 1-1000)",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Output note list as JSON"),
+):
+    """Read-only: discover active note IDs and titles in one personal folder.
+
+    Get FOLDER_ID from co granola folders; use the same configured key.
+    Lists lightweight metadata without fetching summaries/transcripts. --limit
+    defaults to 100 (maximum 1000); if the limit is reached, more notes may remain in the
+    folder. Deleted notes are excluded. Empty is valid. --json returns notes and
+    complete for this bounded read; exit 1/complete=false retains partial metadata.
+    Wait on a transient error, then rerun the same scope; auth recovery is in help.
+    Use one listed note ID with import --note-id, or import --limit for a batch.
+    No local import files, source writes or model calls.
+    Next: co granola import --help
+    """
+    from .commands.granola_commands import handle_granola_notes
+    handle_granola_notes(folder_id, limit=limit, as_json=as_json)
+
+
+@granola_app.command(
+    "import",
+    cls=ImportFeedbackCommand,
+    epilog=(
+        "Example:  co granola import fld-abc  |  "
+        "co granola import fld-abc --profile work --limit 50  |  "
+        "co granola import fld-abc --export meeting-notes-2026-10-24  |  "
+        "co granola import fld-abc --note-id not_abc123"
+    ),
+)
+def _granola_import(
+    folder_id: str = typer.Argument(..., help="Personal folder ID from co granola folders"),
+    profile: str = typer.Option(
+        "default",
+        "--profile",
+        help="Non-secret user label for the record account (e.g. 'work', 'home-2024')",
+    ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        max=1000,
+        show_default=False,
+        help="Maximum notes to import (default: 1000)",
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        help="Directory to write source.yaml and records (default: ~/.co/rem/docs/granola)",
+        show_default=False,
+    ),
+    export: Optional[str] = typer.Option(
+        None,
+        "--export",
+        help="One-off import: write exports/<ID>/ (records.jsonl + manifest.json) instead of today's daily file",
+        show_default=False,
+    ),
+    note_id: Optional[str] = typer.Option(
+        None,
+        "--note-id",
+        help="Import exactly one note by ID (from co granola notes). Mutually exclusive with --limit.",
+        show_default=False,
+    ),
+    include_children: bool = typer.Option(False, "--include-children", help="Explicitly include this folder's personal subfolders; shared/unknown spaces are refused"),
+    as_json: bool = typer.Option(False, "--json", help="Output result as JSON"),
+):
+    """Writes local summary records; reads only from one personal Granola folder.
+
+    First verify the configured API key, select FOLDER_ID from folders, then use
+    notes to discover IDs. Default reads up to 1000 notes; --limit narrows that
+    bound. Choose a child folder ID directly, or --include-children to approve
+    the selected folder's personal descendants. Without it, a folder containing
+    children is refused before note reads. --note-id selects one active note, after a bounded folder lookup, and
+    cannot combine with --limit. An absent ID beyond an incomplete lookup is
+    unconfirmed, not proof of deletion. --profile is a non-secret account label;
+    use a distinct label/output for another key. Never use the key as a profile.
+
+    Daily imports append changed versions and skip identical same-day snapshots.
+    --export writes an immutable exports/ID snapshot with manifest; choose a new
+    ID to retry. --output defaults to ~/.co/rem/docs/granola. Other folder/profile
+    declarations and corrupt files are preserved; choose a separate output.
+
+    Exit 0 means this bounded read completed, including empty/no change. Exit 1
+    means auth, scope, storage, incomplete or mapping failure; parser errors exit 2.
+    Inspect complete, rejected, mapped and appended. Valid partial records remain;
+    incomplete exports record complete=false. Wait on transient failures and retry
+    the same daily output, or use a fresh export ID. --json prints only JSON.
+
+    Only summaries, meeting time, source URLs and folder metadata are stored;
+    no private notes, transcripts or media. No Granola writes, scheduling or model
+    calls. For automatic REM, use co rem sources connect granola --config FILE
+    with folder_id/profile and optional include_children, then init for approval.
+    Ordinary REM sync collects and processes; open --local only views pages. Knowledge uses existing semantic categories, not a Granola category.
+    Next: co granola notes --help
+    """
+    from .commands.granola_commands import handle_granola_import
+    handle_granola_import(
+        folder_id,
+        profile=profile,
+        limit=limit,
+        output_dir=output,
+        as_json=as_json,
+        export_id=export,
+        note_id=note_id,
+        include_children=include_children,
+    )
 
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.

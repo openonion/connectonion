@@ -1010,6 +1010,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     if domains:
         coverage.append(f"{len(left_out)} notice or owner-only messages on the domain left out")
     from .chat import CHAT_KINDS, collect_chat
+    granola = subscriptions.get("granola", {})
+    if granola.get("enabled") and granola.get("consented") and archive_root is not None:
+        from .granola_imports import investigation_items
+        picked = investigation_items(archive_root, granola, record, start, end)
+        items.extend(picked)
+        coverage.append(f"granola: selected local snapshots for this identity in window, {len(picked)} read; no remote polling")
+    elif granola:
+        coverage.append("granola: disabled or waiting for approval; not searched")
     for name, sub in subscriptions.items():
         chat = sub.get("kind") in CHAT_KINDS
         if sub.get("kind") not in KINDS and not chat:
@@ -2594,7 +2602,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
            "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
            "threads as bare Unknown; describe historical file notes with their dates in Where it stands. "
            "This is run scope, not an original source; do not cite it."}]
-         if record.startswith("projects/") and project_inputs == 0 else []) + ([] if record.startswith("projects/") else [
+         if record.startswith("projects/") and project_inputs == 0
+         and not any(item.get("source_kind") == "granola" for item in items) else []) + ([] if record.startswith("projects/") else [
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(search_handles) + ":\n"
                              + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
     ]) + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,

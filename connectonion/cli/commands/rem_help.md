@@ -713,22 +713,23 @@ Back:     co rem --help
 ## co rem sources
 
 ```
-Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+Show, connect, add or remove what the notebook reads. Showing is read-only.
 
 Usage:    co rem sources
+          co rem sources connect [NAME] [--config FILE]
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
           co rem sources remove NAME [--chat ID]
-Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources connect granola
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
           --project   coding sources: only sessions run in this directory
 
-Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
+Effects:  connect records an approved source scope but reads no summaries or model input.
+          add/remove change settings only. Bodies are read later, by sync, after start.
           remove stops future reads; pages already written stay.
-Subcommands: co rem sources add --help, co rem sources remove --help
-Next:     co rem sync --dry-run
+Subcommands: co rem sources connect --help, co rem sources add --help, co rem sources remove --help
+Next:     co rem init --no-start
 Back:     co rem --help
 ```
 
@@ -825,6 +826,25 @@ Effects:  Writes config.yaml. A new schedule time takes effect at the next run.
           (agent or summary) in .state/tier.json. Calls the model; reads none of your data.
 Next:     co rem config
 Back:     co rem config --help
+```
+
+## co rem sources connect
+
+```
+Save one selected remote source scope. No summaries, note bodies or model calls run here.
+
+Usage:    co rem sources connect [NAME] [--config FILE]
+Example:  co rem sources connect granola
+
+Inputs:   NAME is granola. Omit it only in a local interactive terminal.
+          --config FILE supplies a YAML or JSON scope for scripts; it must not contain credentials.
+Effects:  Verifies account and scope metadata, writes local connection settings, and leaves the
+          source awaiting `co rem init --no-start` or `co rem start` approval before any read.
+          Granola scope selection is one personal folder, with an explicit optional child-folder choice.
+          It stores generated summaries and permitted metadata only; transcripts, private notes,
+          audio and attachments are excluded.
+Next:     co rem init --no-start
+Back:     co rem sources --help
 ```
 
 ## co rem sources add

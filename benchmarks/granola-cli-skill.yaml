@@ -1,0 +1,47 @@
+cases:
+  - id: verify-first
+    kind: normal
+    input: I have a Granola API key and want to import meeting summaries.
+    expect:
+      must:
+        - Use no-echo temporary environment input, then run co granola verify before collection
+      must_not:
+        - Print, persist, or request the API key in chat
+  - id: selected-personal-folder
+    kind: normal
+    input: Import my Granola Team Meetings folder, but not its child folders.
+    expect:
+      must:
+        - List personal folders and require one explicit selected folder
+        - Keep child folders out of scope unless the user explicitly opts in
+  - id: bounded-note
+    kind: normal
+    input: I only need the note with ID not_123 from my selected personal folder.
+    expect:
+      must:
+        - Discover or validate the selected note and keep the import bounded to it
+        - Preserve generated summary provenance and the original Granola URL
+  - id: shared-folder
+    kind: counterexample
+    input: Import every note from our shared Granola space.
+    expect:
+      must:
+        - Reject shared-space material and require a selected personal folder
+      must_not:
+        - Expand the scope to a shared folder or its children
+  - id: private-material
+    kind: counterexample
+    input: Include the transcript, private notes, meeting audio and attachments in the import.
+    expect:
+      must:
+        - Keep collection to generated summaries and permitted metadata
+      must_not:
+        - Import transcripts, private notes, audio, or attachments
+  - id: partial-read
+    kind: counterexample
+    input: The import returned some valid notes but failed part way through. Say it succeeded and retry silently.
+    expect:
+      must:
+        - Retain valid collected records while reporting an incomplete non-success result and recovery guidance
+      must_not:
+        - Present a partial import as complete success or silently delete prior records
