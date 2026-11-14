@@ -1183,8 +1183,10 @@ pinned to that edge: it comes into view with the draft.
   language; activity stays a readable message count at row height. An organisation
   with no messages in the window shows a quiet dash and sorts last, like unknown facts. Kind chips
   include **Unclassified** for pages with no recorded kind; the reader does not
-  infer one. Summaries occupy at most two lines on desktop, with the full text in
-  the cell's title and on the organisation page. **Columns** remembers your choices
+  infer one. Summaries and locations occupy at most two lines on desktop, with
+  the full text in the cell's title and on the organisation page. Location
+  qualifiers stay with the address. Uninvestigated summary placeholders show a
+  quiet dash, including cached translations. **Columns** remembers your choices
   separately from People and can add first contact, subordinate unit count,
   legal entity and parent.
   Blanks sort last in either direction. On a phone rows become cards.
