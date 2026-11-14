@@ -41,6 +41,7 @@ We chose a dependency over an extra for the reason the issue gave: the SDK is
 pure Python, and everything it needs but two small packages (pycryptodome
 and requests-toolbelt) was already installed. WhatsApp's compiled library
 stays an extra because nobody who only uses Feishu should pay for it. The
-lock gained exactly three packages, and the security audit over every extra
+lock gained two packages (lark-oapi and requests-toolbelt; pycryptodome was
+already there), and the security audit over every extra
 is still clean. The tests that skipped when the SDK was
 absent now run against the real dispatcher on every machine.
