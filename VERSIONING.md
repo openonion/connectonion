@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc13
+## Current Version: 1.9.6rc14
+Release candidate 1.9.6rc14 for 1.9.6: the REM reader's Organisations list is a sortable table like
+People (kind, website, location, people known, activity, last contact, units under their parent,
+#3037), and an organisation page reads like a page of a book with its structure tree and no to-dos
+(#3036, #2992). The rail keeps one Knowledge place (#2996), pages lose their explanatory headings
+(#2994), and Projects open on a board by state (#2993). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc14.md).
+
+- 1.9.6rc14 (REM reader: organisations as a table and a book page, one Knowledge place, Projects board by state).
+
+### Previous candidate: 1.9.6rc13
 Release candidate 1.9.6rc13 for 1.9.6: a Host records every automatic run a contact's message
 triggers in `co approvals`, not only the first (#3025), and a revoked requester's running turn stops
 before its next tool or model step even after they disconnect (#3026). `co trust add`, `unblock` and
