@@ -75,3 +75,17 @@ def test_pids_that_have_all_exited_are_none_left(tmp_path):
     gone = subprocess.Popen([sys.executable, "-c", "pass"])
     gone.wait()
     assert host_leak_guard.hosts_under(tmp_path, [gone.pid]) == []
+
+
+def test_a_command_cut_mid_character_does_not_hide_a_host(tmp_path, monkeypatch):
+    """macOS ps cuts long command lines at a byte limit, mid multi-byte character (#3041)."""
+    home = tmp_path / "run" / "home"
+    cut = "/Applications/小红书直播助手.app".encode()[:-8]   # ends inside 直 or a later character
+    listing = (b"101 %d " % os.getuid() + cut + b"\n"
+               + b"102 %d co ai --port 4100 --no-listen --no-launch HOME=%s\n" % (os.getuid(), str(home).encode()))
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/listing").write_bytes(listing)
+    (tmp_path / "bin/ps").write_text(f"#!/bin/sh\ncat '{tmp_path / 'bin/listing'}'\n")
+    (tmp_path / "bin/ps").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    assert host_leak_guard.hosts_under(tmp_path / "run") == [(102, str(home), "unknown test")]
