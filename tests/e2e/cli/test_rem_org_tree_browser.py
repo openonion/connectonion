@@ -3,8 +3,7 @@
 Owner, 2026-11-13: «Organization 页面：那应该是一个树状图吧» — the radial picture of
 units and people read as scattered dots. The page now draws the organisation as an
 indented tree, org → units → people, most active branch first, each level collapsible
-from the keyboard; the list folds units into the organisation they belong to and shows
-each organisation's shape as a small icicle. Fernhill University is invented
+from the keyboard; the list shows units expanded beneath the organisation they belong to. Fernhill University is invented
 (tests/fixtures/rem_org_tree_notebook.py): three branches, six squads, twelve people.
 """
 
@@ -130,7 +129,7 @@ def test_org_tree_expands_and_collapses_from_the_keyboard(org_reader):
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_org_list_folds_units_into_their_organisation_and_expands_indented_rows(org_reader, width):
+def test_org_list_expands_units_into_their_organisation_and_remembers_collapsed_search(org_reader, width):
     page = org_reader(width, language="en")
     page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
     page.locator(".ov-list .org-table-row").first.wait_for()
@@ -138,11 +137,10 @@ def test_org_list_folds_units_into_their_organisation_and_expands_indented_rows(
     assert page.locator(".ov-list h1").inner_text() == f"{tops} organisations"
     rows = page.locator(".ov-list .org-table-row")
     page.locator(".ov-more").evaluate_all("buttons => buttons.forEach(b => b.click())")
-    assert rows.filter(has_text="Kestrel squad").count() == 0 and rows.filter(has_text="Fieldwork studio").count() == 0
+    assert rows.filter(has_text="Kestrel squad").count() == 1 and rows.filter(has_text="Fieldwork studio").count() == 1
     uni = rows.filter(has_text="Fernhill University")
     toggle = uni.locator('.org-disclosure')
-    assert toggle.get_attribute('aria-expanded') == 'false'
-    toggle.click()
+    assert toggle.get_attribute('aria-expanded') == 'true'
     assert rows.filter(has_text='Fieldwork studio').count() == 1
     assert rows.filter(has_text='Fieldwork studio').locator('.org-table-name').evaluate('e => parseInt(e.style.paddingLeft)') == 18
     toggle.click()
@@ -155,4 +153,9 @@ def test_org_list_folds_units_into_their_organisation_and_expands_indented_rows(
     assert unit.count() == 1
     assert unit.locator('.org-table-name').evaluate('e => parseInt(e.style.paddingLeft)') > 0
     assert rows.filter(has_text="Fernhill Labs").count() == 0
+    # Search opens saved collapses temporarily, but the disclosure still works during search.
+    uni.locator('.org-disclosure').click()
+    assert rows.filter(has_text="Kestrel squad").count() == 0
+    page.locator(".org-directory .people-find").fill("")
+    assert rows.filter(has_text="Fieldwork studio").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

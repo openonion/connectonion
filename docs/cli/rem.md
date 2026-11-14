@@ -1168,22 +1168,29 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations** opens as a full-width sortable table, newest contact first.
+- **Organisations** opens as a full-width tree table, expanded by default,
+  with the most recently contacted organisations first.
   The default columns show a local logo or monogram, name, kind, what they do
   or mean to you, website, location, people known there, activity (messages in
   90 days), and last contact. Search and kind filters follow the reader’s
   language; activity stays a readable message count at row height. Unknown
   facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
-  separately from People and can add first contact, legal entity and parent.
+  separately from People and can add first contact, subordinate unit count,
+  legal entity and parent.
   Blanks sort last in either direction. On a phone rows become cards.
   Websites open in a new tab; when Website is Unknown, a contact's business
   email domain can supply a link marked **Derived** (free mail is excluded).
   A `Logo:` fact can name a notebook-relative PNG, JPEG, GIF or WebP; the reader
   embeds it in both live data and the self-contained snapshot, without fetching
   images from the network. Missing logos use monograms.
-  Units stay folded under their parent until its disclosure is expanded; a
-  unit whose parent is missing stays findable in the list. Search also finds
-  organisations by their unit names.
+  Units appear directly beneath their parent, indented with guide lines at every
+  depth, with the same columns. Parent names include their direct unit count and
+  distinct people across the whole organisation. Disclosures collapse branches;
+  each organisation’s collapsed state is remembered in this browser. **By structure /
+  Flat** switches the layout. Sorting a column or filtering by kind switches to
+  flat rows, with a quiet ancestry path beneath each unit name. **By structure**
+  clears the kind filter and restores the tree and saved collapses. Search temporarily
+  opens matching branches. A unit whose parent is missing stays findable in the list.
   The book page names all contacts when there are at most four; otherwise it
   names the four most recent and says so. Business, location and website have
   separate labels, and the website is a link.
