@@ -2,7 +2,9 @@
 
 import json
 import re
+import socket
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -3630,3 +3632,142 @@ def test_domain_billing_notice_is_not_marked_as_outside_the_org(tmp_path, archiv
                          subscriptions={}, archive_root=tmp_path, record='orgs/lantern.md')
     assert len(items) == 1
     assert not items[0].get('relationship_scope')
+
+
+# -- Asana enters the existing investigation boundary ---------------------------
+
+@pytest.fixture
+def asana_investigation(tmp_path, monkeypatch):
+    """Only synthetic saved tasks; a runner callback replaces model execution."""
+    from connectonion.useful_tools import asana_export as export
+    from tests.unit.test_asana_export import FakeAsana, _task, _story
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 1, 12, tzinfo=timezone.utc).astimezone(tz or timezone.utc)
+
+    monkeypatch.setattr(inv, 'datetime', Clock)
+    monkeypatch.setattr(export, '_now', lambda: Clock.now(timezone.utc))
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv('ASANA_ACCESS_TOKEN', raising=False)
+    monkeypatch.setenv('CO_INBOX_HOME', str(tmp_path / 'inbox'))
+
+    def refuse_network(*args, **kwargs):
+        pytest.fail('Investigation tests must not use network or model services')
+
+    monkeypatch.setattr(socket.socket, 'connect', refuse_network)
+    monkeypatch.setattr(socket.socket, 'connect_ex', refuse_network)
+    monkeypatch.setattr(socket, 'create_connection', refuse_network)
+    client = FakeAsana()
+    client.tasks['300'] = _task(name='Atlas launch', notes='Task details retained.',
+        modified_at='2026-10-20T12:00:00Z', assignee={'gid': '500', 'name': 'Alice'},
+        projects=[{'gid': '200', 'name': 'Atlas'}])
+    client.stories['300'] = [_story(created_at='2026-10-20T13:00:00Z',
+        created_by={'gid': '501', 'name': 'Bob'}, text='Bob promises a mockup.')]
+    source = {'id': 'asana', 'kind': 'asana', 'root': str(tmp_path / 'inbox/asana'),
+              'project_gids': ['200'], 'enabled': True, 'consented': True, 'adapter': 'available'}
+    export.sync_tasks(client, Path(source['root']), ['200'])
+    return source, client
+
+
+def _asana_inputs(items):
+    return [item for item in items if item.get('source', '').startswith('asana:')]
+
+
+@pytest.mark.parametrize('record, handle', [('people/alice.md', '500'), ('projects/atlas.md', '200')])
+def test_story28_gather_includes_saved_asana_material(asana_investigation, record, handle):
+    source, client = asana_investigation
+    client.calls.clear()
+    items, coverage = inv.gather('Subject', [handle], days=30, clients={},
+                                 subscriptions={'asana': source}, record=record)
+    [item] = _asana_inputs(items)
+    assert 'Task details retained.' in item['text'] and 'Bob promises a mockup.' in item['text']
+    assert any(line.startswith('asana:') and 'read' in line for line in coverage)
+    assert client.calls == []
+
+
+@pytest.mark.parametrize('subscriptions', [{}, {'asana': {'id': 'asana', 'kind': 'asana',
+    'enabled': False, 'project_gids': [], 'consented': False}}])
+def test_story28_unconfigured_asana_has_explicit_coverage(asana_investigation, subscriptions):
+    items, coverage = inv.gather('Alice', ['500'], days=30, clients={},
+                                 subscriptions=subscriptions, record='people/alice.md')
+    assert _asana_inputs(items) == []
+    assert 'asana: not connected; not searched' in coverage
+
+
+def test_story28_empty_search_is_distinct_from_unconfigured_asana(asana_investigation):
+    source, client = asana_investigation
+    items, coverage = inv.gather('Unknown person', ['999'], days=30, clients={},
+                                 subscriptions={'asana': source}, record='people/unknown.md')
+    assert _asana_inputs(items) == []
+    lines = [line for line in coverage if line.startswith('asana:')]
+    assert lines and any('0' in line and 'read' in line for line in lines)
+    assert all('not connected' not in line for line in lines)
+
+
+def test_story28_saved_asana_search_does_not_need_live_token(asana_investigation, monkeypatch):
+    from connectonion.useful_tools import asana
+
+    source, client = asana_investigation
+    source['adapter'] = 'waiting for token'
+    monkeypatch.setattr(asana, '_token', lambda *a, **kw: pytest.fail('Gather read credentials'))
+    monkeypatch.setattr(asana, 'Asana', lambda *a, **kw: pytest.fail('Gather polled Asana'))
+    items, coverage = inv.gather('Alice', ['500'], days=30, clients={},
+                                 subscriptions={'asana': source}, record='people/alice.md')
+    assert len(_asana_inputs(items)) == 1
+    assert any(line.startswith('asana:') and 'read' in line for line in coverage)
+
+
+def test_story28_window_is_applied_when_gathering_saved_asana(asana_investigation):
+    source, client = asana_investigation
+    older, _ = inv.gather('Alice', ['500'], days=30, clients={},
+                          subscriptions={'asana': source}, record='people/alice.md')
+    recent, coverage = inv.gather('Alice', ['500'], days=1, clients={},
+                                 subscriptions={'asana': source}, record='people/alice.md')
+    assert len(_asana_inputs(older)) == 1
+    assert _asana_inputs(recent) == []
+    assert any(line.startswith('asana:') and '0' in line for line in coverage)
+
+
+@pytest.mark.parametrize('record, handle', [('people/alice.md', '500'), ('projects/atlas.md', '200')])
+def test_story28_investigate_delivers_asana_evidence_to_runner(asana_investigation, tmp_path, record, handle):
+    source, client = asana_investigation
+    root = tmp_path / 'notebook'
+    prepare(root)
+    book = inv.Notebook(root)
+    if record.startswith('people/'):
+        book.stub_person(record, 'Alice', [handle])
+    else:
+        book.stub_project(record, 'Atlas', [handle])
+    received = []
+
+    def runner(notebook, items, config, stage):
+        assert stage == 'investigate'
+        received.extend(items)
+        return {'changed': []}
+
+    result = inv.investigate(root, record, 'Subject', [handle], days=30, clients={},
+                             subscriptions={'asana': source}, runner=runner)
+    [item] = _asana_inputs(received)
+    assert 'Atlas launch' in item['text'] and 'Bob promises a mockup.' in item['text']
+    assert any(line.startswith('asana:') and 'read' in line for line in result['coverage'])
+
+
+def test_story28_other_source_evidence_survives_asana_investigation(asana_investigation):
+    source, client = asana_investigation
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_with(self, address, start, finish):
+            return [{'id': 'mail-one', 'from': 'alice@example.org', 'to': ['me@example.org'],
+                     'date': '2026-10-22T12:00:00Z', 'subject': 'Atlas follow-up'}]
+        def get_email_body(self, message_id): return 'Independent mail evidence.'
+
+    items, coverage = inv.gather('Alice', ['500', 'alice@example.org'], days=30,
+        clients={'gmail': Mail()}, subscriptions={'asana': source}, record='people/alice.md')
+    assert len(_asana_inputs(items)) == 1
+    assert any(item['source'].startswith('gmail:') and 'Independent mail evidence.' in item['text']
+               for item in items)
+    assert [item['timestamp'] for item in items] == sorted(item['timestamp'] for item in items)

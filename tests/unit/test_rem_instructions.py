@@ -322,3 +322,33 @@ def test_the_owner_page_keeps_private_life_out_of_insight_and_debts_to_what_was_
     assert "Work only: never a `[personal]`" in owner
     assert "owes only what the user agreed to" in owner
     assert len(owner) <= INSTRUCTION_BUDGET
+
+
+def test_the_rem_skills_know_the_asana_commands():
+    """Each round's Skill should know the tools a source adds. Collection stays in
+    co rem sync; a turn may only check a cited task, read-only."""
+    from connectonion.skills_catalog import useful_skills_dir
+    skills = useful_skills_dir()
+    cli = " ".join((skills / "rem-init/CLI.md").read_text(encoding="utf-8").split())
+    for command in ("co asana --help", "co rem sources add asana --project", "co asana task <task-gid>",
+                    "co auth asana"):
+        assert command in cli, command
+    assert command in " ".join(instructions("init").split())     # init carries CLI.md inline
+
+    asana = instructions("maintain", "asana")
+    assert "## Checking a task now" in asana and "co asana stories" in asana
+    assert "never run `co asana update` or `co asana comment`" in asana
+    assert "only inside a description or comment" in asana       # a gid in text is not a reason to read
+    use = (skills / "rem-use/SKILL.md").read_text(encoding="utf-8")
+    assert "co rem sources add asana --project <gid>" in use
+
+
+def test_an_investigation_with_asana_material_is_told_the_same_read_only_check():
+    """Investigations get Asana rules as a scope note, not the whole source Skill (15k aim, #1851)."""
+    import inspect
+    from connectonion.rem import investigate
+    source = inspect.getsource(investigate)
+    start = source.index('"role": "asana-scope"')
+    note = source[start:source.index("This is run scope; do not cite it.", start)]
+    assert "co asana task <task-gid>" in note and "co asana stories <task-gid>" in note
+    assert "cite only saved versions" in note and "never read other tasks" in note

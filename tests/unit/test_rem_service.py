@@ -9,6 +9,7 @@ from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook, RemError, read_json, state_path, write_json
 from connectonion.rem.service import approve_sources, run_sync, status, subscriptions, toggle_source
 from tests.unit.test_rem_source import rollout
+from tests.unit.test_rem_asana import asana_material
 
 pytestmark = pytest.mark.usefixtures("rem_clock")
 
@@ -1892,3 +1893,582 @@ def test_source_read_preserves_credential_code_and_recovery(rem, monkeypatch, co
     service._record_source_read(root, "outlook", failure["error"])
     reason, _ = service._mailbox_read_failure(root, "outlook")
     assert code in reason and message in reason and fix in reason
+
+
+# -- Asana source registration ----------------------------------
+
+@pytest.fixture
+def asana_registration(tmp_path, monkeypatch):
+    """A private notebook with synthetic credentials and no source/model access."""
+    import socket
+    from pathlib import Path
+    from connectonion import environment, secret_store
+    from connectonion.rem import runner, service
+    from connectonion.useful_tools import asana, asana_export
+
+    root = tmp_path / "notebook"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "config"))
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "inbox"))
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.delenv("ASANA_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(environment, "_loaded", {})
+    monkeypatch.setattr(environment, "_selected", None)
+    monkeypatch.setattr(secret_store, "stored_names", lambda directory: [])
+    monkeypatch.setattr(service, "mail_available", lambda kind: False)
+    monkeypatch.setattr(service, "codex_sessions_root", lambda: tmp_path / "sessions")
+    monkeypatch.setattr(service, "claude_projects_root", lambda: tmp_path / "claude")
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 1, 12, tzinfo=timezone.utc))
+    attempts = []
+
+    def refuse_access(*args, **kwargs):
+        attempts.append(True)
+        pytest.fail("Source registration must not read Asana tasks or run a model")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse_access)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse_access)
+    monkeypatch.setattr(socket, "create_connection", refuse_access)
+    monkeypatch.setattr(asana, "_http", refuse_access)
+    for name in ("get_user", "list_tasks", "get_task", "list_stories"):
+        monkeypatch.setattr(asana.Asana, name, refuse_access)
+    monkeypatch.setattr(asana_export, "sync_tasks", refuse_access)
+    monkeypatch.setattr(runner, "run_stage", refuse_access)
+    yield root
+    assert attempts == [], "An unexpected source read or model call was attempted"
+
+
+def _saved_asana_consent(root):
+    """Seed prior consent to test registration changes, independently of start/sync."""
+    sources = subscriptions(root)
+    sources["asana"]["consented"] = True
+    write_json(state_path(root, "subscriptions.json"), sources)
+
+
+def test_asana_source_is_off_before_any_project_is_selected(asana_registration, monkeypatch):
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    source = subscriptions(root)["asana"]
+    assert source["kind"] == "asana"
+    assert source["project_gids"] == []
+    assert source["enabled"] is False
+    assert source["consented"] is False
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("token", [None, "", " ", "\t\n"])
+def test_asana_source_waits_for_missing_or_blank_token(asana_registration, monkeypatch, token):
+    root = asana_registration
+    if token is not None:
+        monkeypatch.setenv("ASANA_ACCESS_TOKEN", token)
+    toggle_source(root, "asana", True, project="120012345678901234567890")
+    source = subscriptions(root)["asana"]
+    assert source["project_gids"] == ["120012345678901234567890"]
+    assert "waiting for token" in json.dumps(source).lower()
+    assert source["consented"] is False
+
+
+def test_asana_registration_is_persistent_and_does_not_save_credentials(asana_registration, monkeypatch):
+    root = asana_registration
+    token = "synthetic-asana-token-not-for-storage"
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", token)
+    name = toggle_source(root, "asana", True, project="000120012345678901234567890")
+    assert name == "asana"
+    saved = read_json(state_path(root, "subscriptions.json"), {})["asana"]
+    assert saved["project_gids"] == ["000120012345678901234567890"]
+    assert saved["enabled"] is True
+    assert saved["consented"] is False
+    assert token not in json.dumps(saved)
+    assert subscriptions(root)["asana"]["project_gids"] == saved["project_gids"]
+    assert not state_path(root, "consent.json").exists()
+    assert not (root / "worker.json").exists()
+
+
+def test_repeated_asana_add_accumulates_projects_without_duplicates(asana_registration):
+    root = asana_registration
+    for gid in ("200", "201", "200"):
+        toggle_source(root, "asana", True, project=gid)
+    assert set(subscriptions(root)["asana"]["project_gids"]) == {"200", "201"}
+    assert len(subscriptions(root)["asana"]["project_gids"]) == 2
+
+
+def test_same_asana_project_preserves_consent_and_existing_progress(asana_registration, monkeypatch):
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    _saved_asana_consent(root)
+    progress = {"asana": {"checkpoint": "synthetic-existing-progress"}}
+    write_json(state_path(root, "progress.json"), progress)
+    before = subscriptions(root)["asana"]
+    assert before["consented"] is True
+    toggle_source(root, "asana", True, project="200")
+    assert subscriptions(root)["asana"] == before
+    assert read_json(state_path(root, "progress.json"), {}) == progress
+
+
+def test_new_asana_project_revokes_consent_and_changes_summary(asana_registration, monkeypatch):
+    from connectonion.rem.service import consent_summary, summary_fingerprint
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    _saved_asana_consent(root)
+    fingerprint = summary_fingerprint(root)
+    toggle_source(root, "asana", True, project="201")
+    source = subscriptions(root)["asana"]
+    assert source["consented"] is False
+    assert set(source["project_gids"]) == {"200", "201"}
+    summary = json.dumps(consent_summary(root)["sources"]["asana"])
+    assert "200" in summary and "201" in summary
+    assert summary_fingerprint(root) != fingerprint
+
+
+@pytest.mark.parametrize("project", ["abc", "../project", "/work/project", "-1", "12 3", "0x123"])
+def test_invalid_asana_project_cannot_change_saved_selection(asana_registration, project):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    path = state_path(root, "subscriptions.json")
+    before = path.read_bytes()
+    with pytest.raises(RemError):
+        toggle_source(root, "asana", True, project=project)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("kwargs", [{"about": "browser"}, {"chats": ["chat-1"]}])
+def test_asana_rejects_other_sources_scope_options(asana_registration, kwargs):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    before = state_path(root, "subscriptions.json").read_bytes()
+    with pytest.raises(RemError):
+        toggle_source(root, "asana", True, project="201", **kwargs)
+    assert state_path(root, "subscriptions.json").read_bytes() == before
+
+
+def test_asana_remove_one_project_keeps_the_other(asana_registration):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    toggle_source(root, "asana", True, project="201")
+    toggle_source(root, "asana", False, project="200")
+    source = subscriptions(root)["asana"]
+    assert source["project_gids"] == ["201"]
+    assert source["enabled"] is True
+    toggle_source(root, "asana", False, project="201")
+    assert subscriptions(root)["asana"]["enabled"] is False
+    assert subscriptions(root)["asana"]["project_gids"] == []
+
+
+def test_asana_remove_all_stops_reads_without_erasing_saved_material(asana_registration, tmp_path):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    material = tmp_path / "inbox/asana/daily/2026/11/01.jsonl"
+    material.parent.mkdir(parents=True)
+    material.write_text('{"synthetic":true}\n')
+    before = material.read_bytes()
+    toggle_source(root, "asana", False)
+    assert subscriptions(root)["asana"]["enabled"] is False
+    assert material.read_bytes() == before
+
+
+def test_asana_token_status_is_refreshed_without_changing_selection(asana_registration, monkeypatch):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    assert "waiting for token" in json.dumps(subscriptions(root)["asana"]).lower()
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    assert "waiting for token" not in json.dumps(subscriptions(root)["asana"]).lower()
+    monkeypatch.delenv("ASANA_ACCESS_TOKEN")
+    assert "waiting for token" in json.dumps(subscriptions(root)["asana"]).lower()
+    assert subscriptions(root)["asana"]["project_gids"] == ["200"]
+
+
+def test_asana_notebooks_have_independent_project_choices(asana_registration):
+    root = asana_registration
+    other = root.parent / "other-notebook"
+    toggle_source(root, "asana", True, project="200")
+    toggle_source(other, "asana", True, project="201")
+    assert subscriptions(root)["asana"]["project_gids"] == ["200"]
+    assert subscriptions(other)["asana"]["project_gids"] == ["201"]
+
+
+def test_asana_registration_preserves_other_source_settings(asana_registration):
+    root = asana_registration
+    toggle_source(root, "codex", True, project="/work/demo")
+    before = {name: value for name, value in subscriptions(root).items() if name != "asana"}
+    toggle_source(root, "asana", True, project="200")
+    after = {name: value for name, value in subscriptions(root).items() if name != "asana"}
+    assert after == before
+    assert any(source.get("project") == "/work/demo" for source in after.values())
+
+
+def test_asana_corrupt_subscriptions_are_preserved(asana_registration):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    path = state_path(root, "subscriptions.json")
+    path.write_text('{"broken":')
+    with pytest.raises(RemError):
+        toggle_source(root, "asana", True, project="201")
+    assert path.read_text() == '{"broken":'
+
+
+def test_asana_failed_settings_publish_preserves_old_choices(asana_registration, monkeypatch):
+    import os
+    from pathlib import Path
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    path = state_path(root, "subscriptions.json")
+    before = path.read_bytes()
+    replace = os.replace
+
+    def fail_settings(src, dst, *args, **kwargs):
+        if Path(dst).name == "subscriptions.json":
+            raise OSError("Synthetic settings failure")
+        return replace(src, dst, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "replace", fail_settings)
+        with pytest.raises((OSError, RemError)):
+            toggle_source(root, "asana", True, project="201")
+    assert path.read_bytes() == before
+
+
+def test_asana_source_changes_respect_the_existing_writer_lock(asana_registration):
+    from connectonion.rem.files import maintenance_lock
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    before = state_path(root, "subscriptions.json").read_bytes()
+    with maintenance_lock(root):
+        with pytest.raises(RemError):
+            toggle_source(root, "asana", True, project="201")
+    assert state_path(root, "subscriptions.json").read_bytes() == before
+
+
+def test_asana_add_and_inspection_do_not_create_collection_material(asana_registration, tmp_path):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    subscriptions(root)
+    assert not (tmp_path / "inbox").exists()
+    assert not state_path(root, "progress.json").exists()
+    assert not state_path(root, "worker.json").exists()
+    assert not state_path(root, "consent.json").exists()
+
+
+def test_asana_selection_excludes_unselected_project_from_consent(asana_registration, monkeypatch):
+    from connectonion.rem.service import consent_summary
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    summary = consent_summary(root)["sources"]["asana"]
+    assert summary["project_gids"] == ["200"]
+    toggle_source(root, "asana", True, project="201")
+    toggle_source(root, "asana", False, project="200")
+    assert consent_summary(root)["sources"]["asana"]["project_gids"] == ["201"]
+
+
+def test_asana_add_without_new_project_restores_only_saved_scope(asana_registration):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    toggle_source(root, "asana", False)
+    toggle_source(root, "asana", True)
+    source = subscriptions(root)["asana"]
+    assert source["enabled"] is True
+    assert source["project_gids"] == ["200"]
+
+
+def test_asana_unapproved_source_cannot_start_reading(asana_registration, monkeypatch):
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    prepare(root)
+    with pytest.raises(RemError, match="start"):
+        run_sync(root, runner=lambda *args, **kwargs: pytest.fail("Unapproved model run"))
+    assert subscriptions(root)["asana"]["consented"] is False
+
+
+def test_asana_dry_run_preserves_settings_and_collection_progress(asana_registration, monkeypatch):
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    before = {str(path): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    result = run_sync(root, dry_run=True)
+    assert result["dry_run"] is True
+    assert {str(path): path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize("saved", [[], None, "not a mapping", 123])
+def test_asana_invalid_subscription_document_is_not_overwritten(asana_registration, saved):
+    root = asana_registration
+    toggle_source(root, "asana", True, project="200")
+    path = state_path(root, "subscriptions.json")
+    path.write_text(json.dumps(saved))
+    before = path.read_bytes()
+    with pytest.raises(RemError):
+        toggle_source(root, "asana", True, project="201")
+    assert path.read_bytes() == before
+
+
+def test_asana_declined_start_does_not_authorize_or_install_schedule(asana_registration, monkeypatch):
+    from connectonion.rem.service import start
+    root = asana_registration
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-asana-token")
+    toggle_source(root, "asana", True, project="200")
+    shown = []
+    scheduler = FakeScheduler()
+    result = start(root, confirm=lambda summary: shown.append(summary) or False,
+                   scheduler=scheduler, runner=lambda *a, **kw: pytest.fail("Declined model run"))
+    assert result["started"] is False
+    assert scheduler.installed == []
+    assert shown[0]["sources"]["asana"]["project_gids"] == ["200"]
+    assert subscriptions(root)["asana"]["consented"] is False
+
+
+def test_asana_notebook_selection_does_not_change_when_another_is_removed(asana_registration):
+    root = asana_registration
+    other = root.parent / "second"
+    toggle_source(root, "asana", True, project="200")
+    toggle_source(other, "asana", True, project="201")
+    before = subscriptions(root)["asana"]
+    toggle_source(other, "asana", False)
+    assert subscriptions(root)["asana"] == before
+
+
+def test_asana_summary_and_status_do_not_persist_token(asana_registration, monkeypatch):
+    from connectonion.rem.service import consent_summary
+    root = asana_registration
+    token = "synthetic-asana-summary-secret"
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", token)
+    toggle_source(root, "asana", True, project="200")
+    before = {str(path): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    summary = consent_summary(root)
+    assert token not in json.dumps(summary)
+    assert {str(path): path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize("value", [" 200 ", "\t200\n", "\r\n200\t"])
+def test_asana_project_trims_surrounding_whitespace(asana_registration, value):
+    root = asana_registration
+    toggle_source(root, "asana", True, project=value)
+    assert subscriptions(root)["asana"]["project_gids"] == ["200"]
+
+
+@pytest.mark.parametrize("value", ["", " ", "\t\n"])
+def test_asana_first_blank_project_cannot_enable_source(asana_registration, value):
+    root = asana_registration
+    with pytest.raises(RemError):
+        toggle_source(root, "asana", True, project=value)
+    source = subscriptions(root)["asana"]
+    assert source["enabled"] is False
+    assert source["project_gids"] == []
+
+
+# -- Asana sync acceptance --------------------------------------
+
+
+@pytest.fixture
+def asana_sync(asana_material, monkeypatch, tmp_path):
+    """Exercise real collection and consumption with a fake upstream and runner."""
+    from copy import deepcopy
+    from connectonion.useful_tools import asana
+    source, client = asana_material
+    root = tmp_path / "rem"
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "synthetic-story26-token")
+    monkeypatch.setattr(asana, "Asana", lambda: client)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    prepare(root)
+    toggle_source(root, "asana", True, project="200")
+    approve_sources(root)
+    calls = []
+
+    def runner(notebook, items, config, kind=""):
+        calls.append({"items": deepcopy(items), "kind": kind, "upstream": list(client.calls)})
+        return {"changed": [], "usage": {"input_tokens": 10, "output_tokens": 2}}
+
+    return root, client, calls, runner
+
+
+def test_asana_sync_collects_before_delivering_new_material(asana_sync):
+    root, client, calls, runner = asana_sync
+    result = run_sync(root, source="asana", runner=runner)
+    assert result["outcome"] == "completed" and result["items"] == 1
+    assert len(calls) == 1 and calls[0]["kind"] == "asana"
+    assert ("stories", "300") in calls[0]["upstream"]
+    text = calls[0]["items"][0]["text"]
+    assert all(name in text for name in ("Alice Assignee", "Bob Commenter", "Atlas Project"))
+
+
+def test_asana_unchanged_sync_calls_no_runner_twice(asana_sync):
+    root, client, calls, runner = asana_sync
+    run_sync(root, source="asana", runner=runner)
+    client.calls.clear()
+    result = run_sync(root, source="asana", runner=runner)
+    assert result["outcome"] == "no_change" and len(calls) == 1
+    assert ("list", "200") in client.calls
+
+
+def test_asana_sync_refreshes_saved_task_before_consumption(asana_sync):
+    from pathlib import Path
+    from connectonion.useful_tools import asana_export
+    root, client, calls, runner = asana_sync
+    source = subscriptions(root)["asana"]
+    client.tasks["300"]["name"] = "Old saved title"
+    asana_export.sync_tasks(client, Path(source["root"]), ["200"])
+    client.tasks["300"]["name"] = "Fresh title from this sync"
+    result = run_sync(root, source="asana", runner=runner)
+    assert result["items"] == 1
+    text = calls[0]["items"][0]["text"]
+    assert "Fresh title from this sync" in text and "Old saved title" not in text
+
+
+def test_asana_failed_runner_retries_same_saved_version(asana_sync):
+    root, client, calls, runner = asana_sync
+    before = read_json(state_path(root, "progress.json"), {})
+    attempted = []
+
+    def failing(notebook, items, config, kind=""):
+        attempted.extend(item["source"] for item in items)
+        raise RuntimeError("Synthetic maintenance failure")
+
+    result = run_sync(root, source="asana", runner=failing)
+    assert result["outcome"] == "failed"
+    assert read_json(state_path(root, "progress.json"), {}) == before
+    assert run_sync(root, source="asana", runner=runner)["outcome"] == "completed"
+    assert [item["source"] for item in calls[0]["items"]] == attempted
+    assert run_sync(root, source="asana", runner=runner)["items"] == 0
+
+
+def test_asana_dry_run_counts_saved_latest_tasks_without_effects(asana_sync, monkeypatch):
+    from pathlib import Path
+    from connectonion.useful_tools import asana_export
+    root, client, calls, runner = asana_sync
+    assert run_sync(root, source="asana", dry_run=True)["sources"]["asana"]["pending_tasks"] is None
+    assert client.calls == calls == []
+    source = Path(subscriptions(root)["asana"]["root"])
+    asana_export.sync_tasks(client, source, ["200"])
+    client.tasks["300"]["name"] = "New saved version"
+    asana_export.sync_tasks(client, source, ["200"])
+    before = {p: p.read_bytes() for p in root.parent.rglob('*') if p.is_file()}
+    client.calls.clear()
+    monkeypatch.setattr(asana_export, "load_snapshots", lambda *a, **kw: pytest.fail("Dry-run read task body"))
+    result = run_sync(root, source="asana", dry_run=True, all_pending=True)
+    assert result["sources"]["asana"]["pending_tasks"] == 1
+    assert result["sources"]["asana"]["body_reads"] is False
+    assert client.calls == calls == []
+    assert {p: p.read_bytes() for p in root.parent.rglob('*') if p.is_file()} == before
+
+
+def test_asana_successful_consumption_clears_pending_count(asana_sync):
+    root, client, calls, runner = asana_sync
+    run_sync(root, source="asana", runner=runner)
+    assert run_sync(root, source="asana", dry_run=True)["sources"]["asana"]["pending_tasks"] == 0
+
+
+def test_asana_sync_never_fetches_unselected_project(asana_sync):
+    from tests.unit.test_asana_export import _task
+    root, client, calls, runner = asana_sync
+    client.projects["201"] = ["301"]
+    client.tasks["301"] = _task("301", name="Private task", projects=[{"gid": "201"}])
+    run_sync(root, source="asana", runner=runner)
+    assert ("list", "201") not in client.calls and ("task", "301") not in client.calls
+    assert "Private task" not in json.dumps(calls)
+
+
+def test_asana_all_drains_bounded_batches_without_collecting_each_time(asana_sync):
+    from tests.unit.test_asana_export import _task
+    root, client, calls, runner = asana_sync
+    for gid in ("301", "302"):
+        client.projects["200"].append(gid); client.tasks[gid] = _task(gid)
+    set_config(root, ["limits.extract_items_per_batch", "1"])
+    approve_sources(root)
+    result = run_sync(root, source="asana", all_pending=True, runner=runner)
+    assert result["outcome"] == "caught_up" and result["items"] == 3
+    assert len(calls) == 3 and all(len(call["items"]) == 1 for call in calls)
+    assert client.calls.count(("list", "200")) == 1
+    assert len({item["source"] for call in calls for item in call["items"]}) == 3
+
+
+@pytest.mark.parametrize("method", ["list", "task", "stories"])
+def test_asana_first_collection_failure_never_sends_partial_material(asana_sync, method):
+    root, client, calls, runner = asana_sync
+    client.failure = (method, "200" if method == "list" else "300")
+    result = run_sync(root, source="asana", runner=runner)
+    assert calls == []
+    assert result["collection"]["asana"]["collected"] is False
+    assert "fail" in json.dumps(result).lower()
+
+
+def test_asana_collection_failure_reports_saved_material_fallback(asana_sync):
+    from pathlib import Path
+    from connectonion.useful_tools import asana_export
+    root, client, calls, runner = asana_sync
+    asana_export.sync_tasks(client, Path(subscriptions(root)["asana"]["root"]), ["200"])
+    client.failure = ("list", "200")
+    result = run_sync(root, source="asana", runner=runner)
+    assert result["items"] == 1 and len(calls) == 1
+    assert result["collection"]["asana"]["collected"] is False
+    assert "earlier" in json.dumps(result).lower()
+
+
+def test_asana_wrong_account_blocks_cached_material(asana_sync):
+    from pathlib import Path
+    from connectonion.useful_tools import asana_export
+    root, client, calls, runner = asana_sync
+    asana_export.sync_tasks(client, Path(subscriptions(root)["asana"]["root"]), ["200"])
+    client.account = "999"
+    result = run_sync(root, source="asana", runner=runner)
+    assert calls == []
+    assert "asana" in result["not_read"]
+    assert "account" in json.dumps(result).lower()
+
+
+def test_unapproved_asana_does_not_collect_even_with_notebook_consent(asana_sync):
+    root, client, calls, runner = asana_sync
+    root = root.parent / "new-notebook"
+    prepare(root)
+    approve_sources(root)
+    toggle_source(root, "asana", True, project="200")
+    assert subscriptions(root)["asana"]["consented"] is False
+    run_sync(root, source="asana", runner=runner)
+    assert client.calls == calls == []
+
+
+def test_sync_of_another_source_does_not_collect_asana(asana_sync):
+    root, client, calls, runner = asana_sync
+    run_sync(root, source="codex", runner=runner)
+    assert client.calls == calls == []
+
+
+def test_asana_all_stops_on_failed_batch_and_keeps_it_pending(asana_sync):
+    root, client, calls, runner = asana_sync
+
+    def failing(*args, **kwargs):
+        calls.append("failed")
+        raise RuntimeError("Synthetic failure before any page write")
+
+    result = run_sync(root, source="asana", all_pending=True, runner=failing)
+    assert result["outcome"] == "failed" and calls == ["failed"]
+    assert run_sync(root, source="asana", dry_run=True)["sources"]["asana"]["pending_tasks"] == 1
+
+
+@pytest.mark.parametrize("damage", ["missing_daily", "invalid_state"])
+def test_asana_damaged_cache_is_reported_without_model_input(asana_sync, damage):
+    from pathlib import Path
+    from connectonion.useful_tools import asana_export
+    root, client, calls, runner = asana_sync
+    source = Path(subscriptions(root)["asana"]["root"])
+    asana_export.sync_tasks(client, source, ["200"])
+    if damage == "missing_daily":
+        [daily] = list(source.glob('daily/*/*/*.jsonl'))
+        daily.unlink()
+    else:
+        (source / 'state.json').write_text('not JSON', encoding='utf-8')
+    result = run_sync(root, source="asana", runner=runner)
+    assert calls == []
+    assert "asana" in result["not_read"]
+    assert result["collection"]["asana"]["collected"] is False
+
+
+def test_asana_sync_does_not_persist_credentials_in_material_or_logs(asana_sync):
+    root, client, calls, runner = asana_sync
+    result = run_sync(root, source="asana", runner=runner)
+    token = "synthetic-story26-token"
+    assert token not in json.dumps(result) + json.dumps(calls)
+    for path in root.parent.rglob('*'):
+        if path.is_file():
+            assert token.encode() not in path.read_bytes(), path

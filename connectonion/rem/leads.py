@@ -79,7 +79,35 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits and all(record != lead for _, lead in leads):
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
-    return [record for _, record in leads[:MAX_LEADS]]
+    found = [record for _, record in leads[:MAX_LEADS]]
+    if any(str(item.get("source", "")).startswith("asana:") for item in items):
+        found = _with_agendas(notebook, found)
+    return found[:MAX_LEADS]
+
+
+def _with_agendas(notebook: Notebook, leads: list[str]) -> list[str]:
+    """Each project lead followed by the project's rolling agenda page.
+
+    Asana due dates live on `agenda/<project>.md`, one page per project
+    (rem-source-asana). The page names the project, not the task, so the batch
+    never names it: a moved due date reached the project page and left the
+    agenda on the old date. An agenda page belongs to a project when it links
+    to the project page or shares its file name.
+    """
+    agendas = {record: notebook.read(record) for record in notebook.list("agenda")}
+    if not agendas:
+        return leads
+    out = []
+    for lead in leads:
+        out.append(lead)
+        if not lead.startswith("projects/"):
+            continue
+        name = lead.removeprefix("projects/")
+        for record, text in sorted(agendas.items()):
+            if record not in out and record not in leads and (
+                    record.removeprefix("agenda/") == name or f"](../{lead})" in text):
+                out.append(record)
+    return out
 
 
 def project_writer_pages(notebook: Notebook, leads: list[str]) -> list[str]:

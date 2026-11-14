@@ -177,6 +177,28 @@ def compact_page(record: str, text: str) -> str:
         text = text[:start].rstrip('\r\n') + '\n\n' + text[end:].lstrip('\r\n')
     return text
 
+def restore_writes_to(record: str, candidate: str, original: str, owner: bool = False) -> str:
+    """Give back an empty `How the user writes to them` a person candidate left out.
+
+    Asana marks the token owner's comments "(you)". Investigating that person's
+    page by gid (not `investigate me`), a real turn read it as the user's own
+    page and left this section out, as the owner page does (#2008); the page was
+    not the mapped owner page, so the whole investigation was refused twice.
+    Only an evidence-free section is restored, as Unknown: one that held cited
+    lines stays missing, and the validator still refuses the page for it.
+    """
+    if owner or not record.startswith('people/') or re.search(rf'^## {NOT_ON_OWNER_PAGE}$', candidate, re.M):
+        return candidate
+    before = re.search(rf'(?ms)^## {NOT_ON_OWNER_PAGE}\n(.*?)(?=^## |^Investigation:|\Z)', original)
+    if before and CITATION.search(before.group(1)):
+        return candidate
+    for following in ('Cadence', 'Uncertainties', 'Sources'):
+        at = re.search(rf'^## {following}$', candidate, re.M)
+        if at:
+            return candidate[:at.start()] + f'## {NOT_ON_OWNER_PAGE}\n- Unknown\n\n' + candidate[at.start():]
+    return candidate
+
+
 
 def _local_reference(value: str, original: str, items: list[dict]) -> bool:
     """Existence in a supplied source directory is identifiable, not proof of reading."""
@@ -949,7 +971,8 @@ def verify_contacts(root: Path, record: str, text: str, items: list[dict], origi
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:attachments-index", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:project-repositories",
                    "investigation:original-evidence", "investigation:timeline", "investigation:earlier-insights",
-                   "investigation:org-pages", "investigation:facts", "investigation:skill-records")
+                   "investigation:org-pages", "investigation:facts", "investigation:skill-records",
+                   "investigation:asana-scope")
 
 
 def _known_sources(items: list[dict]) -> set:
@@ -1451,6 +1474,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
             errors.append(f'Project input scope is not a citable original: {key}')
+        if value.strip().startswith('investigation:asana-scope'):
+            errors.append(f'Asana reading rules are not a citable original: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:timeline'):
             errors.append(f'Project timeline is a reading guide, not a citable original: {key}')
         if value.strip().startswith('investigation:earlier-insights'):

@@ -525,6 +525,22 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
                            style.warn(rem_look.BROKEN))
               for row in batch.get('refusals') or [] if isinstance(row, dict)]
+    # A selected source this sync cannot read yet (an Asana project not approved yet): said, so
+    # "0 items" is not taken to mean it was checked and found quiet.
+    not_read = batch.get('not_read')
+    lines += [rem_look.row('Not read', said(f"{kind}: {why}"), style.warn(rem_look.BROKEN))
+              for kind, why in (not_read.items() if isinstance(not_read, dict) else [])]
+    # What Asana was asked before reading: how many tasks changed, or why not.
+    collection = batch.get('collection')
+    for kind, result in (collection.items() if isinstance(collection, dict) else []):
+        if not isinstance(result, dict):
+            continue
+        if result.get('collected'):
+            lines.append(rem_look.section('Collected', said(f"{kind}: {result.get('changed_tasks', 0)} changed of "
+                                                           f"{result.get('scanned_tasks', 0)} task(s) checked")))
+        else:
+            lines.append(rem_look.row('Not collected', said(f"{kind}: {result.get('reason')}"),
+                                      style.warn(rem_look.BROKEN)))
     if 'maintenance' in value:
         investigation = value.get('investigation')
         if investigation:
@@ -553,7 +569,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
-    if record:
+    if record and value.get('record_kept', True):
         lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
     outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')

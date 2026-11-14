@@ -234,6 +234,10 @@ What each kind reads:
             A model writes a cited page; the skill itself is never executed.
             Missing runs remain unverified; invocation counts are not successes.
   me        Your own sent mail and coding sessions from the last --days (default 30).
+  Asana tasks, when co rem sources has Asana on: for people, tasks assigned to them
+  or commented on by them; for projects, tasks in the Asana project of that name;
+  for me, your own. A name shared by two Asana people or projects reads nothing
+  until --handle names the gid. Only what co rem sync saved; Asana is not asked.
 
 Project documents are the owner's record: cite them as such; contact details only
 found there are not the person's own.
@@ -696,6 +700,10 @@ Effects:  Reads message bodies, calls the model and saves page changes. Logs
           runs blocked by the daily cap. Ctrl-C keeps finished batches and lists
           what finished. The interrupted batch reads its input again next time.
           Reads sources in turn, starting after the source used last.
+          Asana: first asks Asana for the selected projects' changed tasks and
+          saves them under inbox/asana, then reads each task's newest version.
+          If Asana cannot be reached, tasks saved earlier are still read and the
+          summary says why. --dry-run never asks Asana.
 
           If a page update is rejected, keeps its input for another attempt.
           Retries once a day, at most three times on the same input. Rejects a
@@ -714,16 +722,20 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+whatsapp, asana. Showing is read-only.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
-          co rem sources remove NAME [--chat ID]
+          co rem sources remove NAME [--chat ID] [--project GID]
 Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources add asana --project 1209876543210987
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
           --project   coding sources: only sessions run in this directory
+                      asana: a project gid from co asana projects --ids
+                      (repeat add for more); asana is off until one is named
+                      and waits for a token (co auth asana) until co asana check works
 
 Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
           remove stops future reads; pages already written stay.
@@ -835,11 +847,14 @@ are read later by sync, after co rem start has recorded your approval.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
-          NAME is one of: gmail, outlook, codex, claude-code, whatsapp
+          NAME is one of: gmail, outlook, codex, claude-code, whatsapp, asana
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
+Example:  co rem sources add asana --project 1209876543210987
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
           --project  coding sources: only sessions run in this directory
+                     asana: one project gid, from co asana projects --ids;
+                     a new project is read only after co rem start approves it
           --about    coding sources: whole sessions that mention this text
           --since    read at least this far back; a wider window is left alone
           --only     with --since: read only that far back, narrowing the window
@@ -853,9 +868,10 @@ Back:     co rem sources --help
 ```
 Stop reading a source from now on. Pages already written keep what they learned.
 
-Usage:    co rem sources remove NAME [--chat ID]...
+Usage:    co rem sources remove NAME [--chat ID]... [--project GID]
 Example:  co rem sources remove whatsapp --chat 120363411567190840@g.us
           --chat   WhatsApp: stop only this chat, keep the others
+          --project  Asana: stop only this project gid, keep the others
 Effects:  Writes settings. A removed mailbox is also skipped by investigate.
 Next:     co rem sources
 Back:     co rem sources --help
