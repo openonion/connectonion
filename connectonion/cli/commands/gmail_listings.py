@@ -1,4 +1,4 @@
-"""Immutable, short-lived row references for one authenticated provider account (Gmail, Drive, Outlook)."""
+"""Immutable, short-lived row references for one authenticated provider account (Gmail, Drive, Outlook, OneNote, Asana)."""
 
 import hashlib
 import json
@@ -35,7 +35,8 @@ def _modified(path: Path) -> float:
 def save_listing(directory: Path, account: str, family: str, ids: list[str], *, now: float | None = None, provider: str = 'gmail') -> str:
     """Persist IDs only; never cache message bodies, subjects, recipients or tokens."""
     allowed = {('gmail', 'messages'), ('gmail', 'drafts'), ('gdrive', 'files'),
-               ('outlook', 'messages'), ('onenote', 'sections'), ('onenote', 'pages')}
+               ('outlook', 'messages'), ('onenote', 'sections'), ('onenote', 'pages'),
+               ('asana', 'projects'), ('asana', 'tasks')}
     if (provider, family) not in allowed or len(ids) > 500 or any(
         not isinstance(item, str) or not item or len(item) > 256 for item in ids
     ):

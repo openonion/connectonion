@@ -16,6 +16,7 @@ confuse installing this Skill with starting collection or approving source acces
 | Turn background maintenance off | `co rem stop` |
 | Stop reading one source for good, or bring it back | `co rem sources remove codex` / `co rem sources add codex` |
 | Add a scoped source (only sessions run in one directory) | `co rem sources add codex --project /path --since 30d` |
+| Read tasks from one Asana project | `co rem sources add asana --project <gid>` (gids from `co asana projects --ids`), then `co rem start` to approve it |
 | Find relevant records by text | `co rem search "query"` |
 | Browse one category | `co rem list people` |
 | Read a result | `co rem show people/alice.md` |

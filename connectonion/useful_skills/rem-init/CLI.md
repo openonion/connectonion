@@ -21,6 +21,7 @@ co rem --help
 co gmail search --help
 co outlook search --help
 co email addresses --help
+co asana --help
 co browser --help
 ```
 
@@ -154,10 +155,30 @@ report that coverage limit. Do not invent `co email search` or Gmail query synta
 The `read` commands preserve unread state unless `--mark-read` is explicitly
 requested; omit that flag for co rem work.
 
+## Asana: collected by co rem, checked with co asana
+
+A turn does not read Asana through `co asana`. `co rem sync` collects it, only
+from the projects the user chose by gid (`co rem sources add asana --project
+<gid>`, gids from `co asana projects --ids`) and approved with `co rem start`.
+The material a turn is given is that collection. To see what is chosen and
+collected:
+
+```bash
+co rem --root '<absolute-notebook-root>' sources
+co rem --root '<absolute-notebook-root>' --json sync --source asana --dry-run
+co asana check
+```
+
+A cited Asana task can be checked now, read-only, by its task gid (the third
+part of an `asana:` citation): `co asana task <task-gid>` or `co asana stories
+<task-gid>`. Cite only saved citations; what only the live read shows stays
+`Unknown` until a sync collects it. Never list other projects or tasks, and
+never run `co asana update` or `co asana comment`.
+
 ## Authentication and source failures
 
-Interactive connection commands are `co auth google`, `co auth microsoft`, and
-`co auth` for OpenOnion. A co rem task does not authorize changing accounts or scopes.
+Interactive connection commands are `co auth google`, `co auth microsoft`,
+`co auth asana`, and `co auth` for OpenOnion. A co rem task does not authorize changing accounts or scopes.
 Initialization never prompts or starts sign-in. It maps connected mailboxes and
 prints setup tips for disconnected sources after building local maps. The user
 can authenticate separately and rerun init; never enter credentials for them.

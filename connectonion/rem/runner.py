@@ -725,6 +725,10 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
         text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
                  "clauses beside it; the audit is a correction guide, not a source.")
+    if any(error.startswith(CARRIED_ASANA) for error in errors):
+        text += (f" Read the page as it stood at {workdir / record}. The Asana tasks named above were not in "
+                 "this batch, so nothing about them changed: put back what that page said about each of them, "
+                 "with its exact Sources entry, and keep this batch's new material.")
     if any(error.startswith("Dropped") for error in errors):
         text += " Put each named quote and source back where it was, unchanged, unless an original contradicts it."
     if record.startswith("projects/"):
@@ -895,6 +899,52 @@ def _keep_identity(record: str, before: str, after: str) -> str:
     return f"{title}\n\n{identity}" + (" " if lead else "\n\n") + body
 
 
+CARRIED_ASANA = "Carried Asana task dropped"
+
+
+def dropped_asana_tasks(record: str, original: str, text: str, items: list[dict]) -> list[str]:
+    """Asana tasks the page cited before, absent from this batch, and no longer cited.
+
+    A batch holds only the tasks that changed. A task not in it is unchanged,
+    so a one-page turn that drops it lost a fact rather than corrected one: a
+    single comment on ATLAS-05 made the Atlas page forget ATLAS-04's new date.
+    A task seen again may be rewritten freely (its newest version replaces the
+    old). On an agenda page a line whose dates have all passed may go, as
+    rem-source-asana asks.
+    """
+    from datetime import date
+    from .reader_model import SOURCE
+
+    def tasks(page: str) -> dict[str, str]:
+        found = {}
+        for _, source in SOURCE.findall(page.partition("\n## Sources\n")[2]):
+            parts = source.split(":")
+            if parts[0] == "asana" and len(parts) >= 5:
+                found[parts[2]] = source   # the last entry for a task: usually its newest version
+        return found
+
+    batch = {str(item["source"]).split(":")[2] for item in items
+             if str(item.get("source", "")).startswith("asana:") and str(item["source"]).count(":") >= 4}
+    if not batch:
+        return []
+    before, after = tasks(original), tasks(text)
+    numbers = {source: number for number, source in SOURCE.findall(original.partition("\n## Sources\n")[2])}
+    head = original.partition("\n## Sources\n")[0]
+    today = date.today().isoformat()
+    errors = []
+    for gid, source in sorted(before.items()):
+        if gid in batch or gid in after:
+            continue
+        if record.startswith("agenda/"):
+            lines = [line for line in head.splitlines() if f"[{numbers.get(source)}]" in line]
+            dates = [d for line in lines for d in re.findall(r"\b\d{4}-\d{2}-\d{2}\b", line)]
+            if dates and max(dates) < today:
+                continue
+        errors.append(f"{CARRIED_ASANA}: task {gid} ({source}) was not in this batch, so its lines and "
+                      "citation stay")
+    return errors
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None, native=False, report="", draft_only=False):
@@ -937,8 +987,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Number inline source ids first: a fact citing `[outlook:…]` is cited (v193q1 lost seven true fields).
     text = resolve_sources(notebook.root, record, normalize_numbered_sources(text))
     text, uncited = facts.drop_uncited(record, text, original)
+    carried_asana = [] if investigation else dropped_asana_tasks(record, original, text, items)
     text, foreign = facts.drop_foreign_labels(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
+    from .page_review import restore_writes_to
+    text = restore_writes_to(record, text, original, owner=record == owner.get("record"))
     removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     contact_before = facts.parse(text, record)
     if record.startswith("people/") and record != owner.get("record"):
@@ -1051,6 +1104,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
+    errors += carried_asana
     if carried:
         errors += dropped_content(carried, text, exempt)
     if ask_quotes and record.startswith("projects/"):

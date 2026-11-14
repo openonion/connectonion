@@ -2061,6 +2061,11 @@ def make_rem_app(factory):
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
+                from ...rem.files import state_path
+                if not state_path(root, f"runs/{record['id']}.json").is_file():
+                    # Nothing new: no model ran and no run was kept (#1846), so
+                    # `logs <id>` would name a run that does not exist.
+                    return {**record, "record_kept": False}, ["status"]
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
@@ -2191,12 +2196,20 @@ def make_rem_app(factory):
             _handle(ctx, lambda root: (subscriptions(root), ["sync", "--dry-run"]), ["config"])
 
     def _add_source(ctx, name, chat, project, about, since, only, force):
-        from ...rem.service import set_window, toggle_source
+        from ...rem.files import RemError
+        from ...rem.service import ASANA_KIND, set_window, subscriptions, toggle_source
 
         def operation(root):
+            if name == ASANA_KIND and (since or only or force):
+                raise RemError("Asana reads every task of the selected projects; --since, --only and --force do not apply")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
+            if name == ASANA_KIND:
+                # A new project waits for co rem start to show it and record approval.
+                source = subscriptions(root)[subscription]
+                return {**result, "project_gids": source.get("project_gids") or [],
+                        "status": source.get("status")}, ["sources"]
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             if chat:
@@ -2206,14 +2219,19 @@ def make_rem_app(factory):
             return result, ["sync", "--dry-run"]
         _handle(ctx, operation, ["sources"])
 
-    def _remove_source(ctx, name, chat):
-        from ...rem.service import subscriptions, toggle_source
+    def _remove_source(ctx, name, chat, project=""):
+        from ...rem.service import ASANA_KIND, subscriptions, toggle_source
 
         def operation(root):
-            toggle_source(root, name, False, chats=chat)
+            if project and name != ASANA_KIND:
+                from ...rem.files import RemError
+                raise RemError("--project on remove names an Asana project gid; for a coding scope, remove its subscription name")
+            toggle_source(root, name, False, chats=chat, project=project)
             source = subscriptions(root)[name]
             return {"subscription": name, "enabled": bool(source.get("enabled")),
-                    **({"chats": source.get("chats") or []} if chat else {})}, ["sources"]
+                    **({"chats": source.get("chats") or []} if chat else {}),
+                    **({"project_gids": source.get("project_gids") or [], "status": source.get("status")}
+                       if source.get("kind") == ASANA_KIND else {})}, ["sources"]
         _handle(ctx, operation, ["sources"])
 
     @sources_app.command("add", cls=V("co rem sources add"))
@@ -2228,8 +2246,9 @@ def make_rem_app(factory):
 
     @sources_app.command("remove", cls=V("co rem sources remove"))
     def remove_source(ctx: typer.Context, name: str = typer.Argument(...),
-                      chat: List[str] = typer.Option([], "--chat")):
-        _remove_source(ctx, name, chat)
+                      chat: List[str] = typer.Option([], "--chat"),
+                      project: str = typer.Option("", "--project")):
+        _remove_source(ctx, name, chat, project)
 
     config_app = factory(help="co rem config", no_args_is_help=False)
     config_app.info.cls = verbatim("co rem config", config_app.info.cls)

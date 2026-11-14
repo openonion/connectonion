@@ -391,14 +391,14 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack")
-def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack"),
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack  |  co auth asana")
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack, asana"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
          core: bool = typer.Option(False, "--core",
                                    help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create. status is Read-only."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create; asana makes a personal access token in the co browser, from your existing sign-in, after you accept Asana's terms there. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -420,6 +420,9 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     elif service == "slack":
         from .commands.slack_auth import handle_slack_auth
         handle_slack_auth()
+    elif service == "asana":
+        from .commands.asana_auth import handle_asana_auth
+        handle_asana_auth()
     elif service == "status":
         from .commands.auth_commands import handle_auth_status
         handle_auth_status()
@@ -435,7 +438,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         # A word we do not know must not do the one thing that writes secrets.
         from .commands.command_tips import print_tip
         print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
-              "google, microsoft, feishu, lark, slack.")
+              "google, microsoft, feishu, lark, slack, asana.")
         print_tip("Next: co auth status")
         raise typer.Exit(2)
 
@@ -2984,6 +2987,9 @@ app.add_typer(linear_app, name="linear")
 # Canny feedback boards (#2050): our own commands on Canny's REST API.
 from .commands.canny_commands import canny_app
 app.add_typer(canny_app, name="canny")
+# Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
+from .commands.asana_commands import asana_app
+app.add_typer(asana_app, name="asana")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")

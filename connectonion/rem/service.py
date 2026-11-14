@@ -32,6 +32,11 @@ from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
 
 MAIL_KINDS = ("gmail", "outlook")
+# Asana: a subscription is the set of project gids the user chose.
+# Saving it is a choice, not consent and not a read; nothing here calls Asana.
+ASANA_KIND = "asana"
+ASANA_GID = re.compile(r"[0-9]{1,64}")
+ASANA_PICK = "co asana projects --ids"
 
 
 def mail_client(kind: str, *, attachments: bool = False):
@@ -60,6 +65,32 @@ def mail_available(kind: str) -> bool:
         return False
 
 
+def asana_adapter() -> str:
+    """Whether a token is saved, from settings only: never a request to Asana."""
+    try:
+        from ..useful_tools.asana import AsanaError, _token
+        _token()
+        return "available"
+    except AsanaError:
+        return "waiting for token"
+    except Exception:  # noqa: BLE001 - an unreadable secret store is not a token
+        return "waiting for token"
+
+
+def asana_home() -> Path:
+    """Where Asana material is collected (inbox/asana), resolved without creating it."""
+    from ..inbox.store import default_home
+    return default_home(ASANA_KIND)
+
+
+def _asana_status(source: dict) -> dict:
+    """What `co rem sources` shows for Asana: off until a project is chosen, then the token."""
+    adapter = asana_adapter()
+    gids = source.get("project_gids") or []
+    status = "off" if not (source.get("enabled") and gids) else ("on" if adapter == "available" else adapter)
+    return {**source, "adapter": adapter, "status": status}
+
+
 def now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -78,8 +109,9 @@ def claude_projects_root() -> Path:
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
 MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
-# Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
+# Every kind a subscription can be consented for and read. Asana joined later:
+# start asks for it and sync reads its collected snapshots.
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, ASANA_KIND)
 
 
 def subscriptions(root: Path) -> dict:
@@ -107,8 +139,14 @@ def subscriptions(root: Path) -> dict:
                      "enabled": False, "consented": False,
                      "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
                      else "waiting for co whatsapp listen"},
+        # Off until the user names a project: an Asana token can see every project
+        # in its workspaces, and nothing is read from a project nobody chose.
+        ASANA_KIND: {"id": ASANA_KIND, "kind": ASANA_KIND, "root": str(asana_home()), "project_gids": [],
+                     "enabled": False, "consented": False},
     }
     defaults.update(saved)
+    if isinstance(defaults.get(ASANA_KIND), dict) and defaults[ASANA_KIND].get("kind") == ASANA_KIND:
+        defaults[ASANA_KIND] = _asana_status(defaults[ASANA_KIND])
     return defaults
 
 
@@ -178,6 +216,10 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if sources.get(name, {}).get("kind") == ASANA_KIND:
+            _toggle_asana(sources[name], enabled, project, about, chats)
+            write_json(state_path(root, "subscriptions.json"), sources)
+            return name
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -196,7 +238,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and asana, and `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -216,6 +258,37 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
         sources[name]["unsubscribed"] = not enabled
         write_json(state_path(root, "subscriptions.json"), sources)
     return name
+
+
+def _toggle_asana(source: dict, enabled: bool, project: str, about: str, chats) -> None:
+    """Add or remove one project gid, or switch the whole Asana source off.
+
+    --project is a gid here, never a directory: the coding-source meaning of
+    the same flag is untouched. A project added to the selection is material
+    the user has not agreed to have read, so consent is asked for again.
+    """
+    if about or chats:
+        raise RemError(f"Asana is narrowed by --project <gid> only; gids come from {ASANA_PICK}")
+    gids = list(source.get("project_gids") or [])
+    gid = (project or "").strip()
+    if gid and not ASANA_GID.fullmatch(gid):
+        raise RemError(f"Asana --project takes a project gid such as 1209876543210987, not {project!r}; "
+                       f"gids come from {ASANA_PICK}")
+    if enabled:
+        if gid and gid not in gids:
+            gids.append(gid)
+            source["consented"] = False
+        if not gids:
+            raise RemError(f"Name the Asana projects to read: --project <gid>, from {ASANA_PICK}")
+    elif gid:
+        if gid not in gids:
+            raise RemError(f"Asana project {gid} is not selected; co rem sources shows the selected ones")
+        gids.remove(gid)
+        enabled = bool(gids) and bool(source.get("enabled"))
+    source["project_gids"] = gids
+    source["enabled"] = enabled
+    source["unsubscribed"] = not enabled
+    source.update(_asana_status(source))
 
 
 WINDOW = re.compile(r"(\d+)\s*([dwmy])", re.IGNORECASE)
@@ -923,6 +996,10 @@ def consent_summary(root: Path, *, mail=()) -> dict:
     sources = {}
     offered = offered_mailboxes(root, mail=mail)
     for name, source in subscriptions(root).items():
+        if source.get("kind") == ASANA_KIND and not source.get("enabled"):
+            # Listed only once chosen: an unchosen Asana line would change what every
+            # existing notebook agreed to and make start ask again for nothing.
+            continue
         if source.get("adapter") == "deferred":
             state = "not implemented yet"
         elif (mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail
@@ -945,12 +1022,19 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
+        elif source.get("kind") == ASANA_KIND:
+            gids = source.get("project_gids") or []
+            state = (f"will read {len(gids)} project(s): each changed task's details, comments and "
+                     "authors, collected from Asana at every sync" if source.get("adapter") == "available"
+                     else source["adapter"])
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
+        if source.get("kind") == ASANA_KIND:
+            sources[name]["project_gids"] = source.get("project_gids") or []
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -1120,6 +1204,86 @@ def _selected_sources(root: Path, selector: str) -> dict:
             if source.get("enabled") and source.get("kind") in READABLE}
 
 
+def _require_consent(root: Path) -> None:
+    """Every sync that may read or fetch a body passes here first, a backfill included."""
+    if not state_path(root, "consent.json").is_file():
+        raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
+
+
+# AsanaStoreError stages after which saved Asana material must not reach the model:
+# it belongs to another account, or the store cannot be trusted. Every other
+# failure (network, a busy lock, a write that did not land) leaves earlier,
+# committed snapshots valid, and they are read.
+ASANA_BLOCKING = {"account": "the saved Asana material belongs to another account than the token",
+                  "state": "the saved Asana state cannot be read",
+                  "truncate": "the saved Asana files are damaged",
+                  "read": "the saved Asana files are damaged"}
+
+
+def _asana_pending(subscription: dict, progress: dict) -> dict:
+    """A dry run's Asana line: counts from the saved index only, never a request."""
+    from .asana import pending_asana
+    from ..useful_tools.asana_export import AsanaStoreError
+    try:
+        return pending_asana(subscription, progress)
+    except AsanaStoreError as error:
+        return {"initialized": None, "pending_tasks": None, "body_reads": False,
+                "error": f"saved Asana material cannot be read: {error}"}
+
+
+def _collect_asana(root: Path, selector: str, say=None) -> dict:
+    """Ask Asana for the selected projects' changes before reading; never fatal to the sync.
+
+    Returns {"collection": {"asana": summary}} after a collection, or
+    {"not_read"/"collection": ...} saying why it did not happen. A failure keeps
+    every source readable, Asana's already-saved snapshots included, and is said.
+    """
+    from .asana import collect_now
+    from ..useful_tools.asana import AsanaError
+    from ..useful_tools.asana_export import AsanaStoreError
+    if selector and selector != ASANA_KIND:
+        return {}
+    source = subscriptions(root).get(ASANA_KIND) or {}
+    gids = source.get("project_gids") or []
+    if not (source.get("kind") == ASANA_KIND and source.get("enabled") and gids):
+        return {}
+    if not source.get("consented"):
+        return {"not_read": {ASANA_KIND: f"{len(gids)} project(s) selected but not approved yet; "
+                                         "run co rem start to review and approve"}}
+    if source.get("adapter") != "available":
+        return {"collection": {ASANA_KIND: {"collected": False, "reason": source.get("adapter")}}}
+    (say or (lambda text: None))("Collecting Asana changes…")
+    try:
+        summary = collect_now(source)
+    except AsanaStoreError as error:
+        if error.stage in ASANA_BLOCKING:
+            return _asana_blocked(source, ASANA_BLOCKING[error.stage], error)
+        return {"collection": {ASANA_KIND: {"collected": False, "reason": f"collection failed: {error}; "
+                                            "tasks collected earlier are still read"}}}
+    except (AsanaError, ValueError, RemError) as error:
+        return {"collection": {ASANA_KIND: {"collected": False, "reason": f"collection failed: {error}; "
+                                            "tasks collected earlier are still read"}}}
+    return {"collection": {ASANA_KIND: {"collected": True, "changed_tasks": summary["changed_tasks"],
+                                        "scanned_tasks": summary["scanned_tasks"],
+                                        "last_success_at": summary["last_success_at"]}}}
+
+
+def _asana_blocked(source: dict, why: str, error: Exception) -> dict:
+    """Stop the Asana source for this sync: nothing it saved is read, and the fix is named."""
+    fix = (f"If the token is right, move {source.get('root')} aside and run co rem sync to collect this "
+           "account's projects again; otherwise restore the earlier token")
+    return {"blocked": [ASANA_KIND],
+            "not_read": {ASANA_KIND: f"{why} ({error}); nothing from Asana was read. {fix}"},
+            "collection": {ASANA_KIND: {"collected": False, "blocked": True, "reason": str(error)}}}
+
+
+def _notices(root: Path, collection: dict) -> dict:
+    """What a sync or dry run says beside its record: sources not read, and what Asana collected."""
+    merged = dict(collection.get("not_read", {}))
+    return {**({"not_read": merged} if merged else {}),
+            **({"collection": collection["collection"]} if collection.get("collection") else {})}
+
+
 PAGES_PER_BATCH = 5
 
 
@@ -1212,8 +1376,12 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             on_batch=None, say=None) -> dict | None:
+             on_batch=None, say=None, collection: dict | None = None) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
+
+    `collection` is internal: the backfill has already asked Asana once, so the
+    batches it runs read what was saved -- or skip a blocked Asana -- without
+    asking again.
 
     `scheduled` is what the background tick passes: run only if a saved time has
     come due since the last scheduled batch, otherwise return None at once, with
@@ -1233,6 +1401,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         progress = read_json(state_path(root, "progress.json"), {})
         return {"dry_run": True, "sources": {
             name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
+                   else _asana_pending(sub, progress.get(name, {})) if sub.get("kind") == ASANA_KIND
                    else {"chats": sub.get("chats") or [], "body_reads": False,
                          "source_available": sub.get("adapter") == "available"}
                    if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
@@ -1240,17 +1409,21 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                          "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
             for name, sub in _selected_sources(root, source).items()},
             # `status` said 30/30 while the dry run said nothing of it (#1957).
-            "daily_cap": daily_cap(root)}
+            "daily_cap": daily_cap(root), **_notices(root, {})}
     if scheduled:
         return run_scheduled(root, lambda: run_sync(
             root, source=source, with_person=with_person, all_pending=all_pending,
             runner=runner, extractor=extractor, on_batch=on_batch, say=say))
     if all_pending:
+        # The same approval check as one batch, before Asana is asked anything;
+        # then Asana is asked once for the whole backfill, not before every batch.
+        _require_consent(root)
+        collection = _collect_asana(root, source, say)
         records, spent = [], ""
         while True:
             try:
                 record = run_sync(root, source=source, with_person=with_person, runner=runner,
-                                  extractor=extractor)
+                                  extractor=extractor, collection=collection)
             except RemError as error:
                 if CAP_LIMIT not in str(error):
                     raise
@@ -1275,9 +1448,12 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                 "changed": sorted({path for r in records for path in r.get("changed", [])}),
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
                           for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
-                "runs": [r["id"] for r in records]}
-    if not state_path(root, "consent.json").is_file():
-        raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
+                "runs": [r["id"] for r in records], **_notices(root, collection)}
+    _require_consent(root)
+    # The one network step for Asana, before the notebook is locked: a slow Asana
+    # must not hold co rem's lock, and its own source lock keeps two syncs apart.
+    if collection is None:
+        collection = _collect_asana(root, source, say)
     from .sessions import import_sessions
     # Inside the sync's own lock: waiting for it here made a second sync sit for
     # the write wait and then run, instead of saying at once that co rem is busy.
@@ -1292,6 +1468,9 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         from .tidy import tidy
         tidied = tidy(root, lock_held=True)
         selected = _selected_sources(root, source)
+        # A blocked Asana (another account's material, damaged storage) gives the
+        # model nothing; the other sources run as usual.
+        selected = {name: sub for name, sub in selected.items() if name not in collection.get("blocked", ())}
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
@@ -1305,7 +1484,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             # The index the table and thread views read (#2067): after everything this
             # sync wrote, still under the lock, and reported rather than fatal.
             from .store import refresh_safely
-            record = {**record, "store": refresh_safely(root)}
+            record = {**record, "store": refresh_safely(root), **_notices(root, collection)}
             from .people_basics import refresh as refresh_basics
             record["basics_changed"] = refresh_basics(root)
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
@@ -1542,6 +1721,18 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
                 batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
+            elif subscription.get("kind") == ASANA_KIND:
+                if not subscription.get("consented"):
+                    continue    # a newly added project waits for start; _notices says so
+                from .asana import collect_asana
+                from ..useful_tools.asana_export import AsanaStoreError
+                try:
+                    batch = collect_asana(subscription, progress.get(name, {}), max_items - len(items), remaining)
+                except AsanaStoreError as error:
+                    # Damaged saved material is a stop with a fix, not a traceback.
+                    raise RemError(f"Saved Asana material under {subscription.get('root')} cannot be read ({error}). "
+                                   "Move that folder aside and run co rem sync to collect again; "
+                                   "co rem sources remove asana skips Asana meanwhile") from None
             else:
                 batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         except (RemError, OSError, UnicodeError, ProviderCredentialError, RequestError,
