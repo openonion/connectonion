@@ -244,6 +244,7 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
       r.title = 'ConnectOnion'; r.domain = 'connectonion.com';
       r.text = r.text.replace(/^# .*/, '# connectonion.com')
         .replace(/^## Domains\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+      r.text += '\n\n## Facts\n- Website: https://connectonion.com [1]\n';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     # The name heads the record; the domain follows it in the facts line, smaller.
@@ -254,9 +255,9 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
     assert domain.bounding_box()['y'] >= page.locator('.ov-say .ov-name').bounding_box()['y']
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.goto(uri + '#c=orgs')
-    row = page.locator('.ov-row').filter(has_text='ConnectOnion')
-    assert row.locator('.ov-domain').inner_text() == 'connectonion.com'
-    assert row.locator('.ov-domain').is_visible()
+    row = page.locator('.org-table-row').filter(has_text='ConnectOnion')
+    assert row.locator('.c-website a').inner_text() == 'connectonion.com'
+    assert row.locator('.c-website a').is_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -3837,7 +3838,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert row.locator('.c-org').is_visible()
     assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
-    org = page.locator('.ov-list .ov-row').filter(has_text='Fernhill Labs')
+    org = page.locator('.ov-list .org-table-row').filter(has_text='Fernhill Labs')
     assert org.count() == 1
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
@@ -5569,12 +5570,13 @@ def test_org_list_is_a_record_without_today_links_or_waiting_groups(reader, widt
     assert page.evaluate(GREEN) == 0
     assert page.locator(".ov-list .list-today, .ov-grp, .ov-chip.late").count() == 0
     assert "Waiting on you" not in page.locator("#main").inner_text()
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
-    assert page.locator(".ov-tabs button").count() <= 4
+    assert page.locator(".ov-tabs button").count() >= 1
+    assert page.locator(".org-table thead th").count() == 8
     assert page.locator(".ov-find").count() == 1
     page.locator(".ov-find").fill("no such organisation")
-    assert page.locator(".ov-row").count() == 0
+    assert page.locator(".org-table-row").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5614,7 +5616,7 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", 1440, "light")
     page.evaluate("() => { byPath('orgs/fernhill-labs.md').private = true; render(); }", isolated_context=False)
-    row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
+    row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert "Personal · shown only on this Mac" in row.inner_text()
     assert page.locator(".ov-focal").count() == 0
     assert row.locator(".ov-dot, .ov-chip").count() == 0

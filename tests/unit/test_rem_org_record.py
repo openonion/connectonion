@@ -16,29 +16,22 @@ const orgT = text => text, t = text => text;
 
 
 def test_org_list_is_one_contact_order_without_waiting_groups():
-    result = run_js(['orgResults'], DOM + r'''
-      const rows = [{last: '2026-01-01', owed: [{t: {due: '2026-01-02'}}], r: {title: 'Old'}},
-        {last: '2026-11-01', owed: [], r: {title: 'New'}}, {last: '', owed: [], r: {title: 'Unknown'}}];
-      const orgMatches = () => true, orgRow = o => o.r.title;
-      const overdue = () => true, daysSince = () => 0, ORG_RECENT_DAYS = 45;
-      const box = el('div'); orgResults(rows, box);
-      console.log(JSON.stringify(box.children.map(n => ({tag: n.tag, rows: n.children}))));
+    result = run_js(['peopleOrder'], r'''
+      const uiLanguage = 'en', byTwoWay = () => 0;
+      const rows = [{r: {}, keys:{last:'2026-01-01'}}, {r:{}, keys:{last:'2026-11-01'}}, {r:{},keys:{last:null}}];
+      rows.sort(peopleOrder({key:'last'}, true));
+      console.log(JSON.stringify(rows.map(d=>d.keys.last)));
     ''')
-    assert result == [{'tag': 'div', 'rows': ['New', 'Old', 'Unknown']}]
+    assert result == ['2026-11-01', '2026-01-01', None]
 
 
 def test_org_row_shows_relationship_instead_of_an_overdue_task():
-    result = run_js(['orgRow'], DOM + r'''
-      const orgHidden = () => false, orgKind = () => '', orgTile = () => null;
-      const orgName = r => r.title, updatedMarker = () => null, orgFaces = () => null;
-      const orgShapeLine = () => null, href = r => r.path, calendarDate = x => x;
-      const orgRelation = () => 'Research partner', orgProse = x => x;
-      const overdue = () => true, orgChip = (kind, text) => text;
-      const owedWords = () => ({title: 'You owe a report'});
-      console.log(JSON.stringify(orgRow({r: {title: 'Fernhill'}, last: '2026-11-01', people: [],
-        owed: [{t: {due: '2026-01-02'}}]})));
+    result = run_js(['orgTableRow'], r'''
+      const orgHidden = () => false, orgFact = () => '', orgRelation = () => 'Research partner';
+      const orgActivity = () => null, orgWebsite = () => null, orgName = r => r.title;
+      console.log(JSON.stringify(orgTableRow({r:{title:'Fernhill'}, people:[], last:'2026-11-01', pages:[]})));
     ''')
-    assert 'Research partner' in str(result)
+    assert result['summary'] == 'Research partner'
     assert 'Overdue' not in str(result) and 'You owe' not in str(result)
 
 

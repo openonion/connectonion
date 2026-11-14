@@ -32,10 +32,10 @@ def test_untouched_org_list_and_page_have_no_task_projection(org_reader, width, 
 def test_org_list_opens_in_recent_contact_order(org_reader, width):
     page = org_reader(width, language='en')
     page.evaluate("location.hash = 'c=orgs'", isolated_context=False)
-    page.locator('.ov-list .ov-row').first.wait_for()
+    page.locator('.ov-list .org-table-row').first.wait_for()
     page.locator('.ov-more').evaluate_all('buttons => buttons.forEach(b => b.click())')
-    actual = page.locator('.ov-row').evaluate_all('rows => rows.map(r => r.getAttribute("href"))')
-    expected = page.evaluate("""orgRows().sort((a,b) => b.last.localeCompare(a.last) || a.r.title.localeCompare(b.r.title)).map(o => href(o.r))""", isolated_context=False)
+    actual = page.locator('.org-table-row').evaluate_all('rows => rows.map(r => r.dataset.href)')
+    expected = page.evaluate("""orgRows().map(orgTableRow).sort((a,b) => b.last.localeCompare(a.last) || a.r.title.localeCompare(b.r.title)).map(o => href(o.r))""", isolated_context=False)
     assert actual == expected
 
 

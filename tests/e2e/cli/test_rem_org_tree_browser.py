@@ -128,28 +128,29 @@ def test_org_tree_expands_and_collapses_from_the_keyboard(org_reader):
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_org_list_folds_units_into_their_organisation_and_shows_its_shape(org_reader, width):
+def test_org_list_folds_units_into_their_organisation_and_expands_indented_rows(org_reader, width):
     page = org_reader(width, language="en")
     page.evaluate("() => { location.hash = 'c=orgs'; }", isolated_context=False)
-    page.locator(".ov-list .ov-row").first.wait_for()
+    page.locator(".ov-list .org-table-row").first.wait_for()
     tops = page.evaluate("inCategory('orgs').filter(r => !r.parent).length", isolated_context=False)
     assert page.locator(".ov-list h1").inner_text() == f"{tops} organisations"
-    rows = page.locator(".ov-list .ov-row")
+    rows = page.locator(".ov-list .org-table-row")
     page.locator(".ov-more").evaluate_all("buttons => buttons.forEach(b => b.click())")
     assert rows.filter(has_text="Kestrel squad").count() == 0 and rows.filter(has_text="Fieldwork studio").count() == 0
     uni = rows.filter(has_text="Fernhill University")
-    shape = uni.locator(".ov-shape")
-    assert shape.is_visible()
-    # The icicle: one band per level, one cell per branch sized by the people known there.
-    first = shape.locator(".ov-band").first.locator("i")
-    assert first.count() == 4  # three branches and the people whose unit is not known
-    widths = first.evaluate_all("cells => cells.map(c => c.getBoundingClientRect().width)")
-    assert widths[0] == max(widths), widths
-    assert shape.locator(".ov-band").count() == 2
-    assert "12 units · 12 people" in uni.inner_text()
-    # An organisation with no units draws no shape.
-    assert rows.filter(has_text="Fernhill Labs").locator(".ov-shape").count() == 0
+    toggle = uni.locator('.org-disclosure')
+    assert toggle.get_attribute('aria-expanded') == 'false'
+    toggle.click()
+    assert rows.filter(has_text='Fieldwork studio').count() == 1
+    assert rows.filter(has_text='Fieldwork studio').locator('.org-table-name').evaluate('e => parseInt(e.style.paddingLeft)') == 18
+    toggle.click()
+    assert rows.filter(has_text='Fieldwork studio').count() == 0
+    assert rows.filter(has_text="Fernhill Labs").locator('.org-disclosure').count() == 0
     # A unit's name still finds its organisation.
     page.locator(".ov-find").fill("Kestrel")
-    assert rows.count() == 1 and "Fernhill University" in rows.first.inner_text()
+    assert rows.filter(has_text="Fernhill University").count() == 1
+    unit = rows.filter(has_text="Kestrel squad")
+    assert unit.count() == 1
+    assert unit.locator('.org-table-name').evaluate('e => parseInt(e.style.paddingLeft)') > 0
+    assert rows.filter(has_text="Fernhill Labs").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

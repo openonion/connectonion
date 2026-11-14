@@ -36,7 +36,7 @@ TREE_DOM = r'''
 '''
 
 
-def test_same_name_private_org_does_not_join_public_obligations_or_people():
+def test_same_name_private_org_does_not_join_public_people_or_project_tasks():
     result = run_js(['orgRows'], r'''
       const orgUnitNames = () => [];
       const publicOrg = {path: 'orgs/public.md', title: 'Fernhill', people: ['people/public.md']};
@@ -44,13 +44,13 @@ def test_same_name_private_org_does_not_join_public_obligations_or_people():
       const inCategory = () => [publicOrg, privateOrg], orgName = r => r.title;
       const orgHidden = r => !!r.private, byPath = path => path ? ({path}) : null;
       const orgMembers = r => r.people.map(byPath);
-      const orgOwed = r => [{row: {key: r.path}, text: r.private ? 'private promise' : 'public promise'}];
+      const orgOwed = () => { throw new Error('The directory must not collect tasks'); };
       const owedFirst = () => 0, known = () => ({last: '2026-11-08'}), orgLast = () => '';
-      console.log(JSON.stringify(orgRows().map(row => ({path: row.r.path, keys: row.owed.map(e => e.row.key), people: row.people.map(p => p.path)}))));
+      console.log(JSON.stringify(orgRows().map(row => ({path: row.r.path, tasks: 'owed' in row, people: row.people.map(p => p.path)}))));
     ''')
     assert result == [
-        {'path': 'orgs/public.md', 'keys': ['orgs/public.md'], 'people': ['people/public.md']},
-        {'path': 'orgs/private.md', 'keys': ['orgs/private.md'], 'people': ['people/private.md']},
+        {'path': 'orgs/public.md', 'tasks': False, 'people': ['people/public.md']},
+        {'path': 'orgs/private.md', 'tasks': False, 'people': ['people/private.md']},
     ]
 
 
