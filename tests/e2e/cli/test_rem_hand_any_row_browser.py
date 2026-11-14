@@ -129,15 +129,18 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)
         zh = _row(page, "Fernhill Labs contract draft")
         assert " ".join(zh.locator(".handoff-line").inner_text().split()) == "标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 ▾"
-        zh.locator(".talk-menu > summary").click()
-        menu = zh.locator(".talk-choices")
+        zh.get_by_text("更多 ▾", exact=True).click()
+        zh.get_by_text("聊一聊 ▾", exact=True).click()
+        menu = zh.locator(".strip-more .talk-menu > .talk-choices")
         assert menu.evaluate("node => document.elementFromPoint(node.getBoundingClientRect().left + 8, node.getBoundingClientRect().bottom - 8)?.closest('.talk-choices') === node")
         box = zh.bounding_box()
         page.screenshot(path=str(Path(SHOTS) / "row-zh-menu.png"),
                         clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"] + 90})
         page.evaluate("() => { setInterfaceLanguage('en'); render(); }", isolated_context=False)
         row, line = _row(page, "Fernhill Labs contract draft"), _row(page, "Fernhill Labs contract draft").locator(".handoff-line")
-    line.locator(".talk-menu > summary").click()
+    # Talk is nested under More; both disclosures share the menu styling.
+    line.get_by_text("More ▾", exact=True).click()
+    line.get_by_text("Talk it over ▾", exact=True).click()
     row.get_by_role("button", name="Talk with Claude about this").click()
     talk = row.locator(".talk")
     talk.locator(".talk-turn.agent").first.wait_for(timeout=30000)
