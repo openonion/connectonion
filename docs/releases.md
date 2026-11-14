@@ -33,7 +33,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc11**: in the REM reader, People opens on a sortable table, Ignore is a word on
+Release candidate **1.9.6rc12**: `co whatsapp` connects again on a fresh install (neonize 0.10.0;
+WhatsApp refused the old client), reads a group's history when the account is added to it, and
+`co whatsapp download <id>` fetches older media. See [1.9.6rc12 notes](releases/1.9.6rc12.md).
+
+Before it, release candidate **1.9.6rc11**: in the REM reader, People opens on a sortable table, Ignore is a word on
 every open row, Agenda is a calendar of your saved events, and one button translates every page. See
 [1.9.6rc11 notes](releases/1.9.6rc11.md).
 
@@ -80,7 +84,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc11'
+python -m pip install --upgrade 'connectonion==1.9.6rc12'
 ```
 
 ## Previous stable

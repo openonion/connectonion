@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc11
+## Current Version: 1.9.6rc12
+
+Release candidate 1.9.6rc12 for 1.9.6: `co whatsapp` links again on a fresh install. The pinned
+neonize 0.4.3 was refused by WhatsApp at connect ("Client outdated (405)"); the pin is now 0.10.0,
+which opens existing sessions without re-pairing, and a 405 now stops the listener with the upgrade
+command. A group's history is read when the account is added to it, and `co whatsapp download <id>`
+fetches older media (#3028, #2853). `co ai`'s modes and messages say what they do (#2849). Stable
+remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc12.md).
+
+- 1.9.6rc12 (WhatsApp connects again; group history; download older media).
+
+### Previous candidate: 1.9.6rc11
 
 Release candidate 1.9.6rc11 for 1.9.6: the REM reader's People page opens on a sortable table (#3017);
 with rc10's unannounced REM changes now described — Ignore as a word on every open row and honest
