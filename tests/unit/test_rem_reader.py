@@ -4534,26 +4534,20 @@ def test_the_night_chart_window_never_ends_before_it_starts():
     assert result['phone'] == 30 and result['desk'] == 3
 
 
-def test_an_org_counts_only_what_today_counts_as_waiting_on_you():
-    """Sprint 15: the org page said 16 things while Today's header said less. The org's number is Today's
-    waiting-on-you rule kept to its own rows: done, quiet, stale and answered items have left Today."""
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['orgWaiting', 'waitingOnYou'])
-    result = _run_reader_js(functions + r'''
-      const r = {path: 'people/mara-ostrowski.md'}, other = {path: 'people/tomas-reyes.md'};
-      const doneKey = entry => entry.r.path + '\n' + entry.t.text;
-      const make = (text, extra = {}, page = r) => ({r: page, t: {text, dir: 'mine', ...extra}});
-      const entries = [make('addendum'), make('export', {dir: 'theirs'}), make('quiet', {quiet: true}), make('stale'),
-        make('done'), make('held'), make('elsewhere', {}, other), make('merged copy')];
-      entries[7].members = [make('member of org row')];
-      const threadEntries = () => entries, isDone = entry => entry.t.text === 'done', staleEntry = entry => entry.t.text === 'stale';
-      const threadDraft = entry => entry.t.text === 'held' ? {status: 'held'} : null;
-      const answered = entry => ['held', 'sent'].includes(threadDraft(entry)?.status);
-      const row = text => ({row: {key: 'people/mara-ostrowski.md\n' + text}});
-      const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'member of org row'].map(row);
-      console.log(JSON.stringify(orgWaiting({owed}).map(entry => entry.t.text)));
+def test_an_org_record_never_counts_today_even_with_mixed_obligations():
+    """#3036 supersedes the quiet Today count: the organisation stays a record."""
+    function = re.search(r'function orgStage\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
+      const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
+      const orgOpening = () => 'facts', orgTree = () => 'tree';
+      const orgTodayLink = () => { throw Error('Organisation requested Today counts'); };
+      const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'merged copy'];
+      console.log(JSON.stringify(orgStage({r: {}, people: [], owed})));
     ''')
-    assert result == ['addendum', 'merged copy']
+    assert 'tree' in str(result) and 'facts' in str(result)
+    assert 'Today' not in str(result)
 
 
 def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_nothing():

@@ -1120,10 +1120,6 @@ pinned to that edge: it comes into view with the draft.
   Graph labels are cut by width, so a Chinese title stays inside its card.
   **All records**' **Most connected** leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
-- **An organisation's link to Today**, **N things in Today involve X**, counts
-  what Today counts: the items waiting on you (not done, not quiet, not a
-  stale promise, not a reply already sent or held) whose rows belong to the
-  organisation or its units, so it never exceeds Today's own number.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1150,7 +1146,47 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations and Projects** open as a sheet: one row per page, the facts
+- **Organisations** opens as a full-width sortable table, newest contact first.
+  The default columns show a local logo or monogram, name, kind, what they do
+  or mean to you, website, location, people known there, activity (messages in
+  90 days), and last contact. Search and kind filters follow the reader’s
+  language; activity stays a readable message count at row height. Unknown
+  facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
+  separately from People and can add first contact, legal entity and parent.
+  Blanks sort last in either direction. On a phone rows become cards.
+  Websites open in a new tab; when Website is Unknown, a contact's business
+  email domain can supply a link marked **Derived** (free mail is excluded).
+  A `Logo:` fact can name a notebook-relative PNG, JPEG, GIF or WebP; the reader
+  embeds it in both live data and the self-contained snapshot, without fetching
+  images from the network. Missing logos use monograms.
+  Units stay folded under their parent until its disclosure is expanded; a
+  unit whose parent is missing stays findable in the list. Search also finds
+  organisations by their unit names.
+  The book page names all contacts when there are at most four; otherwise it
+  names the four most recent and says so. Business, location and website have
+  separate labels, and the website is a link.
+  An organisation page shows an indented, collapsible tree: organisation →
+  units, courses or teams → people, with most recently active branches first.
+  People keep their role in each unit;
+  those without a known unit are folded under **Department not known yet**.
+  Click beside a name to expand or collapse; the name opens its record. Tab
+  enters the tree once, arrows move between rows, Right expands or enters a
+  branch, Left collapses or returns to its parent, Home/End move to the first/last
+  visible row, Space toggles and Enter opens the selected record.
+  The breadcrumb comes first on a phone. The tree is the people directory;
+  repeated contact lists and the local graph are omitted from this record.
+  A person with several unit memberships appears once, with those roles together.
+  The page reads as an article in one centred reading column: opening sentences
+  give its summary, relationship, people known and first/latest contact dates.
+  The tree is followed by the organisation's own dated History as prose milestones,
+  connections as text links, and facts and sources at the foot. Correspondents'
+  activity is not the article's body; **Full memory and sources** keeps the page's
+  complete record reachable. **View sources →** at the top opens citations;
+  **Read full memory →** at the foot opens the complete record. There are no update badges, contact charts,
+  freshness dots, branch bars or questions asking for action on this page.
+  Organisation lists and pages carry no
+  waiting groups, task chips or Today counts; to-dos live in Today.
+- **Projects** open as a sheet: one row per page, the facts
   in columns, a sticky header, sort on any shown column, filters (*Something
   open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
   opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
@@ -1220,9 +1256,9 @@ pinned to that edge: it comes into view with the draft.
   updated is noted in the Full memory and sources header. An organisation is
   private only when its title carries `[personal]`/`[sensitive]` or its Kind
   is personal. A labelled passage in its body shows with its label in the
-  first line, What they do, Lately and the full memory, and hides alone when
-  labelled passages are hidden, as on a person's page; the time line's ticks
-  never carry one. A labelled membership (the org's own roster line, or a
+  opening, facts, dated milestones and full memory, and hides alone when
+  labelled passages are hidden, as on a person's page.
+  A labelled membership (the org's own roster line, or a
   Company, Unit or Role in unit line on the person's page) places nobody in
   the organisation and draws no edge on the map. A project's folder path
   stays in its full memory, never as a fact on the page. A session summary
