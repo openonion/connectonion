@@ -13238,9 +13238,15 @@ function localGlyph(n, x, y, size) {
 // A first-ring name sits under its mark; a second-ring name leans away from the middle and shows only when lit.
 function localName(n, p, size, far, quiet) {
   if (n.private) return null;
-  const c = Math.cos(p.a), s = Math.sin(p.a), half = size / 2, side = far && Math.abs(c) > .1;
-  return { id: n.id, text: graphShort(graphTitle(n), far ? 16 : 24), px: far ? 11 : 13, mx: p.x, my: p.y, half, far, quiet, rank: graphDegree(n),
-    anchor: side ? (c > 0 ? "start" : "end") : "middle", x: side ? p.x + Math.sign(c) * (half + 6) : p.x, y: side ? p.y + 4 : far && s < 0 ? p.y - half - 7 : p.y + half + 15 };
+  const half = size / 2;
+  const name = { id: n.id, text: graphShort(graphTitle(n), far ? 16 : 24), px: far ? 11 : 13,
+    mx: p.x, my: p.y, half, far, quiet, rank: graphDegree(n), anchor: "middle", x: p.x, y: p.y + half + 15 };
+  const c = Math.cos(p.a);
+  // An outer mark's name sits beside it, away from the middle, unless the mark is straight above or below.
+  if (far && Math.abs(c) > .1) return { ...name, anchor: c > 0 ? "start" : "end", x: p.x + Math.sign(c) * (half + 6), y: p.y + 4 };
+  // One straight above has its name over it, so the name points away from the middle too.
+  if (far && Math.sin(p.a) < 0) return { ...name, y: p.y - half - 7 };
+  return name;
 }
 // A name's width without a browser: about .55em a letter, a full em for a wide (CJK) character.
 function localWidth(text, px) {
@@ -13268,7 +13274,7 @@ function localLabel(name) {
   return svgEl("text", { class: name.quiet ? "quiet" : "", "text-anchor": name.anchor, x: name.x.toFixed(1), y: name.y.toFixed(1) }, [document.createTextNode(name.text)]);
 }
 function localMark(n, p, size, far, says, name) {
-  const at = far ? { class: "far", role: "img" } : { class: "near", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) };
+  const at = far ? { class: "far", role: "img" } : { class: "near", href: localHref(n) };
   return svgEl(far ? "g" : "a", { ...at, "data-id": n.id, "aria-label": says }, [
     svgEl("circle", { class: "hit", cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: far ? 11 : 14 }),
     localGlyph(n, p.x, p.y, size), name ? localLabel(name) : null]);
@@ -13277,7 +13283,7 @@ function localMark(n, p, size, far, says, name) {
 function localCentre(n, p) {
   const mark = n.k === "people" ? svgEl("text", { x: p.x, y: p.y + 4, "text-anchor": "middle" }, [document.createTextNode(face(graphTitle(n)).textContent)])
     : localGlyph(n, p.x, p.y, LOCAL.mark);
-  return svgEl("a", { class: "centre", href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), "data-id": n.id, "aria-label": graphTitle(n) }, [
+  return svgEl("a", { class: "centre", href: localHref(n), "data-id": n.id, "aria-label": graphTitle(n) }, [
     svgEl("circle", { cx: p.x, cy: p.y, r: LOCAL.face / 2 }), mark]);
 }
 // Which link explains a line, as data. An outer-ring record is reached through first-ring records. A first-ring
@@ -13294,15 +13300,27 @@ function localReason(relations, id, reached, page) {
 // The card for one mark: Related pages' own entry for a first-ring record, worded and cited as it is there; who an
 // outer-ring record is and what it is reached through; the name alone for a private or unwritten record.
 function localWhy(r, n, far) {
-  const open = n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id), kind = graphT(GRAPH_ONE[n.k]);
+  const open = localHref(n), kind = graphT(GRAPH_ONE[n.k]);
   const plain = words => el("div", { class: "relation-entry" }, [el("a", { class: "relation-card", href: open }, [
     el("span", { class: "relation-kind", text: kind }), el("strong", { text: graphTitle(n) }), words ? el("span", { class: "relation-basis", text: words }) : null])]);
   const why = graphHidden(n) || !n.r ? null : localReason(r.relations || [], n.id, far.find(f => f.n.id === n.id), byPath);
-  const entry = !why ? plain("")
-    : why.via ? plain([graphRole(n), graphT("Through {names}", { names: why.via.map(id => graphTitle(graphModel().byId.get(id))).join("、") })].filter(Boolean).join(" · "))
-    : relationCard({ ...localizedRelation(why.link, r.path), path: n.id, ...(why.sessions ? { kind: graphT("Through {n} sessions", { n: why.sessions }) } : {}) }, r.path);
+  let entry;
+  if (!why) entry = plain("");
+  else if (why.via) entry = plain(localThrough(n, why.via));
+  else {
+    const relation = { ...localizedRelation(why.link, r.path), path: n.id };
+    if (why.sessions) relation.kind = graphT("Through {n} sessions", { n: why.sessions });
+    entry = relationCard(relation, r.path);
+  }
   if (graphLast(n)) entry.querySelector(".relation-kind").append(" · " + fmtDate(graphLast(n)));
   return entry;
+}
+function localThrough(n, via) {
+  const names = via.map(id => graphTitle(graphModel().byId.get(id))).join("、");
+  return [graphRole(n), graphT("Through {names}", { names })].filter(Boolean).join(" · ");
+}
+function localHref(n) {
+  return n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id);
 }
 // The same words for a screen reader, on the mark itself, name first; a passage labelled private is left out.
 function localSays(entry) {
