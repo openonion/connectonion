@@ -31,10 +31,13 @@ def test_plugin_injects_at_iteration_boundary_and_can_extend_a_final_iteration(t
     agent.input("Begin")
 
     assert len(calls) == 2
+    assert any("contains A" in (message.get("content") or "") for message in calls[0])
+    assert any("contains B" in (message.get("content") or "") for message in calls[1])
+    assert all("internal" not in message for call in calls for message in call)
     assert any(message.get("internal") and "contains A" in message["content"]
-               for message in calls[0])
+               for message in agent.current_session["messages"])
     assert any(message.get("internal") and "contains B" in message["content"]
-               for message in calls[1])
+               for message in agent.current_session["messages"])
     assert [entry["watch_event_ids"] for entry in agent.current_session["trace"]
             if entry.get("watch_event_ids")] == [["first"], ["second"]]
 
@@ -74,7 +77,11 @@ def test_batch_limit_resets_for_the_next_turn():
     agent.input("Second turn")
 
     assert len(calls) == 2
-    assert any("First observation" in message["content"] for message in calls[0]
-               if message.get("internal"))
-    assert any("Second observation" in message["content"] for message in calls[1]
-               if message.get("internal"))
+    assert any("First observation" in (message.get("content") or "") for message in calls[0])
+    assert any("Second observation" in (message.get("content") or "") for message in calls[1])
+    assert all("internal" not in message for call in calls for message in call)
+    session = agent.current_session["messages"]
+    assert any(message.get("internal") and "First observation" in message["content"]
+               for message in session)
+    assert any(message.get("internal") and "Second observation" in message["content"]
+               for message in session)
