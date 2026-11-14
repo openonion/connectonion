@@ -55,22 +55,29 @@ The same text enters the outer model context and the first provider result's
 the requester receives the `host_notice` event even on a native Host without
 an outer model. Opening a thread without a task emits no notice or run record.
 
-Once per requester turn, the first qualifying action appends an `auto` entry to the existing approvals record,
+Every qualifying action (each tool call and each provider run) appends its own `auto` entry to the existing approvals record,
 including requester identity, tool, bounded/redacted task description, mode, UTC time, session
 and outcome. These audit entries also apply when ordinary logging is disabled.
-After that action, the Host's existing Rich console tells the operator what ran,
+After each action, the Host's existing Rich console tells the operator what ran,
 how to inspect `co approvals --who <address>`, and how to revoke access with
 `co trust block <address> --co-dir <host-trust-directory>`. The printed command
 targets the lists the running Host reads, including the selected identity's
 lists for `co ai`. This is an operator console notification, not a message to
-an admin inbox. Revocation waits for the requester's next message (frame).
-At that point the Host rejects the frame, ends that connection's logical
-session, and requests interruption of that requester's running turns. Until the next frame arrives,
-a running turn can continue; completed external effects cannot be undone.
+an admin inbox. A connected requester's next message (frame) after revocation
+is rejected: the Host ends that connection's logical session and requests
+interruption of that requester's running turns.
+The Host also re-checks the requester's trust before every tool or model
+step of their running turn, whether or not they are still connected, and
+stops the turn at the first step after revocation. A step already running
+(for example one Codex run) is cut short only while the requester is still
+connected, at their next frame; otherwise it finishes and the turn stops
+before the next step.
+Completed external effects cannot be undone.
 The same context behavior applies to Claude Code
 automatic profiles, Full access, and ordinary Auto-approved write/command tools.
-The summary outcome belongs to the first qualifying action; detailed `turn`
-entries retain each tool outcome, including later failures.
+Each `auto` entry carries the outcome of its own run, including later failures.
+In Auto, a contact's Codex runs shell commands without prompts inside a sandbox
+that can read the whole disk and has no network.
 
 Admin/local runs, Read only mode, and read-only or manual provider profiles do not trigger this notice. Existing manual approval gates and
 unexpected callback refusals remain in force. Selecting Codex **Ask for approval**

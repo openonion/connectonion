@@ -21,7 +21,7 @@ def add_auto_notice_to_model(session: dict) -> None:
 
 
 def begin_auto_run(agent, tool: str, task_summary: str) -> dict | None:
-    """Give context for hosted non-admin work allowed without asking."""
+    """Give context for each hosted non-admin run allowed without asking."""
     from .mode import READ_ONLY, mode_of
 
     if agent is None:
@@ -30,10 +30,6 @@ def begin_auto_run(agent, tool: str, task_summary: str) -> dict | None:
     requester = session.get("requester") or {}
     if not requester.get("address") or requester.get("level") == "admin" or mode_of(session) == READ_ONLY:
         return None
-    turn = session.get("turn", 0)
-    if session.get("_host_auto_run_turn") == turn:
-        return None
-    session["_host_auto_run_turn"] = turn
     directory = agent.record_dir or agent.logger.co_dir
     if directory is not None:
         Path(directory).mkdir(parents=True, exist_ok=True)
@@ -73,7 +69,8 @@ def finish_auto_run(agent, context: dict | None, outcome: str) -> None:
         f"Host Auto: {context['who']} ran {context['tool']} — {context['task_summary']} "
         f"(mode={context['mode']}, {outcome}). Review: co approvals --who {address}. "
         f"Revoke access on this Host: co trust block {address}{target}. "
-        "Revocation takes effect on the requester's next message (frame); "
-        "a running turn is stopped then.", markup=False, soft_wrap=True,
+        "Revocation stops the requester's running turn before its next tool or model step, "
+        "connected or not; a step already running finishes unless they are still connected.",
+        markup=False, soft_wrap=True,
     )
 
