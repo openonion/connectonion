@@ -104,9 +104,9 @@ def test_a_person_has_two_rings_and_one_with_many_links_keeps_to_one(reader):
     page.locator(".gx-rings-svg a.near").nth(6).wait_for()
     assert page.locator(".gx-rings-svg g.far").count() == 0
     assert page.locator(".gx-rings-foot > span").first.inner_text() == "7 directly linked"
-    # An organisation's page keeps the local graph it had (#2992 will redraw it as a tree).
+    # An organisation's page is left to its own design (#2992, #3036): the person's widget is not drawn there.
     page.goto(page.url.split("#")[0] + "#r=orgs%2Ftern-yard.md")
-    page.locator(".gx-local-svg").first.wait_for()
+    page.locator("h1", has_text="Tern Yard").wait_for()
     assert page.locator(".gx-rings").count() == 0
 
 
