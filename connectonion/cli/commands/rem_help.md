@@ -713,10 +713,11 @@ Back:     co rem --help
 ## co rem sources
 
 ```
-Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+Show, connect, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
+whatsapp and selected Jira imports. Showing is read-only.
 
 Usage:    co rem sources
+          co rem sources connect jira
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
           co rem sources remove NAME [--chat ID]
 Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
@@ -727,9 +728,29 @@ Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
 
 Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
           remove stops future reads; pages already written stay.
-Subcommands: co rem sources add --help, co rem sources remove --help
+Subcommands: co rem sources connect --help, co rem sources add --help, co rem sources remove --help
 Next:     co rem sync --dry-run
 Back:     co rem --help
+```
+
+## co rem sources connect
+
+```
+Changes local settings. Choose a Jira account and issue scope in a local terminal;
+no issue bodies are imported during connection.
+
+Usage:    co rem sources connect jira [--config FILE]
+
+Example:  co rem sources connect jira
+          --config FILE supplies a YAML/JSON scope for scripts; it contains no credentials.
+
+Without --config, a local terminal guides credential setup and numbered scope choices.
+q cancels selection. The connection verifies account and scope metadata, then saves
+a disabled-for-reading configuration. Review and approve it in REM init before any
+issue body is read.
+
+Next:     co rem init --no-start
+Back:     co rem sources
 ```
 
 ## co rem config
@@ -835,7 +856,7 @@ are read later by sync, after co rem start has recorded your approval.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
-          NAME is one of: gmail, outlook, codex, claude-code, whatsapp
+          NAME is one of: gmail, outlook, codex, claude-code, whatsapp, jira
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
@@ -844,6 +865,7 @@ Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --since    read at least this far back; a wider window is left alone
           --only     with --since: read only that far back, narrowing the window
           --force    with --only: accept that unread older material is dropped
+                    Jira uses selected local imports; do not combine jira with these options.
 Next:     co rem sync --dry-run
 Back:     co rem sources --help
 ```

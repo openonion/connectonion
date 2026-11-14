@@ -111,6 +111,11 @@ HANDLER = None   # the handler prints its own, data-dependent tip (e.g. "co gmai
 # Audited 2026-09-08 over every command: which ended on a URL, a file path,
 # `✓ done.` or nothing. Everything below that is not HANDLER was one of those.
 NEXT = {
+    "co jira verify": HANDLER,
+    "co jira projects": HANDLER,
+    "co jira issues": HANDLER,
+    "co jira sync": HANDLER,
+    "co jira sync-inc": HANDLER,
     # -- top level --
     "co ai": HANDLER,                 # the answer is the output
     "co asr": HANDLER,                # transcript is the answer; failed/partial results name recovery

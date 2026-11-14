@@ -79,7 +79,7 @@ def claude_projects_root() -> Path:
 DEFAULT_LOOKBACK_DAYS = 60
 MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, "jira")
 
 
 def subscriptions(root: Path) -> dict:
@@ -109,6 +109,9 @@ def subscriptions(root: Path) -> dict:
                      else "waiting for co whatsapp listen"},
     }
     defaults.update(saved)
+    defaults.setdefault("jira", {"id": "jira", "kind": "jira", "root": str(root.resolve() / "docs/jira"),
+                                "enabled": False, "consented": False, "adapter": "available",
+                                "since": None})
     return defaults
 
 
@@ -178,6 +181,11 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if name == "jira" and enabled:
+            from .jira_imports import identity
+            declared = identity(root)
+            if declared != sources[name].get("import_identity"):
+                sources[name].update(import_identity=declared, consented=False)
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -247,6 +255,8 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if name == "jira":
+            raise RemError("Jira reads selected local imports, with version deduplication; --since/--only do not apply")
         if name not in sources:
             raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
@@ -945,12 +955,18 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
+        elif source.get("kind") == "jira":
+            state = "will read selected local Jira imports; no remote polling"
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
+        if source.get("remote"):
+            sources[name]["remote"] = source["remote"]
+        if source.get("kind") == "jira":
+            sources[name]["import_identity"] = source.get("import_identity")
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -1528,6 +1544,8 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         if len(items) >= max_items or remaining <= 0:
             break
         try:
+            from .remote_sources import refresh
+            refresh(root, subscription)
             if subscription.get("kind") in MAIL_KINDS:
                 try:
                     client = mail_client(subscription["kind"])
@@ -1538,6 +1556,14 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                     raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
                 batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
                                      remaining, client, only=with_person)
+            elif subscription.get("kind") == "jira" and not with_person:
+                from .jira_imports import collect_jira
+                # One issue concerns at most its project, reporter and assignee.
+                # Keep every target inside the existing per-page turn budget.
+                batch = collect_jira(root, subscription, progress.get(name, {}), 1, remaining)
+                if any(not Notebook(root).exists(target) for item in batch.items
+                       for target in item.get("target_records", [])):
+                    raise RemError("New Jira identities need mapping; run `co rem init --no-investigate --no-start` and retry sync; progress preserved")
             elif with_person:
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
@@ -1636,9 +1662,17 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     elif runner is None or runner is run_stage:
         from .leads import cooling, nothing_new, page_leads, project_writer_pages
         found = page_leads(Notebook(root), items)
+        if kind == "jira":
+            current = [lead for lead in found if nothing_new(Notebook(root), lead, items)]
+            waiting = [lead for lead in found if lead not in current]
+            blocked = project_writer_pages(Notebook(root), waiting) + cooling(root, waiting)
+            if blocked:
+                raise RemError("Jira target pages are cooling or owned by the project writer; progress preserved. "
+                               "Wait for cooling to expire or use `co rem investigate PAGE` before retrying sync")
         writer, resting = project_writer_pages(Notebook(root), found), cooling(root, found)
         passed = writer + resting
-        current = [lead for lead in found if lead not in passed and nothing_new(Notebook(root), lead, items)]
+        current = [lead for lead in found if (kind == "jira" or lead not in passed)
+                   and nothing_new(Notebook(root), lead, items)]
         leads = [lead for lead in found if lead not in current + passed][:PAGES_PER_BATCH]
         record.update(**({"for_project_writer": writer} if writer else {}), **({"cooling": resting} if resting else {}))
     if current:
@@ -1651,7 +1685,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         write_json(path, record)
         return {"done": True, "record": record}
     room = daily_cap(root)["remaining"] - extract_calls
-    if room < 1:
+    if room < (max(1, len(leads)) if kind == "jira" else 1):
         cap = daily_cap(root)
         reason = (f"{CAP_LIMIT} ({cap['used']} of {cap['limit']} used today; this batch needs "
                   f"{extract_calls + 1}); source progress was not advanced. The count resets "

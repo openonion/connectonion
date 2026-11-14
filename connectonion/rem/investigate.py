@@ -1010,6 +1010,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     if domains:
         coverage.append(f"{len(left_out)} notice or owner-only messages on the domain left out")
     from .chat import CHAT_KINDS, collect_chat
+    jira = subscriptions.get("jira", {})
+    if jira.get("enabled") and jira.get("consented") and archive_root is not None:
+        from .jira_imports import investigation_items
+        picked = investigation_items(archive_root, jira, record, start, end)
+        items.extend(picked)
+        coverage.append(f"jira: selected local snapshots for this identity in window, {len(picked)} read; no remote polling")
+    elif jira:
+        coverage.append("jira: disabled or waiting for approval; not searched")
     for name, sub in subscriptions.items():
         chat = sub.get("kind") in CHAT_KINDS
         if sub.get("kind") not in KINDS and not chat:
