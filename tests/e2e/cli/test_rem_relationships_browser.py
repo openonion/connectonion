@@ -76,6 +76,12 @@ def mark(page, name):
     return page.locator(f'.gx-rings-svg [aria-label^="{name}."]')
 
 
+def point(page, name):
+    """Move the pointer onto a mark's own circle, as a person does (an outer-ring mark is not a link to hover)."""
+    box = mark(page, name).locator(".hit").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+
 def lit(page):
     return sorted(label.split(".")[0] for label in page.locator(".gx-rings-svg [data-id].on").evaluate_all("marks => marks.map(a => a.getAttribute('aria-label'))"))
 
@@ -159,7 +165,7 @@ def test_a_project_reached_only_through_sessions_says_how_many(reader):
 
 def test_a_mark_in_the_outer_ring_names_what_it_is_reached_through(reader):
     page = reader(IDA)
-    mark(page, "Sol Marek").hover()
+    point(page, "Sol Marek")
     card = page.locator(".gx-rings-card")
     card.locator("strong").wait_for()
     assert card.locator("strong").inner_text() == "Sol Marek"

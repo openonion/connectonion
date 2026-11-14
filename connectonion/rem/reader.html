@@ -2714,7 +2714,7 @@
   /* ---- a person's relationships: two rings, lit by pointer, focus or tap, with a card that says why ---- */
   /* A page's own svg rules (.r4 svg strokes every icon) must not reach the marks: each part names its paint below. */
   .gx .gx-rings-svg { display: block; width: 100%; height: auto; overflow: visible; fill: none; stroke: none; }
-  .gx-attach.gx-inline .gx-rings { width: min(100%, 372px); }
+  .gx-attach.gx-inline .gx-rings { width: min(100%, 280px); }
   .gx-rings-lines line { stroke: var(--rule); stroke-width: 1; }
   .gx-rings-lines line.topic { stroke: var(--pencil); }
   /* Marks are N3's record icons, filled in the second ink; the outer ring is lighter and nameless until lit. */
@@ -13161,10 +13161,11 @@ const LOCAL_GLYPH = {
   knowledge: { d: "M12 5a7 7 0 1 1 0 14a7 7 0 1 1 0-14z", s: 1, c: 0 },
   other: { d: "M12 8.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", s: 1, c: 0 },  // skills, decisions, sessions
 };
-// mark, far and face are ink heights in px; width is the relationships widget's inner width; a person with at most
+// mark, far and face are ink heights in px; width is the picture's width in viewBox units, close to the rail cell it
+// is shown in (266px at 1280–1680, 318px on a phone), so CSS scales it by about 1 and names stay 12–15px; a person with at most
 // `rings` direct links gets the outer ring, which holds at most `second` records. On a notebook REM wrote, people had
 // four to eleven direct links; past four the first ring is new to the page, and two rings only crowd it.
-const LOCAL = { mark: 16, far: 10, face: 36, width: 372, rings: 4, second: 8 };
+const LOCAL = { mark: 16, far: 10, face: 36, width: 280, rings: 4, second: 8 };
 function graphRings(r) {
   const model = graphModel(), centre = model.byId.get(r.path);
   const head = () => el("h4", { text: graphT("Local graph") });
@@ -13254,11 +13255,11 @@ function localPlace(names, W, marks = []) {
     if (left >= 0 && left + w <= W) return { ...name, w };
     return { ...name, w, anchor: "middle", y: name.my + name.half + 15, x: Math.min(W - w / 2, Math.max(w / 2, name.mx)) };
   });
-  const boxes = marks.map(m => ({ l: m.x - m.r, r: m.x + m.r, t: m.y - m.r, b: m.y + m.r }));
+  const boxes = [], covers = (box, m) => Math.hypot(m.x - Math.max(box.l, Math.min(m.x, box.r)), m.y - Math.max(box.t, Math.min(m.y, box.b))) < m.r;
   for (const name of out.filter(name => !name.far && !name.quiet).sort((a, b) => b.rank - a.rank)) {
     const l = name.anchor === "start" ? name.x : name.anchor === "end" ? name.x - name.w : name.x - name.w / 2;
     const box = { l, r: l + name.w, t: name.y - name.px, b: name.y + name.px * .3 };
-    if (boxes.some(o => box.l < o.r + 4 && o.l < box.r + 4 && box.t < o.b && o.t < box.b)) name.quiet = true;
+    if (marks.some(m => covers(box, m)) || boxes.some(o => box.l < o.r + 4 && o.l < box.r + 4 && box.t < o.b && o.t < box.b)) name.quiet = true;
     else boxes.push(box);
   }
   return out;
