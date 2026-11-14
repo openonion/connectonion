@@ -29,6 +29,7 @@ Keep it current
   sync          Run one update now.
   decisions     Count decision and principle pages and decisions waiting. No model.
                 Run co rem decisions write to write them now.
+  fast-forward  Do the night's work now, one night or several in a row.
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
@@ -63,6 +64,19 @@ Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
               abstract is an alias for co rem decisions write and prints its new name.
+```
+
+## co rem fast-forward
+
+```
+Do the night's work now: read new mail and sessions, update pages, write decisions and translate.
+Usage:    co rem fast-forward [--nights N]
+Example:  co rem fast-forward  |  co rem fast-forward --nights 3
+Stops after --nights N (default 1), a night that produces nothing, or a weekly budget or Codex quota floor.
+Output:   Counts for each night, then totals and why it stopped. Exit 1 on a refused or busy task; resume unfinished work with co rem exec.
+Effects:  Calls the configured model and saves pages and progress. Each night gets fresh limits; weekly quotas still apply. Schedule times stay the same.
+Next:     co rem open
+Back:     co rem --help
 ```
 
 ## co rem exec
@@ -1120,7 +1134,7 @@ Then write principle pages for the reasons that recur.
 Usage:    co rem decisions write [--rounds N]
 Example:  co rem decisions write  |  co rem decisions write --rounds 2
 Stops when nothing is left or a round writes no page. --rounds N limits this run to N rounds.
-Reads up to 20 decisions per round, oldest first. Shares progress with the night; its round limit does not apply.
+Reads up to 20 decisions per round, oldest first. Resumes from where previous or overnight runs left off, ignoring the overnight run limit.
 Output:   Counts per round, refused pages and why, totals and decisions left. Exit 1 if the first round writes no page; 0 on progress or no work.
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
 Next:     co rem list decisions

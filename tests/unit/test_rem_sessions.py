@@ -201,10 +201,12 @@ def test_rem_session_idempotent_append_and_changed_title_keep_the_record(noteboo
     assert import_sessions(root, now=NOW)["imported"] == 1
     record, = Notebook(root).list("sessions")
     again = import_sessions(root, now=NOW)
+    assert again['changed'] == []
     assert again["imported"] == 0 and again["unchanged"] == 1
     with path.open("a") as stream:
         stream.write(json.dumps(codex("Use day headings", stamp="2026-10-16T13:12:00Z")) + "\n")
     updated = import_sessions(root, now=NOW)
+    assert updated['changed'] == [record]
     assert updated["updated"] == 1 and updated["imported"] == 0
     assert Notebook(root).list("sessions") == [record]
     assert "- Turns: 2" in Notebook(root).read(record)

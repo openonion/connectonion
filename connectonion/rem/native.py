@@ -268,6 +268,12 @@ def _watching(root):
 
 
 def next_task(root, *, scheduled=False, discard=False):
+    from .fast_forward import resume
+    with resume(root, scheduled=scheduled):
+        return _next_task(root, scheduled=scheduled, discard=discard)
+
+
+def _next_task(root, *, scheduled, discard):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
@@ -330,12 +336,23 @@ def _offer_pending(root, task, *, preparer=None, takeover=False):
 
 def _next_round(root, cursor, *, scheduled, notices):
     from . import native_round
+    from .fast_forward import number
     config = read_config(root)
-    if scheduled and (not cursor or cursor.get("done")) and native_round.scheduled_slot(root, config) is None:
+    night = number(root)
+    continuing = (cursor and not cursor.get('done') and cursor.get('fast_forward_night') != night
+                  and (night is not None or scheduled and cursor.get('fast_forward_night') is not None))
+    if scheduled and (not cursor or cursor.get("done") or continuing) and native_round.scheduled_slot(root, config) is None:
         return {"outcome": "done", "reason": "not due", "notices": notices}
     reason, meter = _stop(root, config)
     _held(root, reason)
     quota.record_pause(root, meter, config["limits"])
+    if reason and reason != 'daily cap reached' and night is not None:
+        return {"outcome": "done", "reason": reason, "notices": notices}
+    if continuing:
+        cursor = native_round.prepare(root, config, scheduled=scheduled, carry=cursor)
+        if cursor.get('reason'):
+            return {'outcome': 'done', 'reason': cursor['reason'], 'notices': notices}
+        continuing = False
     if scheduled and reason and reason != "daily cap reached":  # the call cap bounds mail too
         cursor, mail = _mail_while_held(root, cursor, config, meter, notices)
         if mail:
@@ -344,7 +361,7 @@ def _next_round(root, cursor, *, scheduled, notices):
     # translation tail is about to finish, and the next round reads mail anyway.
     # Not while a page is open: new mail that edits it would restart that page's
     # investigation. It is read at the next slot after the page.
-    elif (cursor and scheduled and not cursor.get("done") and cursor.get("phase") != "daily-translation"
+    elif (cursor and scheduled and not continuing and not cursor.get("done") and cursor.get("phase") != "daily-translation"
             and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])
             and not cursor.get("current") and not cursor.get("project_quote")):
         _read_slot_mail(root, cursor, config)
@@ -554,6 +571,12 @@ def _log(root, task, outcome, **fields):
 
 
 def submit(root, task_id, *, usage=None):
+    from .fast_forward import resume
+    with resume(root):
+        return _submit(root, task_id, usage=usage)
+
+
+def _submit(root, task_id, *, usage):
     from . import native_round
     if not re.fullmatch(r"native-[0-9a-f]{32}", task_id):
         raise RemError("Invalid native task id")
@@ -807,7 +830,8 @@ def _accept(root, cursor, task, result):
     audit = {key: review[key] for key in ("sources_unavailable", "factual_quality")
              if review.get("sources_unavailable")}
     _log(root, task, "completed", changed=result.get("changed", []),
-         record=task["record"], report=result.get("report", ""), render_stage=task["render_stage"], **audit)
+         record=task["record"], report=result.get("report", ""), render_stage=task["render_stage"],
+         **({'draft': result['draft']} if task['handler'] == 'draft' and result.get('draft') else {}), **audit)
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
     native_round.advance(root, cursor, task, result)
     runner.scrub_task(Path(task["directory"]))

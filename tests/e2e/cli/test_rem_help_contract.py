@@ -20,7 +20,7 @@ from connectonion.cli.main import app
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "investigate", "enrich", "muse", "deepen", "open", "list", "show", "search", "translate", "start", "stop", "status",
-                 "sync", "decisions", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
+                 "sync", "decisions", "fast-forward", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
 ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",

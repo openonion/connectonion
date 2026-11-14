@@ -100,7 +100,8 @@ NO_CHANGE_HOURS = 24
 
 
 def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
-    path = state_path(root, NO_CHANGE)
+    from .fast_forward import marker
+    path = marker(root, NO_CHANGE)
     seen = read_json(path, {})
     if unchanged:
         seen[record] = datetime.now(timezone.utc).isoformat()
@@ -112,7 +113,8 @@ def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
 def cooling(root: Path, records: list[str], *, now: datetime | None = None) -> list[str]:
     """The records whose last turn, within NO_CHANGE_HOURS, changed nothing."""
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=NO_CHANGE_HOURS)).isoformat()
-    seen = read_json(state_path(root, NO_CHANGE), {})
+    from .fast_forward import marker
+    seen = read_json(marker(root, NO_CHANGE), {})
     return [record for record in records if seen.get(record, "") > cutoff]
 
 

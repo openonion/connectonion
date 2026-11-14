@@ -2121,6 +2121,29 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (exec_round(root, scheduled=scheduled), []), [],
                 draw=lambda value: escape(native_text(value)))
 
+    @rem.command("fast-forward", cls=V("co rem fast-forward"))
+    def fast_forward(ctx: typer.Context, nights: int = typer.Option(1, "--nights", min=1)):
+        from ...rem.fast_forward import run
+
+        def progress(number, row):
+            _WRITTEN.extend(row['changed'])
+            if not ctx.obj['json']:
+                typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
+                           f"{row['written']} pages written · {row['decisions']} decisions written · "
+                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared")
+
+        def summary(value):
+            count = len(value['nights'])
+            text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {value['written']} pages written · "
+                    f"{value['decisions']} decisions written · {value['translated']} pages translated")
+            return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
+
+        def operation(root):
+            value = run(root, nights=nights, progress=progress)
+            return value, ['open'], value['failed']
+
+        _handle(ctx, operation, ['logs'], draw=summary, resume=['exec'])
+
     @rem.command("next", cls=V("co rem next"))
     def native_next(ctx: typer.Context,
                     scheduled: bool = typer.Option(False, "--scheduled"),
@@ -2645,7 +2668,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs morning doctor history "
+    order = ("init investigate enrich muse deepen open list show search translate start stop status sync fast-forward exec next submit sources config logs morning doctor history "
              "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

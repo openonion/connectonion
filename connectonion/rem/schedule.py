@@ -473,6 +473,14 @@ class Systemd:
 
 
 def exec_round(root, *, scheduled=True):
+    from .fast_forward import resume
+    if scheduled:
+        return _exec_round(root, scheduled=True)
+    with resume(root):
+        return _exec_round(root, scheduled=scheduled)
+
+
+def _exec_round(root, *, scheduled):
     from . import native, runner
     from .codex_schedule import CodexNative
     from .config import read_config

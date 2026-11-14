@@ -558,6 +558,7 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts, s
         "printed_commits": [{"sha": c["sha"].lower(), "branch": c["branch"]} for c in session["artifacts"]["commits"]]}
     progress["sessions"][key] = record
     counts["updated" if updated else "imported"] += 1
+    counts.setdefault('changed', []).append(record)
     return ""
 
 
@@ -570,7 +571,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
-    counts = {"imported": 0, "updated": 0, "unchanged": 0}
+    counts = {"imported": 0, "updated": 0, "unchanged": 0, "changed": []}
     skipped = Counter()
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})

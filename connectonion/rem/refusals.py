@@ -54,6 +54,7 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
 
     `parked`: the native round set the page aside (refused again and again, or
     its preparation hung). That note stays until the page is accepted."""
+    from .fast_forward import identity, number
     ledger = refused_pages(root)
     entry = ledger.get(record) or {}
     held = {item.get("source"): item for item in [*(entry.get("material") or []), *(material or [])]}
@@ -64,9 +65,11 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
     ledger[record] = {"sources": sorted({*entry.get("sources", []), *sources}),
                       "at": datetime.now(timezone.utc).isoformat(), "why": why[:300], "stage": stage,
                       "retries": 0 if new or revised else entry.get("retries", 0),
+                      **identity(root),
                       **({"material": list(held.values())} if held else {}),
-                      **({"parked": why[:300], "parked_at": datetime.now(timezone.utc).isoformat()} if parked
-                         else {key: entry[key] for key in ("parked", "parked_at") if key in entry})}
+                      **({"parked": why[:300], "parked_at": datetime.now(timezone.utc).isoformat(),
+                          "parked_night": number(root)} if parked
+                         else {key: entry[key] for key in ("parked", "parked_at", "parked_night") if key in entry})}
     write_json(state_path(root, REFUSED), ledger)
 
 
@@ -92,9 +95,12 @@ def forget_refusal(root: Path, record: str, sources: list[str] | None = None) ->
 def due_for_retry(root: Path, *, now: datetime | None = None) -> dict:
     """Ledger pages not tried in the last RETRY_HOURS, oldest refusal first."""
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=RETRY_HOURS)).isoformat()
+    from .fast_forward import number
+    night = number(root)
     entries = refused_pages(root).items()
     return dict(sorted(((record, entry) for record, entry in entries
-                        if max(entry.get("at", ""), entry.get("retried_at", "")) < cutoff
+                        if (max(entry.get("at", ""), entry.get("retried_at", "")) < cutoff if night is None
+                            else night not in (entry.get('fast_forward_night'), entry.get('retried_night')))
                         and entry.get("retries", 0) < MAX_RETRIES),
                        key=lambda pair: pair[1].get("at", "")))
 
@@ -103,7 +109,9 @@ def mark_retried(root: Path, record: str) -> None:
     """Stamped before the retry: one that crashes is not tried again on every later run."""
     ledger = refused_pages(root)
     if record in ledger:
+        from .fast_forward import number
         ledger[record]["retried_at"] = datetime.now(timezone.utc).isoformat()
+        ledger[record]['retried_night'] = number(root)
         ledger[record]["retries"] = ledger[record].get("retries", 0) + 1
         write_json(state_path(root, REFUSED), ledger)
 
@@ -111,4 +119,7 @@ def mark_retried(root: Path, record: str) -> None:
 def parked_waiting(root: Path, *, now: datetime | None = None) -> dict:
     """Pages parked in the last RETRY_HOURS: kept out of the queue until they are due for retry."""
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=RETRY_HOURS)).isoformat()
-    return {record: entry for record, entry in refused_pages(root).items() if entry.get("parked_at", "") > cutoff}
+    from .fast_forward import number
+    night = number(root)
+    return {record: entry for record, entry in refused_pages(root).items()
+            if (entry.get("parked_at", "") > cutoff if night is None else entry.get('parked_night') == night)}

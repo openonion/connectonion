@@ -17,7 +17,8 @@ def scheduled_slot(root, config):
     return slot
 
 
-def prepare(root, config, *, scheduled):
+def prepare(root, config, *, scheduled, carry=None):
+    from .fast_forward import identity, limit_runs
     moment = service.now()
     slot = scheduled_slot(root, config) if scheduled else None
     if scheduled and slot is None:
@@ -52,14 +53,26 @@ def prepare(root, config, *, scheduled):
     basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
-    today, recent = service.runs_today(logs, service.notebook_zone(config))
+    recent = limit_runs(root, logs, service.notebook_zone(config))
     first = not any(row.get("phase") == "daily-investigation" for row in recent)
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
               "jobs": _with_parked(root, _jobs(root, first, logs, sources, set_aside)), "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
-              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside}
+              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside, **identity(root)}
+    if carry:
+        # A fresh night reads sources again while keeping an unfinished page's
+        # draft and remaining jobs. New mail can invalidate that draft as usual.
+        carry['run'].update(outcome='partial', finished_at=moment.isoformat(), changed=carry['changed'])
+        write_json(state_path(root, f"runs/{carry['run']['id']}.json"), carry['run'])
+        jobs = {job['record']: job for job in carry['jobs'][carry['job_index']:]}
+        for job in cursor['jobs']:
+            jobs.setdefault(job['record'], job)
+        # Task material is retained while its originating round is unfinished.
+        # Keep that work's origin so cleanup cannot delete a carried inquiry plan.
+        cursor.update(started_at=carry['started_at'], jobs=list(jobs.values()), current=carry.get('current'),
+                      project_quote=carry.get('project_quote'))
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -139,21 +152,25 @@ def prepare_translation_round(root, config, *, scheduled):
 def _jobs(root, first, logs, sources, set_aside=None):
     from datetime import datetime, timedelta
     from .people_pages import queue as people_queue
+    from .fast_forward import number
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
     _admit_correspondents(root, sources, datetime.fromisoformat(previous), [] if set_aside is None else set_aside)
     if first:
         resting = daily._found_nothing_lately(root)
-        return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])
-    rows = [{**row, "kind": "person"} for row in people_queue(root)
-            if row["mode"] == "full" or row["last_activity"] > previous]
-    rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
-    queued = {row["record"] for row in rows}
-    resting = daily._found_nothing_lately(root)
-    rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-             for row in daily.unfinished_by_recency(root)
-             if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
+        rows = [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting]
+        if number(root) is None:
+            return daily._owner_due(root) + rows
+    else:
+        rows = [{**row, "kind": "person"} for row in people_queue(root)
+                if row["mode"] == "full" or row["last_activity"] > previous]
+        rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
+        queued = {row["record"] for row in rows}
+        resting = daily._found_nothing_lately(root)
+        rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                 for row in daily.unfinished_by_recency(root)
+                 if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
     from .refusals import due_for_retry, parked_waiting
     retries, parked = due_for_retry(root), parked_waiting(root)
     rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
@@ -273,9 +290,10 @@ def prepare_abstract(root, cursor, config, directory):
     """Reserve bounded slices; only a recorded promotion admits the next this night."""
     from .captured_decisions import material
     from .night_stats import _night_of
-    day = _night_of(service.now(), service.notebook_zone(config)).isoformat()
-    marker = state_path(root, "abstract-night.json")
-    saved = read_json(marker, {})
+    from .fast_forward import identity, key, marker
+    day = key(root, _night_of(service.now(), service.notebook_zone(config)))
+    path = marker(root, "abstract-night.json")
+    saved = read_json(path, {})
     rounds = saved.get("rounds", 1) if saved.get("day") == day else 0
     if rounds >= config["limits"]["abstract_rounds_per_night"] or (rounds and saved.get("stopped", True)):
         return None
@@ -283,24 +301,26 @@ def prepare_abstract(root, cursor, config, directory):
     if not items:
         return None
     prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
-    prepared.update(abstract_night=day, abstract_round=rounds + 1)
+    prepared.update(abstract_night=day, abstract_round=rounds + 1, **identity(root))
     # Count reservations before execution: an unfinished turn must survive a restart
     # without admitting another slice. Only its durable successful outcome reopens it.
-    write_json(marker, {"day": day, "rounds": rounds + 1, "stopped": True})
+    write_json(path, {"day": day, "rounds": rounds + 1, "stopped": True})
     return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
 
 
 def record_abstract_result(root, prepared, *, promoted):
     """Open the next slice only for the reservation whose outcome was recorded."""
-    marker = state_path(root, "abstract-night.json")
-    saved = read_json(marker, {})
+    from .fast_forward import marker
+    path = marker(root, "abstract-night.json", night=prepared.get('fast_forward_night'))
+    saved = read_json(path, {})
     if (prepared.get("abstract_night") and saved.get("day") == prepared["abstract_night"]
             and saved.get("rounds", 1) == prepared.get("abstract_round", 1)):
-        write_json(marker, {**saved, "rounds": saved.get("rounds", 1), "stopped": not promoted})
+        write_json(path, {**saved, "rounds": saved.get("rounds", 1), "stopped": not promoted})
 
 
 def _reset_attempts(root, cursor):
-    day = service.notebook_today(root).isoformat()
+    from .fast_forward import key
+    day = key(root, service.notebook_today(root))
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
         # A round that crosses midnight reads Today again: yesterday's rows are not today's.
@@ -471,6 +491,9 @@ def _retry_task(root, cursor, config, directory, job):
 
 def _prepare_investigation(root, cursor, job, directory):
     record = job["record"]
+    if job['kind'] == 'owner':
+        from .fast_forward import key, marker
+        write_json(marker(root, 'owner-refresh.json'), {'date': key(root, service.notebook_today(root))})
     if job["kind"] == "skill":
         from . import skill_runs
         prepared = skill_runs.prepare(root, record, [Path.home() / ".co/evals"], directory=directory, lock_held=True)
