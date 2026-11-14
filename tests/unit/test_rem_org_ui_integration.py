@@ -14,18 +14,35 @@ def run_js(names, script):
     if not node:
         pytest.skip('Node runs the reader JavaScript')
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
+    functions = []
+    for name in names:
+        match = re.search(r'^function ' + name + r'\(.*', page, re.M)
+        assert match, f'reader function {name} is missing'
+        function = match[0] if match[0].endswith('}') else re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
+        functions.append(function)
+    functions = '\n'.join(functions)
     result = subprocess.run([node], input=functions + '\n' + script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
 
+TREE_FUNCTIONS = ['orgTree', 'orgLoose', 'orgUnitCount', 'orgByLast', 'orgByActivity', 'orgBranchLast']
+TREE_DOM = r'''
+  const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, addEventListener() {}});
+  const orgTreeItem = d => d;
+  const orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]);
+  const orgFresh = day => !!day, orgUnitRole = (p, path) => (p.units || []).find(e => e.path === path)?.role;
+  const orgLast = p => p.last || '', orgRole = () => null, unlabelled = t => t;
+'''
+
+
 def test_same_name_private_org_does_not_join_public_obligations_or_people():
     result = run_js(['orgRows'], r'''
+      const orgUnitNames = () => [];
       const publicOrg = {path: 'orgs/public.md', title: 'Fernhill', people: ['people/public.md']};
       const privateOrg = {path: 'orgs/private.md', title: 'Fernhill', private: true, people: ['people/private.md']};
       const inCategory = () => [publicOrg, privateOrg], orgName = r => r.title;
-      const orgHidden = r => !!r.private, byPath = path => ({path});
+      const orgHidden = r => !!r.private, byPath = path => path ? ({path}) : null;
       const orgMembers = r => r.people.map(byPath);
       const orgOwed = r => [{row: {key: r.path}, text: r.private ? 'private promise' : 'public promise'}];
       const owedFirst = () => 0, known = () => ({last: '2026-11-08'}), orgLast = () => '';
@@ -48,7 +65,7 @@ def test_org_wording_does_not_overwrite_today_translation():
 
 
 def test_explicit_unit_tree_keeps_nested_members_roles_and_unique_rollups():
-    result = run_js(['orgMembers', 'orgUnitTree', 'unitPeople', 'unitOwed', 'orgOutline', 'orgMember'], r'''
+    result = run_js(['orgMembers', 'orgUnitTree', 'unitPeople', 'unitOwed', *TREE_FUNCTIONS], TREE_DOM + r'''
       const mara = {path: 'people/mara.md', title: 'Mara', units: [{path: 'orgs/team.md', role: 'Product Owner'}]};
       const avery = {path: 'people/avery.md', title: 'Avery'};
       const team = {path: 'orgs/team.md', title: 'Pilot squad', people: [mara.path], children: []};
@@ -57,14 +74,13 @@ def test_explicit_unit_tree_keeps_nested_members_roles_and_unique_rollups():
       const rows = [org, course, team, mara, avery], byPath = path => rows.find(row => row.path === path);
       const REM = {owner: ''}, orgHidden = () => false, orgName = r => r.title, orgTeamLabel = p => p.team || '';
       const entry = {row: {key: 'one', units: [team.path]}, t: {}};
-      const owedPerson = () => mara, overdue = () => false, unlabelled = text => text;
-      const href = r => '#' + r.path, orgT = text => text, orgLast = () => '';  // orgRole arrives with unitPeople's extraction
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const owedPerson = () => mara, overdue = () => false;
+      const href = r => '#' + r.path;
       const people = orgMembers(org), {tree} = orgUnitTree(org, people, [entry]);
       console.log(JSON.stringify({people: people.map(p => p.path), loose: tree.people.map(p => p.path),
         course: tree.units[0].name, team: tree.units[0].units[0].name,
         rolledPeople: unitPeople(tree).map(p => p.path), owed: unitOwed(tree).length,
-        card: orgOutline({r: org, tree})}));
+        card: orgTree({r: org, people, tree})}));
     ''')
     assert result['people'] == ['people/mara.md', 'people/avery.md']
     assert result['loose'] == ['people/avery.md']
@@ -114,34 +130,34 @@ def test_hidden_parent_also_hides_obligations_of_an_unmarked_child():
 
 
 def test_explicit_parent_and_child_memberships_keep_both_scoped_roles():
-    result = run_js(['orgUnitTree', 'unitPeople', 'unitOwed', 'orgOutline', 'orgMember'], r'''
+    result = run_js(['orgUnitTree', 'unitPeople', 'unitOwed', *TREE_FUNCTIONS], TREE_DOM + r'''
       const parent = {path: 'orgs/course.md', title: 'Course', people: ['people/mara.md'], children: ['orgs/team.md']};
       const child = {path: 'orgs/team.md', title: 'Squad', people: ['people/mara.md'], children: []};
       const mara = {path: 'people/mara.md', title: 'Mara', units: [
         {path: parent.path, role: 'Tutor'}, {path: child.path, role: 'Product Owner'}]};
       const rows = [parent, child, mara], byPath = path => rows.find(row => row.path === path);
       const orgName = r => r.title, orgHidden = () => false, owedPerson = () => null;
-      const href = r => '#' + r.path, orgT = text => text, orgLast = () => '';  // orgRole arrives with unitPeople's extraction
-      const unlabelled = text => text;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const href = r => '#' + r.path;
       const {tree} = orgUnitTree(parent, [mara], []);
-      console.log(JSON.stringify({parentMembers: tree.people.length, total: unitPeople(tree).length, card: orgOutline({r: parent, tree})}));
+      console.log(JSON.stringify({parentMembers: tree.people.length, total: unitPeople(tree).length, card: orgTree({r: parent, people: [mara], tree})}));
     ''')
     assert result['parentMembers'] == result['total'] == 1
     assert 'Tutor' in json.dumps(result['card']) and 'Product Owner' in json.dumps(result['card'])
 
 
 def test_parent_unit_page_renders_direct_members_in_their_known_unit():
-    result = run_js(['orgOutline'], r'''
-      const mara = {path: 'people/mara.md', units: [{path: 'orgs/course.md', role: 'Tutor'}]}, child = {name: 'Squad', people: [], units: [], owed: []};
+    result = run_js(['unitPeople', *TREE_FUNCTIONS], TREE_DOM + r'''
+      const mara = {path: 'people/mara.md', title: 'Mara', units: [{path: 'orgs/course.md', role: 'Tutor'}]};
+      const child = {name: 'Squad', people: [], units: [], owed: []};
       const tree = {people: [mara], units: [child]};
-      const unitOwed = () => [], unitPeople = () => [], orgT = text => text, orgName = r => r.path, href = r => r.path, byPath = path => ({path});
-      const orgMember = (p, unitPath) => ({path: p.path, unitPath});
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      const page = orgOutline({r: {path: 'orgs/course.md', unit_kind: 'course'}, tree});
-      console.log(JSON.stringify(page.children[0]));
+      const orgName = r => r.path, href = r => r.path, byPath = path => ({path});
+      const page = orgTree({r: {path: 'orgs/course.md', unit_kind: 'course'}, people: [mara], tree});
+      console.log(JSON.stringify(page.children[1].children[0].kids));
     ''')
-    assert result == {'path': 'people/mara.md', 'unitPath': 'orgs/course.md'}
+    assert result[0]['label'] == 'Mara' and result[0]['meta'] == 'Tutor'
+    assert result[0]['level'] == 2 and result[0]['kind'] == 'person'
+    assert all(row['kind'] != 'loose' for row in result)
+
 
 
 @pytest.mark.parametrize('unit_kind,unknown', [('team', False), ('', True)])
@@ -157,7 +173,7 @@ def test_known_unit_kind_is_not_presented_as_an_unknown_organisation(unit_kind, 
 ROLLUP = r'''
   const org = {path: 'orgs/fernhill.md', title: 'Fernhill', people: ['people/mara.md', 'people/avery.md']};
   const days = {'orgs/fernhill.md': '2026-10-10', 'people/mara.md': '2026-11-07', 'people/avery.md': '2026-09-02'};
-  const byPath = path => ({path, title: path});
+  const byPath = path => path ? ({path, title: path}) : null;
   const known = r => ({last: days[r.path] || ''}), orgLast = p => days[p.path] || '';
   const orgMembers = r => r.people.map(byPath);
 '''
@@ -165,6 +181,7 @@ ROLLUP = r'''
 
 def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_there():
     result = run_js(['orgRows'], ROLLUP + r'''
+      const orgUnitNames = () => [];
       const inCategory = () => [org], orgName = r => r.title, orgHidden = () => false;
       const orgOwed = () => [], owedFirst = () => 0;
       console.log(JSON.stringify(orgRows().map(row => row.last)));
@@ -174,9 +191,96 @@ def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_th
 
 def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
     result = run_js(['orgFacts'], ROLLUP + r'''
-      const orgAll = () => [], orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), fmtDate = day => day;
+      const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), fmtDate = day => day;
       const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
       const v = {r: org, people: org.people.map(byPath), events: [{day: '2026-03-01'}]};
       console.log(JSON.stringify(orgFacts(v)));
     ''')
     assert 'Last contact 2026-11-07' in result and '2026-10-10' not in result
+
+
+def test_org_list_folds_only_resolved_units_and_keeps_orphans_findable():
+    result = run_js(['orgRows'], r'''
+      const orgUnitNames = r => (r.children || []).map(path => byPath(path).title);
+      const root = {path: 'orgs/root.md', title: 'Fernhill', children: ['orgs/course.md']};
+      const unit = {path: 'orgs/course.md', title: 'Fieldwork', parent: root.path};
+      const orphan = {path: 'orgs/orphan.md', title: 'Unplaced squad', parent: 'orgs/missing.md'};
+      const rows = [root, unit, orphan], inCategory = () => rows;
+      const byPath = path => rows.find(r => r.path === path), orgName = r => r.title;
+      const orgHidden = () => false, orgOwed = () => [], orgMembers = () => [];
+      const owedFirst = () => 0, known = () => ({last: ''}), orgLast = () => '';
+      console.log(JSON.stringify(orgRows().map(o => ({title: o.r.title, units: o.units}))));
+    ''')
+    assert result == [{'title': 'Fernhill', 'units': ['Fieldwork']}, {'title': 'Unplaced squad', 'units': []}]
+
+
+def test_org_tree_counts_unique_people_sorts_branches_and_keeps_all_levels():
+    result = run_js(['unitPeople', *TREE_FUNCTIONS], TREE_DOM + r'''
+      const old = {path: 'people/old.md', title: 'Aster', last: '2026-01-01'};
+      const recent = {path: 'people/new.md', title: 'Birch', last: '2026-11-01'};
+      const loose = {path: 'people/loose.md', title: 'Cedar'};
+      const squad = {name: 'Squad', path: 'orgs/squad.md', people: [recent], units: []};
+      const older = {name: 'Older branch', path: 'orgs/older.md', people: [old], units: []};
+      const newer = {name: 'Newer branch', path: 'orgs/newer.md', people: [recent], units: [squad]};
+      const tree = {people: [loose], units: [older, newer]};
+      const r = {path: 'orgs/root.md', title: 'Fernhill'};
+      const orgName = r => r.title, href = r => '#' + r.path, byPath = path => ({path});
+      console.log(JSON.stringify(orgTree({r, tree, people: [old, recent, loose]})));
+    ''')
+    root = result['children'][1]['children'][0]
+    assert root['level'] == 1 and root['count'] == 3 and root['open'] is True
+    newer, older, loose = root['kids']
+    assert [newer['label'], older['label']] == ['Newer branch', 'Older branch']
+    assert newer['count'] == 1  # parent + child membership is one person in the rollup
+    squad = newer['kids'][1]
+    assert squad['level'] == 3 and squad['kids'][0]['level'] == 4
+    assert loose['kind'] == 'loose' and loose['count'] == 1 and loose['open'] is False
+
+
+def test_org_unit_search_never_exposes_private_branch_names():
+    result = run_js(['orgUnitNames'], r'''
+      const root = {path: 'orgs/root.md', children: ['orgs/private.md', 'orgs/public.md']};
+      const secret = {path: 'orgs/private.md', title: 'Hidden branch', private: true};
+      const publicUnit = {path: 'orgs/public.md', title: 'Visible branch', children: [root.path]};
+      const rows = [root, secret, publicUnit], byPath = path => rows.find(r => r.path === path);
+      const orgHidden = r => !!r.private;
+      console.log(JSON.stringify(orgUnitNames(root)));
+    ''')
+    assert result == ['Visible branch']
+
+
+def test_org_tree_keyboard_collapses_expands_and_moves_focus_without_navigation():
+    result = run_js(['orgTreeKey', 'orgTreeToggle', 'orgTreeFocus'], r'''
+      const items = [];
+      function item(label, parent = null, open = null) {
+        const node = {label, tabIndex: items.length ? -1 : 0, parent, kids: [], open,
+          hasAttribute: key => key === 'aria-expanded' && node.open !== null,
+          getAttribute: () => node.open,
+          setAttribute: (key, value) => { node.open = value; },
+          closest: () => node,
+          checkVisibility: () => !parent || parent.open === 'true' && parent.checkVisibility(),
+          querySelector: selector => selector.includes('.ov-trow') ? null : node.kids[0],
+          focus: () => { focused = node; }};
+        node.parentElement = {closest: () => parent};
+        if (parent) parent.kids.push(node);
+        items.push(node);
+        return node;
+      }
+      const root = item('Root', null, 'true'), branch = item('Branch', root, 'true');
+      const person = item('Person', branch), other = item('Other', root);
+      const tree = {querySelectorAll: selector => selector.includes('tabindex') ? items.filter(n => n.tabIndex === 0) : items};
+      let focused = root, prevented = 0;
+      const key = value => orgTreeKey(tree, {target: focused, key: value, preventDefault: () => prevented++});
+      const steps = [];
+      key('ArrowDown'); steps.push(focused.label);
+      key('ArrowLeft'); steps.push(branch.open, person.checkVisibility());
+      key('ArrowLeft'); steps.push(focused.label);
+      key('ArrowDown'); key('ArrowRight'); steps.push(branch.open);
+      key('ArrowRight'); steps.push(focused.label);
+      key('End'); steps.push(focused.label);
+      key('Home'); steps.push(focused.label);
+      key(' '); steps.push(root.open, other.checkVisibility());
+      console.log(JSON.stringify({steps, stops: items.filter(n => n.tabIndex === 0).length, prevented}));
+    ''')
+    assert result == {'steps': ['Branch', 'false', False, 'Root', 'true', 'Person', 'Other', 'Root', 'false', False],
+                      'stops': 1, 'prevented': 9}

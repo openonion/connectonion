@@ -72,6 +72,20 @@ def test_org_page_tree_levels_and_counts_match_the_data(org_reader, width):
     assert any("Ilse Marr" in text for text in people) and any("Theo Brand" in text for text in people)
     assert "Developer" in osprey.inner_text()
     assert _row(osprey).locator("a").get_attribute("href") == "#r=orgs%2Fteam-osprey.md"
+    # Audit every recorded unit against the tree data, including nested/empty units.
+    units = page.evaluate("""() => {
+      const rows = [];
+      const visit = (u, level) => { for (const child of u.units) {
+        rows.push({name: child.name, level, count: unitPeople(child).length});
+        visit(child, level + 1);
+      }};
+      visit(orgCurrent.tree, 2);
+      return rows;
+    }""", isolated_context=False)
+    assert len(units) == 12
+    for unit in units:
+        item = _item(page, unit["name"], unit["level"])
+        assert item.count() == 1 and _count(item) == str(unit["count"]), unit
     text = tree.inner_text()
     assert "undefined" not in text and "null" not in text
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

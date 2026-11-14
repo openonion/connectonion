@@ -2422,7 +2422,7 @@
   [aria-level="1"] > .ov-trow .ov-tl1 > b, .ov-trow:has(.ov-mk.unit) .ov-tl1 > a { font-weight: var(--w-bold); }
   .ov-trow:has(.ov-mk.loose) .ov-tl1 > b { font-weight: var(--w-regular); color: var(--grey); }
   .ov-tk { font-size: var(--s-meta); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; }
-  .ov-tbar { grid-column: 4; height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+  .ov-tbar { grid-column: 4; height: 4px; background: var(--rule); border-radius: var(--radius); overflow: hidden; }
   .ov-tbar i { display: block; height: 100%; background: var(--ink); }
   .ov-trow:has(.ov-mk.loose) .ov-tbar i { background: var(--pencil); }
   .ov-tc { grid-column: 5; text-align: right; font-size: var(--s-meta); color: var(--grey); white-space: nowrap; }
@@ -2433,7 +2433,7 @@
   .ov-band { display: flex; gap: 2px; height: 6px; }
   .ov-band > i, .ov-band > span { flex-basis: 0; min-width: 3px; }
   .ov-band > span { display: flex; gap: 2px; }
-  .ov-band i { background: var(--ink); border-radius: 1px; }
+  .ov-band i { background: var(--ink); border-radius: var(--radius); }
   .ov-band > span > i { flex-basis: 0; min-width: 3px; background: var(--grey); }
   .ov-band > span > b { flex-basis: 0; min-width: 0; }
   .ov-band i.loose { background: var(--pencil); }
@@ -10173,7 +10173,8 @@ function orgRow(o) {
 function orgUnitNames(r, seen = new Set()) {
   if (!r || seen.has(r.path)) return [];
   seen.add(r.path);
-  return (r.children || []).map(byPath).filter(Boolean).flatMap(child => [child.title, ...orgUnitNames(child, seen)]);
+  return (r.children || []).map(byPath).filter(child => child && !seen.has(child.path) && !orgHidden(child))
+    .flatMap(child => [child.title, ...orgUnitNames(child, seen)]);
 }
 // The organisation's shape, compact: an icicle with one band per level (deeper units fold into the
 // second), each cell as wide as the people you know there. Both bands share the first band's
@@ -10214,7 +10215,7 @@ function orgPage(r) {
   }
   const v = orgView(r);
   orgCurrent = v;
-  box.append(orgStage(v), orgColumns(v), orgCoda(v));
+  box.append(...[orgStage(v), orgKeyPeople(v), orgColumns(v), orgCoda(v)].filter(Boolean));
   return box;
 }
 // The time line needs the laid-out page; record() calls this after appending, resize calls it still.
@@ -10269,7 +10270,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }), updatedMarker(r, true),
-      el("p", { class: "ov-sub" }, orgSub(r, v.people)), translationLine(r), orgFacts(v), orgKeyPeople(v), orgTodayLink(v)]),
+      el("p", { class: "ov-sub" }, orgSub(r, v.people)), translationLine(r), orgFacts(v), orgTodayLink(v)]),
     orgTree(v), el("div", { class: "ov-time" })]);
 }
 function orgFacts(v) {
@@ -10323,7 +10324,7 @@ function orgTree(v) {
   const unit = (u, level) => {
     const n = unitPeople(u).length, kids = [...orgByLast(u.people).map(p => person(p, u.path, level + 1)), ...[...u.units].sort(orgByActivity).map(child => unit(child, level + 1))];
     // A branch opens when its rows fit a glance; a unit with dozens of rows stays one line until asked.
-    return orgTreeItem({ level, kind: "unit", label: u.name, link: u.path ? href(byPath(u.path)) : "", meta: u.path ? orgT(byPath(u.path)?.unit_kind || "") : "",
+    return orgTreeItem({ level, kind: "unit", label: u.name, link: u.path ? href(byPath(u.path)) : "",
       count: n, bar: bar(n), fresh: orgFresh(orgBranchLast(u)), open: kids.length <= 8, kids });
   };
   const kids = [...orgByLast(v.tree.people.filter(p => !loose.includes(p))).map(p => person(p, v.r.path, 2)), ...[...v.tree.units].sort(orgByActivity).map(u => unit(u, 2)),

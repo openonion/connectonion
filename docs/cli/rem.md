@@ -1150,7 +1150,22 @@ pinned to that edge: it comes into view with the draft.
   in it (people you write to with no page yet, possible contacts held for
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
-- **Organisations and Projects** open as a sheet: one row per page, the facts
+- **Organisations** lists each organisation once, with its units folded into that
+  row and a compact shape showing branches by the people you know there. Search
+  also finds an organisation by its unit names. A unit whose parent page is
+  missing stays in the list so its record can still be found.
+  An organisation page shows an indented, collapsible tree: organisation →
+  units, courses or teams → people, with each branch's distinct people count
+  and most recently active branches first. People keep their role in each unit;
+  those without a known unit are folded under **Department not known yet**.
+  Click beside a name to expand or collapse; the name opens its record. Tab
+  enters the tree once, arrows move between rows, Right expands or enters a
+  branch, Left collapses or returns to its parent, Home/End move to the first/last
+  visible row, Space toggles and Enter opens the selected record.
+  Recent contacts follow the tree, keeping the hierarchy first on a phone.
+  The two-year contact timeline stays. Entity pages are records; to-dos live
+  in Today, reached by the page's quiet link.
+- **Projects** open as a sheet: one row per page, the facts
   in columns, a sticky header, sort on any shown column, filters (*Something
   open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row
   opens the page. It fits 1440 px; narrower, it scrolls inside itself with the
