@@ -12,6 +12,7 @@ def _functions(*names):
 
 def test_a_redraw_keeps_an_explicitly_revealed_session_curtain():
     result = _run_reader_js(_functions('sessionCurtain', 'viewState', 'restoreView') + r'''
+      const OPEN_TALKS = new Map();
       const groups = [[{path: 'sessions/sample.md', session_date: '2026-10-15'}]], terms = [];
       let expanded = [], row;
       const el = (tag, attrs, children) => ({tag, ...attrs, children, dataset: {},
