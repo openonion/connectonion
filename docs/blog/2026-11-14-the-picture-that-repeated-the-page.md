@@ -34,9 +34,17 @@ The third came from the opposite direction, a notebook of a dozen records writte
 
 We also built a switch between one ring and two, and then removed it. On a person, one ring is the view that repeats the page. For anything deeper, Open in graph already has a depth control.
 
+## What review changed
+
+The first version drew the two rings on organisation, project and knowledge pages too, and it measured itself after it was drawn: if its cell was a different width, it threw itself away and drew again. A maintainer read it against the pages being redrawn at the same time, where organisations become trees and every page is asked to say less, and asked for three things. Keep it to the person. Draw once. Make the rule that picks a card's sentence something a test can run without a browser.
+
+So the other pages keep the picture they had. The widget draws once, at the width of the cell it lives in, and lets CSS scale it; where each name goes is a small function of the widget's width and its marks, tested on its own. The rule that once said a person's page *mentioned* a project, when two sessions drew the line, is now a function that returns its reason as data.
+
+The thresholds moved too, because of a notebook we had not used before: invented mail and coding sessions, but every page written by REM itself. There, people had four to eleven direct links, not two. Past four, the first ring is already news, and a second ring only crowded it. Two rings now appear up to four direct links, with at most eight in the outer ring, and the outer ring is part of the picture rather than a row of links: a pointer or a tap lights a mark, and its card opens the record. The heading and the foot are the ones the page had.
+
 ## What we measured
 
-On the invented notebook we pointed at every mark on every record that has the widget: 854 marks on 86 pages. Each one lit its neighbours and showed a card, with no page errors. On one person's first screen at 1440 pixels, text of 12 pixels and under went from 14.7% of what you read to 13.9%, and the number of controls rose from 23 to 29, because every mark in the outer ring is a link to a record.
+On that notebook we pointed at every mark on every person's page: 403 marks on 60 pages, each lighting its neighbours and showing a card, with no page errors. For three people with four, six and eleven direct links, the widget has the same controls and the same words as before, and is 58 to 62 pixels shorter at 1440 pixels wide.
 
 One rule changed under us while this was in review: the reader stopped drawing a line for a link written inside a sentence labelled personal. The widget follows that rule rather than working around it, and its tests now say so.
 
