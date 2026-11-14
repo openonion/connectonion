@@ -1285,6 +1285,12 @@ pinned to that edge: it comes into view with the draft.
   name their remaining gaps. Private projects retain an explicit investigation
   command. Empty Agent sessions shows queued status when background updates
   are enabled, or pending status when they are off, without import controls.
+- **Retained mail without an index row (#2626):** a cited original may be
+  opened from a verified local archive even when its derived index row is absent.
+  Provider/native identity and the full archive filename must agree; ambiguous
+  short IDs or conflicting index candidates are not guessed. Privacy, truncation
+  and retrieval/retention clocks stay intact. This read does not rebuild the
+  index, query a mailbox, or establish a provider conversation.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from
