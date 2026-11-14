@@ -202,6 +202,7 @@ def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
       const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), calendarDate = day => day;
       const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
       const uiLanguage = 'en', facts = () => ({}), orgRelation = () => '', orgProse = x => x;
+      const orgFact = () => '';
       const v = {r: org, people: org.people.map(byPath), events: [{day: '2026-03-01'}]};
       console.log(JSON.stringify(orgOpening(v)));
     ''')

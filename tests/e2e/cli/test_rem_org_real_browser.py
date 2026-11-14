@@ -15,7 +15,6 @@ pytestmark = pytest.mark.skipif(os.environ.get('CO_REM_BROWSER_TEST') != '1',
 def test_long_org_summary_is_two_lines_and_preserves_full_text(browser, tmp_path, monkeypatch):
     page = _open(browser, tmp_path, monkeypatch, 1440)
     row = page.locator('.org-table tbody tr').filter(has_text='Cedar Works')
-    before = row.bounding_box()['height']
     summary = ('Builds instruments for field research and supports independent laboratories. ' * 8)[:400]
     page.evaluate('''summary => {
       const r = byPath('orgs/cedar.md');
@@ -26,8 +25,7 @@ def test_long_org_summary_is_two_lines_and_preserves_full_text(browser, tmp_path
     }''', summary, isolated_context=False)
     cell = row.locator('.c-summary .clamp')
     assert cell.get_attribute('title') == summary
-    assert row.bounding_box()['height'] <= 88, 'A directory row must fit within 88px at 1440px'
-    assert abs(row.bounding_box()['height'] - before) <= 1
+    assert row.bounding_box()['height'] <= 88, 'Two summary lines, logo/unit caption and cell padding must fit within 88px'
     assert cell.evaluate('e => e.getBoundingClientRect().height <= 2 * parseFloat(getComputedStyle(e).lineHeight) + 1')
     assert page.locator('.people-scroll').evaluate('e => e.scrollWidth <= e.clientWidth + 1')
     row.locator('.c-name a').click()

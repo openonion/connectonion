@@ -76,6 +76,7 @@ def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
       const uiLanguage = __LANG__, orgT = (key, v) => key.replace('{date}', v.date);
       const known = () => ({summary: 'A teaching university.', last: '2026-10-01'});
       const facts = () => ({first: '2025-01-02'}), orgRelation = () => 'Your research partner.';
+      const orgFact = () => '';
       const orgLast = p => p.last, calendarDate = day => day, orgProse = text => text;
       console.log(JSON.stringify(orgOpening({r: {}, people: [{title: 'Fern', last:'2026-11-14'}],
         events: [{day:'2026-01-03'}]})));
@@ -152,6 +153,7 @@ def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
     result = run_js(['orgOpening'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Climate research; your first paying pilot.',last:''});
       const orgRelation = () => 'Your first paying pilot', facts = () => ({}), orgLast = p => p.last;
+      const orgFact = () => '';
       const calendarDate = x => x, orgProse = x => x;
       console.log(JSON.stringify(orgOpening({r:{}, events:[], people:[
         {title:'Fern',last:'2026-01-01'}, {title:'Elm',last:'2026-03-01'}, {title:'Ash',last:'2026-02-01'}]})));
@@ -165,6 +167,7 @@ def test_org_opening_many_contacts_names_the_most_recent_and_says_so():
     result = run_js(['orgOpening'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Research.',last:''});
       const orgRelation = () => '', facts = () => ({}), orgLast = p => p.last;
+      const orgFact = () => '';
       const calendarDate = x => x, orgProse = x => x;
       console.log(JSON.stringify(orgOpening({r:{}, events:[], people:Array.from({length:6},(_,i)=>
         ({title:'Contact '+i,last:'2026-01-0'+(i+1)}))})));

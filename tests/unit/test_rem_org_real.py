@@ -30,6 +30,7 @@ def test_mapped_org_opening_starts_with_known_contacts(summary):
     result = org_js(['orgOpening', 'orgRelation'], DOM + r'''
       const known = () => ({summary: SUMMARY, intro: SUMMARY, kept: [], last: '2026-03-04'});
       const facts = () => ({first: '2025-02-03'}), orgLast = () => '2026-03-04';
+      const orgFact = () => '';
       const plainLine = x => x, privatePassages = x => x, firstSentence = x => x;
       const calendarDate = x => x, MECHANICAL = new Set();
       console.log(JSON.stringify(orgOpening({r:{}, events:[], people:[{title:'Fern Vale'}]})));
@@ -38,6 +39,30 @@ def test_mapped_org_opening_starts_with_known_contacts(summary):
     assert text.startswith('You know 1 person here.'), text
     assert 'Fern Vale' in text and '2025-02-03' in text and '2026-03-04' in text
     assert summary not in text
+
+
+@pytest.mark.parametrize('source', ['org', 'person', 'mail', 'index', 'none'])
+def test_mapped_org_opening_uses_recorded_first_contact_without_history(source):
+    result = org_js(['orgOpening', 'orgFact', 'facts', 'parseFacts', 'topLevelParts', 'rawSection'], DOM + r'''
+      const SOURCE = __SOURCE__, COMMENT = /<!--[\s\S]*?-->/g;
+      const FACTS = new Map(), PARSED_FACTS = new Map();
+      const org = {path:'orgs/cedar.md', text:'# Cedar Works\n\n## Facts\n- Website: Unknown'};
+      const person = {path:'people/fern.md', title:'Fern Vale', text:'# Fern Vale\n\n## Facts\n- Email: fern@cedar.example'};
+      if (SOURCE === 'org') org.text += '\n- First contact: 2024-01-01';
+      if (SOURCE === 'person') person.text += '\n- First contact: 2024-01-01';
+      if (SOURCE === 'mail') person.mail = {first:'2024-01-01'};
+      if (SOURCE === 'index') person.index = {first_contact:'2024-01-01'};
+      const known = () => ({summary:'', last:''}), section = () => null;
+      const historyItems = () => [], listItems = () => [], threads = () => ({items:[],calm:false});
+      const plainLine = x => x, plainValue = x => x, orgRelation = () => '', orgLast = () => '';
+      const calendarDate = x => x;
+      console.log(JSON.stringify(orgOpening({r:org, events:[], people:[person]})));
+    '''.replace('__SOURCE__', json.dumps(source)))
+    text = ''.join(result['children'])
+    assert text.startswith('You know 1 person here.') and 'Fern Vale' in text
+    assert ('In touch since 2024-01-01' in text) == (source != 'none'), text
+    if source == 'none':
+        assert 'In touch since' not in text
 
 
 @pytest.mark.parametrize('summary', PLACEHOLDERS)

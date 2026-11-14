@@ -10521,7 +10521,9 @@ function orgStage(v) {
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
-  const first = [facts(v.r).first, ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
+  // Mapped organisations often have no History: their contacts still carry mail/index dates.
+  const first = [...[v.r, ...v.people].flatMap(p => [facts(p).first, orgFact(p, "First contact")]),
+    ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
   const last = [known(v.r).last, ...v.people.map(orgLast), ...v.events.map(e => e.day)].filter(Boolean).sort().at(-1);
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
   const count = uiLanguage === "zh" ? `你认识这里的 ${v.people.length} 个人。` : `You know ${v.people.length} ${v.people.length === 1 ? "person" : "people"} here. `;

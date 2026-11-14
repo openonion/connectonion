@@ -1200,7 +1200,9 @@ pinned to that edge: it comes into view with the draft.
   clears the kind filter and restores the tree and saved collapses. Search temporarily
   opens matching branches. A unit whose parent is missing stays findable in the list.
   The book page names all contacts when there are at most four; otherwise it
-  names the four most recent and says so. Business, location and website have
+  names the four most recent and says so. Its opening uses the earliest recorded
+  first-contact date from the organisation or its contacts, including mapped mail
+  and index dates when there is no written history. Business, location and website have
   separate labels, and the website is a link.
   An organisation page shows an indented, collapsible tree: organisation →
   units, courses or teams → people, with most recently active branches first.

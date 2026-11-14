@@ -7,6 +7,7 @@ Codex and Claude Code are the recorded fakes in tests/fixtures/native_runners. T
 """
 
 import asyncio
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -72,7 +73,7 @@ def live(tmp_path, monkeypatch):
     identity.mkdir()
     _notebook(root)
     cookie = "co_rem=" + live_host.reader_token(identity)
-    call, errors = _host(root, identity), []
+    call, errors, talk_exchanges = _host(root, identity), [], []
 
     def serve(route):
         request = route.request
@@ -80,6 +81,8 @@ def live(tmp_path, monkeypatch):
         if not path.startswith("/rem"):
             return route.abort()
         status, kind, body = call(request.method, path, (request.post_data or "").encode(), cookie)
+        if path == "/rem/talk":
+            talk_exchanges.append({"post": json.loads(request.post_data), "status": status, "reply": json.loads(body)})
         return route.fulfill(status=status, body=body, content_type=kind.split(";")[0])
 
     with sync_playwright() as api:
@@ -90,8 +93,27 @@ def live(tmp_path, monkeypatch):
         context.route("http*://**/*", serve)
         page.goto(BASE + "/rem#view=open")
         page.get_by_role("heading", name="Open threads").wait_for()
-        yield page, root
-        browser.close()
+        try:
+            yield page, root
+        finally:
+            if talk_exchanges:
+                # Captured on failure: distinguish an unanswered Host turn from a hidden/moved reply.
+                print("REM talk HTTP:", json.dumps(talk_exchanges))
+                print("REM talk DOM:", page.evaluate('''() => [...OPEN_TALKS].map(([key, node]) => {
+                  const details = [];
+                  for (let parent = node.parentElement; parent; parent = parent.parentElement)
+                    if (parent.tagName === 'DETAILS') details.push({classes:parent.className, open:parent.open});
+                  return {key, connected:node.isConnected, details, rect:node.getBoundingClientRect().toJSON(),
+                    row:node.closest('li')?.textContent, text:node.textContent,
+                    agentTurns:[...node.querySelectorAll('.talk-turn.agent')].map(turn => ({
+                      rect:turn.getBoundingClientRect().toJSON(), visibility:getComputedStyle(turn).visibility}))};
+                })''', isolated_context=False))
+                from connectonion.rem.files import state_path
+                for path in sorted(state_path(root, 'talks').glob('*/*')):
+                    if path.name in ('talk.json', 'worker.log'):
+                        print("REM talk worker", path.name, path.read_text()[-8000:])
+                print("REM talk page errors:", errors)
+            browser.close()
     assert not errors, errors
 
 
