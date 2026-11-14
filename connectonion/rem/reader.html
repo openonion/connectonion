@@ -845,17 +845,21 @@
   .focus-more { position: relative; z-index: 1; display: block; border: 0; background: transparent; color: var(--ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: var(--w-bold) var(--s-meta) var(--font); text-decoration: underline; text-underline-offset: 3px; }
   .focus-more[hidden] { display: none; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
-  .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .project-workspace.single { grid-template-columns: 1fr; }
-  .project-workspace .focus-section { min-width: 0; }
-  .project-workspace p, .project-workspace li { max-width: 72ch; font: var(--s-body)/1.5 var(--font); }
-  .project-workspace p { margin: 0; }
-  .project-workspace ul { margin: 0; padding: 0; list-style: none; }
-  .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-  .project-workspace .open-note { display: inline-block; margin-top: 12px; font: var(--w-bold) var(--s-meta) var(--font); }
-  .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* A project page's lead (#2993): state, then steps as one line each, then the newest sessions. */
+  .project-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 6px 0 4px; font: var(--s-meta)/20px var(--font); color: var(--grey); }
+  .project-state-word { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font: var(--w-bold) var(--s-body)/20px var(--font); }
+  .record-focus.projects .project-step .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .record-focus.projects .project-step .dir.you { color: var(--ink); font-weight: var(--w-bold); }
+  .project-more-steps { margin-top: 6px; }
+  .project-recent { grid-column: 1 / -1; }
+  .project-recent ul { margin: 0; padding: 0; list-style: none; }
+  .project-recent li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 5px 0; font: var(--s-body)/1.45 var(--font); }
+  .project-recent li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-recent time { color: var(--grey); font-size: var(--s-meta); }
   .project-sessions { grid-column: 1 / -1; }
   .project-sessions li { margin: 7px 0; overflow-wrap: anywhere; }
+  .project-recent .open-note { display: inline-block; margin-top: 6px; font: var(--s-meta) var(--font); }
+  .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
   .focus-section { min-width: 0; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .focus-section h2 { margin: 0 0 14px; font: var(--w-bold) var(--s-body)/1.3 var(--font); }
   .focus-section .threads { margin: 0; padding: 0; border-top: 0; }
@@ -1107,8 +1111,7 @@
     .record-focus.people .focus-statement { font-size: var(--s-body); margin-top: 12px; }
     .record-focus.people .focus-statement.clamped { -webkit-line-clamp: 5; }
     .focus-section { padding: 16px; }
-    .focus-facts, .related-records, .activity-view, .conversation-view, .documents, .project-workspace { grid-column: 1; }
-    .project-workspace { grid-template-columns: 1fr; }
+    .focus-facts, .related-records, .activity-view, .conversation-view, .documents { grid-column: 1; }
     .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
     .focus-facts dd { margin: 0; }
     .activity-list li { grid-template-columns: 76px minmax(0, 1fr); gap: 3px 9px; }
@@ -1831,7 +1834,14 @@
   .pd-lknown span { color: var(--grey); }
 
   /* 看板 */
-  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 0 0; font-size: var(--s-meta); }
+  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px; font-size: var(--s-meta); }
+  .pd-board { margin-top: 24px; }
+  @media (min-width: 1241px) {
+    /* Empty states keep their header width; populated states share the remaining space. */
+    .pd-board[data-ask="state"] .pd-cols { display: flex; }
+    .pd-state-col { flex: 1; min-width: 0; }
+    .pd-state-col.is-empty { flex: 0 0 100px; }
+  }
   .pd-answer { margin: 14px 0 22px; max-width: 900px; font: var(--w-regular) var(--s-body)/1.7 var(--font); }
   .pd-cols { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 20px; align-items: start; }
   .pd-board[data-ask="drop"] .pd-cols { --cols: 3; }
@@ -1845,6 +1855,20 @@
   .pd-card-head .pd-when { flex: none; color: var(--grey); font-size: var(--s-meta); }
   .pd-card .pd-note { margin: 6px 0 0; font-size: var(--s-meta); color: var(--grey); }
   .pd-card-extra { margin: 6px 0 0; color: var(--grey); font-size: var(--s-meta); }
+  /* The board by state (#2993): the dot is the state, so a column needs no caption. Ink solid moves with the
+     owner, an ink ring waits on someone else, a pencil ring is quiet, pencil solid is done. */
+  .pd-state-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: var(--round); box-sizing: border-box; }
+  .pd-state-dot.active { background: var(--ink); }
+  .pd-state-dot.waiting { border: 2px solid var(--ink); }
+  .pd-state-dot.quiet { border: 2px solid var(--pencil); }
+  .pd-state-dot.done { background: var(--pencil); }
+  .pd-state-col h2 { justify-content: flex-start; align-items: center; }
+  .pd-state-col h2 small { margin-left: auto; }
+  .pd-state-card .pd-card-name { font-weight: var(--w-bold); overflow-wrap: anywhere; }
+  .pd-step { margin: 6px 0 0; font: var(--s-body)/1.45 var(--font); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .pd-step-who { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 0; font-size: var(--s-meta); color: var(--grey); }
+  .pd-owner.you { color: var(--ink); font-weight: var(--w-bold); }
+  .pd-col-more { display: block; margin: 0 0 0 auto; }
   .pd-card-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 10px; font-size: var(--s-meta); color: var(--grey); }
   .pd-pair .pd-inf { display: inline; margin: 0; font-size: var(--s-meta); }
   .pd-compact { list-style: none; margin: 0; padding: 0; font-size: var(--s-meta); }
@@ -9325,7 +9349,8 @@ const PD_ZH = {
   "repository": "仓库", "stack": "技术栈", "status": "状态", "people": "人", "organisation": "组织", "start": "开始", "last activity": "最近活动",
   "On file: {known}. Not on file: {missing}.": "已有：{known}。没有：{missing}。", "nothing": "无",
   "latest {date}": "{date} 最晚", "Sub-project of {name}": "{name} 的子项目",
-  "The board's axis is a question:": "看板的轴是一个问题：", "By health": "按健康", "Who waits on whom": "谁在等谁",
+  "The board's axis is a question:": "看板的轴是一个问题：", "By health": "按健康", "By state": "按状态",
+  "Active": "进行中", "Waiting": "等待", "Show {n} more": "再看 {n} 个", "Who waits on whom": "谁在等谁",
   "What can be set down": "哪些可以放下", "What may be one project": "哪些可能是同一个",
   "{off} off track, {risk} at risk, {ok} on track, {quiet} quiet.": "偏离 {off}、风险 {risk}、正常 {ok}、安静 {quiet}。",
   "If no session comes, {n} more turn quiet by {date} under the 30-day rule, the first on {first}.": "若再没有会话，到 {date} 为止还有 {n} 个会按 30 天规则挪进「安静」，最早的是 {first}。",
@@ -9358,17 +9383,61 @@ const PD_RULES = { off_track: "A dated promise has passed", at_risk: "Due within
 // [label, days back, days forward]: the window around the snapshot's day.
 const PD_ZOOM = { week: ["Week", 9, 14], month: ["Month", 38, 30], quarter: ["Quarter", 99, 32], year: ["Year", 525, 53] };
 const PD_VIEWS = [["timeline", "Timeline"], ["list", "List"], ["board", "Board"]];
-const PD_ASKS = [["health", "By health"], ["waiting", "Who waits on whom"], ["drop", "What can be set down"], ["same", "What may be one project"]];
+const PD_ASKS = [["state", "By state"], ["waiting", "Who waits on whom"], ["drop", "What can be set down"], ["same", "What may be one project"]];
 const PD_FACTS = [["Repository", "repository"], ["Stack", "stack"], ["Status", "status"], ["People", "people"],
   ["Organisation", "organisation"], ["Started", "start"], ["Last activity", "last activity"]];
-const PD_QUIET_DAYS = 30, PD_NOTES = 5;
+const PD_QUIET_DAYS = 30, PD_NOTES = 5, PD_FOLD_AT = 6;
+// The board's columns (#2993), named for who holds the next step; projectState says how each is decided.
+const PD_STATES = [["active", "Active"], ["waiting", "Waiting"], ["quiet", "Quiet"], ["done", "Done"]];
 let pdQuietOpen = false, PD_SESSIONS = null;
+const pdStateOpen = new Set();
 
 // ---- data: ported from the sprint-10 project views (their UI was rejected, their rules were not) ----
 function projectLast(r) { return facts(r).last || r.last_activity || ""; }
 function projectDone(r) { return (r.reasons || []).some(reason => reason.text === "Project explicitly marked completed"); }
 function projectMapped(r) { return known(r).status === "Mapped"; }
 function projectTier(r) { return projectDone(r) ? "done" : PD_TIERS.includes(r.health) ? r.health : "quiet"; }
+// Health already accounts for dated promises and the 30-day activity rule. A moving project waits
+// only when every confirmed step belongs to someone else; an unclassified step cannot imply that.
+function projectState(r) {
+  const tier = projectTier(r);
+  if (tier === "done" || tier === "quiet") return tier;
+  const open = (r.open || []).filter(item => !item.project_match?.needs_review);
+  return open.length && open.every(item => ["waiting", "agent", "answerable"].includes(item.kind)) ? "waiting" : "active";
+}
+// The structured item behind a line of the page's Open threads: its kind and who it names.
+function projectOpenItem(r, thread) {
+  const key = stripCites(thread.originalText || thread.text);
+  return (r.open || []).find(item => stripCites(item.text) === key);
+}
+// Who holds a step, in the words Today uses; an agent's instruction and a named person are said as such.
+function projectStepOwner(r, thread) {
+  const item = projectOpenItem(r, thread);
+  if (item && ["agent", "answerable"].includes(item.kind)) return { owner: "agent", label: t("Agent") };
+  if (item?.kind === "waiting") return { owner: "them", label: pdWho(item.who) || t(DIRECTION_LABEL.theirs) };
+  if (item?.kind === "owed" || thread.dir === "mine") return { owner: "you", label: t(DIRECTION_LABEL.mine) };
+  return { owner: thread.dir === "theirs" ? "them" : "", label: t(DIRECTION_LABEL[thread.dir] || "Open") };
+}
+// The step itself, not the conversation it came from: the words after "open:" when the page wrote them, else
+// the line without its leading date, quote and speaker. Its privacy label travels with it.
+function projectStepWhat(text) {
+  const plain = stripCites(text).replace(/\*\*/g, "");
+  const open = /(?:^|[—–;；]\s*)(?:still open|open|未解决|仍未解决|待解决)\s*[:：]\s*(.+)$/i.exec(plain)?.[1];
+  let what = open || plain.replace(/^\d{4}-\d{2}-\d{2}\s*[—–:：-]\s*/, "");
+  if (!open) {
+    const rest = what.replace(/^[^“"「]{0,40}[“"「][^”"」]*[”"」]\s*[—–,，。.;；]?\s*/, "");
+    if (rest !== what && rest.length >= 8 && /[\p{L}\p{N}]{2}/u.test(rest)) what = rest;
+  }
+  what = what.trim().replace(/[.。;；]$/, "");
+  return hasPrivacy(text) && !hasPrivacy(what) ? what + " [personal]" : what;
+}
+// The step a card shows: one past its date first, then the owner's, then someone else's, then an agent's.
+function projectSteps(r) {
+  const today = calendarDay(REM.as_of), rank = step => step.thread.due && step.thread.due < today && step.owner === "you" ? 0
+    : ({ you: 1, them: 2, agent: 3 })[step.owner] ?? 4;
+  return threads(r).items.map(thread => ({ thread, ...projectStepOwner(r, thread) }))
+    .sort((a, b) => rank(a) - rank(b) || (a.thread.due || "9999").localeCompare(b.thread.due || "9999"));
+}
 // Someone else waits on the owner. Agent instructions and unconfirmed organisation joins never count.
 function projectOwed(r) { return (r.open || []).filter(item => item.kind === "owed" && !item.project_match?.needs_review); }
 function projectOverdue(r) { return r.overdue_days || 0; }
@@ -9643,12 +9712,12 @@ function projectFoldStrip(rows, win) {
 // ---- the head: title, views, coverage, zoom; the sentence; the legend ----
 function pdParams() {
   const p = new URLSearchParams(location.hash.slice(1));
-  return { view: PD_VIEWS.some(([k]) => k === p.get("v")) ? p.get("v") : "timeline", zoom: PD_ZOOM[p.get("z")] ? p.get("z") : "quarter",
-    ask: PD_ASKS.some(([k]) => k === p.get("ask")) ? p.get("ask") : "health" };
+  return { view: PD_VIEWS.some(([k]) => k === p.get("v")) ? p.get("v") : "board", zoom: PD_ZOOM[p.get("z")] ? p.get("z") : "quarter",
+    ask: PD_ASKS.some(([k]) => k === p.get("ask")) ? p.get("ask") : "state" };
 }
 function pdHref(change) {
   const s = { ...pdParams(), ...change };
-  return "#c=projects&v=" + s.view + "&z=" + s.zoom + (s.view === "board" && s.ask !== "health" ? "&ask=" + s.ask : "");
+  return "#c=projects&v=" + s.view + "&z=" + s.zoom + (s.view === "board" && s.ask !== "state" ? "&ask=" + s.ask : "");
 }
 function projectCoverageLine(all) {
   const rows = all.map(projectCoverage).filter(Boolean);
@@ -9661,9 +9730,12 @@ function projectHead(all, state) {
     el("h1", { class: "pd-title" }, [pdT("Projects"), el("span", { class: "pd-count", text: String(all.length) })]),
     el("div", { class: "pd-views", role: "navigation", "aria-label": pdT("View") }, PD_VIEWS.map(([key, name]) =>
       el("a", { href: pdHref({ view: key }), class: key === state.view ? "on" : "", ...(key === state.view ? { "aria-current": "page" } : {}), text: pdT(name) }))),
-    el("div", { class: "pd-head-end" }, [projectCoverageLine(all),
-      el("div", { class: "pd-seg", role: "group", "aria-label": pdT("Zoom") }, Object.entries(PD_ZOOM).map(([key, [name]]) =>
-        el("a", { href: pdHref({ zoom: key }), class: key === state.zoom ? "on" : "", "aria-pressed": String(key === state.zoom), text: pdT(name) })))])]);
+    el("div", { class: "pd-head-end" }, state.view === "board"
+      ? [el("div", { class: "pd-seg pd-asks", role: "group" }, PD_ASKS.map(([key, name]) =>
+        el("a", { href: pdHref({ ask: key }), class: key === state.ask ? "on" : "", "aria-pressed": String(key === state.ask), text: pdT(name) })))]
+      : [projectCoverageLine(all),
+        el("div", { class: "pd-seg", role: "group", "aria-label": pdT("Zoom") }, Object.entries(PD_ZOOM).map(([key, [name]]) =>
+          el("a", { href: pdHref({ zoom: key }), class: key === state.zoom ? "on" : "", "aria-pressed": String(key === state.zoom), text: pdT(name) })))])]);
 }
 function projectLegend() {
   return el("div", { class: "pd-legend" }, [
@@ -9857,18 +9929,30 @@ function projectColumn(title, caption, children, red = false) {
   return el("section", { class: "pd-colm" + (red ? " red" : "") }, [
     el("h2", {}, [el("span", { text: title }), el("small", { text: caption })]), ...(children.length ? children : [el("p", { class: "pd-empty", text: pdT("Nothing here") })])]);
 }
-function projectBoardHealth(all, win, notes) {
-  const by = tier => all.filter(r => projectTier(r) === tier).sort(projectRank), counts = projectTierCounts(all);
-  const coming = by("on_track").map(r => [r, projectQuietOn(r)]).filter(([, day]) => day > win.today && day <= win.b).sort((a, b) => a[1].localeCompare(b[1]));
-  const quiet = [...by("quiet"), ...by("done")].sort((a, b) => projectLast(b).localeCompare(projectLast(a)));
-  const say = [pdT("{off} off track, {risk} at risk, {ok} on track, {quiet} quiet.", counts),
-    coming.length ? pdT("If no session comes, {n} more turn quiet by {date} under the 30-day rule, the first on {first}.", { n: coming.length, date: pdDay(win.b), first: pdDay(coming[0][1]) }) : ""].filter(Boolean).join(" ");
-  const pencil = coming.length ? el("div", { class: "pd-pencil-box" }, [el("p", { class: "pd-pencil-head" }, [pdT("Pencil · arriving here by {date}", { date: pdDay(win.b) }), el("span", { class: "tag", text: pdT("forecast · 30-day rule") })]),
-    projectCompact(coming.map(([r]) => r), r => pdDay(projectQuietOn(r)))]) : null;
-  const cols = ["off_track", "at_risk", "on_track"].map(tier => projectColumn(pdT(PD_HEALTH[tier]), pdT(PD_RULES[tier]), by(tier).map(r => projectCard(r, win, notes.get(r.path))), tier === "off_track"));
-  cols.push(projectColumn(pdT("Quiet"), pdT(PD_RULES.quiet), [pencil, quiet.length ? el("p", { class: "pd-sub", text: pdT("{n} already quiet", { n: quiet.length }) }) : null,
-    quiet.length ? projectCompact(quiet, r => projectLast(r) ? pdDay(calendarDay(projectLast(r))) : "") : null].filter(Boolean)));
-  return [say, cols];
+// ---- the board by state (#2993): one column per state, one card per project ----
+// A card is what the owner scans for: the name, the next step, who holds it, and when it last moved.
+function projectStateCard(r) {
+  const step = projectSteps(r)[0], late = projectLate(r), last = projectLast(r);
+  return el("article", { class: "pd-card pd-state-card" + (late ? " late" : ""), "data-path": r.path }, [
+    el("div", { class: "pd-card-head" }, [el("a", { href: href(r), class: "pd-card-name" + (late ? " red" : ""), text: r.title }),
+      el("span", { class: "pd-when", text: last ? fmtDate(calendarDay(last)) : "" })]),
+    step ? el("p", { class: "pd-step" }, [privateFallback(el("span", { class: "pd-step-what", html: inline(projectStepWhat(step.thread.text), r.path) }))]) : null,
+    step || late ? el("p", { class: "pd-step-who" }, [step ? el("span", { class: "pd-owner " + step.owner, text: step.label }) : null,
+      late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) })
+        : step?.thread.since ? el("span", { text: threadAge(step.thread) }) : null]) : null]);
+}
+function projectStateColumn(state, name, rows) {
+  const open = pdStateOpen.has(state) || rows.length <= PD_FOLD_AT + 1, shown = open ? rows : rows.slice(0, PD_FOLD_AT);
+  const more = el("button", { type: "button", class: "pd-fold-btn pd-col-more", text: pdT("Show {n} more", { n: rows.length - shown.length }) });
+  more.onclick = () => { pdStateOpen.add(state); projectsView(); };
+  return el("section", { class: "pd-colm pd-state-col" + (rows.length ? "" : " is-empty"), "data-state": state }, [
+    el("h2", {}, [el("i", { class: "pd-state-dot " + state, "aria-hidden": "true" }), el("span", { text: pdT(name) }), el("small", { text: String(rows.length) })]),
+    ...shown.map(projectStateCard), shown.length < rows.length ? more : null, rows.length ? null : el("p", { class: "pd-empty", text: "—" })]);
+}
+function projectBoardState(all) {
+  const recent = (a, b) => projectLast(b).localeCompare(projectLast(a)) || projectRank(a, b);
+  return PD_STATES.map(([state, name]) => projectStateColumn(state, name,
+    all.filter(r => projectState(r) === state).sort(["quiet", "done"].includes(state) ? recent : projectRank)));
 }
 function projectBoardWaiting(all, win, notes) {
   const owedRows = all.filter(r => projectOwed(r).length), waitRows = all.filter(r => !owedRows.includes(r) && (r.open || []).some(i => i.kind === "waiting"));
@@ -9914,13 +9998,15 @@ function projectBoardSame(all, win, pairs) {
     projectColumn(pdT("Similar names"), pdT("a distinctive shared word"), name.map(p => pairCard(p.rows, pdT("all contain “{word}”", { word: p.word })))),
     projectColumn(pdT("No signal"), pdT("{n} projects", { n: rest.length }), rest.length ? [projectCompact(rest.sort(projectRank))] : [])]];
 }
+// By state the columns say it all; the other questions are inferences, so each keeps its one sentence.
 function projectBoard(all, win, notes, pairs, ask) {
+  if (ask === "state") {
+    const cols = projectBoardState(all);
+    return el("section", { class: "pd-board", "data-ask": ask }, [el("div", { class: "pd-cols" }, cols)]);
+  }
   const [say, cols] = ask === "waiting" ? projectBoardWaiting(all, win, notes) : ask === "drop" ? projectBoardDrop(all, win, notes)
-    : ask === "same" ? projectBoardSame(all, win, pairs) : projectBoardHealth(all, win, notes);
-  return el("section", { class: "pd-board", "data-ask": ask }, [
-    el("div", { class: "pd-asks" }, [
-      el("div", { class: "pd-seg" }, PD_ASKS.map(([key, name]) => el("a", { href: pdHref({ ask: key }), class: key === ask ? "on" : "", "aria-pressed": String(key === ask), text: pdT(name) })))]),
-    el("p", { class: "pd-answer" }, [say]), el("div", { class: "pd-cols" }, cols)]);
+    : projectBoardSame(all, win, pairs);
+  return el("section", { class: "pd-board", "data-ask": ask }, [el("p", { class: "pd-answer" }, [say]), el("div", { class: "pd-cols" }, cols)]);
 }
 
 // ---- the page ----
@@ -9929,10 +10015,11 @@ function projectBoard(all, win, notes, pairs, ask) {
 function projectsView() {
   PD_SESSIONS = null;
   const state = pdParams(), all = inCategory("projects").sort(projectRank), tree = projectTree(all), win = projectWindow(state.zoom);
-  const pairs = projectPairs(all), notes = projectNotes(all, pairs);
+  const stateBoard = state.view === "board" && state.ask === "state";
+  const pairs = stateBoard ? [] : projectPairs(all), notes = stateBoard ? new Map() : projectNotes(all, pairs);
   const body = state.view === "list" ? projectList(all, tree, win, notes) : state.view === "board" ? projectBoard(all, win, notes, pairs, state.ask) : projectTimeline(all, tree, win, notes);
   document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view, "data-zoom": state.zoom }, [
-    projectHead(all, state), projectLede(all, win), el("hr", { class: "pd-rule" }), state.view === "board" ? null : projectLegend(), body]));
+    projectHead(all, state), ...(state.view === "board" ? [] : [projectLede(all, win), el("hr", { class: "pd-rule" }), projectLegend()]), body]));
   projectScaleFit();
   projectAxisCollisions();
 }
@@ -11053,6 +11140,45 @@ function projectSessions(r) {
     el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
       .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
 }
+// Recent activity on a project page (#2993): its three newest sessions, or, without sessions, the newest of
+// its dated history. The whole list is one link away, in Sessions.
+function projectRecent(r) {
+  const sessions = inCategory("sessions").filter(s => s.session_project === r.path).sort(sessionOrder);
+  if (!sessions.length) return activityPanel(r, true, 3);
+  return el("section", { class: "focus-section project-recent", "aria-label": t("Recently") }, [el("h2", { text: t("Recently") }),
+    el("ul", {}, sessions.slice(0, 3).map(s => el("li", {}, [el("time", { text: fmtDate(s.session_date) }),
+      el("a", { href: href(s), text: sessionPreview(s.title) })]))),
+    el("a", { class: "open-note", href: sessionHash({ project: r.path }), text: t("All {n} sessions", { n: sessions.length }) })]);
+}
+// The page's first line answers "what state is it in": the board's column, its last date, a late promise in red.
+function projectStateLine(r) {
+  const state = projectState(r), last = known(r).last, late = projectLate(r);
+  return el("p", { class: "project-state", "data-state": state }, [
+    el("span", { class: "project-state-word" }, [el("i", { class: "pd-state-dot " + state, "aria-hidden": "true" }), pdT(PD_STATES.find(([key]) => key === state)[1])]),
+    last ? el("span", { text: t("Last mapped session") + " " + fmtDate(last) }) : null,
+    late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null]);
+}
+// A next step in one line: the thing itself, who holds it, how long it has waited. The words it was said in
+// stay one tap away on its source chip, and the full line in the memory below.
+function projectStepRow(r, thread) {
+  const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
+  const late = thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread });
+  const who = projectStepOwner(r, thread);
+  return el("li", { class: "thread project-step " + thread.dir }, [el("span", { class: "dir " + who.owner, text: who.label }),
+    el("div", {}, [privateFallback(el("div", { class: "what", html: inline(projectStepWhat(thread.text) + " " + cites, r.path) })),
+      threadActions({ r, t: thread }, true), draftNote(threadDraft({ r, t: thread }))]),
+    el("span", { class: "when" + (late ? " overdue" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") },
+      [threadAge(thread), blockerTag(thread)])]);
+}
+function projectMoreSteps(n) {
+  const button = el("button", { type: "button", class: "btn-quiet project-more-steps", text: t("+{n} more", { n }) });
+  button.onclick = () => {
+    const deep = document.querySelector("details.deep-note");
+    if (deep) deep.open = true;
+    document.querySelector(".deep-note .block-threads")?.scrollIntoView({ block: "start" });
+  };
+  return button;
+}
 
 function sessionSection(r, name) {
   return (r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1).trim();
@@ -11281,14 +11407,14 @@ function sectionBody(r, s) {
     const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern|现在|变化|利害|模式)[:：]\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
     if (items.length && items.every(Boolean)) {
       return el("div", { class: "block-insight" }, [el("ul", { class: "insight" }, items.map(m => el("li", { class: "ins-" + m[1].toLowerCase().replace(/\s+/g, "-") }, [
-        el("span", { class: "badge", text: t(m[1]) }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
+        el("span", { class: "badge", text: t(m[1]) }), privateFallback(el("span", { class: "txt", html: inline(m[2], r.path) }))])))]);
     }
   }
   if (name === "open threads" || name === "more open threads") {
     // A person's record keeps its threads as written: what to do about them is Today's (D-30).
     if (r.category === "people") return el("div", { class: "person-threads", html: markdown(s.text, r.path) });
     const all = threads(r);
-    const state = name === "more open threads" ? { items: all.items.slice(3), calm: "" } : all;
+    const state = name === "more open threads" ? { items: projectSteps(r).slice(3).map(step => step.thread), calm: "" } : all;
     const box = el("div", { class: "block-threads" });
     if (state.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: t("Clear") }), el("span", { html: inline(state.calm, r.path) })]));
     if (state.items.length) box.appendChild(el("ul", { class: "threads" }, state.items.map(item => threadRow(r, item, false))));
@@ -11447,7 +11573,6 @@ function leadRow(r) {
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": t("Purpose sources") },
       [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: t(r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map" : "Last contact") : "Last active") + " " }), el("span", { class: "mono", text: fmtDate(k.last) })]));
-  if (k.last && r.category === "projects") row.appendChild(el("span", { class: "lead-meta", text: t("Last mapped session") + " " + fmtDate(k.last) }));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
     el("span", { class: "lead-meta usage-scope", text: t("Matched by skill name in coding sessions and co ai runs; retained eval attempts are counted separately. Neither confirms this installed version or task outcome.") }));
@@ -11632,7 +11757,8 @@ function projectLimit(r) {
     : t(days ? "The {n}-day session sample did not confirm current project work." : "The supplied session sample did not confirm current project work.", { n: days });
   return el("p", { class: "deep-note-limit", text });
 }
-function recordFocus(r) {
+// Projects reuse the supported context inside Full memory; the first screen keeps only steps and activity.
+function recordFocus(r, contextOnly = false) {
   if (r.category === "sessions") return el("div");
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": t("At a glance") });
@@ -11676,7 +11802,7 @@ function recordFocus(r) {
       [el("span", { text: t("Purpose sources") }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
 
   }
-  if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
+  if (sourceList(r).length && r.category !== "projects") focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -11689,20 +11815,20 @@ function recordFocus(r) {
         el("p", { html: inline(capFirst(step), r.path) })]));
     }
   }
-  out.appendChild(focusHead);
-  const thread = threads(r), open = thread.items;
-  if (open.length || ["people", "projects", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(r.category === "projects" ? { id: "open-threads" } : {}) }, [
+  if (contextOnly) return focusHead;
+  if (r.category !== "projects" || k.status === "Mapped") out.appendChild(focusHead);
+  const thread = threads(r), project = r.category === "projects";
+  const open = project ? projectSteps(r).map(step => step.thread) : thread.items;
+  if (open.length || ["people", "projects", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(project ? { id: "open-threads" } : {}) }, [
     el("h2", { text: t("Open threads") }), !open.length ? emptyLine(thread) : el("ul", { class: "threads", "aria-label": t("Open threads on this record") },
-      open.slice(0, 3).map(t => threadRow(r, t, false)))]));
-  if (r.category === "projects") {
-    const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
-    const blocks = [];
-    if (purpose && !projectNeedsContext && k.status === "Mapped") blocks.push(el("section", { class: "focus-section", id: "what-it-is" }, [el("h2", { text: t("What this is") }),
-      privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
-    if (decisions && listItems(decisions.text).some(item => !isCalm(item))) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: t("Recorded direction") }),
-      el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
-      el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: t("View all decisions →") })]));
-    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
+      open.slice(0, 3).map(t => project ? projectStepRow(r, t) : threadRow(r, t, false))), project && open.length > 3 ? projectMoreSteps(open.length - 3) : null]));
+  // A project leads with state, next steps and recent activity (#2993); its facts, links, conversations and
+  // history fold into the full memory with everything else, where its purpose and decisions already are.
+  if (project) {
+    const recent = projectRecent(r);
+    if (recent) out.appendChild(recent);
+    if (sourceList(r).length) out.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
+    return out;
   }
   const strip = recordFacts(r);
   if (strip) out.appendChild(strip);
@@ -11841,7 +11967,7 @@ function activityDisclosure(list, rows, recent) {
   update();
   return more;
 }
-function activityPanel(r, recent = false) {
+function activityPanel(r, recent = false, limit = 5) {
   const history = section(r, "history");
   if (!history) return null;
   const items = historyItems(history.text).filter(item => item.day);
@@ -11854,7 +11980,7 @@ function activityPanel(r, recent = false) {
   const sorted = items.map(item => ({ ...item, content: historyRowContent(item.text, r.path) }))
     .filter(item => item.content).sort((a, b) => b.day.localeCompare(a.day));
   if (!sorted.length) return null;
-  const rows = (recent ? sorted.slice(0, 5) : sorted).map(item => {
+  const rows = (recent ? sorted.slice(0, limit) : sorted).map(item => {
     const type = activityType(item.text);
     const row = el("li", { "data-type": type, class: item.content.classList.contains("privacy-only") ? "private-entry" : "" }, [el("span", { class: "activity-day", text: item.day.length === 7 ? dayLabel(item) : threadDate(item.day) }),
       el("span", { class: "activity-type", text: t(type) }),
@@ -11930,7 +12056,8 @@ function record(path, heading) {
   else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
-    head.appendChild(leadRow(r));
+    if (r.category === "projects") head.appendChild(projectStateLine(r));
+    if (r.category !== "projects") head.appendChild(leadRow(r));
     main.appendChild(head);
     const line = translationLine(r);
     if (line) main.appendChild(line);
@@ -11938,10 +12065,6 @@ function record(path, heading) {
   }
   const decisions = threadDecisionHistory(r);
   if (decisions) main.appendChild(decisions);
-  if (r.category === "projects") {
-    const cites = main.querySelector(".project-purpose-cites"), unsure = head.querySelector(".unsure");
-    if (cites && unsure) cites.appendChild(unsure);
-  }
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
@@ -11950,6 +12073,8 @@ function record(path, heading) {
     main.appendChild(copies);
   }
 
+  const projectContext = r.category === "projects" ? el("div", { class: "project-context" },
+    [leadRow(r), k.status === "Mapped" ? null : recordFocus(r, true)]) : null;
   const note = el("div", { class: "note" });
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
@@ -11957,7 +12082,7 @@ function record(path, heading) {
     if (["people", "projects", "orgs"].includes(r.category) && s.title.toLowerCase() === "open threads" && listItems(s.text).every(isCalm)) continue;
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
-      (main.querySelector(".project-purpose-preview, .purpose-lead") || [...main.querySelectorAll(".project-workspace h2")].some(h => h.textContent === "What this is"))) continue;
+      (main.querySelector(".purpose-lead") || projectContext?.querySelector(".project-purpose-preview, .purpose-lead"))) continue;
     const extraThreads = r.category === "projects" && s.title.toLowerCase() === "open threads" && threads(r).items.length;
     if (extraThreads && threads(r).items.length <= 3) continue;
     // The focus already shows the first three project threads.
@@ -11992,7 +12117,8 @@ function record(path, heading) {
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note, person || r.category === "orgs" ? recordContext(r) : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, r.category === "projects"
+    ? [projectContext, recordFacts(r), note, recordContext(r), activityPanel(r)] : [note, person || r.category === "orgs" ? recordContext(r) : null]), el("aside", { class: "side", "aria-label": t("About this page") }, panels)]);
   const sections = toc.length + (note.firstElementChild && note.firstElementChild.tagName !== "H2" ? 1 : 0)
     + grid.querySelectorAll(".deep-context .focus-section, .side .panel:not(.toc-panel)").length
     + Number(!!parts.related) + Number(!!parts.sources);
@@ -12006,6 +12132,10 @@ function record(path, heading) {
       disclosed ? el("span", { class: "deep-toggle", "aria-hidden": "true" }) : null]), limit, grid]);
   if (hasMemory) main.appendChild(deep);
   const column = grid.firstChild;
+  if (projectContext) {
+    const cites = projectContext.querySelector(".project-purpose-cites"), unsure = projectContext.querySelector(".unsure");
+    if (cites && unsure) cites.appendChild(unsure);
+  }
 
   if (parts.related || parts.sources) {
     const aside = el("div", { class: "aside" });
@@ -12136,7 +12266,7 @@ function search(q, relatedPath = "") {
     if (target) {
       main.appendChild(el("div", { class: "eyebrow", text: t("Search / related pages") }));
       main.appendChild(el("h1", { text: t("Connected to {name}", { name: target.title }) }));
-      const card = recordFocus(target).querySelector(".related-records");
+      const card = connectedContext(target);
       main.appendChild(card || emptyState("No supported links in this snapshot."));
       return;
     }
@@ -12962,9 +13092,13 @@ function graphRailAttach(main, r) {
   const topics = [...model.adj.get(r.path)].map(id => model.byId.get(id)).filter(n => n.k === "knowledge" && n.r && !privateTopicHidden(n.r));
   const block = el("div", { class: "gx gx-attach" }, [graphLocal(r), topics.length ? el("p", { class: "gx-topic-line" }, [el("span", { text: graphT("Knowledge here") + " " }),
     ...topics.flatMap((n, i) => [i ? "、" : "", el("a", { href: href(n.r), text: graphTitle(n) })])]) : null]);
-  // A person's rail keeps who they are first; a project or organisation page has no rail yet, so the block sits above the full note.
+  // A project's connections belong in Full memory; a person's rail keeps who they are first.
   const rail = main.querySelector(".rel-slot, .r4-rail"), deep = main.querySelector(":scope > .deep-note");
-  if (rail) rail.append(block);
+  if (r.category === "projects") {
+    const body = deep?.querySelector(".body");
+    if (body) body.append(block);
+    else main.append(el("details", {}, [el("summary", { text: graphT("Local graph") }), block]));
+  } else if (rail) rail.append(block);
   else main.insertBefore(block, deep);
   block.classList.toggle("gx-inline", !rail);
 }

@@ -33,7 +33,7 @@ def search_result(query, selected="", *, hidden=True, unique=False, no_details=F
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children,
         appendChild(x) {this.children.push(x);}});
       const href = r => '#r=' + encodeURIComponent(r.path), label = c => c;
-      const recordFocus = r => ({querySelector: () => ({relatedFor: r.path})});
+      const connectedContext = r => ({relatedFor: r.path});
       const emptyState = text => ({text}), skillReport = () => false;
       const splitTrailers = text => ({body:text}), COMMENT = /<!--.*?-->/g;
       const FACT_LABELS = {people:1}, bestMatch = r => ({bestFor:r.path});

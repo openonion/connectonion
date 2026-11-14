@@ -103,6 +103,9 @@ def test_person_and_project_pages_carry_a_local_graph_and_their_topics(page):
     assert block.locator(".gx-local-svg a:not(.centre)").count() == 2
     assert block.locator(".gx-topic-line a").inner_text() == "Heat storage"
     page.goto(uri + "#r=projects%2Fcove.md")
+    assert not page.locator(".gx-attach").is_visible()
+    page.locator("details.deep-note > summary").click()
+    assert page.locator(".gx-attach").is_visible()
     assert page.locator(".gx-attach .gx-topic-line a").inner_text() == "Heat storage"
 
 
