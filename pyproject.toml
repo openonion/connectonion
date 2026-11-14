@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.6rc11"
+version = "1.9.6rc12"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -122,11 +122,12 @@ synology = [
 # uses Feishu should pay for that. Pinned exactly rather than `>=`: the wheel
 # carries a snapshot of whatsmeow's WhatsApp protocol implementation, so a
 # version bump is a protocol change and deserves to be a deliberate one.
+# 0.10.0 (whatsmeow 2026-09-21): WhatsApp refuses 0.4.3's client at connect,
+# "Client outdated (405)", so nothing older can link at all. neonize brings
+# phonenumbers, which `lookup --country` uses (#2964); a second copy such as
+# phonenumberslite would write over the same package.
 whatsapp = [
-    "neonize==0.4.3.post0",
-    # `lookup --country AU` reads 0412 345 678 the way that country dials it
-    # (#2964). The lite build: the same parser without geocoding data.
-    "phonenumberslite>=8.13,<10",
+    "neonize==0.10.0",
 ]
 # Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few
