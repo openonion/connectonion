@@ -249,7 +249,7 @@ def test_org_display_name_keeps_domain_secondary_and_in_table(reader, width, the
     }""", isolated_context=False)
     # The name heads the record; the domain follows it in the facts line, smaller.
     assert _name(page.locator('.ov-say .ov-name')) == 'ConnectOnion'
-    domain = page.locator('.ov-say .ov-domain')
+    domain = page.locator('.ov-coda .ov-about dd a')
     assert domain.inner_text() == 'connectonion.com'
     assert domain.is_visible()
     assert domain.bounding_box()['y'] >= page.locator('.ov-say .ov-name').bounding_box()['y']
@@ -3542,7 +3542,8 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
-    assert page.locator('.fresh-label').filter(has_text='昨夜' if language == 'zh' else 'last night').first.is_visible()
+    assert page.locator('.org-table tbody tr').count() > 0
+    assert page.locator('.fresh-label, .fresh-dot').count() == 0  # #3036: no alert badges in this directory
     page.goto(uri)
     page.locator('.week-details summary').click()
     assert page.locator('.week li').filter(has_text='Mara Ostrowski').locator('.fresh-label').is_visible()
@@ -4956,7 +4957,7 @@ def _org_view(page, uri, hash_, width, theme):
     page.set_viewport_size({"width": width, "height": 844 if width < 600 else 900})
     page.emulate_media(color_scheme=theme)
     page.goto(uri + hash_)
-    page.locator("#main .ov").wait_for()
+    page.locator("#main .ov, #main .org-directory").wait_for()
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -5571,10 +5572,10 @@ def test_org_list_is_a_record_without_today_links_or_waiting_groups(reader, widt
     assert "Waiting on you" not in page.locator("#main").inner_text()
     row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
-    assert page.locator(".ov-tabs button").count() >= 1
+    assert page.locator(".org-kind-filters button").count() >= 1
     assert page.locator(".org-table thead th").count() == 8
-    assert page.locator(".ov-find").count() == 1
-    page.locator(".ov-find").fill("no such organisation")
+    assert page.locator(".org-directory .people-find").count() == 1
+    page.locator(".org-directory .people-find").fill("no such organisation")
     assert page.locator(".org-table-row").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -5614,18 +5615,21 @@ def test_org_with_nothing_owed_has_no_green_button(reader, width):
 def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", 1440, "light")
-    page.evaluate("() => { byPath('orgs/fernhill-labs.md').private = true; render(); }", isolated_context=False)
+    page.evaluate("() => { const r = byPath('orgs/fernhill-labs.md'); r.private = true; r.to_you = 'A recorded private studio relationship.'; render(); }", isolated_context=False)
     row = page.locator(".org-table-row").filter(has_text="Fernhill Labs")
     assert "Personal · shown only on this Mac" in row.inner_text()
     assert page.locator(".ov-focal").count() == 0
     assert row.locator(".ov-dot, .ov-chip").count() == 0
-    assert "pilot" not in page.locator("#main").inner_text().lower()
+    assert "pilot" not in page.locator("#main").inner_html().lower()
+    assert "A recorded private studio relationship" not in page.locator("#main").inner_html()
     page.evaluate("() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }", isolated_context=False)
     page.locator(".ov-curtain").wait_for()
     assert page.locator(".ov-primary").count() == 0
     assert "climate" not in page.locator("#main").inner_html().lower()
+    assert "A recorded private studio relationship" not in page.locator("#main").inner_html()
     page.get_by_role("button", name="Show", exact=True).click()
     assert page.locator(".ov-org-tree [role=treeitem]").count() >= 2
+    assert "A recorded private studio relationship" in page.locator(".ov-opening").inner_text()
     assert page.locator(".ov-today").count() == 0
     assert page.evaluate(GREEN) == 0
 

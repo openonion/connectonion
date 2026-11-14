@@ -149,7 +149,7 @@ def test_org_list_folds_units_into_their_organisation_and_expands_indented_rows(
     assert rows.filter(has_text='Fieldwork studio').count() == 0
     assert rows.filter(has_text="Fernhill Labs").locator('.org-disclosure').count() == 0
     # A unit's name still finds its organisation.
-    page.locator(".ov-find").fill("Kestrel")
+    page.locator(".org-directory .people-find").fill("Kestrel")
     assert rows.filter(has_text="Fernhill University").count() == 1
     unit = rows.filter(has_text="Kestrel squad")
     assert unit.count() == 1

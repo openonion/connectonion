@@ -167,12 +167,13 @@ def test_org_sources_do_not_prompt_for_missing_organisation_kind(unit_kind):
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const parseFacts = () => new Map(), plainLine = x => x, orgProse = x => x;
       const orgT = x => x, t = x => x, href = () => '#r=orgs/test.md';
+      const orgWebsite = () => null, orgTableT = x => x;
       const sourceList = () => [], orgQuestions = () => ['What kind of organisation this is'];
       console.log(JSON.stringify(orgCoda({r: {unit_kind: ''' + json.dumps(unit_kind) + r'''}})));
     ''')
-    text = json.dumps(result)
+    text = json.dumps(result, ensure_ascii=False)
     assert 'questions' not in text and 'What kind of organisation' not in text, 'organisation sources still ask questions'
-    assert 'Full memory and sources' in text
+    assert 'View sources →' in text and 'Full memory and sources' not in text
 
 
 # The page's own "last contact" lags when REM has not re-read the organisation; its people wrote later.

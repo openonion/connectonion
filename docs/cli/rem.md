@@ -1149,8 +1149,9 @@ pinned to that edge: it comes into view with the draft.
 - **Organisations** opens as a full-width sortable table, newest contact first.
   The default columns show a local logo or monogram, name, kind, what they do
   or mean to you, website, location, people known there, activity (messages in
-  90 days and a 52-week contact strip), and last contact. Unknown facts are quiet
-  dashes. Kind chips filter the directory. **Columns** remembers your choices
+  90 days), and last contact. Search and kind filters follow the reader’s
+  language; activity stays a readable message count at row height. Unknown
+  facts are quiet dashes. Kind chips filter the directory. **Columns** remembers your choices
   separately from People and can add first contact, legal entity and parent.
   Blanks sort last in either direction. On a phone rows become cards.
   Websites open in a new tab; when Website is Unknown, a contact's business
@@ -1161,6 +1162,9 @@ pinned to that edge: it comes into view with the draft.
   Units stay folded under their parent until its disclosure is expanded; a
   unit whose parent is missing stays findable in the list. Search also finds
   organisations by their unit names.
+  The book page names all contacts when there are at most four; otherwise it
+  names the four most recent and says so. Business, location and website have
+  separate labels, and the website is a link.
   An organisation page shows an indented, collapsible tree: organisation →
   units, courses or teams → people, with most recently active branches first.
   People keep their role in each unit;

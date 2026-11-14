@@ -1413,7 +1413,11 @@
 
   /* Organisation facts share the People table and its phone cards. */
   .org-directory { max-width: none; }
-  .org-directory .org-kind-filters { display: flex; margin-bottom: 16px; flex-wrap: wrap; }
+  .org-directory .org-kind-filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .org-kind-filters button { font: var(--s-meta) var(--font); padding: 6px 10px; border: 0; border-radius: var(--radius); background: transparent; color: var(--grey); cursor: pointer; }
+  .org-kind-filters button[aria-pressed="true"] { background: var(--well); color: var(--ink); }
+  .org-table :is(.c-summary, .c-location) .clamp { max-width: none; white-space: normal; overflow-wrap: anywhere; }
+
   .org-table { width: 100%; table-layout: fixed; }
   .org-table :is(th, td) { overflow: hidden; text-overflow: ellipsis; padding-left: 8px; padding-right: 8px; }
   .org-table th button { max-width: 100%; white-space: normal; text-align: left; }
@@ -2594,6 +2598,12 @@
   .ov-page .ov-trow[data-kind=unit] .ov-tl1 > a { font-weight: var(--w-bold); }
   .ov-page .ov-milestones p, .ov-page .ov-connections p, .ov-page .ov-about { line-height: 1.7; margin: 12px 0; }
   .ov-page .ov-milestones time { color: var(--grey); }
+  .ov-page .ov-about > div { margin: 12px 0; }
+  .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-meta); }
+  .ov-page .ov-about dd { margin: 0; overflow-wrap: anywhere; }
+  main:has(> .ov-page) .page-grid { display: block; }
+  main:has(> .ov-page) .page-grid > .side { margin-top: 24px; }
+
   .ov-page *, .ov-page *::before, .ov-page *::after { animation: none !important; }
 </style>
 <style id="graph-style">
@@ -9007,7 +9017,7 @@ function peopleView(items, config = {}) {
   const thead = el("thead"), tbody = el("tbody");
   const scroller = el("div", { class: "sheet-scroll people-scroll", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label(category) }) }, [el("table", { class: "sheet people-table " + (config.tableClass || "") }, [thead, tbody])]);
   const sortSelect = el("select", { class: "people-sort", "aria-label": t("Sort by") });
-  const find = el("input", { type: "search", class: "people-find " + (config.findClass || ""), placeholder: t(config.placeholder || "Filter name, company, role"), "aria-label": t("Filter {category}", { category: label(category).toLowerCase() }) });
+  const find = el("input", { type: "search", class: "people-find " + (config.findClass || ""), placeholder: translate(config.placeholder || "Filter name, company, role"), "aria-label": t("Filter {category}", { category: label(category).toLowerCase() }) });
   const empty = el("div", { class: "people-empty" });
   const rows = config.rows || items.map(peopleRow);
   for (const d of rows) if (!d.text) d.text = [d.r.title, d.org?.name || "", plainValue(d.f.company), plainValue(d.f.role), d.f.email].join(" ").toLowerCase();
@@ -9034,7 +9044,7 @@ function peopleView(items, config = {}) {
     }))));
     scroller.hidden = !shown.length;
     empty.replaceChildren(...(shown.length ? [] : rows.length ? [emptyState("No matching pages", "Clear filters →", "#c=" + category, config.clear || (() => { find.value = state.text = ""; draw(); find.focus(); }))]
-      : [emptyState("No contacts yet")]));
+      : [emptyState(category === "orgs" ? "No pages yet" : "No contacts yet")]));
     sortSelect.replaceChildren(...cols.map(c => el("option", { value: c.key, text: translate(c.label) })));
     sortSelect.value = col ? col.key : "";
   };
@@ -10139,7 +10149,9 @@ function orgRows() {
 // Organisations use the same chooser, blank-last sorter and phone cards as People.
 const ORG_TABLE_ZH = {
   "Kind": "类别", "Derived": "推断", "What they do / to you": "业务 / 与你的关系", "Website": "官网", "People known there": "认识的人", "Activity": "活跃度", "Legal entity": "法律实体", "Parent": "上级组织", "{n} messages · 90 days": "90 天 · {n} 条消息",
-  "company": "公司", "service": "服务", "team": "团队", "course": "课程",
+  "company": "公司", "service": "服务", "team": "团队", "course": "课程", "event": "活动",
+  "club": "社团",
+  "Filter organisations, people, domains": "搜索组织、联系人或域名",
 };
 function orgTableT(key, values = {}) {
   return uiLanguage === "zh" && ORG_TABLE_ZH[key] ? ORG_TABLE_ZH[key].replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "") : orgT(key, values);
@@ -10219,7 +10231,7 @@ const ORG_COLUMNS = [
   {key: "people", label: "People known there", num: true, desc: true, sort: d => orgHidden(d.r) ? null : d.people.length,
     cell: d => orgHidden(d.r) ? textCell("") : el("span", {class: "mono", text: String(d.people.length)})},
   {key: "activity", label: "Activity", desc: true, sort: d => blank(d.rel?.messages_90d), cell: d => d.rel ? el("span", {class: "org-activity"},
-    [el("span", {class: "mono", text: orgTableT("{n} messages · 90 days", {n: d.rel.messages_90d})}), relationshipCell({index: {relationship: d.rel}}, "contact")]) : textCell("")},
+    [el("span", {class: "mono", text: orgTableT("{n} messages · 90 days", {n: d.rel.messages_90d})})]) : textCell("")},
   {key: "last", label: "Last contact", desc: true, sort: d => blank(d.last), cell: d => d.last ? el("span", {class: "mono", text: calendarDate(d.last)}) : textCell("")},
   {key: "first", label: "First contact", extra: true, sort: d => blank(d.first), cell: d => d.first ? el("span", {class: "mono", text: calendarDate(d.first)}) : textCell("")},
   {key: "legal", label: "Legal entity", extra: true, sort: d => blank(d.legal), cell: d => textCell(d.legal)},
@@ -10243,10 +10255,10 @@ function orgsView() {
   if (orgFilter.tab !== "all" && !rows.some(d => [d, ...orgDescendants(d)].some(child => child.kind === orgFilter.tab))) orgFilter.tab = "all";
   let previousFilter = "";
   peopleView([], {category: "orgs", translate: orgTableT,
-    widths: {name: 21, kind: 10, summary: 17, website: 13, location: 10, people: 7, activity: 13, last: 9, first: 9, legal: 16, parent: 14}, columns: ORG_COLUMNS, state: ORG_SORT, rows,
+    widths: {name: 20, kind: 8, summary: 22, website: 13, location: 13, people: 6, activity: 10, last: 8, first: 9, legal: 16, parent: 14}, columns: ORG_COLUMNS, state: ORG_SORT, rows,
     chosen: () => orgTableColumns, choose: keys => { orgTableColumns = keys; }, storage: "co-rem-org-columns",
     clear: () => { ORG_SORT.text = ""; orgFilter.tab = "all"; orgsView(); },
-    className: "ov-list org-directory", tableClass: "org-table", rowClass: "org-table-row", findClass: "ov-find",
+    className: "ov-list org-directory", tableClass: "org-table", rowClass: "org-table-row",
     title: orgTableT("{n} organisations", {n: rows.length}), placeholder: "Filter organisations, people, domains",
     matches: (d, needle) => orgFilterRows([d], orgFilter.tab, needle).length > 0,
     visible: (shown, col, state) => {
@@ -10272,7 +10284,7 @@ function orgFilterRows(rows, kind, needle) {
 function orgDescendants(d) { return (d.children || []).flatMap(child => [child, ...orgDescendants(child)]); }
 function orgKindFilters(rows, draw) {
   const kinds = [...new Set(rows.flatMap(d => [d, ...orgDescendants(d)]).map(d => d.kind).filter(Boolean))].sort();
-  const bar = el("div", {class: "ov-tabs org-kind-filters", role: "group", "aria-label": orgTableT("Kind")});
+  const bar = el("div", {class: "org-kind-filters", role: "group", "aria-label": orgTableT("Kind")});
   const tabs = ["all", ...kinds];
   if (!tabs.includes(orgFilter.tab)) orgFilter.tab = "all";
   bar.append(...tabs.map(kind => {
@@ -10365,7 +10377,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      orgOpening(v)]), orgTree(v)]);
+      translationLine(r), orgOpening(v)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = known(v.r).summary || "", relation = orgRelation(v.r);
@@ -10373,10 +10385,13 @@ function orgOpening(v) {
   const last = [known(v.r).last, ...v.people.map(orgLast), ...v.events.map(e => e.day)].filter(Boolean).sort().at(-1);
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
   const count = uiLanguage === "zh" ? `你认识这里的 ${v.people.length} 个人。` : `You know ${v.people.length} ${v.people.length === 1 ? "person" : "people"} here. `;
-  const through = v.people.slice(0, 2).map(p => p.title).join(uiLanguage === "zh" ? "、" : " and ");
-  const contact = through ? (uiLanguage === "zh" ? `往来联系人包括 ${through}。` : `Your contacts include ${through}. `) : "";
+  const through = [...v.people].sort((a, b) => orgLast(b).localeCompare(orgLast(a)) || a.title.localeCompare(b.title))
+    .slice(0, 4).map(p => p.title).join(uiLanguage === "zh" ? "、" : ", ");
+  const recent = v.people.length > 4;
+  const contact = through ? (uiLanguage === "zh" ? `${recent ? "最近往来的 4 位联系人是" : "往来联系人包括"} ${through}。` : `${recent ? "Your most recent 4 contacts are" : "Your contacts include"} ${through}. `) : "";
+  const normalized = text => text.toLocaleLowerCase().replace(/[\s。.!?！？]+$/u, "").replace(/\s+/g, " ");
   return el("p", { class: "ov-sub ov-opening" }, [orgProse(sentence(summary)),
-    relation && !summary.includes(relation) ? orgProse(sentence(relation)) : null, count, contact,
+    relation && !normalized(summary).includes(normalized(relation)) ? orgProse(sentence(relation)) : null, count, contact,
     first ? sentence(orgT("In touch since {date}", { date: calendarDate(first) })) : "",
     last ? sentence(orgT("Last contact {date}", { date: calendarDate(last) })) : ""]);
 }
@@ -10509,10 +10524,14 @@ function orgConnections(v) {
 }
 function orgCoda(v) {
   const fact = name => (parseFacts(v.r).get(name) || []).map(item => plainLine(item.value, true)).filter(value => value && !/^unknown\b/i.test(value)).join("; ");
-  const what = fact("What they do"), place = fact("Location"), website = fact("Website") || v.r.domain;
+  const what = fact("What they do"), place = fact("Location"), website = orgWebsite(v.r, v.people || [])
+    || (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(v.r.domain || "") ? {url: "https://" + v.r.domain} : null);
+  const row = (label, value) => value ? el("div", {}, [el("dt", {text: label}), el("dd", {}, [value])]) : null;
   return el("footer", { class: "ov-coda" }, [
-    el("p", { class: "ov-about" }, [orgProse(what), place ? " " + orgT("Where") + ": " : "", orgProse(place), website ? " " + orgT("Website") + ": " : "", orgProse(website)]),
-    el("a", { class: "ov-src", href: href(v.r) + "&h=full-memory-heading", text: t("Full memory and sources") })]);
+    el("dl", { class: "ov-about" }, [row(t("What they do"), orgProse(what)),
+      row(orgT("Where"), orgProse(place)), row(orgT("Website"), website ? el("a", {
+        href: website.url, target: "_blank", rel: "noopener", text: website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}) : null)]),
+    el("a", { class: "ov-src", href: href(v.r) + "&h=full-memory-heading", text: t("View sources →") })]);
 }
 
 function orgCurtain(r) {
@@ -10566,6 +10585,11 @@ function orgRole(p, tag = "small") {
   const role = contactFields(p).find(f => f.label === "Role")?.value;
   return role && !UNKNOWN_TEXT.test(role) && !/^unknown\b/i.test(role) ? el(tag, { class: "ov-role" }, [roleSummary(role, p.path)]) : null;
 }
+
+const SKILL_FAMILY_NAMES = { lark: "Lark", linkedin: "LinkedIn", wecomcli: "WeCom", connectonion: "ConnectOnion", co: "co", oo: "oo", x: "X" };
+const SKILL_TOP = 8;
+const SKILL_NO_DESCRIPTION = /^Unknown\s*—\s*description not provided\.?$/i;
+const SKILL_ABBREVIATION = /(?:\b(?:e\.g|i\.e|vs|etc|cf|approx|Mr|Mrs|Ms|Dr|St|No)|(?:^|[\s(])(?:\p{L}\.)*\p{L})$/iu;
 
 function skillClause(line) {
   const whole = plainLine(line).replace(/\s*\((?:user|project|plugin)\)\s*$/i, "").trim();

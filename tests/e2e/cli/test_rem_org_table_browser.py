@@ -49,7 +49,8 @@ def test_org_table_columns_links_activity_and_calm_blanks(browser, tmp_path, mon
     cedar = page.locator('.org-table tbody tr').filter(has_text='Cedar Works')
     assert cedar.locator('.c-people').inner_text() == '1'
     assert '9' in cedar.locator('.c-activity').inner_text()
-    assert cedar.locator('.contact-spark rect').count() == 52
+    assert cedar.locator('.c-activity').inner_text() == '9 messages · 90 days'
+    assert cedar.locator('.contact-spark').count() == 0
     assert cedar.locator('img').get_attribute('src').startswith('data:image/png;base64,')
     assert page.locator('.org-logo').count() == 3
     for a in page.locator('.c-website a').all():
@@ -61,6 +62,8 @@ def test_org_table_columns_links_activity_and_calm_blanks(browser, tmp_path, mon
         assert word not in text
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     if width == 1440:
+        for key in ('summary', 'location'):
+            assert cedar.locator('.c-' + key + ' .clamp').evaluate('e => getComputedStyle(e).maxWidth') == 'none'
         assert page.locator('.people-scroll').evaluate('e => e.scrollWidth <= e.clientWidth + 1')
     else:
         assert page.locator('.people-sort').is_visible()
@@ -78,10 +81,10 @@ def test_org_table_nesting_kind_filter_and_column_memory(browser, tmp_path, monk
     assert 'Field team' not in _names(page)
     page.locator('.org-kind-filters button').filter(has_text='service').click()
     assert _names(page) == ['Elm Desk']
-    page.locator('.org-kind-filters button').filter(has_text='All', exact=True).click()
-    page.locator('.org-kind-filters button').filter(has_text='team', exact=True).click()
+    page.locator('.org-kind-filters').get_by_role('button', name='All', exact=True).click()
+    page.locator('.org-kind-filters').get_by_role('button', name='team', exact=True).click()
     assert _names(page) == ['Cedar Works', 'Field team']
-    page.locator('.org-kind-filters button').filter(has_text='All', exact=True).click()
+    page.locator('.org-kind-filters').get_by_role('button', name='All', exact=True).click()
     page.locator('.org-disclosure').first.click()
     assert 'Field team' not in _names(page)
     page.locator('.people-columns-open').click()
@@ -109,3 +112,25 @@ def test_org_table_every_header_sorts_both_ways_blank_last(browser, tmp_path, mo
               const filled=values.filter(v=>v!==null), collator=new Intl.Collator('en',{numeric:true,sensitivity:'base'});
               return filled.every((v,i)=>!i || (typeof v==='string' ? collator.compare(filled[i-1],v) : filled[i-1]-v)*(desc?-1:1)<=0);
             }''', key, isolated_context=False)
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_org_search_and_kind_filters_are_visible_and_localised(browser, tmp_path, monkeypatch, width):
+    page = _open(browser, tmp_path, monkeypatch, width)
+    page.evaluate("() => { byPath('orgs/ash.md').kind = 'event'; setInterfaceLanguage('zh'); }", isolated_context=False)
+    find = page.locator('.org-directory input[type=search]')
+    assert find.get_attribute('placeholder') == '搜索组织、联系人或域名'
+    assert find.bounding_box()['width'] >= 180
+    assert find.bounding_box()['height'] >= 32
+    assert find.evaluate("e => getComputedStyle(e).outlineStyle") == 'solid'
+    filters = page.locator('.org-kind-filters')
+    assert filters.is_visible()
+    assert filters.evaluate("e => getComputedStyle(e).backgroundColor") == 'rgba(0, 0, 0, 0)'
+    filters.get_by_role('button', name='活动', exact=True).click()
+    assert _names(page) == ['Ash']
+    filters.get_by_role('button', name='全部', exact=True).click()
+    find.fill('no-invented-match-zzzz')
+    assert page.locator('.empty a').count() == 1
+    page.locator('.empty a').click()
+    assert page.locator('.empty').count() == 0
+    assert _names(page) == ['Cedar Works', 'Elm Desk', 'Ash']

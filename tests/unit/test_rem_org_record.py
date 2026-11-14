@@ -144,3 +144,73 @@ def test_org_connections_are_distinct_public_project_org_and_topic_links():
     links = [row['children'][0]['href'] for row in result['children'][1:]]
     assert links == ['#projects/studio.md', '#knowledge/teaching.md', '#orgs/partner.md']
     assert 'Private' not in str(result)
+
+
+def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
+    result = run_js(['orgOpening'], DOM + r'''
+      const uiLanguage = 'en', known = () => ({summary:'Climate research; your first paying pilot.',last:''});
+      const orgRelation = () => 'Your first paying pilot', facts = () => ({}), orgLast = p => p.last;
+      const calendarDate = x => x, orgProse = x => x;
+      console.log(JSON.stringify(orgOpening({r:{}, events:[], people:[
+        {title:'Fern',last:'2026-01-01'}, {title:'Elm',last:'2026-03-01'}, {title:'Ash',last:'2026-02-01'}]})));
+    ''')
+    text = ''.join(x for x in result['children'] if isinstance(x, str))
+    assert text.lower().count('your first paying pilot') == 1
+    assert all(name in text for name in ['Fern', 'Elm', 'Ash'])
+
+
+def test_org_opening_many_contacts_names_the_most_recent_and_says_so():
+    result = run_js(['orgOpening'], DOM + r'''
+      const uiLanguage = 'en', known = () => ({summary:'Research.',last:''});
+      const orgRelation = () => '', facts = () => ({}), orgLast = p => p.last;
+      const calendarDate = x => x, orgProse = x => x;
+      console.log(JSON.stringify(orgOpening({r:{}, events:[], people:Array.from({length:6},(_,i)=>
+        ({title:'Contact '+i,last:'2026-01-0'+(i+1)}))})));
+    ''')
+    text = ''.join(x for x in result['children'] if isinstance(x, str))
+    assert 'most recent 4' in text
+    assert all('Contact '+str(i) in text for i in [5,4,3,2])
+    assert 'Contact 0' not in text and 'Contact 1' not in text
+
+
+def test_org_facts_have_individual_labels_and_a_clickable_website():
+    result = run_js(['orgCoda'], DOM + r'''
+      const parseFacts = () => new Map([['What they do',[{value:'Research'}]], ['Location',[{value:'Harbour'}]]]);
+      const orgWebsite = () => ({url:'https://cedar.example',derived:false});
+      const orgTableT = x => x, plainLine = x => x, orgProse = x => x, href = () => '#record';
+      console.log(JSON.stringify(orgCoda({r:{},people:[]})));
+    ''')
+    facts = result['children'][0]
+    assert facts['tag'] == 'dl'
+    assert [row['children'][0]['text'] for row in facts['children']] == ['What they do', 'Where', 'Website']
+    link = facts['children'][2]['children'][1]['children'][0]
+    assert link['tag'] == 'a' and link['href'] == 'https://cedar.example'
+    assert link['target'] == '_blank' and link['rel'] == 'noopener'
+    assert 'Full memory and sources' not in str(result)
+
+
+@pytest.mark.parametrize('domain', ['cedar.example', 'javascript:alert(1)'])
+def test_org_book_keeps_a_known_domain_as_a_safe_secondary_link(domain):
+    result = run_js(['orgCoda'], DOM + r'''
+      const parseFacts = () => new Map(), orgWebsite = () => null, orgTableT = x => x;
+      const plainLine = x => x, orgProse = x => x, href = () => '#record';
+      console.log(JSON.stringify(orgCoda({r:{domain:__DOMAIN__},people:[]})));
+    '''.replace('__DOMAIN__', json.dumps(domain)))
+    rows = [row for row in result['children'][0]['children'] if row]
+    if domain == 'cedar.example':
+        assert rows[0]['children'][1]['children'][0]['href'] == 'https://cedar.example'
+    else:
+        assert rows == []
+
+
+def test_org_kind_labels_localise_known_kinds_and_preserve_unknown_words():
+    import re
+    import test_rem_org_ui_integration as harness
+    page = harness.TEMPLATE.read_text()
+    labels = '\n'.join(re.search(r'const ' + name + r' = .*?^};', page, re.M | re.S)[0]
+                       for name in ['ORG_UI_ZH', 'ORG_TABLE_ZH'])
+    result = run_js(['orgT', 'orgTableT'], labels + r'''
+      const uiLanguage = 'zh', t = x => x;
+      console.log(JSON.stringify(['event','company','team','programme','venue','unclassified-kind'].map(orgTableT)));
+    ''')
+    assert result == ['活动', '公司', '团队', '项目组', '场所', 'unclassified-kind']

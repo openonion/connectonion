@@ -25,7 +25,7 @@ def test_untouched_org_list_and_page_have_no_task_projection(org_reader, width, 
             assert word not in text, (selector, word, text)
         assert page.locator('.ov-today, .list-today, .ov-chip.late, .ov-grp').count() == 0
         assert not any('waiting' in name.lower() or '等你' in name
-                       for name in page.locator('.ov-tabs button').all_inner_texts())
+                       for name in page.locator('.org-kind-filters button').all_inner_texts())
 
 
 @pytest.mark.parametrize('width', [1440, 390])
@@ -72,7 +72,7 @@ def test_org_tree_is_the_only_people_directory_and_local_graph_is_absent(org_rea
 def test_org_article_says_facts_in_one_reading_column(org_reader, width, language):
     page = org_reader(width, language=language)
     article = page.locator('.ov-page')
-    assert article.locator('.ov-chip, .ov-dot, .ov-mk, .ov-tbar, .ov-tc, .ov-time, svg, .updated-label, .fresh-label, .fresh-dot, .ov-stats, .ov-sq, .pill, .badge, .chip, .ov-card, .ov-unsure-d, .ov-cool, .ov-two, .translation-line').count() == 0
+    assert article.locator('.ov-chip, .ov-dot, .ov-mk, .ov-tbar, .ov-tc, .ov-time, svg, .updated-label, .fresh-label, .fresh-dot, .ov-stats, .ov-sq, .pill, .badge, .chip, .ov-card, .ov-unsure-d, .ov-cool, .ov-two').count() == 0
     opening = article.locator('.ov-opening').inner_text()
     facts = page.evaluate("""() => ({summary: known(orgCurrent.r).summary, n: orgCurrent.people.length,
       first: calendarDate(orgCurrent.events[0].day)})""", isolated_context=False)
@@ -85,7 +85,8 @@ def test_org_article_says_facts_in_one_reading_column(org_reader, width, languag
     assert all(abs(left - bounds['x']) <= 1 for left in aligned), aligned
     assert article.locator('.ov-milestones time').count() == 4
     assert article.locator('.ov-milestones').inner_text().count('confirmed the final demo week') == 1
-    assert article.locator('.ov-coda a').get_attribute('href').endswith('&h=full-memory-heading')
+    assert article.locator('.ov-coda .ov-src').get_attribute('href').endswith('&h=full-memory-heading')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    article.locator('.ov-coda a').click()
+    assert page.locator('#main').inner_text().count('完整记忆与来源' if language == 'zh' else 'Full memory and sources') == 1
+    article.locator('.ov-coda .ov-src').click()
     assert page.locator('details.deep-note').evaluate('node => node.open')
