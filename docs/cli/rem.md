@@ -2613,6 +2613,27 @@ When the last init or daily translation reported failures, it names how many
 pages could not be translated and offers the **全部翻译成中文** button, never a
 command to copy (D-60).
 
+### Quotation word boundaries (#2635)
+
+Quotation checks keep word spacing (see above). Two further rules apply.
+
+Native session decisions must match whole words of the retained typed-user
+original, both when a summary is saved and when a saved summary is displayed:
+“able to pay today” is not a quotation of “Unable to pay today”.
+
+In mail, a literal fragment that occurs only inside a larger word or next to
+flattened legacy mail headers is **unresolved**, rather than automatic support or
+a refutation. Review packets carry the quote, the matching cited source IDs and a
+bounded adjacent retained rendering. Promotion and audit records keep these
+warnings even when no auditor runs. A global PASS cannot resolve those word
+boundaries and is recorded as INSUFFICIENT; existing policy records insufficient
+audits without refusing claims nobody has shown wrong.
+
+This is a bounded quotation check, not semantic proof of who spoke, what was
+promised, or whether a condition was retained. Unavailable or truncated
+originals remain unjudged. No missing separators are guessed and no notes are
+rewritten.
+
 ### Codex history during maintenance
 
 REM archives its internal Codex threads after each model call, including failed

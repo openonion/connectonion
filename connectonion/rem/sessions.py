@@ -341,7 +341,7 @@ def _decision_lines(saved: dict, messages: list[dict], zone) -> list[str]:
                  for m in messages]
     return [f"- “{decision['quote']}” ({decision['time']})" for decision in saved.get("decisions", [])
             if decision.get("quote", "").strip() and any(
-                clock == decision.get("time") and _quoted_in(decision["quote"], text)
+                clock == decision.get("time") and _quoted_in(decision["quote"], text, whole_words=True)
                 for clock, text in originals)]
 
 
@@ -746,7 +746,7 @@ def _validated_summary(value: dict, row: dict) -> tuple[dict, int]:
         quote = decision.get("quote") if isinstance(decision, dict) else None
         visible = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", quote) if isinstance(quote, str) else ""
         if (re.search(r"[^\W_]", _plain(visible)) and any(
-                message["time"] == decision.get("time") and _quoted_in(quote, message["text"])
+                message["time"] == decision.get("time") and _quoted_in(quote, message["text"], whole_words=True)
                 for message in row["messages"])):
             decisions.append({"time": decision["time"], "quote": quote})
         else:

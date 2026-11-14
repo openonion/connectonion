@@ -1074,6 +1074,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     errors += [f"Web citation needs a saved capture in web/sources.json: {source}"
                for source in _cited_sources(text).values()
                if source.startswith(("http://", "https://")) and source not in carried_urls and source not in readable]
+    from .page_review import quote_boundary_warnings
+    boundary_warnings = quote_boundary_warnings(notebook.root, text, items) if record.startswith(AUDITED) else []
     audit_usage = {}
     audit_status = "not automatically assessed"
     audit_unavailable = []
@@ -1138,6 +1140,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # the existing policy does not refuse unrefuted new content on that basis.
         if report["verdict"] == "fail":
             errors.append("Cited-claim audit did not pass; see claim-review.json")
+    if boundary_warnings:
+        audit_status += f"; {len(boundary_warnings)} quote boundaries unresolved"
     total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
                    for key in (usage or {}).keys() | audit_usage.keys()} or None
     # Sync owns this same lock. Compare and write together so a completed
@@ -1158,7 +1162,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "contacts_unverified": unverified, "company_from_domain": company,
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "sources_unavailable": audit_unavailable, "factual_quality": audit_status})
+                   "sources_unavailable": audit_unavailable, "quote_boundary_warnings": boundary_warnings, "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
