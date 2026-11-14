@@ -259,7 +259,7 @@ def queue(root, *, records=None, contexts=None, states=None, as_of=None):
             db.row_factory = sqlite3.Row
         rows = _entries(root, records, today, contexts, states, db)
     soon = (today + timedelta(days=3)).isoformat()
-    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] in ('mine', 'theirs')
+    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] == 'mine'
            and (row['due'] <= soon if row['due'] else row['since'] == today.isoformat())]
     pages, morning = set(), []
     for row in rows:
