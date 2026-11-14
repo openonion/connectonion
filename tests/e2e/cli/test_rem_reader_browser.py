@@ -404,9 +404,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        # Owner, 2026-11-09: the sidebar keeps no category counts, so the page itself is awaited.
-        page.locator('#nav a[href="#c=all"]').click()
-        page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
+        page.locator('#nav a[href="#c=skills"]').click()
+        page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').wait_for()
+        assert page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.

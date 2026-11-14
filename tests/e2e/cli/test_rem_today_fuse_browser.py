@@ -165,10 +165,11 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     headline = page.locator(".night-card .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
-    # The large number is the badge's; the people are its subset, said in words (sprint 14 #4).
+    # The large number is the badge's (sprint 14 #4); the faces beside it are where to start, and no sentence
+    # says so (owner, 2026-11-13, #2994).
     assert int(headline) == page.evaluate("threadCounts().mine", isolated_context=False)
     assert len(people) == faces.count()
-    assert page.locator(".night-card .count-of").inner_text() == f"Start with these {len(people)} people"
+    assert "Start with" not in page.locator(".night-card").inner_text()
     assert page.locator(".deal.on").get_attribute("data-path") == people[0]
     # One raised card: only the dealt card is shown; the others wait behind their faces.
     assert page.locator(".today-brief .qcard:visible").count() == 1
@@ -577,7 +578,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     # Each row of the sheet writes its place's full name beside its picture; the rail's short word is not shown twice.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"All records"']
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"Knowledge"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {

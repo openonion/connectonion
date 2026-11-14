@@ -135,7 +135,7 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
     def words(node):
         return node if isinstance(node, str) else node.get('text', '') + ''.join(words(child) for child in node.get('children', []))
     # N3 (D-123): the count is the night card's display element; the overdue face says its days late.
-    assert any('count-line' in n.get('class', '') and words(n) == '1thing waiting on youStart with this 1 person' for n in rendered)
+    assert any('count-line' in n.get('class', '') and words(n) == '1thing waiting on you' for n in rendered)
     assert any('dd late' == n.get('class') for n in rendered)
     assert any('overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))
