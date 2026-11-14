@@ -9,6 +9,7 @@ each organisation's shape as a small icicle. Fernhill University is invented
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ TREE = ".ov-org-tree [role=tree]"
 def _item(page, name, level):
     """The tree item at this level whose own row carries this name."""
     return page.locator(f"{TREE} [role=treeitem][aria-level='{level}']").filter(
-        has=page.locator(":scope > .ov-trow", has_text=name))
+        has=page.locator(":scope > .ov-trow .ov-tl1 > a, :scope > .ov-trow .ov-tl1 > b").filter(has_text=re.compile("^" + re.escape(name) + "$")))
 
 
 def _row(item):
@@ -37,7 +38,7 @@ def _row(item):
 
 
 def _count(item):
-    return _row(item).locator(".ov-tc").inner_text()
+    return str(item.locator('[role=group] .ov-trow[data-kind=person]').count())
 
 
 def _focused(page):
@@ -54,6 +55,7 @@ def test_org_page_tree_levels_and_counts_match_the_data(org_reader, width):
         assert tree.bounding_box()["y"] < 900
     root = _item(page, "Fernhill University", 1)
     assert root.get_attribute("aria-expanded") == "true"
+    assert "You know 12 people here." in page.locator(".ov-opening").inner_text()
     assert _count(root) == "12" == str(page.evaluate("orgMembers(byPath('orgs/fernhill-university.md')).length", isolated_context=False))
     branches = [_row(item).locator("a, b").first.inner_text() for item in page.locator(f"{TREE} [aria-level='2']").all()]
     # The most active branch leads; people with no known unit are the last row, never a branch of their own.

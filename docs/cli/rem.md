@@ -1120,10 +1120,6 @@ pinned to that edge: it comes into view with the draft.
   Graph labels are cut by width, so a Chinese title stays inside its card.
   **All records**' **Most connected** leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
-- **An organisation's link to Today**, **N things in Today involve X**, counts
-  what Today counts: the items waiting on you (not done, not quiet, not a
-  stale promise, not a reply already sent or held) whose rows belong to the
-  organisation or its units, so it never exceeds Today's own number.
 - **Merged threads**: the same request copied onto several pages is shown
   once, with **Also on** naming the other pages. Copies merge when they cite
   the same message and one mostly repeats the other's distinctive words, or
@@ -1156,8 +1152,8 @@ pinned to that edge: it comes into view with the draft.
   also finds an organisation by its unit names. A unit whose parent page is
   missing stays in the list so its record can still be found.
   An organisation page shows an indented, collapsible tree: organisation →
-  units, courses or teams → people, with each branch's distinct people count
-  and most recently active branches first. People keep their role in each unit;
+  units, courses or teams → people, with most recently active branches first.
+  People keep their role in each unit;
   those without a known unit are folded under **Department not known yet**.
   Click beside a name to expand or collapse; the name opens its record. Tab
   enters the tree once, arrows move between rows, Right expands or enters a
@@ -1166,7 +1162,13 @@ pinned to that edge: it comes into view with the draft.
   The breadcrumb comes first on a phone. The tree is the people directory;
   repeated contact lists and the local graph are omitted from this record.
   A person with several unit memberships appears once, with those roles together.
-  The contact timeline uses calendar dates through the snapshot date.
+  The page reads as an article in one centred reading column: opening sentences
+  give its summary, relationship, people known and first/latest contact dates.
+  The tree is followed by the organisation's own dated History as prose milestones,
+  connections as text links, and facts and sources at the foot. Correspondents'
+  activity is not the article's body; **Full memory and sources** keeps the page's
+  complete record reachable. There are no update badges, contact charts,
+  freshness dots, branch bars or questions asking for action on this page.
   Organisation lists and pages carry no
   waiting groups, task chips or Today counts; to-dos live in Today.
 - **Projects** open as a sheet: one row per page, the facts
@@ -1239,9 +1241,9 @@ pinned to that edge: it comes into view with the draft.
   updated is noted in the Full memory and sources header. An organisation is
   private only when its title carries `[personal]`/`[sensitive]` or its Kind
   is personal. A labelled passage in its body shows with its label in the
-  first line, What they do, Lately and the full memory, and hides alone when
-  labelled passages are hidden, as on a person's page; the time line's ticks
-  never carry one. A labelled membership (the org's own roster line, or a
+  opening, facts, dated milestones and full memory, and hides alone when
+  labelled passages are hidden, as on a person's page.
+  A labelled membership (the org's own roster line, or a
   Company, Unit or Role in unit line on the person's page) places nobody in
   the organisation and draws no edge on the map. A project's folder path
   stays in its full memory, never as a fact on the page. A session summary

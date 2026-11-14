@@ -28,6 +28,7 @@ def run_js(names, script):
 
 TREE_FUNCTIONS = ['orgTree', 'orgLoose', 'orgUnitCount', 'orgByLast', 'orgByActivity', 'orgBranchLast']
 TREE_DOM = r'''
+  const uiLanguage = 'en';
   const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, addEventListener() {}});
   const orgTreeItem = d => d;
   const orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]);
@@ -160,13 +161,18 @@ def test_parent_unit_page_renders_direct_members_in_their_known_unit():
 
 
 
-@pytest.mark.parametrize('unit_kind,unknown', [('team', False), ('', True)])
-def test_known_unit_kind_is_not_presented_as_an_unknown_organisation(unit_kind, unknown):
-    result = run_js(['orgQuestions'], r'''
-      const orgT = text => text, known = () => ({status: 'Investigated'});
-      console.log(JSON.stringify(orgQuestions({unit_kind: ''' + json.dumps(unit_kind) + r''', to_you: 'Your delivery unit'}, [])));
+@pytest.mark.parametrize('unit_kind', ['team', ''])
+def test_org_sources_do_not_prompt_for_missing_organisation_kind(unit_kind):
+    result = run_js(['orgCoda'], r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+      const parseFacts = () => new Map(), plainLine = x => x, orgProse = x => x;
+      const orgT = x => x, t = x => x, href = () => '#r=orgs/test.md';
+      const sourceList = () => [], orgQuestions = () => ['What kind of organisation this is'];
+      console.log(JSON.stringify(orgCoda({r: {unit_kind: ''' + json.dumps(unit_kind) + r'''}})));
     ''')
-    assert ('What kind of organisation this is' in json.dumps(result)) is unknown
+    text = json.dumps(result)
+    assert 'questions' not in text and 'What kind of organisation' not in text, 'organisation sources still ask questions'
+    assert 'Full memory and sources' in text
 
 
 # The page's own "last contact" lags when REM has not re-read the organisation; its people wrote later.
@@ -190,11 +196,12 @@ def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_th
 
 
 def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
-    result = run_js(['orgFacts'], ROLLUP + r'''
+    result = run_js(['orgOpening'], ROLLUP + r'''
       const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), calendarDate = day => day;
       const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
+      const uiLanguage = 'en', facts = () => ({}), orgRelation = () => '', orgProse = x => x;
       const v = {r: org, people: org.people.map(byPath), events: [{day: '2026-03-01'}]};
-      console.log(JSON.stringify(orgFacts(v)));
+      console.log(JSON.stringify(orgOpening(v)));
     ''')
     assert 'Last contact 2026-11-07' in result and '2026-10-10' not in result
 
@@ -228,18 +235,19 @@ def test_org_tree_counts_unique_people_sorts_branches_and_keeps_all_levels():
       console.log(JSON.stringify(orgTree({r, tree, people: [old, recent, loose]})));
     ''')
     root = result['children'][1]['children'][0]
-    assert root['level'] == 1 and root['count'] == 3 and root['open'] is True
+    assert root['level'] == 1 and root['open'] is True
+    assert 'count' not in root
     newer, older, loose = root['kids']
     assert [newer['label'], older['label']] == ['Newer branch', 'Older branch']
-    assert newer['count'] == 1  # parent + child membership is one person in the rollup
+    assert 'count' not in newer  # Counts are expressed in the opening, not UI signals.
     squad = newer['kids'][1]
-    assert squad['level'] == 3 and squad['count'] == 1 and squad['kids'] == []
+    assert squad['level'] == 3 and squad['kids'] == []
     # Membership counts stay intact; Birch is displayed once in the first branch.
     def person_labels(item):
         return ([item['label']] if item.get('kind') == 'person' else []) + [
             label for child in item.get('kids', []) for label in person_labels(child)]
     assert sorted(person_labels(root)) == ['Aster', 'Birch', 'Cedar']
-    assert loose['kind'] == 'loose' and loose['count'] == 1 and loose['open'] is False
+    assert loose['kind'] == 'loose' and loose['open'] is False
 
 
 def test_org_unit_search_never_exposes_private_branch_names():

@@ -4541,7 +4541,7 @@ def test_an_org_record_never_counts_today_even_with_mixed_obligations():
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgFacts = () => 'facts', orgTree = () => 'tree';
+      const orgOpening = () => 'facts', orgTree = () => 'tree';
       const orgTodayLink = () => { throw Error('Organisation requested Today counts'); };
       const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'merged copy'];
       console.log(JSON.stringify(orgStage({r: {}, people: [], owed})));

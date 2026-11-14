@@ -46,7 +46,7 @@ def test_org_stage_has_no_today_projection():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgFacts = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count';
+      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count';
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
     ''')
     assert 'Today count' not in str(result)
@@ -56,25 +56,51 @@ def test_org_record_does_not_repeat_the_trees_people_summary():
     result = run_js(['orgPage'], DOM + r'''
       let orgCurrent;
       const orgHidden = () => false, orgView = () => ({}), orgStage = () => 'tree';
-      const orgKeyPeople = () => 'duplicate roster', orgColumns = () => 'history', orgCoda = () => 'sources';
+      const orgKeyPeople = () => 'duplicate roster', orgMilestones = () => 'history', orgConnections = () => 'connections', orgCoda = () => 'sources';
       console.log(JSON.stringify(orgPage({})));
     ''')
-    assert result['children'] == ['tree', 'history', 'sources']
+    assert result['children'] == ['tree', 'history', 'connections', 'sources']
 
 
-def test_org_contact_timeline_uses_calendar_dates_instead_of_today():
-    result = run_js(['orgTime'], r'''
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
-        append(...nodes) {this.children.push(...nodes);}}), svgEl = el;
-      const innerWidth = 1440, REM = {as_of: '2026-11-14'}, DAY_MS = 86400000;
-      const calendarDay = d => d, calendarDate = d => 'Date ' + d, fmtDate = () => 'Today';
-      const orgScale = () => () => 100, orgT = x => x;
-      const box = {clientWidth: 600, replaceChildren(svg) {this.svg = svg;}};
-      orgTime({events: [{day: '2026-11-14', words: 'Met', kind: 'them'}]}, box, true);
-      console.log(JSON.stringify(box.svg));
+def test_org_article_milestones_use_only_the_organisations_dated_story():
+    result = run_js(['orgMilestones'], DOM + r'''
+      const uiLanguage = 'en', calendarDate = day => 'Date ' + day, orgProse = text => text;
+      const orgHistory = (r, people) => { if (people.length) throw Error('activity feed entered article');
+        return [{day:'2026-11-14', words:'The studio opened.'}, {day:'2026-01-02', words:'The partnership began.'}]; };
+      console.log(JSON.stringify(orgMilestones({r: {}, people: [{title: 'Fern'}]})));
     ''')
-    assert 'Today' not in str(result)
-    assert 'Date 2026-11-14' in str(result)
+    rows = result['children'][1:]
+    assert [row['children'][0]['datetime'] for row in rows] == ['2026-01-02', '2026-11-14']
+    assert 'Date 2026-11-14' in str(result) and 'Today' not in str(result)
+    assert 'The partnership began.' in str(rows[0])
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
+    result = run_js(['orgOpening'], DOM.replace('const orgT = text => text, t = text => text;', '') + r'''
+      const uiLanguage = __LANG__, orgT = (key, v) => key.replace('{date}', v.date);
+      const known = () => ({summary: 'A teaching university.', last: '2026-10-01'});
+      const facts = () => ({first: '2025-01-02'}), orgRelation = () => 'Your research partner.';
+      const orgLast = p => p.last, calendarDate = day => day, orgProse = text => text;
+      console.log(JSON.stringify(orgOpening({r: {}, people: [{title: 'Fern', last:'2026-11-14'}],
+        events: [{day:'2026-01-03'}]})));
+    '''.replace('__LANG__', json.dumps(language)))
+    text = ''.join(part for part in result['children'] if isinstance(part, str))
+    assert 'A teaching university.' in text and 'Your research partner.' in text
+    assert '1' in text and 'Fern' in text and '2025-01-02' in text and '2026-11-14' in text
+    assert 'Today' not in text
+
+
+def test_org_article_stage_has_no_state_only_elements():
+    result = run_js(['orgStage'], DOM + r'''
+      const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
+      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null;
+      const updatedMarker = () => ({class: 'updated-label'}), orgSub = () => [], orgFacts = () => 'facts';
+      const orgKeyPeople = () => null, orgTodayLink = () => null, orgXray = () => null;
+      console.log(JSON.stringify(orgStage({r: {}, people: []})));
+    ''')
+    assert 'updated-label' not in str(result) and 'ov-time' not in str(result), 'state-only badges/charts remain'
+    assert 'Opening sentences' in str(result)
 
 
 @pytest.mark.parametrize("first_role", ["Tutor", ""])
@@ -101,3 +127,27 @@ def test_org_tree_shows_a_multi_unit_person_once_and_keeps_both_roles(first_role
         assert first_role in result[0]['meta']
     else:
         assert 'Squad' in result[0]['meta']
+
+
+def test_org_full_memory_date_is_a_calendar_date_without_state_counts():
+    result = run_js(['memoryHint'], r'''
+      const t = x => x, calendarDay = x => x.slice(0,10), calendarDate = x => 'Date ' + x, fmtDate = () => 'Today';
+      console.log(JSON.stringify(memoryHint({category:'orgs',updated:'2026-11-14T12:00:00Z'},true,8,3)));
+    ''')
+    assert result == 'File updated Date 2026-11-14'
+
+
+def test_org_connections_are_distinct_public_project_org_and_topic_links():
+    result = run_js(['orgConnections'], DOM + r'''
+      const uiLanguage = 'en', orgProse = x => x, href = p => '#' + p.path, known = () => ({summary:'Recorded connection.'});
+      const rows = [{path:'projects/studio.md',category:'projects',title:'Studio'},
+        {path:'orgs/partner.md',category:'orgs',title:'Partner'},
+        {path:'knowledge/teaching.md',category:'knowledge',title:'Teaching'},
+        {path:'orgs/private.md',category:'orgs',title:'Private',private:true}];
+      const byPath = path => rows.find(p => p.path === path), orgHidden = p => !!p.private;
+      console.log(JSON.stringify(orgConnections({r:{path:'orgs/root.md',projects:['projects/studio.md'],
+        relations: rows.map(p => ({path:p.path})),topics:['knowledge/teaching.md']}})));
+    ''')
+    links = [row['children'][0]['href'] for row in result['children'][1:]]
+    assert links == ['#projects/studio.md', '#knowledge/teaching.md', '#orgs/partner.md']
+    assert 'Private' not in str(result)
