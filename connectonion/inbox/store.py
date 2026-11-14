@@ -153,6 +153,9 @@ class Message:
     attachments: Optional[list] = None
     # Explicit provider ID types, when available, alongside canonical sender.
     sender_ids: Optional[dict] = None
+    # Arrived as group history shared when the account joined, not live
+    # (#2853): recorded, never queued, never answered.
+    history: bool = False
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -173,6 +176,8 @@ class Message:
             record["attachments"] = self.attachments
         if self.sender_ids:
             record["sender_ids"] = self.sender_ids
+        if self.history:
+            record["history"] = True
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -203,6 +208,7 @@ class Message:
             media=record.get("media") if isinstance(record.get("media"), dict) else None,
             attachments=record.get("attachments") if isinstance(record.get("attachments"), list) else None,
             sender_ids=record.get("sender_ids") if isinstance(record.get("sender_ids"), dict) else None,
+            history=record.get("history") is True,
         )
 
 
@@ -472,6 +478,16 @@ class Inbox:
         if media is not None:
             record["media"] = media  # {kind, path, size}: what went with the caption (#1856)
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+
+    def record_history(self, messages: list) -> int:
+        """Lines in received.jsonl and nothing in the queue: what happened
+        before we were here is read, never answered. Ids the log already has
+        are skipped; returns how many were new."""
+        known = {record.get("id") for record in self._records(self.received)}
+        fresh = [m for m in messages if m.id not in known]
+        for message in fresh:
+            self._append(self.received, message.to_json())
+        return len(fresh)
 
     def record_own(self, message: Message) -> None:
         """One line in own.jsonl: a message the account owner sent themselves."""

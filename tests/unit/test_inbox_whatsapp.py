@@ -77,7 +77,7 @@ def sdk(monkeypatch):
     for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "GroupInfoEv",
                  "JoinedGroupEv", "KeepAliveRestoredEv", "KeepAliveTimeoutEv",
                  "LoggedOutEv", "MessageEv", "PairStatusEv", "StreamReplacedEv",
-                 "TemporaryBanEv", "UndecryptableMessageEv"):
+                 "TemporaryBanEv", "UndecryptableMessageEv", "ClientOutdatedEv"):
         setattr(connection, name, type(name, (), {}))
     client_module = ModuleType("neonize.client")
     client_module.NewClient = lambda path: None      # each test replaces this
@@ -811,6 +811,20 @@ def test_a_temporary_ban_stops_the_listener_and_says_when(sdk, monkeypatch):
                        (ev.TemporaryBanEv, SimpleNamespace(Code=402, Expire=3600)))
 
     assert "402" in str(stopped.value) and "3600" in str(stopped.value)
+
+
+def test_whatsapp_refusing_an_outdated_client_stops_the_listener_with_the_upgrade(sdk, monkeypatch):
+    # neonize 0.4.3 got "Client outdated (405)" at every connect and the
+    # listener kept retrying with only a raw log line to show for it (#2853).
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox, (ev.ClientOutdatedEv, SimpleNamespace()))
+
+    assert "rejected this client as outdated (405)" in str(stopped.value)
+    assert "connectonion[whatsapp]" in str(stopped.value)
 
 
 def test_an_ordinary_disconnection_is_logged_and_survived(sdk, monkeypatch):
