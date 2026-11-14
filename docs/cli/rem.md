@@ -510,21 +510,26 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
-After session summaries, the night runs one abstract task when session `## Decisions`
+After session summaries, the night runs successive abstract slices when session `## Decisions`
 or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,
 with at most 20 nonempty decision lines per packet (large sections continue on later
-nights), within the configured input character budget and with only sources bound
-to their quotes. A backlog of N decision lines takes roughly ceil(N / 20) successful
-nights, or longer when the character budget requires smaller packets. Section hashes
+slices), within the configured input character budget and with only sources bound
+to their quotes. Each completed slice that promotes at least one page admits the next,
+up to `limits.abstract_rounds_per_night` (default 6). A backlog of N decision lines
+takes roughly ceil(N / 20 / rounds) nights, where rounds is that nightly limit,
+or longer when slices fail or the character budget requires smaller packets. Section hashes
 advance only after a recorded completed turn promotes at least one page; otherwise
 the slice retries. After failures on three distinct nights, the slice is released and
 its offsets, failure nights and give-up reason are saved in abstract-offered.json.
 A crashed turn leaves its material pending. It writes or updates at
 most 20 pages under `decisions/` and `principles/` only, with the owner's words
 and original citations on each decision. Assistant proposals without the owner's
-acceptance are excluded. Principles still need at least three decisions. A saved
-attempt prevents another abstract task that noon-to-noon night in the notebook’s
-time zone, even after a refusal or restart. Passing pages are saved; rejected
+acceptance are excluded. Principles still need at least three decisions. The saved
+night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
+keeps the count and the next night starts at zero. An unfinished or failed slice,
+or one that promotes nothing, stops new abstract slices for that night. The later
+same-person and translation passes follow at most six abstract rounds by default.
+Passing pages are saved; rejected
 pages and their errors are recorded in the run. A task with no passing pages
 fails. With no unoffered material, this stage makes no model call.
 

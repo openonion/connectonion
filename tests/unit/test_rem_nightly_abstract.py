@@ -39,7 +39,157 @@ def quiet(monkeypatch):
     monkeypatch.setattr(native_round, 'finish', lambda *a: None)
 
 
-def test_night_abstract_follows_summaries_once_across_rounds_and_restarts(book, monkeypatch):
+@pytest.fixture
+def abstract_config(monkeypatch):
+    from connectonion.rem import native
+    quiet(monkeypatch)
+    monkeypatch.setattr(native.quota, 'read', lambda *a: {})
+    monkeypatch.setattr(native.runner, 'scrub_task', lambda *a: None)
+    return default_config()
+
+
+def decision_backlog(book, count):
+    lines = [f'- “Choice {index}.” [1]' for index in range(count)]
+    book.write('sessions/backlog.md', '# Backlog\n\n## Decisions\n' + '\n'.join(lines)
+               + f'\n\n## Sources\n- [1] {SOURCE}\n')
+
+
+def end_abstract(book, state, prepared, *, changed, outcome='completed'):
+    from connectonion.rem import native
+    name = Path(prepared['task']['directory']).name
+    prepared.update(run={'id': name}, render_stage='abstract', id=name,
+                    directory=prepared['task']['directory'])
+    if outcome == 'completed':
+        native._accept(book.root, state, prepared, {'changed': changed})
+    else:
+        native._discard(book.root, state, prepared, 'No passing pages', outcome=outcome)
+
+
+def test_two_successful_abstract_slices_in_one_night(book, abstract_config):
+    decision_backlog(book, 40)
+    state = cursor()
+    for index in range(2):
+        prepared = native_round.prepare_task(book.root, state, abstract_config, book.root / f'slice-{index}')
+        assert prepared is not None, 'next successful slice must run in the same night'
+        packet = '\n'.join(item['text'] for item in prepared['task']['items'])
+        assert f'“Choice {index * 20}.”' in packet
+        assert f'“Choice {index * 20 + 19}.”' in packet
+        record = f'decisions/slice-{index}.md'
+        Notebook(Path(prepared['task']['task_root'])).write(record, DECISION.replace(WORDS, f'Choice {index * 20}.'))
+        prepared['directory'] = prepared['task']['directory']
+        result = native_round.check_task(book.root, prepared, {'result': 'Captured choice'})
+        assert result['changed'] == [record]
+        end_abstract(book, state, prepared, changed=result['changed'])
+    assert native_round.prepare_task(book.root, state, abstract_config, book.root / 'empty') is None
+
+
+@pytest.mark.parametrize('outcome', ['completed', 'discarded', 'parked'])
+def test_abstract_stops_after_slice_promotes_nothing(book, abstract_config, monkeypatch, rem_clock, outcome):
+    from datetime import timedelta
+    decision_backlog(book, 60)
+    state = cursor()
+    first = native_round.prepare_task(book.root, state, abstract_config, book.root / 'first')
+    end_abstract(book, state, first, changed=['decisions/first.md'])
+    failed = native_round.prepare_task(book.root, state, abstract_config, book.root / 'failed')
+    assert failed is not None, 'a successful first slice must allow the failing second slice'
+    end_abstract(book, state, failed, changed=[], outcome=outcome)
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'stopped') is None
+    monkeypatch.setattr(service, 'now', lambda: rem_clock + timedelta(days=1))
+    retry = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'retry')
+    assert retry['task']['items'] == failed['task']['items']
+
+
+@pytest.mark.parametrize('cap', [None, 2])
+def test_abstract_stops_at_nightly_round_cap(book, abstract_config, cap):
+    decision_backlog(book, 140)
+    if cap is not None:
+        abstract_config['limits']['abstract_rounds_per_night'] = cap
+    cap = cap or 6
+    state = cursor()
+    for index in range(cap):
+        prepared = native_round.prepare_task(book.root, state, abstract_config, book.root / f'capped-{index}')
+        assert prepared is not None, f'round {index + 1} must run before the cap'
+        end_abstract(book, state, prepared, changed=[f'decisions/capped-{index}.md'])
+    assert native_round.prepare_task(book.root, state, abstract_config, book.root / 'over-cap') is None
+    assert read_json(state_path(book.root, 'abstract-night.json'), {})['rounds'] == cap
+
+
+def test_abstract_restart_keeps_reserved_round_count(book, abstract_config):
+    decision_backlog(book, 60)
+    abstract_config['limits']['abstract_rounds_per_night'] = 2
+    first = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'first')
+    end_abstract(book, cursor(), first, changed=['decisions/first.md'])
+    second = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'second')
+    assert second is not None, 'a restart must resume the night after a successful slice'
+    assert read_json(state_path(book.root, 'abstract-night.json'), {})['rounds'] == 2
+    # A reserved turn cannot start a duplicate, or free its place at the cap.
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'pending') is None
+    end_abstract(book, cursor(), second, changed=['decisions/second.md'])
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'restart-at-cap') is None
+
+
+def test_abstract_next_night_resets_round_count(book, abstract_config, monkeypatch, rem_clock):
+    from datetime import timedelta
+    decision_backlog(book, 40)
+    abstract_config['limits']['abstract_rounds_per_night'] = 1
+    first = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'first')
+    end_abstract(book, cursor(), first, changed=['decisions/first.md'])
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'capped') is None
+    monkeypatch.setattr(service, 'now', lambda: rem_clock + timedelta(days=1))
+    second = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'tomorrow')
+    assert second is not None
+    marker = read_json(state_path(book.root, 'abstract-night.json'), {})
+    assert marker['day'] == '2026-09-08'
+    assert marker.get('rounds') == 1, 'a new night starts at zero before reserving its first round'
+    assert '“Choice 20.”' in second['task']['items'][0]['text']
+
+
+@pytest.mark.parametrize('tail', ['same-person', 'translate'])
+def test_abstract_cap_releases_later_night_jobs(book, abstract_config, monkeypatch, tail):
+    from connectonion.rem import same_person
+    decision_backlog(book, 140)
+    state = cursor()
+    for index in range(6):
+        prepared = native_round.prepare_task(book.root, state, abstract_config, book.root / f'slice-{index}')
+        end_abstract(book, state, prepared, changed=[f'decisions/slice-{index}.md'])
+    if tail == 'same-person':
+        state['same_left'] = 1
+        monkeypatch.setattr(same_person, 'candidates', lambda root, *, uninvestigated:
+                            [] if uninvestigated else [{'id': 'pair'}])
+        monkeypatch.setattr(same_person, 'prepare', lambda *a, **kw: {})
+    else:
+        monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stage': 'translate'})
+    following = native_round.prepare_task(book.root, state, abstract_config, book.root / 'following')
+    assert following['stage'] == tail
+
+
+def test_replayed_success_does_not_open_another_reserved_slice(book, abstract_config):
+    from connectonion.rem import native
+    decision_backlog(book, 60)
+    first = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'first')
+    end_abstract(book, cursor(), first, changed=['decisions/first.md'])
+    second = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'second')
+    native._log(book.root, first, 'completed', changed=['decisions/first.md'])
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'duplicate') is None
+    end_abstract(book, cursor(), second, changed=['decisions/second.md'])
+    assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'third') is not None
+
+
+def test_third_failed_night_releases_slice_but_stops_that_night(book, abstract_config, monkeypatch, rem_clock):
+    from datetime import timedelta
+    decision_backlog(book, 40)
+    for day in range(3):
+        monkeypatch.setattr(service, 'now', lambda: rem_clock + timedelta(days=day))
+        failed = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / f'failed-{day}')
+        assert '“Choice 0.”' in failed['task']['items'][0]['text']
+        end_abstract(book, cursor(), failed, changed=[])
+        assert native_round.prepare_task(book.root, cursor(), abstract_config, book.root / f'stopped-{day}') is None
+    monkeypatch.setattr(service, 'now', lambda: rem_clock + timedelta(days=3))
+    following = native_round.prepare_task(book.root, cursor(), abstract_config, book.root / 'following')
+    assert '“Choice 20.”' in following['task']['items'][0]['text']
+
+
+def test_night_abstract_follows_summaries_and_stops_without_promotion(book, monkeypatch):
     quiet(monkeypatch)
     material(book)
     state = cursor()
@@ -150,6 +300,8 @@ def test_cli_docs_describe_night_abstract():
         text = (root / path).read_text()
         assert 'After session summaries, the night' in text
         assert '20' in text and 'decisions/' in text and 'principles/' in text
+        assert 'ceil(N / 20 / rounds)' in text
+        assert 'limits.abstract_rounds_per_night' in text
 
 
 def test_native_abstract_hashes_canonical_inputs_but_not_editable_output(book, tmp_path):
@@ -163,7 +315,7 @@ def test_native_abstract_hashes_canonical_inputs_but_not_editable_output(book, t
     assert str(book.path('sessions/fixture.md')) in hashes
 
 
-def test_night_abstract_does_not_repeat_across_midnight(book, monkeypatch):
+def test_unfinished_abstract_is_not_reserved_twice_across_midnight(book, monkeypatch):
     from datetime import datetime, timezone
     quiet(monkeypatch)
     material(book)

@@ -1226,7 +1226,7 @@ def _abstract_scope(working, changed, usage, *, native):
     if any(not permitted(record) for record in (paths if native else changed)):
         raise RunFailed("Abstract may write only decisions/ and principles/ Markdown pages", usage)
     if native and len(changed) > NIGHT_PAGE_LIMIT:
-        raise RunFailed(f"Abstract may change at most {NIGHT_PAGE_LIMIT} pages per night", usage)
+        raise RunFailed(f"Abstract may change at most {NIGHT_PAGE_LIMIT} pages per slice", usage)
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held, *, native=False, stage="maintain"):

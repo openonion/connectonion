@@ -7,7 +7,7 @@ import re
 from .files import _readable_json, read_json, state_path, write_json
 from .page_review import _quote_bindings
 
-# Twenty lets an older notebook catch up while keeping one night's review bounded.
+# Twenty lets an older notebook catch up while keeping each slice's review bounded.
 NIGHT_PAGE_LIMIT = 20
 
 
@@ -38,7 +38,7 @@ def _piece(heading, body, sources, offset, budget):
     text = _captured(heading, body[offset:], sources)
     if len(text) <= budget:
         return text, len(body)
-    # Normally sections fit whole. Exceptionally large ones progress across nights.
+    # Normally sections fit whole. Exceptionally large ones progress across slices.
     end = min(len(body), offset + budget)
     while end > offset:
         text = _captured(heading, body[offset:end], sources)
@@ -79,7 +79,7 @@ def material(notebook, config=None):
             if excess <= 0:
                 break
             if items:
-                return items  # Start the next section whole tomorrow, in oldest-first order.
+                return items  # Start the next section whole next slice, in oldest-first order.
             text, end = _piece(heading, bounded, sources, offset, len(text) - excess)
         if not text:
             break

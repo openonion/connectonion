@@ -270,20 +270,33 @@ def prepare_task(root, cursor, config, directory):
 
 
 def prepare_abstract(root, cursor, config, directory):
-    """One reserved attempt per noon-to-noon night, including refusals and discarded tasks."""
+    """Reserve bounded slices; only a recorded promotion admits the next this night."""
     from .captured_decisions import material
     from .night_stats import _night_of
     day = _night_of(service.now(), service.notebook_zone(config)).isoformat()
     marker = state_path(root, "abstract-night.json")
-    if read_json(marker, {}).get("day") == day:
+    saved = read_json(marker, {})
+    rounds = saved.get("rounds", 1) if saved.get("day") == day else 0
+    if rounds >= config["limits"]["abstract_rounds_per_night"] or (rounds and saved.get("stopped", True)):
         return None
     items = material(Notebook(root), config)
     if not items:
         return None
     prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
-    prepared["abstract_night"] = day
-    write_json(marker, {"day": day})
+    prepared.update(abstract_night=day, abstract_round=rounds + 1)
+    # Count reservations before execution: an unfinished turn must survive a restart
+    # without admitting another slice. Only its durable successful outcome reopens it.
+    write_json(marker, {"day": day, "rounds": rounds + 1, "stopped": True})
     return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
+
+
+def record_abstract_result(root, prepared, *, promoted):
+    """Open the next slice only for the reservation whose outcome was recorded."""
+    marker = state_path(root, "abstract-night.json")
+    saved = read_json(marker, {})
+    if (prepared.get("abstract_night") and saved.get("day") == prepared["abstract_night"]
+            and saved.get("rounds", 1) == prepared.get("abstract_round", 1)):
+        write_json(marker, {**saved, "rounds": saved.get("rounds", 1), "stopped": not promoted})
 
 
 def _reset_attempts(root, cursor):

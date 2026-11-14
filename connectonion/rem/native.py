@@ -543,12 +543,14 @@ def _log(root, task, outcome, **fields):
     write_json(state_path(root, f"runs/{task['run']['id']}.json"), task["run"])
     if task.get("operation") == "abstract" and outcome in ("completed", "discarded", "parked"):
         from .captured_decisions import remember_offered
+        from .native_round import record_abstract_result
         from .night_stats import _night_of
         night = task["task"].get("abstract_night") or _night_of(
             service.now(), service.notebook_zone(read_config(root))).isoformat()
-        remember_offered(root, task["task"].get("items", []),
-                         promoted=outcome == "completed" and bool(fields.get("changed")),
+        promoted = outcome == "completed" and bool(fields.get("changed"))
+        remember_offered(root, task["task"].get("items", []), promoted=promoted,
                          night=night, reason=fields.get("reason") or fields.get("report") or "No passing pages")
+        record_abstract_result(root, task["task"], promoted=promoted)
 
 
 def submit(root, task_id, *, usage=None):
