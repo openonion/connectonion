@@ -3456,7 +3456,7 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
     }''', isolated_context=False)
     assert page.locator('.leadrow .lead-open').count() == 0
     assert page.locator('.ov-page').is_visible()
-    assert page.locator('.ov-today').is_visible()
+    assert page.locator('.ov-today').count() == 0
     assert page.locator('.record-focus .next-exchanges').count() == 0
     page.locator('details.deep-note > summary').click()
     snippets = [value.strip().lower() for value in page.locator('.relation-basis').all_inner_texts() if value.strip()]
@@ -4248,9 +4248,9 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
     for record in ['projects/harbour.md', 'orgs/fernhill-labs.md']:
         page.goto(path.as_uri() + '#r=' + record.replace('/', '%2F'))
         if record.startswith('orgs/'):
-            # The organisation page is a record; its threads are one link to Today, with no ages to align.
+            # The organisation page is a record; tasks and their ages stay in Today.
             assert page.locator('.ov-owed .ov-owe').count() == 0
-            assert page.locator('.ov-today').count() == 1
+            assert page.locator('.ov-today').count() == 0
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
         rows = page.locator('.next-exchanges .thread')
@@ -5561,14 +5561,14 @@ def test_sessions_filters_notebook_calendar_and_groups(session_reader, width):
 
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, width, theme):
+def test_org_list_is_a_record_without_today_links_or_waiting_groups(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#c=orgs", width, theme)
     assert re.fullmatch(r"\d+ organisations", page.locator(".ov-list h1").inner_text().strip())
     assert page.locator(".ov-focal").count() == 0
     assert page.evaluate(GREEN) == 0
-    assert page.locator(".ov-list .list-today").inner_text() == "1 organisation waiting in Today →"
-    assert page.get_by_role("heading", name=re.compile(r"^Waiting on you · 1")).is_visible()
+    assert page.locator(".ov-list .list-today, .ov-grp, .ov-chip.late").count() == 0
+    assert "Waiting on you" not in page.locator("#main").inner_text()
     row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
     assert row.locator(".ov-tile").evaluate("node => getComputedStyle(node).borderRadius") != "50%"
     assert page.locator(".ov-tabs button").count() <= 4
@@ -5583,18 +5583,15 @@ def test_org_list_is_a_record_with_one_quiet_today_link_and_no_green(reader, wid
 def test_org_page_answers_who_they_are_and_who_you_know(reader, width, theme):
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, theme)
-    # A record of the organisation: its name leads, what you owe is one quiet link to Today.
+    # A record of the organisation: its name, structure and contact history.
     assert _name(page.locator(".ov-say .ov-name")) == "Fernhill Labs"
-    owed = page.evaluate("orgOwed(byPath('orgs/fernhill-labs.md')).length", isolated_context=False)
-    today = page.locator(".ov-say .ov-today")
-    assert today.inner_text() == f"{owed} things in Today involve Fernhill Labs →"
-    assert today.bounding_box()["y"] + today.bounding_box()["height"] <= (844 if width < 600 else 900)
+    assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
     assert page.evaluate(GREEN) == 0
-    for selector in (".ov-org-tree [role=treeitem]", ".ov-org-tree .ov-mk.person", ".ov-people li", ".ov-coda .ov-src"):
+    for selector in (".ov-org-tree [role=treeitem]", ".ov-org-tree .ov-mk.person", ".ov-coda .ov-src"):
         assert page.locator(selector).first.is_visible(), selector
     assert page.locator(".ov-owed, .ov-ball").count() == 0
-    assert "Mara Ostrowski" in page.locator(".ov-people").inner_text()
-    assert page.locator(".ov-coda").bounding_box()["y"] > page.locator(".ov-people").bounding_box()["y"]
+    assert "Mara Ostrowski" in page.locator(".ov-org-tree").inner_text()
+    assert page.locator(".ov-coda").bounding_box()["y"] > page.locator(".ov-org-tree").bounding_box()["y"]
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -5620,7 +5617,7 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     row = page.locator(".ov-row").filter(has_text="Fernhill Labs")
     assert "Personal · shown only on this Mac" in row.inner_text()
     assert page.locator(".ov-focal").count() == 0
-    assert row.locator(".ov-dot, .ov-chip").count() == 1
+    assert row.locator(".ov-dot, .ov-chip").count() == 0
     assert "pilot" not in page.locator("#main").inner_text().lower()
     page.evaluate("() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }", isolated_context=False)
     page.locator(".ov-curtain").wait_for()
@@ -5628,7 +5625,7 @@ def test_private_org_keeps_its_relationship_out_of_the_dom_until_shown(reader):
     assert "climate" not in page.locator("#main").inner_html().lower()
     page.get_by_role("button", name="Show", exact=True).click()
     assert page.locator(".ov-org-tree [role=treeitem]").count() >= 2
-    assert page.locator(".ov-today").count() == 1
+    assert page.locator(".ov-today").count() == 0
     assert page.evaluate(GREEN) == 0
 
 
@@ -5700,7 +5697,8 @@ def test_org_hierarchy_links_nested_units_and_their_people_with_roles(reader, wi
     expect(team_link).to_be_visible()
     expect(team_link).to_have_attribute('href', '#r=orgs%2Fpilot-squad.md')
     mara = page.locator('.ov-org-tree [role=treeitem]').filter(has=page.locator(':scope > .ov-trow .ov-mk.person')).filter(has_text='Mara Ostrowski')
-    expect(mara).to_have_count(2)
+    expect(mara).to_have_count(1)
+    expect(mara).to_contain_text('Tutor')
     expect(mara.filter(has_text='Product Owner')).to_have_count(1)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     course_link.click()
@@ -5810,13 +5808,7 @@ def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
     facts = page.locator(".ov-say .ov-facts").inner_text()
     assert f"{_people_known(page)} 位你认识的人" in facts and "起有往来" in facts and "最近往来" in facts
-    owed = 5  # the fixture's items waiting on you about the university, as in the English test below
-    today = page.locator(".ov-say a.ov-today")
-    assert today.inner_text() == f"今天里有 {owed} 件和 Fernhill University 有关的事 →" and today.get_attribute("href") == "#view=open"
-    assert page.locator(".ov-key li").count() == 3
-    # The tree carries the first glance; the duplicate recent-contact summary follows it.
-    assert page.locator('.ov-stage .ov-key').count() == 0
-    assert page.locator('.ov-key').bounding_box()['y'] >= page.locator('.ov-org-tree').bounding_box()['y'] + page.locator('.ov-org-tree').bounding_box()['height']
+    assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
     audit = page.evaluate(FIRST_SCREEN, isolated_context=False)
     assert audit["text"] <= 70, audit
     assert audit["buttons"] == [], audit["buttons"]
@@ -5836,9 +5828,9 @@ def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def test_org_today_link_follows_the_data_and_there_is_no_green(org_reader):
+def test_org_has_no_today_link_regardless_of_obligations(org_reader):
     page = org_reader(1440, language="en")
-    assert page.locator(".ov-today").inner_text() == "5 things in Today involve Fernhill University →"
+    assert page.locator(".ov-today").count() == 0
     assert page.evaluate(GREEN, isolated_context=False) == 0
     page.evaluate("""() => { for (const r of REM.records) if (r.category === 'orgs') r.obligations = r.obligations.filter(row => row.dir !== 'mine'); render(); }""",
                   isolated_context=False)
@@ -5889,7 +5881,8 @@ def test_org_units_and_people_are_listed_with_roles_and_links(org_reader, width)
     loose.focus()
     page.keyboard.press('ArrowRight')
     assert 'Petra Lund' in loose.inner_text()
-    assert 'Basil Thorne' in page.locator('.ov-people').inner_text()
+    assert 'Basil Thorne' in page.locator('.ov-org-tree').inner_text()
+    assert page.locator('.ov-people').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -6079,14 +6072,24 @@ def test_org_page_name_starts_at_the_top_and_each_role_sits_under_its_own_person
     onto a line of its own where it reads as the next person's role."""
     page, uri = reader
     _org_view(page, uri, "#r=orgs%2Ffernhill-labs.md", width, "light")
-    page.evaluate("""() => { const p = REM.records.find(r => r.category === 'people');
+    page.evaluate("""() => { const p = byPath('people/mara-ostrowski.md');
       p.text = p.text.replace(/^(- Role: ).*$/m, '$1Former sales and marketing intern for the pilot programme across three campuses'); render(); }""",
       isolated_context=False)
     assert page.locator(".ov-say h1").bounding_box()["y"] < 180  # under N3's 76px top bar
-    for item in page.locator(".ov-key li").all():
-        name, meta = item.locator("a").bounding_box(), item.locator(".ov-meta").bounding_box()
-        assert meta["y"] >= name["y"] + name["height"] - 1, "the role starts below its name"
-        assert abs(meta["x"] - name["x"]) < 1, "and on the same left edge"
+    assert page.locator(".ov-key").count() == 0
+    assert "Former sales and marketing intern" in page.locator(".ov-org-tree").inner_text()
+    for item in page.locator(".ov-trow:visible:has(.ov-mk.person)").all():
+        name = item.locator(".ov-tl1 a").bounding_box()
+        role = item.locator(".ov-tk")
+        if role.count():
+            meta = role.bounding_box()
+            assert role.inner_text().strip()
+            if width == 390:
+                assert meta["y"] >= name["y"] + name["height"] - 1
+                assert abs(meta["x"] - name["x"]) < 1
+            else:
+                assert meta["y"] < name["y"] + name["height"]
+
 
 
 @pytest.mark.parametrize("width", [1440, 390])

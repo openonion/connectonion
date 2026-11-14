@@ -1151,7 +1151,8 @@ pinned to that edge: it comes into view with the draft.
   review, service senders), and other contacts found in mail stay folded below.
   On a phone each row is a card and a **Sort by** menu replaces the headers.
 - **Organisations** lists each organisation once, with its units folded into that
-  row and a compact shape showing branches by the people you know there. Search
+  row, ordered by most recent contact, and a compact shape showing branches by
+  the people you know there. Search
   also finds an organisation by its unit names. A unit whose parent page is
   missing stays in the list so its record can still be found.
   An organisation page shows an indented, collapsible tree: organisation →
@@ -1162,9 +1163,12 @@ pinned to that edge: it comes into view with the draft.
   enters the tree once, arrows move between rows, Right expands or enters a
   branch, Left collapses or returns to its parent, Home/End move to the first/last
   visible row, Space toggles and Enter opens the selected record.
-  Recent contacts follow the tree, keeping the hierarchy first on a phone.
-  The two-year contact timeline stays. Entity pages are records; to-dos live
-  in Today, reached by the page's quiet link.
+  The breadcrumb comes first on a phone. The tree is the people directory;
+  repeated contact lists and the local graph are omitted from this record.
+  A person with several unit memberships appears once, with those roles together.
+  The contact timeline uses calendar dates through the snapshot date.
+  Organisation lists and pages carry no
+  waiting groups, task chips or Today counts; to-dos live in Today.
 - **Projects** open as a sheet: one row per page, the facts
   in columns, a sticky header, sort on any shown column, filters (*Something
   open*, *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row

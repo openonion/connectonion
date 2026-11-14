@@ -191,7 +191,7 @@ def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_th
 
 def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
     result = run_js(['orgFacts'], ROLLUP + r'''
-      const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), fmtDate = day => day;
+      const orgUnitCount = () => 0, orgT = (key, v = {}) => key.replace(/\{(\w+)\}/g, (m, k) => v[k]), calendarDate = day => day;
       const el = (tag, attrs = {}, children = []) => [attrs.text, ...children.flat()].filter(Boolean).join('');
       const v = {r: org, people: org.people.map(byPath), events: [{day: '2026-03-01'}]};
       console.log(JSON.stringify(orgFacts(v)));
@@ -233,7 +233,12 @@ def test_org_tree_counts_unique_people_sorts_branches_and_keeps_all_levels():
     assert [newer['label'], older['label']] == ['Newer branch', 'Older branch']
     assert newer['count'] == 1  # parent + child membership is one person in the rollup
     squad = newer['kids'][1]
-    assert squad['level'] == 3 and squad['kids'][0]['level'] == 4
+    assert squad['level'] == 3 and squad['count'] == 1 and squad['kids'] == []
+    # Membership counts stay intact; Birch is displayed once in the first branch.
+    def person_labels(item):
+        return ([item['label']] if item.get('kind') == 'person' else []) + [
+            label for child in item.get('kids', []) for label in person_labels(child)]
+    assert sorted(person_labels(root)) == ['Aster', 'Birch', 'Cedar']
     assert loose['kind'] == 'loose' and loose['count'] == 1 and loose['open'] is False
 
 
