@@ -1049,7 +1049,9 @@ pinned to that edge: it comes into view with the draft.
   merge, send or post" line. Replies, and **See result**, render as the
   notebook's own Markdown (paragraphs, lists, inline code, fenced code as a code
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
-  Opening it again returns the same conversation.
+  Opening it again returns the same conversation. When the live reader loads a
+  newer page, the open conversation returns under its row with its context,
+  replies and any unsent message; its composer continues the same agent session.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
   word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
   **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,

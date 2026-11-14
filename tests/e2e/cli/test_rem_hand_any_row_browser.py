@@ -7,7 +7,6 @@ Codex and Claude Code are the recorded fakes in tests/fixtures/native_runners. T
 """
 
 import asyncio
-import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -73,7 +72,7 @@ def live(tmp_path, monkeypatch):
     identity.mkdir()
     _notebook(root)
     cookie = "co_rem=" + live_host.reader_token(identity)
-    call, errors, talk_exchanges = _host(root, identity), [], []
+    call, errors = _host(root, identity), []
 
     def serve(route):
         request = route.request
@@ -81,8 +80,6 @@ def live(tmp_path, monkeypatch):
         if not path.startswith("/rem"):
             return route.abort()
         status, kind, body = call(request.method, path, (request.post_data or "").encode(), cookie)
-        if path == "/rem/talk":
-            talk_exchanges.append({"post": json.loads(request.post_data), "status": status, "reply": json.loads(body)})
         return route.fulfill(status=status, body=body, content_type=kind.split(";")[0])
 
     with sync_playwright() as api:
@@ -96,23 +93,6 @@ def live(tmp_path, monkeypatch):
         try:
             yield page, root
         finally:
-            if talk_exchanges:
-                # Captured on failure: distinguish an unanswered Host turn from a hidden/moved reply.
-                print("REM talk HTTP:", json.dumps(talk_exchanges))
-                print("REM talk DOM:", page.evaluate('''() => [...OPEN_TALKS].map(([key, node]) => {
-                  const details = [];
-                  for (let parent = node.parentElement; parent; parent = parent.parentElement)
-                    if (parent.tagName === 'DETAILS') details.push({classes:parent.className, open:parent.open});
-                  return {key, connected:node.isConnected, details, rect:node.getBoundingClientRect().toJSON(),
-                    row:node.closest('li')?.textContent, text:node.textContent,
-                    agentTurns:[...node.querySelectorAll('.talk-turn.agent')].map(turn => ({
-                      rect:turn.getBoundingClientRect().toJSON(), visibility:getComputedStyle(turn).visibility}))};
-                })''', isolated_context=False))
-                from connectonion.rem.files import state_path
-                for path in sorted(state_path(root, 'talks').glob('*/*')):
-                    if path.name in ('talk.json', 'worker.log'):
-                        print("REM talk worker", path.name, path.read_text()[-8000:])
-                print("REM talk page errors:", errors)
             browser.close()
     assert not errors, errors
 
@@ -165,6 +145,11 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     line.get_by_text("Talk it over ▾", exact=True).click()
     row.get_by_role("button", name="Talk with Claude about this").click()
     talk = row.locator(".talk")
+    talk.locator(".talk-context").wait_for()
+    talk.get_by_role("textbox", name="Your message").fill("Draft the follow-up to Fern, short.")
+    # The live reader reloads when a newer render arrives. Reopen the same talk in its row.
+    with page.expect_navigation():
+        page.evaluate("reloadOnto()", isolated_context=False)
     talk.locator(".talk-turn.agent").first.wait_for(timeout=30000)
     # The reply is Markdown: its fenced block is a code block, never literal backticks.
     first = talk.locator(".talk-turn.agent .agent-text").first
@@ -172,7 +157,9 @@ def test_talk_with_claude_about_a_row_answers_in_the_page_and_takes_the_next_tur
     assert "```" not in first.inner_text()
     assert talk.locator(".talk-context summary").inner_text() == "What Claude was given"
     assert talk.locator(".talk-turn.agent p").first.inner_text().strip()
-    talk.get_by_role("textbox", name="Your message").fill("Draft the follow-up to Fern, short.")
+    assert talk.get_by_role("textbox", name="Your message").input_value() == "Draft the follow-up to Fern, short."
+    page.evaluate("drawKeepingView()", isolated_context=False)
+    assert talk.get_by_role("textbox", name="Your message").input_value() == "Draft the follow-up to Fern, short."
     talk.get_by_role("button", name="Send").click()
     talk.locator(".talk-turn.owner").filter(has_text="Draft the follow-up to Fern, short.").wait_for()
     talk.locator(".talk-turn.agent").nth(1).wait_for(timeout=30000)

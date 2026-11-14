@@ -7556,6 +7556,7 @@ function talkPanel(begin) {
   const input = el("textarea", { rows: "2", "aria-label": t("Your message"), "data-keep": "talk:" + (begin.agent || "codex") + ":" + (begin.key || begin.session) });
   const send = el("button", { type: "submit", class: "btn-line", text: t("Send"), disabled: "" });
   const form = el("form", { class: "talk-form" }, [input, send]), box = el("section", { class: "talk", "aria-live": "polite" }, [turns, status, form]);
+  box.talkBegin = begin;  // Reloads reopen this same Host conversation, even before begin has answered.
   let talk = null;
   const paint = ({ ok, code, error, ...value }) => {
     if (!ok) { status.textContent = error || t("REM is not answering right now. Try again in a moment."); send.disabled = !talk; return; }
@@ -13868,6 +13869,7 @@ function reloadChoice({ latest, asOf, typing, unsaved }) {
 function detailsKey(node) { return node.id ? "#" + node.id : node.querySelector("summary")?.textContent || ""; }
 function viewState() {
   return { hash: location.hash, y: scrollY, fields: keptFields(),
+    talks: [...OPEN_TALKS].map(([key, panel]) => [key, panel.talkBegin]),
     revealedSessions: [...document.querySelectorAll("[data-revealed-session]")].map(node => node.dataset.revealedSession),
     open: [...document.querySelectorAll("details")].filter(node => node.open).map(detailsKey).filter(Boolean) };
 }
@@ -13940,6 +13942,10 @@ let pendingRestore = (() => {
   try {
     const saved = JSON.parse(sessionStorage.getItem(RELOAD_STATE) || "null");
     sessionStorage.removeItem(RELOAD_STATE);
+    // The row's panel nodes survived redraws, but a newer document needs to reopen them before rendering rows.
+    if (saved?.hash === location.hash && liveHere()) {
+      for (const [key, begin] of saved.talks || []) OPEN_TALKS.set(key, talkPanel(begin));
+    }
     return saved;
   } catch (error) {
     return null;
