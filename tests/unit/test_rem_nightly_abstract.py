@@ -257,12 +257,12 @@ def test_offered_sections_are_oldest_first_changed_and_crash_retry(book, monkeyp
     retry.update(run={'id': 'offered'}, render_stage='abstract', id='native-test', directory=retry['task']['directory'])
     monkeypatch.setattr(native.quota, 'read', lambda *a: {})
     monkeypatch.setattr(native.runner, 'scrub_task', lambda *a: None)
-    native._accept(book.root, cursor(), retry, {'changed': [], 'report': 'No new page needed'})
+    native._accept(book.root, cursor(), retry, {'changed': ['decisions/first.md']})
     write_json(state, {'day': '2020-01-01'})
     second = native_round.prepare_abstract(book.root, cursor(), config, book.root / 'second')
     assert [i['record'] for i in second['task']['items']] == ['sessions/fixture.md']
     second.update(run={'id': 'second'}, render_stage='abstract', id='native-test', directory=second['task']['directory'])
-    native._accept(book.root, cursor(), second, {'changed': []})
+    native._accept(book.root, cursor(), second, {'changed': ['decisions/second.md']})
     write_json(state, {'day': '2020-01-01'})
     assert native_round.prepare_abstract(book.root, cursor(), config, book.root / 'empty') is None
     book.write('projects/fixture.md', book.read('projects/fixture.md').replace('inspectable', 'portable'))
@@ -337,7 +337,7 @@ def test_runner_uses_supplied_abstract_items_once(book, tmp_path, monkeypatch):
     assert prepared['items'] == items
 
 
-def test_repairable_refusal_keeps_material_pending_until_parked(book):
+def test_repairable_refusal_and_parking_keep_material_pending(book):
     from connectonion.rem import native
     from connectonion.rem.captured_decisions import material as captured
     material(book)
@@ -346,4 +346,84 @@ def test_repairable_refusal_keeps_material_pending_until_parked(book):
     native._log(book.root, saved, 'refused', reason='Missing quotes')
     assert captured(book) == items
     native._log(book.root, saved, 'parked', reason='Repeated refusal')
+    assert captured(book) == items
+
+
+@pytest.mark.parametrize('sections', [60, 1])
+def test_nightly_packet_matches_page_capacity_and_drains(book, sections):
+    import os
+    from connectonion.rem.captured_decisions import material as captured, remember_offered, NIGHT_PAGE_LIMIT
+    for index in range(sections):
+        lines = [f'- 2026-11-01: “Choice {i}.” [1]' for i in
+                 (range(60) if sections == 1 else [index])]
+        record = f'sessions/choices-{index:02}.md'
+        book.write(record, '# Choices\n\n## Decisions\n' + '\n'.join(lines) + f'\n\n## Sources\n- [1] {SOURCE}\n')
+        os.utime(book.path(record), (index + 1, index + 1))
+    for night in range(3):
+        items = captured(book)
+        lines = [line for item in items for line in item['text'].splitlines() if line.startswith('- 2026')]
+        assert len(lines) == NIGHT_PAGE_LIMIT
+        assert f'“Choice {night * 20}.”' in lines[0]
+        assert f'“Choice {night * 20 + 19}.”' in lines[-1]
+        remember_offered(book.root, items)
     assert captured(book) == []
+
+
+@pytest.mark.parametrize('outcome', ['completed', 'discarded', 'parked'])
+def test_failed_slice_retries_then_gives_up_on_three_distinct_nights(book, monkeypatch, outcome):
+    from datetime import datetime, timezone
+    from connectonion.rem import native
+    from connectonion.rem.captured_decisions import material as captured
+    material(book)
+    items = captured(book)
+    saved = {'run': {'id': 'failure'}, 'operation': 'abstract', 'task': {'items': items}, 'directory': str(book.root)}
+    monkeypatch.setattr(native.quota, 'read', lambda *a: {})
+    for day in range(1, 4):
+        monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, day, 23, tzinfo=timezone.utc))
+        native._log(book.root, saved, outcome, changed=[], reason='No passing pages')
+        native._log(book.root, saved, outcome, changed=[], reason='Repeated log same night')
+        if day < 3:
+            assert captured(book) == items
+    assert captured(book) == []
+    state = read_json(state_path(book.root, 'abstract-offered.json'), {})
+    for item in items:
+        given_up = state[item['record']]['given_up'][0]
+        assert given_up['end'] == item['section_end']
+        assert len(given_up['nights']) == 3
+        assert given_up['reason'] == 'No passing pages'
+    book.write('sessions/fixture.md', book.read('sessions/fixture.md').replace('Markdown', 'plain text'))
+    assert [item['record'] for item in captured(book)] == ['sessions/fixture.md']
+
+
+def test_given_up_slice_releases_next_oldest_packet(book, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import native
+    from connectonion.rem.captured_decisions import material as captured
+    import os
+    for index in range(21):
+        record = f'sessions/choice-{index:02}.md'
+        book.write(record, f'# Choice\n\n## Decisions\n- “Choose {index}.” [1]\n\n## Sources\n- [1] {SOURCE}\n')
+        os.utime(book.path(record), (index + 1, index + 1))
+    items = captured(book)
+    saved = {'run': {'id': 'blocked-slice'}, 'operation': 'abstract', 'task': {'items': items}, 'directory': str(book.root)}
+    monkeypatch.setattr(native.quota, 'read', lambda *a: {})
+    for day in range(1, 4):
+        monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, day, 23, tzinfo=timezone.utc))
+        native._log(book.root, saved, 'completed', changed=[])
+    assert [item['record'] for item in captured(book)] == ['sessions/choice-20.md']
+
+
+def test_resumed_task_counts_its_reserved_night_only(book, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import native
+    from connectonion.rem.captured_decisions import material as captured
+    material(book)
+    items = captured(book)
+    saved = {'run': {'id': 'resumed'}, 'operation': 'abstract',
+             'task': {'items': items, 'abstract_night': '2026-11-01'}, 'directory': str(book.root)}
+    for day in range(1, 4):
+        monkeypatch.setattr(service, 'now', lambda: datetime(2026, 11, day, 23, tzinfo=timezone.utc))
+        native._log(book.root, saved, 'parked', reason='No passing pages')
+    assert captured(book) == items
+    state = read_json(state_path(book.root, 'abstract-offered.json'), {})
+    assert all(list(row['failures'].values()) == [['2026-11-01']] for row in state.values())

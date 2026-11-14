@@ -281,6 +281,7 @@ def prepare_abstract(root, cursor, config, directory):
     if not items:
         return None
     prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
+    prepared["abstract_night"] = day
     write_json(marker, {"day": day})
     return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
 

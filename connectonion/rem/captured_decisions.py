@@ -58,6 +58,7 @@ def material(notebook, config=None):
     offered = read_json(state_path(notebook.root, "abstract-offered.json"), {})
     sections = sorted(_sections(notebook), key=lambda row: (notebook.path(row[0]).stat().st_mtime, row[0]))
     items = []
+    lines_left = NIGHT_PAGE_LIMIT
     for record, heading, body, sources in sections:
         captured = _captured(heading, body, sources)
         digest = hashlib.sha256(captured.encode()).hexdigest()
@@ -65,10 +66,13 @@ def material(notebook, config=None):
         offset = saved.get("offset", 0) if saved.get("sha256") == digest else 0
         if offset >= len(body):
             continue
-        text, end = _piece(heading, body, sources, offset, budget)
+        # Cap nonempty decision lines at page capacity so every offered choice can become a page.
+        ends = [match.end() for match in re.finditer(r'.*(?:\n|$)', body[offset:]) if match[0].strip()]
+        bounded = body[:offset + ends[lines_left - 1]] if len(ends) > lines_left else body
+        text, end = _piece(heading, bounded, sources, offset, budget)
         while text:
             item = {"role": "captured-decisions", "record": record, "source": f"notebook:{record}",
-                    "section_sha256": digest, "section_end": end,
+                    "section_sha256": digest, "section_start": offset, "section_end": end,
                     "sources": sorted({source for _, binding in _quote_bindings(text)
                                        if binding for source in binding}), "text": text}
             excess = len(json.dumps(_readable_json([*items, item]), ensure_ascii=False, indent=2)) + 1 - budget
@@ -76,20 +80,43 @@ def material(notebook, config=None):
                 break
             if items:
                 return items  # Start the next section whole tomorrow, in oldest-first order.
-            text, end = _piece(heading, body, sources, offset, len(text) - excess)
+            text, end = _piece(heading, bounded, sources, offset, len(text) - excess)
         if not text:
             break
         items.append(item)
+        lines_left -= sum(bool(line.strip()) for line in body[offset:end].splitlines())
+        if lines_left <= 0:
+            break
     return items
 
 
-def remember_offered(root, items):
-    """Called only after the native run's terminal outcome has been persisted."""
+def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages"):
+    """Checkpoint a durable success, or give up a slice after three distinct failed nights."""
     path = state_path(root, "abstract-offered.json")
     offered = read_json(path, {})
     for item in items:
-        if item.get("section_sha256"):
-            offered[item["record"]] = {"sha256": item["section_sha256"], "offset": item["section_end"]}
+        digest = item.get("section_sha256")
+        if not digest:
+            continue
+        saved = offered.get(item["record"], {})
+        if saved.get("sha256") != digest:
+            saved = {"sha256": digest, "offset": 0}
+        start, end = item.get("section_start", 0), item["section_end"]
+        if saved["offset"] >= end:
+            continue
+        if promoted:
+            saved.update(offset=end)
+            saved.pop("failures", None)
+        else:
+            failures = saved.setdefault("failures", {})
+            nights = failures.setdefault(f"{start}:{end}", [])
+            if night not in nights:
+                nights.append(night)
+            if len(nights) >= 3:
+                saved["offset"] = end
+                saved.setdefault("given_up", []).append(dict(start=start, end=end, nights=nights, reason=reason))
+                saved.pop("failures", None)
+        offered[item["record"]] = saved
     write_json(path, offered)
 
 
