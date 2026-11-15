@@ -3,7 +3,7 @@
 *2026-11-16*
 
 The owner asked why 1,328 mails were waiting to be read. We went to look at the
-queue and found something else: the night had not done any work for two days.
+queue and found something else: the night had not done any work since the 14th.
 
 Every fifteen minutes the schedule started a round. Every round stopped while it
 was being prepared, with the same line:
@@ -31,8 +31,8 @@ them, each with a test.
 The worse half was what the records said. Each failed turn was saved as
 `completed`, exit 0, because the agent that runs the turn finished politely
 after explaining that it could do nothing. The night's summary read 33 turns,
-0 tasks accepted, 0 mail read, and offered no reason. We had been reading that
-line for two days as a quiet night.
+0 tasks accepted, 0 mail read, and offered no reason. Nothing on any screen
+said the night was broken; it read as a quiet one.
 
 A turn that prepared nothing now says failed and keeps its error. `co rem
 status` counts how many in a row and since when, in a sentence, and so does
