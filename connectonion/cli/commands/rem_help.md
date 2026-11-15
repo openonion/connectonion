@@ -12,16 +12,16 @@ Experimental: its commands may still change between 1.9.x releases.
 Build (once)
   init          Build the notebook from mail and coding sessions, then offer daily updates.
 Collect — read new mail and sessions
-  sync          Run one update now, starting with new material.
+  collect       Read one batch of new material into the notebook.
 Investigate — fill pages from originals
   investigate   Fill a page, a whole category, or your own page, using a model.
-Deepen — follow leads, then think
+Deepen — follow leads, add insights
   deepen        Add research and insights to pages with useful activity but little detail.
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Study questions about one page and add new insights.
 Abstract — decisions, then principles
+  abstract      Turn captured decisions into decision pages, then principles.
   decisions     Count decision and principle pages and decisions waiting. No model.
-                Run co rem decisions write to write them now.
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
 Run a whole day now
@@ -69,7 +69,9 @@ Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub
               reflections, propose, review, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
-              abstract is an alias for co rem decisions write and prints its new name.
+Compatibility: sync — Collect, then investigate what is unfinished; use co rem collect
+              for new material only, co rem catchup for a whole day.
+              Installed schedules still use co rem sync --scheduled.
 ```
 
 ## co rem catchup
@@ -107,7 +109,7 @@ limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nigh
 clear N lines, or longer if rounds fail or the input character limit reads fewer.
 An empty round counts as a failed slice and moves on; two empty rounds in a row
 stop this work for the night. Failed slices wait for a later retry. A restart keeps
-the round count and empty streak. Run co rem decisions write to catch up now without that limit.
+the round count and empty streak. Run co rem abstract to catch up now without that limit.
 
 Usage:    co rem exec [--scheduled]
 Example:  co rem exec --scheduled
@@ -713,9 +715,43 @@ Next:     co rem next
 Back:     co rem --help
 ```
 
+## co rem collect
+
+```
+Read one batch of new material from approved sources into the notebook.
+Collection only: no investigation, deepen, abstract or translation.
+Reuses the existing batch reader and its extraction/page updates for new material.
+
+Usage:    co rem collect [--source NAME] [--with ADDRESS] [--dry-run]
+Example:  co rem collect  |  co rem collect --source gmail
+          co rem collect --dry-run
+Options:
+  --source NAME   Take the extraction batch from this approved source in co rem sources.
+  --with ADDRESS  Take only matching mail into the extraction batch (address or part).
+  --dry-run       Inspect pending metadata and daily limits; no bodies, model or writes.
+  --help          Show this message and exit.
+One run reads one batch, not until caught up: up to limits.extract_items_per_batch
+(default 40) from one source, also bounded by the input character limit.
+Existing batch housekeeping also imports approved coding sessions and may resume
+init's stalled mail archive for up to five minutes across approved mailboxes.
+Those reads are outside the extraction batch; --source scopes only that batch.
+Sources take turns. Mail takes whole correspondents oldest first, slicing a
+correspondent larger than the batch. --with leaves other correspondents waiting.
+Output:   Items read, pages changed, known mail still waiting and the next command.
+          The waiting count covers saved listings, not mail or sessions not yet listed.
+          Mail from disabled or unapproved sources is shown separately as held.
+Effects:  Reads source bodies, may call the configured model to extract new material
+          and update its pages, and saves progress. Keeps finished work on interruption.
+Requires: co rem start (it records your approval of the sources).
+Next:     co rem collect
+Back:     co rem --help
+```
+
 ## co rem sync
 
 ```
+Collect, then investigate what is unfinished; use co rem collect for new material only, co rem catchup for a whole day.
+
 Run one update now: read what arrived since the last run and update the pages it
 concerns. Then the day's first run investigates unfinished pages, most recent
 first; every later run updates only the people and
@@ -925,7 +961,6 @@ Experimental: corrections and questions (#1611, #1609)
   reflections   Read the records for a page, or write a compact copy of them.
   propose       Save a question about a page, or a possible link between two pages.
   review        Answer the saved questions and links.
-  abstract      Old name for co rem decisions write; runs the same command.
 Experimental: session capture (#1520)
   capture       Queue the user's messages from one coding-session file. Run by a hook.
 Experimental: project pages from your own messages (#1943)
@@ -1137,23 +1172,21 @@ Count your decision and principle pages and the supported captured decisions wai
 Reads the decisions already on session and project pages. No model; no files written.
 Waiting counts only lines with a verbatim quote and a bound original source, excluding known authorship contradictions.
 
-Usage:    co rem decisions [COMMAND]
+Usage:    co rem decisions
 Example:  co rem decisions
-Commands:
-  write   Write decision and principle pages now, continuing until caught up.
 Output:   Decision pages, principle pages, decisions waiting, N to retry and skipped captures by reason, then the next command.
 Effects:  Reads notebook pages and saved progress. No model; no writes.
-Next:     co rem decisions write
+Next:     co rem abstract
 Back:     co rem --help
 ```
 
-## co rem decisions write
+## co rem abstract
 
 ```
 Turn the decisions already written on your session and project pages into decision pages.
 Then write principle pages for the reasons that recur.
-Usage:    co rem decisions write [--rounds N]
-Example:  co rem decisions write  |  co rem decisions write --rounds 2
+Usage:    co rem abstract [--rounds N]
+Example:  co rem abstract  |  co rem abstract --rounds 2
 Stops when nothing unattempted is left or two empty rounds in a row resolve no lines. --rounds N limits this run to N rounds.
 Reads up to 20 decisions per round, oldest first. Resumes from where previous or overnight runs left off, ignoring the overnight run limit.
 Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
@@ -1168,22 +1201,7 @@ Output:   Counts per round, refused pages and why, totals, slices set aside for 
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
           Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.
 Next:     co rem list decisions
-Back:     co rem decisions --help
-```
-
-## co rem abstract
-
-```
-Old name for co rem decisions write; runs the same command and prints its new name.
-Turn captured decisions into decision pages, then principle pages for recurring reasons.
-
-Usage:    co rem abstract [--rounds N]
-Example:  co rem abstract  |  co rem abstract --rounds 2
-          --rounds N  Stop after at most N rounds; otherwise continue until caught up or two empty rounds in a row.
-Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry and decisions left.
-Effects:  Calls the model once per round. Writes decisions/ and principles/ and saves progress privately.
-Next:     co rem list decisions
-Back:     co rem decisions --help
+Back:     co rem --help
 ```
 
 ## co rem capture

@@ -1,6 +1,4 @@
-"""The decisions status and write commands, and their compatibility alias."""
-
-from typing import Optional
+"""Read-only decisions status and the abstract command's progress output."""
 
 import typer
 
@@ -55,13 +53,13 @@ def write_decisions(ctx, rounds, handle, written):
         return report, ["list", "decisions"], report["failed"]
 
     try:
-        handle(ctx, operation, ["decisions", "write"], draw=_summary, resume=["decisions", "write"])
+        handle(ctx, operation, ["abstract"], draw=_summary, resume=["abstract"])
     finally:
         if report.get("reason") and not ctx.obj["json"]:
             typer.echo("Reason: " + report["reason"])
 
 
-def add_decisions_app(rem, factory, handle, written):
+def add_decisions_app(rem, factory, handle):
     decisions = factory(help="co rem decisions", no_args_is_help=False)
     decisions.info.cls = verbatim("co rem decisions", decisions.info.cls)
     rem.add_typer(decisions, name="decisions")
@@ -77,9 +75,5 @@ def add_decisions_app(rem, factory, handle, written):
             text = (f"Decision pages: {value['decisions']} · Principle pages: {value['principles']} · "
                     f"Captured lines waiting: {value['waiting']} · {value['to_retry']} to retry"
                     + _line_counts(value) + _skipped(value))
-            return (value if ctx.obj["json"] else text), ["decisions", "write"]
+            return (value if ctx.obj["json"] else text), ["abstract"]
         handle(ctx, operation, ["init"])
-
-    @decisions.command("write", cls=verbatim("co rem decisions write"))
-    def write_pages(ctx: typer.Context, rounds: Optional[int] = typer.Option(None, "--rounds", min=1)):
-        write_decisions(ctx, rounds, handle, written)

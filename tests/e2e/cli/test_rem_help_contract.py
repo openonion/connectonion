@@ -19,10 +19,10 @@ from connectonion.cli.main import app
 
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
-ROOT_COMMANDS = ["init", "sync", "investigate", "deepen", "enrich", "muse", "decisions", "translate", "catchup",
+ROOT_COMMANDS = ["init", "collect", "investigate", "deepen", "enrich", "muse", "abstract", "decisions", "translate", "catchup",
                  "open", "list", "show", "search", "start", "stop", "status", "task", "exec", "next", "submit",
                  "sources", "config", "logs", "morning", "doctor", "history"]
-ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "abstract", "capture",
+ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",
@@ -81,8 +81,10 @@ def test_every_command_is_on_the_root_page_the_advanced_page_or_is_an_old_name()
     listed = re.findall(r"^  ([a-z][a-z-]*)\s{2,}\S", pages()["co rem"], re.M)
     assert listed == ROOT_COMMANDS
     assert re.findall(r"^  ([a-z][a-z-]*)\s{2,}\S", pages()["co rem advanced"], re.M) == ADVANCED
-    assert set(REM.commands) == {*ROOT_COMMANDS, *ADVANCED, "advanced", *OLD_NAMES}
+    assert set(REM.commands) == {*ROOT_COMMANDS, *ADVANCED, "advanced", *OLD_NAMES, "sync"}
     assert "until 1.9.0" not in help_of([])
+    assert REM.commands["sync"].help.startswith("Collect, then investigate what is unfinished;")
+    assert "co rem collect for new material only, co rem catchup for a whole day" in help_of(["sync"])
     for old, new in OLD_NAMES.items():
         assert REM.commands[old].help.startswith(f"Old name for `co rem {new.split(' --')[0]}"), old
     for name in [*ROOT_COMMANDS, *ADVANCED]:
@@ -142,7 +144,7 @@ def test_day_stage_groups_are_in_order_and_machinery_is_apart():
     text = help_of([])
     headings = ["Collect — read new mail and sessions",
                 "Investigate — fill pages from originals",
-                "Deepen — follow leads, then think",
+                "Deepen — follow leads, add insights",
                 "Abstract — decisions, then principles",
                 "Translate — put pages in your language",
                 "Run a whole day now", "Background machinery"]
@@ -151,3 +153,17 @@ def test_day_stage_groups_are_in_order_and_machinery_is_apart():
     assert re.findall(r"^  ([a-z-]+)\s{2,}", machinery, re.M) == ['exec', 'next', 'submit']
     verbs = [name for name in REM.commands if name in ROOT_COMMANDS and name not in ('decisions', 'task', 'sources', 'config')]
     assert verbs == [name for name in ROOT_COMMANDS if name in verbs]
+
+
+def test_stage_verbs_are_real_commands_and_decisions_has_no_write():
+    text = help_of([])
+    for heading, verb in [('Collect —', 'collect'), ('Investigate —', 'investigate'),
+                          ('Deepen —', 'deepen'), ('Abstract —', 'abstract'), ('Translate —', 'translate')]:
+        section = text.split(heading, 1)[1].split('\n', 1)[1]
+        assert re.match(rf'  {verb}\s{{2,}}', section)
+    assert 'think' not in next(line for line in text.splitlines() if line.startswith('Deepen —'))
+    assert 'co rem decisions write' not in '\n'.join(pages().values())
+    assert not getattr(REM.commands['decisions'], 'commands', {})
+    assert 'alias' not in help_of(['abstract'])
+    assert 'one batch, not until caught up' in help_of(['collect'])
+    assert 'Those reads are outside the extraction batch; --source scopes only that batch.' in help_of(['collect'])

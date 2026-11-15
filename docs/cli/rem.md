@@ -265,7 +265,8 @@ co rem investigate          # What is left to investigate, by category; no model
 co rem investigate PAGE    # One page; a page refused before is retried on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
-co rem sync --dry-run       # Inspect pending metadata, without running a model
+co rem collect --dry-run    # Inspect pending metadata, without running a model
+co rem collect              # One batch of new material only
 co rem sync                 # One update: new material, then at most one unfinished page
 co rem logs                 # Inspect results, partial coverage and failures
 ```
@@ -275,7 +276,7 @@ what is missing; unknown usage remains **Unknown**, never zero. Results end
 with a copyable `Next:` command, including the selected root and shell quoting.
 Use `co rem --help` as the workflow guide: it gives task selection,
 observed inputs, expected results, source/quality checks and recovery before
-the command inventory. `init --help`, `investigate --help` and `sync --help`
+the command inventory. `init --help`, `investigate --help` and `collect --help`
 explain their full workflow as well as options. The overview and group help
 share one implementation, so human and agent guidance cannot drift separately. Root and JSON flags belong **before** the subcommand:
 
@@ -292,7 +293,7 @@ Piping human output does not hide the next step. Grouped help covers:
 |---|---|
 | Map and investigate | `init`, `investigate`, `map-skills`, `scan`, `stub` |
 | Browse | `open`, `list`, `show`, `search`, `status` |
-| Update and review | `sync`, `catchup`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` (alias) |
+| Update and review | `collect`, `sync`, `catchup`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` |
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
@@ -477,11 +478,39 @@ The five stages of a REM day are:
 
 | Stage | Verb | What it does | Background runs it (scheduled sync / exec / in-session next) | Budget it spends |
 |---|---|---|---|---|
-| Collect | `co rem sync` | Read new mail and coding sessions. `sync` also continues the existing daily update. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
+| Collect | `co rem collect` | Read one batch of new mail and coding sessions into the notebook; no later stages. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
 | Investigate | `co rem investigate` | Fill pages from originals: people, organisations, projects, session summaries, same-person checks and reply drafts. | Yes / yes / yes | Investigation's weekly points and usage floor; background daily call cap. |
 | Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, after the round / no: single tasks use the session's own model and cannot run an hour-long slot | Separate weekly deepen points, usage floors, page count, workers and slot time. |
-| Abstract | `co rem decisions write` (`abstract` remains an alias) | Decisions out of pages, principles out of decisions. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
+| Abstract | `co rem abstract` | Decisions out of pages, principles out of decisions. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
 | Translate | `co rem translate` | Put changed pages into the owner's language; last in the intended day because earlier stages change pages. | Yes / yes / yes; a `daily-translation` round only translates | Separate daily translation cap; model-provider allowance. |
+
+`co rem collect` reads one batch, not until caught up. The default ceiling is
+40 items (`limits.extract_items_per_batch`) from one source, with an additional
+input character bound. Sources rotate between batches. Mail takes whole
+correspondents by their oldest queued mail; a correspondent larger than a batch
+is sliced oldest first. Run `co rem collect` again for another batch.
+The result reports known mail still waiting and a copyable next command.
+As on the existing batch path, approved coding sessions are also imported and a
+stalled init mail archive can resume for up to five minutes across approved
+mailboxes. These reads are outside the extraction batch; `--source` scopes that
+batch, not this existing housekeeping.
+
+Mail `progress.json` → source → `pending` contains message metadata already
+listed but not yet successfully processed in a batch. It is not a count of all
+unread mail in the mailbox or of unlisted sessions. Automated senders excluded
+by the subscription never enter this queue; deleted messages are removed on a
+404. Disabled or unapproved sources retain their queue but are reported as held,
+separately from waiting mail. `--with` leaves other correspondents in place.
+Read failures, a daily call cap, and an input that cannot fit can delay progress;
+there is no age expiry for queued mail. Existing local corrections and captured
+material take priority over source batches, so a sustained local backlog can also
+delay mail. Rejected page material is retained in
+refusal state after a successful batch advances its mail queue.
+
+Compatibility command `co rem sync`: Collect, then investigate what is unfinished;
+use co rem collect for new material only, co rem catchup for a whole day.
+Its existing options and behavior remain, including installed schedules calling
+`co rem sync --scheduled` and the batch-only `--source` / `--all` paths.
 
 The stage order above describes the day. The current native round preserves
 its trialled order: collect, new same-person checks and reply drafts,
@@ -504,8 +533,10 @@ order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
 metadata and the existing investigation, deepen, captured-decision and
 translation queues; investigation counts distinct pages awaiting writing, session
-summaries, same-person checks or reply preparation; collection counts only locally known pending items, not
-unread mail on a server. The same rows are under `stages` in `--json`.
+summaries, same-person checks or reply preparation; collection counts listed mail waiting from enabled, approved sources. Disabled
+or unapproved source queues are shown separately as held; unlisted mail and
+sessions are not counted. Collection dates include batch receipts inside native
+daily rounds as well as standalone batches, and ignore empty checks. The same rows are under `stages` in `--json`.
 
 | Command | Behavior |
 |---|---|
@@ -528,15 +559,14 @@ unread mail on a server. The same rows are under `stages` in `--json`.
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
-| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
+| `co rem abstract [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
 | `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
-| `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co rem sync` | The whole update: one batch of new material; then the day's first run investigates unfinished pages, most recent first, and every later run updates only the people and projects with something new. What the schedule runs (`sync --scheduled`). |
-| `co rem sync --source codex --dry-run` | Pending metadata only; no model or source body reads. |
+| `co rem collect [--source NAME] [--with ADDRESS] [--dry-run]` | Read one batch of approved new material only, using the existing extraction/page updates. No investigation, deepen, abstract or translation. Dry run reads metadata only. |
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
@@ -581,7 +611,7 @@ Legacy session pages list unnumbered sources: a quote receives a numbered bindin
 only when its words and captured clock identify one retained owner turn on that
 page. Ambiguous or unmatched quotes stay out of the packet. No original transcripts
 are added to the model's material, and the session page remains unchanged.
-Run `co rem decisions write` to write supported captures
+Run `co rem abstract` to write supported captures
 now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
 round calls the existing configured model runner once and uses the same material,
 input character bound, owner-quote and citation checks, and decisions/principles
@@ -620,7 +650,7 @@ rule, as does each distinct failed night. After three failures the queue release
 the line and records the reason. Old receipts without verdicts retain their failure
 history and get one more offer, including lines previously given up, so the model
 can give a verdict. Successes after a failed gap are saved separately
-so the gap can retry without repeating later successes. `co rem abstract` remains an alias.
+so the gap can retry without repeating later successes. `co rem abstract` is the stage 4 command.
 
 Quote equality with a captured line does not prove who said it. Before promotion,
 the manual and nightly abstract check local stored originals, without fetching a

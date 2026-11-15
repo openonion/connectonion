@@ -315,7 +315,7 @@ def test_decision_merged_names_a_passing_page_and_never_retries(book, monkeypatc
 def test_not_a_decision_finishes_without_pages_or_retry_and_counts_skipped(book, monkeypatch):
     calls = verdict_model(monkeypatch, lambda lines: '\n'.join(
         f'VERDICT {line_id} not-a-decision' for line_id, _ in lines))
-    cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'decisions', 'write'])
+    cli = CliRunner().invoke(app, ['rem', '--root', str(book.root), 'abstract'])
     assert cli.exit_code == 0, cli.output
     assert '3 not a decision' in cli.output and '0 captured lines left' in cli.output
     assert 'Round 1:' in cli.output and 'Skipped: 3 not a decision' in cli.output.split('Done:')[0]
@@ -442,10 +442,10 @@ def test_cli_reports_each_line_state_separately(book, monkeypatch):
     verdict_model(monkeypatch, lambda lines:
         f'VERDICT {lines[1][0]} merged decisions/zero.md\nVERDICT {lines[2][0]} not-a-decision',
         pages=[('decisions/zero.md', page(0)), ('decisions/three.md', page(3, broken=True))])
-    args = ['rem', '--root', str(book.root), 'decisions']
-    result = CliRunner().invoke(app, [*args, 'write', '--rounds', '1'])
+    args = ['rem', '--root', str(book.root)]
+    result = CliRunner().invoke(app, [*args, 'abstract', '--rounds', '1'])
     assert result.exit_code == 0, result.output
-    status = CliRunner().invoke(app, args)
+    status = CliRunner().invoke(app, [*args, 'decisions'])
     for output in (result.output, status.output):
         assert 'Lines: 1 written · 1 merged · 1 refused · 1 no answer' in output
         assert '1 not a decision' in output

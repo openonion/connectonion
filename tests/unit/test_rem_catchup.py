@@ -576,7 +576,7 @@ def test_catchup_help_is_discoverable_and_plain():
     assert 'Calls the configured model' in shown.output
     assert 'Schedule times stay the same.' in shown.output
     assert 'Next:     co rem open' in shown.output
-    decisions = CliRunner().invoke(app, ['rem', 'decisions', 'write', '--help'])
+    decisions = CliRunner().invoke(app, ['rem', 'abstract', '--help'])
     assert 'Resumes from where previous or overnight runs left off, ignoring the overnight run limit.' in decisions.output
     assert 'Shares progress with the night' not in decisions.output
 

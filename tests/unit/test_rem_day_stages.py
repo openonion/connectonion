@@ -101,10 +101,13 @@ def stage_book(tmp_path):
     book.write('sessions/choices.md', '# Choices\n\n## Decisions\n- “Keep the simple path.” [1]\n'
                '\n## Sources\n- [1] codex:fictional:7\n')
     write_json(state_path(tmp_path, 'progress.json'), {'gmail': {'pending': {'inbox': [{}, {}]}}})
+    sources = service.subscriptions(tmp_path)
+    sources['gmail'] = {'kind': 'gmail', 'enabled': True, 'consented': True}
+    write_json(state_path(tmp_path, 'subscriptions.json'), sources)
     for i, phase in enumerate(['sync', 'daily-investigation', 'enrich', 'abstract', 'daily-translation'], 1):
         write_json(state_path(tmp_path, f'runs/run_{i}.json'), {
             'id': f'run_{i}', 'phase': phase, 'outcome': 'completed', 'runner_attempts': 0,
-            'started_at': f'2026-11-0{i}T10:00:00+00:00', 'changed': [], 'items': 0})
+            'started_at': f'2026-11-0{i}T10:00:00+00:00', 'changed': [], 'items': int(phase == 'sync')})
     return tmp_path
 
 
@@ -115,7 +118,7 @@ def test_status_five_stages_match_json_and_saved_queues(stage_book, monkeypatch)
     result = cli.invoke(app, [*args, 'status'])
     assert result.exit_code == 0, result.output
     expected = [
-        'Collect: 2 locally known items waiting; last ran 2026-11-01',
+        'Collect: 2 listed mail waiting; last ran 2026-11-01',
         'Investigate: 1 page waiting; last ran 2026-11-02',
         'Deepen: 2 pages waiting; last ran 2026-11-03',
         'Abstract: 1 captured decision waiting; last ran 2026-11-04',
@@ -221,3 +224,49 @@ def test_status_stages_accept_owner_metadata_without_a_page(tmp_path):
     write_json(state_path(tmp_path, 'map.json'), {'owner': {'addresses': ['owner@example.test'],
                                                           'name': 'Fictional Owner'}})
     assert len(service.status(tmp_path)['stages']) == 5
+
+
+@pytest.mark.parametrize('phase', ['daily-investigation', 'daily-update'])
+def test_collect_date_includes_native_round_batch_and_ignores_empty_runs(stage_book, phase):
+    write_json(state_path(stage_book, 'runs/run_native.json'), {
+        'id': 'run_native', 'phase': phase, 'native_round': True, 'outcome': 'pending',
+        'started_at': '2026-11-09T23:30:00+00:00',
+        'batch': {'phase': 'sync', 'started_at': '2026-11-11T23:30:00+00:00',
+                  'items': 40, 'items_by_source': {'gmail': 40}, 'outcome': 'completed'}})
+    write_json(state_path(stage_book, 'runs/run_empty.json'), {
+        'id': 'run_empty', 'phase': 'sync', 'outcome': 'completed', 'items': 0,
+        'started_at': '2026-11-14T12:00:00+00:00'})
+    set_config(stage_book, ['schedule.timezone', 'Australia/Sydney'])
+    assert service.status(stage_book)['stages'][0]['last_run'] == '2026-11-12'
+
+
+def test_collect_count_distinguishes_disabled_and_unapproved_sources(stage_book):
+    sources = service.subscriptions(stage_book)
+    sources.update(outlook={'kind': 'outlook', 'enabled': False, 'consented': True},
+                   other={'kind': 'gmail', 'enabled': True, 'consented': False})
+    write_json(state_path(stage_book, 'subscriptions.json'), sources)
+    progress = read_json(state_path(stage_book, 'progress.json'), {})
+    progress.update(outlook={'pending': {'someone': [{}, {}, {}]}},
+                    other={'pending': {'someone': [{}]}})
+    write_json(state_path(stage_book, 'progress.json'), progress)
+    row = service.status(stage_book)['stages'][0]
+    assert row['waiting'] == 2 and row['held'] == 4
+    assert '2 listed mail waiting' in row['text'] and '4 held (source disabled or unapproved)' in row['text']
+
+
+def test_native_mail_slot_preserves_latest_nonempty_batch_receipt(stage_book, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import native_round
+    from connectonion.rem.config import read_config
+    old = {'items': 10, 'started_at': '2026-11-09T12:00:00+00:00'}
+    new = {'items': 40, 'started_at': '2026-11-11T12:00:00+00:00'}
+    records = iter([new, {'items': 0, 'started_at': '2026-11-12T12:00:00+00:00'}])
+    monkeypatch.setattr(native_round, '_read_sources', lambda *a: {'done': True, 'record': next(records)})
+    cursor = {'run': {'id': 'run_native', 'phase': 'daily-update', 'native_round': True,
+                     'outcome': 'pending', 'started_at': old['started_at'], 'batch': old}}
+    for day in (11, 12):
+        native_round.read_new_mail(stage_book, cursor, read_config(stage_book),
+                                  datetime(2026, 11, day, 12, tzinfo=timezone.utc))
+    saved = read_json(state_path(stage_book, 'runs/run_native.json'), {})
+    assert saved['batch'] == new
+    assert service.status(stage_book)['stages'][0]['last_run'] == '2026-11-11'

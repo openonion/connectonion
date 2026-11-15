@@ -76,7 +76,7 @@ def prepare(root, config, *, scheduled, carry=None):
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
-    record.update(outcome="pending", native_round=True)
+    record.update(outcome="pending", native_round=True, batch=batch["record"])
     write_json(path, record)
     cursor["run"] = record
     write_json(state_path(root, "round.json"), cursor)
@@ -102,6 +102,9 @@ def read_new_mail(root, cursor, config, slot):
                           cursor.setdefault("set_aside", []))
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
+    if batch["record"].get("items"):
+        cursor["run"]["batch"] = batch["record"]
+        write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
 

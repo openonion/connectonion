@@ -2018,11 +2018,13 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["config"],
                 draw=_dashboard(ctx, verbose))
 
-    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
+    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
         from ...rem.service import run_sync, scheduled_skip
 
         finished = []
+        again = ["collect", *(["--source", source] if source else []),
+                 *(["--with", with_person] if with_person else [])] if collect_only else ["sync"]
 
         def progress(number, record):
             # A backfill ran 37 minutes over five batches with no output at all
@@ -2033,7 +2035,7 @@ def make_rem_app(factory):
                        f"({record['outcome']})", err=True)
 
         def operation(root):
-            if dry_run or source or with_person or all_pending:
+            if collect_only or dry_run or source or with_person or all_pending:
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
@@ -2050,6 +2052,9 @@ def make_rem_app(factory):
                     return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
                 if record.get("outcome") == "busy":
                     return record, ["status"]
+                if collect_only:
+                    from ...rem.stages import collection_backlog
+                    record = {**record, "collection": collection_backlog(root)}
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
                         why = record.get("reason") or record["outcome"]
@@ -2057,11 +2062,11 @@ def make_rem_app(factory):
                                        f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
-                    return record, ["sync"]
+                    return record, again
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
-                return record, ["logs", record["id"]]
+                return record, again if collect_only else ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             from ...rem.service import run_scheduled
@@ -2177,6 +2182,13 @@ def make_rem_app(factory):
             refused = value["outcome"] == "refused"
             return value, ["submit", task_id] if refused else ["next"], refused
         _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
+
+    @rem.command("collect", cls=V("co rem collect"))
+    def collect_rem(ctx: typer.Context,
+                    source: str = typer.Option("", "--source"),
+                    with_person: str = typer.Option("", "--with"),
+                    dry_run: bool = typer.Option(False, "--dry-run")):
+        _sync(ctx, source, with_person, dry_run, False, False, 30, collect_only=True)
 
     @rem.command("sync", cls=V("co rem sync"))
     def sync_rem(ctx: typer.Context,
@@ -2589,7 +2601,6 @@ def make_rem_app(factory):
     @rem.command("abstract", cls=V("co rem abstract"))
     def abstract_pages(ctx: typer.Context, rounds: Optional[int] = typer.Option(None, "--rounds", min=1)):
         from .rem_decisions import write_decisions
-        _moved(ctx, "abstract", ["decisions", "write"])
         write_decisions(ctx, rounds, _handle, _WRITTEN)
 
     @rem.command("capture", cls=V("co rem capture"))
@@ -2602,7 +2613,7 @@ def make_rem_app(factory):
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
     from .rem_decisions import add_decisions_app
-    add_decisions_app(rem, factory, _handle, _WRITTEN)
+    add_decisions_app(rem, factory, _handle)
     from .rem_import import add_import_app
     add_import_app(rem, factory, _handle)
 
@@ -2675,8 +2686,8 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init sync investigate deepen enrich muse translate catchup open list show search start stop status exec next submit sources config logs morning doctor history "
-             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
+    order = ("init collect investigate deepen enrich muse abstract decisions translate catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

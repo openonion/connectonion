@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from .files import Notebook, read_json, state_path
 
 STAGES = (
-    ('Collect', 'locally known item', ('sync', 'extract')),
+    ('Collect', 'listed mail', ('sync', 'extract', 'collect')),
     ('Investigate', 'page', ('daily-investigation', 'daily-update', 'investigate', 'investigate me',
                              'projects write', 'sessions-summary', 'same-person', 'reply-draft')),
     ('Deepen', 'page', ('enrich', 'muse')),
@@ -14,11 +14,38 @@ STAGES = (
 )
 
 
-def _collect(root):
-    """Only retained pending items are knowable without reading a mailbox."""
+def collection_backlog(root):
+    """Listed mail still queued; disabled or unapproved sources are held separately."""
+    from .service import MAIL_KINDS, subscriptions
     progress = read_json(state_path(root, 'progress.json'), {})
-    return sum(len(items) for source in progress.values() if isinstance(source, dict)
-               for items in source.get('pending', {}).values())
+    sources, counts = subscriptions(root), {'waiting': 0, 'held': 0}
+    for name, source in progress.items():
+        if not isinstance(source, dict):
+            continue
+        subscription = sources.get(name, {})
+        if subscription.get('kind', name) not in MAIL_KINDS:
+            continue
+        eligible = (subscription.get('enabled') and subscription.get('consented')
+                    and not subscription.get('unsubscribed'))
+        counts['waiting' if eligible else 'held'] += sum(map(len, source.get('pending', {}).values()))
+    return counts
+
+
+def _collection_runs(root, logs):
+    """Batch receipts, including a native round's batch rather than its investigation tasks."""
+    cursor = read_json(state_path(root, 'round.json'), {})
+    rows = [*logs, {'batch': cursor.get('batch', {}).get('record', {})}]
+    for row in rows:
+        batch = row.get('batch') or row.get('maintenance')
+        if isinstance(batch, dict):
+            batch = batch.get('record', batch)
+            if batch.get('items', 0):
+                yield {**batch, 'phase': 'sync', 'started_at': batch.get('started_at') or row.get('started_at')}
+        phase = row.get('phase', 'sync')
+        if row.get('items', 0) and (phase in STAGES[0][2] or
+                (phase in ('daily-investigation', 'daily-update') and
+                 (row.get('native_round') or row.get('items_by_source')))):
+            yield {**row, 'phase': 'sync'}
 
 
 def _investigate(root):
@@ -43,7 +70,7 @@ def _investigate(root):
 
 def _counts(root):
     from . import captured_decisions, depth, translate
-    return (_collect(root), _investigate(root), len(depth.candidates(root)),
+    return (collection_backlog(root)['waiting'], _investigate(root), len(depth.candidates(root)),
             captured_decisions.pending_count(Notebook(root)),
             sum(len(translate.backlog(root, language)) for language in translate.languages(root)
                 if language.split('-')[0].lower() != 'en'))
@@ -69,8 +96,12 @@ def status(root, config, logs):
     from .service import notebook_zone
     zone, rows = notebook_zone(config), []
     for (name, unit, phases), count in zip(STAGES, _counts(root)):
-        last = _last_run(logs, phases, zone)
-        noun = unit if count == 1 else unit + 's'
+        last = _last_run(_collection_runs(root, logs) if name == 'Collect' else logs, phases, zone)
+        noun = unit if count == 1 or name == 'Collect' else unit + 's'
         rows.append({'name': name, 'waiting': count, 'last_run': last,
                      'text': f'{name}: {count} {noun} waiting; last ran {last or "never"}'})
+        if name == 'Collect':
+            rows[-1]['held'] = collection_backlog(root)['held']
+            if rows[-1]['held']:
+                rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
     return rows
