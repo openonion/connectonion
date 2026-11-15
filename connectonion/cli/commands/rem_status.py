@@ -33,6 +33,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     found = pages(Path(root))
     counts = notebook(root, found)
     lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
+             *(highlight(row['text']) for row in value.get('stages', [])), "",
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):

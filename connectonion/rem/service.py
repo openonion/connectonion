@@ -753,7 +753,9 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
+    from .stages import status as stage_status
     return {"state": state, "tonight": night_summary(root),
+            "stages": stage_status(root, config, logs),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": describe_levels(config),

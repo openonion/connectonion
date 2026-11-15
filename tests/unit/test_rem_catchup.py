@@ -83,16 +83,13 @@ def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monke
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} open')
 
 
-@pytest.mark.parametrize('daily_cap', [False, True])
-def test_each_night_runs_exec_then_the_default_logged_deepen_slot(book, model, monkeypatch, daily_cap):
+def test_each_night_runs_exec_then_the_default_logged_deepen_slot(book, model, monkeypatch):
     from connectonion.cli.commands import rem_commands
     backlog(book, 60)
     records = [f'people/person-{i}.md' for i in range(4)]
     for record, name in zip(records, ('Avery', 'Blake', 'Cameron', 'Drew')):
         book.write(record, f'# {name}\n')
     set_config(book.root, ['limits.depth_workers', '2'])
-    if daily_cap:
-        set_config(book.root, ['limits.runner_calls_per_day', '1'])
     exec_round, slot, order = schedule.exec_round, depth.slot, []
 
     def execute(root, **options):
@@ -599,3 +596,19 @@ def test_json_reports_nights_and_next_command(book, model):
     assert data['ok'] and len(data['data']['nights']) == 2
     assert data['data']['written'] == 40
     assert data['next'] == f'co rem --root {book.root} open'
+
+
+def test_catchup_reports_exec_depth_without_own_slot(book, monkeypatch):
+    from connectonion.rem import catchup
+    calls = []
+    def execute(root, **options):
+        calls.append(catchup.number(root))
+        write_json(state_path(root, 'round.json'), {'catchup_night': catchup.number(root),
+                   'changed': ['people/person.md']})
+        return {'outcome': 'done', 'reason': 'round done', 'depth': {
+            'stopped': '', 'rounds': [{'record': 'people/person.md', 'enrich': 'completed', 'muse': 'completed'}]}}
+    monkeypatch.setattr(schedule, 'exec_round', execute)
+    monkeypatch.setattr(depth, 'slot', lambda *a, **k: pytest.fail('catchup called a second slot'))
+    result = catchup.run(book.root, nights=2)
+    assert len(calls) == 2 and result['deepened'] == 2
+    assert [row['deepened'] for row in result['nights']] == [1, 1]

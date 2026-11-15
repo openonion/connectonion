@@ -11,29 +11,35 @@ Experimental: its commands may still change between 1.9.x releases.
 
 Build (once)
   init          Build the notebook from mail and coding sessions, then offer daily updates.
+Collect — read new mail and sessions
+  sync          Run one update now, starting with new material.
+Investigate — fill pages from originals
   investigate   Fill a page, a whole category, or your own page, using a model.
-Deepen one page
+Deepen — follow leads, then think
+  deepen        Add research and insights to pages with useful activity but little detail.
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Study questions about one page and add new insights.
-  deepen        Add research and insights to pages with useful activity but little detail.
+Abstract — decisions, then principles
+  decisions     Count decision and principle pages and decisions waiting. No model.
+                Run co rem decisions write to write them now.
+Translate — put pages in your language
+  translate     Translate every page not yet in your language, or one page.
+Run a whole day now
+  catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
-  translate     Translate every page not yet in your language, or one page.
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
-  status        Is the schedule on, when it runs next, what ran today.
-  sync          Run one update now.
-  decisions     Count decision and principle pages and decisions waiting. No model.
-                Run co rem decisions write to write them now.
-  catchup       Do the night's work, then one deepen slot.
-  exec          Run the configured background upkeep round.
+  status        Show coverage, upkeep, and each stage's waiting count and last run.
+  task          Run, inspect or stop work owed by the owner.
+Background machinery
+  exec          Run the configured background upkeep round, including its deepen slot.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
-  task          Run, inspect or stop work owed by the owner.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -72,7 +78,9 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 Do the night's work, then one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night runs the existing exec round, then one enrich and muse round per selected page, as co rem deepen does.
+Each night runs the existing exec round. A completed whole round includes one enrich and muse slot after its closing translation, as co rem deepen does.
+A productive night stopped at the daily cap keeps its counts and can repeat with fresh limits, but skips deepen until a whole round completes.
+Deepen is owned by the round; catchup reports its counts without calling it again.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, or a weekly budget or Codex quota floor.
 Deepen uses its own weekly budget; a spent deepen budget or no qualifying pages still counts the night.
@@ -88,6 +96,10 @@ Back:     co rem --help
 ```
 Run the configured background upkeep round. Runs the selected coding agent and
 writes notebook pages, reports and run state; never sends mail.
+
+A completed whole round runs one deepen slot after closing translation. Early
+stops and translation-only rounds do not deepen. In-session next and submit
+only hand out single tasks and never run the hour-long deepen slot.
 
 After session summaries, the night writes decisions/ and principles/ in rounds,
 reading up to 20 captured decision lines each, oldest first. The limit is
@@ -633,7 +645,10 @@ Read-only.
 Usage:    co rem status [--verbose]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
-          today's runs, pages changed and tokens; the notebook (people, projects,
+          today's runs, pages changed and tokens; Collect, Investigate, Deepen,
+          Abstract and Translate, each with a waiting count and last-run date
+          (or never); --json includes the same data under stages;
+          the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
           translation coverage and what is queued;
           each mailbox with the command that fixes it, and how long ago it was

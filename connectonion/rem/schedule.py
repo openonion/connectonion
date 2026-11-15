@@ -472,12 +472,56 @@ class Systemd:
         return info
 
 
-def exec_round(root, *, scheduled=True):
+def exec_round(root, *, scheduled=True, stage=None, say=None):
     from .catchup import resume
-    if scheduled:
-        return _exec_round(root, scheduled=True)
-    with resume(root):
-        return _exec_round(root, scheduled=scheduled)
+    with resume(root, scheduled=scheduled):
+        result = _exec_round(root, scheduled=scheduled)
+        return finish_exec(root, result, stage=stage, say=say)
+
+
+def deepen_round(root, *, stage=None, say=None):
+    """The one round-driven caller of the unchanged deepen slot, with run logs."""
+    from . import depth
+    from ..cli.commands.rem_commands import _depth_stage
+    return depth.slot(root, stage=stage or _depth_stage, say=say)
+
+
+def _depth_due(root, cursor):
+    from .catchup import _counts, number
+    if not cursor.get('done') or cursor.get('phase') == 'daily-translation':
+        return False
+    night = number(root)
+    if night is None:
+        return True
+    counts = _counts(root, night)
+    return any(counts[name] for name in ('written', 'translated', 'drafts'))
+
+
+def _round_identity(cursor):
+    return (cursor.get('run', {}).get('id'), cursor.get('started_at'), cursor.get('catchup_night'))
+
+
+def finish_exec(root, result, *, stage=None, say=None):
+    """Claim one post-round slot without holding the writer lock across worker calls."""
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    if result.get('outcome') != 'done' or result.get('reason') != 'round done':
+        return result
+    path = state_path(root, 'round.json')
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        cursor = read_json(path, {})
+        if not _depth_due(root, cursor):
+            return result
+        if 'depth' in cursor:
+            return {**result, 'depth': cursor['depth']}
+        cursor['depth'] = {'stopped': 'deepening interrupted'}
+        write_json(path, cursor)
+    depth = deepen_round(root, stage=stage, say=say)
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        current = read_json(path, {})
+        if _round_identity(current) == _round_identity(cursor):
+            current['depth'] = depth
+            write_json(path, current)
+    return {**result, 'depth': depth}
 
 
 def _exec_round(root, *, scheduled):

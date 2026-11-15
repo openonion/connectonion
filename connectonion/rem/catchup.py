@@ -116,18 +116,18 @@ def _depth_counts(root, result, before):
 
 
 def _night(root, night, rows, progress, stage, say):
-    from . import depth, schedule
-    before, deepening = {}, {'rounds': [], 'stopped': 'exec interrupted'}
+    from . import schedule
+    before = read_json(state_path(root, 'depth.json'), {})
+    deepening = {'rounds': [], 'stopped': 'exec interrupted'}
     with scope(root, night):
         try:
-            result = schedule.exec_round(root, scheduled=False)
+            result = schedule.exec_round(root, scheduled=False, stage=stage, say=say)
             reason, failed = _stop(result, _counts(root, night), len(rows) + 1)
-            deepening['stopped'] = f'exec stopped: {reason}'
-            if not reason:
-                before = read_json(state_path(root, 'depth.json'), {})
-                deepening = {'stopped': 'deepening interrupted'}
-                deepening = depth.slot(root, stage=stage, say=say)
-        finally:  # Include saved work even when the owner stops in either part.
+            deepening = result.get('depth', {'rounds': [], 'stopped': f'exec stopped: {reason or result.get("reason", "")}'})
+        finally:  # Include saved slot work even if exec's deepen slot was interrupted.
+            cursor = read_json(state_path(root, 'round.json'), {})
+            if cursor.get('catchup_night') == night:
+                deepening = cursor.get('depth', deepening)
             row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
             rows.append(row)
             progress(len(rows), row)
@@ -135,7 +135,7 @@ def _night(root, night, rows, progress, stage, say):
 
 
 def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=None):
-    """One exec round then one deepen slot per productive, completed night."""
+    """One exec round including its deepen slot per productive, completed night."""
     from . import quota, service
     from .config import read_config
     if nights < 1:

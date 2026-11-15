@@ -2071,8 +2071,8 @@ def make_rem_app(factory):
                 if result is None or result["outcome"] in ("partial", "busy"):
                     return result
                 if scheduled:
-                    from ...rem import depth
-                    result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
+                    from ...rem.schedule import deepen_round
+                    result["depth"] = deepen_round(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
                 return result
 
             result = run_scheduled(root, daily_round) if scheduled else daily_round()
@@ -2675,7 +2675,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync catchup exec next submit sources config logs morning doctor history "
+    order = ("init sync investigate deepen enrich muse translate catchup open list show search start stop status exec next submit sources config logs morning doctor history "
              "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

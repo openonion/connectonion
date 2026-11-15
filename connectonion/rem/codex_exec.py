@@ -176,7 +176,8 @@ def _run_locked(root, run, lock_fd):
     receipt = {'turn_id': name, 'started_at': started.isoformat(), 'result': 'running',
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
-    result, skipped = None, False
+    result, skipped, failed = None, False, False
+    before = read_json(state_path(root, 'round.json'), {})
     try:
         receipt['terminated_orphans'] = _reap_orphan_maintenance(root)
         from .codex_schedule import CodexNative
@@ -193,13 +194,18 @@ def _run_locked(root, run, lock_fd):
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                          cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
-    except Exception as error:
-        # Persist the failure for unattended users, then preserve the traceback.
+        cursor = read_json(state_path(root, 'round.json'), {})
+        if result.returncode == 0 and cursor.get('done') and cursor != before:
+            from .schedule import finish_exec
+            receipt['depth'] = finish_exec(root, {'outcome': 'done', 'reason': 'round done'}).get('depth')
+    except BaseException as error:
+        # Persist failed or interrupted deepening even after Codex itself exited zero.
+        failed = True
         receipt['reason'] = str(error) or type(error).__name__
         raise
     finally:
         code = result.returncode if result is not None else None
-        outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
+        outcome = 'skipped' if skipped else 'completed' if code == 0 and not failed else 'timed-out' if code == 124 else 'failed'
         if code == 124:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
         # Only the protocol's terminal busy line is a blocker, never a recovered narrative.

@@ -473,6 +473,40 @@ second shell implementation would duplicate behavior.
 Group options precede the command: `co rem --root /path/to/rem --json list`.
 Every command returns a next command, including in JSON and through a pipe.
 
+The five stages of a REM day are:
+
+| Stage | Verb | What it does | Background runs it (scheduled sync / exec / in-session next) | Budget it spends |
+|---|---|---|---|---|
+| Collect | `co rem sync` | Read new mail and coding sessions. `sync` also continues the existing daily update. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
+| Investigate | `co rem investigate` | Fill pages from originals: people, organisations, projects, session summaries, same-person checks and reply drafts. | Yes / yes / yes | Investigation's weekly points and usage floor; background daily call cap. |
+| Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, after the round / no: single tasks use the session's own model and cannot run an hour-long slot | Separate weekly deepen points, usage floors, page count, workers and slot time. |
+| Abstract | `co rem decisions write` (`abstract` remains an alias) | Decisions out of pages, principles out of decisions. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
+| Translate | `co rem translate` | Put changed pages into the owner's language; last in the intended day because earlier stages change pages. | Yes / yes / yes; a `daily-translation` round only translates | Separate daily translation cap; model-provider allowance. |
+
+The stage order above describes the day. The current native round preserves
+its trialled order: collect, new same-person checks and reply drafts,
+investigations with translation turns interleaved (`translation_share`), session
+summaries, abstract rounds, same-person checks, then closing translation.
+Whole-round background runners (`co rem exec`, the `codex_exec` launchd entry
+point, and scheduled sync) run the unchanged `depth.slot` once after that
+round completes. Closing translation remains inside the round; moving it would
+restructure the single-task protocol. Thus deepen follows Abstract **and the
+closing Translate**, and its changed pages await the next translation pass.
+Legacy scheduled sync keeps its existing collect, investigation and translation
+round, then deepens. Partial, busy, refused, quota-held, not-due and
+translation-only or daily-capped unfinished exec rounds do not start a deepen slot.
+`co rem catchup` reuses exec, including that same slot, once per productive
+completed night; it does not add another slot. In-session `next` / `submit`
+keeps handing single tasks to the session's model and never deepens.
+
+`co rem status` keeps its existing dashboard and adds five stage lines in the
+order above. Each says what is waiting (a count) and when that stage last ran
+in the notebook's timezone (a date or `never`). Counts come from saved source
+metadata and the existing investigation, deepen, captured-decision and
+translation queues; investigation counts distinct pages awaiting writing, session
+summaries, same-person checks or reply preparation; collection counts only locally known pending items, not
+unread mail on a server. The same rows are under `stages` in `--json`.
+
 | Command | Behavior |
 |---|---|
 | `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, all eligible people, queued projects, pending mapped organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
@@ -495,7 +529,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Do the night's work, then one deepen slot. `--nights` repeats both back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
 | `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
@@ -507,7 +541,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
-| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
+| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. |
 | `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
@@ -516,7 +550,7 @@ Every command returns a next command, including in JSON and through a pipe.
 Run `co rem catchup` to do the night's work, then one deepen slot. Use
 `co rem catchup --nights 5` to run both five times back to back. `--nights` is
 optional, defaults to 1 and must be at least 1. Each night uses `co rem exec`'s
-existing round, then the same automatic slot as `co rem deepen`: one enrich
+existing round, which owns the same automatic slot as `co rem deepen`: one enrich
 and muse round per selected page, using the default page count and
 `limits.depth_workers`. It calls the configured model and reads sources up to
 now. A night with deepen can take an hour or more: large-page rounds measured
@@ -530,7 +564,9 @@ counts the night; the line says why no pages were deepened.
 The daily investigation call cap leaves room for the same translation tail as
 the scheduled round. Each line reports that night's mail and sessions read,
 pages written, decision pages written, translations, drafts and pages deepened;
-totals follow. If exec is refused, busy, reaches a quota floor or produces no
+totals follow. A productive night stopped at the daily cap keeps its counts and
+can repeat with fresh limits, but skips deepen because its round is unfinished.
+If exec is refused, busy, reaches a quota floor or produces no
 pages, translations or drafts, catchup stops without starting deepen.
 Run `co rem exec` to resume unfinished exec work before starting another catchup
 run. Saved work survives interruption, including during deepen.
@@ -782,7 +818,12 @@ many candidates remain.
 
 Scheduled `co rem sync --scheduled` runs a slot after a due daily round,
 unless that round was partial. Manual `co rem sync` never deepens pages.
-Each completed catchup night that produced work also runs one slot.
+`co rem exec` and the `python -m connectonion.rem.codex_exec` launcher also
+run the same slot after a completed whole round. Their closing
+translation has already run; deepen changes await the next translation pass.
+Catchup reuses exec's slot and reports its results without calling it again.
+In-session `co rem next` / `co rem submit` does not deepen. Early stops and
+translation-only exec rounds skip the slot.
 
 ### What the reader shows
 

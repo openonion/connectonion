@@ -19,8 +19,9 @@ from connectonion.cli.main import app
 
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
-ROOT_COMMANDS = ["init", "investigate", "enrich", "muse", "deepen", "open", "list", "show", "search", "translate", "start", "stop", "status",
-                 "sync", "decisions", "catchup", "exec", "next", "submit", "task", "sources", "config", "logs", "morning", "doctor", "history"]
+ROOT_COMMANDS = ["init", "sync", "investigate", "deepen", "enrich", "muse", "decisions", "translate", "catchup",
+                 "open", "list", "show", "search", "start", "stop", "status", "task", "exec", "next", "submit",
+                 "sources", "config", "logs", "morning", "doctor", "history"]
 ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
@@ -135,3 +136,18 @@ def test_a_wrapper_sees_its_own_name_in_help(monkeypatch):
     monkeypatch.setenv("CO_REM_PROGRAM", "remi")
     output = help_of(["investigate"])
     assert output.startswith("remi investigate —") and "co rem" not in output
+
+
+def test_day_stage_groups_are_in_order_and_machinery_is_apart():
+    text = help_of([])
+    headings = ["Collect — read new mail and sessions",
+                "Investigate — fill pages from originals",
+                "Deepen — follow leads, then think",
+                "Abstract — decisions, then principles",
+                "Translate — put pages in your language",
+                "Run a whole day now", "Background machinery"]
+    assert [text.index(heading) for heading in headings] == sorted(text.index(heading) for heading in headings)
+    machinery = text.split("Background machinery\n")[1].split("Settings\n")[0]
+    assert re.findall(r"^  ([a-z-]+)\s{2,}", machinery, re.M) == ['exec', 'next', 'submit']
+    verbs = [name for name in REM.commands if name in ROOT_COMMANDS and name not in ('decisions', 'task', 'sources', 'config')]
+    assert verbs == [name for name in ROOT_COMMANDS if name in verbs]
