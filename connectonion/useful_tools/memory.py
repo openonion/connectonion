@@ -244,17 +244,20 @@ class Memory:
         return "\n".join(output)
 
 
-    def _parse_sections(self, content: str) -> tuple:
+    def _parse_sections(self, content: str) -> tuple[str, dict[str, str]]:
         """Parse memory.md into a header and sections.
 
         The header is any content that appears before the first ``## `` section
         heading (for example a leading ``# Title`` line). It is preserved so
-        that writing back to the file does not silently drop it.
+        that writing back to the file does not silently drop it. Surrounding
+        whitespace in the header is normalised with ``strip()``, so a write is
+        not necessarily byte-identical to the original file (harmless for
+        Markdown, but worth knowing).
 
         Returns:
-            A ``(header, sections)`` tuple where ``header`` is the raw text
-            before the first section heading and ``sections`` maps each key to
-            its content.
+            A ``(header, sections)`` tuple where ``header`` is the text before
+            the first section heading with surrounding whitespace stripped,
+            and ``sections`` maps each key to its content.
         """
         header_lines = []
         sections = {}
