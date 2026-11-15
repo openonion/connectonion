@@ -657,7 +657,10 @@ def test_rem_import_sessions_cli_json(notebook):
     from connectonion.cli.main import app
     root, _, _ = notebook
     transcript(notebook)
-    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", "30", "--json"])
+    # The transcript is stamped STAMP and the CLI reads the wall clock: a fixed "--days 30" began
+    # failing on 2026-11-15, thirty days after STAMP, on every branch at once.
+    days = (datetime.now(timezone.utc) - datetime.fromisoformat(STAMP.replace("Z", "+00:00"))).days + 30
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", str(days), "--json"])
     assert result.exit_code == 0, result.output
     output = json.loads(result.stdout)
     assert output["ok"] is True and output["data"]["imported"] == 1
