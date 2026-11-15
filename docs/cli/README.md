@@ -538,6 +538,23 @@ See [linear.md](linear.md).
 
 ---
 
+#### `co notion` - Notion pages and databases
+
+Read the Notion pages and databases your key can read (an internal connection:
+the pages given to it): list them, search titles, read a page with its completeness, and query a
+database by its real columns. Read-only.
+
+```bash
+co env set NOTION_API_KEY ntn_... --secret
+co notion check
+co notion pages
+co notion db <database-link> --where "Status=In progress"
+```
+
+See [notion.md](notion.md).
+
+---
+
 #### `co onenote` - Browse OneNote by number
 
 After `co auth microsoft`, run `co onenote ls` to see numbered sections,
@@ -1467,6 +1484,7 @@ See [server.md](server.md).
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 | `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co notion` | Notion pages and databases: list what is shared, search titles, read a page, query a database, its columns — [notion.md](notion.md) | No | ✅ Yes (read-only) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
