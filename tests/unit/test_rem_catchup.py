@@ -639,3 +639,125 @@ def test_catchup_reports_exec_depth_without_own_slot(book, monkeypatch):
     result = catchup.run(book.root, nights=2)
     assert len(calls) == 2 and result['deepened'] == 2
     assert [row['deepened'] for row in result['nights']] == [1, 1]
+
+
+MAIL = [{'role': 'user', 'source': 'gmail:fixture:1', 'timestamp': '2026-09-07T10:00:00Z',
+         'speaker': 'wren@example.test', 'text': 'Can we move the pilot review to Friday?'},
+        {'role': 'user', 'source': 'gmail:fixture:2', 'timestamp': '2026-09-07T11:00:00Z',
+         'speaker': 'wren@example.test', 'text': 'Friday at ten works for the whole team.'}]
+WAITING = ['Investigate', 'Deepen', 'Abstract', 'Translate']
+
+
+@pytest.fixture
+def held(book, monkeypatch, rem_clock):
+    """A notebook whose Codex week is at its floor, with fake mail and calendar clients and no model."""
+    from connectonion.rem import calendar
+    reads, events = [], []
+    week = {'used_percent': 99, 'window_minutes': 10080, 'resets_at': (rem_clock + timedelta(days=2)).timestamp()}
+
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(sorted(selected))
+        return {'done': False, 'items': MAIL, 'updated': {**progress, 'gmail': {'scanned_until': 'x'}},
+                'record': {'extracted': False, 'id': 'run_' + 'b' * 32, 'items': 2, 'items_by_source': {'gmail': 2}},
+                'kind': 'gmail', 'leads': [None], 'digested': None}
+
+    monkeypatch.setattr(quota, 'meter', lambda *a: week)
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: events.append(args) or [])
+    monkeypatch.setattr(runner, 'run_task', lambda *a, **k: pytest.fail('a held catchup called the model'))
+    monkeypatch.setattr(depth, 'slot', lambda *a, **k: pytest.fail('a held catchup started deepen'))
+    return {'reads': reads, 'events': events, 'reason': quota.floor_block(week, read_config(book.root)['limits'])}
+
+
+def test_at_the_floor_catchup_still_collects_mail_and_saves_the_calendar_and_day_plan(book, held):
+    result = invoke(book, '--nights', '3')
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert len(held['reads']) == 1 and len(held['events']) == 1
+    assert 'Done:' not in result.stdout and not any(line.startswith('Night ') for line in lines)
+    assert lines[0] == 'No night ran: a limit holds the model, so only the steps that need no model were done.'
+    assert lines[1] == ('Collect: 2 mail collected · 0 sessions read · 0 pages updated; '
+                        'reading them into pages waits for the model')
+    assert lines[2] == 'Calendar: 0 calendar events saved · day plan saved for 2026-09-07 and 2026-09-08'
+    assert lines[3] == 'Waiting: Investigate, Deepen, Abstract and Translate call the model'
+    assert lines[4] == f"Stopped: {held['reason']}"
+    assert 'resumes when it resets' in lines[4]
+    cursor = read_json(state_path(book.root, 'round.json'), {})
+    assert cursor['batch']['items'] == MAIL and not cursor['batch']['done'] and not cursor.get('pending')
+    assert read_json(state_path(book.root, 'catchup.json'), {}) == {}, 'a held catchup must not spend a night'
+
+
+def test_a_weekly_budget_stop_says_when_the_week_resets(book, held, monkeypatch, rem_clock):
+    week = {'used_percent': 20, 'window_minutes': 10080, 'resets_at': (rem_clock + timedelta(days=2)).timestamp()}
+    monkeypatch.setattr(quota, 'meter', lambda *a: week)
+    monkeypatch.setattr(quota, 'points_spent', lambda *a: 100)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    assert len(held['reads']) == 1 and len(held['events']) == 1
+    assert re.search(r'^Waiting: Investigate, Deepen, Abstract and Translate call the model; '
+                     r'the Codex week resets \w{3} \d{2} \w{3} \d{2}:\d{2}$', result.stdout, re.M), result.stdout
+    assert 'Stopped: investigation has used 100 of its' in result.stdout
+
+
+def test_held_catchup_json_names_what_ran_and_what_waits(book, held, rem_clock):
+    result = invoke(book, json_out=True)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)['data']
+    assert data['nights'] == [] and data['reason'] == held['reason'] and not data['failed']
+    ran = data['held']
+    assert (ran['mail'], ran['sessions'], ran['written'], ran['note']) == (2, 0, 0, '')
+    assert ran['calendar']['read'] == ['google'] and ran['day_plan']['dates'] == ['2026-09-07', '2026-09-08']
+    assert ran['waiting'] == WAITING
+    assert ran['resumes_at'].startswith((rem_clock + timedelta(days=2)).date().isoformat())
+
+
+def test_a_second_held_catchup_keeps_the_waiting_mail_and_saves_the_calendar_again(book, held):
+    invoke(book)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    assert len(held['reads']) == 1, 'mail already collected and unread was fetched again'
+    assert len(held['events']) == 2
+    assert 'Collect: the mail collected earlier still waits to be read into pages' in result.stdout
+
+
+def test_the_schedule_reads_the_mail_a_held_catchup_collected(book, held, monkeypatch):
+    invoke(book)
+    assert len(held['reads']) == 1
+    write_json(state_path(book.root, 'worker.json'), {'enabled': True})
+    task = native.next_task(book.root, scheduled=True)
+    assert task['outcome'] == 'task' and task['stage'] == 'maintain', task
+    assert len(held['reads']) == 1
+
+
+def test_a_night_that_ran_before_the_floor_is_not_followed_by_held_work(book, model, monkeypatch, rem_clock):
+    backlog(book, 60)
+    week = {'used_percent': 95, 'window_minutes': 10080, 'resets_at': (rem_clock + timedelta(days=2)).timestamp()}
+    monkeypatch.setattr(quota, 'meter', lambda *a: week if model[0] else {'unknown': 'fixture'})
+    result = invoke(book, '--nights', '3', json_out=True)
+    data = json.loads(result.stdout)['data']
+    assert len(data['nights']) == 1 and data['held'] is None
+
+
+def test_a_held_catchup_reads_new_mail_into_a_round_whose_batch_was_read(book, held):
+    invoke(book)
+    path = state_path(book.root, 'round.json')
+    cursor = read_json(path, {})
+    cursor['batch']['done'] = True
+    write_json(path, cursor)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    assert len(held['reads']) == 2
+    assert 'Collect: 2 mail collected; reading them into pages waits for the model' in result.stdout
+    saved = read_json(path, {})
+    assert saved['started_at'] == cursor['started_at'] and not saved['batch']['done']
+
+
+def test_a_held_catchup_leaves_an_open_task_alone(book, held):
+    invoke(book)
+    path = state_path(book.root, 'round.json')
+    write_json(path, {**read_json(path, {}), 'pending': 'native-fixture'})
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    assert len(held['reads']) == 1 and len(held['events']) == 2
+    assert 'Collect: task native-fixture is open; its round keeps the mail it collected' in result.stdout

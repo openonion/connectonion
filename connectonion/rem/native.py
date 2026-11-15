@@ -421,6 +421,36 @@ def _mail_while_held(root, cursor, config, meter, notices):
     return cursor, result if result["outcome"] == "task" else None
 
 
+def collect_while_held(root, reason):
+    """What a manual night still does while a limit holds the model: read the sources, hand out no task.
+
+    The scheduled turn goes one step further under the floor (_mail_while_held gives
+    the batch to the model, bounded by the daily call cap). Here the batch stays in
+    round.json, and the next turn that may call the model reads it without fetching again.
+    """
+    from . import native_round, night
+    root = root.resolve()
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS), runner.private_task_mask():
+        config, cursor = read_config(root), read_json(state_path(root, "round.json"), {})
+        _held(root, reason)
+        if cursor.get("pending"):
+            return {"note": f"task {cursor['pending']} is open; its round keeps the mail it collected"}
+        if not cursor or cursor.get("done"):
+            cursor = native_round.prepare(root, config, scheduled=False)
+            sessions = cursor["sessions"]
+            found = {"sessions": sessions.get("imported", 0) + sessions.get("updated", 0),
+                     "changed": sorted({*cursor["changed"], *sessions.get("changed", [])})}
+        elif cursor["batch"]["done"]:
+            slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) or service.now()
+            native_round.read_new_mail(root, cursor, config, slot)
+            write_json(state_path(root, "round.json"), cursor)
+            found = {}
+        else:
+            return {"note": "the mail collected earlier still waits to be read into pages"}
+        night.prepare(root, config, stop=reason)
+        return {"note": "", "batch": cursor["batch"].get("record", {}), **found}
+
+
 def _held(root, reason):
     """Why the round cannot move now, and since when, for status; gone once it can."""
     path = state_path(root, "round-held.json")

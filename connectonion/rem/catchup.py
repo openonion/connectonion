@@ -68,6 +68,13 @@ def _begin(root):
         return night
 
 
+def _mail(root, batch):
+    from . import service
+    sources = service.subscriptions(root)
+    return sum(count for name, count in batch.get('items_by_source', {}).items()
+               if sources.get(name, {}).get('kind', name) in service.MAIL_KINDS)
+
+
 def _counts(root, night):
     from . import service
     cursor = read_json(state_path(root, 'round.json'), {})
@@ -76,13 +83,10 @@ def _counts(root, night):
     runs = [row for row in service.run_logs(root) if row.get('catchup_night') == night]
     changed = set(cursor.get('changed', []))
     changed.update(record for row in runs for record in row.get('changed', []))
-    sources = service.subscriptions(root)
-    batch = cursor.get('batch', {}).get('record', {})
     sessions = cursor.get('sessions', {})
     imported = sessions.get('imported', 0) + sessions.get('updated', 0)
     changed.update(sessions.get('changed', []))
-    return {'mail': sum(count for name, count in batch.get('items_by_source', {}).items()
-                        if sources.get(name, {}).get('kind', name) in service.MAIL_KINDS),
+    return {'mail': _mail(root, cursor.get('batch', {}).get('record', {})),
             'sessions': imported, 'written': len(changed),
             'decisions': sum(record.startswith('decisions/') for record in changed),
             'translated': cursor.get('translated', 0),
@@ -141,19 +145,43 @@ def _night(root, night, rows, progress, stage, say):
     return reason, failed
 
 
+MODEL_STAGES = ['Investigate', 'Deepen', 'Abstract', 'Translate']
+
+
+def _held(root, reason, meter):
+    """The steps of a night that call no model, once, while a limit holds the rest.
+
+    2026-11-16: at the 99% floor catchup printed "Done: 0 nights", exited 0 and read
+    nothing, while the schedule on the same notebook kept reading mail.
+    """
+    from datetime import datetime
+    from . import native, schedule
+    found = native.collect_while_held(root, reason)
+    calendar = schedule.calendar_round(root)
+    changed = found.get('changed', [])
+    resets = meter.get('resets_at')
+    # sessions is None when only the mailboxes were read into a round already open.
+    return {'note': found['note'], 'mail': _mail(root, found.get('batch', {})), 'sessions': found.get('sessions'),
+            'written': len(changed), 'changed': changed, 'calendar': calendar, 'day_plan': calendar['day_plan'],
+            'waiting': MODEL_STAGES,
+            'resumes_at': datetime.fromtimestamp(resets).astimezone().isoformat() if resets else None}
+
+
 def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=None):
     """One exec round including its deepen slot per productive, completed night."""
     from . import quota, service
     from .config import read_config
     if nights < 1:
         raise RemError('Use at least one night: co rem catchup --nights 1')
-    root, rows, reason, failed = Path(root).resolve(), [], '', False
+    root, rows, reason, failed, held = Path(root).resolve(), [], '', False, None
     for _ in range(nights):
         config = read_config(root)
         meter = quota.meter(root, config)
         reason = quota.blocks(meter, quota.points_spent(service.run_logs(root), meter), config['limits'])
         quota.record_pause(root, meter, config['limits'])
         if reason:
+            # A night that ran has read the sources and the calendar already.
+            held = None if rows else _held(root, reason, meter)
             break
         night = _begin(root)
         reason, failed = _night(root, night, rows, progress, stage, say)
@@ -161,7 +189,7 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
             break
     totals = {name: sum(row[name] for row in rows) for name in
               ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}
-    return {'nights': rows, 'reason': reason, 'failed': failed,
+    return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,
             'deepen_reason': '' if totals['deepened'] else
                 '; '.join(dict.fromkeys(row['deepen_reason'] for row in rows if row['deepen_reason']))
                 or (f'not started: {reason}' if not rows else ''), **totals}

@@ -80,15 +80,13 @@ Compatibility: sync — Collect, then investigate what is unfinished; use co rem
 Do the night's work, then one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night runs the existing exec round. A completed whole round includes one enrich and muse slot after its closing translation, as co rem deepen does.
-A productive night stopped at the daily cap keeps its counts and can repeat with fresh limits, but skips deepen until a whole round completes.
-Deepen is owned by the round; catchup reports its counts without calling it again.
+Each night is one co rem exec round: Collect, Investigate, Abstract, Translate, then one deepen slot when the whole round completes.
 A night with deepen can take an hour or more.
-Stops after --nights N (default 1), a night that produces nothing, or a weekly budget or Codex quota floor.
-Deepen uses its own weekly budget; a spent deepen budget or no qualifying pages still counts the night.
-An exec round that stops the run skips deepen.
-Output:   Counts for each night, including pages deepened and why none, then totals and why it stopped. Exit 1 on a refused or busy task; resume unfinished work with co rem exec.
-Effects:  Calls the configured model and saves pages and progress. Each night gets fresh limits; weekly quotas still apply. Saved work survives interruption. Schedule times stay the same.
+Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
+At a weekly limit before any night ran, it still does what needs no model, once: collects new mail and sessions for the next round to read, and saves the calendar and the day plan.
+Output:   One line per night with its counts, then totals and why it stopped. When a limit held every night: what was collected and saved, which stages wait, and when the week resets.
+Exit:     0 when it finished or a limit stopped it; 1 on a refused or busy task or a failed round. Resume unfinished work with co rem exec.
+Effects:  Calls the configured model and saves pages and progress. Each night gets fresh daily limits; weekly limits still apply. Saved work survives interruption. Schedule times stay the same.
 Next:     co rem open
 Back:     co rem --help
 ```

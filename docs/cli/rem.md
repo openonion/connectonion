@@ -560,7 +560,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. Exit 0 when it finished or a limit stopped it, 1 on a refused, busy or failed round. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -600,6 +600,35 @@ If exec is refused, busy, reaches a quota floor or produces no
 pages, translations or drafts, catchup stops without starting deepen.
 Run `co rem exec` to resume unfinished exec work before starting another catchup
 run. Saved work survives interruption, including during deepen.
+
+When the weekly investigation budget or the Codex usage floor already holds the
+model before the first night, catchup does not print an empty night. It does the
+steps that call no model, once, and spends no night:
+
+- **Collect**: reads new mail and coding sessions into the round, as far as the
+  scheduled turn does before its first model task. The scheduled turn then lets
+  the model read that mail into pages even under the floor (bounded by the daily
+  call cap); catchup stops before that, and the next turn that may call the
+  model reads the same batch without fetching it again. A batch already waiting
+  is kept, not fetched twice; a round already open with its batch read gets the
+  mailboxes read into it, and the line then counts mail only.
+- **Calendar**: saves the upcoming events and the day plan, as every round does.
+- **Investigate, Deepen, Abstract, Translate** wait: they call the model.
+
+```text
+No night ran: a limit holds the model, so only the steps that need no model were done.
+Collect: 2 mail collected · 0 sessions read · 0 pages updated; reading them into pages waits for the model
+Calendar: 0 calendar events saved · day plan saved for 2026-09-07 and 2026-09-08
+Waiting: Investigate, Deepen, Abstract and Translate call the model
+Stopped: the Codex week is at 99%, at or past the 90% floor kept for your own work; investigation resumes when it resets Wed 09 Sep 22:00
+```
+
+A weekly budget stop adds when the week resets to the `Waiting` line. `--json`
+carries the same under `held` (`note`, `mail`, `sessions`, `written`, `calendar`,
+`day_plan`, `waiting`, `resumes_at`); `held` is `null` when a night ran. The
+exit code is 0, as for every stop at a limit (`co rem exec`, `co rem
+investigate`): nothing is wrong and nothing needs repair. Exit 1 means a
+refused or busy task, or a round that failed.
 
 Run `co rem decisions` to see how many decision and principle pages exist and how
 many supported captured lines are waiting. Waiting and left count only lines

@@ -2157,11 +2157,32 @@ def make_rem_app(factory):
                 return ' · no calendar is connected'
             return text
 
+        def plan_text(row):
+            plan = row.get('day_plan', {})
+            return (' · day plan saved for ' + ' and '.join(plan['dates']) if plan.get('dates') else
+                    ' · ' + plan['stopped'] if plan.get('stopped') else '')
+
+        def held_text(value):
+            """No night ran: say which steps did and which wait, never a row of zeroes."""
+            from datetime import datetime
+            held, when = value['held'], ''
+            if held['resumes_at'] and 'resets' not in value['reason']:
+                when = f"; the Codex week resets {datetime.fromisoformat(held['resumes_at']):%a %d %b %H:%M}"
+            parts = [f"{held['mail']} mail collected"]
+            if held['sessions'] is not None:  # a round already open read its sessions when it began
+                parts += [f"{held['sessions']} sessions read",
+                          f"{held['written']} {'page' if held['written'] == 1 else 'pages'} updated"]
+            collected = held['note'] or ' · '.join(parts) + '; reading them into pages waits for the model'
+            *first, last = held['waiting']
+            return '\n'.join([
+                'No night ran: a limit holds the model, so only the steps that need no model were done.',
+                'Collect: ' + collected,
+                'Calendar: ' + (calendar_text(held) + plan_text(held)).removeprefix(' · '),
+                f"Waiting: {', '.join(first)} and {last} call the model{when}"])
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
-            plan = row.get('day_plan', {})
-            planned = (' · day plan saved for ' + ' and '.join(plan['dates']) if plan.get('dates') else
-                       ' · ' + plan['stopped'] if plan.get('stopped') else '')
+            planned = plan_text(row)
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
@@ -2170,6 +2191,8 @@ def make_rem_app(factory):
 
         def summary(value):
             count = len(value['nights'])
+            if value['held']:
+                return escape(held_text(value) + f"\nStopped: {value['reason']}")
             text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {value['written']} pages written · "
                     f"{value['decisions']} decisions written · {value['translated']} pages translated · "
                     + deepen_text(value))
@@ -2177,6 +2200,7 @@ def make_rem_app(factory):
 
         def operation(root):
             value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step)
+            _WRITTEN.extend((value['held'] or {}).get('changed', []))
             return value, ['open'], value['failed']
 
         _handle(ctx, operation, ['logs'], draw=summary, resume=['exec'])
