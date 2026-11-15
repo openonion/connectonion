@@ -79,7 +79,32 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits and all(record != lead for _, lead in leads):
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
-    return [record for _, record in leads[:MAX_LEADS]]
+    return _with_agendas(notebook, [record for _, record in leads[:MAX_LEADS]])[:MAX_LEADS]
+
+
+def _with_agendas(notebook: Notebook, leads: list[str]) -> list[str]:
+    """Each project lead followed by that project's agenda page.
+
+    An agenda page keeps one dated line per item of one project. It names the
+    project, never the item, so a batch about the item never names it: a moved
+    due date reached the project page and left the agenda on the old date
+    (2026-11-14). An agenda page belongs to a project when it shares the
+    project page's file name or links to it, whatever source wrote it.
+    """
+    projects = [lead for lead in leads if lead.startswith("projects/")]
+    if not projects:
+        return leads
+    agendas = {record: notebook.read(record) for record in notebook.list("agenda")}
+    out = []
+    for lead in leads:
+        out.append(lead)
+        if lead not in projects:
+            continue
+        name = lead.removeprefix("projects/")
+        out += [record for record, text in sorted(agendas.items())
+                if record not in out and record not in leads
+                and (record.removeprefix("agenda/") == name or f"](../{lead})" in text)]
+    return out
 
 
 def project_writer_pages(notebook: Notebook, leads: list[str]) -> list[str]:
