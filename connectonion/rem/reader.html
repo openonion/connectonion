@@ -3070,9 +3070,11 @@
   /* ---- Today: the deck — one raised card ---- */
   .tgrid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); align-items: start; margin-top: 22px; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
-  .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
-    background: var(--raised); box-shadow: var(--e1); }
-  .deck:has(.qcard ~ .qcard)::after { left: 44px; right: 44px; bottom: 0; opacity: .7; }
+  .deck-next { position: absolute; left: 22px; right: 22px; bottom: 0; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .deck-next::before, .deck-next::after { content: ""; position: absolute; left: 0; right: 0; bottom: 13px; height: 60px; border-radius: var(--r-card);
+    background: var(--raised); box-shadow: var(--e1); transition: transform var(--t-draw) var(--spring); }
+  .deck-next::after { left: 22px; right: 22px; bottom: 0; opacity: .7; }
+  .deck-next:hover::before, .deck-next:hover::after { transform: translateY(3px); }
   .today-brief { position: relative; z-index: 1; }
   .today-brief .today-threads { display: block; border: 0; }
   .today-brief .qcard { display: none; cursor: auto; }
@@ -3720,6 +3722,7 @@ const UI = {
     "All {n} changes →": "查看全部 {n} 项变化 →",
     "Mark done": "标为完成",
     "Needs you": "等你处理",
+    "Next: {name}": "下一张：{name}",
     "Reply in {channel}": "在 {channel} 里回复",
     "Follow up in {channel}": "在 {channel} 里跟进",
     "{channel} reply": "{channel} 回信",
@@ -8036,6 +8039,7 @@ function dealCard(path) {
   const chart = document.querySelector("#main .night-card .hyp-wrap"), redrawn = chart && nightChart(path);
   if (redrawn) chart.replaceWith(redrawn.svg);
   next.focus({ preventScroll: true });
+  labelDeckNext();
 }
 // The raised card is open and carries the page's one green action; a card behind its face carries none.
 function raiseCard(card, raised) {
@@ -8047,6 +8051,22 @@ function raiseCard(card, raised) {
   }
 }
 // The next card is the next one in the page: the notebook may already hold someone the page has not drawn yet.
+// The edges under the raised card are the next cards: a click or a tap deals the next, as J and the head's Next card
+// do, and the next card rises from them. No tab stop: the keyboard has J and K. With one card there are no edges.
+function deckNext(groups) {
+  if (groups.length < 2) return null;
+  const edges = el("button", { type: "button", class: "deck-next", tabindex: "-1" });
+  edges.onclick = () => dealNext(1);
+  labelDeckNext(edges, groups[1].r.path);
+  return edges;
+}
+function labelDeckNext(edges = document.querySelector("#main .deck-next"), path) {
+  if (!edges) return;
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")], at = cards.findIndex(card => card.classList.contains("focal"));
+  const name = threadWho(byPath(path || cards[(at + 1) % cards.length].dataset.path));
+  edges.setAttribute("aria-label", t("Next: {name}", { name }));
+  edges.title = t("Next: {name}", { name });
+}
 function dealNext(step) {
   const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
   if (cards.length < 2) return;
@@ -8062,7 +8082,7 @@ function overview() {
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
   main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckNext(cards)]), todaySide(counts)]),
     staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
