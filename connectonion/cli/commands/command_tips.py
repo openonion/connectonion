@@ -277,6 +277,10 @@ NEXT = {
     "co schedule run": "co schedule list",
     "co schedule pause": HANDLER,  # names the resume for this entry
     "co schedule resume": "co schedule list",
+    "co obsidian vaults": HANDLER,
+    "co obsidian ls": HANDLER,
+    "co obsidian read": HANDLER,
+    "co obsidian search": HANDLER,
     "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
