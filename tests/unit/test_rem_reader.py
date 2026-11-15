@@ -418,7 +418,7 @@ def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_
 def test_a_persons_relationship_names_stay_inside_and_never_overlap():
     """Names are placed from the widget's width alone: no browser measures them (review on #3033)."""
     src = TEMPLATE.read_text()
-    fns = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", src, re.S).group(0) for name in ["localWidth", "localPlace"])
+    fns = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", src, re.S).group(0) for name in ["localWidth", "nameLeft", "localPlace"])
     names = [
         # a first-ring name centred on a mark near the right edge: moves left, still under its mark's row
         {"id": "edge", "text": "Brindlewood Mobile Holdings", "px": 13, "mx": 360, "my": 90, "half": 8, "far": False, "quiet": False,

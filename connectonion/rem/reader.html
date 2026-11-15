@@ -13172,18 +13172,12 @@ function graphRings(r) {
   const far = ring.length <= LOCAL.rings ? localReach(model, r, ring).slice(0, LOCAL.second) : [];
   const W = LOCAL.width, H = far.length ? 270 : 180, pos = localLayout(centre, ring, far, W, H);
   const named = new Set(ring.length <= 8 ? ring.map(n => n.id) : [...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 6).map(n => n.id));
-  const line = (a, b, cls) => svgEl("line", { x1: pos.get(a.id).x.toFixed(1), y1: pos.get(a.id).y.toFixed(1), x2: pos.get(b.id).x.toFixed(1), y2: pos.get(b.id).y.toFixed(1),
-    "data-a": a.id, "data-b": b.id, class: [cls, a.k === "knowledge" || b.k === "knowledge" ? "topic" : ""].filter(Boolean).join(" ") });
-  const lines = [...ring.map(n => line(centre, n, "")), ...far.flatMap(({ n, via }) => via.map(id => line(model.byId.get(id), n, "far")))];
+  const lines = [...ring.map(n => localLine(pos, centre, n, "")), ...far.flatMap(({ n, via }) => via.map(id => localLine(pos, model.byId.get(id), n, "far")))];
+  const placed = localNames(centre, ring, far, pos, named, W);
   const says = n => localSays(localWhy(r, n, far));
-  const names = [...far.map(({ n }) => localName(n, pos.get(n.id), LOCAL.far, true, false)), ...ring.map(n => localName(n, pos.get(n.id), LOCAL.mark, false, !named.has(n.id)))];
-  const obstacles = [...pos.entries()].map(([id, q]) => ({ x: q.x, y: q.y, r: id === centre.id ? LOCAL.face / 2 : (ring.some(n => n.id === id) ? LOCAL.mark : LOCAL.far) / 2 }));
-  const placed = new Map(localPlace(names.filter(Boolean), W, obstacles).map(name => [name.id, name]));
   const marks = [...far.map(({ n }) => localMark(n, pos.get(n.id), LOCAL.far, true, says(n), placed.get(n.id))),
     ...ring.map(n => localMark(n, pos.get(n.id), LOCAL.mark, false, says(n), placed.get(n.id)))];
-  // The picture is as tall as what it holds: a record with two links does not leave an empty band.
-  const ys = [...pos.values()].map(p => p.y), top = Math.max(0, Math.min(...ys) - 34), tall = Math.min(H, Math.max(...ys) + 34) - top;
-  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}`, role: "img", "aria-label": graphT("Local graph") },
+  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, ...localBox(pos, W, H), role: "img", "aria-label": graphT("Local graph") },
     [svgEl("g", { class: "gx-rings-lines" }, lines), ...marks, localCentre(centre, pos.get(centre.id))]);
   const section = el("section", { class: "gx-rings" }, [head(), svg,
     el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }),
@@ -13233,6 +13227,24 @@ function localGlyph(n, x, y, size) {
   return svgEl("g", {}, [path, svgEl("path", { class: "slash", d: graphSlash(x, y, size * .4) })]);
 }
 // A first-ring name sits under its mark; a second-ring name leans away from the middle and shows only when lit.
+function localLine(pos, a, b, cls) {
+  const from = pos.get(a.id), to = pos.get(b.id), topic = a.k === "knowledge" || b.k === "knowledge";
+  return svgEl("line", { x1: from.x.toFixed(1), y1: from.y.toFixed(1), x2: to.x.toFixed(1), y2: to.y.toFixed(1),
+    "data-a": a.id, "data-b": b.id, class: [cls, topic ? "topic" : ""].filter(Boolean).join(" ") });
+}
+// The picture is as tall as what it holds: a record with two links does not leave an empty band.
+function localBox(pos, W, H) {
+  const ys = [...pos.values()].map(p => p.y), top = Math.max(0, Math.min(...ys) - 34), tall = Math.min(H, Math.max(...ys) + 34) - top;
+  return { height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}` };
+}
+// Every name, placed clear of the marks: the middle's face, the first ring's marks and the outer ring's dots.
+function localNames(centre, ring, far, pos, named, W) {
+  const names = [...far.map(({ n }) => localName(n, pos.get(n.id), LOCAL.far, true, false)),
+    ...ring.map(n => localName(n, pos.get(n.id), LOCAL.mark, false, !named.has(n.id)))];
+  const size = id => id === centre.id ? LOCAL.face : ring.some(n => n.id === id) ? LOCAL.mark : LOCAL.far;
+  const obstacles = [...pos.entries()].map(([id, q]) => ({ x: q.x, y: q.y, r: size(id) / 2 }));
+  return new Map(localPlace(names.filter(Boolean), W, obstacles).map(name => [name.id, name]));
+}
 function localName(n, p, size, far, quiet) {
   if (n.private) return null;
   const half = size / 2;
@@ -13252,15 +13264,19 @@ function localWidth(text, px) {
 // Where the names go, from the widget's width alone: one that would cross a side moves under its mark and inside;
 // then, best-linked first, a first-ring name that would cover a mark or a name already placed waits to be lit.
 // marks: [{ x, y, r }] in the same units; a name never covers its own mark, which sits above it.
+function nameLeft(name, w) {
+  if (name.anchor === "start") return name.x;
+  return name.anchor === "end" ? name.x - w : name.x - w / 2;
+}
 function localPlace(names, W, marks = []) {
   const out = names.map(name => {
-    const w = localWidth(name.text, name.px), left = name.anchor === "start" ? name.x : name.anchor === "end" ? name.x - w : name.x - w / 2;
+    const w = localWidth(name.text, name.px), left = nameLeft(name, w);
     if (left >= 0 && left + w <= W) return { ...name, w };
     return { ...name, w, anchor: "middle", y: name.my + name.half + 15, x: Math.min(W - w / 2, Math.max(w / 2, name.mx)) };
   });
   const boxes = [], covers = (box, m) => Math.hypot(m.x - Math.max(box.l, Math.min(m.x, box.r)), m.y - Math.max(box.t, Math.min(m.y, box.b))) < m.r;
   for (const name of out.filter(name => !name.far && !name.quiet).sort((a, b) => b.rank - a.rank)) {
-    const l = name.anchor === "start" ? name.x : name.anchor === "end" ? name.x - name.w : name.x - name.w / 2;
+    const l = nameLeft(name, name.w);
     const box = { l, r: l + name.w, t: name.y - name.px, b: name.y + name.px * .3 };
     if (marks.some(m => covers(box, m)) || boxes.some(o => box.l < o.r + 4 && o.l < box.r + 4 && box.t < o.b && o.t < box.b)) name.quiet = true;
     else boxes.push(box);
@@ -13293,7 +13309,8 @@ function localReason(relations, id, reached, page) {
   const direct = relations.find(link => link.path === id);
   if (direct && /^linked/.test(direct.kind)) return { link: direct };
   const sessions = relations.filter(link => page(link.path)?.category === "sessions" && (page(link.path).relations || []).some(other => other.path === id));
-  return sessions.length ? { link: sessions[0], sessions: sessions.length } : direct ? { link: direct } : null;
+  if (sessions.length) return { link: sessions[0], sessions: sessions.length };
+  return direct ? { link: direct } : null;
 }
 // The card for one mark: Related pages' own entry for a first-ring record, worded and cited as it is there; who an
 // outer-ring record is and what it is reached through; the name alone for a private or unwritten record.
