@@ -28,6 +28,10 @@ concurrency:
 jobs:
   # Collect the base and head concurrently. A cold base cache must not serialize
   # two complete CLI walks; review below consumes the head's collected pages.
+  # A page is one process start of about a second and the tree has over 400:
+  # one job that walked and audited all of them took 403 s (run 43774366934).
+  # So the head is only walked, in four shards, and the hard rules run in
+  # review on the pages that changed, which is all `co audit --since` reports.
   base:
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +88,13 @@ jobs:
 
   pages:
     if: github.event_name == 'pull_request'
+    name: pages ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout the PR
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -103,24 +113,34 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - name: Collect the PR's pages and hard-rule findings once
+      # The same split of top-level commands, and the same walk, that
+      # cli-help-audit in tests.yml uses: tests/unit/test_cli_help_contract.py
+      # owns both, so the two workflows cannot disagree about what a shard is.
+      - name: Walk this shard's share of the PR's pages
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
-          uv pip install --system -e .
-          python - <<'PY' > "$RUNNER_TEMP/pages.json"
+          uv pip install --system -e ".[dev]"
+          python - <<'PY' > "$RUNNER_TEMP/pages-$SHARD.json"
           import json
+          import os
+          import sys
           from dataclasses import asdict
           from connectonion.cli import audit
-          findings, pages = audit.audit(['co'])
-          print(json.dumps({'pages': {path: page.text for path, page in pages.items()},
-                            'hashes': audit.inventory(pages),
-                            'findings': [asdict(finding) for finding in findings]}))
+          sys.path.insert(0, 'tests/unit')
+          import test_cli_help_contract as contract
+
+          shard = int(os.environ['SHARD'])
+          groups = contract.shard_groups(audit.help_page(['co']), contract.registered(), shard, 4)
+          print(json.dumps({path: asdict(page) for path, page in contract.walk(groups).items()
+                            if path != 'co' or shard == 1}))
           PY
 
-      - name: Share the collected pages
+      - name: Share this shard's pages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: help-pages
-          path: ${{ runner.temp }}/pages.json
+          name: help-pages-${{ matrix.shard }}
+          path: ${{ runner.temp }}/pages-${{ matrix.shard }}.json
           if-no-files-found: error
 
   review:
@@ -148,7 +168,7 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system -e .
 
-      - name: Recover both inventories
+      - name: Recover the base fingerprint and every shard's pages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: help-*
@@ -166,7 +186,9 @@ jobs:
           fi
           # Exit 1 is either a verdict with findings or a crash (no credit, no
           # provider). Only the verdict line tells them apart; a crash is not a pass.
-          # Match co audit --since/--review without walking the head a second time.
+          # Match co audit --since/--review without walking the head a second
+          # time: the hard rules and the terminal look run on the changed pages
+          # only, each resolved against the whole tree the shards walked.
           python - <<'PY' > "$RUNNER_TEMP/review.txt" 2>&1 || true
           import json
           import os
@@ -177,12 +199,14 @@ jobs:
 
           root = Path(os.environ['RUNNER_TEMP'])
           before = json.loads((root / 'base.json').read_text())
-          head = json.loads((root / 'pages.json').read_text())
-          changed = {path for path, digest in head['hashes'].items() if before.get(path) != digest}
-          findings = [audit.Finding(**f) for f in head['findings'] if f['path'] in changed]
+          found = {path: audit.Page(**page) for part in sorted(root.glob('pages-*.json'))
+                   for path, page in json.loads(part.read_text()).items()}
+          changed = {path: found[path] for path, digest in audit.inventory(found).items()
+                     if before.get(path) != digest}
+          findings = [f for path, page in changed.items() for f in audit.check(path, page, found)]
+          findings += audit.looks(changed, findings)
           failing = {f.path for f in findings}
-          passing = [(path, text) for path, text in head['pages'].items()
-                     if path in changed and path not in failing]
+          passing = [(path, page.text) for path, page in changed.items() if path not in failing]
           with ThreadPoolExecutor(max_workers=8) as pool:
               findings += [f for f in pool.map(lambda item: audit.review(*item, DEFAULT_MODEL), passing) if f]
           for finding in findings:

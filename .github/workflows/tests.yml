@@ -23,8 +23,6 @@ jobs:
       browser: ${{ steps.paths.outputs.browser }}
       egress: ${{ steps.paths.outputs.egress }}
       e2e: ${{ steps.paths.outputs.e2e }}
-      shards: ${{ steps.paths.outputs.shards }}
-      splits: ${{ steps.paths.outputs.splits }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -89,11 +87,6 @@ jobs:
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
               for name, affected in (('browser', browser), ('egress', egress), ('e2e', e2e)):
                   print(f'{name}={str(not pr or affected).lower()}', file=output)
-              # Spend freed native runner slots on two more offline shards.
-              # Broad/native PRs retain eight so even their full PR lane is <20 jobs.
-              splits = 8 if browser or egress or e2e else 10
-              print(f'splits={splits}', file=output)
-              print(f'shards={list(range(1, splits + 1))}', file=output)
           PY
 
       - name: Set up uv
@@ -138,12 +131,12 @@ jobs:
   # `make test` always has; --dist loadfile pinned the largest file
   # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
   # shards than needed: the free plan runs 20 jobs at once across the whole org.
-  # PRs run only 3.12: ten shards when native checks are filtered out, eight
-  # otherwise. Use the existing JUnit weights and recorder, never invented times.
-  # Setup, collection and the largest file still need timing on a real PR.
+  # PRs run only 3.12, in twelve shards. The count is fixed, and this job waits
+  # for no other: behind `needs: lockfile` every shard started 40 s after the
+  # push (run 43774366961), and tests-passed still requires lockfile itself.
+  # Use the existing JUnit weights and recorder, never invented times.
   test:
-    needs: lockfile
-    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ github.event_name == 'pull_request' && needs.lockfile.outputs.splits || matrix.python-version == '3.11' && 6 || 8 }}
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ github.event_name == 'pull_request' && 12 || matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
     # pytest.ini has already named the culprit, and this is the backstop for a
@@ -153,7 +146,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
-        shard: ${{ fromJSON(github.event_name == 'pull_request' && needs.lockfile.outputs.shards || '[1, 2, 3, 4, 5, 6, 7, 8]') }}
+        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]' || '[1, 2, 3, 4, 5, 6, 7, 8]') }}
         # 3.12 (traced) and 3.13 run their tests ~40% slower than 3.11, so they
         # take eight shards to 3.11's six to stay near two minutes a shard.
         exclude:
@@ -197,7 +190,10 @@ jobs:
           # function: line coverage, measured the same, at a fraction of the cost.
           COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
-          SHARD_COUNT: ${{ github.event_name == 'pull_request' && needs.lockfile.outputs.splits || matrix.python-version == '3.11' && 6 || 8 }}
+          SHARD_COUNT: ${{ github.event_name == 'pull_request' && 12 || matrix.python-version == '3.11' && 6 || 8 }}
+          # pytest holds its header in a pipe buffer until it fills; unbuffered,
+          # the log's timestamps separate collection from the tests themselves.
+          PYTHONUNBUFFERED: "1"
         run: |
           pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} "$SHARD_COUNT") \
             -n logical --dist worksteal --tb=short \
@@ -231,9 +227,9 @@ jobs:
   # tree. Only native jobs filtered out by paths may be skipped. Failures and
   # cancellations stay red, including when a dependency causes another skip.
   # Combining the two artifact checks here saves two runner allocations without
-  # removing either gate: a PR has 16 jobs, at most 19 with all native paths.
+  # removing either gate: a PR has 18 jobs, at most 24 with all native paths.
   tests-passed:
-    needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, macos-e2e]
+    needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, windows-first-run, macos-e2e]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -249,7 +245,7 @@ jobs:
           jobs = json.loads(os.environ['NEEDS'])
           filters = jobs['lockfile']['outputs']
           optional = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
-                      'windows-e2e': 'e2e', 'macos-e2e': 'e2e'}
+                      'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'macos-e2e': 'e2e'}
           for name, job in jobs.items():
               result = job['result']
               print(f'{name}: {result}')
@@ -518,33 +514,6 @@ jobs:
       - name: REM reader opens its private snapshot on Windows
         run: python scripts/check_rem_reader_snapshot.py
 
-      - name: First run OFFLINE is graceful — no traceback, scaffold still created
-        env:
-          # A dead proxy makes every backend call fail fast, deterministically —
-          # this is the fresh Windows laptop on hotel wifi. Isolated USERPROFILE =
-          # a true first run (keypair generation included).
-          HTTP_PROXY: http://127.0.0.1:9
-          HTTPS_PROXY: http://127.0.0.1:9
-          USERPROFILE: ${{ runner.temp }}\co-first-run-home
-        run: |
-          New-Item -ItemType Directory -Path $env:USERPROFILE -Force | Out-Null
-          $dir = Join-Path $env:RUNNER_TEMP "co-first-run-project"
-          New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          Set-Location $dir
-          $globalInitOutput = co init --yes 2>&1 | Out-String
-          Write-Host $globalInitOutput
-          if ($LASTEXITCODE -ne 0 -or $globalInitOutput -match "Traceback") { Write-Error "global init failed offline"; exit 1 }
-          if ((Test-Path ".co") -or (Test-Path ".env")) { Write-Error "global init wrote project files"; exit 1 }
-          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys.env"))) { Write-Error "global keys.env missing"; exit 1 }
-          $out = co init ./ --yes 2>&1 | Out-String
-          Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Write-Error "offline first run exited $LASTEXITCODE"; exit 1 }
-          if ($out -match "Traceback") { Write-Error "offline first run printed a traceback"; exit 1 }
-          if (!(Test-Path ".co")) { Write-Error "offline first run did not scaffold .co/"; exit 1 }
-          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys\agent.key"))) {
-            Write-Error "keypair was not created on first run"; exit 1
-          }
-
       - name: patchright CLI is included and runnable
         run: |
           python -m patchright --version
@@ -615,6 +584,131 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error "second daemon cold-start failed"; exit 1 }
           co browser close
           if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # Task-Manager-kill recovery: a stale pid file whose pid now belongs to a
+      # LIVE unrelated process must never block a fresh daemon (the pre-fix
+      # behavior was a permanent 'daemon is busy' denial of service).
+      - name: Stale pid file with a recycled live pid cannot brick the daemon
+        run: |
+          $pidfile = python -c "from connectonion.cli.browser_agent import transport, daemon as d; print(transport.pid_path(d.default_sock_path()))"
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 1
+          $decoy = Start-Process notepad -PassThru -WindowStyle Hidden
+          New-Item -ItemType Directory -Path (Split-Path $pidfile) -Force | Out-Null
+          Set-Content -Path $pidfile -Value $decoy.Id -NoNewline
+
+          co browser status
+          $code = $LASTEXITCODE
+          Stop-Process -Id $decoy.Id -Force -ErrorAction SilentlyContinue
+          if ($code -ne 0) { Write-Error "stale pid file blocked the daemon (exit $code)"; exit 1 }
+          co browser close
+
+      # Corrupt authkey heals itself: a truncated key file (crashed writer) must
+      # not brick the CLI — the next command replaces it atomically and works.
+      - name: Corrupt authkey self-heals
+        run: |
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 1
+          $auth = Join-Path $env:LOCALAPPDATA "co\authkey"
+          New-Item -ItemType Directory -Path (Split-Path $auth) -Force | Out-Null
+          Set-Content -Path $auth -Value "xx" -NoNewline
+
+          co browser status
+          if ($LASTEXITCODE -ne 0) { Write-Error "corrupt authkey bricked the CLI"; exit 1 }
+          $len = (Get-Item $auth).Length
+          if ($len -lt 16) { Write-Error "authkey was not healed (length $len)"; exit 1 }
+          co browser close
+
+      - name: Show the browser daemon log on failure
+        if: failure()
+        run: |
+          $log = Join-Path $env:USERPROFILE ".co\browser.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no browser.log" }
+
+  # The other half of the real Windows user: a first run with no network, a
+  # laptop with no Chrome, PowerShell 5.1, a CJK home and the GBK console. These
+  # steps start from their own empty home or browsers directory and share no
+  # daemon with windows-e2e, so they run beside it instead of after it: one job
+  # for all of them was the longest on a PR (158 s in run 43774366961).
+  windows-first-run:
+    needs: lockfile
+    if: needs.lockfile.outputs.e2e == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Recover the candidate wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: native-wheel
+          path: dist
+
+      - name: Restore the Windows dependency environment
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}\wheel-env
+          key: windows-wheel-env-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install from the wheel like a real user (not editable)
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP "wheel-env"
+          if (!(Test-Path "$venv\Scripts\python.exe")) {
+            uv venv --seed $venv
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          # Resolve dependencies every run, even on a cache hit. Replace only the
+          # project distribution unconditionally; never test a cached old wheel.
+          uv pip install --python "$venv\Scripts\python.exe" --reinstall-package connectonion $whl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "$venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: First run OFFLINE is graceful — no traceback, scaffold still created
+        env:
+          # A dead proxy makes every backend call fail fast, deterministically —
+          # this is the fresh Windows laptop on hotel wifi. Isolated USERPROFILE =
+          # a true first run (keypair generation included).
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          USERPROFILE: ${{ runner.temp }}\co-first-run-home
+        run: |
+          New-Item -ItemType Directory -Path $env:USERPROFILE -Force | Out-Null
+          $dir = Join-Path $env:RUNNER_TEMP "co-first-run-project"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          Set-Location $dir
+          $globalInitOutput = co init --yes 2>&1 | Out-String
+          Write-Host $globalInitOutput
+          if ($LASTEXITCODE -ne 0 -or $globalInitOutput -match "Traceback") { Write-Error "global init failed offline"; exit 1 }
+          if ((Test-Path ".co") -or (Test-Path ".env")) { Write-Error "global init wrote project files"; exit 1 }
+          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys.env"))) { Write-Error "global keys.env missing"; exit 1 }
+          $out = co init ./ --yes 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Error "offline first run exited $LASTEXITCODE"; exit 1 }
+          if ($out -match "Traceback") { Write-Error "offline first run printed a traceback"; exit 1 }
+          if (!(Test-Path ".co")) { Write-Error "offline first run did not scaffold .co/"; exit 1 }
+          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys\agent.key"))) {
+            Write-Error "keypair was not created on first run"; exit 1
+          }
 
       # THE fresh-Windows-laptop test: no system Chrome anywhere, empty browsers dir.
       # The first page-driving command must auto-install a browser (real download,
@@ -735,44 +829,6 @@ jobs:
           '@ | Set-Content -Path gbk_check.py -Encoding ascii
           python gbk_check.py
           if ($LASTEXITCODE -ne 0) { Write-Error "GBK/cp936 subprocess round-trip failed"; exit 1 }
-
-      # Task-Manager-kill recovery: a stale pid file whose pid now belongs to a
-      # LIVE unrelated process must never block a fresh daemon (the pre-fix
-      # behavior was a permanent 'daemon is busy' denial of service).
-      - name: Stale pid file with a recycled live pid cannot brick the daemon
-        run: |
-          $pidfile = python -c "from connectonion.cli.browser_agent import transport, daemon as d; print(transport.pid_path(d.default_sock_path()))"
-          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-          Start-Sleep -Seconds 1
-          $decoy = Start-Process notepad -PassThru -WindowStyle Hidden
-          New-Item -ItemType Directory -Path (Split-Path $pidfile) -Force | Out-Null
-          Set-Content -Path $pidfile -Value $decoy.Id -NoNewline
-
-          co browser status
-          $code = $LASTEXITCODE
-          Stop-Process -Id $decoy.Id -Force -ErrorAction SilentlyContinue
-          if ($code -ne 0) { Write-Error "stale pid file blocked the daemon (exit $code)"; exit 1 }
-          co browser close
-
-      # Corrupt authkey heals itself: a truncated key file (crashed writer) must
-      # not brick the CLI — the next command replaces it atomically and works.
-      - name: Corrupt authkey self-heals
-        run: |
-          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-          Start-Sleep -Seconds 1
-          $auth = Join-Path $env:LOCALAPPDATA "co\authkey"
-          New-Item -ItemType Directory -Path (Split-Path $auth) -Force | Out-Null
-          Set-Content -Path $auth -Value "xx" -NoNewline
-
-          co browser status
-          if ($LASTEXITCODE -ne 0) { Write-Error "corrupt authkey bricked the CLI"; exit 1 }
-          $len = (Get-Item $auth).Length
-          if ($len -lt 16) { Write-Error "authkey was not healed (length $len)"; exit 1 }
-          co browser close
 
       - name: Show the browser daemon log on failure
         if: failure()

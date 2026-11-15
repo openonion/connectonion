@@ -93,6 +93,12 @@ def test_help_gate_collects_both_sides_in_parallel_and_caches_only_the_exact_bas
     jobs = WORKFLOW['jobs']
     assert 'needs' not in jobs['base']
     assert 'needs' not in jobs['pages']
+    # The head is walked in four shards by the split cli-help-audit uses, never audited whole.
+    assert jobs['pages']['strategy']['matrix']['shard'] == [1, 2, 3, 4]
+    walk = next(s for s in jobs['pages']['steps'] if s.get('name') == "Walk this shard's share of the PR's pages")
+    assert "contract.shard_groups(audit.help_page(['co']), contract.registered(), shard, 4)" in walk['run']
+    assert 'contract.walk(groups)' in walk['run'] and 'audit.audit(' not in walk['run']
+    assert "path != 'co' or shard == 1" in walk['run']
     assert set(jobs['review']['needs']) == {'base', 'pages'}
     restore = next(s for s in jobs['base']['steps'] if s.get('id') == 'fingerprint')
     key = restore['with']['key']
@@ -108,7 +114,7 @@ def test_help_gate_collects_both_sides_in_parallel_and_caches_only_the_exact_bas
     assert fingerprint['if'] == "steps.fingerprint.outputs.cache-hit != 'true'"
     assert "audit.inventory(audit.pages(['co']))" in fingerprint['run']
     assert "echo '{}'" in fingerprint['run']  # pre-audit base compatibility
-    assert 'audit.audit(' not in STEP['run']  # consume head pages; never walk them again
+    assert 'audit.audit(' not in STEP['run'] and 'audit.pages(' not in STEP['run']  # consume head pages; never walk them again
     assert 'secrets.OPENONION_API_KEY' not in str(jobs['base']) + str(jobs['pages'])
 
 
@@ -116,15 +122,28 @@ def test_help_gate_only_reviews_changed_pages_that_passed_the_hard_rules(tmp_pat
     import json
     from connectonion.cli import audit
 
-    before = {'co unchanged': 'same', 'co changed': 'old', 'co broken': 'old'}
-    head = {'hashes': {'co unchanged': 'same', 'co changed': 'new', 'co broken': 'new', 'co added': 'new'},
-            'pages': {'co unchanged': 'untouched', 'co changed': 'updated',
-                      'co broken': 'no example', 'co added': 'new page'},
-            'findings': [{'path': 'co broken', 'check': 'example', 'detail': 'missing'},
-                         {'path': 'co unchanged', 'check': 'example', 'detail': 'old finding'}]}
+    text = {'co unchanged': 'untouched', 'co changed': 'updated', 'co broken': 'no example', 'co added': 'new page'}
+    digest = audit.inventory({path: audit.Page(0, page) for path, page in text.items()})
+    before = {'co unchanged': digest['co unchanged'], 'co changed': 'old', 'co broken': 'old'}
     (tmp_path / 'base.json').write_text(json.dumps(before))
-    (tmp_path / 'pages.json').write_text(json.dumps(head))
+    # Two shards' files, as the pages jobs upload them: every field of a Page.
+    for shard, paths in ((1, ['co unchanged', 'co changed']), (2, ['co broken', 'co added'])):
+        (tmp_path / f'pages-{shard}.json').write_text(json.dumps(
+            {path: {'code': 0, 'text': text[path], 'wrote': '', 'hung': False, 'err': ''} for path in paths}))
     monkeypatch.setenv('RUNNER_TEMP', str(tmp_path))
+    checked, looked = [], []
+
+    def check(path, page, found):
+        checked.append(path)
+        assert sorted(found) == sorted(text)  # examples resolve against the whole tree, not one shard
+        return [audit.Finding(path, 'example', 'missing')] if path == 'co broken' else []
+
+    def looks(within, findings):
+        looked.extend(within)
+        return []
+
+    monkeypatch.setattr(audit, 'check', check)
+    monkeypatch.setattr(audit, 'looks', looks)
     reviewed = []
 
     def review(path, text, model):
@@ -137,6 +156,8 @@ def test_help_gate_only_reviews_changed_pages_that_passed_the_hard_rules(tmp_pat
     block = STEP['run'].split("<<'PY'", 1)[1].split('\n', 1)[1].split('\nPY\n', 1)[0]
     exec(block, {})
     assert sorted(reviewed) == [('co added', 'new page'), ('co changed', 'updated')]
+    # The hard rules and the terminal look run on the changed pages only.
+    assert sorted(checked) == sorted(looked) == ['co added', 'co broken', 'co changed']
     output = capsys.readouterr().out
     assert '3 changed pages' in output
     assert 'co broken' in output

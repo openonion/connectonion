@@ -495,8 +495,38 @@ def _needs_environment_api_key(item):
             and "local_api" not in item.keywords)
 
 
+def pytest_addoption(parser):
+    # scripts/ci_test_shard.py cuts a file too heavy for one CI shard into k
+    # parts; FILE:i/k keeps every k-th test of FILE, starting at the i-th.
+    parser.addoption("--file-part", action="append", default=[], metavar="FILE:i/k",
+                     help="run only part i of k of FILE's tests (CI shards; repeatable)")
+
+
+def _keep_file_parts(config, items):
+    """Deselect the tests of a cut file that belong to another shard's part.
+
+    Counted in collection order, which is the same in every shard and every
+    xdist worker, so the k parts together run each test exactly once.
+    """
+    wanted = {}
+    for spec in config.getoption("--file-part", []):   # a conftest loaded late has no options
+        name, _, part = spec.rpartition(":")
+        index, of = map(int, part.split("/"))
+        wanted.setdefault(name, set()).add((index - 1, of))
+    seen, kept, dropped = {}, [], []
+    for item in items:
+        name = item.nodeid.split("::")[0]
+        position = seen[name] = seen.get(name, -1) + 1
+        mine = name not in wanted or any(position % of == index for index, of in wanted[name])
+        (kept if mine else dropped).append(item)
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-mark tests by folder and skip real_api if keys are missing."""
+    _keep_file_parts(config, items)
 
     # Auto-mark tests based on folder path
     for item in items:

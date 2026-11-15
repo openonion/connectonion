@@ -15,8 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = {name: yaml.safe_load((ROOT / f'.github/workflows/{name}.yml').read_text())
              for name in ('tests', 'help-gate', 'release')}
 JOBS = WORKFLOWS['tests']['jobs']
+PR_SHARDS = 12
 NATIVE = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
-          'windows-e2e': 'e2e', 'macos-e2e': 'e2e'}
+          'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'macos-e2e': 'e2e'}
 
 
 def step(job, name):
@@ -64,9 +65,15 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
         assert versions(JOBS[name], pr=False) == ['3.11', '3.12', '3.13']
         assert JOBS[name]['strategy']['fail-fast'] is False
     matrix = JOBS['test']['strategy']['matrix']
-    assert 'needs.lockfile.outputs.shards' in matrix['shard']
-    assert "'[1, 2, 3, 4, 5, 6, 7, 8]'" in matrix['shard']
-    assert JOBS['test']['needs'] == 'lockfile'
+    pr, full = matrix['shard'].split("&& '", 1)[1].split("' || '")
+    assert json.loads(pr) == list(range(1, PR_SHARDS + 1))
+    assert json.loads(full.split("'", 1)[0]) == [1, 2, 3, 4, 5, 6, 7, 8]
+    count = f"github.event_name == 'pull_request' && {PR_SHARDS} || matrix.python-version == '3.11' && 6 || 8"
+    assert count in JOBS['test']['name']
+    assert count in step(JOBS['test'], "Run this shard's test files")['env']['SHARD_COUNT']
+    # No shard waits for another job: the lock check gates the summary, not the start.
+    assert 'needs' not in JOBS['test'] and 'needs' not in JOBS['cli-help-audit']
+    assert 'lockfile' in JOBS['tests-passed']['needs']
     assert matrix['exclude'] == [{'python-version': '3.11', 'shard': 7},
                                  {'python-version': '3.11', 'shard': 8}]
     command = step(JOBS['test'], "Run this shard's test files")
@@ -79,10 +86,10 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
     assert 'test_co_meets_the_contract_and_its_house_style' in str(JOBS['cli-help-audit'])
     assert 'test_the_shards_together_audit_every_page_once' in str(JOBS['tests-passed'])
     assert '--fail-under=78' in str(JOBS['tests-passed'])
-    # All native paths on a PR: 8 test + 4 audit + 2 egress + browser + 2 e2e + lock + summary.
-    count = 8 + 4 + 2 + 1 + 2 + 1 + 1
-    assert count == 19 < 20
-    assert 10 + 4 + 1 + 1 == 16 < 20  # extra PR shards with native jobs filtered out
+    # A PR with every native path filtered out stays under the 20 jobs the plan
+    # runs at once: 12 test + 4 audit + lock, then the summary. Native jobs
+    # start after lockfile, when the short jobs of the other workflows are done.
+    assert PR_SHARDS + 4 + 1 == 17 < 20
     assert set(JOBS) == {'lockfile', 'test', 'tests-passed', 'cli-help-audit', *NATIVE}
 
 
@@ -116,9 +123,7 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
 def test_ci_filters_include_native_sources_tests_dependencies_and_packaging(monkeypatch, tmp_path, path, expected):
     actual = native_paths(monkeypatch, tmp_path, [path])
     assert [actual[name] == 'true' for name in ('browser', 'egress', 'e2e')] == list(expected)
-    splits = 8 if any(expected) else 10
-    assert actual['splits'] == str(splits)
-    assert json.loads(actual['shards']) == list(range(1, splits + 1))
+    assert set(actual) == {'browser', 'egress', 'e2e'}
 
 
 @pytest.mark.parametrize('event', ['push', 'workflow_call', 'workflow_dispatch'])
@@ -169,21 +174,74 @@ def test_ci_summary_rejects_every_unfiltered_skip(name):
     assert run_summary(needs).returncode != 0
 
 
-@pytest.mark.parametrize('splits', [8, 10])
-def test_ci_duration_shards_are_deterministic_disjoint_and_cover_every_test_file(splits):
+def shard_module():
     spec = importlib.util.spec_from_file_location('ci_test_shard', ROOT / 'scripts/ci_test_shard.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize('splits', [6, 8, PR_SHARDS])
+def test_ci_duration_shards_are_deterministic_balanced_and_run_every_test_file_once(splits):
+    module = shard_module()
     groups = [module.shard(i, splits) for i in range(1, splits + 1)]
     assert groups == [module.shard(i, splits) for i in range(1, splits + 1)]
-    flattened = [path for group in groups for path in group]
-    assert sorted(flattened) == module.test_files()
-    assert len(flattened) == len(set(flattened))
     weights = json.loads(module.DURATIONS.read_text())
     default = statistics.median(weights.values())
-    loads = [sum(weights.get(path, default) for path in group) for group in groups]
+    cut, loads = {}, []
+    for group in groups:
+        files = [arg for arg in group if not arg.startswith('--')]
+        mine = {}
+        for arg in group:
+            if arg.startswith('--file-part='):
+                name, part = arg.split('=', 1)[1].rsplit(':', 1)
+                assert name in files  # a part is useless without its file on the command line
+                index, of = map(int, part.split('/'))
+                cut.setdefault(name, []).append((index, of))
+                mine[name] = mine.get(name, 0) + 1 / of
+        loads.append(sum((weights.get(path) or default) * mine.get(path, 1) for path in files))
+    # Every file is listed; an uncut file by exactly one shard, a cut one by its parts' shards.
+    listed = [path for group in groups for path in group if not path.startswith('--')]
+    assert sorted(set(listed)) == module.test_files()
+    assert all(listed.count(path) == 1 for path in set(listed) - set(cut))
+    for name, parts in cut.items():
+        of = parts[0][1]
+        assert sorted(parts) == [(index, of) for index in range(1, of + 1)], name
     assert max(loads) - min(loads) <= default
+    # No file, whole or in parts, is heavier than half of an even share.
+    share = sum(weights.get(path) or default for path in module.test_files()) / splits
+    assert all((weights.get(path) or default) / len(cut.get(path, [1])) <= share / 2 + 0.01
+               for path in module.test_files())
+    assert cut  # today's suite has files this heavy; without them the option goes untested
     assert '--record junit-*/junit.xml' in (ROOT / '.github/workflows/tests.yml').read_text()
+
+
+def test_ci_parts_of_a_cut_file_run_each_of_its_tests_exactly_once(tmp_path):
+    # The real hook from tests/conftest.py, in a throwaway project that real pytest collects.
+    source = (ROOT / 'tests/conftest.py').read_text()
+    hook = source[source.index('def pytest_addoption'):source.index('def pytest_collection_modifyitems')]
+    (tmp_path / 'conftest.py').write_text(hook + 'def pytest_collection_modifyitems(config, items):\n'
+                                          '    _keep_file_parts(config, items)\n')
+    cases = ''.join(f'def test_{letter}(): pass\n' for letter in 'abcdefg')
+    (tmp_path / 'test_cut.py').write_text('import pytest\n@pytest.mark.parametrize("n", [1, 2, 3])\n'
+                                          'def test_many(n): pass\n' + cases)
+    (tmp_path / 'test_whole.py').write_text('def test_kept(): pass\n')
+
+    def collected(*parts):
+        done = subprocess.run([sys.executable, '-m', 'pytest', '--collect-only', '-q', '-p', 'no:cacheprovider',
+                               'test_cut.py', 'test_whole.py',
+                               *[f'--file-part=test_cut.py:{part}' for part in parts]],
+                              cwd=tmp_path, capture_output=True, text=True)
+        assert done.returncode == 0, done.stdout + done.stderr
+        return sorted(line for line in done.stdout.splitlines() if '::' in line)
+
+    whole = collected()
+    assert len(whole) == 11
+    parts = [collected(f'{index}/3') for index in (1, 2, 3)]
+    assert sorted(test for part in parts for test in part if 'test_cut' in test) == whole[:10]
+    assert all('test_whole.py::test_kept' in part for part in parts)  # other files are untouched
+    assert all(3 <= len(part) - 1 <= 4 for part in parts)
+    assert collected('1/3', '3/3') == sorted(set(parts[0]) | set(parts[2]))  # two parts in one shard
 
 
 def test_ci_uv_caches_use_the_lock_and_every_external_action_stays_pinned():
@@ -206,13 +264,32 @@ def test_ci_uv_caches_use_the_lock_and_every_external_action_stays_pinned():
 def test_ci_windows_always_installs_the_current_shared_wheel_over_the_cached_environment():
     wheel = step(JOBS['lockfile'], 'Share the candidate wheel')
     assert wheel['with']['name'] == 'native-wheel'
-    for name in ('windows-e2e', 'macos-e2e'):
+    for name in ('windows-e2e', 'windows-first-run', 'macos-e2e'):
         assert step(JOBS[name], 'Recover the candidate wheel')['with']['name'] == 'native-wheel'
         assert 'python -m build' not in str(JOBS[name])
-    cached = step(JOBS['windows-e2e'], 'Restore the Windows dependency environment')
-    assert "hashFiles('uv.lock')" in cached['with']['key']
-    assert 'steps.python.outputs.python-version' in cached['with']['key']
-    install = step(JOBS['windows-e2e'], 'Install from the wheel like a real user (not editable)')
-    assert 'if' not in install
-    assert '--reinstall-package connectonion $whl' in install['run']
-    assert 'GITHUB_PATH' in install['run']
+    for name in ('windows-e2e', 'windows-first-run'):
+        cached = step(JOBS[name], 'Restore the Windows dependency environment')
+        assert "hashFiles('uv.lock')" in cached['with']['key']
+        assert 'steps.python.outputs.python-version' in cached['with']['key']
+        install = step(JOBS[name], 'Install from the wheel like a real user (not editable)')
+        assert 'if' not in install
+        assert '--reinstall-package connectonion $whl' in install['run']
+        assert 'GITHUB_PATH' in install['run']
+
+
+def test_ci_the_two_windows_jobs_together_keep_every_real_user_step():
+    # windows-e2e was one job of 158 s; its steps are split, none dropped.
+    names = [s['name'].split(' — ')[0].split(' (')[0] for name in ('windows-e2e', 'windows-first-run')
+             for s in JOBS[name]['steps'] if 'run' in s]
+    assert sorted(set(names)) == sorted([
+        'Install from the wheel like a real user', 'CLI is discoverable from a plain shell',
+        'CLI works from cmd.exe too', 'REM reader opens its private snapshot on Windows',
+        'First run OFFLINE is graceful', 'patchright CLI is included and runnable',
+        'Package data survives the wheel', 'Real co browser end-to-end', 'Parallel agents',
+        'Restart after close', 'Fresh laptop', 'Restore system Chrome',
+        'CLI works from Windows PowerShell 5.1', 'Everything works with a CJK + space home directory',
+        'Subprocess tools survive the Chinese', 'Stale pid file with a recycled live pid cannot brick the daemon',
+        'Corrupt authkey self-heals', 'Show the browser daemon log on failure'])
+    # The daemon steps reuse one another's daemon, so they stay in one job and in order.
+    daemon = [s['name'].split(' — ')[0] for s in JOBS['windows-e2e']['steps']]
+    assert daemon.index('Real co browser end-to-end') < daemon.index('Parallel agents') < daemon.index('Restart after close')
