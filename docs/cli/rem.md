@@ -1660,6 +1660,17 @@ Configuration, command resolution and spawn errors leave a failed receipt with
 the reason, which `co rem status` displays alongside the turn log and the command
 to restart after fixing the cause.
 
+REM treats an unreadable folder named in a coding session or scan as having no
+Git repository; that folder does not stop round preparation. Other file access
+errors name the affected path without blaming the notebook files.
+If `co rem next` fails to prepare a task, the background turn is recorded as
+`failed` with the error even when Codex exits zero. Its traceback is saved in
+the turn's `.state/turns/*.jsonl` log. A successful retry clears that turn's
+failure, while keeping the traceback; an idle turn remains `completed`.
+`co rem status` and the reader's Today show the consecutive failed-turn count
+and when the streak began (UTC). Status also shows the last error and points to
+`co rem logs`. A completed turn ends the failure streak.
+
 For `codex-app`, the desktop adopts a private local automation definition.
 Its wake job opens Codex 15 minutes before each fire. Keep the app open and the
 computer awake. Completed native wrapper conversations and REM's internal Codex

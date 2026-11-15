@@ -708,20 +708,28 @@ def round_state(root: Path, config: dict) -> dict | None:
 
 def schedule_failure(root: Path) -> dict | None:
     """Surface failed turns from their receipts, without inventing scheduler state."""
-    receipts = [read_json(path, {}) for path in sorted(state_path(root, 'turns').glob('*.json'))[-2:]]
+    receipts = [read_json(path, {}) for path in state_path(root, 'turns').glob('*.json')]
     last = read_json(state_path(root, 'last-turn.json'), {})
-    if last and last not in receipts:
+    if last:
+        receipts = [turn for turn in receipts if turn.get('started_at') != last.get('started_at')]
         receipts.append(last)
     receipts.sort(key=lambda turn: turn.get('started_at', ''))
     if not receipts or receipts[-1].get('result') in ('running', 'skipped'):
         return None
     last = receipts[-1]
     blocked = last.get('blocked') is True
-    failed_twice = len(receipts) >= 2 and all(turn.get('result') in ('failed', 'timed-out') for turn in receipts[-2:])
-    if not blocked and not failed_twice:
+    failures = []
+    for turn in reversed(receipts):
+        if turn.get('result') == 'skipped':
+            continue
+        if turn.get('result') not in ('failed', 'timed-out'):
+            break
+        failures.append(turn)
+    if not blocked and not failures:
         return None
     evidence = ' '.join((last.get('reason') or f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
-    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence}
+    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
+            **({'failures': len(failures), 'since': failures[-1].get('started_at', '')} if failures else {})}
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:

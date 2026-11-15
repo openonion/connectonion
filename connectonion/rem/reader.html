@@ -7898,6 +7898,11 @@ function approvalUndoBar(onToday = true) {
 // reason stays on the line's title for whoever debugs it.
 function turnTrouble(failure) {
   const evidence = String(failure.evidence || "");
+  if (failure.failures) {
+    const since = String(failure.since || "").slice(0, 16).replace("T", " ");
+    return uiLanguage === "zh" ? `后台：最近 ${failure.failures} 轮失败，自 ${since} UTC 起。REM 会自动重试。`
+      : `Background: the last ${failure.failures} ${failure.failures === 1 ? "turn failed" : "turns failed"}, since ${since} UTC. REM retries automatically.`;
+  }
   if (/^Turn exceeded \d+ hours/.test(evidence)) return t("One round last night ran too long and was stopped; the next round continues.");
   if (/^MAINTENANCE_BUSY\b/.test(evidence)) return t("Another job was holding the notebook, so the last round did not run; the next round tries again.");
   return t(failure.code === "blocked" ? "The last scheduled round could not finish and is waiting for its blocker to clear."
