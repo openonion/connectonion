@@ -33,7 +33,7 @@ from pathlib import Path
 from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
-from .scan import project_exclusion
+from .scan import is_repository, project_exclusion
 from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, read_session, session_paths, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
@@ -297,7 +297,7 @@ class _Owners:
         if not path.startswith(container.rstrip("/") + "/"):
             return None  # the workspace itself, or outside it: no evidence
         if path not in self.cache:
-            if path in self.folders or os.path.exists(os.path.join(path, ".git")):
+            if path in self.folders or is_repository(path):
                 self.cache[path] = path if self._usable(path) else None
             else:
                 self.cache[path] = self(os.path.dirname(path), container)
@@ -322,7 +322,7 @@ class _Owners:
                 branch = ref.removeprefix("ref: refs/heads/") if ref.startswith("ref: refs/heads/") else ""
                 named = self._named_owner([folder.name, branch], repo.name)
                 return named or (str(repo) if repo.is_dir() and self._usable(str(repo))
-                                 and (str(repo) in self.folders or (repo / ".git").exists()) else None)
+                                 and (str(repo) in self.folders or is_repository(repo)) else None)
             if self._marker(folder) == "dir":
                 return None
         temporary = re.match(r"^/(?:private/)?(?:tmp/|var/folders/)(.*)", str(path))
@@ -339,7 +339,7 @@ class _Owners:
         """
         if folder not in self.markers:
             git = folder / ".git"
-            self.markers[folder] = "file" if git.is_file() else "dir" if git.exists() else ""
+            self.markers[folder] = ("file" if git.is_file() else "dir") if is_repository(folder) else ""
         return self.markers[folder]
 
     def _named_owner(self, names, repo_name="") -> str | None:

@@ -1,5 +1,6 @@
 """One launchd fire, one locked Codex work session, with durable turn receipts."""
 import argparse
+import json
 import os
 import re
 import shlex
@@ -7,6 +8,7 @@ import shutil
 import signal
 import subprocess
 import time
+import traceback
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,19 +207,26 @@ def _run_locked(root, run, lock_fd):
         # Persist failed or interrupted deepening even after Codex itself exited zero.
         failed = True
         receipt['reason'] = str(error) or type(error).__name__
+        with log.open('a') as output:
+            output.write(json.dumps({'type': 'rem.turn_failed', 'error': receipt['reason'],
+                                     'traceback': traceback.format_exc()}) + '\n')
         raise
     finally:
         code = result.returncode if result is not None else None
         outcome = 'skipped' if skipped else 'completed' if code == 0 and not failed else 'timed-out' if code == 124 else 'failed'
-        if code == 124:
+        preparation_error = _preparation_error(root, receipt)
+        if preparation_error and not skipped:
+            outcome = 'failed'
+            receipt['reason'] = preparation_error
+        if code == 124 and not preparation_error:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
         # Only the protocol's terminal busy line is a blocker, never a recovered narrative.
         message = last.read_text().strip() if last.is_file() else ''
         busy = bool(re.fullmatch(
             r'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid (?:\d+|unknown): '
             r'[^\n]+\. Report this message and end the turn without retrying\.', message))
-        receipt['blocked'] = busy or (result is None and not skipped)
-        if busy:
+        receipt['blocked'] = busy or bool(preparation_error) or (result is None and not skipped)
+        if busy and not preparation_error:
             receipt['reason'] = message
         receipt.update(result=outcome, exit_code=code, killed_descendants=getattr(result, 'killed_descendants', 0),
                        finished_at=datetime.now(timezone.utc).isoformat())
@@ -225,6 +234,35 @@ def _run_locked(root, run, lock_fd):
         write_json(state_path(root, 'last-turn.json'), receipt)
 
     return outcome
+
+
+def record_preparation(root, error=None):
+    """The next command reports its outcome to its own launcher, independently of Codex's exit code."""
+    turn_id = os.environ.get('CO_REM_TURN_ID')
+    if not turn_id:
+        return
+    turn = read_json(state_path(root, 'last-turn.json'), {})
+    if turn.get('turn_id') != turn_id or turn.get('result') != 'running':
+        return
+    event = {'type': 'rem.preparation_failed' if error else 'rem.prepared',
+             'at': datetime.now(timezone.utc).isoformat()}
+    if error:
+        event.update(error=str(error) or type(error).__name__, traceback=''.join(traceback.format_exception(error)))
+    # A separate append stream avoids racing Codex's stdout offset. The launcher
+    # copies these events into the turn log after the subprocess has exited.
+    with state_path(root, f"turns/{turn['turn_id']}.preparation.jsonl").open('a') as output:
+        output.write(json.dumps(event) + '\n')
+
+
+def _preparation_error(root, receipt):
+    path = state_path(root, f"turns/{receipt['turn_id']}.preparation.jsonl")
+    if not path.is_file():
+        return ''
+    text = path.read_text()
+    with Path(receipt['log']).open('a') as output:
+        output.write(text)
+    events = [json.loads(line) for line in text.splitlines()]
+    return events[-1].get('error', '') if events else ''
 
 
 if __name__ == '__main__':

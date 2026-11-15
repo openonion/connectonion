@@ -28,6 +28,7 @@ from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .mail import SERVER_ERRORS, error_status
 from .source import KINDS, collect, parse_session_source, timestamp, with_local_times
+from .scan import is_repository
 
 MAIL_KINDS = ("outlook", "gmail")
 SESSION_WIDEST_DAYS = 730
@@ -631,7 +632,7 @@ def checkout_state(path: str, newest_session: str = "") -> str:
     come from origin/main (else main, else the most recently committed branch),
     and a HEAD weeks older than the project's newest session is named as stale.
     """
-    if not (Path(path) / ".git").exists():
+    if not is_repository(path):
         return ""
     head = _git(path, "log", "-1", "--format=%cI", "HEAD")
     if not head:

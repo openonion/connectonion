@@ -300,6 +300,14 @@ def canonical_origin(origin: str) -> str:
     return origin
 
 
+def is_repository(folder: str | Path) -> bool:
+    """An unreadable session or scan folder is not a repository (#3066)."""
+    try:
+        return (Path(folder) / ".git").exists()
+    except PermissionError:
+        return False
+
+
 def project_exclusion(path: Path) -> str:
     """Ignore execution sandboxes, not legitimate projects sharing a display name."""
     normalized = str(path.resolve())
@@ -310,12 +318,12 @@ def project_exclusion(path: Path) -> str:
         return "test fixture notebook"
     # A workspace says so in its agent instructions; Claude Code reads CLAUDE.md,
     # Codex AGENTS.md, and the owner's ~/projects had both.
-    if path.is_dir() and not (path / ".git").exists() and any(
+    if path.is_dir() and not is_repository(path) and any(
             (path / marker).is_file() for marker in ("AGENTS.md", "CLAUDE.md")):
         repositories = 0
         try:
             for child in path.iterdir():
-                if child.is_dir() and (child / ".git").exists():
+                if child.is_dir() and is_repository(child):
                     repositories += 1
                     if repositories >= 2:
                         return "multi-repository workspace container"
@@ -341,7 +349,8 @@ def main_checkout(path: str) -> str:
     removed still says so in its path.
     """
     git = Path(path) / ".git"
-    if git.is_file():
+    repository = is_repository(path)
+    if repository and git.is_file():
         home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", git.read_text(errors="replace"))
         if home:
             return os.path.normpath(os.path.join(path, home[1]))
@@ -352,7 +361,7 @@ def main_checkout(path: str) -> str:
     # longer says where home is, so the folder beside it whose name starts its
     # own is home (#1974). With none, it is not guessed.
     folder = WORKTREE_FOLDER.match(path)
-    if folder and not git.exists():
+    if folder and not repository:
         home = _beside(folder[1], folder[2])
         return home + (folder[3] or "") if home else ""
     return ""
@@ -365,11 +374,11 @@ def _beside(parent: str, name: str) -> str:
     """The repository a `.worktree(s)/<name>` folder was made from: the folder
     holding `.worktrees/` when it is a repository, else the repository next to
     `.worktree/` whose name starts `<name>` (the longest such name)."""
-    if (Path(parent) / ".git").exists():
+    if is_repository(parent):
         return parent
     try:
         names = [child.name for child in Path(parent).iterdir()
-                 if not child.name.startswith(".") and (child / ".git").exists()]
+                 if not child.name.startswith(".") and is_repository(child)]
     except OSError:
         return ""
     fits = [repo for repo in names if name == repo or re.match(re.escape(repo) + r"[-_.]", name)]
@@ -419,7 +428,7 @@ def not_a_project(row: dict) -> str:
     path = Path(row["path"])
     if home_or_above(path):
         return "home directory"
-    if row.get("repo") or main_checkout(row["path"]) or (path / ".git").exists():
+    if row.get("repo") or main_checkout(row["path"]) or is_repository(path):
         return ""
     if DATED_SCRATCH.search(path.as_posix()):
         return ONE_OFF_TASK if scratch_without_manifest(path) else ""

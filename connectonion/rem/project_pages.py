@@ -26,6 +26,7 @@ from .config import read_config
 from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 from .project_tree import identity
+from .scan import is_repository
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
 # Characters of messages one write carries. The owner's busiest folder held
@@ -450,7 +451,7 @@ def current_line(page: str) -> tuple[str, str, str] | None:
     """(repository, ref, full revision) of the first mapped Git checkout's current line, or None."""
     from .investigate import CURRENT_REFS, _git, collapse_worktree_paths, project_paths
     for folder in project_paths(collapse_worktree_paths(page))[:2]:
-        if not (Path(folder) / ".git").exists():
+        if not is_repository(folder):
             continue
         ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
                                                          name + "^{commit}")), "HEAD")
@@ -1073,7 +1074,7 @@ def _code_command(args, evidence, resource):
 
 def _code_matches(repo_path, repo, evidence):
     folder = str(Path(repo_path).resolve())
-    if not (Path(folder) / '.git').exists():
+    if not is_repository(folder):
         return False
     root = _code_command(['git', '-C', folder, 'rev-parse', '--show-toplevel'], evidence, 'local_identity').strip()
     if str(Path(root).resolve()) != folder:

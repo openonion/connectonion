@@ -365,6 +365,11 @@ def _today(root, value: dict) -> list[str]:
     action = ('Resolve the blocker, then run co rem start.' if warning and warning['code'] == 'blocked'
               else 'Retried automatically.')
     failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
+    if warning and warning.get('failures'):
+        count = warning['failures']
+        since = warning['since'][:16].replace('T', ' ')
+        failure = [highlight(f"Background: the last {count} {'turn failed' if count == 1 else 'turns failed'}, "
+                             f"since {since} UTC. Last error: {warning['evidence']}. Next: co rem logs")]
     if not runs:
         return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}

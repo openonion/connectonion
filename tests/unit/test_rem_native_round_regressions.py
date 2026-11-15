@@ -33,6 +33,35 @@ def save_round(root, jobs, **extra):
     return cursor
 
 
+@pytest.mark.parametrize("suffix,scheduled", [(".worktrees/probe", False), ("", True)])
+def test_native_round_prepares_task_when_session_names_unreadable_folder(notebook, monkeypatch, suffix, scheduled):
+    from datetime import timedelta
+    from tests.unit.test_rem_sessions import codex, transcript
+    directory = notebook / "transcripts"
+    directory.mkdir()
+    sources = {"codex": {"kind": "codex", "root": str(directory / "codex"),
+                         "enabled": True, "consented": True,
+                         "since": (service.now() - timedelta(days=1)).isoformat()}}
+    write_json(state_path(notebook, "subscriptions.json"), sources)
+    write_json(state_path(notebook, "worker.json"), {"enabled": True})
+    protected = Path("/System/Volumes/Data/.fseventsd")
+    rows = [codex("Inspect the unreadable folder", stamp=service.now().isoformat()),
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command",
+             "arguments": json.dumps({"cmd": "pwd", "workdir": str(protected / suffix)})}}]
+    transcript((notebook, directory, sources), cwd="/work/fern", rows=rows)
+    exists = Path.exists
+
+    def denied(path):
+        if path == protected / ".git":
+            raise PermissionError(13, "Permission denied", str(path))
+        return exists(path)
+
+    monkeypatch.setattr(Path, "exists", denied)
+    task = native.next_task(notebook, scheduled=scheduled)
+    assert task["outcome"] == "task"
+    assert read_json(state_path(notebook, "round.json"), {})["sessions"]["imported"] == 1
+
+
 def audit_notes(task):
     directory = Path(task["material"])
     packet = read_json(directory / "audit-material.json", {})

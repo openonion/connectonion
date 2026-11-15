@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import MAP_DAYS, Notebook, archive_path, atomic_write, maintenance_lock, read_json, state_path
-from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
+from .scan import (scan_people, scan_projects, canonical_origin, is_repository, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
 from .org_map import _domain, map_orgs, organisation
@@ -640,7 +640,7 @@ def _repository_folder(path: str) -> str:
     """
     folder = Path(path)
     return main_checkout(path) or next(
-        (str(parent) for parent in (folder, *folder.parents) if (parent / '.git').exists()), '')
+        (str(parent) for parent in (folder, *folder.parents) if is_repository(parent)), '')
 
 
 def _same_named_project(name: str, repository: bool, other: str, other_repository: bool) -> bool:

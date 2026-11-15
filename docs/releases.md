@@ -33,7 +33,9 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc16**: the Organisations table never prints the not-investigated placeholder as a
+Release candidate **1.9.6rc17**: a session that names a folder REM may not read no longer stops every
+background round, and a round that could not be prepared is recorded as failed. See [1.9.6rc17 notes](releases/1.9.6rc17.md).
+Before it, release candidate **1.9.6rc16**: the Organisations table never prints the not-investigated placeholder as a
 fact, a company's page renders, and long locations clamp to two lines. See [1.9.6rc16 notes](releases/1.9.6rc16.md).
 Before it, release candidate **1.9.6rc15**: the Organisations table shows its tree expanded, «Talk it over» shows its
 conversation, facts on people and projects are corrected, and the reader's Chrome suite is green. See [1.9.6rc15 notes](releases/1.9.6rc15.md).
@@ -92,7 +94,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc16'
+python -m pip install --upgrade 'connectonion==1.9.6rc17'
 ```
 
 ## Previous stable
