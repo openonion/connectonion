@@ -104,4 +104,10 @@ def status(root, config, logs):
             rows[-1]['held'] = collection_backlog(root)['held']
             if rows[-1]['held']:
                 rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
+        if name == 'Abstract':
+            book = Notebook(root)
+            counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}
+            rows[-1]['pages'] = counts
+            rows[-1]['text'] += (f"; {counts['decisions']} decisions · {counts['knowledge']} knowledge"
+                                f" · {counts['principles']} principles")
     return rows

@@ -19,8 +19,8 @@ Deepen — follow leads, add insights
   deepen        Add research and insights to pages with useful activity but little detail.
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Study questions about one page and add new insights.
-Abstract — decisions, then principles
-  abstract      Turn captured decisions into decision pages, then principles.
+Abstract — learn from pages
+  abstract      Write decisions, settled knowledge, then principles from pages.
   decisions     Count decision and principle pages and decisions waiting. No model.
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
@@ -103,7 +103,7 @@ A completed whole round runs one deepen slot after closing translation. Early
 stops and translation-only rounds do not deepen. In-session next and submit
 only hand out single tasks and never run the hour-long deepen slot.
 
-After session summaries, the night writes decisions/ and principles/ in rounds,
+After session summaries, the night writes decisions/, knowledge/ and principles/ in rounds,
 reading up to 20 captured decision lines each, oldest first. The limit is
 limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nights
 clear N lines, or longer if rounds fail or the input character limit reads fewer.
@@ -1183,23 +1183,16 @@ Back:     co rem --help
 ## co rem abstract
 
 ```
-Turn the decisions already written on your session and project pages into decision pages.
-Then write principle pages for the reasons that recur.
+Turn settled notebook experience into decisions, knowledge, and principles, in that order.
+Knowledge records lessons from at least two pages; principles capture reasons shared by at least three decisions.
 Usage:    co rem abstract [--rounds N]
-Example:  co rem abstract  |  co rem abstract --rounds 2
-Stops when nothing unattempted is left or two empty rounds in a row resolve no lines. --rounds N limits this run to N rounds.
-Reads up to 20 decisions per round, oldest first. Resumes from where previous or overnight runs left off, ignoring the overnight run limit.
-Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
-Legacy session quotes receive numbered sources only when retained owner turns establish a unique match.
-An empty round counts as a failed slice, set aside for a later retry, then moves to the next slice.
-Progress is saved per captured line: written, merged, not a decision, refused, or no answer.
-Merged lines name a page that passed this round; they and lines judged not a decision are done without retry.
-Pending lines are offered once per manual run or night; after three failed attempts they are recorded as given up with the reason.
-Retries carry the recorded refusal text. Saved refused pages recover identifiable choices hidden by older whole-slice progress.
-Under Sources use exactly one - [n] source-id definition per citation; put originating-page context inline, without [n]: Markdown link definitions.
-Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, captured lines left and skipped counts once. Line totals: written, merged, refused, no answer, given up. Skipped includes not a decision. Exit 1 if no attempted round resolves a line; 0 on progress or no work.
-Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
-          Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.
+Flags:    --rounds N  Stop after at most N rounds; N must be at least 1.
+          --help      Show this help and exit.
+Example:  co rem abstract --rounds 2
+Output:   Decision, knowledge and principle counts, progress per round, and refused pages with reasons.
+Effects:  Calls the model once per round. Writes reviewed pages under decisions/, knowledge/ and principles/.
+          Existing knowledge pages can only gain clearly headed sections. Saves progress for the next run.
+          Stops when no work remains or after two empty rounds in a row.
 Next:     co rem list decisions
 Back:     co rem --help
 ```

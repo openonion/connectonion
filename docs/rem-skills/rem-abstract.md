@@ -66,3 +66,40 @@ has none.
 
 Both are computed from Open threads and state on entity pages. Writing them in
 this stage creates the same commitment twice, in two wordings.
+
+## Knowledge lift: after decisions, before principles
+
+The three lifts run in order: decisions, knowledge, principles. A knowledge page
+records learning that holds beyond one decision: how something works, what went
+wrong and why, or a method that worked. It draws from at least two notebook pages
+in `decisions/`, `sessions/` or `projects/`, named under `## Drawn from`.
+Principles still require three decisions; knowledge does not replace that rule.
+
+Investigate describes a subject from raw sources. Abstract learns from settled
+notebook experience. Abstract may create a knowledge page or append a clearly
+headed section to an existing one; it cannot rewrite, replace or delete any
+existing knowledge text, including Investigate's topic pages. Existing titles,
+sections and source definitions stay exactly as written. An appended section
+uses `### Sources` and fresh citation numbers for its new evidence.
+
+The decision quote rule also applies here: copy the owner's verbatim words into
+the body immediately followed by `[n]`, define each original source ID under
+`## Sources`, and keep the originating page path as context. Do not reopen raw
+sources or turn a paraphrase into a quote. For example:
+
+```markdown
+# Checking whether a scheduled job actually ran
+
+A saved schedule does not show whether the job ran. Check a run receipt after
+the due time; in the trial a tick worked after calendar triggers failed.
+“The calendar trigger never fired; the interval tick did.” [1]
+“Check the run receipt after the due time.” [2]
+
+## Drawn from
+- [Scheduling trigger choice](../decisions/scheduling-trigger.md)
+- [Scheduler trial](../projects/scheduler-trial.md)
+
+## Sources
+- [1] codex:schedule:12 — originating page: `decisions/scheduling-trigger.md`.
+- [2] codex:trial:31 — originating page: `projects/scheduler-trial.md`.
+```

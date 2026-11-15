@@ -5949,7 +5949,10 @@ function rawSection(r, name) {
 }
 function sourceList(r) {
   const out = [];
-  const sources = rawSection(r, "Sources").replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
+  const sections = r.category === "knowledge"
+    ? [...r.text.replace(COMMENT, "").matchAll(/^#{2,3} Sources[^\n]*\n([\s\S]*?)(?=^#{1,3} |^Investigation:|(?![\s\S]))/gmi)].map(m => m[1]).join("\n")
+    : rawSection(r, "Sources");
+  const sources = sections.replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
   for (const item of listItems(sources)) {
     const m = /^(?:[\[［](W?\d{1,3})[\]］]|(\d{1,3})\.)\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[3])) out.push({ n: m[1] || m[2],
@@ -13005,7 +13008,7 @@ function topicLinks(r) {
     ...groups.map(([k, list]) => topicGroup(k, list, aliases)), quiet]);
 }
 function topicHead(r) {
-  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is"), first = rows.map(row => row.date).filter(Boolean).sort()[0];
+  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is") || abstractKnowledge(r).replace(/^#{1,3} .*$/gm, "").trim(), first = rows.map(row => row.date).filter(Boolean).sort()[0];
   const sub = what ? plainLine(what).split(/(?<=[.。!?！？])\s*/)[0]
     : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: rows.length, date: fmtDate(first) })
     : graphT("REM has not written this page yet");
@@ -13063,10 +13066,20 @@ function topicUnsure(r) {
   const items = listItems(section(r, "uncertainties")?.text || "").map(line => plainLine(line)).filter(line => line && !/^Unknown\b/.test(line)).slice(0, 2);
   return items.length ? [el("h4", { text: graphT("REM is not sure") }), el("ul", { class: "gx-rail-list" }, items.map(item => el("li", { text: item })))] : [];
 }
+function abstractKnowledge(r) {
+  let text = r.text.replace(COMMENT, "");
+  if (!/^#{2,3} Drawn from\s*$/m.test(text)) return "";
+  if (!/^## Drawn from\s*$/m.test(text))
+    text = text.split(/(?=^## )/m).filter(part => /^### Drawn from\s*$/m.test(part)).join("\n");
+  return text.replace(/^# [^\n]*\n/, "").replace(/^Investigation:[^\n]*$/gm, "")
+    .replace(/^#{2,3} Sources[^\n]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/gmi, "").trim();
+}
 function topicPage(r) {
   graphModel();
+  const learning = abstractKnowledge(r);
   const rail = el("aside", { class: "gx-rail", "aria-label": graphT("About") }, [graphLocal(r), ...topicAbout(r), ...topicRelated(r), ...topicUnsure(r)]);
   return el("div", { class: "gx gx-topic" }, [topicHead(r), el("div", { class: "gx-grid" }, [el("div", { class: "gx-main" }, [
+    learning ? el("section", { class: "gx-sec gx-prose", html: markdown(learning, r.path) }) : null,
     topicProse(r, "where you stand", "Where you stand"), topicLinks(r), topicTimeline(r), topicProse(r, "open threads", "Open threads"), topicDoubtful(r)]), rail])]);
 }
 

@@ -9,7 +9,7 @@ Your input is **pages the notebook already holds**, never raw messages. If you
 find yourself wanting the original mail or session, stop: that material belongs
 to `rem-investigate`.
 
-Two lifts, and they run in order. `principles` cannot be written until
+Three lifts, and they run in order: decisions, knowledge, principles. `principles` cannot be written until
 `decisions` exist.
 
 ## Lift one: decisions, out of what happened
@@ -114,3 +114,43 @@ When a fourth decision joins, add it to that list — do not open a second page.
   decision with the specifics removed, it is a summary, not a lift.
 - **Do not write `agenda/` or `opportunities/`.** Both are views computed from
   the Open threads and state already on entity pages.
+
+## Knowledge lift: after decisions, before principles
+
+A page in `knowledge/` records **something learned that holds beyond one
+decision**: how something works, what went wrong and why, or a method that
+worked. Draw it from **at least two notebook pages** in `decisions/`,
+`sessions/` or `projects/`, and name those pages under `## Drawn from`.
+Read their settled experience, then write knowledge before lifting recurring
+reasons into principles. Principles still need three decisions minimum.
+
+This is not an Investigate topic page describing a subject from raw sources.
+Create a new knowledge page, or append a clearly headed section to an existing
+one. Never rewrite, replace or delete existing knowledge text, including a page
+written by Investigate. Keep that page's title, sections and source definitions
+exactly; put new evidence and its source definitions in the appended section.
+
+Use the same quote and citation rule as decisions: copy the owner's verbatim
+words into the body, immediately followed by `[n]`, and define the original
+source ID under `## Sources`, keeping the originating page path as context.
+For an appended section, use its own `### Sources` and fresh citation numbers.
+Do not turn a paraphrase into a quote or reopen raw sources.
+
+For example, after reading a scheduling decision and a project trial:
+
+```markdown
+# Checking whether a scheduled job actually ran
+
+A saved schedule does not show whether the job ran. Check a run receipt after
+the due time; in the trial a tick worked after calendar triggers failed.
+“The calendar trigger never fired; the interval tick did.” [1]
+“Check the run receipt after the due time.” [2]
+
+## Drawn from
+- [Scheduling trigger choice](../decisions/scheduling-trigger.md)
+- [Scheduler trial](../projects/scheduler-trial.md)
+
+## Sources
+- [1] codex:schedule:12 — originating page: `decisions/scheduling-trigger.md`.
+- [2] codex:trial:31 — originating page: `projects/scheduler-trial.md`.
+```

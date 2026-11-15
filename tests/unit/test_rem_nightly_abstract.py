@@ -321,7 +321,7 @@ def test_abstract_refuses_other_paths_before_any_promotion(book, tmp_path, recor
     (output / record).parent.mkdir(parents=True, exist_ok=True)
     (output / record).write_text('# Not permitted\n')
     Notebook(output).write('decisions/valid.md', DECISION)
-    with pytest.raises(runner.RunFailed, match='only decisions/ and principles/'):
+    with pytest.raises(runner.RunFailed, match='only decisions/, knowledge/ and principles/'):
         runner.check(prepared, {}, native=True)
     assert not book.exists('decisions/valid.md')
 
@@ -370,7 +370,7 @@ def test_decision_page_review_reuses_owner_quote_check():
 def test_night_prompt_preserves_skill_and_describes_material_and_bound(book, tmp_path):
     prepared = task(book, tmp_path)
     prompt = prepared['prompt']
-    assert 'at most 20' in prompt and 'only decisions/ and principles/' in prompt
+    assert 'at most 20' in prompt and 'only decisions/, knowledge/ and principles/' in prompt
     assert '## Decisions' in prompt and '## Key decisions' in prompt
     assert "assistant's proposal" in prompt
     assert 'Write at most one NEW page' not in prompt
@@ -437,7 +437,7 @@ def test_abstract_refuses_linked_output(book, tmp_path):
     output = Path(prepared['task_root'])
     (output / 'decisions').mkdir(exist_ok=True)
     (output / 'decisions/linked.md').symlink_to(book.path('sessions/fixture.md'))
-    with pytest.raises(runner.RunFailed, match='only decisions/ and principles/'):
+    with pytest.raises(runner.RunFailed, match='only decisions/, knowledge/ and principles/'):
         runner.check(prepared, {}, native=True)
 
 

@@ -121,7 +121,7 @@ def test_status_five_stages_match_json_and_saved_queues(stage_book, monkeypatch)
         'Collect: 2 listed mail waiting; last ran 2026-11-01',
         'Investigate: 1 page waiting; last ran 2026-11-02',
         'Deepen: 2 pages waiting; last ran 2026-11-03',
-        'Abstract: 1 captured decision waiting; last ran 2026-11-04',
+        'Abstract: 1 captured decision waiting; last ran 2026-11-04; 0 decisions · 0 knowledge · 0 principles',
         'Translate: 3 page translations waiting; last ran 2026-11-05',
     ]
     lines = [line.strip() for line in result.stdout.splitlines()]

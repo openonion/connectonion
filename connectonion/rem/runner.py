@@ -1176,7 +1176,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     return audit_usage
 
 
-def _write_page(notebook, record, text, items, *, receipt=None):
+def _write_page(notebook, record, text, items, *, receipt=None, preserve_text=False):
     """Save an accepted page with its sources numbered once and dated by their originals."""
     from . import facts
     from .config import read_config
@@ -1192,7 +1192,7 @@ def _write_page(notebook, record, text, items, *, receipt=None):
     retain_research(notebook.root, text, items)
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    saved = collapse_repeated_markers(renumber_sources(settle_sources(text, dates)))
+    saved = text if preserve_text else collapse_repeated_markers(renumber_sources(settle_sources(text, dates)))
     if record.startswith("projects/"):
         from .project_pages import settle_last_activity
         saved = settle_last_activity(notebook.root, saved, items)
@@ -1219,14 +1219,14 @@ def _write_page(notebook, record, text, items, *, receipt=None):
 
 def _abstract_scope(working, changed, usage, *, native):
     from .captured_decisions import NIGHT_PAGE_LIMIT
-    permitted = lambda record: record.startswith(("decisions/", "principles/")) and record.endswith(".md")
+    permitted = lambda record: record.startswith(("decisions/", "knowledge/", "principles/")) and record.endswith(".md")
     entries = list(working.root.rglob("*"))
     if native and any(path.is_symlink() for path in entries):
-        raise RunFailed("Abstract may write only decisions/ and principles/ Markdown pages; no links", usage)
+        raise RunFailed("Abstract may write only decisions/, knowledge/ and principles/ Markdown pages; no links", usage)
     paths = [path.relative_to(working.root).as_posix() for path in entries if path.is_file()]
-    # Native output starts empty except for the two canonical categories.
+    # Native output starts empty except for the three canonical categories.
     if any(not permitted(record) for record in (paths if native else changed)):
-        raise RunFailed("Abstract may write only decisions/ and principles/ Markdown pages", usage)
+        raise RunFailed("Abstract may write only decisions/, knowledge/ and principles/ Markdown pages", usage)
     if native and len(changed) > NIGHT_PAGE_LIMIT:
         raise RunFailed(f"Abstract may change at most {NIGHT_PAGE_LIMIT} pages per slice", usage)
 
@@ -1259,49 +1259,55 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         if record not in after:
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
-        from . import facts
-        # `before` stays untouched for the concurrent-write check below.
-        original = resolve_sources(notebook.root, record, before.get(record, ''))
-        text = resolve_sources(notebook.root, record, after[record])
-        text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
-            restore_missing_facts(record, restore_runner_fields(record, text, original), original))))
-        text, dropped = drop_unresolved(record, text, original, items, pages=set(before),
-                                        root=notebook.root)
-        unverified = []
-        if record.startswith("people/") and record != owner:
-            text, unverified = verify_contacts(notebook.root, record, text, items, original)
-        text, overview_replaced = repair_project_overview(record, text)
-        text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), original)
-        text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
-        # Upkeep has no repair turn: a quote or source the page had and this
-        # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
-        # A gutted page is still refused on what the turn wrote, before anything is put back.
-        shrunk = shrinkage(original, text) if headings(record) else ''
-        written = text
-        text = fold_history(restore_dropped(original, text)) if original and not shrunk else text
-        restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
-        text = drop_empty_owner_section(text, owner=record == owner)
-        text = timezone_from_location(record, text)
-        text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
-        # What code removed is recorded, as an investigation's is; discarded,
-        # a maintained page lost lines and its review.json never said which.
-        repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
-                           "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
-                           "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
-                           "restored_lines": restored_lines}
-        authorship_errors = []
-        if native and stage == "abstract" and record.startswith("decisions/"):
-            from .decision_authorship import review as review_authorship
-            text, authorship_errors = review_authorship(notebook.root, text)
-        working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = (validate(record, text, original, items, pages=set(before),
-                           owner=record == owner, root=notebook.root)
-                  if headings(record) or record.startswith("decisions/") else [])
-        if native and stage == "abstract" and record.startswith("decisions/"):
-            from .captured_decisions import quote_errors
-            from .page_review import unquoted_decisions
-            errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items) + authorship_errors
-        errors += [shrunk] if shrunk else []
+        if stage == "abstract" and record.startswith("knowledge/"):
+            from .page_review import review_abstract_knowledge
+            text, errors = review_abstract_knowledge(
+                notebook, record, after[record], before.get(record, ""), dict(accepted))
+            working.write(record, text)
+        else:
+            from . import facts
+            # `before` stays untouched for the concurrent-write check below.
+            original = resolve_sources(notebook.root, record, before.get(record, ''))
+            text = resolve_sources(notebook.root, record, after[record])
+            text = resolve_sources(notebook.root, record, normalize_numbered_sources(facts.upgrade(record,
+                restore_missing_facts(record, restore_runner_fields(record, text, original), original))))
+            text, dropped = drop_unresolved(record, text, original, items, pages=set(before),
+                                            root=notebook.root)
+            unverified = []
+            if record.startswith("people/") and record != owner:
+                text, unverified = verify_contacts(notebook.root, record, text, items, original)
+            text, overview_replaced = repair_project_overview(record, text)
+            text, uncited = facts.drop_uncited(record, drop_uncited_sources(text), original)
+            text, pronouns = owner_pronouns(lead_without_last_contact(record, fold_history(sort_history(single_title(text)))))
+            # Upkeep has no repair turn: a quote or source the page had and this
+            # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
+            # A gutted page is still refused on what the turn wrote, before anything is put back.
+            shrunk = shrinkage(original, text) if headings(record) else ''
+            written = text
+            text = fold_history(restore_dropped(original, text)) if original and not shrunk else text
+            restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
+            text = drop_empty_owner_section(text, owner=record == owner)
+            text = timezone_from_location(record, text)
+            text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
+            # What code removed is recorded, as an investigation's is; discarded,
+            # a maintained page lost lines and its review.json never said which.
+            repairs[record] = {"citations_dropped": dropped["citations"], "lines_dropped": dropped["lines"],
+                               "contacts_unverified": unverified, "facts_uncited_dropped": uncited,
+                               "overview_replaced": overview_replaced, "owner_pronouns_replaced": pronouns,
+                               "restored_lines": restored_lines}
+            authorship_errors = []
+            if native and stage == "abstract" and record.startswith("decisions/"):
+                from .decision_authorship import review as review_authorship
+                text, authorship_errors = review_authorship(notebook.root, text)
+            working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
+            errors = (validate(record, text, original, items, pages=set(before),
+                               owner=record == owner, root=notebook.root)
+                      if headings(record) or record.startswith("decisions/") else [])
+            if native and stage == "abstract" and record.startswith("decisions/"):
+                from .captured_decisions import quote_errors
+                from .page_review import unquoted_decisions
+                errors += unquoted_decisions(text, decision_page=True) + quote_errors(text, items) + authorship_errors
+            errors += [shrunk] if shrunk else []
         if errors:
             refusal = {"record": record, "errors": errors}
             if stage == 'abstract':
@@ -1337,6 +1343,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             raise RunFailed("Abstract wrote no passing pages", usage)
         for record, text in accepted:
             _write_page(notebook, record, text, items,
+                        preserve_text=stage == 'abstract' and record.startswith('knowledge/'),
                         **({"receipt": directory / "promotion.json"} if native and stage != "abstract" else {}))
         if native and stage == "abstract":
             write_json(directory / "promotion.json", {"pages": {
@@ -1560,7 +1567,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     before = ({record: notebook.read(record)} if record and (candidate or native)
               else {} if native else {r: notebook.read(r) for r in notebook.list()})
     if native and stage == "abstract":
-        before = {r: notebook.read(r) for category in ("decisions", "principles") for r in notebook.list(category)}
+        before = {r: notebook.read(r) for category in ("decisions", "knowledge", "principles") for r in notebook.list(category)}
     selected_hash = next((i.get("expected_page_sha256") for i in items if i.get("role") == "page"), None)
     if selected_hash and (record not in before or hashlib.sha256(before[record].encode()).hexdigest() != selected_hash):
         raise RunFailed("Page changed before feedback processing; preserve current page and pending feedback")
@@ -1605,7 +1612,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
             if native and stage == "abstract":
                 from .captured_decisions import NIGHT_PAGE_LIMIT
                 prompt += (f"The canonical notebook at {notebook.root} is read-only evidence. "
-                           f"Write or update at most {NIGHT_PAGE_LIMIT} pages, only decisions/ and principles/ in the output notebook. "
+                           f"Write or update at most {NIGHT_PAGE_LIMIT} pages, only decisions/, knowledge/ and principles/ in the output notebook. "
                            "This is a ceiling, not a target; zero pages is valid. "
                            "Read session ## Decisions and project ## Key decisions in the supplied material. "
                            "Skip any line without a bound verbatim quote and a supplied original source definition; "
@@ -1621,7 +1628,11 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                            "Example source definition under ## Sources: - [1] codex:s1:347\n"
                            "An assistant's proposal is not a decision unless the owner said or explicitly accepted it. "
                            "Preserve existing questions and edit their pages for reversals; skip choices already captured. "
-                           "Write decisions first, then principles supported by at least three decisions. ")
+                           "Write decisions first, then knowledge learned across at least two notebook pages named under Drawn from, "
+                           "then principles supported by at least three decisions. "
+                           "Knowledge uses the same body quote and original citation rule as decisions. "
+                           "Create knowledge pages or append clearly headed sections only; preserve every byte of existing knowledge, "
+                           "including Investigate topic pages. An appended section uses ### Drawn from and ### Sources with fresh citation numbers. ")
                 from .decision_progress import retry_details
                 reasons = retry_details(notebook, items)[1]
                 if reasons:
@@ -1794,7 +1805,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             # investigation may finish concurrently on a different page;
             # do not claim its edit or charge it to this run.
             return [record] if notebook.read(record) != before[record] else []
-        records = ([r for category in ("decisions", "principles") for r in notebook.list(category)]
+        records = ([r for category in ("decisions", "knowledge", "principles") for r in notebook.list(category)]
                    if captured else notebook.list())
         after = {r: notebook.read(r) for r in records}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))

@@ -85,6 +85,7 @@ def write(root, *, rounds=None, progress=None):
     written = sum(len(row["changed"]) for row in rows)
     current = status(root)
     return {"rounds": rows, "written": written, "refused": sum(len(row["refused"]) for row in rows),
+            "pages": {category: len(notebook.list(category)) for category in ("decisions", "knowledge", "principles")},
             "left": captured_decisions.pending_count(notebook), "reason": reason, "set_aside": set_aside,
             "skipped": captured_decisions.skipped_counts(notebook),
             "lines": current['lines'], "given_up": current['given_up'],

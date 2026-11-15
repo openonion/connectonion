@@ -130,7 +130,7 @@ were detected from your sent mail and typed sessions or set in config. Use
 `co rem init --languages zh,en` to set them before mapping, or
 `co rem config set languages zh,en` (your list, as init prints it) to change them
 later; `languages en` keeps English only. English remains the
-canonical writing language. After tidying and drawing decisions and principles,
+canonical writing language. After tidying and drawing decisions, knowledge and principles,
 init translates every listed, written page into your first non-English language,
 even when English is first in the list. Mapped-only stubs and the skill catalog
 index are excluded. `--no-translate` skips this last step; `--no-investigate`,
@@ -481,7 +481,7 @@ The five stages of a REM day are:
 | Collect | `co rem collect` | Read one batch of new mail and coding sessions into the notebook; no later stages. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
 | Investigate | `co rem investigate` | Fill pages from originals: people, organisations, projects, session summaries, same-person checks and reply drafts. | Yes / yes / yes | Investigation's weekly points and usage floor; background daily call cap. |
 | Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, after the round / no: single tasks use the session's own model and cannot run an hour-long slot | Separate weekly deepen points, usage floors, page count, workers and slot time. |
-| Abstract | `co rem abstract` | Decisions out of pages, principles out of decisions. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
+| Abstract | `co rem abstract` | Decisions, settled knowledge and experience, then principles, out of notebook pages. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
 | Translate | `co rem translate` | Put changed pages into the owner's language; last in the intended day because earlier stages change pages. | Yes / yes / yes; a `daily-translation` round only translates | Separate daily translation cap; model-provider allowance. |
 
 `co rem collect` reads one batch, not until caught up. The default ceiling is
@@ -559,7 +559,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
-| `co rem abstract [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
+| `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
 | `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
@@ -614,7 +614,7 @@ are added to the model's material, and the session page remains unchanged.
 Run `co rem abstract` to write supported captures
 now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
 round calls the existing configured model runner once and uses the same material,
-input character bound, owner-quote and citation checks, and decisions/principles
+input character bound, owner-quote and citation checks, and decisions/knowledge/principles
 write scope as the night. Passing pages are kept; refused pages and reasons are
 printed and saved with the run. Each decision copies the owner's quote exactly as
 captured in the supplied Decisions or Key decisions into the body immediately
@@ -636,6 +636,24 @@ is left or two empty rounds occur in a row; a written, merged or not-a-decision
 outcome resets that streak.
 `--rounds 2` stops after at most two rounds. Output gives per-round counts and
 totals, slices set aside for a later retry, captured lines left, then `co rem list decisions`.
+The result and the Abstract line in `co rem status` report decision, knowledge
+and principle page counts separately. `co rem decisions` keeps its existing view.
+
+The lifts run in order: **decisions, knowledge, principles**. Abstract knowledge
+records learning that holds beyond one choice: how something works, what went
+wrong and why, or a method that worked. Each `knowledge/` page names at least two
+notebook pages from `decisions/`, `sessions/` or `projects/` under `## Drawn from`.
+It keeps the same verbatim body quote, immediate `[n]`, original source ID and
+originating-page citation rule as decisions. This is learning from notebook
+experience; Investigate topic pages describe a subject from raw sources.
+Abstract may create knowledge pages or append clearly headed sections to existing
+ones, including Investigate pages; it must preserve all existing text exactly.
+An appended section carries its own `### Sources` with fresh citation numbers.
+Knowledge passes the same promotion/review path and joins translation discovery
+alongside decisions and principles.
+Translation includes appended experience while preserving every source definition
+and the original investigation stamp. The Knowledge reader shows settled learning
+and its Drawn from links alongside any existing topic content.
 Status and the final summary show line totals separately: written, merged,
 refused, no answer, and given up. Skipped includes not a decision. Refused and
 no-answer totals include given-up lines; waiting and to retry exclude them.
@@ -676,7 +694,7 @@ any failed gap. Empty slices retry on a later night or manual run. After three
 distinct failed nights/manual runs, a slice is released and its offsets, failure
 attempt IDs and give-up reason are saved in abstract-offered.json.
 A crashed turn leaves its material pending. It writes or updates at
-most 20 pages under `decisions/` and `principles/` only, with the owner's words
+most 20 pages under `decisions/`, `knowledge/` and `principles/` only, with the owner's words
 and original citations on each decision. Assistant proposals without the owner's
 acceptance are excluded. Principles still need at least three decisions. The saved
 night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart

@@ -824,7 +824,7 @@ def _first_translation(root, config, say, *, language="", reason="") -> dict:
 
 
 def _first_abstract(root, config, say, result) -> dict:
-    """Decisions, then principles, from the pages the first run just wrote.
+    """Decisions, knowledge, then principles, from the pages the first run just wrote.
 
     The owner (2026-10-08): the first run should also leave the settled
     questions and standing rules, not only people and projects. `co rem
@@ -836,14 +836,16 @@ def _first_abstract(root, config, say, result) -> dict:
         return {"started": False}
     from ...rem.files import Notebook
     from ...rem.runner import RunFailed, run_stage
-    say("Drawing decisions and principles from the pages just written…")
+    say("Drawing decisions, knowledge and principles from the pages just written…")
     try:
         out = run_stage(Notebook(root), [], config, stage="abstract")
     except RunFailed as error:
-        say(f"Decisions and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
+        say(f"Decisions, knowledge and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
         return {"started": True, "outcome": "failed", "why": str(error), "usage": error.usage}
-    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "principles/"))]
-    say(f"Decisions and principles: {len(pages)} page{'s' if len(pages) != 1 else ''} written.")
+    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "knowledge/", "principles/"))]
+    counts = {category: sum(page.startswith(category + '/') for page in pages)
+              for category in ('decisions', 'knowledge', 'principles')}
+    say(f"Pages written: {counts['decisions']} decisions · {counts['knowledge']} knowledge · {counts['principles']} principles.")
     return {"started": True, "outcome": "completed", "pages": pages, "usage": out.get("usage")}
 
 

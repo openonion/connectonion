@@ -221,7 +221,7 @@ def test_manual_partial_refusals_are_printed_and_recorded(book, model):
 
 
 @pytest.mark.parametrize('mode,reason', [('invalid', "owner's words"),
-                                        ('scope', 'only decisions/ and principles/'),
+                                        ('scope', 'only decisions/, knowledge/ and principles/'),
                                         ('limit', 'at most 20'), ('invented', "owner's words")])
 def test_manual_applies_nightly_page_checks_and_preserves_queue(book, model, mode, reason):
     backlog(book, 20)
@@ -298,8 +298,8 @@ def test_decisions_are_discoverable_and_help_teaches_the_workflow():
     help_page = CliRunner().invoke(app, ['rem', 'abstract', '--help'])
     assert help_page.exit_code == 0, help_page.output
     for text in ['Usage:', 'Example:', 'Output:', 'Effects:', 'Next:', 'Back:', '--rounds',
-                 'Calls the model once per round.', 'Writes only under decisions/ and principles/.',
-                 'two empty rounds in a row', 'slices set aside for a later retry', 'Speaker unverified.']:
+                 'Calls the model once per round.', 'decisions/, knowledge/ and principles/.',
+                 'two empty rounds in a row', 'clearly headed sections']:
         assert text in help_page.output
 
 

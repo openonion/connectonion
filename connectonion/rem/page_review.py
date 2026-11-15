@@ -1377,14 +1377,15 @@ def size_note(page_chars: int) -> str:
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
-             owner: bool = False, root: Path | None = None, removed_facts=frozenset()) -> list[str]:
+             owner: bool = False, root: Path | None = None, removed_facts=frozenset(),
+             abstract: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
-    if record.startswith('knowledge/'):
+    if record.startswith('knowledge/') and not abstract:
         from .reader_model import PRIVATE, REFERENCE, _destination
         if PRIVATE.search(original.split('\n', 1)[0]) and not PRIVATE.search(candidate.split('\n', 1)[0]):
             errors.append('Preserve topic privacy on the title line')
@@ -1397,7 +1398,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
     errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
-               for h in headings(record, owner) if counts[h] != 1]
+               for h in (() if abstract and record.startswith('knowledge/') else headings(record, owner)) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if owner and re.search(rf'^## {re.escape(NOT_ON_OWNER_PAGE)}[ \t]*$', body, re.M):
         errors.append(f'Section does not belong on the owner page: {NOT_ON_OWNER_PAGE}; '
@@ -1481,6 +1482,47 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += fact_errors(record, candidate, original)
     errors += fact_regressions(record, candidate, original, removed=removed_facts)
     return errors
+
+
+def review_abstract_knowledge(notebook, record, text, original, accepted):
+    """Review learning in the batch's usual page review, preserving topic text exactly."""
+    from .captured_decisions import quote_errors
+    from .decision_authorship import review as review_authorship
+    from .reader_model import REFERENCE, SOURCE, _destination
+    if original and not text.startswith(original):
+        return text, ['Abstract knowledge is append-only; preserve all existing text']
+    added = text[len(original):] if original else text
+    if original and not re.match(r'\s*## [^\n]+\n', added):
+        return text, ['Abstract knowledge must append a clearly headed section']
+    # Review an appendix on its own: its nested headings become normal sections.
+    candidate = ('# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
+                 if original else text)
+    drawn = re.search(r'(?ms)^## Drawn from\n(.*?)(?=^## |\Z)', prose(candidate))
+    records = {_destination(record, raw) for _, raw in REFERENCE.findall(drawn[1])} if drawn else set()
+    allowed = set(notebook.list()) | set(accepted)
+    records = {path for path in records if path in allowed and path.startswith(('decisions/', 'sessions/', 'projects/'))}
+    errors = [] if drawn else ['Knowledge needs a Drawn from section']
+    if len(records) < 2:
+        errors.append('Knowledge must be drawn from at least two notebook pages in decisions/, sessions/ or projects/')
+    items = []
+    cited = {source for _, source in SOURCE.findall(candidate.partition('\n## Sources\n')[2])}
+    for path in sorted(records):
+        page = accepted[path] if path in accepted else notebook.read(path)
+        sources = {source for _, source in SOURCE.findall(page.partition('\n## Sources\n')[2])}
+        items.append({'role': 'captured-decisions', 'record': path, 'text': page, 'sources': list(sources)})
+        if not sources & cited:
+            errors.append(f'Knowledge must cite an original source from Drawn from page: {path}')
+    if original and set(CITATION.findall(original)) & set(CITATION.findall(candidate)):
+        errors.append('Appended knowledge must use fresh citation numbers')
+    candidate, authorship_errors = review_authorship(notebook.root, candidate)
+    errors += validate(record, candidate, '', items, pages=allowed, root=notebook.root, abstract=True)
+    errors += size_errors(text, original)
+    errors += unquoted_decisions(candidate, decision_page=True) + quote_errors(candidate, items) + authorship_errors
+    if original:
+        appendix = candidate.split('\n', 1)[1]
+        appendix = re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', appendix, flags=re.M)
+        return original + appendix, errors
+    return candidate, errors
 
 
 def fact_errors(record: str, candidate: str, original: str) -> list[str]:

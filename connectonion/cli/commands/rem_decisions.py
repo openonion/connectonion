@@ -19,7 +19,9 @@ def _summary(value):
     noun = "slice" if value['set_aside'] == 1 else "slices"
     deferred = f"{value['set_aside']} {noun} set aside for a later retry · "
     return (f"Done: {len(value['rounds'])} rounds · {value['written']} pages written · {value['refused']} pages refused · {deferred}{ending}"
-            + _line_counts(value) + _skipped(value))
+            + _line_counts(value) + _skipped(value)
+            + f" · Pages: {value['pages']['decisions']} decisions · {value['pages']['knowledge']} knowledge"
+              f" · {value['pages']['principles']} principles")
 
 
 def _line_counts(value):
