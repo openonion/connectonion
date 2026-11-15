@@ -315,6 +315,9 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
     current_status = status(root, include_coverage=False) if today else status(root)
+    # A status plan contains private meetings too; shared snapshots carry neither projection.
+    if not local:
+        current_status.pop('day_plan', None)
     logs = run_logs(root)
     shown_logs = logs[:20]
     translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
@@ -360,6 +363,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None
+    from .day_plan import read as read_day_plan
+    data['day_plan'] = read_day_plan(root, items=data['today_queue']) if local else None
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
     from .fetch_stalls import last_night

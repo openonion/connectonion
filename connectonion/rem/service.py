@@ -754,9 +754,11 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
     from .stages import calendar_status, status as stage_status
+    from .day_plan import status as day_plan_status
     return {"state": state, "tonight": night_summary(root),
             "stages": stage_status(root, config, logs),
             "calendar": calendar_status(root, config),
+            "day_plan": day_plan_status(root, str(today)),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": describe_levels(config),

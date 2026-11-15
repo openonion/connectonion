@@ -74,7 +74,10 @@ def test_catchup_reports_calendar_for_each_round(book, model, monkeypatch):
     assert result.exit_code == 0, result.output
     rows = json.loads(result.stdout)['data']['nights']
     assert len(calls) == len(rows) == 2
-    assert all(row['calendar'] == {'events': 0, 'read': ['google'], 'errors': {}, 'capped': []} for row in rows)
+    assert all({k: v for k, v in row['calendar'].items() if k != 'day_plan'} ==
+               {'events': 0, 'read': ['google'], 'errors': {}, 'capped': []} for row in rows)
+    assert all(row['day_plan'] == row['calendar']['day_plan'] for row in rows)
+    assert all(row['day_plan']['dates'] == ['2026-09-07', '2026-09-08'] for row in rows)
 
 
 def test_catchup_prints_calendar_result_in_each_night(book, model, monkeypatch):
@@ -85,6 +88,7 @@ def test_catchup_prints_calendar_result_in_each_night(book, model, monkeypatch):
     result = invoke(book)
     assert result.exit_code == 0, result.output
     assert '0 calendar events saved' in next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
+    assert 'day plan saved for 2026-09-07 and 2026-09-08' in result.stdout
 
 
 def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monkeypatch):

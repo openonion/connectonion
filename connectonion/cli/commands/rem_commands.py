@@ -2153,11 +2153,14 @@ def make_rem_app(factory):
 
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
+            plan = row.get('day_plan', {})
+            planned = (' · day plan saved for ' + ' and '.join(plan['dates']) if plan.get('dates') else
+                       ' · ' + plan['stopped'] if plan.get('stopped') else '')
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
                            f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
-                           + deepen_text(row) + calendar_text(row))
+                           + deepen_text(row) + calendar_text(row) + planned)
 
         def summary(value):
             count = len(value['nights'])
