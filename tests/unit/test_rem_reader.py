@@ -415,7 +415,6 @@ def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_
     assert out == ["Dina Morrow", "Applied…", "", ""]
 
 
-
 def test_a_persons_relationship_names_stay_inside_and_never_overlap():
     """Names are placed from the widget's width alone: no browser measures them (review on #3033)."""
     src = TEMPLATE.read_text()
@@ -465,6 +464,7 @@ def test_the_card_explains_a_line_by_a_written_link_then_sessions_then_a_mention
     # A written link wins; a project only mentioned on the page but named by two sessions is explained by them;
     # a bare mention is the last resort; the outer ring is reached through; no link at all says nothing.
     assert out == ["orgs/tern.md", "sessions/a.md x2", "orgs/wick.md", "via orgs/tern.md", None]
+
 
 def test_org_company_name_uses_the_most_common_linked_company_fact():
     from connectonion.rem.reader import _org_company_name

@@ -36,7 +36,7 @@ def notebook(root):
         nb.write(f"sessions/{key}.md", f"# Depot {key}\n\n## Facts\n- Date: {day}\n- Agent: Codex\n- Project: [Depot](../projects/depot.md)\n"
                  f"- Folder: /work/depot\n- Session: {key}\n- Turns: 1\n\n## Follow-ups\n- Ask [Ida Voss](../people/ida-voss.md) to {ask}.\n\n"
                  f"## What you typed\n### 09:12\n> Plan the depot.\n\n## Final reply\n> Planned.\n\n## Sources\n- codex:{key}:1\n")
-        nb.write("people/max-hale.md", "# Max Hale\n## Insight\n" + "".join(
+    nb.write("people/max-hale.md", "# Max Hale\n## Insight\n" + "".join(
         f"- Max advises [{name}](../orgs/{name.lower().replace(' ', '-')}.md). [1]\n" for name in ORGS)
         + "\n## Sources\n- [1] gmail:m1 — 2026-01-05 — Max\n")
     for name in ORGS:
@@ -90,7 +90,7 @@ def test_a_person_has_two_rings_and_one_with_many_links_keeps_to_one(reader):
     page = reader(IDA)
     assert page.locator(".gx-rings-svg a.near").count() == 2
     assert page.locator(".gx-rings-svg g.far").get_attribute("aria-label") == "Sol Marek. Person. Yard manager · Through Tern Yard"
-    assert page.locator(".gx-rings-foot > span").first.inner_text() == "2 directly linked"
+    assert page.locator(".gx-rings .gx-local-foot > span").first.inner_text() == "2 directly linked"
     # The widget adds a ring, not words or controls: upstream's heading and foot, and the outer ring is not a row of links.
     assert page.locator(".gx-rings h4").inner_text() == "Local graph"
     assert page.locator(".gx-rings-svg g.far").evaluate("g => g.tagName") == "g"
@@ -103,7 +103,7 @@ def test_a_person_has_two_rings_and_one_with_many_links_keeps_to_one(reader):
     page.goto(page.url.split("#")[0] + "#r=people%2Fmax-hale.md")
     page.locator(".gx-rings-svg a.near").nth(6).wait_for()
     assert page.locator(".gx-rings-svg g.far").count() == 0
-    assert page.locator(".gx-rings-foot > span").first.inner_text() == "7 directly linked"
+    assert page.locator(".gx-rings .gx-local-foot > span").first.inner_text() == "7 directly linked"
     # An organisation's page is left to its own design (#2992, #3036): the person's widget is not drawn there.
     page.goto(page.url.split("#")[0] + "#r=orgs%2Ftern-yard.md")
     page.locator("h1", has_text="Tern Yard").wait_for()

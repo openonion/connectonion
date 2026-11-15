@@ -2740,9 +2740,6 @@
   .gx-rings-svg a.centre circle { fill: var(--well); stroke: var(--rule); stroke-width: 1; }
   .gx-rings-svg a.centre text { font: var(--w-bold) var(--s-meta) var(--font); fill: var(--ink); stroke: none; }
   .gx-rings-svg a.centre .g { fill: var(--ink); }
-  .gx-rings-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
-  .gx-rings-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .gx-rings-foot a:hover { color: var(--ink) !important; }
   /* The card is Related pages' own entry, floated on N3's top layer. */
   .gx-rings { position: relative; }
   .gx-rings-card { position: absolute; z-index: 3; left: 0; right: 0; padding: 12px 14px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3);
@@ -13189,7 +13186,7 @@ function graphRings(r) {
   const svg = svgEl("svg", { class: "gx-rings-svg", width: W, height: Math.round(tall), viewBox: `0 ${top.toFixed(1)} ${W} ${tall.toFixed(1)}`, role: "img", "aria-label": graphT("Local graph") },
     [svgEl("g", { class: "gx-rings-lines" }, lines), ...marks, localCentre(centre, pos.get(centre.id))]);
   const section = el("section", { class: "gx-rings" }, [head(), svg,
-    el("div", { class: "gx-rings-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }),
+    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }),
       el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })]), el("div", { class: "gx-rings-card" })]);
   // Drawn once, in viewBox units: CSS scales the picture, marks and names together, to the width it is shown at.
   localWire(section, r, ring, far);
@@ -13274,6 +13271,7 @@ function localLabel(name) {
   return svgEl("text", { class: name.quiet ? "quiet" : "", "text-anchor": name.anchor, x: name.x.toFixed(1), y: name.y.toFixed(1) }, [document.createTextNode(name.text)]);
 }
 function localMark(n, p, size, far, says, name) {
+  // An outer mark takes no tab stop on purpose: the keyboard lights it from the first-ring mark it is reached through.
   const at = far ? { class: "far", role: "img" } : { class: "near", href: localHref(n) };
   return svgEl(far ? "g" : "a", { ...at, "data-id": n.id, "aria-label": says }, [
     svgEl("circle", { class: "hit", cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: far ? 11 : 14 }),
