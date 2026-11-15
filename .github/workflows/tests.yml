@@ -23,6 +23,7 @@ jobs:
       browser: ${{ steps.paths.outputs.browser }}
       egress: ${{ steps.paths.outputs.egress }}
       e2e: ${{ steps.paths.outputs.e2e }}
+      reader: ${{ steps.paths.outputs.reader }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -80,12 +81,16 @@ jobs:
               'connectonion/cli/commands/auth', 'connectonion/cli/commands/copy',
               'connectonion/cli/commands/doctor', 'connectonion/cli/co_ai/',
               'connectonion/useful_tools/shell', 'connectonion/useful_skills/',
-              'connectonion/cli/templates/', 'connectonion/rem/reader',
-              'connectonion/rem/service.py', 'connectonion/rem/vendor/',
-              'docs/.package-ignore', 'scripts/check_rem_reader_snapshot.py',
+              'connectonion/cli/templates/', 'docs/.package-ignore',
+          )) for p in paths)
+          # The reader's own files reach one native step, its Windows snapshot:
+          # they start that job alone, not the browser and first-run jobs.
+          reader = e2e or any(p.startswith((
+              'connectonion/rem/reader', 'connectonion/rem/service.py',
+              'connectonion/rem/vendor/', 'scripts/check_rem_reader_snapshot.py',
           )) for p in paths)
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              for name, affected in (('browser', browser), ('egress', egress), ('e2e', e2e)):
+              for name, affected in (('browser', browser), ('egress', egress), ('e2e', e2e), ('reader', reader)):
                   print(f'{name}={str(not pr or affected).lower()}', file=output)
           PY
 
@@ -109,13 +114,13 @@ jobs:
       # One pure-Python wheel for both native systems, built from this exact
       # checkout. Reusing it must never reuse an older commit's package bytes.
       - name: Build the native candidate wheel once
-        if: steps.paths.outputs.e2e == 'true'
+        if: steps.paths.outputs.reader == 'true'
         run: |
           uv pip install --system build
           python -m build --wheel
 
       - name: Share the candidate wheel
-        if: steps.paths.outputs.e2e == 'true'
+        if: steps.paths.outputs.reader == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-wheel
@@ -126,10 +131,12 @@ jobs:
   # Python runs it in parallel shards. scripts/ci_test_shard.py splits by
   # file, balanced by tests/ci_durations.json: a 50-line script instead of
   # pytest-split, because that plugin makes every shard collect the whole suite.
-  # Inside a shard, -n logical starts one worker per vCPU (auto counted physical
-  # cores: two of four) and --dist worksteal hands out single tests, as
-  # `make test` always has; --dist loadfile pinned the largest file
-  # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
+  # Inside a shard, four pytest processes run at once, one per vCPU, each with
+  # a quarter of the shard's files by the same weights. xdist (-n logical) made
+  # each of its four workers collect every file of the shard first: 22 to 44 s
+  # of a 51 to 95 s step in run 43776663031. A file too heavy for one process
+  # is cut into parts by the shard script, which is what --dist worksteal was
+  # for (test_cli_tips_name_real_commands.py, 150 s traced, on one worker). No more
   # shards than needed: the free plan runs 20 jobs at once across the whole org.
   # PRs run only 3.12, in twelve shards. The count is fixed, and this job waits
   # for no other: behind `needs: lockfile` every shard started 40 s after the
@@ -185,33 +192,46 @@ jobs:
           # Coverage is traced on one interpreter: the report is the same on
           # all of them and tracing slows the run. Each 3.12 shard writes its
           # own data file; the coverage job combines them and gates the total.
-          COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+          COVERAGE_DATA: .coverage.shard-${{ matrix.shard }}
           # sys.monitoring (coverage 7.4+, Python 3.12+) instead of a trace
           # function: line coverage, measured the same, at a fraction of the cost.
           COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
           SHARD_COUNT: ${{ github.event_name == 'pull_request' && 12 || matrix.python-version == '3.11' && 6 || 8 }}
-          # pytest holds its header in a pipe buffer until it fills; unbuffered,
-          # the log's timestamps separate collection from the tests themselves.
-          PYTHONUNBUFFERED: "1"
+          SHARD: ${{ matrix.shard }}
         run: |
-          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} "$SHARD_COUNT") \
-            -n logical --dist worksteal --tb=short \
-            -m "not slow and not real_api and not network" \
-            -o junit_family=xunit1 --junitxml=junit.xml \
-            $COVERAGE_ARGS
+          pids=()
+          for part in 1 2 3 4; do
+            COVERAGE_FILE="$COVERAGE_DATA-$part" \
+              pytest $(python scripts/ci_test_shard.py $(( (SHARD - 1) * 4 + part )) $(( SHARD_COUNT * 4 ))) \
+              --tb=short -m "not slow and not real_api and not network" \
+              -o junit_family=xunit1 --junitxml="junit-$part.xml" \
+              $COVERAGE_ARGS > "pytest-$part.log" 2>&1 &
+            pids+=($!)
+          done
+          # Every process is waited for and every log printed before the step
+          # fails: one red quarter must not hide another's result.
+          failed=0
+          for part in 1 2 3 4; do
+            wait "${pids[part - 1]}" || failed=1
+            echo "::group::pytest process $part of 4"
+            cat "pytest-$part.log"
+            echo "::endgroup::"
+            tail -n 1 "pytest-$part.log"
+          done
+          exit "$failed"
 
       - name: Upload this shard's coverage data
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-data-${{ matrix.shard }}
-          path: .coverage.shard-${{ matrix.shard }}
+          path: .coverage.shard-${{ matrix.shard }}-*
           include-hidden-files: true
           if-no-files-found: error
 
       # Per-test times, only for refreshing tests/ci_durations.json
-      # (python scripts/ci_test_shard.py --record junit-*/junit.xml), so a
+      # (python scripts/ci_test_shard.py --record junit-*/junit-*.xml), so a
       # flaky upload (ECONNRESET in run 42656357103) does not fail the shard.
       - name: Upload this shard's test times
         if: always()
@@ -219,7 +239,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: junit-${{ matrix.python-version }}-${{ matrix.shard }}
-          path: junit.xml
+          path: junit-*.xml
           retention-days: 14
           if-no-files-found: ignore
 
@@ -227,9 +247,9 @@ jobs:
   # tree. Only native jobs filtered out by paths may be skipped. Failures and
   # cancellations stay red, including when a dependency causes another skip.
   # Combining the two artifact checks here saves two runner allocations without
-  # removing either gate: a PR has 18 jobs, at most 24 with all native paths.
+  # removing either gate: a PR has 18 jobs, at most 25 with all native paths.
   tests-passed:
-    needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, windows-first-run, macos-e2e]
+    needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, windows-first-run, windows-rem-reader, macos-e2e]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -245,7 +265,8 @@ jobs:
           jobs = json.loads(os.environ['NEEDS'])
           filters = jobs['lockfile']['outputs']
           optional = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
-                      'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'macos-e2e': 'e2e'}
+                      'windows-e2e': 'e2e', 'windows-first-run': 'e2e',
+                      'windows-rem-reader': 'reader', 'macos-e2e': 'e2e'}
           for name, job in jobs.items():
               result = job['result']
               print(f'{name}: {result}')
@@ -286,8 +307,10 @@ jobs:
         run: |
           ls .coverage.shard-*
           coverage combine .coverage.shard-*
-          coverage xml
+          # Every shard waits for this job: write the XML beside the gate, not before it.
+          coverage xml -q &
           coverage report --skip-covered --show-missing --fail-under=78
+          wait $!
 
       - name: Upload the coverage report
         if: always()
@@ -510,9 +533,6 @@ jobs:
         run: |
           co --version || exit /b 1
           python -m connectonion.cli.main --version || exit /b 1
-
-      - name: REM reader opens its private snapshot on Windows
-        run: python scripts/check_rem_reader_snapshot.py
 
       - name: patchright CLI is included and runnable
         run: |
@@ -835,6 +855,60 @@ jobs:
         run: |
           $log = Join-Path $env:USERPROFILE ".co\browser.log"
           if (Test-Path $log) { Get-Content $log } else { Write-Host "no browser.log" }
+
+  # The REM reader on Windows, from the wheel. Its own job, so a change to the
+  # reader waits for one three-second step and not for a real browser.
+  windows-rem-reader:
+    needs: lockfile
+    if: needs.lockfile.outputs.reader == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Recover the candidate wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: native-wheel
+          path: dist
+
+      - name: Restore the Windows dependency environment
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}\wheel-env
+          key: windows-wheel-env-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install from the wheel like a real user (not editable)
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP "wheel-env"
+          if (!(Test-Path "$venv\Scripts\python.exe")) {
+            uv venv --seed $venv
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          # Resolve dependencies every run, even on a cache hit. Replace only the
+          # project distribution unconditionally; never test a cached old wheel.
+          uv pip install --python "$venv\Scripts\python.exe" --reinstall-package connectonion $whl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "$venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: REM reader opens its private snapshot on Windows
+        run: python scripts/check_rem_reader_snapshot.py
 
   # The macOS release path is distinct from Windows: it uses the POSIX Unix
   # socket transport and is a common place for packaging or first-launch

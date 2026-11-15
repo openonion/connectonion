@@ -1,10 +1,11 @@
 """Split the test files into CI shards, balanced by how long each file takes.
 
     python scripts/ci_test_shard.py 3 6          # the pytest arguments shard 3 of 6 runs
-    python scripts/ci_test_shard.py --record junit/*.xml
+    python scripts/ci_test_shard.py --record junit-*/junit-*.xml
 
 Files, not single tests, are split: each shard collects only its own files
-(collecting the whole suite costs every shard ~40s). The longest file goes to
+(collecting the whole suite costs every shard ~40s). CI asks for four times
+as many shards as it has jobs and runs four of them at once in each job. The longest file goes to
 the least-loaded shard first. Weights come from tests/ci_durations.json; a
 file with no time recorded there weighs the median. Refresh the weights from the
 `junit-*` artifacts of any CI run with --record.

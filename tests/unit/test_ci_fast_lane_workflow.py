@@ -17,7 +17,8 @@ WORKFLOWS = {name: yaml.safe_load((ROOT / f'.github/workflows/{name}.yml').read_
 JOBS = WORKFLOWS['tests']['jobs']
 PR_SHARDS = 12
 NATIVE = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
-          'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'macos-e2e': 'e2e'}
+          'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'windows-rem-reader': 'reader',
+          'macos-e2e': 'e2e'}
 
 
 def step(job, name):
@@ -77,8 +78,11 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
     assert matrix['exclude'] == [{'python-version': '3.11', 'shard': 7},
                                  {'python-version': '3.11', 'shard': 8}]
     command = step(JOBS['test'], "Run this shard's test files")
-    assert 'scripts/ci_test_shard.py' in command['run']
-    assert '-n logical --dist worksteal' in command['run']
+    # Four processes a job, each a shard of its own: no xdist worker collects another's files.
+    assert 'scripts/ci_test_shard.py $(( (SHARD - 1) * 4 + part )) $(( SHARD_COUNT * 4 ))' in command['run']
+    assert 'for part in 1 2 3 4' in command['run'] and '--dist' not in command['run']
+    assert 'COVERAGE_FILE="$COVERAGE_DATA-$part"' in command['run']
+    assert step(JOBS['test'], "Upload this shard's coverage data")['with']['path'] == '.coverage.shard-${{ matrix.shard }}-*'
     assert '--cov=connectonion --cov-report=' in command['env']['COVERAGE_ARGS']
     assert 'not slow and not real_api and not network' in command['run']
     assert JOBS['cli-help-audit']['strategy']['matrix']['shard'] == [1, 2, 3, 4]
@@ -109,9 +113,11 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
     ('connectonion/cli/typer_groups.py', (True, True, True)),
     ('connectonion/core/usage.py', (True, True, True)),
     ('connectonion/cli/commands/init.py', (False, False, True)),
-    ('connectonion/rem/reader.py', (False, False, True)),
-    ('connectonion/rem/vendor/d3.js', (False, False, True)),
-    ('scripts/check_rem_reader_snapshot.py', (False, False, True)),
+    ('connectonion/rem/reader.py', (False, False, False)),
+    ('connectonion/rem/service.py', (False, False, False)),
+    ('connectonion/rem/vendor/d3.js', (False, False, False)),
+    ('scripts/check_rem_reader_snapshot.py', (False, False, False)),
+    ('docs/.package-ignore', (False, False, True)),
     ('tests/e2e/cli/test_browser_daemon.py', (True, True, True)),
     ('tests/conftest.py', (True, True, True)),
     ('tests/unit/conftest.py', (True, True, True)),
@@ -123,7 +129,11 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
 def test_ci_filters_include_native_sources_tests_dependencies_and_packaging(monkeypatch, tmp_path, path, expected):
     actual = native_paths(monkeypatch, tmp_path, [path])
     assert [actual[name] == 'true' for name in ('browser', 'egress', 'e2e')] == list(expected)
-    assert set(actual) == {'browser', 'egress', 'e2e'}
+    assert set(actual) == {'browser', 'egress', 'e2e', 'reader'}
+    # The reader's Windows snapshot runs for its own files and wherever the wheel jobs run.
+    own = path.startswith(('connectonion/rem/reader', 'connectonion/rem/service.py',
+                           'connectonion/rem/vendor/', 'scripts/check_rem_reader_snapshot.py'))
+    assert (actual['reader'] == 'true') == (expected[2] or own)
 
 
 @pytest.mark.parametrize('event', ['push', 'workflow_call', 'workflow_dispatch'])
@@ -181,7 +191,7 @@ def shard_module():
     return module
 
 
-@pytest.mark.parametrize('splits', [6, 8, PR_SHARDS])
+@pytest.mark.parametrize('splits', [6 * 4, 8 * 4, PR_SHARDS * 4])
 def test_ci_duration_shards_are_deterministic_balanced_and_run_every_test_file_once(splits):
     module = shard_module()
     groups = [module.shard(i, splits) for i in range(1, splits + 1)]
@@ -213,7 +223,7 @@ def test_ci_duration_shards_are_deterministic_balanced_and_run_every_test_file_o
     assert all((weights.get(path) or default) / len(cut.get(path, [1])) <= share / 2 + 0.01
                for path in module.test_files())
     assert cut  # today's suite has files this heavy; without them the option goes untested
-    assert '--record junit-*/junit.xml' in (ROOT / '.github/workflows/tests.yml').read_text()
+    assert '--record junit-*/junit-*.xml' in (ROOT / '.github/workflows/tests.yml').read_text()
 
 
 def test_ci_parts_of_a_cut_file_run_each_of_its_tests_exactly_once(tmp_path):
@@ -264,10 +274,12 @@ def test_ci_uv_caches_use_the_lock_and_every_external_action_stays_pinned():
 def test_ci_windows_always_installs_the_current_shared_wheel_over_the_cached_environment():
     wheel = step(JOBS['lockfile'], 'Share the candidate wheel')
     assert wheel['with']['name'] == 'native-wheel'
-    for name in ('windows-e2e', 'windows-first-run', 'macos-e2e'):
+    assert all(step(JOBS['lockfile'], name)['if'] == "steps.paths.outputs.reader == 'true'"
+               for name in ('Build the native candidate wheel once', 'Share the candidate wheel'))
+    for name in ('windows-e2e', 'windows-first-run', 'windows-rem-reader', 'macos-e2e'):
         assert step(JOBS[name], 'Recover the candidate wheel')['with']['name'] == 'native-wheel'
         assert 'python -m build' not in str(JOBS[name])
-    for name in ('windows-e2e', 'windows-first-run'):
+    for name in ('windows-e2e', 'windows-first-run', 'windows-rem-reader'):
         cached = step(JOBS[name], 'Restore the Windows dependency environment')
         assert "hashFiles('uv.lock')" in cached['with']['key']
         assert 'steps.python.outputs.python-version' in cached['with']['key']
@@ -277,9 +289,10 @@ def test_ci_windows_always_installs_the_current_shared_wheel_over_the_cached_env
         assert 'GITHUB_PATH' in install['run']
 
 
-def test_ci_the_two_windows_jobs_together_keep_every_real_user_step():
+def test_ci_the_windows_jobs_together_keep_every_real_user_step():
     # windows-e2e was one job of 158 s; its steps are split, none dropped.
-    names = [s['name'].split(' — ')[0].split(' (')[0] for name in ('windows-e2e', 'windows-first-run')
+    names = [s['name'].split(' — ')[0].split(' (')[0]
+             for name in ('windows-e2e', 'windows-first-run', 'windows-rem-reader')
              for s in JOBS[name]['steps'] if 'run' in s]
     assert sorted(set(names)) == sorted([
         'Install from the wheel like a real user', 'CLI is discoverable from a plain shell',
