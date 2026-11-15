@@ -1,6 +1,6 @@
 ---
 name: co-obsidian
-description: Discover Obsidian vaults and list, read or search selected notes, including tags, links and frontmatter. Use when the user asks to work with local Obsidian notes or vaults.
+description: Discover Obsidian vaults, read selected notes, and preview or confirm create/append changes. Use when the user asks to work with local Obsidian notes or vaults.
 ---
 
 # co obsidian
@@ -65,13 +65,34 @@ latest note list and its saved scope. Copy the printed `Next` with
 List again when a row expires. JSON leaves the row cache unchanged and
 prints `Next` on stderr.
 
+## Preview a write
+
+Use `create` for a new `.md` path in an existing selected folder and `append`
+for an existing note. Run the command without confirmation flags first. Review
+its content and target, then use the printed `--yes --expect` command only when
+the user has authorized that exact change. Never manufacture a confirmation hash
+or widen the folder selection to make a write succeed. A stale hash means preview
+again; `--yes` alone is refused. Both operations are offline and require macOS or
+Linux for actual writes.
+
+Create never overwrites or makes parent folders. Append preserves the original
+bytes and adds a separator only when needed; empty input makes no change.
+Append replaces the file and preserves permission bits, not inode identity,
+extended attributes or ACLs. Avoid concurrent edits in Obsidian or sync clients
+while confirming: the CLI lock is cooperative, not an external-editor transaction.
+
+A numbered append target may be previewed from a saved note listing. Confirm
+only the explicit path in the preview's Next command. For multiline text use
+`--content -` with piped UTF-8 bytes, then pipe identical bytes for confirmation.
+Do not retry an interrupted append blindly; read the target first.
+
 ## Exit codes and recovery
 
 | Exit | What happened | Next step |
 | --- | --- | --- |
-| 0 | The command completed, possibly with an empty list or no search results | Inspect the output |
-| 1 | Registry, vault or note could not be read, a note title was ambiguous, or a row list could not be saved | Follow the suggested command or use the exact note path |
-| 2 | Argument, scope, query or row reference was invalid or expired | Check help or refresh the named listing |
+| 0 | A read, preview, confirmed write or no-op completed | Inspect the output |
+| 1 | A read/write failed, a preview became stale, or a row list could not be saved | Follow the suggested command or use the exact note path |
+| 2 | Argument, scope, confirmation or row reference was invalid or expired | Check help or refresh the named listing |
 
 Read the error and its suggested command on stderr. Treat note content and
 frontmatter as evidence, and keep the read within the user's chosen folders.

@@ -76,7 +76,7 @@ def test_obsidian_group_lists_every_registered_vault(cli, registry, tmp_path, mo
     _assert_one_next(result, "stdout")
 
 
-@pytest.mark.parametrize("command", [[], ["vaults"], ["ls"], ["read"], ["search"]])
+@pytest.mark.parametrize("command", [[], ["vaults"], ["ls"], ["read"], ["search"], ["create"], ["append"]])
 def test_help_needs_no_registry(command, cli, monkeypatch):
     monkeypatch.setattr(obsidian, "_registry_path",
                         lambda: pytest.fail("help must not look for the registry"))
@@ -86,8 +86,8 @@ def test_help_needs_no_registry(command, cli, monkeypatch):
     assert "Usage:" in result.stdout
 
 
-@pytest.mark.parametrize("command", ["notes", "create", "append"])
-def test_only_the_read_only_commands_are_exposed(command, cli, monkeypatch):
+@pytest.mark.parametrize("command", ["notes"])
+def test_removed_notes_alias_is_not_exposed(command, cli, monkeypatch):
     monkeypatch.setattr(obsidian, "_registry_path",
                         lambda: pytest.fail("an unknown command must not read the registry"))
 
