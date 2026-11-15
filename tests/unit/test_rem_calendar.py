@@ -246,7 +246,7 @@ def test_only_the_owners_own_reader_carries_his_calendar(tmp_path, calendars):
     assert snapshot(root, local=False)['calendar'] is None
 
 
-def _round(root, monkeypatch):
+def _round(root, monkeypatch, *, scheduled=False):
     from connectonion.rem.config import prepare
     from connectonion.rem.daily import run_daily
     prepare(root)
@@ -254,7 +254,7 @@ def _round(root, monkeypatch):
     monkeypatch.setattr('connectonion.rem.daily.subscriptions', lambda root: {})
     drafted = []
     monkeypatch.setattr('connectonion.rem.daily._draft_replies', lambda *args: drafted.append(True))
-    result = run_daily(root, maintain=lambda root: {'outcome': 'no_change'},
+    result = run_daily(root, scheduled=scheduled, maintain=lambda root, **kw: {'outcome': 'no_change'},
                        investigate_one=lambda *args, **kw: {'changed': [], 'usage': {}})
     return result, drafted
 
@@ -313,3 +313,144 @@ def test_a_cap_that_skipped_events_is_said_in_words(tmp_path, calendars, monkeyp
     calendar.save_upcoming(tmp_path, NIGHT)  # Google answers its cap of 3, Outlook 2
     read = {row['name']: row for row in calendar.upcoming(tmp_path, [], '')['read']}
     assert read['Google Calendar']['capped'] == 3 and 'capped' not in read['Outlook']
+
+
+@pytest.mark.parametrize('path', ['scheduled sync', 'exec round', 'codex_exec', 'native round'])
+@pytest.mark.parametrize('fault', [None, TimeoutError('offline'), AttributeError('broken calendar adapter')])
+def test_every_background_path_saves_calendar_once_outside_writer_lock(tmp_path, monkeypatch, calendars, path, fault):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec, depth, native, runner, schedule, service
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import read_json, state_path, write_json
+
+    prepare(tmp_path)
+    answers, asked = calendars
+    if fault:
+        answers.update(google=fault, microsoft=fault)
+    saved, original = [], calendar.save_upcoming
+
+    def save(root, moment, zone):
+        assert not _locked(state_path(root, 'maintenance.lock'))
+        saved.append(moment)
+        return original(root, moment, zone)
+
+    monkeypatch.setattr(calendar, 'save_upcoming', save)
+    monkeypatch.setattr(depth, 'slot', lambda *a, **kw: {'rounds': [], 'stopped': ''})
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda *a: False)
+    cursor = {'started_at': NIGHT.isoformat(), 'run': {'id': 'fixture'}, 'done': False}
+    tasks = iter([{'outcome': 'task', 'id': 'fixture', 'stage': 'abstract',
+                   'instructions': 'fixture', 'material': str(tmp_path)},
+                  {'outcome': 'done', 'reason': 'round done'}])
+
+    def next_task(root, **options):
+        task = next(tasks)
+        current = read_json(state_path(root, 'round.json'), cursor)
+        write_json(state_path(root, 'round.json'), {**current, 'done': task['outcome'] == 'done'})
+        return task
+
+    monkeypatch.setattr(native, '_next_task', next_task)
+    monkeypatch.setattr(native, 'submit', lambda *a, **kw: {'outcome': 'accepted'})
+    monkeypatch.setattr(runner, 'run_task', lambda *a, **kw: {})
+    if path == 'scheduled sync':
+        result, _ = _round(tmp_path, monkeypatch, scheduled=True)
+        report = result['maintenance']['calendar']
+    elif path == 'exec round':
+        result = schedule.exec_round(tmp_path, scheduled=False)
+        report = result.get('calendar')
+        assert result['outcome'] == 'done'
+    elif path == 'codex_exec':
+        monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+        monkeypatch.setattr(codex_exec, '_reap_orphan_maintenance', lambda *a: [])
+
+        def run(command, **options):
+            native.next_task(tmp_path)
+            native.next_task(tmp_path)
+            return CompletedProcess(command, 0)
+
+        assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
+        report = read_json(state_path(tmp_path, 'last-turn.json'), {}).get('calendar')
+    else:
+        native.next_task(tmp_path)
+        native.next_task(tmp_path)
+        report = read_json(state_path(tmp_path, 'round.json'), {}).get('calendar')
+    assert len(saved) == 1, f'{path} must save once per round'
+    assert len(asked) == 2, 'each connected provider is asked once'
+    assert report['events'] == (0 if fault else 4)
+    faults = [run for run in service.run_logs(tmp_path) if run.get('phase') == 'calendar']
+    assert len(faults) == (2 if isinstance(fault, AttributeError) else 0)
+    assert 'traceback' not in json.dumps(report)
+
+
+@pytest.mark.parametrize('saved, expected', [
+    (None, 'Calendars: never read'),
+    ({'read_at': {}, 'events': [], 'errors': {}}, 'Calendars: no calendar is connected'),
+    ({'read_at': {}, 'events': [], 'errors': {'google': {'reason': 'timeout'}}}, 'Calendars: never read'),
+    ({'read_at': {'google': '2026-10-01T23:30:00+00:00'}, 'events': [{}], 'errors': {}},
+     'Calendars: last read 2026-10-02; 1 event saved'),
+    ({'read_at': {'google': '2026-10-01T23:30:00+00:00'}, 'events': [{}, {}], 'errors': {}},
+     'Calendars: last read 2026-10-02; 2 events saved'),
+    ({'read_at': {'google': '2026-10-01T23:30:00+00:00'}, 'events': [], 'errors': {}},
+     'Calendars: last read 2026-10-02; 0 events saved'),
+])
+def test_calendar_status_one_line_from_saved_state_without_network(tmp_path, monkeypatch, saved, expected):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, set_config
+    from connectonion.rem.files import state_path, write_json
+    prepare(tmp_path)
+    set_config(tmp_path, ['schedule.timezone', 'Australia/Sydney'])
+    if saved is not None:
+        write_json(state_path(tmp_path, 'calendar.json'), saved)
+    monkeypatch.setattr(calendar, 'available', lambda *a: pytest.fail('status checked a live account'))
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *a: pytest.fail('status read calendar'))
+    result = CliRunner().invoke(app, ['rem', '--root', str(tmp_path), 'status'])
+    assert result.exit_code == 0, result.output
+    assert [line.strip() for line in result.stdout.splitlines() if line.strip().startswith('Calendars:')] == [expected]
+    assert service.status(tmp_path)['calendar']['text'] == expected
+
+
+def test_calendar_snapshot_save_fault_does_not_fail_exec_or_lose_its_traceback(tmp_path, monkeypatch):
+    from connectonion.rem import native, schedule, service
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path, write_json
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'round.json'), {'started_at': NIGHT.isoformat(), 'done': True})
+    calls = []
+
+    def broken_save(*args):
+        calls.append(True)
+        raise OSError('fixture snapshot write failed')
+
+    monkeypatch.setattr(calendar, 'save_upcoming', broken_save)
+    monkeypatch.setattr(native, 'next_task', lambda *a, **kw: {'outcome': 'done', 'reason': 'daily cap reached'})
+    result = schedule.exec_round(tmp_path, scheduled=False)
+    assert result['outcome'] == 'done' and result['calendar']['errors']['rem']['error'] == 'OSError'
+    assert 'traceback' not in json.dumps(result)
+    [logged] = [run for run in service.run_logs(tmp_path) if run.get('phase') == 'calendar']
+    assert logged['outcome'] == 'failed' and 'fixture snapshot write failed' in logged['error']
+    assert 'Traceback' in logged['error']
+    schedule.exec_round(tmp_path, scheduled=False)
+    assert calls == [True], 'a failed read is still attempted only once in this round'
+
+
+def test_codex_exec_saves_calendar_when_child_only_writes_round_state(tmp_path, monkeypatch, calendars):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec, depth
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import read_json, state_path, write_json
+    prepare(tmp_path)
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_exec, '_reap_orphan_maintenance', lambda *a: [])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda *a: False)
+    monkeypatch.setattr(depth, 'slot', lambda *a, **kw: {'rounds': [], 'stopped': ''})
+
+    def run(command, **options):
+        write_json(state_path(tmp_path, 'round.json'), {'started_at': NIGHT.isoformat(), 'done': True})
+        return CompletedProcess(command, 0)
+
+    assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
+    assert len(calendars[1]) == 2
+    assert read_json(state_path(tmp_path, 'last-turn.json'), {})['calendar']['events'] == 4
+    assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, 0)) == 'completed'
+    assert len(calendars[1]) == 2, 'an unchanged finished round is not read again'

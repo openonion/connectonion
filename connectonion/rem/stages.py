@@ -105,3 +105,20 @@ def status(root, config, logs):
             if rows[-1]['held']:
                 rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
     return rows
+
+
+def calendar_status(root, config):
+    """Calendar freshness from the saved snapshot, without asking a connected account."""
+    from .service import notebook_zone
+    saved = read_json(state_path(root, 'calendar.json'), None)
+    reads = (saved or {}).get('read_at', {})
+    last = _last_run([{'phase': 'calendar', 'started_at': at} for at in reads.values()],
+                     ('calendar',), notebook_zone(config))
+    events = len((saved or {}).get('events', []))
+    if last:
+        detail = f'last read {last}; {events} {"event" if events == 1 else "events"} saved'
+    elif saved is not None and not saved.get('errors'):
+        detail = 'no calendar is connected'
+    else:
+        detail = 'never read'
+    return {'last_read': last, 'events': events, 'text': 'Calendars: ' + detail}

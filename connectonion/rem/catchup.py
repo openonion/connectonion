@@ -119,16 +119,21 @@ def _night(root, night, rows, progress, stage, say):
     from . import schedule
     before = read_json(state_path(root, 'depth.json'), {})
     deepening = {'rounds': [], 'stopped': 'exec interrupted'}
+    calendar = None
     with scope(root, night):
         try:
             result = schedule.exec_round(root, scheduled=False, stage=stage, say=say)
+            calendar = result.get('calendar')
             reason, failed = _stop(result, _counts(root, night), len(rows) + 1)
             deepening = result.get('depth', {'rounds': [], 'stopped': f'exec stopped: {reason or result.get("reason", "")}'})
         finally:  # Include saved slot work even if exec's deepen slot was interrupted.
             cursor = read_json(state_path(root, 'round.json'), {})
             if cursor.get('catchup_night') == night:
                 deepening = cursor.get('depth', deepening)
+                calendar = cursor.get('calendar', calendar)
             row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
+            if calendar is not None:
+                row['calendar'] = calendar
             rows.append(row)
             progress(len(rows), row)
     return reason, failed

@@ -2135,13 +2135,27 @@ def make_rem_app(factory):
             text = f"{count} {'page' if count == 1 else 'pages'} deepened"
             return text + (f" ({value['deepen_reason']})" if value['deepen_reason'] else '')
 
+        def calendar_text(row):
+            saved = row.get('calendar')
+            if saved is None:
+                return ''
+            if saved.get('stopped'):
+                return ' · calendar: ' + saved['stopped']
+            count = saved['events']
+            text = f" · {count} calendar {'event' if count == 1 else 'events'} saved"
+            if saved['errors']:
+                text += f" ({len(saved['errors'])} failed reads)"
+            elif not saved['read']:
+                return ' · no calendar is connected'
+            return text
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
                            f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
-                           + deepen_text(row))
+                           + deepen_text(row) + calendar_text(row))
 
         def summary(value):
             count = len(value['nights'])
