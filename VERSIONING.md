@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc16
+## Current Version: 1.9.6rc17
+Release candidate 1.9.6rc17 for 1.9.6: found on the owner's Mac, where every background round had
+failed since 2026-11-14. A session that names a folder REM may not read no longer stops the round:
+an unreadable folder is not a repository. A turn whose round could not be prepared is recorded as
+failed, and `co rem status` and Today say so in words (#3066). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc17.md).
+
+- 1.9.6rc17 (REM background: an unreadable folder no longer stops the round; failed turns are recorded as failed).
+
+### Previous candidate: 1.9.6rc16
+
 Release candidate 1.9.6rc16 for 1.9.6: found by opening rc15 on a real notebook. The Organisations
 table never prints the not-investigated placeholder as a fact, whichever field or translation
 carried it (#3036, #3037); an organisation whose kind is `company` renders; a long location is
