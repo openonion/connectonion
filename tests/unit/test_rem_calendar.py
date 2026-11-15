@@ -374,6 +374,11 @@ def test_every_background_path_saves_calendar_once_outside_writer_lock(tmp_path,
         native.next_task(tmp_path)
         report = read_json(state_path(tmp_path, 'round.json'), {}).get('calendar')
     assert len(saved) == 1, f'{path} must save once per round'
+    plan = read_json(state_path(tmp_path, 'day-plan.json'), None)
+    assert plan is not None, f'{path} must save the day plan immediately after the calendar'
+    assert plan['saved_at'] == saved[0].isoformat(timespec='seconds')
+    assert len(plan['days']) == 2
+    assert 'day_plan' in report
     assert len(asked) == 2, 'each connected provider is asked once'
     assert report['events'] == (0 if fault else 4)
     faults = [run for run in service.run_logs(tmp_path) if run.get('phase') == 'calendar']

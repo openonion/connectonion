@@ -487,7 +487,7 @@ def deepen_round(root, *, stage=None, say=None):
 
 
 def calendar_round(root, *, native=False):
-    """Save Agenda outside the writer lock; native tasks share one read per round."""
+    """Save Agenda then the day plan; native tasks share one save per round."""
     import traceback
     from .calendar import save_upcoming
     from .config import read_config
@@ -504,13 +504,15 @@ def calendar_round(root, *, native=False):
                 return cursor['calendar']
             cursor['calendar'] = {'stopped': 'calendar read interrupted'}
             write_json(path, cursor)
+    moment = now()
     try:
-        result = save_upcoming(root, now(), notebook_zone(read_config(root)))
+        result = save_upcoming(root, moment, notebook_zone(read_config(root)))
     except Exception as error:  # A failed snapshot must never stop the round, including a save fault.
         result = {'events': 0, 'read': [], 'capped': [], 'errors': {'rem': {
             'reason': 'bug', 'at': now().isoformat(), 'error': type(error).__name__,
             'traceback': traceback.format_exc()}}}
     _log_calendar_faults(root, result)
+    result['day_plan'] = _day_plan_round(root, moment)
     if native:
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             current = read_json(path, {})
@@ -518,6 +520,21 @@ def calendar_round(root, *, native=False):
                 current['calendar'] = result
                 write_json(path, current)
     return result
+
+
+def _day_plan_round(root, moment):
+    """A plan save fault is logged by name and never stops the rest of the night."""
+    import traceback
+    from .day_plan import save
+    from .daily import _reserve
+    from .files import write_json
+    try:
+        return save(root, moment)
+    except Exception as error:  # same background isolation as the calendar snapshot
+        record, path = _reserve(root, 'day-plan', 0, {})
+        record.update(outcome='failed', error=traceback.format_exc(), finished_at=moment.isoformat())
+        write_json(path, record)
+        return {'stopped': f'day plan save failed: {type(error).__name__}'}
 
 
 def _depth_due(root, cursor):

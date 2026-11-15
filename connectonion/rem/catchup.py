@@ -134,6 +134,8 @@ def _night(root, night, rows, progress, stage, say):
             row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
             if calendar is not None:
                 row['calendar'] = calendar
+                if 'day_plan' in calendar:
+                    row['day_plan'] = calendar['day_plan']
             rows.append(row)
             progress(len(rows), row)
     return reason, failed

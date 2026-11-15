@@ -174,8 +174,14 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner", "profile"}:
+    if not isinstance(schedule, dict) or set(schedule) - {"working_hours"} != {"times", "timezone", "runner", "profile"}:
         raise RemError("Schedule requires times and timezone")
+    if 'working_hours' in schedule:
+        hours = schedule['working_hours']
+        if (not isinstance(hours, dict) or set(hours) != {'start', 'end'}
+                or any(not isinstance(value, str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value)
+                       for value in hours.values()) or hours['start'] >= hours['end']):
+            raise RemError('schedule.working_hours requires start before end, both HH:MM')
     if schedule["profile"] not in PROFILES:
         raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
     if schedule["runner"] not in ("codex-exec", "codex-app"):

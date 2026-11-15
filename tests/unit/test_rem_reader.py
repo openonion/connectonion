@@ -4613,3 +4613,69 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
     assert result['off'] is None and result['offLive']['text'] == '中文版还没好，先看原文'
     for key in ('pending', 'nightly'):
         assert result[key]['text'] == '中文版还没好，先看原文' and result[key]['class'] == 'translation-line'
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language):
+    page = TEMPLATE.read_text()
+    names = ['planWords', 'dayPlanItem', 'dayPlanVisible', 'yourDay']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const byPath = path => ({path, title: 'Mara'}), href = r => '#r=' + encodeURIComponent(r.path);
+      const calendarDay = value => value.slice(0, 10);
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const visit = {kind: 'event', title: 'Visit', time: '10:00', end_time: '11:00',
+        location: 'Harbour Cafe\nBack room', address_missing: true,
+        link: 'https://calendar.test/visit', people: ['people/mara.md']};
+      const proposal = {kind: 'proposal', title: 'Mara', text: 'Send draft', time: '',
+        record: 'people/mara.md', placement: 'no free time today',
+        reasons: [{text: '{name} waiting since {date}', values: {name: 'Mara', date: '2026-11-14'}}]};
+      const REM = {as_of: '2026-11-16', day_plan: {calendar_read: true, calendar_errors: [
+        {name: 'Google Calendar', reason: 'authorization expired', read_at: '2026-11-14T04:00:00Z'},
+        {name: 'Outlook', reason: 'network error', read_at: ''}], days: [
+        {date: '2026-11-16', items: [visit, proposal]},
+        {date: '2026-11-17', items: [{...visit, title: 'First tomorrow', time: '09:00'},
+          {...visit, title: 'Later tomorrow', time: '15:00', location: '24 Later Street'}]}]}};
+      const saved = yourDay();
+      REM.day_plan.calendar_read = false;
+      REM.day_plan.days[0].items = [{...proposal, placement: ''}];
+      const unread = yourDay();
+      REM.as_of = '2026-11-18';
+      console.log(JSON.stringify({saved, unread, stale: yourDay()}));
+    ''')
+    saved = json.dumps(result['saved'], ensure_ascii=False)
+    assert ('今天的安排' if language == 'zh' else 'Your day') in saved
+    assert 'Harbour Cafe\\nBack room' in saved
+    assert ('日历事件中没有地址' if language == 'zh' else 'address not in the calendar event') in saved
+    assert ('今天没有空闲时间' if language == 'zh' else 'no free time today') in saved
+    assert 'https://calendar.test/visit' in saved and '#r=people%2Fmara.md' in saved
+    assert 'First tomorrow' in saved and 'Later tomorrow' in saved and '24 Later Street' in saved
+    assert '2026-11-14' in saved
+    assert ('授权已过期' if language == 'zh' else 'authorization expired') in saved
+    assert ('网络出错' if language == 'zh' else 'network error') in saved
+    assert ('从未' if language == 'zh' else 'never') in saved
+    assert not any(value in saved for value in ['"tag": "button"', 'badge', '"class": "dot"'])
+    unread = json.dumps(result['unread'], ensure_ascii=False)
+    assert ('还没有读取过日历。' if language == 'zh' else 'No calendar has been read yet.') in unread
+    assert ('计划已过期' if language == 'zh' else 'This saved plan is out of date') in json.dumps(result['stale'], ensure_ascii=False)
+    assert page.index('main.appendChild(dayPlan)') < page.index('el("div", { class: "tgrid"', page.index('main.appendChild(dayPlan)'))
+
+
+def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
+    page = TEMPLATE.read_text()
+    function = re.search(r'function dayPlanVisible\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      let threadStates = {};
+      const REM = {today_queue: [{key: 'one', keys: ['one', 'two'], closed: false, reply: {state: 'queued'}}]};
+      const item = {kind: 'proposal', key: 'one', keys: ['one', 'two']};
+      const before = dayPlanVisible(item);
+      threadStates = {one: {state: 'done'}, two: {state: 'ignored'}};
+      const closed = dayPlanVisible(item);
+      delete threadStates.two;
+      const undo = dayPlanVisible(item);
+      REM.today_queue[0].reply.state = 'replied';
+      const replied = dayPlanVisible(item);
+      console.log(JSON.stringify({before, closed, undo, replied, event: dayPlanVisible({kind: 'event'})}));
+    ''')
+    assert result == dict(before=True, closed=False, undo=True, replied=False, event=True)

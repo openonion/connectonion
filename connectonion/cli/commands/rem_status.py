@@ -35,6 +35,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
              *(highlight(row['text']) for row in value.get('stages', [])), "",
              *([highlight(value['calendar']['text']), ""] if value.get('calendar') else []),
+             *([highlight(value['day_plan']['text']), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):

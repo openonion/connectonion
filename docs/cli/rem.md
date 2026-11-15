@@ -1298,6 +1298,40 @@ pinned to that edge: it comes into view with the draft.
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
   and inventories the former All records paths.
+- **Your day** (今天的安排) opens Today above its existing rows (#3058).
+  The night saves `.state/day-plan.json` immediately after `.state/calendar.json`
+  in the same background function, for today and tomorrow in `schedule.timezone`.
+  This is deterministic: it uses saved events and Today's existing ranked items,
+  with no model call, address lookup or calendar writes. To-dos stay in Today;
+  no person, organisation or project page gains tasks.
+  Events and proposals share one time-ordered list. Events include their calendar
+  link, linked attendee pages and the location exactly as the calendar supplied it.
+  A location without a number, a street word (street/st, road/rd, avenue/ave,
+  lane/ln, drive/dr, boulevard/blvd, way, highway/hwy, terrace, crescent, court,
+  place, square, 路/街/巷/道/号), or more than six words also says
+  **address not in the calendar event** (日历事件中没有地址). This is a simple
+  warning rule, not address verification; no location is expanded or guessed.
+  At most five open, active items waiting on you retain Today's ranking. Each
+  links to its source page and explains its deadline, promise or waiting date.
+  Each proposal takes 30 minutes, on half-hour boundaries, using the longest
+  remaining free gap first (earlier gap wins a tie). Working hours default to
+  09:00–18:00; an optional `schedule.working_hours: {start: '09:00', end: '18:00'}`
+  in `config.yaml` overrides them. There is no new settings screen. Overlapping
+  events merge for availability; all-day events occupy the whole working day.
+  Items that cannot fit say **no free time today** (今天没有空闲时间).
+  Tomorrow's first event and every location tomorrow appear below the list.
+  If no calendar has ever been read, one sentence says so and proposals have
+  no suggested times. Saved plans show their date; a stale plan is labelled.
+  The reader uses the saved plan offline. Since there is no `co rem today`
+  command, `co rem status` prints the same plan as one text line, including
+  tomorrow. `co rem catchup` reports the saved plan for each night.
+  Failed calendar reads keep their last-read date and reason beside the plan.
+  Before the first plan save, proposals are untimed; if a calendar was already
+  read, the reader says the day plan has not been saved yet. Marking a proposal
+  done hides it immediately; undo restores it without
+  moving other proposed times. A question from you is not labelled a promise.
+  Dated promises silent and overdue for over 60 days are set aside as Today
+  does; the remaining proposals keep their existing order.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a
