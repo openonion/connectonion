@@ -386,9 +386,11 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .project_material import retained_session_context
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
+                from .source_versions import cited as cited_version
                 context = (instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source, private)
-                           or github_context(root, source) or attachment_context(root, source) or research.get(source))
+                           or github_context(root, source) or attachment_context(root, source)
+                           or cited_version(root, source) or research.get(source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}

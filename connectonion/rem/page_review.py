@@ -2012,6 +2012,18 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
+def _lost_sources(before: str, after: str) -> set[str]:
+    """Source ids the page listed and the rewrite no longer lists.
+
+    A cited version that the rewrite replaced with a newer version of the same
+    record is an update, not a loss: guarding the old one put a superseded due
+    date back beside the new one (source_versions).
+    """
+    from .source_versions import superseded
+    old, new = _listed_sources(before), _listed_sources(after)
+    return old - new - superseded(old, new)
+
+
 def quotes(text: str) -> set[str]:
     """Links may change layout without changing the words the page kept."""
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
@@ -2076,7 +2088,7 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_listed_sources(before) - _listed_sources(after))])
+               for source in sorted(_lost_sources(before, after))])
 
 
 def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
@@ -2096,7 +2108,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         if section == 'Sources' or line in seen:
             continue
         lost_quotes = _lost_quotes(before, after, exempt)
-        lost_sources = _listed_sources(before) - _listed_sources(after)
+        lost_sources = _lost_sources(before, after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
             continue
@@ -2180,7 +2192,7 @@ def shrinkage(before: str, after: str) -> str:
     if len(after) < len(before) * KEEP_SHARE:
         return f'Maintenance shrank the page from {len(before):,} to {len(after):,} characters; kept the old page'
     old = _listed_sources(before)
-    kept = old & _listed_sources(after)
+    kept = old - _lost_sources(before, after)
     if old and len(kept) < len(old) * KEEP_SHARE:
         return f'Maintenance kept {len(kept)} of the page\'s {len(old)} cited sources; kept the old page'
     return ''
