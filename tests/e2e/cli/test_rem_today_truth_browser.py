@@ -81,7 +81,7 @@ def test_the_projects_headline_shouts_only_about_a_live_late_promise(today):
     page.evaluate("""() => {
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-04-14', since: '2026-04-10', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement', promised: []}];
-      location.hash = '#c=projects';
+      location.hash = '#c=projects&v=timeline';
     }""", isolated_context=False)
     lede = page.locator(".pd-lede")
     lede.wait_for()
@@ -281,7 +281,7 @@ def test_a_late_promise_with_a_message_last_week_stays_live_on_today_and_project
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-07-23', since: '2026-07-03', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement',
         sources: [{source: 'gmail:fixture-van'}], promised: []}];
-      location.hash = '#c=projects';
+      location.hash = '#c=projects&v=timeline';
     }""", isolated_context=False)
     lede = page.locator(".pd-lede")
     lede.wait_for()

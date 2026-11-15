@@ -165,10 +165,11 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     headline = page.locator(".night-card .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
-    # The large number is the badge's; the people are its subset, said in words (sprint 14 #4).
+    # The large number is the badge's (sprint 14 #4); the faces beside it are where to start, and no sentence
+    # says so (owner, 2026-11-13, #2994).
     assert int(headline) == page.evaluate("threadCounts().mine", isolated_context=False)
     assert len(people) == faces.count()
-    assert page.locator(".night-card .count-of").inner_text() == f"Start with these {len(people)} people"
+    assert "Start with" not in page.locator(".night-card").inner_text()
     assert page.locator(".deal.on").get_attribute("data-path") == people[0]
     # One raised card: only the dealt card is shown; the others wait behind their faces.
     assert page.locator(".today-brief .qcard:visible").count() == 1
@@ -491,7 +492,9 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     before = int(page.locator(".night-card .count").inner_text())
-    release = "2099-01-01T00:10:00Z"
+    # The Host holds a Send for ten minutes. A decades-long fake hold overflows
+    # the browser timer and keeps replacing Undo before a real click can land.
+    release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
     answers["/rem/approve"] = lambda body: (200, {"release_at": release, "results": [
         {"id": i, "status": "cancelled" if body.get("action") == "undo" else "held", "release_at": release} for i in body["ids"]]})
     card = page.locator(".qcard.open")
@@ -577,7 +580,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     # Each row of the sheet writes its place's full name beside its picture; the rail's short word is not shown twice.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"All records"']
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"Knowledge"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
@@ -815,7 +818,8 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     """Review of #2929: with nothing open, Today shows one sentence and no approve button, so an Undo that brought
     a held reply back had no button to show it in until the page was drawn again."""
     page, calls, answers = today
-    held = {"id": "reply:ines", "kind": "reply", "status": "held", "release_at": "2099-01-01T00:10:00Z",
+    release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
+    held = {"id": "reply:ines", "kind": "reply", "status": "held", "release_at": release,
             "to": "ines@example.test", "subject": "Re: Q3 receipts", "body": "The Q3 receipts are attached."}
     page.evaluate("""held => { REM.live = true; REM.approval_outcomes = []; REM.approval_pending = [held]; REM.today_queue = [];
       for (const r of REM.records) r.text = r.text.replace(/## Open threads[\\s\\S]*?(?=\\n## |$)/, '## Open threads\\nUnknown\\n');

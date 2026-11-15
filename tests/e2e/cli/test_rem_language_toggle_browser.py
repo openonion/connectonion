@@ -16,7 +16,7 @@ from tests.e2e.cli.test_rem_today_fuse_browser import OVERDUE, today  # noqa: F4
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
-VIEWS = ["", "r=people%2Fmara-ostrowski.md", "c=projects", "c=all"]
+VIEWS = ["", "r=people%2Fmara-ostrowski.md", "c=projects", "view=graph"]
 
 
 @pytest.mark.parametrize("width", [1440, 390])

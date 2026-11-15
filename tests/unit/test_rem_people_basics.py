@@ -223,12 +223,13 @@ def test_reader_does_not_label_an_explicit_contact_date_as_map_metadata():
     assert _run_reader_js(script) == [True, False]
 
 
-def test_a_third_partys_group_mail_is_not_contact(tmp_path):
+@pytest.mark.parametrize("size", [2, 5, 40])
+def test_a_third_partys_group_mail_is_not_contact(tmp_path, size):
     """#2951: a venue's notice to forty addresses moved Lena's Last contact past the
     last mail she and the owner actually wrote; someone else's broadcast is not contact."""
     from connectonion.rem import people_basics
     book = archive(tmp_path)
-    group = [ADDRESS, OWNER, *(f"guest{n}@example.test" for n in range(38))]
+    group = [ADDRESS, OWNER, *(f"guest{n}@example.test" for n in range(size - 2))]
     rows = [{"source": "gmail", "id": "notice-before", "date": "2023-06-01T02:00:00Z",
              "from": "events@venue.example.test", "to": group},
             {"source": "gmail", "id": "notice-after", "date": "2026-10-20T02:00:00Z",
@@ -241,3 +242,15 @@ def test_a_third_partys_group_mail_is_not_contact(tmp_path):
     assert parsed["Last contact"][0]["value"] == "2026-10-05"
     cited = parsed["Last contact"][0]["citations"][0]
     assert re.search(rf"^- \[{cited}\] gmail:latest ", book.read(RECORD), re.M)
+
+
+def test_only_third_party_mail_cannot_preserve_a_model_contact_date(tmp_path):
+    from connectonion.rem import people_basics
+    book = archive(tmp_path)
+    state_path(tmp_path, "source-inventory.jsonl").write_text(json.dumps({
+        "type": "mail", "source": "gmail", "id": "notice", "date": "2026-10-20T02:00:00Z",
+        "from": "events@venue.example.test", "to": [ADDRESS, OWNER]}) + "\n")
+    page = book.read(RECORD).replace("- Last contact: Unknown", "- Last contact: 2026-10-20 [1]")
+    book.write(RECORD, page)
+    people_basics.refresh(tmp_path)
+    assert not facts.parse(book.read(RECORD), RECORD)["Last contact"]

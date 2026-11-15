@@ -52,11 +52,12 @@ def page(tmp_path, monkeypatch):
         assert not requests, requests
 
 
-def test_all_records_opens_on_the_graph_and_search_focuses_a_knowledge_entry(page):
+def test_knowledge_opens_the_graph_and_search_focuses_a_knowledge_entry(page):
     page, uri = page
-    page.locator('#nav a[href="#c=all"]').click()
+    page.locator('#nav a[href="#c=knowledge"]').click()
+    page.locator(".knowledge-switch").get_by_role("link", name="Graph").click()
     page.locator(".gx-map canvas").wait_for()
-    assert "4 records linked together" in page.locator(".gx-title").inner_text()
+    assert "Knowledge 1" in page.locator(".gx-legend").inner_text()  # the counts are the legend's, not a heading
     assert page.locator(".gx-panel .gx-open").count() == 0  # the whole map has no green action
     page.locator(".gx-search").fill("thermal")
     page.locator(".gx-results li").first.click()
@@ -102,6 +103,9 @@ def test_person_and_project_pages_carry_a_local_graph_and_their_topics(page):
     assert block.locator(".gx-local-svg a:not(.centre)").count() == 2
     assert block.locator(".gx-topic-line a").inner_text() == "Heat storage"
     page.goto(uri + "#r=projects%2Fcove.md")
+    assert not page.locator(".gx-attach").is_visible()
+    page.locator("details.deep-note > summary").click()
+    assert page.locator(".gx-attach").is_visible()
     assert page.locator(".gx-attach .gx-topic-line a").inner_text() == "Heat storage"
 
 
@@ -113,16 +117,15 @@ def test_the_topic_list_and_graph_follow_the_chinese_interface(page):
     page.locator(".settings-open").click()
     page.locator(".language-switch button[lang=zh]").click()
     page.keyboard.press("Escape")
-    assert page.locator(".gx-topics h1").inner_text() == "1 条知识"
+    assert page.locator(".gx-topics h1").inner_text() == "知识"
     assert page.title() == "知识 · co rem"
     page.goto(uri + "#view=graph")
-    page.locator(".gx-title").wait_for()
-    assert "4 条记录连在一起" in page.locator(".gx-title").inner_text()
-    assert page.locator(".gx-map h1").inner_text() == "全部记录"
-    assert page.locator(".all-switch").inner_text().split() == ["图谱", "列表"]
+    page.locator(".gx-map canvas").wait_for()
+    assert page.locator(".gx-map h1").inner_text() == "知识"
+    assert page.locator(".knowledge-switch").inner_text().split() == ["条目", "图谱"]
 
 
-def test_with_no_topics_the_rail_leaves_them_out_and_the_page_names_the_command(tmp_path, monkeypatch):
+def test_with_no_topics_knowledge_says_rem_files_them_at_night(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from connectonion.rem.config import prepare
     from connectonion.rem.files import Notebook
@@ -139,7 +142,8 @@ def test_with_no_topics_the_rail_leaves_them_out_and_the_page_names_the_command(
             page = browser.new_page(viewport={"width": width, "height": 900}, locale="en-US")
             page.goto(path.as_uri())
             page.locator("#nav a").first.wait_for(state="attached")  # behind a menu at 390
-            assert page.locator('#nav a[href="#c=knowledge"]').count() == 0
+            # #2996: Knowledge is a rail place even before the night files an entry; it holds the graph too.
+            assert page.locator('#nav > a[href="#c=knowledge"]').count() == 1
             page.goto(path.as_uri() + "#c=knowledge")
             page.locator(".gx-filed").wait_for()
             # D-60 (#2910): REM files knowledge itself on its night run; no command to copy.
@@ -151,14 +155,13 @@ def test_with_no_topics_the_rail_leaves_them_out_and_the_page_names_the_command(
         browser.close()
 
 
-def test_the_rail_has_no_graph_entry_and_all_records_comes_last(page):
+def test_the_rail_has_no_graph_entry_and_knowledge_comes_last(page):
     """Owner, 2026-11-09: "我之前不是说了那个 graph，为什么要又有一个新的 graph 呢？" """
     page, uri = page
     labels = [text.split("\n")[0] for text in page.locator("#nav a").all_inner_texts()]
-    assert "Graph" not in labels and "Topics" not in labels
-    assert "Knowledge" in labels
-    # N3: All records ends the rail's six places; the rest of memory waits behind 更多.
-    assert page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")[-1] == "#c=all"
+    assert "Graph" not in labels and "Topics" not in labels and "All" not in labels
+    # #2996: Knowledge ends the rail's places and holds the graph; the rest of memory waits behind 更多.
+    assert page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")[-1] == "#c=knowledge"
     # Activity was the team's invention (D-03): REM's run history is reached from Memory changes only.
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     page.locator('.nav.more').click()
@@ -169,31 +172,22 @@ def test_the_rail_has_no_graph_entry_and_all_records_comes_last(page):
     page.get_by_role("heading", name="Activity", exact=True).wait_for()
 
 
-def test_all_records_switches_between_graph_and_list_and_remembers_it(page):
+def test_knowledge_switches_between_its_entries_and_the_graph(page):
     page, uri = page
-    page.goto(uri + "#c=all")
+    page.goto(uri + "#c=all")  # All records' old address, kept as a bookmark, opens the graph under Knowledge
     page.locator(".gx-map canvas").wait_for()
-    assert page.title() == "All records · co rem"
-    assert page.locator(".gx-map h1").inner_text() == "All records"
-    switch = page.locator(".all-switch")
-    assert switch.get_by_role("button", name="Graph").get_attribute("aria-pressed") == "true"
-    switch.get_by_role("button", name="List").click()
-    page.locator("#main .hits, #main .sheet").first.wait_for()
+    assert page.title() == "Knowledge · co rem"
+    assert page.locator('#nav a.active').get_attribute("href") == "#c=knowledge"
+    switch = page.locator(".knowledge-switch")
+    assert switch.locator('[aria-current="page"]').inner_text() == "Graph"
+    switch.get_by_role("link", name="Entries").click()
+    page.locator(".gx-topics .gx-rows").wait_for()
     assert page.locator(".gx-map").count() == 0
-    assert page.locator("#main h1").inner_text() == "All records"
-    assert page.locator(".all-switch").get_by_role("button", name="List").get_attribute("aria-pressed") == "true"
-    assert "Mara Ostrowski" in page.locator("#main").inner_text()
-    page.reload()
-    page.locator("#main .hits, #main .sheet").first.wait_for()
-    assert page.locator(".gx-map").count() == 0  # the choice is remembered for this viewer
-    # The old address still lands on All records, drawn as the graph.
+    assert page.locator('.knowledge-switch [aria-current="page"]').inner_text() == "Entries"
     page.goto(uri + "#view=graph&focus=knowledge%2Fheat-storage.md")
     page.locator(".gx-map canvas").wait_for()
-    assert page.locator('#nav a.active').get_attribute("href") == "#c=all"
+    assert page.locator('#nav a.active').get_attribute("href") == "#c=knowledge"
     assert page.locator(".gx-panel h2").inner_text() == "Heat storage"
-    page.locator(".all-switch").get_by_role("button", name="Graph").click()
-    page.goto(uri + "#c=all")
-    page.locator(".gx-map canvas").wait_for()
 
 
 def test_a_knowledge_entry_keeps_the_knowledge_name_in_its_crumb_and_title(page):
@@ -201,7 +195,8 @@ def test_a_knowledge_entry_keeps_the_knowledge_name_in_its_crumb_and_title(page)
     page.goto(uri + "#r=knowledge%2Fheat-storage.md")
     assert page.locator(".gx-crumb").inner_text() == "Knowledge"
     page.goto(uri + "#c=knowledge")
-    assert page.locator(".gx-topics h1").inner_text() == "1 knowledge entry"
+    assert page.locator(".gx-topics h1").inner_text() == "Knowledge"
+    assert page.locator(".gx-rows li").count() == 1  # the list counts itself; no "1 knowledge entry" heading
     assert page.title() == "Knowledge · co rem"
 
 
@@ -211,10 +206,10 @@ def test_the_map_never_draws_over_its_own_heading_tabs_or_legend(page):
     page, uri = page
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
-        page.goto(uri + "#c=all")
+        page.goto(uri + "#view=graph")
         page.locator(".gx-map canvas").wait_for()
         canvas = page.locator(".gx-map canvas").bounding_box()
-        for selector in (".gx-head .all-head", ".gx-title", ".gx-bar", ".gx-tabs"):
+        for selector in (".gx-head .knowledge-head", ".gx-bar", ".gx-tabs"):
             box = page.locator(selector).bounding_box()
             assert canvas["y"] >= box["y"] + box["height"], (width, selector, canvas, box)
         if width > 720:

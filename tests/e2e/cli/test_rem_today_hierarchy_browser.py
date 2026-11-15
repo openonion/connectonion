@@ -73,8 +73,7 @@ def test_the_header_and_the_badge_say_the_same_number_and_the_people_are_a_subse
     line = page.locator(".night-card .count-line")
     assert line.locator(".count-words").inner_text() == "things waiting on you"
     assert line.locator(".count-words").is_visible()       # a phone says what the number counts, too
-    if size[0] > 640:
-        assert line.locator(".count-of").inner_text() == f"Start with these {people} people"
+    assert "Start with" not in line.inner_text()  # the faces say where to start (#2994)
 
 
 def _primaries(card):
@@ -228,4 +227,4 @@ def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
     assert page.locator(".deal").count() > 0
     line = page.locator(".night-card .count-line")
     assert line.inner_text().split("\n") == ["0", "Nobody is waiting on you today."]
-    assert line.locator(".count-of").count() == 0
+    assert "Start with" not in line.inner_text()

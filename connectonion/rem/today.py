@@ -186,6 +186,11 @@ def _senders(sources, text, owner, db):
             if address and address not in owner}
 
 
+# These mailboxes multiplex other people's messages. Never offer a bulk stop,
+# even on a custom domain or if the map classified the address as a notice.
+SHARED_NOTIFICATIONS = re.compile(r"^(?:messages[-_.]noreply|notifications|calendar[-_.]notification)@", re.I)
+
+
 def _offered(senders, owner, notices):
     """The one address 忽略 may offer to stop, or ''.
 
@@ -200,7 +205,8 @@ def _offered(senders, owner, notices):
         return ''
     address = next(iter(senders))
     machine = AUTOMATED_SENDER.search(address) or MACHINE.search(address) or BULK.search(address) or address in notices
-    return address if EMAIL.fullmatch(address) and not RELAY.search(address) and machine else ''
+    shared = RELAY.search(address) or SHARED_NOTIFICATIONS.search(address)
+    return address if EMAIL.fullmatch(address) and not shared and machine else ''
 
 
 def _grouped(rows):
@@ -259,7 +265,7 @@ def queue(root, *, records=None, contexts=None, states=None, as_of=None):
             db.row_factory = sqlite3.Row
         rows = _entries(root, records, today, contexts, states, db)
     soon = (today + timedelta(days=3)).isoformat()
-    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] in ('mine', 'theirs')
+    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] == 'mine'
            and (row['due'] <= soon if row['due'] else row['since'] == today.isoformat())]
     pages, morning = set(), []
     for row in rows:

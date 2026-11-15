@@ -129,12 +129,12 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
 # 2. The owner is everyone's hub by definition; ranking him among "most connected" says nothing.
 def test_most_connected_leaves_the_owner_out(reader):
     open_page, _ = reader
-    page = open_page("c=all", language="en")
+    page = open_page("view=graph", language="en")
     page.locator(".gx-panel").wait_for()
     owner = page.evaluate("byPath(REM.owner).title", isolated_context=False)
     degree = page.evaluate("graphDegree(GRAPH.byId.get(GRAPH.nodes.find(n => n.r?.path === REM.owner).id))", isolated_context=False)
     assert degree >= 7  # he would lead the list
-    hubs = page.locator(".gx-panel-body h3", has_text="Most connected").locator("xpath=following-sibling::*").all_inner_texts()
+    hubs = page.locator(".gx-panel-guide .gx-item").all_inner_texts()
     assert hubs and not any(owner in hub for hub in hubs), hubs
 
 
@@ -177,19 +177,18 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
     assert face["x"] + face["width"] <= name["x"]
 
 
-# 6. The org's link counts what Today counts: items waiting on you, never more than Today's own number.
-def test_org_today_link_counts_what_today_counts(reader):
+# 6. Organisation records never project Today's queue, even when obligations change.
+def test_org_record_has_no_today_projection(reader):
     open_page, _ = reader
     page = open_page("r=orgs%2Ffernhill-labs.md", language="en")
-    assert page.locator(".ov-today").inner_text() == "5 things in Today involve Fernhill Labs →"
-    # A promise gone stale is asked about apart and leaves Today's count; it must leave the org's too.
+    assert page.locator(".ov-today").count() == 0
+    assert "Today" not in page.locator("#main").inner_text()
     page.evaluate("""() => {
-      const org = byPath('orgs/fernhill-labs.md'), row = org.obligations.find(row => row.dir === 'mine' && !row.quiet);
-      const old = '2026-03-01';
-      for (const r of [row, ...REM.today_queue.filter(q => q.key === row.key)]) { r.due = old; r.since = old; }
+      for (const r of REM.records) if (r.category === 'orgs') r.obligations = [];
       threadEntries.cached = null; render();
     }""", isolated_context=False)
-    assert page.locator(".ov-today").inner_text() == "4 things in Today involve Fernhill Labs →"
+    assert page.locator(".ov-today").count() == 0
+    assert page.locator(".ov-org-tree [role=tree]").is_visible()
 
 
 # Review: with labelled passages hidden, the card counts and slices only what is shown, and leaves when nothing is.

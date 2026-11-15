@@ -188,7 +188,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .tasks import receipt_for
     from .sessions import mentions, reader_fields
     from .reader_model import (session_detail, organisation_fields, organisation_members,
-                               organisation_obligations, PRIVATE)
+                               organisation_obligations, organisation_logo, PRIVATE)
     notebook = Notebook(root)
     records = []
     paths = [path for category in CATEGORIES if category not in ('sessions', 'logs', 'notes')
@@ -218,6 +218,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
         record.update(organisation_fields(record, record_paths))
+        if record['category'] == 'orgs':
+            record['logo'] = organisation_logo(root, record)
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
             domain = record["title"]
             name = _org_name(domain, record["text"], person_names) or _org_company_name(record["path"], records)

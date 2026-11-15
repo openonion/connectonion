@@ -1051,6 +1051,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         if stripped_ids:
             carried = drop_uncited_sources(carried)
     text = drop_uncited_sources(facts.names_not_addresses(record, text, original))
+    if record.startswith("projects/"):
+        from .project_pages import settle_last_activity
+        # A quote edit need not copy a code-owned date to preserve it. Compute
+        # it before validation too, so a blank model fact is not a regression.
+        text = settle_last_activity(notebook.root, text, items)
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
     if carried:

@@ -83,9 +83,8 @@ def _fill_domains(book, text, addresses, rows, zone):
 def fill(book: Notebook, record: str, text: str, *, addresses=None) -> str:
     """After promotion, fill four Facts using indexed mail. Populated company/zone wins.
 
-    First and Last contact count mail the person or the owner sent, and someone
-    else's mail to at most BROADCAST recipients; the company and time zone still
-    read any mail that carries the address."""
+    First and Last contact count mail the person or the owner sent; company
+    and time zone still read any mail that carries the address."""
     if not record.startswith("people/"):
         return text
     addresses = own_addresses(book, record, text).get(record, set()) if addresses is None else addresses
@@ -101,13 +100,17 @@ def fill(book: Notebook, record: str, text: str, *, addresses=None) -> str:
     zone = notebook_zone(read_config(book.root, validated=False))
     # A third party's notice to forty addresses moved every recipient's Last contact
     # past their own timeline (#2951): someone else's broadcast is not contact.
-    from .fact_extract import BROADCAST
     from .store_messages import owner_addresses
     writers = addresses | owner_addresses(book.root)
-    contact = [row for row in rows if row["sender"].casefold() in writers or len(row["recipients"]) <= BROADCAST]
+    contact = [row for row in rows if row["sender"].casefold() in writers]
     for label, message in zip(("First contact", "Last contact"), (contact[0], contact[-1]) if contact else ()):
         day = datetime.fromisoformat(message["time"]).astimezone(zone).date().isoformat()
         text = _set(text, label, day, message, zone)
+    if rows and not contact:
+        span = facts._bounds(text, "Facts")
+        body = re.sub(r"(?m)^- (First contact|Last contact):[^\n]*$",
+                      r"- \1: Unknown", text[span[0]:span[1]])
+        text = text[:span[0]] + body + text[span[1]:]
     text = timezone_from_location(record, text)
     return _fill_domains(book, text, addresses, rows, zone)
 

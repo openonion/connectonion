@@ -154,9 +154,10 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.goto(page_path.as_uri() + "#view=open")
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
+            assert page.locator('details.deep-note').get_attribute('open') is None
             page.locator('details.deep-note > summary').click()
-            # The local graph links Storage too; follow the link in the memory just opened.
-            page.locator("details.deep-note").get_by_role("link", name="Storage", exact=True).click()
+            # Related trailers sit beside .note inside Full memory, folded by default.
+            page.locator("details.deep-note .aside .related").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")
@@ -404,9 +405,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        # Owner, 2026-11-09: the sidebar keeps no category counts, so the page itself is awaited.
-        page.locator('#nav a[href="#c=all"]').click()
-        page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
+        page.locator('#nav a[href="#c=skills"]').click()
+        page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').wait_for()
+        assert page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.

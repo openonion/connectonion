@@ -578,3 +578,34 @@ def _session_commands(text: str, private: bool) -> list[dict]:
     return [{"text": command, "private": bool(PRIVATE.search(command_line))}
                 for command in re.findall(r"`([^`]+)`", command_line.partition("; notable: ")[2])
                 if private or not PRIVATE.search(command_line)]
+
+
+def organisation_logo(root: Path, record: dict) -> str:
+    """Embed a bounded local raster; external paths and symlink escapes stay blank."""
+    import base64
+    from .facts import _lines, values
+    if record['category'] != 'orgs':
+        return ''
+    logos = values(_lines(record['text']).get('Logo', ''))
+    if not logos or PRIVATE.search(logos[0]['value']):
+        return ''
+    raw = logos[0]['value']
+    link = re.fullmatch(r'!?\[[^\]]*\]\(([^)]+)\)', raw)
+    path = Path(link[1] if link else raw)
+    if path.is_absolute() or '..' in path.parts:
+        return ''
+    target = (root / path).resolve()
+    if not target.is_relative_to(root.resolve()):
+        return ''
+    # A missing enrichment image is an expected state, including during an atomic update.
+    try:
+        if not target.is_file() or target.stat().st_size > 2_000_000:
+            return ''
+        data = target.read_bytes()
+    except OSError:
+        return ''
+    mime = ('image/png' if data.startswith(b'\x89PNG\r\n\x1a\n') else
+            'image/jpeg' if data.startswith(b'\xff\xd8\xff') else
+            'image/gif' if data.startswith((b'GIF87a', b'GIF89a')) else
+            'image/webp' if data[:4] == b'RIFF' and data[8:12] == b'WEBP' else '')
+    return f'data:{mime};base64,{base64.b64encode(data).decode()}' if mime else ''
