@@ -195,6 +195,9 @@ def _run_locked(root, run, lock_fd):
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                          cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
         cursor = read_json(state_path(root, 'round.json'), {})
+        if cursor and cursor != before:
+            from .schedule import calendar_round
+            receipt['calendar'] = calendar_round(root, native=True)
         if result.returncode == 0 and cursor.get('done') and cursor != before:
             from .schedule import finish_exec
             receipt['depth'] = finish_exec(root, {'outcome': 'done', 'reason': 'round done'}).get('depth')

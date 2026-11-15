@@ -64,6 +64,29 @@ def invoke(book, *args, json_out=False):
                                    *(['--json'] if json_out else []), 'catchup', *args])
 
 
+def test_catchup_reports_calendar_for_each_round(book, model, monkeypatch):
+    from connectonion.rem import calendar
+    backlog(book, 40)
+    calls = []
+    monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: calls.append(args) or [])
+    result = invoke(book, '--nights', '2', json_out=True)
+    assert result.exit_code == 0, result.output
+    rows = json.loads(result.stdout)['data']['nights']
+    assert len(calls) == len(rows) == 2
+    assert all(row['calendar'] == {'events': 0, 'read': ['google'], 'errors': {}, 'capped': []} for row in rows)
+
+
+def test_catchup_prints_calendar_result_in_each_night(book, model, monkeypatch):
+    from connectonion.rem import calendar
+    backlog(book, 20)
+    monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: [])
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    assert '0 calendar events saved' in next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
+
+
 def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monkeypatch):
     backlog(book, 60)
     original, rounds = schedule.exec_round, []

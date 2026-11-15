@@ -48,6 +48,13 @@ def test_the_template_names_no_remote_host_and_loads_no_font():
     assert page.count("<link") == 1 and re.findall(r'<link\b[^>]*?\bhref="([^",]*)', page) == ["data:image/svg+xml"]
 
 
+def test_rail_scrolls_before_agenda_pushes_settings_out_of_short_desktop():
+    page = TEMPLATE.read_text(encoding='utf-8')
+    scrolling = re.search(r'@media \(max-height: (\d+)px\) and \(min-width: 641px\) \{ \.rail \{ overflow-y: auto;', page)
+    # Eight places, More, Settings and the owner's face need 712px; 680px must scroll too.
+    assert scrolling and int(scrolling[1]) >= 711
+
+
 def test_mail_facts_sum_a_person_seen_under_two_addresses(tmp_path):
     state = tmp_path / ".state"
     state.mkdir()

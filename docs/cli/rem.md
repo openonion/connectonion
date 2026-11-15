@@ -1249,22 +1249,23 @@ pinned to that edge: it comes into view with the draft.
   block, links), escaped first so no HTML from the model runs; the transcript is kept at `.state/talks/ID/talk.json`.
   Opening it again returns the same conversation.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
-  word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
+  word under it: **Today**, **Waiting on you** (*Waiting*), **Agenda**, **People**,
   **Organisations** (*Orgs*), **Projects**, **Skills**, **All records** (*All*),
   then **More**, and at the foot **Settings** and your face. A short word is
   the start of the place's accessible name (*Orgs* is named "Orgs ·
   Organisations"), so saying the word you see finds it. **More** opens beside
   its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Knowledge, Decisions, Principles, Agenda,
+  window: **Memory changes**, then Knowledge, Decisions, Principles,
   Agent sessions, Opportunities and Works when they hold pages. Your face opens
   your own page and shows **You · name** beside it on hover and on keyboard
   focus. Only **Waiting on you** carries a number; a category's size is not
   something to do. The current place is in ink, in bold, on a raised cell. In a
-  window lower than the rail (656px) the rail itself scrolls, so every place
+  window lower than the rail (712px) the rail itself scrolls, so every place
   stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
   People, Search, More); **More** opens a sheet with every place by its full
-  name, Skills and All records among them, the More list under them with its
-  labels in the same column, and Settings and you at its foot. There is
+  name, Agenda directly after Waiting on you, Skills and All records among them,
+  the More list under them with its labels in the same column, and Settings and
+  you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
@@ -1277,7 +1278,8 @@ pinned to that edge: it comes into view with the draft.
   promise or page links to its page. Open notebook items
   dated before today sit in one line under it, whichever week or month is shown.
   On a phone it is a day-by-day list of the next three weeks. Events come from
-  `.state/calendar.json`, which each night's round writes, outside the writer
+  `.state/calendar.json`, which each background round writes once (scheduled
+  sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
   with a calendar scope: the calendars ticked in Google Calendar; Outlook after
   `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
@@ -1288,6 +1290,11 @@ pinned to that edge: it comes into view with the draft.
   from; anything that is not the provider's failure is a fault in REM, named
   with its exception in the page and in the round's result. Before any night
   the page says no calendar has been read; when none is connected, it says that.
+  When a read found no events, Agenda says when the calendars were last read
+  and that none were found. `co rem status` shows the last read and saved event
+  count, or says that calendars have never been read or none is connected.
+  `co rem catchup` includes the calendar result for each round, with the saved
+  event count and any failed reads in its nightly progress line.
   Only the owner's own reader carries the events; a shared page has none.
 - **Questions & connections** decides each pending review in place in the live
   reader: **Yes** / **No** / **Not sure** on a link, an answer box with **Save

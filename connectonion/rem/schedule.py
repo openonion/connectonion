@@ -486,6 +486,40 @@ def deepen_round(root, *, stage=None, say=None):
     return depth.slot(root, stage=stage or _depth_stage, say=say)
 
 
+def calendar_round(root, *, native=False):
+    """Save Agenda outside the writer lock; native tasks share one read per round."""
+    import traceback
+    from .calendar import save_upcoming
+    from .config import read_config
+    from .daily import _log_calendar_faults
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    from .service import notebook_zone, now
+    path = state_path(root, 'round.json')
+    if native:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            cursor = read_json(path, {})
+            if not cursor:
+                return None
+            if 'calendar' in cursor:
+                return cursor['calendar']
+            cursor['calendar'] = {'stopped': 'calendar read interrupted'}
+            write_json(path, cursor)
+    try:
+        result = save_upcoming(root, now(), notebook_zone(read_config(root)))
+    except Exception as error:  # A failed snapshot must never stop the round, including a save fault.
+        result = {'events': 0, 'read': [], 'capped': [], 'errors': {'rem': {
+            'reason': 'bug', 'at': now().isoformat(), 'error': type(error).__name__,
+            'traceback': traceback.format_exc()}}}
+    _log_calendar_faults(root, result)
+    if native:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            current = read_json(path, {})
+            if _round_identity(current) == _round_identity(cursor):
+                current['calendar'] = result
+                write_json(path, current)
+    return result
+
+
 def _depth_due(root, cursor):
     from .catchup import _counts, number
     if not cursor.get('done') or cursor.get('phase') == 'daily-translation':
@@ -504,6 +538,10 @@ def _round_identity(cursor):
 def finish_exec(root, result, *, stage=None, say=None):
     """Claim one post-round slot without holding the writer lock across worker calls."""
     from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    if result.get('outcome') != 'skipped' and result.get('reason') != 'not due':
+        calendar = calendar_round(root, native=True)
+        if calendar is not None:
+            result = {**result, 'calendar': calendar}
     if result.get('outcome') != 'done' or result.get('reason') != 'round done':
         return result
     path = state_path(root, 'round.json')

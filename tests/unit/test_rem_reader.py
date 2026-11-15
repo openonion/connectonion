@@ -3474,13 +3474,13 @@ def test_the_old_graph_address_lands_on_all_records():
 
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'archive', 'ellipsis', 'settings']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'zap', 'archive', 'ellipsis', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'All records', 'More', 'Settings'],
-           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings'],
+    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Skills', 'All records', 'More', 'Settings'],
+           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Skills', 'All', 'More', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
-           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
+           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '全部记录', '更多', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
@@ -3505,7 +3505,7 @@ def _rail(language):
       nodes.tabbar.querySelector = () => toggle;
       const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
       const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
-      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'knowledge', 'notes']};
+      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'agenda', 'knowledge', 'notes']};
       const byPath = () => ({path: 'people/ada.md', title: 'Ada Example'}), href = r => '#r=' + r.path, route = () => ({});
       const face = name => ({tag: 'span', class: 'face', text: name}), threadCounts = () => ({mine: 2});
       const inCategory = () => [{}], openSettings = () => {}, renderSettings = () => {};
@@ -3543,16 +3543,45 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
     assert you['title'] is None  # its name shows beside it on hover and keyboard focus (#2961), not in a title
     assert [cell['picture'] for cell in cells] == RAIL_PICTURES
     assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
-    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 7
+    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 8
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
     rail = _rail(language)
-    links = [cell['href'] for cell in rail['cells'][:7]]
-    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=all']
-    assert [cell['active'] for cell in rail['cells'][:7]] == [link == '#c=skills' for link in links]
+    links = [cell['href'] for cell in rail['cells'][:8]]
+    assert links == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=all']
+    assert [cell['active'] for cell in rail['cells'][:8]] == [link == '#c=skills' for link in links]
     assert rail['menu'] == ['#view=changes', '#c=knowledge']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_agenda_follows_waiting_in_rail_and_phone_sheet_without_more_duplicate(language):
+    rail = _rail(language)
+    agenda = rail['cells'][2]
+    assert agenda['href'] == '#c=agenda' and agenda['picture'] == 'calendar'
+    assert agenda['word'] == ('日程' if language == 'zh' else 'Agenda')
+    assert '#c=agenda' not in rail['menu']
+    # The phone sheet reuses these cells and displays their full data-name in CSS.
+    assert '.rail[data-open="true"] .nav::after { content: attr(data-name);' in TEMPLATE.read_text()
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('saved', [False, True])
+def test_empty_agenda_explains_never_read_or_last_read_with_no_events(language, saved):
+    page = TEMPLATE.read_text()
+    translations = re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0]
+    data = {'read': [{'name': 'Google Calendar', 'at': '2026-11-15T02:30:00Z'}], 'errors': [], 'events': []} if saved else None
+    result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaNote')
+        + '\nuiLanguage = ' + json.dumps(language) + '; const REM = {calendar: ' + json.dumps(data) + '};'
+        + r'''const el = (tag, attrs) => ({tag, ...attrs}), fmtTime = at => at.slice(0, 10);
+        console.log(JSON.stringify(agendaNote()));''')
+    assert result and result['class'] == 'agenda-note'
+    if saved:
+        assert '2026-11-15' in result['text']
+        assert ('没有找到日程' if language == 'zh' else 'no events found') in result['text']
+    else:
+        assert ('还没有读过日历' if language == 'zh' else 'No calendar read yet') in result['text']
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])

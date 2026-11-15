@@ -2751,8 +2751,8 @@
   .app { display: grid; grid-template-columns: 72px minmax(0, 1fr); min-height: 100vh; }
   .stage { min-width: 0; }
 
-  /* the rail (D-132): seven places, each a picture with its word under it; 更多, settings and you at the foot.
-     It stays 72 wide. Its content is 656 tall; in a lower window the rail itself scrolls. */
+  /* the rail (D-132): eight places, each a picture with its word under it; 更多, settings and you at the foot.
+     It stays 72 wide. Its content is 712 tall; in a lower window the rail itself scrolls. */
   .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: var(--u2); padding: 20px 0; z-index: 30; }
   .brand { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-bottom: 14px; color: var(--ink); text-decoration: none !important; }
   .brand .mark { width: 34px; height: 34px; }
@@ -2789,7 +2789,7 @@
     background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
     transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
   .nav.you:hover .you-name, .nav.you:focus-visible .you-name { opacity: 1; transform: translate(0, -50%); }
-  @media (max-height: 655px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
+  @media (max-height: 711px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
   .top { display: flex; align-items: center; gap: var(--u3); height: 76px; padding: 0 40px; }
@@ -6504,13 +6504,14 @@ function icon(name, cls = "") {
 // 更多 lists the categories that have no rail entry of their own; these are their pictures.
 const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "book", agenda: "calendar", sessions: "terminal",
   opportunities: "activity", works: "doc" };
-// The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
+// The rail (D-132, #2953): eight places, each a picture with its word under it, the rest one 更多 away, settings
 // and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
 // name is wider than the cell; then the name is one hover away and in the accessible name, which starts with the
 // word you see (WCAG 2.5.3: saying "Orgs" finds Orgs · Organisations). The phone sheet reads data-name.
 function railPlaces() {
   return [["today", "sun", t("Today"), "#"],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail")],
+    ["agenda", "calendar", label("agenda"), "#c=agenda"],
     ["people", "users", label("people"), "#c=people"],
     ["orgs", "building-2", label("orgs"), "#c=orgs", t("Organisations, in the rail")],
     ["projects", "folder", label("projects"), "#c=projects"],
@@ -9090,6 +9091,7 @@ const AG_ZH = {
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
   "authorization expired": "授权已过期",
   "{name} · read {when}": "{name} · {when}读取",
+  "Calendars last read on {when}; no events found.": "上次读取日历是 {when}；没有找到日程。",
   "No calendar is connected, so this shows only the notebook's own dates.": "还没有连接日历，这里只显示笔记里的日期。",
   "{name} could not be read on {when} ({reason}).": "{when}没能读取 {name}（{reason}）。", "Its events are from {when}.": "显示的是 {when}读到的日程。",
   "timed out": "超时", "network error": "网络出错", "server error": "服务器出错", "throttled": "被限流", "request refused": "请求被拒",
@@ -9217,6 +9219,10 @@ function agendaNote() {
     + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")),
     // The night stops at a cap so a runaway series cannot fill the file; what it skipped is said, not hidden.
     ...read.filter(c => c.capped).map(c => agT("{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.", { name: c.name, n: c.capped }))];
+  if (read.length && !REM.calendar.events?.length) {
+    const latest = read.map(c => c.at).sort().at(-1);
+    lines.push(agT("Calendars last read on {when}; no events found.", { when: fmtTime(latest) }));
+  }
   return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
 }
 function agendaBar(range) {

@@ -270,7 +270,13 @@ def _watching(root):
 def next_task(root, *, scheduled=False, discard=False):
     from .catchup import resume
     with resume(root, scheduled=scheduled):
-        return _next_task(root, scheduled=scheduled, discard=discard)
+        result = _next_task(root, scheduled=scheduled, discard=discard)
+        if result.get('reason') != 'not due':
+            from .schedule import calendar_round
+            calendar = calendar_round(root, native=True)
+            if calendar is not None:
+                result['calendar'] = calendar
+        return result
 
 
 def _next_task(root, *, scheduled, discard):
